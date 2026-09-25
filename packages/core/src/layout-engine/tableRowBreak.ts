@@ -229,6 +229,30 @@ export type TableRowBreakInfo = {
   continuationSkips: number[][];
 };
 
+/**
+ * Height of the start of a table that a preceding `w:keepNext` paragraph
+ * (§17.3.1.15) must share a page with: the leading header rows (§17.4.49) and
+ * the first body row. A row that may break across pages (no `w:cantSplit`,
+ * §17.4.6) needs only its first line there; an unbreakable row needs all of it.
+ */
+export function tableKeepNextOpeningHeight(block: TableBlock, measure: TableMeasure): number {
+  let height = 0;
+  let rowIndex = 0;
+  while (rowIndex < measure.rows.length && block.rows[rowIndex]?.isHeader === true) {
+    height += measure.rows[rowIndex]?.height ?? 0;
+    rowIndex += 1;
+  }
+  const row = measure.rows[rowIndex];
+  const sourceRow = block.rows[rowIndex];
+  if (!row || !sourceRow) {
+    return height;
+  }
+  const breakOffsets = buildTableRowBreakInfo(block, measure).breakOffsets[rowIndex] ?? [];
+  const firstBreak = breakOffsets.at(0);
+  const rowMayBreak = sourceRow.cantSplit !== true && breakOffsets.length > 1;
+  return height + (rowMayBreak && firstBreak !== undefined ? firstBreak : row.height);
+}
+
 /** Build break geometry for a table from its block + measure. */
 export function buildTableRowBreakInfo(
   block: TableBlock,

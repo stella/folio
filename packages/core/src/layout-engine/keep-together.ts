@@ -11,7 +11,14 @@ import {
   isAuthoredEmptyParagraph,
   isEmptyParagraph,
 } from "./paragraphSpacing";
-import type { FlowBlock, Measure, ParagraphBlock, ParagraphMeasure } from "./types";
+import type {
+  FlowBlock,
+  Measure,
+  ParagraphBlock,
+  ParagraphMeasure,
+  TableBlock,
+  TableMeasure,
+} from "./types";
 
 /** Lines §17.3.1.44 widow control keeps on each side of a paragraph split. */
 const MIN_WIDOW_CONTROL_SPLIT_LINES = 2;
@@ -203,6 +210,9 @@ function minimumOpeningLineCount(block: ParagraphBlock, measure: ParagraphMeasur
  * reservation continues through it; otherwise the chain stops after the
  * opening, because a later split cannot separate it from its predecessor.
  *
+ * A table anchor contributes `tableOpeningHeight`: the part of the table
+ * that must start on the same page as the paragraph before it.
+ *
  * A paragraph measure's `totalHeight` already includes its own spacing before
  * and after. The chain accounts for spacing separately (collapsing each gap to
  * the larger side, as the paginator does), so members contribute only their
@@ -213,6 +223,7 @@ export function calculateChainHeight(
   blocks: FlowBlock[],
   measures: Measure[],
   incomingSpacing = 0,
+  tableOpeningHeight?: (block: TableBlock, measure: TableMeasure) => number,
 ): number {
   const firstMemberIndex = chain.memberIndices.at(0);
   if (firstMemberIndex === undefined) {
@@ -243,6 +254,16 @@ export function calculateChainHeight(
     }
     const successorBlock = blocks[successorIndex];
     const successorMeasure = measures[successorIndex];
+    if (
+      tableOpeningHeight !== undefined &&
+      successorBlock?.kind === "table" &&
+      successorMeasure?.kind === "table" &&
+      successorBlock.floating === undefined
+    ) {
+      // A table has no paragraph spacing of its own: the gap before it is the
+      // previous paragraph's space after.
+      return totalHeight + trailingSpacing + tableOpeningHeight(successorBlock, successorMeasure);
+    }
     if (successorBlock?.kind !== "paragraph" || successorMeasure?.kind !== "paragraph") {
       return totalHeight;
     }

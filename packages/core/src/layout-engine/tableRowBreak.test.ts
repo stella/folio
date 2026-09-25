@@ -2148,3 +2148,34 @@ describe("oversized table row splits across pages (#570)", () => {
     expect(frags[0]!.bottomClip).toBeUndefined();
   });
 });
+
+describe("w:keepNext before a table", () => {
+  const paragraphBlock = (id: string, keepNext = false): FlowBlock => ({
+    kind: "paragraph",
+    id,
+    runs: [{ kind: "text", text: id }],
+    attrs: { keepNext },
+  });
+
+  /** A 40px body paragraph, then a one-line keepNext heading, then a 4-line row. */
+  const layoutHeadingBeforeRow = (cantSplit: boolean) => {
+    const { block, measure } = tallTable(4);
+    block.rows[0]!.cantSplit = cantSplit;
+    return layoutDocument(
+      [paragraphBlock("body"), paragraphBlock("heading", true), block as FlowBlock],
+      [paraMeasureWithLineHeight(1, 40), paraMeasure(1), measure as Measure],
+      OPTIONS,
+    );
+  };
+  const pageIds = (layout: ReturnType<typeof layoutDocument>): string[][] =>
+    layout.pages.map((page) => page.fragments.map((fragment) => String(fragment.blockId)));
+
+  test("moves the paragraph with an unbreakable first row that starts the next page", () => {
+    // 60px remain below the heading; the 80px w:cantSplit row cannot start there.
+    expect(pageIds(layoutHeadingBeforeRow(true))).toEqual([["body"], ["heading", "t"]]);
+  });
+
+  test("keeps the paragraph above a breakable first row whose first line fits", () => {
+    expect(pageIds(layoutHeadingBeforeRow(false))).toEqual([["body", "heading", "t"], ["t"]]);
+  });
+});
