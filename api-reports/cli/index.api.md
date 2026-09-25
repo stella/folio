@@ -4,6 +4,9 @@
 
 ```ts
 
+import { Readable } from 'node:stream';
+import { Writable } from 'node:stream';
+
 // @public
 export type FolioCliIo = {
     stdout: (text: string) => void;
@@ -12,6 +15,10 @@ export type FolioCliIo = {
     isTTY: boolean;
     env: Readonly<Record<string, string | undefined>>;
     cwd: string;
+    stdio?: {
+        input: Readable;
+        output: Writable;
+    };
 };
 
 // @public

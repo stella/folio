@@ -769,7 +769,7 @@ const externalsByTarget: Record<string, string[]> = {
   core: ["prosemirror-state", "prosemirror-model", "jszip"],
   react: ["react", "react-dom", "react/jsx-runtime", "react-compiler-runtime", "@stll/folio-core"],
   agents: ["@stll/folio-core"],
-  cli: ["@stll/folio-core", "@stll/folio-agents"],
+  cli: ["@stll/folio-core", "@stll/folio-agents", "@modelcontextprotocol/server"],
   vue: ["vue", "@stll/folio-core", "prosemirror-history", "prosemirror-state"],
   nuxt: ["@nuxt/kit", "@stll/folio-vue"],
 };
@@ -784,7 +784,7 @@ const externalLabels: Record<string, string> = {
   core: "external: React never bundled; deps stay external",
   react: "external: React / compiler runtime / ProseMirror / @stll/folio-core not bundled",
   agents: "external: @stll/folio-core not bundled into JS",
-  cli: "external: @stll/folio-core / @stll/folio-agents not bundled into JS",
+  cli: "external: @stll/folio-core / @stll/folio-agents / MCP server SDK not bundled into JS",
   vue: "external: Vue / ProseMirror / @stll/folio-core not bundled into JS",
   nuxt: "external: Nuxt Kit / @stll/folio-vue not bundled into JS",
 };
