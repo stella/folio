@@ -269,15 +269,13 @@ describe("validatePatchSafety", () => {
     expect(result.reason).toContain("duplicate-paraId-in-original");
   });
 
-  test("unsafe when paragraph count mismatch", () => {
-    // Add an extra paragraph to serialized
+  test("safe when the serialization holds a paragraph the source lacks elsewhere", () => {
     const serializedExtra = SIMPLE_DOC.replace(
       "</w:body>",
       '<w:p w14:paraId="DDD444"><w:r><w:t>Extra</w:t></w:r></w:p></w:body>',
     );
     const result = validatePatchSafety(SIMPLE_DOC, serializedExtra, new Set(["AAA111"]));
-    expect(result.safe).toBe(false);
-    expect(result.reason).toContain("paragraph-count-mismatch");
+    expect(result.safe).toBe(true);
   });
 });
 
@@ -346,13 +344,13 @@ describe("buildPatchedDocumentXml", () => {
     expect(result).toBeNull();
   });
 
-  test("returns null when paragraph count mismatch", () => {
-    const serializedExtra = SIMPLE_DOC.replace(
+  test("splices only the changed paragraph when the serialization has an extra one", () => {
+    const serializedExtra = SIMPLE_DOC.replace("First paragraph", "MODIFIED first").replace(
       "</w:body>",
       '<w:p w14:paraId="DDD444"><w:r><w:t>Extra</w:t></w:r></w:p></w:body>',
     );
     const result = buildPatchedDocumentXml(SIMPLE_DOC, serializedExtra, new Set(["AAA111"]));
-    expect(result).toBeNull();
+    expect(result).toBe(SIMPLE_DOC.replace("First paragraph", "MODIFIED first"));
   });
 
   test("preserves bytes around unchanged paragraphs exactly", () => {
@@ -372,6 +370,192 @@ describe("buildPatchedDocumentXml", () => {
     const origAfterBBB = SIMPLE_DOC.slice(SIMPLE_DOC.indexOf('<w:p w14:paraId="CCC333"'));
     const resultAfterBBB = result.slice(result.indexOf('<w:p w14:paraId="CCC333"'));
     expect(resultAfterBBB).toBe(origAfterBBB);
+  });
+});
+
+// ============================================================================
+// Local routing: each changed paragraph is placed on its own evidence
+// ============================================================================
+
+const ROUTING_ROOT =
+  '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" xmlns:v="urn:schemas-microsoft-com:vml">';
+
+const routingDoc = (body: string): string =>
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${ROUTING_ROOT}<w:body>${body}</w:body></w:document>`;
+
+/** A paragraph with one text run, carrying `id` when one is given. */
+const para = (id: string | undefined, text: string): string =>
+  `<w:p${id === undefined ? "" : ` w14:paraId="${id}"`}><w:r><w:t>${text}</w:t></w:r></w:p>`;
+
+/** A paragraph whose run holds `runContent` (a text box). */
+const hostPara = (id: string | undefined, runContent: string): string =>
+  `<w:p${id === undefined ? "" : ` w14:paraId="${id}"`}><w:r>${runContent}</w:r></w:p>`;
+
+const drawingTextBox = (paragraphs: string): string =>
+  `<w:drawing><wps:wsp><wps:txbx><w:txbxContent>${paragraphs}</w:txbxContent></wps:txbx></wps:wsp></w:drawing>`;
+
+const vmlTextBox = (paragraphs: string): string =>
+  `<w:pict><v:shape><v:textbox><w:txbxContent>${paragraphs}</w:txbxContent></v:textbox></v:shape></w:pict>`;
+
+const alternateContent = (choice: string, fallback: string): string =>
+  `<mc:AlternateContent><mc:Choice Requires="wps">${choice}</mc:Choice><mc:Fallback>${fallback}</mc:Fallback></mc:AlternateContent>`;
+
+const tableCell = (content: string): string =>
+  `<w:tbl><w:tr><w:tc>${content}</w:tc></w:tr></w:tbl>`;
+
+const refusalOf = (original: string, serialized: string, id: string): string | undefined => {
+  const result = validatePatchSafety(original, serialized, new Set([id]));
+  expect(result.safe).toBe(false);
+  expect(buildPatchedDocumentXml(original, serialized, new Set([id]))).toBeNull();
+  return result.reason;
+};
+
+describe("selective patch routes each changed paragraph locally", () => {
+  test("splices an authored paragraph when the serialization writes no text-box Fallback", () => {
+    const box = hostPara(
+      "B0000001",
+      alternateContent(
+        drawingTextBox(para("B0000002", "Box")),
+        vmlTextBox(para("B0000002", "Box")),
+      ),
+    );
+    const original = routingDoc(para("A0000001", "Edit me") + box + para("A0000002", "Tail"));
+    const serialized = routingDoc(
+      para("A0000001", "Edit me!") +
+        hostPara("B0000001", drawingTextBox(para("B0000002", "Box"))) +
+        para("A0000002", "Tail"),
+    );
+
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).toBe(
+      original.replace("Edit me", "Edit me!"),
+    );
+  });
+
+  test("splices an id-less paragraph by its main-flow ordinal when a text box reads differently", () => {
+    // The source's VML box holds two paragraphs; the model's box holds one.
+    const original = routingDoc(
+      para(undefined, "One") +
+        hostPara(undefined, vmlTextBox(para(undefined, "Box a") + para(undefined, "Box b"))) +
+        para(undefined, "Two"),
+    );
+    const serialized = routingDoc(
+      para("0000000A", "One") +
+        hostPara("0000000B", drawingTextBox(para("0000000C", "Box a"))) +
+        para("0000000D", "Two!"),
+    );
+
+    // The minted id names nothing in the file, so it is not written into it.
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["0000000D"]))).toBe(
+      original.replace("Two", "Two!"),
+    );
+  });
+
+  test("splices an id-less text-box paragraph when the text boxes line up", () => {
+    const original = routingDoc(
+      para(undefined, "One") + hostPara(undefined, vmlTextBox(para(undefined, "Box"))),
+    );
+    const serialized = routingDoc(
+      para("0000000A", "One") + hostPara("0000000B", vmlTextBox(para("0000000C", "Box!"))),
+    );
+
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["0000000C"]))).toBe(
+      original.replace("Box", "Box!"),
+    );
+  });
+
+  test("refuses an id-less paragraph whose story's ordinals no longer line up", () => {
+    const original = routingDoc(para(undefined, "One") + para(undefined, "Two"));
+    const serialized = routingDoc(
+      para("0000000A", "One") + para("0000000B", "Extra") + para("0000000C", "Two!"),
+    );
+
+    expect(refusalOf(original, serialized, "0000000C")).toBe(
+      "unaligned-paragraph-ordinals: 0000000C",
+    );
+  });
+
+  test("refuses an id-less text-box paragraph when the text boxes disagree", () => {
+    const original = routingDoc(
+      para(undefined, "One") +
+        hostPara(undefined, vmlTextBox(para(undefined, "Box a") + para(undefined, "Box b"))),
+    );
+    const serialized = routingDoc(
+      para("0000000A", "One") + hostPara("0000000B", drawingTextBox(para("0000000C", "Box a!"))),
+    );
+
+    expect(refusalOf(original, serialized, "0000000C")).toBe(
+      "unaligned-paragraph-ordinals: 0000000C",
+    );
+  });
+
+  test("refuses a paragraph inside mc:AlternateContent, whose Fallback would go stale", () => {
+    const original = routingDoc(
+      hostPara(
+        "B0000001",
+        alternateContent(
+          drawingTextBox(para("B0000002", "Box")),
+          vmlTextBox(para("B0000002", "Box")),
+        ),
+      ),
+    );
+    const serialized = routingDoc(hostPara("B0000001", drawingTextBox(para("B0000002", "Box!"))));
+
+    expect(refusalOf(original, serialized, "B0000002")).toBe(
+      "paragraph-in-alternate-content: B0000002",
+    );
+  });
+
+  test("refuses an id the source writes only inside mc:Fallback", () => {
+    const original = routingDoc(
+      hostPara("B0000001", alternateContent("<w:drawing/>", vmlTextBox(para("F0000001", "Old")))),
+    );
+    const serialized = routingDoc(hostPara("B0000001", vmlTextBox(para("F0000001", "New"))));
+
+    expect(refusalOf(original, serialized, "F0000001")).toBe("paraId-only-in-fallback: F0000001");
+  });
+
+  test("refuses a paragraph whose container changed", () => {
+    const original = routingDoc(tableCell(para("C0000001", "Cell")) + para("A0000002", "Tail"));
+    const serialized = routingDoc(para("C0000001", "Cell!") + para("A0000002", "Tail"));
+
+    expect(refusalOf(original, serialized, "C0000001")).toBe("container-changed: C0000001");
+  });
+
+  test("refuses an authored paragraph that moved within its story", () => {
+    const original = routingDoc(
+      para("A0000001", "a") + para("A0000002", "b") + para("A0000003", "c"),
+    );
+    const serialized = routingDoc(
+      para("A0000002", "b") + para("A0000001", "a!") + para("A0000003", "c"),
+    );
+
+    expect(refusalOf(original, serialized, "A0000001")).toBe("paragraph-moved: A0000001");
+  });
+
+  test("refuses a paraId the serialization writes twice", () => {
+    const original = routingDoc(para("A0000001", "a") + para("A0000002", "b"));
+    const serialized = routingDoc(para("A0000001", "a!") + para("A0000001", "b"));
+
+    expect(refusalOf(original, serialized, "A0000001")).toBe(
+      "duplicate-paraId-in-serialized: A0000001",
+    );
+  });
+
+  test("refuses a part whose WordprocessingML prefix is not w", () => {
+    const original =
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><x:document xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><x:body><x:p><x:r><x:t>a</x:t></x:r></x:p></x:body></x:document>';
+    const serialized = routingDoc(para("0000000A", "a!"));
+
+    expect(refusalOf(original, serialized, "0000000A")).toBe(
+      "non-canonical-wordprocessingml-prefix: x:document",
+    );
+  });
+
+  test("refuses a changed paragraph the serialization leaves unterminated", () => {
+    const original = routingDoc(para("A0000001", "a"));
+    const serialized = routingDoc(para("A0000001", "a!").replace("</w:p>", ""));
+
+    expect(refusalOf(original, serialized, "A0000001")).toBe("unterminated-paragraph: A0000001");
   });
 });
 

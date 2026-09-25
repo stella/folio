@@ -179,8 +179,9 @@ export const alignParagraphOrdinals = (
  * describe one document — the source part and the model parsed from it — so
  * {@link alignParagraphOrdinals}'s `consistent` is the whole of the question: a
  * package with ids on some paragraphs proves its own alignment through them,
- * and one with none is aligned vacuously behind the paragraph-count check the
- * caller already runs.
+ * and one with none is aligned exactly when the two sequences have the same
+ * length. The save asks this per story (main flow, text boxes), so a text box
+ * the model re-reads cannot misalign the main flow.
  */
 export type ParagraphIdentityPlan = {
   identities: readonly ParagraphIdentity[];

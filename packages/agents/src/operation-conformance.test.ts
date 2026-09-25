@@ -171,12 +171,31 @@ describe("document operation cross-surface conformance", () => {
       ],
     };
 
+    // The fixture writes no `w14:paraId`, and the save keeps it that way: the
+    // edited paragraph is spliced without the id folio minted for it, so the
+    // reopened package mints its ids afresh. The saved semantics are compared
+    // with the ids set aside, plus the one thing the ids must still say: every
+    // change sits on the edited paragraph.
+    const withoutBlockIds = (content: string): string =>
+      content.replaceAll(/^\[[0-9A-F]{8}\] /gmu, "");
+    const withoutChangeBlockIds = (changes: typeof expected.changes) =>
+      changes.map(({ blockId: _blockId, ...change }) => change);
+
     for (const output of outputs) {
       expect(output.result, output.name).toEqual(expected.result);
       expect(output.content, output.name).toBe(expected.content);
       expect(output.changes, output.name).toEqual(expected.changes);
-      expect(output.savedContent, output.name).toBe(expected.content);
-      expect(output.savedChanges, output.name).toEqual(expected.changes);
+      expect(withoutBlockIds(output.savedContent), output.name).toBe(
+        withoutBlockIds(expected.content),
+      );
+      expect(withoutChangeBlockIds(output.savedChanges), output.name).toEqual(
+        withoutChangeBlockIds(expected.changes),
+      );
+      const editedBlockId = /^\[(?<id>[0-9A-F]{8})\]/u.exec(output.savedContent)?.groups?.["id"];
+      expect(
+        output.savedChanges.map(({ blockId }) => blockId),
+        output.name,
+      ).toEqual(expected.changes.map(() => editedBlockId));
     }
   });
 

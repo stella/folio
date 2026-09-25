@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
   "reportOnlyDigest": "4ba4d99dfcc887c627bfa1614533051cdff0a7c2e80197c853d61044d1c30179",
-  "failedFiles": 670,
+  "failedFiles": 646,
   "entries": [
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed | -",
@@ -16,40 +16,12 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 10
+      "files": 5
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
-      "frame": "-",
-      "files": 4
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[paragraph].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[blockSdt].content[paragraph].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 9
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[blockSdt].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
       "files": 1
     },
@@ -58,33 +30,12 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 24
+      "files": 17
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[]: length changed | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[]: length changed",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[complexField].formatting: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
       "files": 1
     },
@@ -101,13 +52,6 @@
       "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].children: array became absent",
       "frame": "-",
       "files": 3
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].children[]: length changed | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[hyperlink].children[]: length changed",
-      "frame": "-",
-      "files": 1
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[hyperlink].content: absent became array | -",
@@ -208,76 +152,6 @@
       "files": 1
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].text: absent became \"<string>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].type: \"<string>\" became \"text\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[noBreakHyphen].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.anchor: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.anchor: absent became object",
-      "frame": "-",
-      "files": 2
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.fill: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.fill: object became absent",
-      "frame": "-",
-      "files": 3
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.dash: absent became \"solid\"",
-      "frame": "-",
-      "files": 12
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.headEnd: object became absent",
-      "frame": "-",
-      "files": 11
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.join: \"<string>\" became absent",
-      "frame": "-",
-      "files": 11
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.outline.tailEnd: object became absent",
-      "frame": "-",
-      "files": 11
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[paragraph].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 16
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[run].content[shape].shape.textBody.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 4
-    },
-    {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
@@ -296,7 +170,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 23
+      "files": 2
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].history: absent became true | -",
@@ -317,7 +191,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 15
+      "files": 3
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[run].preservedAttributes[]: length changed | -",
@@ -341,13 +215,6 @@
       "files": 3
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[paragraph].content[simpleField].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].formatting: object became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].formatting: object became absent",
@@ -359,35 +226,28 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].paraId: \"<hex A>\" became \"<hex B>\"",
       "frame": "-",
-      "files": 7
+      "files": 6
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].paraId: \"<hex>\" became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].paraId: \"<hex>\" became absent",
       "frame": "-",
-      "files": 4
+      "files": 1
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
-      "files": 67
+      "files": 8
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[paragraph].textId: \"<hex>\" became absent | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[paragraph].textId: \"<hex>\" became absent",
       "frame": "-",
-      "files": 4
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[table].formatting: absent became object | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[table].formatting: absent became object",
-      "frame": "-",
-      "files": 2
+      "files": 1
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[]: length changed | -",
@@ -401,7 +261,7 @@
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 7
+      "files": 6
     },
     {
       "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed | -",
@@ -432,25 +292,11 @@
       "files": 2
     },
     {
-      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: \"<hex A>\" became \"<hex B>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: \"<hex A>\" became \"<hex B>\"",
-      "frame": "-",
-      "files": 1
-    },
-    {
       "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
       "invariant": "edit-locality",
       "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
       "frame": "-",
-      "files": 28
-    },
-    {
-      "signature": "edit-locality | an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\" | -",
-      "invariant": "edit-locality",
-      "message": "an unedited block changed: package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].paraId: absent became \"<hex>\"",
-      "frame": "-",
-      "files": 6
+      "files": 4
     },
     {
       "signature": "editor-round-trip | editor round trip changed package.conformanceClass: \"strict\" became \"transitional\" | -",
