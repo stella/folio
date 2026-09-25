@@ -319,6 +319,8 @@ export const COMPLEX_FIELD_RESERVED = {
   formatting: NO_RESERVED_VALUE,
   fldLock: toggle("w:fldChar@fldLock"),
   dirty: toggle("w:fldChar@dirty"),
+  // A reader-computed provenance flag, not a spelling any XML slot carries.
+  fieldResultIsFallback: NO_RESERVED_VALUE,
 } satisfies Record<keyof ComplexField, ReservedValueDisposition>;
 
 export type ExhaustiveComplexFieldReserved = ExhaustiveFields<
