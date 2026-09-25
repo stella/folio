@@ -295,10 +295,12 @@ export type ParagraphAttrs = {
   _tableRunFormatting?: TextFormatting;
 
   /**
-   * Base text direction as a discriminated union (undecided when absent). Maps
-   * to the serialized OOXML `w:bidi` tri-state via `directionToBidi`; the
-   * `source` discriminates an authoritative manual/import decision from a
-   * re-evaluable auto-detected one. See `paragraphDirection.ts`.
+   * Base text direction as a discriminated union (undecided when absent).
+   * Maps to the OOXML `w:bidi` tri-state via `directionToBidi` (layout) or
+   * `directionToAuthoredBidi` (serialization); the `source` discriminates an
+   * authoritative manual/import decision — the only one that is ever
+   * serialized — from a re-evaluable, view-only auto-detected one. See
+   * `paragraphDirection.ts`.
    */
   direction?: ParagraphDirection | null;
 

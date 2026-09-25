@@ -21,8 +21,14 @@
  * re-evaluates its own decisions, replacing an auto-RTL paragraph's text with
  * Latin clears it again (no stale "sticky" RTL).
  *
- * The `direction` discriminated union is editor-runtime state; only its resolved
- * RTL-ness serializes (`w:bidi`) — the persisted model keeps the flat tri-state.
+ * The `direction` discriminated union is editor-runtime state. Its `"auto"`
+ * source is a *rendering* aid only — `directionToAuthoredBidi` maps it to
+ * `undefined`, so an auto-detected paragraph never serializes `w:bidi` on its
+ * own; only a manual decision (an explicit user toggle, or `w:bidi` the
+ * source document already carried) is authored content. This keeps a no-edit
+ * save byte-identical on direction, while the editor and layout painter still
+ * treat `"auto"` as RTL (`directionToBidi` / `directionIsRtl`) so detected
+ * text displays correctly before the user ever makes it explicit.
  *
  * Mirrors the appendTransaction + ensure-in-state pattern of
  * `ParaIdAllocatorExtension`.
@@ -153,13 +159,13 @@ const applyBidiUpdates = (state: EditorState, updates: BidiUpdate[]): EditorStat
  * fire for the initial document, so seeded content needs this pass.
  *
  * Like the paraId allocator this is `ignoreTrackedChanges`, so a normalized
- * paragraph the user never edits is not in `changedParaIds`. Full save (the
- * default; and the only path for Markdown/template/new docs, which have no
- * original buffer) serializes the whole PM doc, so the flag is written. The
- * selective-save path (dark `selectiveSave` flag) intentionally preserves
- * untouched original paragraphs byte-for-byte, so an imported DOCX whose Arabic
- * arrived without `w:bidi` and is saved without any edit keeps the original
- * bytes; editing the paragraph tracks it and the patch then includes `w:bidi`.
+ * paragraph the user never edits is not in `changedParaIds`. An imported DOCX
+ * whose Arabic arrived without `w:bidi` gets `{ source: "auto" }` here purely
+ * for rendering; because `directionToAuthoredBidi` treats `"auto"` the same
+ * as undecided, neither a full-repack save nor the selective-save path (dark
+ * `selectiveSave` flag) writes `w:bidi` for it when the paragraph is not
+ * otherwise edited. A manual toggle, or a paragraph whose `w:bidi` the source
+ * document already carried, is unaffected — it always round-trips.
  */
 export const ensureBaseDirectionInState = (state: EditorState): EditorState => {
   // Respect the extension-disable contract: if a manager was built with
