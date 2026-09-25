@@ -161,6 +161,36 @@ export const exportDocxToPdf = async (
       ? built.value.list
       : selectDisplayPages(built.value.list, options.pages);
 
+  const written = await writeDisplayListPdf(list, options);
+  if (written.isErr()) return Result.err(written.error);
+
+  return Result.ok({
+    ...written.value,
+    unsupported: list.unsupported,
+    layoutGaps: built.value.layoutGaps,
+    measurementSubstitutions: built.value.measurementSubstitutions,
+  });
+};
+
+export type WriteDisplayListPdfOptions = Pick<
+  ExportDocxToPdfOptions,
+  "fonts" | "timestamp" | "producer"
+>;
+
+export type WriteDisplayListPdfResult = Pick<
+  ExportDocxToPdfResult,
+  "bytes" | "pageCount" | "embeddingSubstitutions" | "unencodable"
+>;
+
+/**
+ * Write a display list built by {@link buildDocxDisplayList} (or narrowed by
+ * `selectDisplayPages`) as a PDF, embedding faces from the same source the
+ * layout measured with.
+ */
+export const writeDisplayListPdf = async (
+  list: DisplayList,
+  options: WriteDisplayListPdfOptions,
+): Promise<Result<WriteDisplayListPdfResult, ExportPdfError>> => {
   const written = await writePdf(list, {
     fonts: { load: (face) => options.fonts.load(toFontRequest(face)) },
     timestamp: options.timestamp,
@@ -169,13 +199,9 @@ export const exportDocxToPdf = async (
   if (written.isErr()) {
     return Result.err(new ExportPdfError({ message: written.error.message, cause: written.error }));
   }
-
   return Result.ok({
     bytes: written.value.bytes,
     pageCount: list.pages.length,
-    unsupported: list.unsupported,
-    layoutGaps: built.value.layoutGaps,
-    measurementSubstitutions: built.value.measurementSubstitutions,
     embeddingSubstitutions: written.value.substitutions,
     unencodable: written.value.unencodable,
   });
