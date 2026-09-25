@@ -54,8 +54,8 @@ describe("unresolvedRoutedFontFaces", () => {
       { family: "Title Face", weight: 700 },
     ];
     const observed = [
-      { family: "Title Face", weight: 400, style: undefined, status: "loaded" as const },
-      { family: "Title Face", weight: 700, style: undefined, status: "loaded" as const },
+      { family: "Title Face", weight: 400, status: "loaded" as const },
+      { family: "Title Face", weight: 700, status: "loaded" as const },
     ];
 
     expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([]);
@@ -69,9 +69,7 @@ describe("unresolvedRoutedFontFaces", () => {
       { family: "Title Face", weight: 400 },
       { family: "Title Face", weight: 700 },
     ];
-    const observed = [
-      { family: "Title Face", weight: 400, style: undefined, status: "loaded" as const },
-    ];
+    const observed = [{ family: "Title Face", weight: 400, status: "loaded" as const }];
 
     expect(unresolvedRoutedFontFaces(expected, observed)).toEqual([
       { family: "Title Face", weight: 700 },
@@ -83,7 +81,7 @@ describe("unresolvedRoutedFontFaces", () => {
 
     expect(
       unresolvedRoutedFontFaces(expected, [
-        { family: "Body Face", weight: 400, style: undefined, status: "loading" as const },
+        { family: "Body Face", weight: 400, status: "loading" as const },
       ]),
     ).toEqual(expected);
     expect(unresolvedRoutedFontFaces(expected, [])).toEqual(expected);
@@ -94,7 +92,7 @@ describe("unresolvedRoutedFontFaces", () => {
 
     expect(
       unresolvedRoutedFontFaces(expected, [
-        { family: "Body Face", weight: 400, style: undefined, status: "error" as const },
+        { family: "Body Face", weight: 400, status: "error" as const },
       ]),
     ).toEqual(expected);
   });
