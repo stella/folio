@@ -60,7 +60,7 @@ describe("recoverStages", () => {
 
     expect(actions).toEqual([{ txId: "tx-1", action: "rolledForward" }]);
     expect(await readFile(documentPath, "utf8")).toBe("staged bytes");
-    expect(await readdir(dir)).toEqual([".folio", "contract.docx"]);
+    expect((await readdir(dir)).toSorted()).toEqual([".folio", "contract.docx"]);
     expect((await findCommit(journalPath, "tx-1"))?.toVersion).toBe(fileVersionOf(STAGED));
   });
 
@@ -73,7 +73,7 @@ describe("recoverStages", () => {
 
     expect(actions).toEqual([{ txId: "outran", action: "discarded" }]);
     expect(await readFile(documentPath, "utf8")).toBe("original bytes");
-    expect(await readdir(dir)).toEqual([".folio", "contract.docx"]);
+    expect((await readdir(dir)).toSorted()).toEqual([".folio", "contract.docx"]);
     expect(await findCommit(journalPath, "outran")).toBeUndefined();
   });
 });

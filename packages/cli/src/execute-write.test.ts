@@ -80,7 +80,7 @@ describe("suggest_changes in place", () => {
     ]);
     const journal = await readFile(path.join(dir, ".folio", "journal.jsonl"), "utf8");
     expect(journal).toContain(`"toVersion":"${String(receipt["fileVersion"])}"`);
-    expect(await readdir(dir)).toEqual([".folio", "contract.docx"]);
+    expect((await readdir(dir)).toSorted()).toEqual([".folio", "contract.docx"]);
   });
 
   test("replays a committed txId and refuses its reuse for another request", async () => {
