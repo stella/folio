@@ -29,7 +29,12 @@ import {
   type HyphenationDictionaryId,
   resetHyphenationDictionaries,
 } from "../layout-engine/measure/hyphenationDictionaries";
-import type { FlowBlock, FootnoteContent, HeaderFooterContent } from "../layout-engine/types";
+import type {
+  FlowBlock,
+  FootnoteContent,
+  HeaderFooterContent,
+  TextBoxBlock,
+} from "../layout-engine/types";
 import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { convertHeaderFooterToContent } from "../layout-bridge/convert/headerFooterLayout";
 import { LayoutPainter } from "../layout-painter";
@@ -926,6 +931,84 @@ describe("runLayoutPipeline", () => {
 
     expect(outcome.layout?.pages.at(0)?.margins.top).toBe(160);
     expect(outcome.layout?.pages.at(0)?.fragments.at(0)?.y).toBe(160);
+  });
+
+  describe("page-frame anchored text boxes under header/footer clearance", () => {
+    // A header or footer taller than its margin pushes the body box in, and the
+    // margin frames an anchor can be positioned in follow that box: `topMargin`
+    // spans the page top to the pushed body top, `bottomMargin` the pushed body
+    // bottom to the page bottom, and `margin` the pushed body box itself. Only
+    // `page` stays on the sheet.
+    type Vertical = NonNullable<NonNullable<TextBoxBlock["position"]>["vertical"]>;
+    type Furniture = "header" | "footer";
+
+    const BOX_HEIGHT = 30;
+    const FURNITURE_HEIGHT = 150;
+    const tallFurniture = makePreparedHeaderFooter(FURNITURE_HEIGHT);
+    const PUSHED_TOP = MARGINS.header + FURNITURE_HEIGHT;
+    const PUSHED_BOTTOM = MARGINS.footer + FURNITURE_HEIGHT;
+    // 1/4 inch: 24px at 96 DPI.
+    const QUARTER_INCH_EMU = 228_600;
+
+    const makeAnchoredBoxState = (vertical: Vertical) =>
+      EditorState.create({
+        doc: schema.node("doc", null, [
+          schema.node("paragraph", null, [schema.text("Before the box.")]),
+          schema.node(
+            "textBox",
+            {
+              width: 200,
+              height: BOX_HEIGHT,
+              displayMode: "float",
+              wrapType: "inFront",
+              position: { horizontal: { relativeTo: "page", posOffset: 0 }, vertical },
+            },
+            [schema.node("paragraph", null, [schema.text("Boxed")])],
+          ),
+          schema.node("paragraph", null, [schema.text("After the box.")]),
+        ]),
+      });
+
+    const boxY = (vertical: Vertical, furniture: Furniture): number | undefined => {
+      const outcome = runLayoutPipeline(
+        makeDeps(createLayoutSession(), {
+          ...(furniture === "header"
+            ? { headerContent: { type: "header", hdrFtrType: "default", content: [] } }
+            : { footerContent: { type: "footer", hdrFtrType: "default", content: [] } }),
+          renderHfFromContentOrPm: (hf, _rId, _hfPMs, _contentWidth, metrics) =>
+            hf && metrics.section === furniture ? tallFurniture : undefined,
+        }),
+        makeAnchoredBoxState(vertical),
+      );
+      expect(layoutErrors.map((error) => error.message)).toEqual([]);
+      const page = outcome.layout?.pages.at(0);
+      if (furniture === "header") {
+        expect(page?.margins.top).toBe(PUSHED_TOP);
+      } else {
+        expect(page?.margins.bottom).toBe(PUSHED_BOTTOM);
+      }
+      return page?.fragments.find((fragment) => fragment.kind === "textBox")?.y;
+    };
+
+    test.each<[string, Vertical, Furniture, number]>([
+      [
+        "topMargin, bottom-aligned",
+        { relativeTo: "topMargin", align: "bottom" },
+        "header",
+        PUSHED_TOP - BOX_HEIGHT,
+      ],
+      ["topMargin, offset", { relativeTo: "topMargin", posOffset: QUARTER_INCH_EMU }, "header", 24],
+      ["margin, offset 0", { relativeTo: "margin", posOffset: 0 }, "header", PUSHED_TOP],
+      ["page, offset", { relativeTo: "page", posOffset: QUARTER_INCH_EMU }, "header", 24],
+      [
+        "bottomMargin, offset 0",
+        { relativeTo: "bottomMargin", posOffset: 0 },
+        "footer",
+        PAGE_SIZE.h - PUSHED_BOTTOM,
+      ],
+    ])("%s", (_label, vertical, furniture, expectedY) => {
+      expect(boxY(vertical, furniture)).toBe(expectedY);
+    });
   });
 
   test("uses authored margins for a blank even-page header and footer", () => {
