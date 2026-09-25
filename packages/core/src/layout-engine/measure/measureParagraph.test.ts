@@ -1437,6 +1437,40 @@ describe("measureParagraph justified shrink tolerance", () => {
     },
   );
 
+  test.each([
+    { label: "keeps", overflow: 0.9, expectedToChar: 16 },
+    { label: "wraps", overflow: 1.5, expectedToChar: 14 },
+  ])(
+    "$label a word overflowing by $overflow px when the shorter line would stretch its spaces by a third",
+    ({ overflow, expectedToChar }) => {
+      withFakeTextMeasure(
+        () => {
+          // Without the word, six stretchable 1 px spaces absorb 2 px of slack.
+          // Keeping it shrinks seven spaces; both overflows fit a quarter of them.
+          const measure = measureParagraph(
+            {
+              kind: "paragraph",
+              id: "justified-prose-shrink-or-stretch",
+              runs: [{ kind: "text", text: "a a a a a a a b c" }],
+              attrs: { alignment: "justify" },
+            },
+            78,
+          );
+
+          expect(measure.lines).toHaveLength(2);
+          expect(measure.lines[0]?.toChar).toBe(expectedToChar);
+        },
+        {
+          charWidth: (char) => {
+            if (char === " ") return 1;
+            if (char === "b") return 1 + overflow;
+            return 10;
+          },
+        },
+      );
+    },
+  );
+
   test("contracts a final line admitted within the space budget", () => {
     withFakeTextMeasure(
       () => {
@@ -1526,7 +1560,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           {
             kind: "paragraph",
             id: "justified-prose-final-line-contraction",
-            runs: [{ kind: "text", text: `${"aaaaaaaaa ".repeat(10)}bbb` }],
+            runs: [{ kind: "text", text: `${"a ".repeat(10)}bbb` }],
             attrs,
           },
           maxWidth,
@@ -1537,7 +1571,9 @@ describe("measureParagraph justified shrink tolerance", () => {
           expectedPaint,
         );
       },
-      { charWidth: (char) => (char === "b" ? overflow / 3 : 1) },
+      // Ten 1 px words and spaces leave 80 px for the final token, which
+      // overflows the 100 px measure by `overflow`.
+      { charWidth: (char) => (char === "b" ? (80 + overflow) / 3 : 1) },
     );
   });
 
@@ -1678,7 +1714,7 @@ describe("measureParagraph justified shrink tolerance", () => {
           {
             kind: "paragraph",
             id: "justified-list-space-budget",
-            runs: [{ kind: "text", text: `${"a ".repeat(15)}bbb` }],
+            runs: [{ kind: "text", text: `${"a ".repeat(8)}${"b".repeat(24)}` }],
             attrs: {
               alignment: "justify",
               indent: { left: 24, hanging: 24 },
@@ -1710,46 +1746,47 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("allows the bounded first-line tolerance for deep hanging list markers", () => {
-    const firstLineText = `${"a".repeat(98)} bbb`;
-
-    withFakeTextMeasure(
-      () => {
-        const fittingMeasure = measureParagraph(
-          {
-            kind: "paragraph",
-            id: "justified-deep-hanging-list-marker",
-            runs: [{ kind: "text", text: firstLineText }],
-            attrs: {
-              alignment: "justify",
-              indent: { left: 36, hanging: 36 },
-              listMarker: "1.1.1",
+  test.each([
+    { line: "first", overflow: 0.9, keeps: true },
+    { line: "first", overflow: 1.5, keeps: false },
+    { line: "continuation", overflow: 0.9, keeps: true },
+    { line: "continuation", overflow: 1.5, keeps: false },
+  ])(
+    "weighs shrink against stretch on a list $line line overflowing by $overflow px",
+    ({ line, overflow, keeps }) => {
+      withFakeTextMeasure(
+        () => {
+          const prose = { kind: "text" as const, text: "a a a a a a a b c" };
+          const measure = measureParagraph(
+            {
+              kind: "paragraph",
+              id: `justified-list-${line}-shrink-or-stretch`,
+              runs:
+                line === "first"
+                  ? [prose]
+                  : [{ kind: "text", text: "x" }, { kind: "lineBreak" }, prose],
+              attrs: {
+                alignment: "justify",
+                listMarker: "1.",
+                indent: { left: 36, hanging: 36 },
+              },
             },
-          },
-          136,
-        );
-        const overflowingMeasure = measureParagraph(
-          {
-            kind: "paragraph",
-            id: "justified-deep-hanging-list-marker-boundary",
-            runs: [{ kind: "text", text: firstLineText }],
-            attrs: {
-              alignment: "justify",
-              indent: { left: 36, hanging: 36 },
-              listMarker: "1.1.1",
-            },
-          },
-          135.9,
-        );
+            114,
+          );
 
-        expect(fittingMeasure.lines).toHaveLength(1);
-        expect(overflowingMeasure.lines).toHaveLength(2);
-      },
-      {
-        charWidth: (char) => (char === "b" ? 1.05 : 1),
-      },
-    );
-  });
+          const proseLine = measure.lines[line === "first" ? 0 : 1];
+          expect(proseLine?.toChar).toBe(keeps ? 16 : 14);
+        },
+        {
+          charWidth: (char) => {
+            if (char === " ") return 1;
+            if (char === "b") return 1 + overflow;
+            return 10;
+          },
+        },
+      );
+    },
+  );
 
   test("bases full-hanging list continuation shrink on measured spaces", () => {
     withFakeTextMeasure(
@@ -1798,61 +1835,9 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("allows bounded space contraction on full-hanging list continuations", () => {
-    const continuationText = `${"a ".repeat(10)}bbb`;
-
-    withFakeTextMeasure(
-      () => {
-        const fittingMeasure = measureParagraph(
-          {
-            kind: "paragraph",
-            id: "justified-list-continuation-contraction",
-            runs: [
-              { kind: "text", text: "first line" },
-              { kind: "lineBreak" },
-              { kind: "text", text: continuationText },
-            ],
-            attrs: {
-              alignment: "justify",
-              listMarker: "1.",
-              indent: { left: 36, hanging: 36 },
-            },
-          },
-          138.5,
-        );
-        const overflowingMeasure = measureParagraph(
-          {
-            kind: "paragraph",
-            id: "justified-list-continuation-contraction-boundary",
-            runs: [
-              { kind: "text", text: "first line" },
-              { kind: "lineBreak" },
-              { kind: "text", text: continuationText },
-            ],
-            attrs: {
-              alignment: "justify",
-              listMarker: "1.",
-              indent: { left: 36, hanging: 36 },
-            },
-          },
-          138.2,
-        );
-
-        expect(fittingMeasure.lines).toHaveLength(2);
-        expect(overflowingMeasure.lines).toHaveLength(3);
-      },
-      {
-        charWidth: (char) => {
-          if (char === "b") return 5.3;
-          if (char === " ") return 0.9;
-          return 8;
-        },
-      },
-    );
-  });
-
-  test("allows wider bounded contraction only for the paragraph-tail token", () => {
-    const prefix = "a ".repeat(50);
+  test("plans space-contraction paint only for an admitted paragraph-tail token", () => {
+    const prefix = "a ".repeat(10);
+    const tail = "b".repeat(103);
 
     withFakeTextMeasure(
       () => {
@@ -1863,7 +1848,7 @@ describe("measureParagraph justified shrink tolerance", () => {
             runs: [
               { kind: "text", text: "first line" },
               { kind: "lineBreak" },
-              { kind: "text", text: `${prefix}bbb` },
+              { kind: "text", text: `${prefix}${tail}` },
             ],
             attrs: {
               alignment: "justify",
@@ -1880,7 +1865,7 @@ describe("measureParagraph justified shrink tolerance", () => {
             runs: [
               { kind: "text", text: "first line" },
               { kind: "lineBreak" },
-              { kind: "text", text: `${prefix}bbb c` },
+              { kind: "text", text: `${prefix}${tail} c` },
             ],
             attrs: {
               alignment: "justify",
@@ -1902,7 +1887,8 @@ describe("measureParagraph justified shrink tolerance", () => {
   });
 
   test("keeps an admitted plan on the final line before an ignorable cached boundary suffix", () => {
-    const prefix = "a ".repeat(50);
+    const prefix = "a ".repeat(10);
+    const tail = "b".repeat(103);
 
     withFakeTextMeasure(
       () => {
@@ -1913,7 +1899,7 @@ describe("measureParagraph justified shrink tolerance", () => {
             runs: [
               { kind: "text", text: "first line" },
               { kind: "lineBreak" },
-              { kind: "text", text: `${prefix}bbb` },
+              { kind: "text", text: `${prefix}${tail}` },
               { kind: "renderedPageBreak" },
               { kind: "text", text: "" },
             ],
@@ -1938,7 +1924,7 @@ describe("measureParagraph justified shrink tolerance", () => {
   });
 
   test("separates CJK hanging punctuation from admitted final-list space contraction", () => {
-    const finalText = `${"a ".repeat(50)}bb。`;
+    const finalText = `${"a ".repeat(10)}${"b".repeat(82)}。`;
 
     withFakeTextMeasure(
       () => {
@@ -2089,31 +2075,6 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("uses hanging-tab shrink tolerance on a custom-hanging list marker line", () => {
-    withFakeTextMeasure(
-      () => {
-        const measure = measureParagraph(
-          {
-            kind: "paragraph",
-            id: "justified-custom-list-marker-line",
-            runs: [{ kind: "text", text }],
-            attrs: {
-              alignment: "justify",
-              listMarker: "1.",
-              indent: { left: 36, hanging: 36 },
-            },
-          },
-          136,
-        );
-
-        expect(measure.lines).toHaveLength(1);
-      },
-      {
-        charWidth: fractionalWidth,
-      },
-    );
-  });
-
   test("does not treat non-breaking spaces as compressible list-continuation spaces", () => {
     const continuationText = `${"a".repeat(50)} ${"a".repeat(47)} \u00a0bbb`;
 
@@ -2236,7 +2197,7 @@ describe("measureParagraph justified shrink tolerance", () => {
     );
   });
 
-  test("keeps shallow full-hanging list continuations on rounding tolerance", () => {
+  test("wraps a shallow full-hanging list continuation beyond its one-space budget", () => {
     withFakeTextMeasure(
       () => {
         const measure = measureParagraph(

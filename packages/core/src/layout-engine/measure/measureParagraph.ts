@@ -17,11 +17,6 @@ import { hasCjk, hasComplexScript, hasEastAsiaSlotText } from "../../utils/scrip
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { splitTrailingToken } from "../../utils/trailingText";
 import { measuredLineAdvance } from "../lineFlow";
-import {
-  JUSTIFIED_FINAL_LINE_MAX_SHRINK_RATIO,
-  JUSTIFIED_FINAL_LINE_SPACE_CONTRACTION_RATIO,
-  supportsJustifiedFinalLineContraction,
-} from "../justifiedLineFit";
 import type {
   ParagraphBlock,
   ParagraphMeasure,
@@ -83,11 +78,12 @@ const JUSTIFY_SHRINK_TOLERANCE_RATIO = 0.016;
 // the measure when every regular space on the line can absorb the overflow by
 // shrinking to no less than three quarters of its natural advance.
 const JUSTIFY_SPACE_CONTRACTION_RATIO = 0.25;
-const JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO = 0.195;
-const JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO = 0.022;
+// Shrinking a justified line's spaces is weighed against stretching the
+// shorter line the wrap would leave; see `prefersSpaceShrink`.
+const JUSTIFY_STRETCH_PER_SHRINK = 1.7;
+const JUSTIFY_ALWAYS_SHRINK_STRETCH = 1.5;
 const JUSTIFY_LITERAL_TAB_CONTINUATION_SHRINK_TOLERANCE_RATIO = 0.017;
 const JUSTIFY_HANGING_TAB_SHRINK_TOLERANCE_RATIO = 0.021;
-const DEFAULT_LIST_HANGING_INDENT_PX = 24;
 const ALL_CAPS_RATIO_THRESHOLD = 0.8;
 
 /**
@@ -666,7 +662,7 @@ function uppercaseLetterRatio(text: string): number {
 
 type JustifyFitStrategy =
   | { type: "rounding" }
-  | { type: "space"; ratio: number; maxWidthRatio?: number }
+  | { type: "space"; ratio: number }
   | { type: "width"; ratio: number };
 
 type JustificationProfile = {
@@ -684,27 +680,6 @@ function resolveJustifyFitStrategy(
     // accumulation the way an unjustified paragraph does.
     return { type: "rounding" };
   }
-  if (isShallowFullHangingListContinuation(block, isFirstLine)) {
-    return { type: "rounding" };
-  }
-
-  if (block.attrs?.listMarker !== undefined) {
-    const hanging = block.attrs.indent?.hanging ?? 0;
-    if (isFirstLine) {
-      return hanging <= DEFAULT_LIST_HANGING_INDENT_PX
-        ? { type: "space", ratio: JUSTIFY_LIST_MARKER_SPACE_CONTRACTION_RATIO }
-        : {
-            type: "width",
-            ratio: JUSTIFY_DEEP_HANGING_LIST_MARKER_SHRINK_TOLERANCE_RATIO,
-          };
-    }
-    return {
-      type: "space",
-      ratio: JUSTIFIED_FINAL_LINE_SPACE_CONTRACTION_RATIO,
-      maxWidthRatio: JUSTIFY_SHRINK_TOLERANCE_RATIO,
-    };
-  }
-
   const hasTabStops = (block.attrs?.tabs?.length ?? 0) > 0;
   if (isFirstLine && profile.hasTabRuns && (block.attrs?.indent?.hanging ?? 0) > 0) {
     return { type: "width", ratio: JUSTIFY_SHRINK_TOLERANCE_RATIO };
@@ -727,44 +702,6 @@ function resolveJustifyFitStrategy(
   return { type: "space", ratio: JUSTIFY_SPACE_CONTRACTION_RATIO };
 }
 
-function resolveFinalLineJustifyFitStrategy(
-  block: ParagraphBlock,
-  profile: JustificationProfile,
-): JustifyFitStrategy {
-  if (supportsJustifiedFinalLineContraction(block)) {
-    return {
-      type: "space",
-      ratio: JUSTIFIED_FINAL_LINE_SPACE_CONTRACTION_RATIO,
-      maxWidthRatio: JUSTIFIED_FINAL_LINE_MAX_SHRINK_RATIO,
-    };
-  }
-  return resolveJustifyFitStrategy(block, false, profile);
-}
-
-type ResolveCandidateJustifyFitStrategyOptions = {
-  isFirstLine: boolean;
-  isFinalCandidate: boolean;
-  firstLineStrategy: JustifyFitStrategy;
-  continuationStrategy: JustifyFitStrategy;
-  finalLineStrategy: JustifyFitStrategy;
-};
-
-function resolveCandidateJustifyFitStrategy({
-  isFirstLine,
-  isFinalCandidate,
-  firstLineStrategy,
-  continuationStrategy,
-  finalLineStrategy,
-}: ResolveCandidateJustifyFitStrategyOptions): JustifyFitStrategy {
-  if (isFirstLine) {
-    return firstLineStrategy;
-  }
-  if (isFinalCandidate) {
-    return finalLineStrategy;
-  }
-  return continuationStrategy;
-}
-
 const isIgnorableFinalTailRun = (run: Run): boolean =>
   run.kind === "renderedPageBreak" || (isTextRun(run) && run.text.length === 0);
 
@@ -785,63 +722,26 @@ function isFinalTextCandidate(block: ParagraphBlock, runIndex: number, nextBreak
 
 type TextCandidateFit =
   | { type: "ordinary"; tolerancePx: number }
-  | { type: "final-contraction-rejected"; tolerancePx: number }
   | {
       type: "final-contraction-admitted";
       tolerancePx: number;
       paint: NonNullable<MeasuredLine["justificationPaint"]>;
     };
 
-type ResolveTextCandidateFitOptions = {
-  block: ParagraphBlock;
-  line: LineState;
-  isFirstLine: boolean;
-  isFinalCandidate: boolean;
-  candidateWidth: number;
-  candidateSpaceWidth: number;
-  fallbackTolerancePx: number;
-  continuationStrategy: JustifyFitStrategy;
-  finalStrategy: JustifyFitStrategy;
-};
-
-function resolveTextCandidateFit({
-  block,
-  line,
-  isFirstLine,
-  isFinalCandidate,
-  candidateWidth,
-  candidateSpaceWidth,
-  fallbackTolerancePx,
-  continuationStrategy,
-  finalStrategy,
-}: ResolveTextCandidateFitOptions): TextCandidateFit {
+/**
+ * Fit of a text candidate on a justified line: the paragraph's final word may
+ * be admitted by shrinking spaces, which then needs a paint plan.
+ */
+function resolveTextCandidateFit(
+  isFinalCandidate: boolean,
+  candidateWidth: number,
+  availableWidth: number,
+  tolerancePx: number,
+): TextCandidateFit {
   if (!isFinalCandidate) {
-    return { type: "ordinary", tolerancePx: fallbackTolerancePx };
+    return { type: "ordinary", tolerancePx };
   }
-  if (!supportsJustifiedFinalLineContraction(block)) {
-    return admitFinalCandidate(candidateWidth, line.availableWidth, fallbackTolerancePx);
-  }
-
-  const ordinaryTolerancePx = isFirstLine
-    ? fallbackTolerancePx
-    : justifyFitTolerance(line, continuationStrategy, candidateSpaceWidth);
-  if (candidateWidth <= line.availableWidth + ordinaryTolerancePx) {
-    return admitFinalCandidate(candidateWidth, line.availableWidth, ordinaryTolerancePx);
-  }
-
-  const finalTolerancePx = justifyFitTolerance(line, finalStrategy, candidateSpaceWidth);
-  if (candidateWidth > line.availableWidth + finalTolerancePx) {
-    return { type: "final-contraction-rejected", tolerancePx: finalTolerancePx };
-  }
-
-  return {
-    type: "final-contraction-admitted",
-    tolerancePx: finalTolerancePx,
-    paint: {
-      type: "space-contraction",
-      contractionPx: candidateWidth - line.availableWidth,
-    },
-  };
+  return admitFinalCandidate(candidateWidth, availableWidth, tolerancePx);
 }
 
 /**
@@ -870,10 +770,18 @@ function compressibleSpaceWidth(text: string, style: FontStyle): number {
   return count === 0 ? 0 : count * measureTextWidth(" ", style);
 }
 
+/**
+ * Content being fitted onto a justified line: the line width with it added,
+ * and the width of spaces inside it that stay on the line (an atomic field
+ * result). A word's own trailing space hangs instead, so it is not counted.
+ */
+type JustifyCandidate = { width: number; innerSpaceWidth: number };
+
 function justifyFitTolerance(
   line: LineState,
   strategy: JustifyFitStrategy,
   candidateSpaceWidth: number,
+  candidate?: JustifyCandidate,
 ): number {
   if (strategy.type === "rounding") {
     return WIDTH_TOLERANCE;
@@ -881,28 +789,43 @@ function justifyFitTolerance(
   if (strategy.type === "width") {
     return Math.max(WIDTH_TOLERANCE, line.availableWidth * strategy.ratio);
   }
-  const spaceTolerance = (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio;
-  const boundedTolerance =
-    strategy.maxWidthRatio === undefined
-      ? spaceTolerance
-      : Math.min(spaceTolerance, line.availableWidth * strategy.maxWidthRatio);
-  return Math.max(WIDTH_TOLERANCE, boundedTolerance);
+  if (candidate !== undefined && !prefersSpaceShrink(line, candidate)) {
+    return WIDTH_TOLERANCE;
+  }
+  return Math.max(WIDTH_TOLERANCE, (line.regularSpaceWidth + candidateSpaceWidth) * strategy.ratio);
 }
 
-function isShallowFullHangingListContinuation(
-  block: ParagraphBlock,
-  isFirstLine: boolean,
-): boolean {
-  if (isFirstLine || block.attrs?.listMarker === undefined) {
+/**
+ * A justified line whose next word overflows the measure has two outcomes:
+ * keep the word and shrink the line's spaces, or wrap it and stretch the
+ * spaces left on the shorter line. Shrinking wins only when the stretch it
+ * avoids is large compared with the shrink it costs: the shrink factor may
+ * not exceed `1 + (stretch - 1) / JUSTIFY_STRETCH_PER_SHRINK`, and a stretch
+ * beyond `JUSTIFY_ALWAYS_SHRINK_STRETCH` always prefers shrinking. The space
+ * before the wrapped word hangs at the line end, so it does not stretch; a
+ * line left with nothing to stretch defers to the shrink budget alone.
+ */
+function prefersSpaceShrink(line: LineState, candidate: JustifyCandidate): boolean {
+  const overflow = candidate.width - line.availableWidth;
+  if (overflow <= WIDTH_TOLERANCE) {
+    return true;
+  }
+  const shrinkableSpaceWidth = line.regularSpaceWidth + candidate.innerSpaceWidth;
+  if (shrinkableSpaceWidth <= overflow) {
     return false;
   }
-  const hanging = block.attrs.indent?.hanging ?? 0;
-  const left = block.attrs.indent?.left ?? 0;
-  return (
-    hanging > 0 &&
-    hanging < DEFAULT_LIST_HANGING_INDENT_PX &&
-    Math.abs(left - hanging) <= WIDTH_TOLERANCE
-  );
+  const hangingSpaceWidth = Math.min(line.trailingWhitespaceWidth, line.regularSpaceWidth);
+  const stretchableSpaceWidth = line.regularSpaceWidth - hangingSpaceWidth;
+  if (stretchableSpaceWidth <= 0) {
+    return true;
+  }
+  const visibleWidth = line.width - line.trailingWhitespaceWidth;
+  const stretch = 1 + Math.max(0, line.availableWidth - visibleWidth) / stretchableSpaceWidth;
+  if (stretch > JUSTIFY_ALWAYS_SHRINK_STRETCH) {
+    return true;
+  }
+  const shrink = shrinkableSpaceWidth / (shrinkableSpaceWidth - overflow);
+  return 1 + (stretch - 1) / JUSTIFY_STRETCH_PER_SHRINK >= shrink;
 }
 
 function trimTrailingSpacesAndTabs(text: string): string {
@@ -1377,10 +1300,6 @@ export function measureParagraph(
   const continuationJustifyFitStrategy = resolveJustifyFitStrategy(
     block,
     false,
-    justificationProfile,
-  );
-  const finalLineJustifyFitStrategy = resolveFinalLineJustifyFitStrategy(
-    block,
     justificationProfile,
   );
 
@@ -2066,6 +1985,7 @@ export function measureParagraph(
             currentLine,
             lines.length === 0 ? firstLineJustifyFitStrategy : continuationJustifyFitStrategy,
             fieldSpaceWidth,
+            { width: currentLine.width + fieldWidth, innerSpaceWidth: fieldSpaceWidth },
           )
         : WIDTH_TOLERANCE;
       if (
@@ -2191,15 +2111,14 @@ export function measureParagraph(
         );
         const isFirstLine = lines.length === 0;
         const regularSpaceWidth = compressibleSpaceWidth(measuredWord, style);
-        const justifyFitStrategy = resolveCandidateJustifyFitStrategy({
-          isFirstLine,
-          isFinalCandidate: isFinalTextCandidate(block, runIndex, nextBreak),
-          firstLineStrategy: firstLineJustifyFitStrategy,
-          continuationStrategy: continuationJustifyFitStrategy,
-          finalLineStrategy: finalLineJustifyFitStrategy,
-        });
+        const justifyFitStrategy = isFirstLine
+          ? firstLineJustifyFitStrategy
+          : continuationJustifyFitStrategy;
         const widthTolerance = isJustifiedParagraph
-          ? justifyFitTolerance(currentLine, justifyFitStrategy, regularSpaceWidth)
+          ? justifyFitTolerance(currentLine, justifyFitStrategy, regularSpaceWidth, {
+              width: currentLine.width + leadingLetterSpacing + wordWidth,
+              innerSpaceWidth: 0,
+            })
           : WIDTH_TOLERANCE;
 
         const automaticHyphenation = effectiveLineBreakPolicy.automaticHyphenation;
@@ -2405,18 +2324,12 @@ export function measureParagraph(
             : 0;
         const hangingAllowance = glueWidth === 0 ? hangingPunctuationWidth : 0;
         const candidateFit = isJustifiedParagraph
-          ? resolveTextCandidateFit({
-              block,
-              line: currentLine,
-              isFirstLine,
-              isFinalCandidate: isFinalTextCandidate(block, runIndex, nextBreak),
-              candidateWidth:
-                currentLine.width + leadingLetterSpacing + wordWidth + glueWidth - hangingAllowance,
-              candidateSpaceWidth: regularSpaceWidth,
-              fallbackTolerancePx: widthTolerance,
-              continuationStrategy: continuationJustifyFitStrategy,
-              finalStrategy: finalLineJustifyFitStrategy,
-            })
+          ? resolveTextCandidateFit(
+              isFinalTextCandidate(block, runIndex, nextBreak),
+              currentLine.width + leadingLetterSpacing + wordWidth + glueWidth - hangingAllowance,
+              currentLine.availableWidth,
+              widthTolerance,
+            )
           : undefined;
         const finalWrapTolerance = candidateFit?.tolerancePx ?? widthTolerance;
         // Let collapsible whitespace remain at the previous line's tail until
