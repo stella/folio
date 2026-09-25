@@ -776,6 +776,7 @@ export type RunFormatting = {
     alternateFontFamily?: string;
     eastAsiaFontFamily?: string;
     eastAsiaAlternateFontFamily?: string;
+    eastAsiaHint?: boolean;
     complexScriptFontFamily?: string;
     complexScriptAlternateFontFamily?: string;
     complexScriptFontSize?: number;

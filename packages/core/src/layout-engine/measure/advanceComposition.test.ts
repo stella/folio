@@ -53,6 +53,10 @@ const STYLES = [
   { label: "kerned", style: { kerning: true } },
   { label: "east asian", style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho" } },
   {
+    label: "east asian hinted",
+    style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho", eastAsiaHint: true },
+  },
+  {
     label: "east asian with letter spacing",
     style: { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho", letterSpacing: 3 },
   },
@@ -77,6 +81,7 @@ const TEXTS = [
   "العربية",
   "emoji \u{1F600} tail",
   "surrogate \u{20BB7} pair",
+  "\u201cquoted\u201d 50\u00b0 \u00d7 2",
 ] as const;
 
 describe("advance composition matches the canvas backend", () => {
@@ -142,5 +147,29 @@ describe("advance composition matches the canvas backend", () => {
       },
       { charWidth: uppercaseAwareCharWidth },
     );
+  });
+});
+
+describe('w:hint="eastAsia" in advance composition', () => {
+  // Wide glyphs in the East Asian face, narrow ones elsewhere.
+  const advanceOf = advanceOfFrom((_char, font) => (font.includes("Mincho") ? 20 : 5));
+  const style: FontStyle = { fontFamily: "Arial", eastAsiaFontFamily: "MS Mincho" };
+  const text = "a\u201cb\u201d";
+
+  test("hinted symbols measure with the East Asian face", () => {
+    expect(composeTextWidth({ text, style: { ...style, eastAsiaHint: true }, advanceOf })).toBe(50);
+    expect(composeTextWidth({ text, style, advanceOf })).toBe(20);
+  });
+
+  test("per-character advances follow the same slot", () => {
+    withFakeTextMeasure(() => {
+      const run = composeRunMeasurement({
+        text,
+        style: { ...style, eastAsiaHint: true },
+        metrics: getMeasureProvider().getFontMetrics({}),
+        advanceOf,
+      });
+      expect(run.charWidths).toEqual([5, 20, 5, 20]);
+    });
   });
 });

@@ -13,7 +13,7 @@ import {
   isCjkFont,
 } from "../../utils/fontResolver";
 import { inlineImageBoundingBox } from "../../utils/rotationBoundingBox";
-import { hasCjk, hasComplexScript } from "../../utils/scriptSegments";
+import { hasCjk, hasComplexScript, hasEastAsiaSlotText } from "../../utils/scriptSegments";
 import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import { splitTrailingToken } from "../../utils/trailingText";
 import { measuredLineAdvance } from "../lineFlow";
@@ -221,11 +221,20 @@ function runToFontStyle(run: TextRun | TabRun | FieldRun | MathRun): FontStyle {
  * keeps the base style so wrapping is untouched.
  */
 function cjkLineHeightStyle(run: TextRun, baseStyle: FontStyle): FontStyle {
-  if (!run.text || !hasCjk(run.text)) {
+  if (!run.text) {
     return baseStyle;
   }
   const eastAsia = baseStyle.eastAsiaFontFamily;
-  if (eastAsia !== undefined && isCjkFont(eastAsia)) {
+  const eastAsiaFace = eastAsia !== undefined && isCjkFont(eastAsia);
+  // Symbols a `w:hint="eastAsia"` moves paint with the run's East Asian face,
+  // so they size the line only when there is one.
+  if (
+    !hasCjk(run.text) &&
+    !(eastAsiaFace && hasEastAsiaSlotText(run.text, baseStyle.eastAsiaHint))
+  ) {
+    return baseStyle;
+  }
+  if (eastAsia !== undefined && eastAsiaFace) {
     const result = { ...baseStyle, fontFamily: eastAsia };
     delete result.alternateFontFamily;
     if (baseStyle.eastAsiaAlternateFontFamily !== undefined) {

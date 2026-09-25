@@ -543,6 +543,9 @@ function extractRunFormatting(
             formatting.eastAsiaAlternateFontFamily = alternate;
           }
         }
+        if (attrs.hint) {
+          formatting.eastAsiaHint = attrs.hint === "eastAsia";
+        }
         const complexScriptFont = resolveComplexScriptThemeFont(attrs, theme);
         if (complexScriptFont) {
           formatting.complexScriptFontFamily = complexScriptFont;
@@ -1118,6 +1121,9 @@ function textFormattingToRunFormatting(
     if (alternate) {
       result.eastAsiaAlternateFontFamily = alternate;
     }
+  }
+  if (defaultTextFormatting.fontFamily?.hint) {
+    result.eastAsiaHint = defaultTextFormatting.fontFamily.hint === "eastAsia";
   }
   const complexScriptFontFamily = defaultTextFormatting.fontFamily
     ? resolveComplexScriptThemeFont(defaultTextFormatting.fontFamily, theme)

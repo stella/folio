@@ -2829,6 +2829,9 @@ function runContentKey(run: Run): string {
   if (run.eastAsiaAlternateFontFamily) {
     parts.push(`ea-alt:${run.eastAsiaAlternateFontFamily}`);
   }
+  if (run.eastAsiaHint !== undefined) {
+    parts.push(`ea-hint:${run.eastAsiaHint}`);
+  }
   if (run.fontSize !== undefined) {
     parts.push(`fs:${run.fontSize}`);
   }

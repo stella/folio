@@ -19,7 +19,7 @@
 import { panic } from "better-result";
 
 import {
-  hasCjk,
+  hasEastAsiaSlotText,
   hasComplexScript,
   SCRIPT_CLASS,
   scriptClassOf,
@@ -354,7 +354,7 @@ function glyphAdvanceStyle(style: FontStyle): FontStyle {
  * AND text that would select it. Keeps the all-Latin path on a single font.
  */
 function needsPerScriptFonts(style: FontStyle, measuredText: string): boolean {
-  if (style.eastAsiaFontFamily && hasCjk(measuredText)) {
+  if (style.eastAsiaFontFamily && hasEastAsiaSlotText(measuredText, style.eastAsiaHint)) {
     return true;
   }
   return hasComplexScriptFormatting(style) && hasComplexScript(measuredText);
@@ -384,7 +384,7 @@ function measureMixedScriptWidth(measuredText: string, style: FontStyle): number
   const horizontalScale = getHorizontalScaleFactor(style.horizontalScale);
 
   let glyphWidth = 0;
-  for (const segment of segmentByScript(measuredText)) {
+  for (const segment of segmentByScript(measuredText, style.eastAsiaHint)) {
     glyphWidth += canvasMeasureTextWidth(
       segment.text,
       glyphAdvanceStyle(scriptStyle(style, segment.script)),
@@ -518,7 +518,7 @@ function canvasMeasureRun(text: string, sourceStyle: FontStyle): RunMeasurement 
     const cp = char.codePointAt(0)!;
     const measured = applyTextTransform(char, style);
     if (eastAsiaFont !== undefined || complexScriptFont !== undefined) {
-      const script = scriptClassOf(cp);
+      const script = scriptClassOf(cp, style.eastAsiaHint);
       ctx.font =
         (script === SCRIPT_CLASS.eastAsia ? eastAsiaFont : undefined) ??
         (script === SCRIPT_CLASS.complex ? complexScriptFont : undefined) ??

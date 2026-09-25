@@ -1175,6 +1175,7 @@ function serializeRunFmt(run: Record<string, unknown>): string {
     "alternateFontFamily",
     "eastAsiaFontFamily",
     "eastAsiaAlternateFontFamily",
+    "eastAsiaHint",
     "complexScriptFontFamily",
     "complexScriptAlternateFontFamily",
     "complexScriptFontSize",

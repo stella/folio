@@ -20,6 +20,7 @@ import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
   SCRIPT_CLASS,
   hasComplexScript,
+  hasEastAsiaSlotText,
   scriptClassOf,
   segmentByScript,
 } from "../../utils/scriptSegments";
@@ -99,14 +100,8 @@ export const glyphAdvanceStyle = (style: FontStyle): FontStyle => {
 };
 
 const needsPerScriptFonts = (style: FontStyle, text: string): boolean =>
-  (style.eastAsiaFontFamily !== undefined && [...text].some((c) => isEastAsia(c))) ||
+  (style.eastAsiaFontFamily !== undefined && hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
   (hasComplexScriptFormatting(style) && hasComplexScript(text));
-
-const isEastAsia = (char: string): boolean => {
-  // SAFETY: iterating a string yields whole code points.
-  const cp = char.codePointAt(0)!;
-  return scriptClassOf(cp) === SCRIPT_CLASS.eastAsia;
-};
 
 type ComposeTextWidthOptions = {
   readonly text: string;
@@ -136,7 +131,7 @@ export const composeTextWidth = ({
   // so measurement matches painting only if it stays on one font too.
   const glyphWidth =
     !source.forceComplexScript && !letterSpacing && needsPerScriptFonts(style, transformed)
-      ? segmentByScript(transformed).reduce(
+      ? segmentByScript(transformed, style.eastAsiaHint).reduce(
           (sum, segment) =>
             sum + advanceOf(segment.text, glyphAdvanceStyle(scriptStyle(style, segment.script))),
           0,
@@ -199,7 +194,7 @@ export const composeRunMeasurement = ({
   for (const char of text) {
     // SAFETY: iterating a string yields whole code points.
     const cp = char.codePointAt(0)!;
-    const charStyle = perScript ? scriptStyle(style, scriptClassOf(cp)) : style;
+    const charStyle = perScript ? scriptStyle(style, scriptClassOf(cp, style.eastAsiaHint)) : style;
     let charWidth =
       shaped.get(codePointIndex) ??
       advanceOf(applyMeasurementTextTransform(char, style), charStyle);

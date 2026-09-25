@@ -22,6 +22,11 @@ export type FontStyle = {
   eastAsiaFontFamily?: string;
   eastAsiaAlternateFontFamily?: string;
   /**
+   * The run's effective `w:hint="eastAsia"`: the code points it moves measure
+   * with `eastAsiaFontFamily` too.
+   */
+  eastAsiaHint?: boolean;
+  /**
    * Complex-script font for Arabic, Hebrew, Indic and South-East Asian code
    * points. Same contract as `eastAsiaFontFamily`, over a different slot.
    */

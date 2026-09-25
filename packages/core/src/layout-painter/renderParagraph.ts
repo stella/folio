@@ -68,8 +68,9 @@ import {
   rotatedBoundingBox,
 } from "../utils/rotationBoundingBox";
 import {
-  hasCjk,
+  eastAsiaHintApplies,
   hasComplexScript,
+  hasEastAsiaSlotText,
   SCRIPT_CLASS,
   segmentByScript,
   type ScriptClass,
@@ -1385,7 +1386,7 @@ function renderFieldRun(
       horizontalScale: _horizontalScale,
       ...segmentBase
     } = resolvedRun;
-    for (const segment of segmentByScript(text)) {
+    for (const segment of segmentByScript(text, eastAsiaHintApplies(resolvedRun))) {
       const segmentRun = formatTextRunForScript(
         {
           ...segmentBase,
@@ -1612,7 +1613,12 @@ const formatTextRunForScript = (run: TextRun, script: ScriptClass): TextRun => {
  */
 const needsPerScriptSpans = (run: TextRun): boolean => {
   if (run.letterSpacing) return false;
-  if (run.eastAsiaFontFamily !== undefined && hasCjk(run.text)) return true;
+  if (
+    run.eastAsiaFontFamily !== undefined &&
+    hasEastAsiaSlotText(run.text, eastAsiaHintApplies(run))
+  ) {
+    return true;
+  }
   return hasComplexScriptFormatting(run) && hasComplexScript(run.text);
 };
 
@@ -1639,7 +1645,7 @@ export function splitTextRunsByEastAsia(runs: Run[]): Run[] {
     }
 
     let offset = 0;
-    for (const segment of segmentByScript(run.text)) {
+    for (const segment of segmentByScript(run.text, eastAsiaHintApplies(run))) {
       result.push(
         formatTextRunForScript(
           {
@@ -1881,6 +1887,7 @@ function runMeasureStyle(run: TextRun | FieldRun | MathRun): TextMeasureStyle {
     ...(run.eastAsiaAlternateFontFamily !== undefined
       ? { eastAsiaAlternateFontFamily: run.eastAsiaAlternateFontFamily }
       : {}),
+    ...(eastAsiaHintApplies(run) ? { eastAsiaHint: true } : {}),
     ...(run.complexScriptFontFamily !== undefined
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
       : {}),
@@ -2083,6 +2090,8 @@ type TextMeasureStyle = {
    * (and the run has no letter spacing), mirroring measureContainer. */
   eastAsiaFontFamily?: string;
   eastAsiaAlternateFontFamily?: string;
+  /** The run's effective `w:hint="eastAsia"`. */
+  eastAsiaHint?: boolean;
   /** Complex-script font for Arabic/Hebrew/Indic code points; same contract. */
   complexScriptFontFamily?: string;
   complexScriptAlternateFontFamily?: string;
@@ -2165,11 +2174,11 @@ function createTextMeasurer(
 
     if (
       !style.letterSpacing &&
-      ((style.eastAsiaFontFamily && hasCjk(text)) ||
+      ((style.eastAsiaFontFamily && hasEastAsiaSlotText(text, style.eastAsiaHint)) ||
         (hasComplexScriptFormatting(style) && hasComplexScript(text)))
     ) {
       let segmentedWidth = 0;
-      for (const segment of segmentByScript(text)) {
+      for (const segment of segmentByScript(text, style.eastAsiaHint)) {
         if (segment.script === SCRIPT_CLASS.eastAsia && style.eastAsiaFontFamily) {
           ctx.font = fontString(
             style.eastAsiaFontFamily,

@@ -78,6 +78,11 @@ export type RunFormatting = {
   /** OOXML alternate-name fallback for `eastAsiaFontFamily`. */
   eastAsiaAlternateFontFamily?: string;
   /**
+   * `w:rFonts/@w:hint="eastAsia"`: the symbols and punctuation shared with East
+   * Asian text also take `eastAsiaFontFamily` (see `isEastAsiaHintCodePoint`).
+   */
+  eastAsiaHint?: boolean;
+  /**
    * Resolved complex-script font (`w:cs` / `cstheme`). Arabic, Hebrew, Indic
    * and South-East Asian code points in this run measure and paint with this
    * font; the rest keeps `fontFamily` (ascii/hAnsi). Mirrors

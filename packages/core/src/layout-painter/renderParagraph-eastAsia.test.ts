@@ -173,3 +173,38 @@ describe("splitTextRunsByEastAsia", () => {
     ]);
   });
 });
+
+describe('splitTextRunsByEastAsia under w:hint="eastAsia"', () => {
+  test("paints hinted punctuation with the EA font", () => {
+    const run = textRun({
+      text: "\u201cA\u201d",
+      fontFamily: "Latin",
+      eastAsiaFontFamily: "Mincho",
+      eastAsiaHint: true,
+      pmStart: 0,
+      pmEnd: 3,
+    });
+
+    const result = splitTextRunsByEastAsia([run]) as TextRun[];
+
+    expect(result.map((r) => [r.text, r.fontFamily, r.pmStart, r.pmEnd])).toEqual([
+      ["\u201c", "Mincho", 0, 1],
+      ["A", "Latin", 1, 2],
+      ["\u201d", "Mincho", 2, 3],
+    ]);
+  });
+
+  test("leaves the same run whole without the hint or under w:rtl", () => {
+    const base = {
+      text: "\u201cA\u201d",
+      fontFamily: "Latin",
+      eastAsiaFontFamily: "Mincho",
+      pmStart: 0,
+      pmEnd: 3,
+    };
+    expect(splitTextRunsByEastAsia([textRun(base)])).toHaveLength(1);
+    expect(
+      splitTextRunsByEastAsia([textRun({ ...base, eastAsiaHint: true, rtl: true })]),
+    ).toHaveLength(1);
+  });
+});

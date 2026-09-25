@@ -105,6 +105,7 @@ export type FontStyle = {
     alternateFontFamily?: string;
     eastAsiaFontFamily?: string;
     eastAsiaAlternateFontFamily?: string;
+    eastAsiaHint?: boolean;
     complexScriptFontFamily?: string;
     complexScriptAlternateFontFamily?: string;
     complexScriptFontSize?: number;

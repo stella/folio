@@ -110,9 +110,60 @@ export function isComplexScriptCodePoint(cp: number): boolean {
   );
 }
 
-/** Which font slot a single code point selects. CJK wins where ranges meet. */
-export function scriptClassOf(cp: number): ScriptClass {
-  if (isCjkCodePoint(cp)) {
+/**
+ * True when `w:rFonts/@w:hint="eastAsia"` moves a code point from the
+ * `w:hAnsi` slot to the `w:eastAsia` slot (ECMA-376 §17.3.2.26): the ranges
+ * the font-slot table resolves to the East Asian font whenever the hint is
+ * `eastAsia`. Basic Latin never moves, and neither do the accented letters of
+ * Latin-1 Supplement and the Latin Extended blocks, whose move the table also
+ * conditions on the run's East Asian language.
+ */
+export function isEastAsiaHintCodePoint(cp: number): boolean {
+  return (
+    // Latin-1 Supplement symbols (inverted exclamation, currency, section, diaeresis,
+    // feminine ordinal, soft hyphen, macron, degree through acute, pilcrow through
+    // masculine ordinal, vulgar fractions, inverted question, multiply, divide)
+    cp === 0xa1 ||
+    cp === 0xa4 ||
+    cp === 0xa7 ||
+    cp === 0xa8 ||
+    cp === 0xaa ||
+    cp === 0xad ||
+    cp === 0xaf ||
+    (cp >= 0xb0 && cp <= 0xb4) ||
+    (cp >= 0xb6 && cp <= 0xba) ||
+    (cp >= 0xbc && cp <= 0xbf) ||
+    cp === 0xd7 ||
+    cp === 0xf7 ||
+    (cp >= 0x02_b0 && cp <= 0x03_6f) || // Spacing Modifier Letters, Combining Diacritical Marks
+    (cp >= 0x03_70 && cp <= 0x03_ff) || // Greek
+    (cp >= 0x04_00 && cp <= 0x04_ff) || // Cyrillic
+    (cp >= 0x20_00 && cp <= 0x27_bf) || // General Punctuation through Dingbats
+    (cp >= 0xe0_00 && cp <= 0xf8_ff) || // Private Use Area
+    (cp >= 0xfb_00 && cp <= 0xfb_1c) // Alphabetic Presentation Forms before the Hebrew ones
+  );
+}
+
+/**
+ * Whether a run's `w:hint="eastAsia"` takes effect. A run under `w:cs` or
+ * `w:rtl` formats every character with the complex-script slot, which the
+ * hint does not override.
+ */
+export function eastAsiaHintApplies(run: {
+  readonly eastAsiaHint?: boolean | undefined;
+  readonly forceComplexScript?: boolean | undefined;
+  readonly rtl?: boolean | undefined;
+}): boolean {
+  return run.eastAsiaHint === true && run.forceComplexScript !== true && run.rtl !== true;
+}
+
+/**
+ * Which font slot a single code point selects. CJK wins where ranges meet.
+ * `eastAsiaHint` is the run's effective `w:hint="eastAsia"`
+ * (see {@link eastAsiaHintApplies}).
+ */
+export function scriptClassOf(cp: number, eastAsiaHint = false): ScriptClass {
+  if (isCjkCodePoint(cp) || (eastAsiaHint && isEastAsiaHintCodePoint(cp))) {
     return SCRIPT_CLASS.eastAsia;
   }
   if (isComplexScriptCodePoint(cp)) {
@@ -180,18 +231,36 @@ export function hasComplexScript(text: string): boolean {
 }
 
 /**
+ * True when some code point of the text selects the `w:eastAsia` slot: a CJK
+ * code point, or under an effective `w:hint="eastAsia"` one the hint moves.
+ */
+export function hasEastAsiaSlotText(text: string, eastAsiaHint = false): boolean {
+  if (!eastAsiaHint) {
+    return hasCjk(text);
+  }
+  for (const ch of text) {
+    // SAFETY: for...of over a string yields whole code points.
+    if (scriptClassOf(ch.codePointAt(0)!, true) === SCRIPT_CLASS.eastAsia) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Split text into maximal runs of one script class (CJK vs. non-CJK). Iterates
  * by code point so astral ideographs (surrogate pairs) are never split between
  * fonts. Empty input yields no segments; single-class input yields one.
+ * `eastAsiaHint` is the run's effective `w:hint="eastAsia"`.
  */
-export function segmentByScript(text: string): ScriptSegment[] {
+export function segmentByScript(text: string, eastAsiaHint = false): ScriptSegment[] {
   const segments: ScriptSegment[] = [];
   let current = "";
   let currentScript: ScriptClass = SCRIPT_CLASS.western;
 
   for (const ch of text) {
     // SAFETY: for...of over a string yields whole code points.
-    const script = scriptClassOf(ch.codePointAt(0)!);
+    const script = scriptClassOf(ch.codePointAt(0)!, eastAsiaHint);
     if (current.length === 0) {
       current = ch;
       currentScript = script;

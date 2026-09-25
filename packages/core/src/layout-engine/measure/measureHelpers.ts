@@ -11,6 +11,7 @@
 import { resolveFontFamily } from "../../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../../utils/fontWeights";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
+import { eastAsiaHintApplies } from "../../utils/scriptSegments";
 import type { RunFormatting } from "../types";
 import type { FontStyle } from "./measureTypes";
 import { FONT_KERNING_MODE, getRunFontKerningMode } from "./textMeasurementPolicy";
@@ -59,6 +60,7 @@ export function buildRunFontStyle(
     ...(run.eastAsiaAlternateFontFamily !== undefined
       ? { eastAsiaAlternateFontFamily: run.eastAsiaAlternateFontFamily }
       : {}),
+    ...(eastAsiaHintApplies(run) ? { eastAsiaHint: true } : {}),
     ...(run.complexScriptFontFamily !== undefined
       ? { complexScriptFontFamily: run.complexScriptFontFamily }
       : {}),
