@@ -415,6 +415,50 @@ describe("keepLines pagination", () => {
     expect(result.pages[0]?.fragments[1]).toMatchObject({ fromLine: 0, toLine: 2 });
   });
 
+  test("reads a keepLines paragraph's lines a bounded number of times across column retries", () => {
+    const columnCount = 200;
+    const lineCount = 200;
+    const lineReads = { count: 0 };
+    const measured = paragraphMeasure(...Array.from({ length: lineCount }, () => 0));
+    const countedLines = new Proxy(measured.lines, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) {
+          lineReads.count++;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const kept: ParagraphBlock = {
+      ...paragraph("kept"),
+      attrs: { keepLines: true, widowControl: false, spacing: { before: 500, after: 0 } },
+    };
+    const sectionBreak = (id: string, columns?: { count: number; gap: number }): FlowBlock => ({
+      kind: "sectionBreak",
+      id,
+      type: "continuous",
+      ...pageGeometry,
+      ...(columns ? { columns } : {}),
+    });
+    // A mid-page continuous section leaves each of its columns shorter than
+    // the paragraph's spacing before, so every column is a candidate retry.
+    const blocks: FlowBlock[] = [
+      paragraph("intro"),
+      sectionBreak("intro-end"),
+      kept,
+      sectionBreak("columns-end", { count: columnCount, gap: 0 }),
+    ];
+    const measures: Measure[] = [
+      paragraphMeasure(500),
+      { kind: "sectionBreak" },
+      { ...measured, lines: countedLines },
+      { kind: "sectionBreak" },
+    ];
+
+    layoutDocument(blocks, measures, pageOptions);
+
+    expect(lineReads.count).toBeLessThan(10 * (columnCount + lineCount));
+  });
+
   test("splits a paragraph without keepLines at the page end", () => {
     const blocks: FlowBlock[] = [
       paragraph("body"),
