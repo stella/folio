@@ -1,0 +1,22 @@
+{
+  "name": "folio",
+  "displayName": "folio",
+  "version": "0.0.0",
+  "description": "Read, comment on, and redline .docx files with tracked changes through the folio MCP server.",
+  "author": {
+    "name": "STLL",
+    "url": "https://github.com/stella"
+  },
+  "homepage": "https://github.com/stella/folio/tree/main/plugins/claude-code",
+  "repository": "https://github.com/stella/folio",
+  "license": "Apache-2.0",
+  "keywords": ["docx", "ooxml", "redline", "tracked-changes", "mcp"],
+  "userConfig": {
+    "author": {
+      "type": "string",
+      "title": "Author",
+      "description": "Name recorded on every tracked change, comment, and reply. Changes are refused without one.",
+      "required": true
+    }
+  }
+}
