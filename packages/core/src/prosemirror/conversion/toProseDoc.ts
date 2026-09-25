@@ -141,6 +141,7 @@ import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoun
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
 import { stampNumberedRefFieldBaselines } from "../numberedRefFields";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../extensions/nodes/SdtExtension";
+import { withEnclosingRevision } from "../contentControlRevisions";
 import { canCarryTrackedRunMark, trackedRunInlineAtomDisposition } from "../trackedRunInlineAtoms";
 import {
   resolveEffectiveTableCellFormatting,
@@ -1073,10 +1074,11 @@ function anchorPointComment(nodes: PMNode[], commentId: number): void {
  * One node of a revision's content with the revision recorded on it.
  *
  * An inline content control is an `inline*` node rather than an atom, so it is
- * not a run carrier: the revision goes on the leaves it holds. That is what
- * makes `w:ins > w:sdt` and `w:sdt > w:ins` the same marks on the same leaves,
- * and it is what lets the save leg hoist a revision covering all of them back
- * around the control instead of losing it.
+ * not a run carrier: the revision goes on the leaves it holds, and the control
+ * records that the revision encloses it. The leaves alone would read the same
+ * for `w:ins > w:sdt` and `w:sdt > w:ins`; the record is what lets the save leg
+ * write the revision back around the control, and resolving it remove the
+ * control, only for the first.
  */
 const withTrackedRunMark = (
   node: PMNode,
@@ -1088,7 +1090,10 @@ const withTrackedRunMark = (
     for (let index = 0; index < node.childCount; index += 1) {
       marked.push(withTrackedRunMark(node.child(index), mark, ancestor));
     }
-    return recreateProseNodeWithParagraphPropertySource(node, { content: marked });
+    return recreateProseNodeWithParagraphPropertySource(node, {
+      attrs: withEnclosingRevision(node, ancestor.revisionId) ?? node.attrs,
+      content: marked,
+    });
   }
   const nestedMark = node.marks.find(
     ({ type }) => type.name === "insertion" || type.name === "deletion",

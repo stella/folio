@@ -2823,6 +2823,12 @@ const validateSdtAttrsRecord = (
   optionalPreservedMarkup(attrs, "_preserved", `${path}._preserved`, issues);
   optionalString(attrs, "rawEndPropertiesXml", `${path}.rawEndPropertiesXml`, issues);
   optionalSdtEndProperties(attrs, `${path}.endProperties`, issues);
+  optionalNumberArray(
+    attrs,
+    "_docxEnclosingRevisionIds",
+    `${path}._docxEnclosingRevisionIds`,
+    issues,
+  );
 };
 
 /**

@@ -20,6 +20,7 @@ import type { EditorView } from "prosemirror-view";
 import type { TrackedChangeInfo } from "../../types/document";
 import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import { encloseWholeControls } from "../contentControlRevisions";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
@@ -160,6 +161,15 @@ function markRangeAsDeleted(
     findAdjacentRevisionForRange(doc, from, to, "deletion", pluginState.author) ||
     makeMarkAttrs(pluginState);
 
+  // A control the range spans whole is deleted with its text; one the range
+  // only empties stays. Recorded before the loop below moves any position.
+  encloseWholeControls({
+    tr,
+    from: tr.mapping.map(from),
+    to: tr.mapping.map(to, -1),
+    revisionId: delAttrs.revisionId,
+  });
+
   for (let i = ranges.length - 1; i >= 0; i--) {
     // SAFETY: i >= 0 and i < ranges.length in for loop
     const range = ranges[i]!;
@@ -199,6 +209,7 @@ function markRangeAsInserted(
     }
     tr.addMark(start, end, insertionType.create(attrs));
   });
+  encloseWholeControls({ tr, from, to, revisionId: attrs.revisionId });
 }
 
 /**
@@ -832,6 +843,12 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
                 const nodeEnd = Math.min(pos + node.nodeSize, newTo);
                 tr.addMark(nodeStart, nodeEnd, insertionType.create(markAttrs));
               }
+            });
+            encloseWholeControls({
+              tr,
+              from: newFrom,
+              to: newTo,
+              revisionId: markAttrs.revisionId,
             });
           }
         });

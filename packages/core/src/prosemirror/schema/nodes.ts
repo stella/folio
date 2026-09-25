@@ -750,6 +750,11 @@ export type SdtAttrs = {
    * no captured bytes left to replay. See `SdtProperties.endProperties`.
    */
   endProperties?: SdtEndProperties;
+  /**
+   * The revisions whose element encloses the control rather than revising
+   * its content. See `contentControlRevisions.ts`.
+   */
+  _docxEnclosingRevisionIds?: readonly number[];
 };
 
 /**

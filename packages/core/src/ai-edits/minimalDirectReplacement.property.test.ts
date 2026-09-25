@@ -672,19 +672,10 @@ describe("a tracked or suggested replacement redlines only the characters it cha
           for (const entry of acceptedCharacters) {
             expect(entry.marks.some((mark) => REVISION_MARKS.has(mark.type.name))).toBe(false);
           }
-          // Accepting the deletion of all a control's text removes the
-          // emptied control; every other control stays.
-          const emptiedControls = new Set(
-            beforeCharacters.flatMap((entry) => (entry.control === null ? [] : [entry.control])),
-          );
-          for (const [index, entry] of beforeCharacters.entries()) {
-            if (entry.control !== null && !removedAt(index)) {
-              emptiedControls.delete(entry.control);
-            }
-          }
-          expect(countNodes(accepted.node, "sdt")).toBeGreaterThanOrEqual(
-            countNodes(before.node, "sdt") - emptiedControls.size,
-          );
+          // The change revises the text inside a control, not the control:
+          // accepting the deletion of all its text leaves it standing,
+          // emptied, as the direct replacement does.
+          expect(countNodes(accepted.node, "sdt")).toBe(countNodes(before.node, "sdt"));
           expect(countNodes(accepted.node, "bookmarkBoundary")).toBe(
             countNodes(before.node, "bookmarkBoundary"),
           );
@@ -712,6 +703,9 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             const saved = await reviewer.toBuffer();
             const acceptedPackage = await FolioDocxReviewer.fromBuffer(saved);
             acceptedPackage.acceptAll();
+            expect(countNodes(firstParagraph(acceptedPackage).node, "sdt")).toBe(
+              countNodes(before.node, "sdt"),
+            );
             const acceptedText = acceptedPackage.snapshot().blocks.at(0)?.text ?? "";
             const rejectedPackage = await FolioDocxReviewer.fromBuffer(saved);
             rejectedPackage.rejectAll();

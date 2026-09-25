@@ -1,5 +1,6 @@
 /**
- * A revision around a whole inline content control survives the editor.
+ * A revision around a whole inline content control survives the editor, and
+ * so does one inside it.
  *
  * `w:ins > w:sdt` used to reach the editor as a control whose leaves carried
  * nothing: the control is an `inline*` node rather than an atom, so it is not
@@ -7,14 +8,15 @@
  * the control back beside the revision that had held it, and the text the
  * reviewer inserted was no longer inserted.
  *
- * The revision now rides the leaves the control holds, and a revision that
- * covers all of them is written back around the control. What that costs is
- * the same thing the transparent wrapper costs: `w:ins > w:sdt` and
- * `w:sdt > w:ins` are the same marks on the same leaves, so both come back
- * revision-outermost.
+ * The revision now rides the leaves the control holds, and the control records
+ * that the revision encloses it. `w:sdt > w:ins` puts the same marks on the
+ * same leaves without the record, so each comes back in the order it was
+ * authored, and resolving the first removes the control while resolving the
+ * second only empties it.
  */
 
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
@@ -125,16 +127,19 @@ const textIn = (items: readonly ParagraphContent[]): string => {
 };
 
 describe("a revision that covers a whole inline content control", () => {
+  test("comes back around the control when it was authored around it", () => {
+    const rebuilt = saved([REVISION_OUTSIDE_CONTROL]);
+    expect(rebuilt).toHaveLength(1);
+    expect(insertedControl(rebuilt.at(0)).properties.tag).toBe("bound");
+    expect(textIn(rebuilt)).toBe("inside");
+  });
+
+  test("stays inside the control when it was authored inside it", () => {
+    expect(saved([REVISION_INSIDE_CONTROL])).toEqual([REVISION_INSIDE_CONTROL]);
+  });
+
   for (const authored of [REVISION_OUTSIDE_CONTROL, REVISION_INSIDE_CONTROL]) {
     const order = authored.type === "insertion" ? "revision outside" : "revision inside";
-
-    test(`comes back around the control (${order})`, () => {
-      const rebuilt = saved([authored]);
-      expect(rebuilt).toHaveLength(1);
-      expect(insertedControl(rebuilt.at(0)).properties.tag).toBe("bound");
-      expect(textIn(rebuilt)).toBe("inside");
-    });
-
     test(`saving the result again does not change it (${order})`, () => {
       const once = saved([authored]);
       expect(saved(once)).toEqual(once);
@@ -154,24 +159,48 @@ describe("a revision that covers a whole inline content control", () => {
 });
 
 describe("resolving a revision that covers a whole control", () => {
-  const resolved = (
-    content: Paragraph["content"],
-    command: typeof acceptAllChanges,
-  ): ParagraphContent[] => {
-    const source = documentWith(content);
-    const state = EditorState.create({ doc: toProseDoc(source) });
+  const resolvedDoc = (content: Paragraph["content"], command: typeof acceptAllChanges): PMNode => {
+    const state = EditorState.create({ doc: toProseDoc(documentWith(content)) });
     let next = state;
     command()(state, (transaction) => {
       next = state.apply(transaction);
     });
-    return paragraphContentOf(fromProseDoc(next.doc, source));
+    return next.doc;
   };
+  const resolved = (
+    content: Paragraph["content"],
+    command: typeof acceptAllChanges,
+  ): ParagraphContent[] =>
+    paragraphContentOf(fromProseDoc(resolvedDoc(content, command), documentWith(content)));
 
   const INSERTED = [REVISION_OUTSIDE_CONTROL, run(" after")];
   const DELETED = [
     { type: "deletion", info: REVISION_INFO, content: [control([run("inside")])] } as const,
     run(" after"),
   ];
+  const CONTENT_INSERTED = [REVISION_INSIDE_CONTROL, run(" after")];
+  const CONTENT_DELETED = [
+    control([{ type: "deletion", info: REVISION_INFO, content: [run("inside")] }]),
+    run(" after"),
+  ];
+  const emptiedControl = (rebuilt: readonly ParagraphContent[]): InlineSdt => {
+    const first = rebuilt.at(0);
+    if (first?.type !== "inlineSdt") {
+      throw new Error(`Expected the control to stay, got ${first?.type ?? "nothing"}`);
+    }
+    expect(first.content).toEqual([]);
+    return first;
+  };
+  const enclosingRevisionsIn = (doc: PMNode): unknown[] => {
+    const found: unknown[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === "sdt") {
+        found.push(node.attrs["_docxEnclosingRevisionIds"]);
+      }
+      return true;
+    });
+    return found;
+  };
 
   test("accepting an inserted control keeps the control", () => {
     const rebuilt = resolved(INSERTED, acceptAllChanges);
@@ -197,19 +226,63 @@ describe("resolving a revision that covers a whole control", () => {
     expect(textIn(rebuilt)).toBe("inside after");
   });
 
+  test("accepting the deletion of a control's content leaves the control, emptied", () => {
+    const rebuilt = resolved(CONTENT_DELETED, acceptAllChanges);
+    expect(emptiedControl(rebuilt).properties.tag).toBe("bound");
+    expect(textIn(rebuilt)).toBe(" after");
+  });
+
+  test("rejecting the insertion of a control's content leaves the control, emptied", () => {
+    const rebuilt = resolved(CONTENT_INSERTED, rejectAllChanges);
+    expect(emptiedControl(rebuilt).properties.tag).toBe("bound");
+    expect(textIn(rebuilt)).toBe(" after");
+  });
+
+  test("rejecting the deletion of a control's content restores it", () => {
+    expect(resolved(CONTENT_DELETED, rejectAllChanges)).toEqual([
+      control([run("inside")]),
+      run(" after"),
+    ]);
+  });
+
   // The headless resolver rewrites the inline content in one pass instead of
   // deleting ranges, so it decides the control's fate in its own code. The two
   // have to agree, or which one ran would change the document.
-  test("the headless resolver removes it too", () => {
-    const source = documentWith(INSERTED);
+  const headlessResolvedDoc = (content: Paragraph["content"], mode: "accept" | "reject") => {
     const state = EditorState.create({
-      doc: toProseDoc(source),
+      doc: toProseDoc(documentWith(content)),
       plugins: [...pluginsForHeadlessRevisionResolution([])],
     });
-    const rebuilt = paragraphContentOf(
-      fromProseDoc(resolveAllChangesInHeadlessState(state, "reject").doc, source),
-    );
+    return resolveAllChangesInHeadlessState(state, mode).doc;
+  };
+  const headlessResolved = (
+    content: Paragraph["content"],
+    mode: "accept" | "reject",
+  ): ParagraphContent[] =>
+    paragraphContentOf(fromProseDoc(headlessResolvedDoc(content, mode), documentWith(content)));
+
+  test("the headless resolver removes an enclosed control too", () => {
+    const rebuilt = headlessResolved(INSERTED, "reject");
     expect(rebuilt.every((item) => item.type !== "inlineSdt")).toBe(true);
     expect(textIn(rebuilt)).toBe(" after");
+  });
+
+  test("the headless resolver empties a control whose content was revised", () => {
+    for (const [content, mode] of [
+      [CONTENT_DELETED, "accept"],
+      [CONTENT_INSERTED, "reject"],
+    ] as const) {
+      const rebuilt = headlessResolved(content, mode);
+      expect(emptiedControl(rebuilt).properties.tag).toBe("bound");
+      expect(textIn(rebuilt)).toBe(" after");
+    }
+  });
+
+  // A resolved revision no longer exists; a control that kept naming it would
+  // claim whichever later revision is given the same id.
+  test("a control forgets the revision that enclosed it once it is resolved", () => {
+    expect(enclosingRevisionsIn(toProseDoc(documentWith(INSERTED)))).toEqual([[REVISION_INFO.id]]);
+    expect(enclosingRevisionsIn(resolvedDoc(INSERTED, acceptAllChanges))).toEqual([null]);
+    expect(enclosingRevisionsIn(headlessResolvedDoc(INSERTED, "accept"))).toEqual([null]);
   });
 });
