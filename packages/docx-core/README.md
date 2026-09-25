@@ -36,6 +36,10 @@ bun add @stll/docx-core
   (`serializeDocumentToDocx`), and validation (`validateDocxPackage`,
   `validateDocumentModel`, `assertValidDocumentModel`).
 - `./model` — the document model types only.
+- `./ops` — document operations over the model: `applyDocumentOp` and
+  `applyDocumentOps` apply text and formatting edits addressed by paragraph
+  id and offset, and return the new document, its exact inverse and the
+  blocks it touched, or a typed refusal.
 
 ## License
 

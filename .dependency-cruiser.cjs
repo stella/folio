@@ -112,6 +112,23 @@ const paintBackendRules = [
 ];
 
 /**
+ * Document operations run unchanged in an editor, on a server and in a
+ * sequencer, so determinism comes from there being one implementation. An
+ * editor framework in their import graph would tie that implementation to
+ * one host.
+ */
+const documentOpsRules = [
+  {
+    name: "document-ops-stay-framework-free",
+    comment:
+      "@stll/docx-core/ops operates on the document model alone; it may not import ProseMirror.",
+    severity: "error",
+    from: { path: "^packages/docx-core/src/ops/" },
+    to: { path: "(^|/)prosemirror-" },
+  },
+];
+
+/**
  * Type-only edges are excluded on both ends of a cycle (the closing edge via
  * `dependencyTypesNot`, the rest of the loop via `viaOnly.dependencyTypesNot`)
  * because a type-only import is erased at build time and can never close a
@@ -141,7 +158,12 @@ const noCircularRuntimeImportsRule = {
 };
 
 module.exports = {
-  forbidden: [...closedWorkspaceRules, ...paintBackendRules, noCircularRuntimeImportsRule],
+  forbidden: [
+    ...closedWorkspaceRules,
+    ...paintBackendRules,
+    ...documentOpsRules,
+    noCircularRuntimeImportsRule,
+  ],
   options: {
     combinedDependencies: true,
     doNotFollow: {
