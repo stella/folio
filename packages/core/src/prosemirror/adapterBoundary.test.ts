@@ -3,6 +3,22 @@ import { describe, expect, test } from "bun:test";
 const ADAPTER_BOUNDARY_FILES = [
   "src/prosemirror/conversion/fromProseDoc.ts",
   "src/layout-bridge/convert/toFlowBlocks.ts",
+  "src/layout-bridge/convert/flowBlockPostprocessing.ts",
+  "src/layout-bridge/convert/flowBorders.ts",
+  "src/layout-bridge/convert/flowConversionShared.ts",
+  "src/layout-bridge/convert/imageConversion.ts",
+  "src/layout-bridge/convert/listMarkers.ts",
+  "src/layout-bridge/convert/noteReferences.ts",
+  "src/layout-bridge/convert/pageBreakSplitting.ts",
+  "src/layout-bridge/convert/paragraphAttrs.ts",
+  "src/layout-bridge/convert/paragraphConversion.ts",
+  "src/layout-bridge/convert/paragraphRuns.ts",
+  "src/layout-bridge/convert/runFormattingMerge.ts",
+  "src/layout-bridge/convert/runMarkFormatting.ts",
+  "src/layout-bridge/convert/sectionBoundaries.ts",
+  "src/layout-bridge/convert/tableConversion.ts",
+  "src/layout-bridge/convert/textBoxFill.ts",
+  "src/layout-bridge/convert/textFormattingConversion.ts",
   "src/prosemirror/validation.ts",
 ] as const;
 
