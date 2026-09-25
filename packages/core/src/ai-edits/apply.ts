@@ -1450,49 +1450,17 @@ type LiveBlockEntry = { from: number; to: number; node: PMNode };
  * `Date.now()` seed per applyAIEditOperations call would collide
  * across batches that fire within the same millisecond (the panel's
  * Accept-all loop does exactly that — multiple calls in tight
- * succession). Reserving a contiguous range up front guarantees
- * uniqueness across overlapping calls in the same JS realm.
+ * succession).
+ *
+ * A batch without a revision stamp allocates from it as it writes and claims
+ * each operation's ids once they are written, rather than reserving a guess
+ * up front: how many revisions an operation records is known only once it has
+ * recorded them (clearing a background records one run-property change per
+ * carrier). The claim also comes before anything that may start another
+ * batch, a comment-id callback or the dispatch, so batches in one realm never
+ * share an id and follow one another without a gap.
  */
 let revisionIdCursor = Date.now() * 1000;
-const nextRevisionSeed = (revisionIdCount: number): number => {
-  // The caller has already summed a safe per-operation reservation (see
-  // `estimateRevisionIdReservation`); reserving exactly that many ids keeps
-  // this batch's range from overlapping the next `nextRevisionSeed` call's
-  // range. Returning the start of the reserved range as the seed is enough
-  // — the caller bumps it.
-  const start = revisionIdCursor;
-  revisionIdCursor += Math.max(revisionIdCount, 1);
-  return start;
-};
-
-/**
- * Ids one resolved operation may allocate from the shared revision-id range
- * reserved by `nextRevisionSeed`. Most operation types allocate at most
- * three (delete + insert + background-format clearing); reserving four per
- * operation is a safe cushion above that. A multi-paragraph
- * `insertAfterBlock` / `insertBeforeBlock` (`text` split on line breaks,
- * see `splitInsertParagraphTexts`) allocates one id per paragraph in
- * tracked-changes mode plus one for each paragraph MARK it brings, so it
- * needs more than four once split into more than two paragraphs. Rotating a
- * terminal run can add one paragraph-property revision per inserted paragraph;
- * reserving less than that would let a later `nextRevisionSeed` call reuse an
- * id this operation already stamped on the document.
- */
-const REVISION_IDS_PER_OPERATION = 4;
-/** Ids one inserted paragraph allocates: its runs, and its paragraph mark. */
-const REVISION_IDS_PER_INSERTED_PARAGRAPH = 2;
-/** A final-mark rotation may add one paragraph-property revision per inserted paragraph. */
-const REVISION_IDS_PER_INSERTION_ROTATION = 1;
-const estimateRevisionIdReservation = (item: ResolvedOperation): number => {
-  if (item.operation.type === "insertAfterBlock" || item.operation.type === "insertBeforeBlock") {
-    const paragraphCount = item.insertTexts?.length ?? 1;
-    return Math.max(
-      paragraphCount * (REVISION_IDS_PER_INSERTED_PARAGRAPH + REVISION_IDS_PER_INSERTION_ROTATION),
-      REVISION_IDS_PER_OPERATION,
-    );
-  }
-  return REVISION_IDS_PER_OPERATION;
-};
 
 /**
  * Walk the live doc once and bucket every textblock by its
@@ -2519,13 +2487,23 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   let tr = view.state.tr;
-  const revisionIdReservation = executableResolved.reduce(
-    (total, item) => total + estimateRevisionIdReservation(item),
-    0,
-  );
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
-  let revisionSeed =
-    revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionSeed(revisionIdReservation);
+  let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor;
+  /**
+   * Claim the shared ids below `nextRevisionId` for this batch. A seeded or
+   * stamped batch allocates from its own range and claims nothing.
+   */
+  const claimSharedRevisionIds = (nextRevisionId: number): void => {
+    if (ownsSharedRevisionIdCursor) {
+      revisionIdCursor = Math.max(revisionIdCursor, nextRevisionId);
+    }
+  };
+  /** Continue past any shared id a batch the host started meanwhile claimed. */
+  const continueSharedRevisionIds = (): void => {
+    if (ownsSharedRevisionIdCursor) {
+      revisionSeed = Math.max(revisionSeed, revisionIdCursor);
+    }
+  };
   const date = revisionStamp?.date ?? new Date().toISOString();
   const insertedColumnCounts = new Map<string, number>();
 
@@ -2588,6 +2566,7 @@ const applyFolioAIEditOperationsInternal = ({
     if (!item) {
       panic("The operation execution index exceeded the resolved plan", { executionIndex });
     }
+    continueSharedRevisionIds();
     if (mode === "tracked-changes" && writesParagraphPropertyChange(item)) {
       const livePosition = tr.mapping.map(item.blockFrom);
       const liveBlock = tr.doc.nodeAt(livePosition) ?? item.blockNode;
@@ -2635,6 +2614,7 @@ const applyFolioAIEditOperationsInternal = ({
             numbering,
           });
           revisionSeed = built.nextRevisionId;
+          claimSharedRevisionIds(revisionSeed);
           nodeGroups.push(built.nodes);
           runApplied.push({
             id: insertion.operation.id,
@@ -3681,6 +3661,8 @@ const applyFolioAIEditOperationsInternal = ({
           operationType: item.operation.type,
         });
       }
+      // The callback is the host's code, and may start another batch.
+      claimSharedRevisionIds(operationRevisionSeed);
       committedCommentId = allocateCommittedCommentId(item.commentText);
       tr = commitProvisionalComment({
         tr,
@@ -3690,6 +3672,7 @@ const applyFolioAIEditOperationsInternal = ({
       });
     }
     revisionSeed = operationRevisionSeed;
+    claimSharedRevisionIds(revisionSeed);
 
     // Surface the primary id (first one) on the legacy `revisionId`
     // field so callers that just need a stable scroll/visual
@@ -3710,6 +3693,7 @@ const applyFolioAIEditOperationsInternal = ({
   if (tr.docChanged) {
     const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
     tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds);
+    continueSharedRevisionIds();
     const rotated = withRotatedAddedFinalBreaks({
       tr,
       batchRevisionIds,
@@ -3740,14 +3724,8 @@ const applyFolioAIEditOperationsInternal = ({
         revisionIds: [...receipt.revisionIds, revisionId],
       };
     }
-    if (ownsSharedRevisionIdCursor) {
-      // The estimate reserves enough for common operations before mutation,
-      // but formatting owns one revision per physical carrier and therefore
-      // has no fixed upper bound. Claim the measured high-water mark before
-      // dispatch, so a re-entrant or following batch cannot reuse an id that
-      // this transaction actually wrote.
-      revisionIdCursor = Math.max(revisionIdCursor, revisionSeed);
-    }
+    // Before dispatch, which may start another batch.
+    claimSharedRevisionIds(revisionSeed);
     if (revisionStamp) {
       // Paragraphs this batch creates get their `w14:paraId` from the
       // allocator plugin, which is random by default. A stamped batch has

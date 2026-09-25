@@ -315,21 +315,19 @@ describe("headless reviewer invariants (full corpus)", () => {
   test(
     "revision ids stay unique across a multi-paragraph tracked insert followed by another apply",
     async () => {
-      // The shared revision-id range is reserved once per apply call, sized
-      // from the operations in that call (see `estimateRevisionIdReservation`
-      // in apply.ts). A tracked-changes insert whose `text` splits into more
-      // paragraphs than the reservation anticipates must not spill into the
-      // range the NEXT apply call reserves — that would stamp two different
-      // marks with the same revision id.
+      // An apply call claims the shared revision ids it writes (see
+      // `revisionIdCursor` in apply.ts). A tracked-changes insert whose `text`
+      // splits into many paragraphs writes many of them, and the NEXT apply
+      // call must start past every one, or two different marks would carry
+      // the same revision id.
       await fc.assert(
         fc.asyncProperty(
           fc.constantFrom(...FIXTURE_FILES),
           fc.nat(),
           fc.nat(),
           // Non-blank after trim (starts with an alnum) so every requested
-          // line survives the applier's blank-line collapse, guaranteeing a
-          // paragraph count that exceeds the fixed 4-id-per-operation
-          // cushion `estimateRevisionIdReservation` used to fall back to.
+          // line survives the applier's blank-line collapse, guaranteeing an
+          // insert that writes more than a handful of revision ids.
           fc.array(fc.stringMatching(/^[A-Za-z0-9][A-Za-z0-9 ]{0,19}$/u), {
             minLength: 5,
             maxLength: 9,
