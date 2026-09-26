@@ -682,8 +682,8 @@ function serializeTrackedSimpleField(field: SimpleField): string {
     fieldType: field.fieldType,
     fieldCode: [],
     fieldResult,
-    fldLock: field.fldLock,
-    dirty: field.dirty,
+    ...(field.fldLock !== undefined && { fldLock: field.fldLock }),
+    ...(field.dirty !== undefined && { dirty: field.dirty }),
   });
 }
 
