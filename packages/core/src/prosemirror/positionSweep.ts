@@ -56,7 +56,11 @@ const cursorBefore = (left: Cursor, right: Cursor): boolean =>
 class Lane {
   private readonly chunks: Chunk[] = [];
 
-  constructor(private readonly assoc: -1 | 1) {}
+  private readonly assoc: -1 | 1;
+
+  constructor(assoc: -1 | 1) {
+    this.assoc = assoc;
+  }
 
   get isEmpty(): boolean {
     return this.chunks.length === 0;

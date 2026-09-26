@@ -10,8 +10,8 @@
  * the transaction are built once during setup; only applying it is measured.
  */
 import { withCodSpeed } from "@codspeed/tinybench-plugin";
-import { schema, singletonManager } from "@stll/folio-core/prosemirror/schema";
-import type { Node as PMNode } from "prosemirror-model";
+import { schema, singletonManager, type DocxNode } from "@stll/folio-core/prosemirror/schema";
+
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Bench } from "tinybench";
 
@@ -19,7 +19,7 @@ import { MICRO_BENCH_OPTIONS } from "./config";
 
 const PARAGRAPHS = 2_000;
 
-const largeDocument = (): PMNode =>
+const largeDocument = (): DocxNode =>
   schema.node(
     "doc",
     null,

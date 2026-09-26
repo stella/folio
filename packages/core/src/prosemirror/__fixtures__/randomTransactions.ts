@@ -75,18 +75,21 @@ const paragraphSpec: fc.Arbitrary<ParagraphSpec> = fc.record({
 });
 
 const blockSpec: fc.Arbitrary<BlockSpec> = fc.oneof(
-  { weight: 6, arbitrary: paragraphSpec.map((paragraph) => ({ kind: "paragraph", paragraph })) },
   {
-    weight: 1,
-    arbitrary: fc
-      .array(paragraphSpec, { minLength: 1, maxLength: 3 })
-      .map((paragraphs) => ({ kind: "quote", paragraphs })),
+    weight: 6,
+    arbitrary: paragraphSpec.map((paragraph): BlockSpec => ({ kind: "paragraph", paragraph })),
   },
   {
     weight: 1,
     arbitrary: fc
       .array(paragraphSpec, { minLength: 1, maxLength: 3 })
-      .map((paragraphs) => ({ kind: "table", paragraphs })),
+      .map((paragraphs): BlockSpec => ({ kind: "quote", paragraphs })),
+  },
+  {
+    weight: 1,
+    arbitrary: fc
+      .array(paragraphSpec, { minLength: 1, maxLength: 3 })
+      .map((paragraphs): BlockSpec => ({ kind: "table", paragraphs })),
   },
 );
 
