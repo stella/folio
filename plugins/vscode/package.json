@@ -1,7 +1,7 @@
 {
   "name": "stella-folio",
   "displayName": "Folio DOCX",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "description": "Preview .docx files with folio's page layout, and give agent mode folio's .docx tools over MCP: reading, comments, and tracked-change redlines.",
   "categories": [

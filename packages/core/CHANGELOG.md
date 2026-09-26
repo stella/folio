@@ -1,5 +1,23 @@
 # @stll/folio-core
 
+## 0.51.0
+
+### Minor Changes
+
+- [#1073](https://github.com/stella/folio/pull/1073) [`1fe6f3b`](https://github.com/stella/folio/commit/1fe6f3bfe4f2afc22cbed6bc3fe34ed61128e9a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `DocxEditor` takes `hostShortcuts` so a host with its own undo stack or print command owns those keys: `"history"` leaves Mod-z / Mod-y / Mod-Shift-z unbound, `"print"` leaves Cmd/Ctrl+P alone. `createStarterKit` takes the matching `historyShortcuts: "editor" | "host"`.
+
+- [#1071](https://github.com/stella/folio/pull/1071) [`7d622f9`](https://github.com/stella/folio/commit/7d622f944365c283b0595d0a65b9e5d974af974c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve untouched document content when saving supported body paragraph insertions, deletions, splits, and merges.
+
+### Patch Changes
+
+- [#1075](https://github.com/stella/folio/pull/1075) [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Break a tie between equally similar blocks in a comparison gap by their display labels, so repeated wording pairs with the block that keeps its label.
+
+- [#1075](https://github.com/stella/folio/pull/1075) [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Pair blocks by similarity inside every comparison gap. Between exact anchors, a gap used to pair its blocks by position, so an inserted block was read as a rewrite of the block it pushed down, and each later block as a rewrite of its predecessor's wording; a gap of equal sides hid the same misreading whenever an insertion sat beside a deletion. A gap now keeps the order-preserving pairs with the greatest summed word similarity (multiset Dice, each pair at least 0.5), reading the rest as inserted or deleted; blocks between those pairs still pair by position when their counts match and none of them resembles any block across the gap. A split or merged paragraph is recognised whichever half pairs with the whole.
+
+- [#1075](https://github.com/stella/folio/pull/1075) [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Anchor a comparison on text that is unique within a gap even when it repeats elsewhere in the document, so repeated wording in another section no longer changes how a section's blocks pair.
+
+- [#1075](https://github.com/stella/folio/pull/1075) [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Place a word diff's lone insertion or deletion where it reads best. Among the positions an insertion or deletion can take without changing either string, the word diff now picks the one whose edges fall at the string's edge, a line break, the gap after a sentence mark or a space, and never inside an untouched word. An appended sentence is marked with its own full stop rather than the preceding sentence's, and an insertion and the deletion that undoes it mark the same text.
+
 ## 0.50.0
 
 ### Minor Changes
