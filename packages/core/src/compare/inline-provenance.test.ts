@@ -1,5 +1,6 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import type { Node as PMNode } from "prosemirror-model";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Paragraph, TextFormatting } from "../types/document";
@@ -7,7 +8,11 @@ import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { createEmptyDocument } from "../utils/createDocument";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { createFolioAIEditSnapshot, sourceDocumentOf } from "../ai-edits/snapshot";
+import type { FolioAIEditSnapshot } from "../ai-edits/types";
+import { schema } from "../prosemirror/schema";
 import { compareDocx } from "./compare";
+import { sameAuthoredInlineProvenance } from "./inline-provenance";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -266,5 +271,74 @@ describe("inline formatting provenance through comparison", () => {
       ),
       propertyConfig({ numRuns: 16 }),
     );
+  });
+});
+
+/**
+ * Make the document refuse to resolve a position, so provenance that reaches
+ * for one fails here instead of quietly reintroducing an O(runs x blocks) term.
+ */
+const refusingToResolve = (doc: PMNode): PMNode => {
+  Object.defineProperty(doc, "resolve", {
+    configurable: true,
+    value: () => {
+      throw new Error("Inline provenance resolved a position; walk the document instead.");
+    },
+  });
+  return doc;
+};
+
+describe("sameAuthoredInlineProvenance", () => {
+  const provenanceParagraph = (label: string, bold: boolean, inherited = false): PMNode =>
+    schema.node("paragraph", inherited ? { defaultTextFormatting: { bold: true } } : null, [
+      schema.text(`${label} plain `),
+      schema.text(`${label} bold`, bold ? [schema.mark("bold")] : []),
+    ]);
+  const tableOf = (content: PMNode[]): PMNode =>
+    schema.node("table", null, [
+      schema.node("tableRow", null, [schema.node("tableCell", null, content)]),
+    ]);
+  const documentOf = ({
+    nestedBold = true,
+    nestedInherited = false,
+  }: { nestedBold?: boolean; nestedInherited?: boolean } = {}): PMNode =>
+    schema.node("doc", null, [
+      ...Array.from({ length: 50 }, (_unused, index) =>
+        provenanceParagraph(`body ${String(index)}`, true, index % 2 === 0),
+      ),
+      tableOf([
+        provenanceParagraph("outer cell", true),
+        tableOf([provenanceParagraph("nested cell", nestedBold, nestedInherited)]),
+        provenanceParagraph("after nested table", true, true),
+      ]),
+      provenanceParagraph("closing", true),
+    ]);
+  const snapshotOf = (doc: PMNode): FolioAIEditSnapshot => {
+    const snapshot = createFolioAIEditSnapshot(doc);
+    refusingToResolve(sourceDocumentOf(snapshot));
+    return snapshot;
+  };
+
+  test("resolves no positions, so its cost stays linear in run count", () => {
+    expect(sameAuthoredInlineProvenance(snapshotOf(documentOf()), snapshotOf(documentOf()))).toBe(
+      true,
+    );
+    expect(
+      sameAuthoredInlineProvenance(
+        snapshotOf(documentOf()),
+        snapshotOf(documentOf({ nestedBold: false })),
+      ),
+    ).toBe(false);
+  });
+
+  test("reads each run against the paragraph that encloses it", () => {
+    // The same bold run is direct in one paragraph and inherited in the other;
+    // only the nested cell's own paragraph can tell the two apart.
+    expect(
+      sameAuthoredInlineProvenance(
+        snapshotOf(documentOf()),
+        snapshotOf(documentOf({ nestedInherited: true })),
+      ),
+    ).toBe(false);
   });
 });

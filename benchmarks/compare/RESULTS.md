@@ -109,6 +109,14 @@ above roughly a thousand blocks, and that is the first thing to profile.
    the total and is paid in full on both sides even when three paragraphs
    differ. The alignment needs block text and container coordinates, not a
    ProseMirror document.
+
+   Measured before building it, and deferred: see "Two O(runs x blocks)
+   terms in apply" below. On `prose/l/light` the parse stage is 222ms CPU
+   for both sides, and converting the parsed model to an editor document is
+   27ms of each side's 108ms. Converting only the changed target blocks
+   saves at most that conversion plus part of the target's block snapshot,
+   about 4% of the comparison, and needs a second block projection that
+   must agree with the first byte for byte. Apply was the larger cost.
 4. **Accepting all changes is O(changes x blocks).** Now the largest single
    cost on a large structural comparison, and measured rather than guessed:
    of `prose/l/structural`'s 8.9s, the apply stage is 8.3s, and 3.3s of that
@@ -587,6 +595,65 @@ pairing by note id: that is the note itself, not a package-scoped pointer.
 No digest moved: the generated corpus builds both sides from one package, so
 every story already paired by identity. `document-stories.test.ts` pins the
 precedence, the kinds, the surplus and the notes.
+
+### Two O(runs x blocks) terms in apply
+
+Profiling `prose/l/light` and `prose/l/heavy` put most of the apply stage in
+two places that are not the applier.
+
+The run-formatting pass read each run's paragraph through `doc.resolve`, once
+per run, on both sides, and again for the accept and reject self-checks. That
+is the same term the snapshot had: `resolve` re-descends from the root, so on a
+flat document every run cost O(blocks). The walk that collects the runs
+already passes through their paragraphs, so each run now carries its paragraph
+from there.
+
+Staging section boundaries built the accepted view of the redlined story, an
+accept-all over the whole document, before looking at the target at all. A
+target none of whose paragraphs ends a section has nothing to stage, whatever
+that view says, so the view is no longer built for it.
+
+Main against this branch, back to back under the machine-wide benchmark lock,
+one process at a time, median of 7 runs after 2 warm-ups. The host was shared
+(one-minute load 104 falling to 37 across the run), so CPU time is the column
+to read; wall time is here for completeness.
+
+| Configuration        | Load | apply CPU before | apply CPU after | total CPU before | total CPU after | total wall before | total wall after |
+| -------------------- | ---- | ---------------- | --------------- | ---------------- | --------------- | ----------------- | ---------------- |
+| `prose/l/identical`  | 104  | 256.7ms          | 156.8ms         | 680.9ms          | 559.5ms         | 790.6ms           | 1067.4ms         |
+| `prose/l/light`      | 96   | 964.8ms          | 611.5ms         | 1689.0ms         | 1397.7ms        | 3625.2ms          | 3085.2ms         |
+| `prose/l/heavy`      | 57   | 7467.1ms         | 3855.0ms        | 8634.8ms         | 4678.1ms        | 29214.8ms         | 10650.1ms        |
+| `prose/l/churn`      | 47   | 4081.6ms         | 3663.1ms        | 4686.6ms         | 4337.4ms        | 6996.9ms          | 5862.6ms         |
+| `prose/l/reorder`    | 40   | 1318.2ms         | 755.4ms         | 1888.8ms         | 1199.1ms        | 2814.9ms          | 1987.7ms         |
+| `prose/l/structural` | 37   | 2250.7ms         | 1613.3ms        | 2656.5ms         | 2140.3ms        | 4161.4ms          | 2662.1ms         |
+| `prose/m/light`      | 34   | 71.0ms           | 58.1ms          | 185.7ms          | 190.5ms         | 123.1ms           | 98.6ms           |
+| `prose/m/heavy`      | 33   | 191.3ms          | 168.4ms         | 340.0ms          | 343.5ms         | 347.0ms           | 360.9ms          |
+| `prose/m/churn`      | 35   | 194.2ms          | 152.9ms         | 331.7ms          | 322.4ms         | 299.4ms           | 273.4ms          |
+
+At 320 blocks the terms are small and the difference is inside the noise; at
+2,200 they were most of apply. Parse, align and serialize do not move, and
+should not: nothing in them changed.
+
+The products do not move either. Digests recorded from main's code and from
+this branch agree on all 136 configurations measured at `s`, `m` and
+`prose/l`, with identical change counts, invariant outcomes and refusals.
+`digests.json` as committed was not the reference: 104 of those 136 had
+drifted on main before this change, and 29 configurations fail an invariant or
+refuse on main (`lists/*/numbering`, `notes/*/notes`, `notes/*/everywhere`,
+`graphics/*`, `fields/*`, `sections/s/structural`). They fail identically here.
+
+`inline-provenance.test.ts` hands the provenance check a document that throws
+if asked to resolve a position, and checks that a run is read against its own
+paragraph rather than a neighbour's; `section-boundary-properties.test.ts`
+refuses the walk an accept-all would need.
+
+What remains in apply is the editor's plugin stack. The applier writes a
+batch as one transaction, and four plugins each map every paragraph, or every
+inserted range, through every step of it on dispatch: the paragraph-id
+allocator, the paragraph change tracker, base-direction detection and run
+identity. On `prose/l/heavy` that is O(paragraphs x steps) and about three
+quarters of what is left of apply. It is a product cost, not a compare one,
+and wants its own change.
 
 ## Correctness gaps the baseline surfaced
 
