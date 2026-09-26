@@ -1228,6 +1228,18 @@ export const joinProseParagraphsWithRightPropertySource = ({
   return transaction;
 };
 
+/** Record the property owners deliberately selected by a batch of paragraph joins. */
+export const markParagraphPropertySourceTransfers = (
+  transaction: Transaction,
+  transfers: readonly ParagraphPropertySourceTransfer[],
+): void => {
+  if (transfers.length === 0) return;
+  transaction.setMeta(paragraphPropertySourceTransfersKey, [
+    ...(transaction.getMeta(paragraphPropertySourceTransfersKey) ?? []),
+    ...transfers,
+  ]);
+};
+
 export const getExplicitParagraphPropertySourceTransfers = (
   transaction: Transaction,
 ): readonly ParagraphPropertySourceTransfer[] =>

@@ -45,6 +45,7 @@ const SECTION_ENDPOINT_REMOVAL_META = "folioSectionEndpointRemoval";
 type ChangedParagraphRangeBatch = {
   ranges: readonly { from: number; to: number }[];
   mappingFrom: number;
+  replacesStepMapAt?: number;
 };
 
 type ChangedParagraphRangesMeta = {
@@ -305,13 +306,16 @@ const mapStepTouches = (
     queries.push({ pos: from, assoc: 1, from: at }, { pos: to, assoc: -1, from: at });
   };
 
+  const replacedStepMaps = new Set<number>();
   for (const batch of batches) {
+    if (batch.replacesStepMapAt !== undefined) replacedStepMaps.add(batch.replacesStepMapAt);
     for (const range of batch.ranges) {
       addRange("mark-range", range.from, range.to, batch.mappingFrom);
     }
   }
 
   for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
+    if (replacedStepMaps.has(stepIndex)) continue;
     // SAFETY: loop condition keeps stepIndex within tr.steps bounds.
     const step = tr.steps[stepIndex]!;
     const at = stepIndex + 1;
@@ -663,6 +667,7 @@ export function markStructuralChange(tr: Transaction): Transaction {
 type MarkChangedParagraphRangesOptions = {
   ranges: readonly { from: number; to: number }[];
   mappingFrom: number;
+  replacesStepMapAt?: number;
 };
 
 /** Record mark-only paragraph changes whose replacement step has a granular map. */

@@ -19,10 +19,7 @@ import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock } from "../../ai-edits/types";
 import { parseDocx } from "../../docx/parser";
 import { createDocx, createEmptyDocx, repackDocx } from "../../docx/rezip";
-import {
-  pluginsForHeadlessRevisionResolution,
-  stateAllowsHeadlessRevisionResolution,
-} from "../../internal/headlessRevisionResolutionGuard";
+import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import type {
   Document,
   HeaderFooter,
@@ -650,14 +647,14 @@ describe("headless bulk revision resolution equivalence", () => {
       ),
     );
     const editorState = EditorState.create({ schema, doc });
-    expect(apply(editorState, acceptAllChanges()).transaction.steps).toHaveLength(800);
-    expect(apply(editorState, rejectAllChanges()).transaction.steps).toHaveLength(800);
+    expect(apply(editorState, acceptAllChanges()).transaction.steps).toHaveLength(1);
+    expect(apply(editorState, rejectAllChanges()).transaction.steps).toHaveLength(1);
   });
 });
 
 describe("headless bulk revision resolution isolation", () => {
   test.each(["accept", "reject"] as const)(
-    "%s falls back to serializable legacy steps when history is present",
+    "%s keeps its single step serializable when history is present",
     (mode) => {
       const paragraphCount = 300;
       const insertion = revisionMark("insertion", 1);
@@ -681,7 +678,6 @@ describe("headless bulk revision resolution isolation", () => {
         ],
       });
 
-      expect(stateAllowsHeadlessRevisionResolution(state)).toBe(false);
       const resolved = resolveAllChangesInHeadlessState(state, mode);
       const legacy = apply(
         state,
@@ -689,37 +685,25 @@ describe("headless bulk revision resolution isolation", () => {
       );
 
       expect(resolved.doc.toJSON()).toEqual(legacy.state.doc.toJSON());
-      expect(stepCountKey.getState(resolved)).toBe(paragraphCount * 2);
-      expect(serializedStepsKey.getState(resolved)).toHaveLength(paragraphCount * 2);
+      expect(stepCountKey.getState(resolved)).toBe(1);
+      expect(serializedStepsKey.getState(resolved)).toHaveLength(1);
     },
   );
 
-  test("rejects actual synchronization and undo plugins from the headless state boundary", () => {
+  test("omits synchronization and undo plugins from private headless states", () => {
     const yDoc = new Y.Doc();
-    const state = EditorState.create({
-      schema,
-      doc: generatedDocument(73),
-      plugins: [
-        ...pluginsForHeadlessRevisionResolution([]),
-        ySyncPlugin(yDoc.getXmlFragment("prosemirror")),
-        yUndoPlugin(),
-      ],
-    });
-
-    expect(stateAllowsHeadlessRevisionResolution(state)).toBe(false);
+    const sync = ySyncPlugin(yDoc.getXmlFragment("prosemirror"));
+    const undo = yUndoPlugin();
+    expect(pluginsForHeadlessRevisionResolution([sync, undo, stepCountPlugin])).toEqual([
+      stepCountPlugin,
+    ]);
   });
 
-  test("rejects a collaboration-keyed plugin from the headless state boundary", () => {
-    const state = EditorState.create({
-      schema,
-      doc: generatedDocument(74),
-      plugins: [
-        ...pluginsForHeadlessRevisionResolution([]),
-        new Plugin({ key: new PluginKey("collab") }),
-      ],
-    });
-
-    expect(stateAllowsHeadlessRevisionResolution(state)).toBe(false);
+  test("omits collaboration plugins from private headless states", () => {
+    const collab = new Plugin({ key: new PluginKey("collab") });
+    expect(pluginsForHeadlessRevisionResolution([collab, stepCountPlugin])).toEqual([
+      stepCountPlugin,
+    ]);
   });
 });
 
