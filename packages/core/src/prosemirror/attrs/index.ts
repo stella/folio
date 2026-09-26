@@ -961,6 +961,51 @@ export const readImageAttrs = (node: PMNode): ReadProseMirrorAttrsResult<ImageAt
 export const expectImageAttrs = (node: PMNode): ImageAttrs =>
   expectCachedNodeAttrs(node, imageAttrsCache, readImageAttrs, "image attrs");
 
+const validateEmptyFieldResultRuns = (value: unknown, issues: ProseMirrorAttrIssue[]): void => {
+  if (!Array.isArray(value) || value.length === 0) {
+    issues.push({
+      path: "field.attrs._docxEmptyResultRuns",
+      message: "Expected a nonempty array of empty runs.",
+    });
+    return;
+  }
+
+  for (const [index, run] of value.entries()) {
+    const path = `field.attrs._docxEmptyResultRuns[${index}]`;
+    if (!isRecord(run) || run["type"] !== "run") {
+      issues.push({ path, message: "Expected a run." });
+      continue;
+    }
+    const content = run["content"];
+    if (
+      !Array.isArray(content) ||
+      !content.every((item) => isRecord(item) && item["type"] === "text" && item["text"] === "")
+    ) {
+      issues.push({ path: `${path}.content`, message: "Expected only empty text." });
+    }
+    const formatting = run["formatting"];
+    if (formatting !== undefined) {
+      if (!isRecord(formatting)) {
+        issues.push({ path: `${path}.formatting`, message: "Expected formatting object." });
+      } else {
+        validateTextFormatting(formatting, `${path}.formatting`, issues);
+      }
+    }
+    optionalPropertyChanges(run, "propertyChanges", `${path}.propertyChanges`, issues, [
+      "runPropertyChange",
+    ]);
+    optionalPreservedAttributes(run, "preservedAttributes", `${path}.preservedAttributes`, issues);
+  }
+};
+
+export const isValidEmptyFieldResultRuns = (
+  value: unknown,
+): value is NonNullable<FieldAttrs["_docxEmptyResultRuns"]> => {
+  const issues: ProseMirrorAttrIssue[] = [];
+  validateEmptyFieldResultRuns(value, issues);
+  return issues.length === 0;
+};
+
 export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
@@ -976,44 +1021,7 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
   optionalBoolean(attrs, "fieldResultIsFallback", "field.attrs.fieldResultIsFallback", issues);
   const emptyResultRuns = attrs["_docxEmptyResultRuns"];
   if (emptyResultRuns !== undefined && emptyResultRuns !== null) {
-    if (!Array.isArray(emptyResultRuns) || emptyResultRuns.length === 0) {
-      issues.push({
-        path: "field.attrs._docxEmptyResultRuns",
-        message: "Expected a nonempty array of empty runs.",
-      });
-    } else {
-      for (const [index, run] of emptyResultRuns.entries()) {
-        const path = `field.attrs._docxEmptyResultRuns[${index}]`;
-        if (!isRecord(run) || run["type"] !== "run") {
-          issues.push({ path, message: "Expected a run." });
-          continue;
-        }
-        const content = run["content"];
-        if (
-          !Array.isArray(content) ||
-          !content.every((item) => isRecord(item) && item["type"] === "text" && item["text"] === "")
-        ) {
-          issues.push({ path: `${path}.content`, message: "Expected only empty text." });
-        }
-        const formatting = run["formatting"];
-        if (formatting !== undefined) {
-          if (!isRecord(formatting)) {
-            issues.push({ path: `${path}.formatting`, message: "Expected formatting object." });
-          } else {
-            validateTextFormatting(formatting, `${path}.formatting`, issues);
-          }
-        }
-        optionalPropertyChanges(run, "propertyChanges", `${path}.propertyChanges`, issues, [
-          "runPropertyChange",
-        ]);
-        optionalPreservedAttributes(
-          run,
-          "preservedAttributes",
-          `${path}.preservedAttributes`,
-          issues,
-        );
-      }
-    }
+    validateEmptyFieldResultRuns(emptyResultRuns, issues);
   }
 
   return attrsResult(attrs, issues);

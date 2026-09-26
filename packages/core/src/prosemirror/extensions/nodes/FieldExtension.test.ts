@@ -1,6 +1,23 @@
 import { describe, expect, test } from "bun:test";
+import { Window } from "happy-dom";
+import { DOMParser, DOMSerializer, type Node as PMNode } from "prosemirror-model";
 
+import type { Document, Paragraph } from "../../../types/document";
+import { fromProseDoc } from "../../conversion/fromProseDoc";
+import { toProseDoc } from "../../conversion/toProseDoc";
 import { schema } from "../../schema";
+
+const roundTripThroughDom = (field: PMNode) => {
+  const window = new Window();
+  const document = window.document as unknown as globalThis.Document;
+  const fragment = DOMSerializer.fromSchema(schema).serializeFragment(
+    schema.node("paragraph", null, [field]).content,
+    { document },
+  );
+  const host = document.createElement("div");
+  host.append(fragment);
+  return { host, parsed: DOMParser.fromSchema(schema).parse(host) };
+};
 
 describe("FieldExtension", () => {
   test("uses DOCX field-instruction parsing for quoted MERGEFIELD names", () => {
@@ -73,35 +90,61 @@ describe("FieldExtension", () => {
   });
 
   test("carries empty result runs through field DOM attributes", () => {
-    const runs = [
-      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
-      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
-    ];
-    const field = schema.node("field", {
-      fieldType: "PAGE",
-      instruction: " PAGE ",
+    const paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "complexField",
+          instruction: " PAGE ",
+          fieldType: "PAGE",
+          fieldCode: [],
+          fieldResult: [
+            { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
+            { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+          ],
+        },
+      ],
+    } as const satisfies Paragraph;
+    const source: Document = { package: { document: { content: [paragraph] } } };
+    const field = toProseDoc(source).firstChild?.firstChild;
+    if (!field) throw new Error("Expected the projected PAGE field");
+    const runs = paragraph.content[0].fieldResult;
+    const { host, parsed } = roundTripThroughDom(field);
+    const span = host.querySelector("span.docx-field");
+    expect(span?.textContent).toBe("{page}");
+    expect(span?.getAttribute("data-display-text")).toBe("");
+    expect(span?.getAttribute("data-empty-result-runs")).toBe(JSON.stringify(runs));
+    expect(parsed.firstChild?.firstChild?.attrs).toMatchObject({
       displayText: "",
-      fieldKind: "complex",
       _docxEmptyResultRuns: runs,
     });
-    expect(field.type.spec.toDOM?.(field)).toEqual([
-      "span",
-      expect.objectContaining({ "data-empty-result-runs": JSON.stringify(runs) }),
-      "{page}",
-    ]);
+    expect(fromProseDoc(parsed).package.document.content).toEqual([paragraph]);
+  });
 
-    const parsed = field.type.spec.parseDOM?.at(0)?.getAttrs?.(
-      Object.assign(Object.create(null), {
-        dataset: {
-          fieldType: "PAGE",
-          instruction: " PAGE ",
-          fieldKind: "complex",
-          emptyResultRuns: JSON.stringify(runs),
-        },
-        textContent: "",
-      }),
-    );
-    expect(parsed).toMatchObject({ _docxEmptyResultRuns: runs });
+  test.each([
+    ["invalid JSON", "{"],
+    ["scalar", "42"],
+    ["empty array", "[]"],
+    ["visible result", '[{"type":"run","content":[{"type":"text","text":"7"}]}]'],
+    ["invalid formatting", '[{"type":"run","content":[],"formatting":{"bold":"yes"}}]'],
+  ])("discards %s from pasted empty-result metadata", (_name, value) => {
+    const window = new Window();
+    const document = window.document as unknown as globalThis.Document;
+    const host = document.createElement("div");
+    const field = document.createElement("span");
+    field.className = "docx-field";
+    field.setAttribute("data-field-type", "PAGE");
+    field.setAttribute("data-instruction", " PAGE ");
+    field.setAttribute("data-field-kind", "complex");
+    field.setAttribute("data-empty-result-runs", value);
+    field.setAttribute("data-display-text", "");
+    field.textContent = "{page}";
+    host.append(field);
+
+    const parsed = DOMParser.fromSchema(schema).parse(host);
+    expect(parsed.firstChild?.firstChild?.attrs["_docxEmptyResultRuns"]).toBeNull();
+    expect(parsed.firstChild?.firstChild?.attrs["displayText"]).toBe("{page}");
+    expect(() => fromProseDoc(parsed)).not.toThrow();
   });
 
   test("preserves hyperlink bookmark boundaries through DOM serialization", () => {
