@@ -33,6 +33,7 @@ import {
 import { resolveAuthor, resolveTransactionDate } from "./provenance";
 import { findCommand, listCommands, toolAccess, type FolioResolvedCommand } from "./registry";
 import { resolveRoots } from "./roots";
+import { parseFlushWait, runSave } from "./save";
 
 /** The process surface the command line reads from and writes to. */
 export type FolioCliIo = {
@@ -138,6 +139,12 @@ const WRITE_FLAGS: readonly CommonFlag[] = [
     description: "Journal file (default: .folio/journal.jsonl beside the destination).",
     option: { type: "string" },
   },
+  {
+    flag: "flush-wait",
+    description:
+      "Milliseconds to wait for an editor holding the lease to save and release (default 5000).",
+    option: { type: "string" },
+  },
 ];
 
 const DIRECT_FLAG: CommonFlag = {
@@ -207,6 +214,7 @@ const rootHelp = (): string => {
     "",
     "Commands:",
     ...commands,
+    `  ${"save".padEnd(12)}Commit a package an editor serialized (not an MCP tool)`,
     `  ${"render".padEnd(12)}Render pages to PDF, PNG, or HTML`,
     `  ${"serve".padEnd(12)}Serve a read-only live preview on 127.0.0.1`,
     `  ${"mcp".padEnd(12)}Serve these tools over MCP on stdio`,
@@ -408,7 +416,10 @@ const execute = async ({
   if (waived && built.expectVersion !== undefined) {
     return Result.err(usageError("Pass --expect-version or --no-expect-version, not both."));
   }
+  const flushWaitMs = parseFlushWait(stringValue(values["flush-wait"]));
+  if (flushWaitMs.isErr()) return flushWaitMs;
   return await executeWriteTool(tool, call, {
+    ...(flushWaitMs.value !== undefined && { flushWaitMs: flushWaitMs.value }),
     sourcePrecondition: waived ? "waived" : "required",
     destination: destination.value,
     author: author.value,
@@ -545,6 +556,9 @@ export const runFolioCli = async (argv: readonly string[], io: FolioCliIo): Prom
   }
   if (name === "serve") {
     return await runServe(rest, io);
+  }
+  if (name === "save") {
+    return await runSave(rest, io);
   }
   const resolved = findCommand(name);
   if (resolved === undefined) {

@@ -3,7 +3,9 @@
  * the owner's pid, host, expiry, and a random token. A folio write takes it
  * for the whole transaction and checks, just before it journals and renames,
  * that the lock still carries its token; a writer whose lease was taken over
- * stops there. A long-lived holder (an editor session) renews it.
+ * stops there. A long-lived holder (an editor session) renews it, and marks
+ * it `acceptsFlush` when it answers the flush requests `editor-lease.ts`
+ * describes.
  *
  * The lock appears complete or not at all: it is written to a private
  * temporary file and hard-linked into place, which fails when a lock exists.
@@ -18,12 +20,20 @@ import { link, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
 
-import { errnoCode } from "./document";
+import { errnoCode } from "./file-system";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { inspectPath, readSidecarFile, writeNewSidecarFile } from "./sidecar";
 
 /** How long a command-line transaction's lease lasts without renewal. */
 export const TRANSACTION_LEASE_MS = 5 * 60 * 1000;
+
+/** The owner a lease records when the caller names none. */
+export const DEFAULT_LEASE_OWNER = "folio-cli";
+
+const OWNER_PATTERN = /^[\w.-]{1,64}$/u;
+
+/** A lease owner is 1 to 64 letters, digits, '.', '_' or '-'. */
+export const isLeaseOwner = (value: string): boolean => OWNER_PATTERN.test(value);
 
 export type LockHolder = {
   owner: string;
@@ -34,6 +44,8 @@ export type LockHolder = {
   token: string;
   acquiredAt: string;
   expiresAt: string;
+  /** The holder saves and releases when a write asks it to (`editor-lease.ts`). */
+  acceptsFlush?: true;
 };
 
 export const lockPathFor = (documentPath: string): string =>
@@ -45,7 +57,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const parseHolder = (text: string): LockHolder | null => {
   const parsed = Result.try((): unknown => JSON.parse(text));
   if (parsed.isErr() || !isRecord(parsed.value)) return null;
-  const { owner, pid, host, txId, token, acquiredAt, expiresAt } = parsed.value;
+  const { owner, pid, host, txId, token, acquiredAt, expiresAt, acceptsFlush } = parsed.value;
   return typeof owner === "string" &&
     typeof pid === "number" &&
     typeof host === "string" &&
@@ -53,7 +65,16 @@ const parseHolder = (text: string): LockHolder | null => {
     typeof token === "string" &&
     typeof acquiredAt === "string" &&
     typeof expiresAt === "string"
-    ? { owner, pid, host, txId, token, acquiredAt, expiresAt }
+    ? {
+        owner,
+        pid,
+        host,
+        txId,
+        token,
+        acquiredAt,
+        expiresAt,
+        ...(acceptsFlush === true && { acceptsFlush: true as const }),
+      }
     : null;
 };
 
@@ -106,9 +127,12 @@ export const readLease = async (documentPath: string): Promise<LeaseState> => {
 };
 
 export type AcquiredLease = {
+  /** The lock's contents as last written by this handle. */
   holder: LockHolder;
   /** Refuse unless the lock still carries this lease's token. */
   verify: () => Promise<Result<void, FolioCliError>>;
+  /** Push the expiry a lease length past `now`; refuses once the lease was taken over. */
+  renew: (now?: Date) => Promise<Result<LockHolder, FolioCliError>>;
   release: () => Promise<void>;
 };
 
@@ -117,6 +141,12 @@ type AcquireLeaseOptions = {
   txId: string;
   /** Take the lease over even when another live holder has it. */
   force: boolean;
+  /** Who holds it (default `folio-cli`), shown to a writer the lease refuses. */
+  owner?: string;
+  /** How long the lease lasts without renewal (default {@link TRANSACTION_LEASE_MS}). */
+  leaseMs?: number;
+  /** Advertise that the holder answers flush requests. */
+  acceptsFlush?: boolean;
   now?: Date;
 };
 
@@ -130,6 +160,13 @@ const lockedError = (documentPath: string, state: LeaseState): FolioCliError =>
     }.`,
     hint: "Retry after it finishes, or pass --force to take the lease over.",
     details: state.type === "held" ? { holder: state.holder } : undefined,
+  });
+
+const lostError = (documentPath: string): FolioCliError =>
+  cliError({
+    code: FOLIO_CLI_ERROR_CODES.locked,
+    message: `Another process took over the write lease on ${documentPath}; nothing was written.`,
+    hint: "Re-read the document and retry.",
   });
 
 const fileSystemError = (message: string, error: unknown): FolioCliError =>
@@ -166,6 +203,62 @@ const placeLock = async (
   }
 };
 
+const encodeHolder = (holder: LockHolder): Uint8Array =>
+  new TextEncoder().encode(`${JSON.stringify(holder)}\n`);
+
+/** The handle on a lease whose lock carries `initial`'s token. */
+const leaseFor = (documentPath: string, initial: LockHolder, leaseMs: number): AcquiredLease => {
+  const lockPath = lockPathFor(documentPath);
+  const holds = async (): Promise<boolean> => {
+    const current = await readLease(documentPath);
+    return current.type === "held" && current.holder.token === initial.token;
+  };
+  const lease: AcquiredLease = {
+    holder: initial,
+    verify: async () => ((await holds()) ? Result.ok() : Result.err(lostError(documentPath))),
+    renew: async (now = new Date()) => {
+      if (!(await holds())) return Result.err(lostError(documentPath));
+      const expiresAt = new Date(now.getTime() + leaseMs).toISOString();
+      const renewed = { ...lease.holder, expiresAt };
+      const placed = await placeLock(lockPath, encodeHolder(renewed), "replace");
+      if (placed.isErr()) return Result.err(placed.error);
+      lease.holder = renewed;
+      return Result.ok(renewed);
+    },
+    release: async () => {
+      if (await holds()) await rm(lockPath, { force: true });
+    },
+  };
+  return lease;
+};
+
+/**
+ * Act under a lease another call acquired, named by its token: `folio save
+ * --lease-token` from the editor that holds it. Releasing stays with that
+ * holder, so this handle's `release` does nothing.
+ */
+export const adoptLease = async (
+  documentPath: string,
+  token: string,
+): Promise<Result<AcquiredLease, FolioCliError>> => {
+  const current = await readLease(documentPath);
+  if (current.type !== "held" || current.holder.token !== token) {
+    return Result.err(
+      cliError({
+        code: FOLIO_CLI_ERROR_CODES.locked,
+        message: `${documentPath} is not held under that lease token.`,
+        hint: "The lease expired or was taken over; acquire it again and retry.",
+        details: current.type === "held" ? { holder: current.holder } : undefined,
+      }),
+    );
+  }
+  const { holder } = current;
+  const leaseMs = Math.max(Date.parse(holder.expiresAt) - Date.parse(holder.acquiredAt), 0);
+  const lease = leaseFor(documentPath, holder, leaseMs);
+  lease.release = () => Promise.resolve();
+  return Result.ok(lease);
+};
+
 /**
  * Take the lease for one transaction. A stale lease is replaced; a live or
  * unreadable one refuses with `locked` unless `force`.
@@ -174,39 +267,24 @@ export const acquireLease = async ({
   documentPath,
   txId,
   force,
+  owner = DEFAULT_LEASE_OWNER,
+  leaseMs = TRANSACTION_LEASE_MS,
+  acceptsFlush = false,
   now = new Date(),
 }: AcquireLeaseOptions): Promise<Result<AcquiredLease, FolioCliError>> => {
   const lockPath = lockPathFor(documentPath);
   const holder: LockHolder = {
-    owner: "folio-cli",
+    owner,
     pid: process.pid,
     host: hostname(),
     txId,
     token: randomUUID(),
     acquiredAt: now.toISOString(),
-    expiresAt: new Date(now.getTime() + TRANSACTION_LEASE_MS).toISOString(),
+    expiresAt: new Date(now.getTime() + leaseMs).toISOString(),
+    ...(acceptsFlush && { acceptsFlush: true as const }),
   };
-  const contents = new TextEncoder().encode(`${JSON.stringify(holder)}\n`);
-  const holds = async (): Promise<boolean> => {
-    const current = await readLease(documentPath);
-    return current.type === "held" && current.holder.token === holder.token;
-  };
-  const lease: AcquiredLease = {
-    holder,
-    verify: async () =>
-      (await holds())
-        ? Result.ok()
-        : Result.err(
-            cliError({
-              code: FOLIO_CLI_ERROR_CODES.locked,
-              message: `Another process took over the write lease on ${documentPath}; nothing was written.`,
-              hint: "Re-read the document and retry.",
-            }),
-          ),
-    release: async () => {
-      if (await holds()) await rm(lockPath, { force: true });
-    },
-  };
+  const contents = encodeHolder(holder);
+  const lease = leaseFor(documentPath, holder, leaseMs);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const placed = await placeLock(lockPath, contents, "create");

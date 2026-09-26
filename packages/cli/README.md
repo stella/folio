@@ -105,8 +105,9 @@ Every change commits, so there is no separate save:
   content, not identical ZIP bytes.
 - **Write lease.** A write holds `.<name>.docx.folio-lock` beside the file
   (pid, host, expiry, and a random token), created complete or not at all.
-  Another holder, such as an editor session, makes a write fail with
-  `locked` (exit 10) unless `--force`. Just before journaling and again
+  An editor holding it with unsaved edits is asked to save and release
+  first (see [Saving from an editor](#saving-from-an-editor)); any other
+  holder makes a write fail with `locked` (exit 10) unless `--force`. Just before journaling and again
   before the rename, a write checks that the lock still carries its token, so
   a writer whose lease was taken over stops without writing. Reads ignore the
   lease. A lease whose process has exited, or that expired, is replaced; a
@@ -120,6 +121,25 @@ Every change commits, so there is no separate save:
   `user.name`; with none, the command refuses. Every revision, comment, and
   reply of one transaction carries one UTC timestamp, `--date` to fix it for
   reproducible output. (`compare` stamps its redline with the current time.)
+
+### Saving from an editor
+
+`folio save <file> --from <saved.docx> --expect-version <fileVersion>` commits
+a whole package a live editor serialized, with the same lease, recovery,
+checks, backup, and journal as a tool call (`tool: "editor_save"`, with
+`--surface` and `--save-strategy` recorded). Unlike the tool commands it may
+rewrite every part, so it is not an MCP tool. `--owner` names the lease holder.
+
+An editor with unsaved edits holds the lease long-lived (`acceptsFlush`, 30 s,
+renewed every 10 s) and watches for `.<name>.docx.folio-flush-<id>` requests.
+A write that finds it writes a request and waits up to `--flush-wait` ms
+(default 5000) for the editor to save under its lease (`--lease-token`) and
+release; the write then runs on the saved version. An agent tool's
+`--expect-version` from before the flush is accepted when the journal shows
+the editor's save from exactly that version; its block ids and text-hash
+preconditions decide the rest. An editor that does not release in time is
+treated by the ordinary lease rules. `@stll/folio-cli/editor-lease` exports
+the editor side.
 
 ### Journal, retries, and recovery
 

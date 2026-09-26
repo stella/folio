@@ -1,5 +1,4 @@
 import { Result } from "better-result";
-import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -7,24 +6,17 @@ import path from "node:path";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
+import { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
+
+export { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
 
 /** Largest `.docx` the CLI opens; larger inputs are refused before reading. */
 export const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 
 const FILE_VERSION_PATTERN = /^[0-9a-f]{64}$/u;
 
-/** A file's version: the lowercase hex SHA-256 of its bytes. */
-export const fileVersionOf = (bytes: Uint8Array): string =>
-  createHash("sha256").update(bytes).digest("hex");
-
 export const isFileVersion = (value: unknown): value is string =>
   typeof value === "string" && FILE_VERSION_PATTERN.test(value);
-
-/** Which file a path named when it was read: device and inode. */
-export type FileIdentity = { dev: number; ino: number };
-
-export const sameFile = (left: FileIdentity, right: FileIdentity): boolean =>
-  left.dev === right.dev && left.ino === right.ino;
 
 /** The bytes of one input file and the version they hash to. */
 export type LoadedFile = {
@@ -35,20 +27,6 @@ export type LoadedFile = {
   identity: FileIdentity;
   /** Hard links to the file; a write refuses a file with more than one. */
   links: number;
-};
-
-/**
- * `O_NOFOLLOW` where the platform has it: opening a path whose last
- * component is a symlink fails instead of following it.
- */
-export const NO_FOLLOW: number = constants.O_NOFOLLOW ?? 0;
-
-/** The `code` of a Node.js file-system error, when there is one. */
-export const errnoCode = (error: unknown): string | undefined => {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  return typeof error.code === "string" ? error.code : undefined;
 };
 
 const describeError = (error: unknown): string =>

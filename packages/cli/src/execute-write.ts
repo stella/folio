@@ -1,8 +1,9 @@
 /**
- * Run one mutating tool call as a transaction: take the destination's lease,
- * settle any crashed stage, replay a committed `txId`, apply the change to a
- * fresh reviewer, save it (selective unless a full repack is allowed), and
- * commit the bytes atomically with a journal line and, in place, a backup.
+ * Run one mutating tool call as a transaction: take the destination's lease
+ * (asking an editor that holds it to save and release first), settle any
+ * crashed stage, replay a committed `txId`, apply the change to a fresh
+ * reviewer, save it (selective unless a full repack is allowed), and commit
+ * the bytes atomically with a journal line and, in place, a backup.
  */
 
 import { panic, Result } from "better-result";
@@ -27,8 +28,8 @@ import {
 } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import type { FileToolCall } from "./execute-read";
-import { findCommit, journalPathFor, recoverStages } from "./journal";
-import { acquireLease } from "./lock";
+import { acquireLeaseForWrite, type FlushOutcome } from "./editor-lease";
+import { findCommit, journalPathFor, latestCommitFor, recoverStages } from "./journal";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
 import { SIDECAR_DIRECTORY, unsafePath } from "./sidecar";
@@ -58,12 +59,14 @@ export type WriteOptions = {
   journalPath: string | undefined;
   /** For tools whose edit mode is selectable. */
   mode: FolioAIEditApplyMode;
+  /** How long to wait for an editor holding the lease to save and release (`editor-lease.ts`). */
+  flushWaitMs?: number;
 };
 
 /** How a transaction's bytes were produced. */
 export type SaveStrategy = "selective" | "full-repack" | "redline";
 
-const TX_ID_PATTERN = /^[\w.-]{1,128}$/u;
+export const TX_ID_PATTERN = /^[\w.-]{1,128}$/u;
 
 const invalidInput = (message: string, hint?: string): FolioCliError =>
   cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message, hint });
@@ -72,7 +75,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** JSON with object keys sorted at every depth, for a stable request hash. */
-const canonicalJson = (value: unknown): string => {
+export const canonicalJson = (value: unknown): string => {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (isRecord(value)) {
     const keys = Object.keys(value).toSorted();
@@ -372,6 +375,49 @@ type ResolvedTarget = {
   destinationPath: string;
 };
 
+/** The `tool` an editor's whole-package save journals (`save.ts`). */
+export const EDITOR_SAVE_TOOL = "editor_save";
+
+type RebaseCheck = {
+  tool: FolioFileToolSpec;
+  flush: FlushOutcome;
+  inPlace: boolean;
+  documentPath: string;
+  expected: string | undefined;
+  current: string;
+};
+
+/** How a write that waited for an editor's save came to run on the saved version. */
+type Rebased = { fromVersion: string; toVersion: string; flushedBy: string };
+
+/**
+ * Whether a write whose `fileVersion` went stale only because the editor
+ * holding the lease saved when asked may run on the saved version. It may
+ * when it is an in-place agent tool (its targets are block ids, with
+ * optional text-hash preconditions re-checked against the new version), the
+ * version it read was current when the flush was requested, and the
+ * journal's newest commit is the editor's save from exactly that version to
+ * the file as it is now. Anything else stays `stale_version`.
+ */
+const rebasedOntoFlush = async ({
+  tool,
+  flush,
+  inPlace,
+  documentPath,
+  expected,
+  current,
+}: RebaseCheck): Promise<Rebased | null> => {
+  if (flush.type !== "flushed" || tool.type !== "agentWrite" || !inPlace) return null;
+  if (expected === undefined || expected !== flush.versionBefore) return null;
+  const latest = await latestCommitFor(documentPath);
+  return latest !== null &&
+    latest.tool === EDITOR_SAVE_TOOL &&
+    latest.fromVersion === expected &&
+    latest.toVersion === current
+    ? { fromVersion: expected, toVersion: current, flushedBy: flush.holder.owner }
+    : null;
+};
+
 const DOCX_NAME = /\.docx$/iu;
 
 const invalidDestination = (message: string, hint?: string): FolioCliError =>
@@ -447,20 +493,27 @@ const identityOfInput = async (
   return Result.ok({ path: real.value, identity: { dev: info.value.dev, ino: info.value.ino } });
 };
 
+type ResolveTargetOptions = {
+  sourcePath: string;
+  destination: WriteDestination;
+  /** A redline: never in place, and never onto the revised file either. */
+  redline?: { revisedPath: unknown };
+};
+
 /**
  * Resolve source and destination to real paths and refuse a destination
  * that is the input under another name (a symlink, a hard link, a
  * case-insensitive alias): files are compared by device and inode.
  */
-const resolveTarget = async (
-  tool: FolioFileToolSpec,
-  call: FileToolCall,
-  destination: WriteDestination,
-): Promise<Result<ResolvedTarget, FolioCliError>> => {
-  const source = await identityOfInput(call.path);
+export const resolveTarget = async ({
+  sourcePath,
+  destination,
+  redline,
+}: ResolveTargetOptions): Promise<Result<ResolvedTarget, FolioCliError>> => {
+  const source = await identityOfInput(sourcePath);
   if (source.isErr()) return Result.err(source.error);
   if (destination.type === "inPlace") {
-    if (tool.type === "compare") {
+    if (redline !== undefined) {
       return Result.err(
         cliError({
           code: FOLIO_CLI_ERROR_CODES.usage,
@@ -480,9 +533,8 @@ const resolveTarget = async (
   const target = await resolveWritePath(destination.path);
   if (target.isErr()) return Result.err(target.error);
   const inputs = [source.value];
-  const revisedPath = call.args["revisedPath"];
-  if (tool.type === "compare" && typeof revisedPath === "string") {
-    const revised = await identityOfInput(revisedPath);
+  if (redline !== undefined && typeof redline.revisedPath === "string") {
+    const revised = await identityOfInput(redline.revisedPath);
     if (revised.isErr()) return Result.err(revised.error);
     inputs.push(revised.value);
   }
@@ -495,7 +547,7 @@ const resolveTarget = async (
     return Result.err(
       invalidDestination(
         `The destination is the input ${clash.path}.`,
-        tool.type === "compare"
+        redline !== undefined
           ? "Write the redline to a new file."
           : "Use --in-place to change the file itself; it keeps a backup.",
       ),
@@ -526,13 +578,24 @@ export const executeWriteTool = async (
     );
   }
   const txId = options.txId ?? randomUUID();
-  const target = await resolveTarget(tool, call, options.destination);
+  const target = await resolveTarget({
+    sourcePath: call.path,
+    destination: options.destination,
+    ...(tool.type === "compare" && { redline: { revisedPath: call.args["revisedPath"] } }),
+  });
   if (target.isErr()) return Result.err(target.error);
   const { sourcePath, sourceIdentity, destinationPath } = target.value;
   const journalPath = journalPathFor(destinationPath, options.journalPath);
+  const inPlace = destinationPath === sourcePath;
 
-  const lease = await acquireLease({ documentPath: destinationPath, txId, force: options.force });
-  if (lease.isErr()) return Result.err(lease.error);
+  const acquired = await acquireLeaseForWrite({
+    documentPath: destinationPath,
+    txId,
+    force: options.force,
+    ...(options.flushWaitMs !== undefined && { flushWaitMs: options.flushWaitMs }),
+  });
+  if (acquired.isErr()) return Result.err(acquired.error);
+  const { lease, flush } = acquired.value;
   try {
     const recovered = await recoverStages({
       documentPath: destinationPath,
@@ -573,16 +636,17 @@ export const executeWriteTool = async (
     // Read after recovery: the version check is against the file as it is now.
     const source = await readDocumentFile(sourcePath);
     if (source.isErr()) return Result.err(source.error);
-    // A roll-forward renames a new file into place, so an in-place source
-    // legitimately has a new identity after recovery.
-    const rolledForwardInPlace =
-      destinationPath === sourcePath &&
-      recovered.value.some(({ action }) => action === "rolledForward");
-    const expectedIdentity = rolledForwardInPlace ? source.value.identity : sourceIdentity;
+    // A roll-forward, or the save of an editor that held the lease, renames
+    // a new file into place, so an in-place source legitimately has a new
+    // identity then. Its version is still checked below.
+    const replacedInPlace =
+      inPlace &&
+      (flush.type !== "none" || recovered.value.some(({ action }) => action === "rolledForward"));
+    const expectedIdentity = replacedInPlace ? source.value.identity : sourceIdentity;
     if (!sameFile(source.value.identity, expectedIdentity)) {
       return Result.err(unsafePath(`${sourcePath} was replaced while the write started.`));
     }
-    if (destinationPath === sourcePath && source.value.links > 1) {
+    if (inPlace && source.value.links > 1) {
       return Result.err(
         unsafePath(
           `${sourcePath} has other hard links; an in-place write would detach them.`,
@@ -591,7 +655,17 @@ export const executeWriteTool = async (
       );
     }
     const version = checkExpectedVersion(source.value, call.fileVersion);
-    if (version.isErr()) {
+    const rebased = version.isErr()
+      ? await rebasedOntoFlush({
+          tool,
+          flush,
+          inPlace,
+          documentPath: destinationPath,
+          expected: call.fileVersion,
+          current: source.value.fileVersion,
+        })
+      : null;
+    if (version.isErr() && rebased === null) {
       return Result.err(
         recovered.value.length === 0
           ? version.error
@@ -629,6 +703,7 @@ export const executeWriteTool = async (
       ...(repackReason !== undefined && { repackReason }),
       changedParts: changedParts.value,
       ...(recovered.value.length > 0 && { recovered: recovered.value }),
+      ...(rebased !== null && { rebased }),
       result,
     };
     const committed = await commitTransaction({
@@ -639,7 +714,7 @@ export const executeWriteTool = async (
       sourceIdentity: expectedIdentity,
       fromVersion: source.value.fileVersion,
       bytes,
-      verifyLease: lease.value.verify,
+      verifyLease: lease.verify,
       changedParts: changedParts.value,
       journalPath,
       entry: {
@@ -656,6 +731,6 @@ export const executeWriteTool = async (
     });
     return committed.isErr() ? Result.err(committed.error) : Result.ok(committed.value.receipt);
   } finally {
-    await lease.value.release();
+    await lease.release();
   }
 };
