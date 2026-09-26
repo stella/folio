@@ -196,7 +196,7 @@ export type ReaderViews = {
   rows: Record<string, unknown>[];
   /** `getContent()` ids, in order. */
   ids: string[];
-  /** `getContent()`'s own label fields, which `read_document` rows restate (#1094). */
+  /** `getContent()`'s own label fields, which `read_document` rows restate. */
   labels: LabelFields[];
 };
 

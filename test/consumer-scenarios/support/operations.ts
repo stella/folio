@@ -62,6 +62,7 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
     { alignment: "center" },
     { alignment: null },
     { spacing: { spaceBefore: 120, spaceAfter: 120 } },
+    { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
     ...(refs.length > 0 ? [{ numbering: random.pick(refs) }, { numbering: null }] : []),
   ]);
 };
@@ -111,6 +112,7 @@ export const GENERATORS: Record<string, Generator> = {
       {},
       { styleId: "Heading2" },
       { alignment: "right" },
+      { numbering: { start: "new", kind: random.pick(["numbered", "bullet"]) } },
       ...(refs.length > 0 ? [{ numbering: random.pick(refs) }] : []),
     ]);
     return {

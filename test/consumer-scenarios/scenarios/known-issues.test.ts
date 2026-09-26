@@ -9,26 +9,17 @@ import assert from "node:assert/strict";
 import { describe } from "node:test";
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
-import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { fromMarkdown } from "@stll/folio-core/markdown";
-import {
-  fromProseDoc,
-  toggleBulletList,
-  toggleNumberedList,
-  toProseDoc,
-} from "@stll/folio-core/prosemirror";
-import { createDocumentNumberingPlugin } from "@stll/folio-core/prosemirror/plugins/documentNumbering";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   generateRedlineDocx,
   paragraph,
-  parseDocx,
   run,
 } from "@stll/folio-core/server";
-import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
+  directNumberedDocument,
   listDocument,
   openReviewer,
   packDocument,
@@ -36,58 +27,12 @@ import {
   toArrayBuffer,
   unusedNumberingDocument,
 } from "../support/documents.ts";
-import { saveAndReopen } from "../support/invariants.ts";
-import { expectedFailure } from "../support/known-issues.ts";
+import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
+import { runFlow } from "../support/fuzz.ts";
+import { expectedFailure, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
 import { MODES } from "../support/operations.ts";
 
-type Command = typeof toggleNumberedList;
-
 const MISSING_NUMBERING = /Numbering definition \d+ is missing/u;
-
-/** Where the paragraph reading `text` starts. */
-const paragraphPosition = (state: EditorState, text: string): number => {
-  let position: number | null = null;
-  state.doc.descendants((node, pos) => {
-    if (position === null && node.type.name === "paragraph" && node.textContent === text) {
-      position = pos;
-    }
-    return position === null;
-  });
-  if (position === null) {
-    throw new Error(`no paragraph "${text}"`);
-  }
-  return position;
-};
-
-/** Run `command` with the caret inside the paragraph at `position`. */
-const runAt = (state: EditorState, position: number, command: Command): EditorState => {
-  let next = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position + 1)));
-  const before = next;
-  command(before, (transaction) => {
-    next = before.apply(transaction);
-  });
-  return next;
-};
-
-/** Run an editor list command with the caret in each named paragraph, then save. */
-const toggleAndSave = async (
-  bytes: Uint8Array,
-  texts: readonly string[],
-  command: Command,
-): Promise<Uint8Array> => {
-  const document = await parseDocx(toArrayBuffer(bytes));
-  let state = EditorState.create({
-    doc: toProseDoc(document, {
-      styles: document.package.styles,
-      theme: document.package.theme,
-    }),
-    plugins: [createDocumentNumberingPlugin(document.package.numbering)],
-  });
-  for (const text of texts) {
-    state = runAt(state, paragraphPosition(state, text), command);
-  }
-  return new Uint8Array(await repackDocx(fromProseDoc(state.doc, document)));
-};
 
 const labelsOf = async (bytes: Uint8Array): Promise<string[]> =>
   (await openReviewer(bytes))
@@ -176,66 +121,6 @@ describe("#1103: operations that name a numbering instance the package does not 
         {},
       );
       await saveAndReopen(reviewer, "#1103 suggest_changes");
-    },
-  );
-});
-
-describe("#1091: editor list commands in a package without a list of that kind", () => {
-  expectedFailure(
-    1091,
-    "Numbered List in a package without a numbering part saves",
-    MISSING_NUMBERING,
-    async () => {
-      const bytes = await packDocument(fromMarkdown("Intro paragraph.\n\nFirst item\n\nTail."));
-      await toggleAndSave(bytes, ["First item"], toggleNumberedList);
-    },
-  );
-
-  expectedFailure(
-    1091,
-    "Bullet List in a package without a numbering part saves",
-    MISSING_NUMBERING,
-    async () => {
-      const bytes = await packDocument(fromMarkdown("Intro.\n\nMake me a bullet"));
-      await toggleAndSave(bytes, ["Make me a bullet"], toggleBulletList);
-    },
-  );
-
-  expectedFailure(
-    1091,
-    "Bullet List in a package whose only list is numbered makes a bullet",
-    /bullet/u,
-    async () => {
-      const bytes = await packDocument(
-        fromMarkdown("1. Alpha\n2. Beta\n\nPlain text.\n\nMake me a bullet"),
-      );
-      const labels = await labelsOf(
-        await toggleAndSave(bytes, ["Make me a bullet"], toggleBulletList),
-      );
-      assert.equal(labels.at(-1), "• Make me a bullet", "the toggled paragraph is not a bullet");
-    },
-  );
-});
-
-describe("#1092: a list command after an unrelated list", () => {
-  expectedFailure(
-    1092,
-    "two paragraphs toggled after prose start a new list at 1",
-    /new list/u,
-    async () => {
-      const bytes = await packDocument(
-        fromMarkdown(
-          "1. Alpha\n2. Beta\n\nUnrelated prose between the lists.\n\nNew list one\n\nNew list two",
-        ),
-      );
-      const labels = await labelsOf(
-        await toggleAndSave(bytes, ["New list one", "New list two"], toggleNumberedList),
-      );
-      assert.deepEqual(
-        labels.slice(-2),
-        ["1. New list one", "2. New list two"],
-        "the toggled paragraphs did not start a new list",
-      );
     },
   );
 });
@@ -422,4 +307,71 @@ describe("findings not yet filed", () => {
       );
     },
   );
+
+  expectedFailure(
+    "REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH",
+    "rejectAll undoes a merge of a split's second half into an inserted paragraph",
+    /nodeSize/u,
+    async () => {
+      const reviewer = await openReviewer(await plainDocument());
+      const apply = (operation: Record<string, unknown>) =>
+        reviewer.applyDocumentOperations({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "tracked-changes",
+          operations: [{ id: "1", ...operation }],
+        } as never);
+      const last = () => {
+        const block = reviewer.getContent().find(({ text }) => text.startsWith("Signed"));
+        assert.ok(block);
+        return block;
+      };
+      apply({ type: "insertAfterBlock", blockId: last().id, text: "Inserted clause." });
+      apply({ type: "splitBlock", blockId: last().id, offset: "Signed in ".length });
+      const blocks = reviewer.getContent();
+      const secondHalf = blocks[blocks.findIndex(({ id }) => id === last().id) + 1];
+      assert.ok(secondHalf);
+      apply({ type: "mergeBlockWithNext", blockId: secondHalf.id, separator: " " });
+      reviewer.rejectAll();
+      assert.deepEqual(
+        reviewer.getContent().map(({ text }) => text),
+        (await openReviewer(await plainDocument())).getContent().map(({ text }) => text),
+      );
+    },
+  );
+
+  expectedFailure(
+    "UNMARKED_LIST_ITEM_KIND",
+    "a paragraph numbered at a level its instance does not define reads alike everywhere",
+    /docxToMarkdown vs getContent/u,
+    async () => {
+      const reviewer = await openReviewer(await directNumberedDocument());
+      const anchor = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
+      assert.ok(anchor);
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "direct",
+        operations: [
+          {
+            id: "1",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "Level eight.",
+            numbering: { numId: 7, level: 8 },
+          },
+        ],
+      });
+      await assertReadersAgree(new Uint8Array(await reviewer.toBuffer()), "undefined level", {
+        strict: true,
+      });
+    },
+  );
+
+  for (const { seed, steps, finding } of KNOWN_FAILING_FLOWS) {
+    expectedFailure(
+      finding,
+      `the fuzz flow with seed ${seed} (${steps} steps) saves what the reviewer shows`,
+      /reopened package shows something else/u,
+      () => runFlow(seed, steps),
+    );
+  }
 });

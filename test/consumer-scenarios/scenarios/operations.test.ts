@@ -13,6 +13,7 @@ import { FIXTURE_NAMES, FIXTURES, openReviewer } from "../support/documents.ts";
 import { assertHealthy, visibleState } from "../support/invariants.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
+import { expectedFailure, KNOWN_FAILING_OPERATION_RUNS } from "../support/known-issues.ts";
 import { resolvedText, settledText } from "../support/review.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -22,7 +23,13 @@ const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent() as Block
 describe("applyDocumentOperations", () => {
   for (const name of FIXTURE_NAMES) {
     for (const mode of MODES) {
-      test(`${name} / ${mode}: every operation type applies or refuses, and the result saves`, async () => {
+      const known = KNOWN_FAILING_OPERATION_RUNS.find(
+        (run) => run.fixture === name && run.mode === mode,
+      );
+      const title = `${name} / ${mode}: every operation type applies or refuses, and the result saves`;
+      const register = (body: () => Promise<void>) =>
+        known ? expectedFailure(known.finding, title, /nodeSize/u, body) : test(title, body);
+      register(async () => {
         const before = await FIXTURES[name]();
         const reviewer = await openReviewer(before);
         // `"suggested"` edits stay out of the saved package until accepted.

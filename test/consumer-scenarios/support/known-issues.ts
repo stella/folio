@@ -9,9 +9,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 export const OPEN_ISSUES = {
-  1091: "list commands reference a numbering instance the package does not define",
-  1092: "list commands always join the first list of their kind",
-  1094: "a numbered heading reads as listItem; read_document rows carry no label",
   1103: "operations accept a numbering.numId the package does not define",
 } as const;
 
@@ -32,6 +29,12 @@ export const FINDINGS = {
     "rejecting every change leaves a tracked split in place when a tracked table was inserted after the split's first half (the join is attempted while the table still stands between the halves)",
   BATCH_SPLIT_THEN_DELETE:
     "a tracked batch that splits a block and deletes the same block deletes the wrong span: part of the text survives, and accepting leaves an empty paragraph",
+  SUGGESTED_ACCEPT_ALL_LOSES_INSERTS:
+    "after a run of suggested edits that includes a table column and list inserts, acceptAll keeps the inserted paragraphs in the reviewer but the save drops them (found by fuzz; no smaller repro yet)",
+  REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH:
+    "rejectAll throws `Cannot read properties of undefined (reading 'nodeSize')` when a tracked merge joined a tracked split's second half into a tracked inserted paragraph (the bulk resolution records changed-paragraph ranges past the end of the document)",
+  UNMARKED_LIST_ITEM_KIND:
+    "a paragraph whose numbering names a level its instance does not define shows no marker, but getContent(), the snapshot and read_document call it a listItem while docxToMarkdown renders plain text",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -40,8 +43,29 @@ export type Finding = keyof typeof FINDINGS;
 const describeKnown = (known: OpenIssue | Finding): string =>
   typeof known === "number" ? `#${known} (${OPEN_ISSUES[known]})` : `${known} (${FINDINGS[known]})`;
 
-/** Whether readers should tolerate an issue's known disagreement. */
-export const TOLERATED_DISAGREEMENTS: ReadonlySet<OpenIssue> = new Set<OpenIssue>([1094]);
+/**
+ * operations.test.ts runs (fixture / mode) whose operation sequence reaches a
+ * finding; they run as expected failures there.
+ */
+export const KNOWN_FAILING_OPERATION_RUNS: readonly {
+  fixture: string;
+  mode: string;
+  finding: Finding;
+}[] = [
+  {
+    fixture: "comments",
+    mode: "tracked-changes",
+    finding: "REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH",
+  },
+];
+
+/**
+ * Seeded flows (support/fuzz.ts) that reproduce a finding. The default fuzz
+ * run skips them and known-issues.test.ts runs them as expected failures.
+ */
+export const KNOWN_FAILING_FLOWS: readonly { seed: number; steps: number; finding: Finding }[] = [
+  { seed: 20_260_933, steps: 10, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
+];
 
 export const expectedFailure = (
   issue: OpenIssue | Finding,

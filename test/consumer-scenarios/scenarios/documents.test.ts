@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
+import { createReviewerBridge } from "@stll/folio-agents";
 import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
 import { docxToMarkdown, parseDocx } from "@stll/folio-core/server";
 
@@ -18,7 +19,6 @@ import {
   toArrayBuffer,
 } from "../support/documents.ts";
 import { assertHealthy, assertReadersAgree } from "../support/invariants.ts";
-import { expectedFailure } from "../support/known-issues.ts";
 import { MARKDOWN_READ_OPTIONS } from "../support/readers.ts";
 
 describe("synthetic documents", () => {
@@ -80,16 +80,21 @@ describe("synthetic documents", () => {
     );
   });
 
-  expectedFailure(
-    1094,
-    "a style-numbered heading is a heading to every reader, and read rows carry its number",
-    /read_document|docxToMarkdown vs getContent|snapshot vs getContent/u,
-    async () => {
-      await assertReadersAgree(await styleNumberedDocument(), "style-numbered headings", {
-        strict: true,
-      });
-    },
-  );
+  test("a style-numbered heading is a heading to every reader, and read rows carry its number", async () => {
+    const bytes = await styleNumberedDocument();
+    await assertReadersAgree(bytes, "style-numbered headings");
+    const reviewer = await openReviewer(bytes);
+    const blocks = createReviewerBridge(reviewer).snapshot().blocks;
+    assert.deepEqual(
+      blocks
+        .filter((block) => block.headingLevel === 2)
+        .map((block) => [block.kind, block.displayLabel]),
+      [
+        ["heading", "1."],
+        ["heading", "2."],
+      ],
+    );
+  });
 });
 
 describe("markdown round trips", () => {

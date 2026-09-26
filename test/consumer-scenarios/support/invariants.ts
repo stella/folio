@@ -7,7 +7,6 @@
 import assert from "node:assert/strict";
 
 import { openReviewer } from "./documents.ts";
-import { TOLERATED_DISAGREEMENTS } from "./known-issues.ts";
 import { type BlockView, labelFields, readAll } from "./readers.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -28,12 +27,7 @@ export const visibleState = (reviewer: Reviewer, { exact = false }: VisibleState
     Object.assign(
       {
         id: block.id,
-        // #1094: a numbered heading reads as a list item once its numbering
-        // is resolved, which a reviewer only does at open.
-        kind:
-          !exact && block.kind === "listItem" && block.headingLevel !== undefined
-            ? "heading"
-            : block.kind,
+        kind: block.kind,
         text: block.text,
         headingLevel: block.headingLevel,
       },
@@ -104,20 +98,15 @@ export const saveAndReopen = async (
 };
 
 /**
- * #1094: `getContent()` and the snapshot classify by numbering before
- * heading: a numbered heading reads as `listItem` while Markdown shows a
- * heading, and a paragraph whose numbering shows no marker (a level the
- * instance does not define) reads as `listItem` while Markdown shows plain
- * text. Tolerated, and pinned by an expected failure, until the fix lands.
+ * UNMARKED_LIST_ITEM_KIND: a numbered paragraph that shows no marker is a
+ * `listItem` to the content readers and plain text in Markdown. Tolerated
+ * unless `strict`, and pinned by an expected failure.
  */
-const tolerateNumberedHeadingKind = (block: BlockView): BlockView => {
-  if (block.kind !== "listItem") return block;
-  if (block.headingLevel !== undefined) return { ...block, kind: "heading" };
-  return block.number === undefined ? { ...block, kind: "paragraph" } : block;
-};
+const unmarkedListItemAsParagraph = (block: BlockView): BlockView =>
+  block.kind === "listItem" && block.number === undefined ? { ...block, kind: "paragraph" } : block;
 
 export type ReaderAgreementOptions = {
-  /** Fail on disagreements an open issue already reports. */
+  /** Fail on disagreements a known finding already reports. */
   strict?: boolean;
 };
 
@@ -128,10 +117,6 @@ export const assertReadersAgree = async (
   { strict = false }: ReaderAgreementOptions = {},
 ): Promise<void> => {
   const views = await readAll(bytes);
-  const tolerate =
-    !strict && TOLERATED_DISAGREEMENTS.has(1094)
-      ? (blocks: BlockView[]) => blocks.map(tolerateNumberedHeadingKind)
-      : (blocks: BlockView[]) => blocks;
 
   assert.deepEqual(views.snapshot, views.getContent, `${context}: snapshot vs getContent()`);
   assert.deepEqual(
@@ -144,17 +129,17 @@ export const assertReadersAgree = async (
     views.getContent.map(({ text, kind }) => ({ text, kind })),
     `${context}: read_document rows vs getContent()`,
   );
-  if (strict) {
-    // A model is given the numbers a reader sees (#1094).
-    assert.deepEqual(
-      views.rows.map(labelFields),
-      views.labels,
-      `${context}: read_document labels vs getContent()`,
-    );
-  }
+  // A model is given the numbers a reader sees.
+  assert.deepEqual(
+    views.rows.map(labelFields),
+    views.labels,
+    `${context}: read_document labels vs getContent()`,
+  );
   assert.deepEqual(
     views.markdown,
-    tolerate(views.getContentAsMarkdown),
+    strict
+      ? views.getContentAsMarkdown
+      : views.getContentAsMarkdown.map(unmarkedListItemAsParagraph),
     `${context}: docxToMarkdown vs getContent()`,
   );
 };
