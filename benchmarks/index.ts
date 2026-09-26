@@ -10,6 +10,7 @@
  */
 import type { Bench } from "tinybench";
 
+import { editorTransactionBench } from "./editor-transaction.bench";
 import { lineBreakBench } from "./line-break.bench";
 import { markdownBench } from "./markdown.bench";
 import { parseBench } from "./parse.bench";
@@ -27,6 +28,10 @@ const GROUPS: readonly Group[] = [
   { name: "markdown · model ↔ Markdown (folio)", make: markdownBench },
   { name: "prosemirror · model ↔ ProseMirror (folio)", make: proseMirrorBench },
   { name: "line breaking · paragraph text → wrap offsets (folio)", make: lineBreakBench },
+  {
+    name: "editor · one many-step transaction → plugin stack (folio)",
+    make: editorTransactionBench,
+  },
 ];
 
 for (const group of GROUPS) {

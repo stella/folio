@@ -51,6 +51,7 @@ import {
   setProseParagraphMarkupWithPropertySource,
   transferProseParagraphPropertySource,
 } from "../../../docx/paragraphPropertySource";
+import { sweepPositions, type PositionQuery } from "../../positionSweep";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { ignoreTrackedChanges } from "./ParagraphChangeTrackerExtension";
@@ -143,39 +144,51 @@ type MappedParagraphKeepers = {
   sourceTokens: Map<string, ParagraphPropertySourceKeeper>;
 };
 
-const mapParagraphKeepers = (
+/**
+ * Where each id's and each seeded source token's owner went: the first
+ * occurrence that survives the batch keeps an id.
+ *
+ * @internal Exported for the per-step equivalence test.
+ */
+export const mapParagraphKeepers = (
   oldDoc: PMNode,
   transactions: readonly Transaction[],
   sourceSeed: ParagraphPropertySourceSeed,
 ): MappedParagraphKeepers => {
-  const paraIds = new Map<string, number>();
-  const sourceTokens = new Map<string, ParagraphPropertySourceKeeper>();
+  const paragraphs: { pos: number; id: unknown; token: unknown }[] = [];
   oldDoc.descendants((node, pos) => {
     if (node.type.name !== "paragraph") {
       return true;
     }
     const id = node.attrs["paraId"];
     const token = getProseParagraphPropertySourceToken(node);
-    const mapsParaId = isUsableParaId(id) && !paraIds.has(id);
-    const mapsSourceToken = typeof token === "string" && sourceSeed.tokens.has(token);
-    if (!mapsParaId && !mapsSourceToken) {
-      return false;
+    if (isUsableParaId(id) || (typeof token === "string" && sourceSeed.tokens.has(token))) {
+      paragraphs.push({ pos, id, token });
     }
+    return false;
+  });
 
-    let mapped = pos;
-    let mappedInterior = pos + 1;
-    let deleted = false;
-    for (const transaction of transactions) {
-      const ownerResult = transaction.mapping.mapResult(mapped);
-      const interiorResult = transaction.mapping.mapResult(mappedInterior, -1);
-      deleted ||= interiorResult.deletedAcross;
-      mapped = ownerResult.pos;
-      mappedInterior = interiorResult.pos;
-    }
-    if (mapsParaId && !deleted) {
+  // Every candidate goes through the batch at once: its owner position, and
+  // its interior, whose deletion is what says the paragraph itself is gone.
+  const swept = sweepPositions(
+    transactions.map((transaction) => transaction.mapping),
+    paragraphs.flatMap(({ pos }): PositionQuery[] => [
+      { pos, assoc: 1, from: 0 },
+      { pos: pos + 1, assoc: -1, from: 0 },
+    ]),
+  );
+
+  const paraIds = new Map<string, number>();
+  const sourceTokens = new Map<string, ParagraphPropertySourceKeeper>();
+  for (const [index, { id, token }] of paragraphs.entries()) {
+    // SAFETY: the sweep returns an owner and an interior per paragraph.
+    const mapped = swept[2 * index]!.pos;
+    const deleted = swept[2 * index + 1]!.deletedAcross;
+    // The first occurrence that survives keeps the id.
+    if (isUsableParaId(id) && !paraIds.has(id) && !deleted) {
       paraIds.set(id, mapped);
     }
-    if (mapsSourceToken) {
+    if (typeof token === "string" && sourceSeed.tokens.has(token)) {
       sourceTokens.set(
         token,
         sourceTokens.has(token)
@@ -183,8 +196,7 @@ const mapParagraphKeepers = (
           : { pos: mapped, status: deleted ? "deleted" : "mapped" },
       );
     }
-    return false;
-  });
+  }
   return { paraIds, sourceTokens };
 };
 

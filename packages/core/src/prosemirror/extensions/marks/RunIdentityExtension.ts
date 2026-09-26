@@ -23,6 +23,8 @@
 import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 
 import { expectRunIdentityMarkAttrs } from "../../attrs";
+import { nodesBetweenIndexed } from "../../indexedNodeLookup";
+import { sweepPositions, type PositionQuery } from "../../positionSweep";
 import {
   RUN_IDENTITY_ATTRIBUTE,
   RUN_IDENTITY_MARK_NAME,
@@ -47,31 +49,36 @@ type InsertedRange = { from: number; to: number };
  * transaction, then every later one — so a batch applied together reports
  * positions in the document this hook is looking at rather than in an
  * intermediate one.
+ *
+ * @internal Exported for the per-step equivalence test.
  */
-const insertedRanges = (transactions: readonly Transaction[]): InsertedRange[] => {
-  const ranges: InsertedRange[] = [];
-  for (const [transactionIndex, transaction] of transactions.entries()) {
-    const later = transactions.slice(transactionIndex + 1);
-    const carryForward = (pos: number, bias: -1 | 1): number => {
-      let mapped = pos;
-      for (const next of later) {
-        mapped = next.mapping.map(mapped, bias);
-      }
-      return mapped;
-    };
-
+export const insertedRanges = (transactions: readonly Transaction[]): InsertedRange[] => {
+  // The ranges are carried together, each entering after the step that made
+  // it: slicing the mapping per step would walk the rest of the batch once
+  // per step.
+  const queries: PositionQuery[] = [];
+  let stepOffset = 0;
+  for (const transaction of transactions) {
+    const offset = stepOffset;
     transaction.mapping.maps.forEach((stepMap, stepIndex) => {
-      const rest = transaction.mapping.slice(stepIndex + 1);
+      const from = offset + stepIndex + 1;
       stepMap.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
         if (newEnd <= newStart) {
           return;
         }
-        ranges.push({
-          from: carryForward(rest.map(newStart, -1), -1),
-          to: carryForward(rest.map(newEnd, 1), 1),
-        });
+        queries.push({ pos: newStart, assoc: -1, from }, { pos: newEnd, assoc: 1, from });
       });
     });
+    stepOffset += transaction.mapping.maps.length;
+  }
+  const mapped = sweepPositions(
+    transactions.map((transaction) => transaction.mapping),
+    queries,
+  );
+  const ranges: InsertedRange[] = [];
+  for (let index = 0; index < mapped.length; index += 2) {
+    // SAFETY: every range queued its start and end together.
+    ranges.push({ from: mapped[index]!.pos, to: mapped[index + 1]!.pos });
   }
   return ranges;
 };
@@ -107,7 +114,7 @@ const createRunIdentityStripPlugin = (): Plugin =>
           return false;
         }
         let rangeStripped = false;
-        newState.doc.nodesBetween(clampedFrom, clampedTo, (node, pos) => {
+        nodesBetweenIndexed(newState.doc, clampedFrom, clampedTo, (node, pos) => {
           if (!node.isInline || !markType.isInSet(node.marks)) {
             return true;
           }

@@ -16,13 +16,18 @@ import {
   RemoveMarkStep,
   RemoveNodeMarkStep,
 } from "prosemirror-transform";
-import type { Mapping } from "prosemirror-transform";
 
 import type {
   RemovedSectionReference,
   TrackedSectionEndpointRemoval,
 } from "../../../internal/sectionEndpointResolution";
 import { canonicalJson } from "../../../utils/canonicalJson";
+import {
+  enclosingParagraphIndexed,
+  nodeAtIndexed,
+  nodesBetweenIndexed,
+} from "../../indexedNodeLookup";
+import { sweepPositions, type PositionQuery, type SweptPosition } from "../../positionSweep";
 import { sectionPropertiesOf } from "../../sectionCarrier";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
@@ -199,7 +204,7 @@ function collectAffectedParaIds(
   const positions = new Set<number>();
   let hasUntracked = false;
 
-  doc.nodesBetween(from, to, (node, pos) => {
+  nodesBetweenIndexed(doc, from, to, (node, pos) => {
     if (node.type.name === "paragraph") {
       positions.add(pos);
       const paraId = node.attrs["paraId"];
@@ -232,43 +237,37 @@ function collectAffectedParaIdsFromMarkLikeStep(
     return primary;
   }
   // Collapsed range (e.g. empty paragraph): walk up to enclosing paragraph.
-  const $p = doc.resolve(lo);
-  for (let depth = $p.depth; depth > 0; depth--) {
-    const node = $p.node(depth);
-    if (node.type.name === "paragraph") {
-      const paraId = node.attrs["paraId"];
-      return {
-        ids: new Set(isUsableParaId(paraId) ? [paraId] : []),
-        positions: new Set([$p.before(depth)]),
-        hasUntracked: !isUsableParaId(paraId),
-      };
-    }
+  const paragraph = enclosingParagraphIndexed(doc, lo);
+  if (paragraph) {
+    const paraId = paragraph.node.attrs["paraId"];
+    return {
+      ids: new Set(isUsableParaId(paraId) ? [paraId] : []),
+      positions: new Set([paragraph.pos]),
+      hasUntracked: !isUsableParaId(paraId),
+    };
   }
   return { ids: new Set(), positions: new Set(), hasUntracked: false };
 }
 
-/** Map an edited paragraph's interior so markup replacement retains its ownership. */
-const mapParagraphPosition = (tr: Transaction, position: number): number | null => {
-  const mapped = tr.mapping.mapResult(position + 1, 1);
-  if (mapped.deletedAcross) {
-    return null;
-  }
-  const $position = tr.doc.resolve(mapped.pos);
-  for (let depth = $position.depth; depth > 0; depth--) {
-    if ($position.node(depth).type.name === "paragraph") {
-      return $position.before(depth);
-    }
-  }
-  return null;
-};
+/**
+ * Map edited paragraphs' interiors so markup replacement retains their
+ * ownership: each position's paragraph in `tr.doc`, or null once deleted. The
+ * positions go through the transaction together (see `sweepPositions`).
+ */
+const mapParagraphPositions = (tr: Transaction, positions: readonly number[]): (number | null)[] =>
+  sweepPositions(
+    [tr.mapping],
+    positions.map((position): PositionQuery => ({ pos: position + 1, assoc: 1, from: 0 })),
+  ).map((mapped) =>
+    mapped.deletedAcross ? null : (enclosingParagraphIndexed(tr.doc, mapped.pos)?.pos ?? null),
+  );
 
 const mapAffectedParagraphPositions = (
   tr: Transaction,
   positions: ReadonlySet<number>,
 ): Set<number> => {
   const mappedPositions = new Set<number>();
-  for (const position of positions) {
-    const mapped = mapParagraphPosition(tr, position);
+  for (const mapped of mapParagraphPositions(tr, [...positions])) {
     if (mapped !== null) {
       mappedPositions.add(mapped);
     }
@@ -276,10 +275,70 @@ const mapAffectedParagraphPositions = (
   return mappedPositions;
 };
 
-function mapStepPosition(remap: Mapping, pos: number, assoc: 1 | -1): number {
-  // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map uses assoc as its second parameter.
-  return remap.map(pos, assoc);
-}
+/**
+ * How one step, or one recorded range, names what it touched once its
+ * positions are in the final document. `query` indexes its first position in
+ * the sweep; a range's end is the next one.
+ */
+type StepTouch = { kind: "mark-range" | "node" | "replaced-range"; query: number };
+
+/**
+ * Every position the step loop reads, each entering the sweep at the step
+ * after the one that produced it: the transaction is mapped once rather than
+ * sliced and walked again for every step.
+ */
+const mapStepTouches = (
+  tr: Transaction,
+  batches: readonly ChangedParagraphRangeBatch[],
+): { touches: StepTouch[]; mapped: SweptPosition[] } => {
+  const queries: PositionQuery[] = [];
+  const touches: StepTouch[] = [];
+  const addRange = (
+    kind: "mark-range" | "replaced-range",
+    from: number,
+    to: number,
+    at: number,
+  ): void => {
+    touches.push({ kind, query: queries.length });
+    queries.push({ pos: from, assoc: 1, from: at }, { pos: to, assoc: -1, from: at });
+  };
+
+  for (const batch of batches) {
+    for (const range of batch.ranges) {
+      addRange("mark-range", range.from, range.to, batch.mappingFrom);
+    }
+  }
+
+  for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
+    // SAFETY: loop condition keeps stepIndex within tr.steps bounds.
+    const step = tr.steps[stepIndex]!;
+    const at = stepIndex + 1;
+    if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) {
+      addRange("mark-range", step.from, step.to, at);
+      continue;
+    }
+    // `AttrStep` and the node-mark steps carry a position and an EMPTY step
+    // map, so the generic `stepMap.forEach` below never visits them. Reading
+    // their position directly is what keeps an attribute-only edit — a
+    // paragraph mark on a blank paragraph, a list level, a style id — from
+    // saving as the original XML.
+    if (
+      step instanceof AddNodeMarkStep ||
+      step instanceof RemoveNodeMarkStep ||
+      step instanceof AttrStep
+    ) {
+      touches.push({ kind: "node", query: queries.length });
+      queries.push({ pos: step.pos, assoc: 1, from: at });
+      continue;
+    }
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
+    step.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+      addRange("replaced-range", newStart, newEnd, at);
+    });
+  }
+
+  return { touches, mapped: sweepPositions([tr.mapping], queries) };
+};
 
 function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTrackerState> {
   return new Plugin<InternalParagraphChangeTrackerState>({
@@ -338,7 +397,7 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           const changedParaIds = new Set<string>();
           let unresolvedChanges = prevState.hasUntrackedSourceChanges;
           for (const position of affectedParagraphPositions) {
-            const paraId = tr.doc.nodeAt(position)?.attrs["paraId"];
+            const paraId = nodeAtIndexed(tr.doc, position)?.attrs["paraId"];
             if (isUsableParaId(paraId)) {
               changedParaIds.add(paraId);
             } else {
@@ -428,30 +487,48 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           sectionEndpointRemoval,
         };
 
-        if (isChangedParagraphRangesMeta(changedParagraphRangesMeta)) {
-          for (const batch of changedParagraphRangesMeta.batches) {
-            const remap = tr.mapping.slice(batch.mappingFrom);
-            for (const range of batch.ranges) {
-              const from = mapStepPosition(remap, range.from, 1);
-              const to = mapStepPosition(remap, range.to, -1);
-              if (to <= from) {
-                continue;
-              }
-              const { ids, positions, hasUntracked } = collectAffectedParaIdsFromMarkLikeStep(
-                tr.doc,
-                from,
-                to,
-              );
-              for (const position of positions) {
-                newState.affectedParagraphPositions.add(position);
-              }
-              for (const id of ids) {
-                newState.changedParaIds.add(id);
-              }
-              if (hasUntracked) {
-                newState.hasUntrackedChanges = true;
-              }
+        const recordAffected = ({ ids, positions, hasUntracked }: AffectedParagraphs): void => {
+          for (const position of positions) {
+            newState.affectedParagraphPositions.add(position);
+          }
+          for (const id of ids) {
+            newState.changedParaIds.add(id);
+          }
+          if (hasUntracked) {
+            newState.hasUntrackedChanges = true;
+          }
+        };
+
+        // Track which paragraphs were affected by each step, and by each range
+        // a command recorded. Step coordinates are valid in the document state
+        // where that step ran, so they are carried through the subsequent
+        // steps before reading from the final transaction document.
+        const { touches, mapped } = mapStepTouches(
+          tr,
+          isChangedParagraphRangesMeta(changedParagraphRangesMeta)
+            ? changedParagraphRangesMeta.batches
+            : [],
+        );
+        for (const touch of touches) {
+          // SAFETY: every touch indexes the positions it queued in the sweep.
+          const from = mapped[touch.query]!.pos;
+          if (touch.kind === "node") {
+            const node = nodeAtIndexed(tr.doc, from);
+            if (node) {
+              recordAffected(collectAffectedParaIds(tr.doc, from, from + node.nodeSize));
             }
+            continue;
+          }
+          // SAFETY: a range queues its end right after its start.
+          const to = mapped[touch.query + 1]!.pos;
+          if (touch.kind === "mark-range") {
+            if (to > from) {
+              recordAffected(collectAffectedParaIdsFromMarkLikeStep(tr.doc, from, to));
+            }
+            continue;
+          }
+          if (to >= from) {
+            recordAffected(collectAffectedParaIds(tr.doc, from, to));
           }
         }
 
@@ -461,87 +538,6 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           newState.structuralChange = true;
         }
 
-        // Track which paragraphs were affected by each step. Step coordinates are
-        // valid in the document state where that step ran, so remap them through
-        // subsequent steps before reading from the final transaction document.
-        for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
-          // SAFETY: loop condition keeps stepIndex within tr.steps bounds.
-          const step = tr.steps[stepIndex]!;
-          const remap = tr.mapping.slice(stepIndex + 1);
-
-          if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) {
-            const from = mapStepPosition(remap, step.from, 1);
-            const to = mapStepPosition(remap, step.to, -1);
-            if (to <= from) {
-              continue;
-            }
-            const { ids, positions, hasUntracked } = collectAffectedParaIdsFromMarkLikeStep(
-              tr.doc,
-              from,
-              to,
-            );
-            for (const position of positions) {
-              newState.affectedParagraphPositions.add(position);
-            }
-            for (const id of ids) {
-              newState.changedParaIds.add(id);
-            }
-            if (hasUntracked) {
-              newState.hasUntrackedChanges = true;
-            }
-            continue;
-          }
-
-          // `AttrStep` and the node-mark steps carry a position and an EMPTY
-          // step map, so the generic `stepMap.forEach` below never visits
-          // them. Reading their position directly is what keeps an
-          // attribute-only edit — a paragraph mark on a blank paragraph, a
-          // list level, a style id — from saving as the original XML.
-          if (
-            step instanceof AddNodeMarkStep ||
-            step instanceof RemoveNodeMarkStep ||
-            step instanceof AttrStep
-          ) {
-            const pos = mapStepPosition(remap, step.pos, 1);
-            const node = tr.doc.nodeAt(pos);
-            if (!node) {
-              continue;
-            }
-            const end = pos + node.nodeSize;
-            const { ids, positions, hasUntracked } = collectAffectedParaIds(tr.doc, pos, end);
-            for (const position of positions) {
-              newState.affectedParagraphPositions.add(position);
-            }
-            for (const id of ids) {
-              newState.changedParaIds.add(id);
-            }
-            if (hasUntracked) {
-              newState.hasUntrackedChanges = true;
-            }
-            continue;
-          }
-
-          const stepMap = step.getMap();
-          // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
-          stepMap.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-            const from = mapStepPosition(remap, newStart, 1);
-            const to = mapStepPosition(remap, newEnd, -1);
-            if (to < from) {
-              return;
-            }
-            const { ids, positions, hasUntracked } = collectAffectedParaIds(tr.doc, from, to);
-            for (const position of positions) {
-              newState.affectedParagraphPositions.add(position);
-            }
-            for (const id of ids) {
-              newState.changedParaIds.add(id);
-            }
-            if (hasUntracked) {
-              newState.hasUntrackedChanges = true;
-            }
-          });
-        }
-
         // A missing ID introduced by this transaction can be repaired by the
         // allocator. An edited/deleted source paragraph without an ID cannot:
         // assigning an ID later does not establish its original XML identity.
@@ -549,19 +545,22 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           newState.hasUntrackedChanges ||
           prevState.blockStructureFingerprint !== counts.blockStructureFingerprint
         ) {
+          const unidentified: number[] = [];
           tr.before.descendants((node, position) => {
             if (node.type.name !== "paragraph") {
               return true;
             }
             if (!isUsableParaId(node.attrs["paraId"])) {
-              const mapped = mapParagraphPosition(tr, position);
-              if (mapped === null || newState.affectedParagraphPositions.has(mapped)) {
-                newState.hasUntrackedSourceChanges = true;
-                newState.hasUntrackedChanges = true;
-              }
+              unidentified.push(position);
             }
             return false;
           });
+          for (const survivor of mapParagraphPositions(tr, unidentified)) {
+            if (survivor === null || newState.affectedParagraphPositions.has(survivor)) {
+              newState.hasUntrackedSourceChanges = true;
+              newState.hasUntrackedChanges = true;
+            }
+          }
         }
 
         return newState;
