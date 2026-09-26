@@ -29,6 +29,8 @@ import type {
   NumberFormat,
   NumberingDefinitions,
   NumberingInstance,
+  ParagraphAlignment,
+  ParagraphFormatting,
 } from "../types/document";
 
 /** The two kinds of list a command can create. */
@@ -56,25 +58,33 @@ const HANGING_TWIPS = 360;
 const ROMAN_HANGING_TWIPS = 180;
 const LEVEL_COUNT = 9;
 
-const levelIndent = (ilvl: number, hanging: number): ListLevel["pPr"] => ({
+const levelIndent = (ilvl: number, hanging: number): ParagraphFormatting => ({
   indentLeft: INDENT_STEP_TWIPS * (ilvl + 1),
   indentFirstLine: -hanging,
   hangingIndent: true,
 });
 
+type NumberedCycleEntry = {
+  numFmt: NumberFormat;
+  lvlJc: ParagraphAlignment;
+  hanging: number;
+};
+
 /** The customary numbered-list cycle: `1.`, `a.`, `i.`, then again one level deeper. */
-const NUMBERED_CYCLE = [
+const NUMBERED_CYCLE: readonly [NumberedCycleEntry, NumberedCycleEntry, NumberedCycleEntry] = [
   { numFmt: "decimal", lvlJc: "left", hanging: HANGING_TWIPS },
   { numFmt: "lowerLetter", lvlJc: "left", hanging: HANGING_TWIPS },
   { numFmt: "lowerRoman", lvlJc: "right", hanging: ROMAN_HANGING_TWIPS },
-] as const;
+];
+
+type BulletCycleEntry = { text: string; font: string | null };
 
 /** The customary bullet cycle: a round bullet, an open circle, a square. */
-const BULLET_CYCLE = [
-  { text: "•", font: undefined },
+const BULLET_CYCLE: readonly [BulletCycleEntry, BulletCycleEntry, BulletCycleEntry] = [
+  { text: "\u2022", font: null },
   { text: "o", font: "Courier New" },
-  { text: "▪", font: undefined },
-] as const;
+  { text: "\u25AA", font: null },
+];
 
 const cycleEntry = <T>(cycle: readonly [T, T, T], ilvl: number): T =>
   cycle.at(ilvl % cycle.length) ?? cycle[0];
@@ -100,7 +110,7 @@ const bulletLevel = (ilvl: number): ListLevel => {
     lvlText: text,
     lvlJc: "left",
     pPr: levelIndent(ilvl, HANGING_TWIPS),
-    ...(font === undefined ? {} : { rPr: { fontFamily: { ascii: font, hAnsi: font } } }),
+    ...(font === null ? {} : { rPr: { fontFamily: { ascii: font, hAnsi: font } } }),
   };
 };
 
