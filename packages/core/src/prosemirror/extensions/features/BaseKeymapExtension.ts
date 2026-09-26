@@ -106,6 +106,12 @@ const INHERITED_PARA_ATTRS = [
   "snapToGrid",
   "spaceAfter",
   "spaceBefore",
+  // Where the copied spacing came from travels with it: without it a value the
+  // source paragraph only inherited from the document defaults or the default
+  // style is saved as the new paragraph's own `w:spacing`.
+  "spacingExplicit",
+  "spacingFromDocDefaults",
+  "spacingFromImplicitDefaultStyle",
   "contextualSpacing",
 ] as const;
 
