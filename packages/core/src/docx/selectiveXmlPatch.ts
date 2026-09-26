@@ -1321,8 +1321,36 @@ function originalCustomNumFmtFormat(numFmtElement: string): string | null {
  */
 function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const tagEnd = elementXml.indexOf(">");
-  const openTag = tagEnd === -1 ? elementXml : elementXml.slice(0, tagEnd);
+  let tagStart = elementXml.indexOf("<");
+  while (
+    tagStart !== -1 &&
+    (elementXml.startsWith("<?", tagStart) || elementXml.startsWith("<!--", tagStart))
+  ) {
+    const comment = elementXml.startsWith("<!--", tagStart);
+    const endMarker = comment ? "-->" : "?>";
+    const end = elementXml.indexOf(endMarker, tagStart);
+    if (end === -1) {
+      return out;
+    }
+    tagStart = elementXml.indexOf("<", end + endMarker.length);
+  }
+  if (tagStart === -1) {
+    return out;
+  }
+  let tagEnd = tagStart + 1;
+  let quote: '"' | "'" | null = null;
+  while (tagEnd < elementXml.length) {
+    const character = elementXml[tagEnd];
+    if (character === quote) {
+      quote = null;
+    } else if (quote === null && (character === '"' || character === "'")) {
+      quote = character;
+    } else if (quote === null && character === ">") {
+      break;
+    }
+    tagEnd += 1;
+  }
+  const openTag = elementXml.slice(tagStart, tagEnd);
   const pattern = /\s(?<name>xmlns(?::[\w.-]+)?)="(?<uri>[^"]*)"/gu;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(openTag)) !== null) {

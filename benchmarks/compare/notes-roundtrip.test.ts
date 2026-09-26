@@ -4,6 +4,7 @@ import { compareDocx } from "@stll/folio-core";
 import { buildDocumentPackage } from "./documents";
 import { checkInvariants } from "./invariants";
 import { zipPackage } from "./package-xml";
+import { resolvePackageValidator } from "./validator";
 import { applyVariant } from "./variants";
 
 const OPTIONS = { author: "folio compare benchmark", timestamp: "2000-01-01T00:00:00.000Z" };
@@ -30,7 +31,7 @@ test.each(["notes", "everywhere"] as const)(
       unsupported: compared.value.unsupported.map(({ reason }) => reason),
       expectation: "different",
       options: OPTIONS,
-      validate: null,
+      validate: resolvePackageValidator(),
     });
     expect(result.outcomes.filter(({ status }) => status === "failed")).toEqual([]);
   },
