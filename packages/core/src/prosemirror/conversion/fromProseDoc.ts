@@ -225,7 +225,10 @@ import type {
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
 import { completeNumberingForDoc } from "../listInstanceReferences";
-import { listRenderingFromAttrs as listRenderingFieldsFromAttrs } from "../listRenderingAttrs";
+import {
+  hasListRendering,
+  listRenderingFromAttrs as listRenderingFieldsFromAttrs,
+} from "../listRenderingAttrs";
 import { resolveNumberedRefFields } from "../numberedRefFields";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { textBoxHostParagraph } from "../textBoxHostParagraph";
@@ -1714,9 +1717,7 @@ function listRenderingFromAttrs(attrs: ParagraphAttrs): Paragraph["listRendering
   if (numId === undefined) {
     return undefined;
   }
-  const hasRenderingInfo =
-    attrs.listMarker != null || attrs.listIsBullet || attrs.listNumFmt != null;
-  if (!hasRenderingInfo) {
+  if (!hasListRendering(attrs)) {
     return undefined;
   }
   return listRenderingFieldsFromAttrs({ attrs, numId });

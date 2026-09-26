@@ -92,6 +92,16 @@ export const listRenderingAttrPatch = (rendering: ListRendering): Partial<Paragr
   return definedAttrs(patch);
 };
 
+/**
+ * Whether `attrs` carry what their numbering level renders as. Only a level
+ * the numbering defines gets a rendering (`toProseDoc` projects the parser's,
+ * a list command or operation writes the level's), so a reference without one
+ * names a level nothing defines: Word paints no marker for it.
+ */
+export const hasListRendering = (
+  attrs: Pick<ParagraphAttrs, "listMarker" | "listIsBullet" | "listNumFmt">,
+): boolean => attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null;
+
 /** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
 export type ListRenderingSourceAttrs = Pick<ParagraphAttrs, ListRenderingAttrKey | "numPr">;
 

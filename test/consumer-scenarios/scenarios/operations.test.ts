@@ -14,7 +14,13 @@ import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
 } from "@stll/folio-core/server";
 
-import { FIXTURE_NAMES, FIXTURES, openReviewer, plainDocument } from "../support/documents.ts";
+import {
+  FIXTURE_NAMES,
+  FIXTURES,
+  listDocument,
+  openReviewer,
+  plainDocument,
+} from "../support/documents.ts";
 import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
@@ -196,5 +202,35 @@ describe("resolving tracked edits that build on pending ones", () => {
       before,
       "the anchored text changed across the save",
     );
+  });
+});
+
+describe("list labels after an operation", () => {
+  test("an item inserted into a list reads its own number, and the items after it renumber, before a save", async () => {
+    const reviewer = await openReviewer(await listDocument());
+    const anchor = reviewer.getContent().find((block) => block.text === "Deposit on signature");
+    assert.ok(anchor);
+    reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [
+        { id: "1", type: "insertAfterBlock", blockId: anchor.id, text: "Interim payment" },
+      ],
+    });
+    const live = reviewer
+      .getContent()
+      .filter((block) => block.listReference?.numId === anchor.listReference?.numId)
+      .map((block) => `${block.displayLabel} ${block.text}`);
+    assert.deepEqual(
+      live,
+      [
+        "1. Deposit on signature",
+        "2. Interim payment",
+        "3. Balance on delivery",
+        "4. Retention after inspection",
+      ],
+      "labels before the save are stale",
+    );
+    await assertHealthy(reviewer, "insert into a list");
   });
 });

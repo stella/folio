@@ -17,8 +17,6 @@ export const OPEN_ISSUES = {
  * repro in the scenario that pins it.
  */
 export const FINDINGS = {
-  STALE_LIST_LABELS:
-    "after an operation adds, removes or renumbers list items, the reviewer's getContent() / snapshot labels keep the numbers read at open until a save and reopen",
   NOTE_REFERENCE_TEXT:
     'getContent(), the snapshot and read_document render a footnote/endnote reference as its w:id ("7"), while the page shows its number ("1", or "i" for an endnote)',
   COMPARE_INSERTED_LIST_ITEMS:

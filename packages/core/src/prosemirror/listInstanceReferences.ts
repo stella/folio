@@ -10,7 +10,11 @@ import { completeListNumbering, type ListInstanceReference } from "../docx/listN
 import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
-import { listRenderingFromAttrs, type ListRenderingSourceAttrs } from "./listRenderingAttrs";
+import {
+  hasListRendering,
+  listRenderingFromAttrs,
+  type ListRenderingSourceAttrs,
+} from "./listRenderingAttrs";
 
 const PARAGRAPH_NODE = "paragraph";
 
@@ -29,9 +33,7 @@ const collectReference = (attrs: ListRenderingSourceAttrs, sink: ReferenceSink):
   if (numId === undefined || sink.isDefined(numId)) {
     return;
   }
-  const hasRendering =
-    attrs.listMarker != null || attrs.listIsBullet === true || attrs.listNumFmt != null;
-  if (!hasRendering) {
+  if (!hasListRendering(attrs)) {
     return;
   }
   sink.references.push({

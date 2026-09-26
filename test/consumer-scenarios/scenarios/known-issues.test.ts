@@ -19,7 +19,6 @@ import {
 
 import {
   directNumberedDocument,
-  listDocument,
   openReviewer,
   packDocument,
   plainDocument,
@@ -125,38 +124,6 @@ describe("#1103: operations that name a numbering instance the package does not 
 });
 
 describe("findings not yet filed", () => {
-  expectedFailure(
-    "STALE_LIST_LABELS",
-    "an item inserted into a list reads its own number, and the items after it renumber, before a save",
-    /labels before the save/u,
-    async () => {
-      const reviewer = await openReviewer(await listDocument());
-      const anchor = reviewer.getContent().find((block) => block.text === "Deposit on signature");
-      assert.ok(anchor);
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "direct",
-        operations: [
-          { id: "1", type: "insertAfterBlock", blockId: anchor.id, text: "Interim payment" },
-        ],
-      });
-      const live = reviewer
-        .getContent()
-        .filter((block) => block.listReference?.numId === anchor.listReference?.numId)
-        .map((block) => `${block.displayLabel} ${block.text}`);
-      assert.deepEqual(
-        live,
-        [
-          "1. Deposit on signature",
-          "2. Interim payment",
-          "3. Balance on delivery",
-          "4. Retention after inspection",
-        ],
-        "labels before the save are stale",
-      );
-    },
-  );
-
   expectedFailure(
     "COMPARE_INSERTED_LIST_ITEMS",
     "accepting a redline keeps an inserted bullet a bullet",

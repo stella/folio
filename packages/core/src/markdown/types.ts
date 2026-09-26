@@ -7,6 +7,7 @@
  */
 
 import type { BuiltInStyleIndex } from "../docx/builtInStyles";
+import type { ListLabelCounter } from "../prosemirror/listLabels";
 
 /**
  * Metadata describing a single image registration. Owned by the markdown
@@ -131,10 +132,12 @@ export type RenderContext = {
   hyperlinkRefs: { href: string; refNumber: number }[];
   /** 1-based counter for default virtual paths. */
   imageCounter: number;
-  /** Live list counters per numId, for resolving `%N` marker templates. */
-  listCounters: Map<number, number[]>;
-  /** `numId:level` pairs already seen, so a start override applies once. */
-  listSeenLevels: Set<string>;
+  /**
+   * Advances past one paragraph, in document order, and answers the list
+   * label it shows: the page's own counter, so the numbers follow the
+   * document as it stands rather than the markers resolved when it was read.
+   */
+  nextListLabel: ListLabelCounter;
   /** The document's styles indexed by the built-in they are; classifies headings and quotes. */
   builtInStyles: BuiltInStyleIndex;
 };

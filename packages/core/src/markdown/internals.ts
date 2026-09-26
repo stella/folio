@@ -7,6 +7,7 @@
  */
 
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
+import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { StyleDefinitions } from "../types/document";
 import type { MarkdownOptions, RenderContext } from "./types";
 
@@ -39,8 +40,7 @@ export function newContext(
     commentRefs: [],
     hyperlinkRefs: [],
     imageCounter: 0,
-    listCounters: new Map(),
-    listSeenLevels: new Set(),
+    nextListLabel: createListLabelCounter(),
   };
 }
 

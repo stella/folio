@@ -11,28 +11,19 @@ import { type BlockView, labelFields, readAll } from "./readers.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
-export type VisibleStateOptions = {
-  /**
-   * Compare the fields a reviewer only settles at open too: list labels and
-   * levels (STALE_LIST_LABELS in known-issues.ts). Off by default; the saved
-   * package's readers are compared with each other either way.
-   */
-  exact?: boolean;
-};
-
 /** Everything a person or a model can see of a reviewer's document. */
-export const visibleState = (reviewer: Reviewer, { exact = false }: VisibleStateOptions = {}) => ({
-  blocks: reviewer.getContent().map((block) =>
-    Object.assign(
-      {
-        id: block.id,
-        kind: block.kind,
-        text: block.text,
-        headingLevel: block.headingLevel,
-      },
-      exact ? { displayLabel: block.displayLabel, listLevel: block.listLevel } : {},
-    ),
-  ),
+export const visibleState = (reviewer: Reviewer) => ({
+  // The number or bullet beside a block is part of what a reader sees: after
+  // an operation adds, removes or renumbers list items, the reviewer shows
+  // the numbers the saved package opens with.
+  blocks: reviewer.getContent().map((block) => ({
+    id: block.id,
+    kind: block.kind,
+    text: block.text,
+    headingLevel: block.headingLevel,
+    displayLabel: block.displayLabel,
+    listLevel: block.listLevel,
+  })),
   // Which kinds of change by whom. How a reader groups revisions into
   // entries (a nested `w:ins > w:del` reads as one entry after a reopen, two
   // before) is not what a save must keep; what they resolve to is checked by
@@ -53,7 +44,7 @@ export const visibleState = (reviewer: Reviewer, { exact = false }: VisibleState
 const describeError = (error: unknown): string =>
   error instanceof Error ? error.message.split("\n").slice(0, 3).join(" | ") : String(error);
 
-export type SaveOptions = VisibleStateOptions & {
+export type SaveOptions = {
   /**
    * What the saved package must show when it is not what the reviewer shows:
    * `"suggested"` edits stay out of the package until accepted, so a save
@@ -89,8 +80,8 @@ export const saveAndReopen = async (
     return { bytes, reopened };
   }
   assert.deepEqual(
-    visibleState(reopened, options),
-    options.persisted ?? visibleState(reviewer, options),
+    visibleState(reopened),
+    options.persisted ?? visibleState(reviewer),
     `${context}: the reopened package shows something else than the reviewer that saved it`,
   );
   return { bytes, reopened };
