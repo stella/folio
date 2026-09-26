@@ -26,6 +26,7 @@ import { getSelectionRuns } from '@stll/folio-core/managers/ClipboardManager';
 import { HeaderFooterPartKind } from '@stll/folio-core/controller/headerFooterEditorManager';
 import { HiddenProseMirrorCollaboration } from '@stll/folio-core/controller/hiddenEditorManager';
 import { HiddenProseMirrorRemoteSelection } from '@stll/folio-core/controller/hiddenEditorManager';
+import { HistoryShortcutOwner } from '@stll/folio-core/prosemirror/extensions/core/HistoryExtension';
 import { Layout } from '@stll/folio-core/layout-engine/types';
 import { LayoutSelectionGate } from '@stll/folio-core/paged-layout/LayoutSelectionGate';
 import { MaybeRefOrGetter } from 'vue';
@@ -134,6 +135,7 @@ export type UseDocxEditorOptions = {
     editorMode?: MaybeRefOrGetter<"editing" | "suggesting" | "viewing">;
     author?: MaybeRefOrGetter<string>;
     externalPlugins?: readonly Plugin_2[];
+    historyShortcuts?: HistoryShortcutOwner;
     collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
     onAnonymizationMatchesChange?: (matches: readonly AnonymizationMatch[]) => void;
     showTemplateDirectives?: MaybeRefOrGetter<boolean | undefined>;
