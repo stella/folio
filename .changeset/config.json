@@ -8,5 +8,5 @@
   "baseBranch": "main",
   "format": "oxfmt",
   "updateInternalDependencies": "patch",
-  "ignore": ["@stll/playground", "@stll/playground-vue"]
+  "ignore": ["@stll/folio-editor-web", "@stll/playground", "@stll/playground-vue"]
 }

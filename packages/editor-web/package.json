@@ -1,0 +1,33 @@
+{
+  "name": "@stll/folio-editor-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal bundle that mounts @stll/folio-react's editor behind a small host interface, for VS Code webviews and other embedding pages. Not published.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "test": "bun test src",
+    "test:e2e": "bun scripts/build.ts && bunx playwright test -c playwright.config.ts",
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@stll/folio-core": "workspace:*",
+    "@stll/folio-react": "workspace:*",
+    "prosemirror-history": "^1.5.0",
+    "prosemirror-state": "^1.4.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "use-intl": "^4.13.2"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.14.0",
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "esbuild": "0.28.1",
+    "jszip": "3.10.1",
+    "prosemirror-model": "^1.25.9",
+    "prosemirror-view": "^1.41.8"
+  }
+}
