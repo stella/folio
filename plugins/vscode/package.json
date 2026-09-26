@@ -1,7 +1,7 @@
 {
   "name": "stella-folio",
   "displayName": "Folio DOCX",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Open .docx files in VS Code and edit them on laid-out pages: type, track changes, comment, and save back to the same file. Also gives agent mode folio's .docx tools over MCP.",
   "categories": [

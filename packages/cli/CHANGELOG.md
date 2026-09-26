@@ -1,5 +1,11 @@
 # @stll/folio-cli
 
+## 0.3.0
+
+### Minor Changes
+
+- [#1076](https://github.com/stella/folio/pull/1076) [`eca7589`](https://github.com/stella/folio/commit/eca75890b737f5ef8e53272c54fb37a82fa1b715) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Open and edit `.docx` files in VS Code: the Folio DOCX extension (whose version follows this package) now opens `.docx` files in folio's editor by default. Saves go through `folio save`, keep a backup of the previous version, and hold the editor lease while there are unsaved edits, so an agent's write saves them first instead of failing. The editor replaces the read-only preview: **Folio: Open Read-Only** opens a document with editing off. A `workbench.editorAssociations` entry that names the old `folio.docxPreview` view type no longer matches an editor; VS Code falls back to its default for `.docx`, which is now folio's editor, and the entry can be removed.
+
 ## 0.2.0
 
 ### Minor Changes
