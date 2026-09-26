@@ -618,34 +618,37 @@ already-built document.
 Tree construction uses fixed linear passes; indexed mapping and table-width
 removal add logarithmic factors. The per-change fragment copies are gone.
 
-Paired runs against main `169fdad18`, Bun 1.4.2, eight logical CPUs. Each
-configuration ran before then after, with one warm-up and three measured
-iterations (`--quick`). Stage medians are sampled independently of wall time.
+Paired runs against main `169fdad18`, Bun 1.4.2, eight logical CPUs. The final
+implementation measured at `af36a73ba` / `889630bd6`; the latter adds only types
+and report formatting, with identical emitted JavaScript. Each configuration ran
+before then after, with one warm-up and three measured iterations (`--quick`).
+Stage medians are sampled independently of wall time.
 
-| Configuration        | Revision | Wall      | parse   | align  | apply    | serialize |
-| -------------------- | -------- | --------- | ------- | ------ | -------- | --------- |
-| `prose/l/structural` | before   | 4809.5ms  | 228.8ms | 29.8ms | 2931.2ms | 197.4ms   |
-| `prose/l/structural` | after    | 2274.8ms  | 308.3ms | 29.6ms | 1378.0ms | 164.5ms   |
-| `prose/l/heavy`      | before   | 9698.1ms  | 382.2ms | 43.3ms | 9439.4ms | 912.2ms   |
-| `prose/l/heavy`      | after    | 11311.8ms | 420.3ms | 25.9ms | 4934.8ms | 511.5ms   |
+| Configuration        | Revision | Wall      | parse   | align  | apply     | serialize |
+| -------------------- | -------- | --------- | ------- | ------ | --------- | --------- |
+| `prose/l/structural` | before   | 7036.6ms  | 621.0ms | 34.5ms | 6526.0ms  | 464.9ms   |
+| `prose/l/structural` | after    | 5665.1ms  | 710.5ms | 45.1ms | 3070.6ms  | 314.9ms   |
+| `prose/l/heavy`      | before   | 12533.8ms | 358.0ms | 31.5ms | 12640.1ms | 915.3ms   |
+| `prose/l/heavy`      | after    | 13345.7ms | 994.1ms | 89.6ms | 15209.3ms | 1771.6ms  |
 
-The apply stage fell by about half in both cases. The host was heavily loaded:
-structural before 287.6 → 243.5, after 243.5 → 218.6; heavy before 196.5 → 269.1,
-after 269.1 → 287.6. Heavy wall time increased despite its lower apply median;
-these samples do not establish a whole-comparison wall-time improvement.
+Structural apply fell by 53%. Heavy apply rose by 20%, and its wall time also
+rose; this pair does not establish a heavy-case improvement. Host load remained
+extreme: structural before 172.9 → 161.3, after 164.3 → 161.6; heavy before
+158.8 → 132.5, after 130.1 → 116.7. Both pairs retained identical digests and
+passed every available invariant (the .NET schema validator was unavailable).
 
 `bun packages/core/scripts/benchmark-resolve-all.ts` measures the editor command
 plus `state.apply`, with history and paragraph tracking enabled. Every paragraph
 has one insertion and one deletion. One warm-up, four measured samples; the
 reported value is the upper median. The old and new commands ran back to back:
-load 218.6 → 198.9 before, 198.9 → 194.0 after.
+load 220.7 → 176.5 before, 172.6 → 173.1 after.
 
 | Paragraphs | Changes | Accept before → after | Reject before → after | Steps before → after |
 | ---------- | ------- | --------------------- | --------------------- | -------------------- |
-| 250        | 500     | 12.9 → 7.4ms          | 23.5 → 2.5ms          | 500 → 1              |
-| 1000       | 2000    | 181.7 → 32.3ms        | 152.5 → 23.8ms        | 2000 → 1             |
-| 2200       | 4400    | 694.3 → 59.7ms        | 1091.3 → 28.7ms       | 4400 → 1             |
-| 4400       | 8800    | 3907.0 → 50.2ms       | 7579.9 → 77.5ms       | 8800 → 1             |
+| 250        | 500     | 26.3 → 12.3ms         | 23.0 → 12.6ms         | 500 → 1              |
+| 1000       | 2000    | 419.5 → 44.9ms        | 264.1 → 49.9ms        | 2000 → 1             |
+| 2200       | 4400    | 2921.6 → 102.5ms      | 2162.7 → 149.6ms      | 4400 → 1             |
+| 4400       | 8800    | 11031.4 → 130.7ms     | 10533.6 → 130.0ms     | 8800 → 1             |
 
 The equivalence test exercises all 69 applicable small-corpus configurations,
 including body, headers, footers, footnotes, and endnotes. It compares resolved
