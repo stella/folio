@@ -13,12 +13,15 @@ import { ParagraphChangeTrackerExtension } from "@stll/folio-core/prosemirror/ex
 
 const sampleCommand = (state: EditorState, command: Command) => {
   let steps = 0;
+  const cpuStart = process.cpuUsage();
   const start = performance.now();
   command(state, (transaction) => {
     steps = transaction.steps.length;
     state.apply(transaction);
   });
-  return { milliseconds: performance.now() - start, steps };
+  const milliseconds = performance.now() - start;
+  const cpu = process.cpuUsage(cpuStart);
+  return { milliseconds, cpuMilliseconds: (cpu.user + cpu.system) / 1000, steps };
 };
 
 const legacy = process.argv.includes("--legacy");
@@ -51,14 +54,26 @@ for (const blocks of [250, 1000, 2200, 4400]) {
     const reject = legacy ? rejectChange(0, doc.content.size) : rejectAllChanges();
     const command = mode === "accept" ? accept : reject;
     const samples: number[] = [];
+    const cpuSamples: number[] = [];
     let steps = 0;
     for (let sample = 0; sample < 5; sample++) {
       const result = sampleCommand(state, command);
       steps = result.steps;
-      if (sample > 0) samples.push(result.milliseconds);
+      if (sample > 0) {
+        samples.push(result.milliseconds);
+        cpuSamples.push(result.cpuMilliseconds);
+      }
     }
     samples.sort((left, right) => left - right);
-    measurements.push({ blocks, changes: blocks * 2, mode, milliseconds: samples.at(2), steps });
+    cpuSamples.sort((left, right) => left - right);
+    measurements.push({
+      blocks,
+      changes: blocks * 2,
+      mode,
+      milliseconds: samples.at(2),
+      cpuMilliseconds: cpuSamples.at(2),
+      steps,
+    });
   }
 }
 console.log(
