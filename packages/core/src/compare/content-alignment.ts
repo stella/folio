@@ -701,9 +701,10 @@ const crossedExactTextBlocks = <Block extends FolioContentBlock>({
 };
 
 /**
- * Minimum multiset Dice similarity for two blocks to pair inside a gap. At 0.5 a paragraph still pairs after gaining up to
- * twice its own length (2n / (n + 3n)); below it, more of the pair would read
- * as changed than kept, which a removal beside an insertion says better.
+ * Minimum multiset Dice similarity for two blocks to pair inside a gap. At
+ * 0.5 a paragraph still pairs after gaining up to twice its own length
+ * (2n / (n + 3n)); below it, more of the pair would read as changed than
+ * kept, which a removal beside an insertion says better.
  */
 const GAP_PAIR_SIMILARITY_THRESHOLD = 0.5;
 
@@ -796,8 +797,9 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
   }
   const revisedTokens = revised.map((block) => gapBlockTokens(block.block.text));
   // Equal display labels break ties between equally similar pairs: repeated
-  // wording ("Intentionally omitted.") leaves the label as a block's only identity. The
-  // bonuses of every pair together stay below one similarity step.
+  // wording ("Intentionally omitted.") leaves the label as a block's only
+  // identity. The bonuses of every pair together stay below one similarity
+  // step.
   const similarityStep = Math.min(baseCount, revisedCount) + 1;
   // -1 marks a cell that may not pair.
   const similarity = new Float64Array(baseCount * revisedCount).fill(-1);
