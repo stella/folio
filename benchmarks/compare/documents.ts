@@ -358,7 +358,8 @@ const buildNotes = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
         ? `<w:r><w:rPr><w:rStyle w:val="EndnoteReference"/></w:rPr><w:endnoteReference w:id="${String(noteId)}"/></w:r>`
         : `<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="${String(noteId)}"/></w:r>`;
       references.push(reference);
-      const noteBody = `<w:p>${run(sentence(random, "latin", 9))}</w:p>`;
+      const marker = `<w:r><w:rPr><w:rStyle w:val="${isEndnote ? "EndnoteReference" : "FootnoteReference"}"/></w:rPr><w:${isEndnote ? "endnoteRef" : "footnoteRef"}/></w:r>`;
+      const noteBody = `<w:p>${marker}${run(sentence(random, "latin", 9))}</w:p>`;
       (isEndnote ? endnotes : footnotes).push(
         isEndnote
           ? `<w:endnote w:id="${String(noteId)}">${noteBody}</w:endnote>`
