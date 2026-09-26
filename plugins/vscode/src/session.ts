@@ -46,6 +46,8 @@ export type SessionUi = {
   /** Revert through the workbench, so its dirty state follows. */
   readonly revertThroughWorkbench: () => Promise<void>;
   readonly notifyUpdated: (message: string) => void;
+  /** A notice that asks nothing, such as a rewrite a flush could not wait to confirm. */
+  readonly showInfo: (message: string) => void;
   readonly showLoadFailed: (message: string) => void;
   readonly showError: (message: string) => void;
   readonly showLeaseLost: (message: string) => void;
@@ -141,7 +143,8 @@ export class DocxSession {
   private readonly pending = new Map<number, PendingSerialization>();
   private saving: Promise<void> | undefined;
   private diskCheckDue = false;
-  private flushing = false;
+  /** Who asked for the flush in progress: its save skips dialogs and lets the lease go. */
+  private flushRequester: string | undefined;
   private conflictOpen = false;
   private disposed = false;
 
@@ -254,6 +257,12 @@ export class DocxSession {
     void this.options.lease?.ensure();
   }
 
+  /** Switch the editor's mode (Open Read-Only on a document already open). */
+  setMode(mode: FolioEditingMode): void {
+    this.mode = mode;
+    this.post?.({ type: "setMode", mode });
+  }
+
   /** The workbench undoes one of this document's edits. */
   undo(): void {
     const id = this.applied.pop();
@@ -328,7 +337,11 @@ export class DocxSession {
     const editCount = this.editCount;
     const savedTop = this.top;
     const { bytes, strategy } = await this.serialize();
-    if (needsRewriteConfirmation(strategy, this.options.rewrite)) {
+    // A save that answers a write's flush request never waits on a dialog:
+    // the write gives up after a few seconds. It says so afterwards instead.
+    const flushFor = this.flushRequester;
+    const rewriteDue = needsRewriteConfirmation(strategy, this.options.rewrite);
+    if (flushFor === undefined && rewriteDue) {
       const choice = await this.options.ui.confirmRewrite();
       if (choice === undefined) throw new SaveCancelled();
       if (choice === "saveCopy") {
@@ -357,7 +370,16 @@ export class DocxSession {
         this.savedAt = savedTop;
         // Keep the lease while the user typed on during the save; a flush
         // lets it go regardless, so the waiting write can land.
-        if (this.flushing || this.editCount === editCount) await lease?.release();
+        if (flushFor !== undefined || this.editCount === editCount) await lease?.release();
+        if (flushFor !== undefined && rewriteDue) {
+          const backup =
+            outcome.backup === undefined
+              ? ""
+              : ` The previous version is backed up at ${outcome.backup}.`;
+          this.options.ui.showInfo(
+            `Saved your edits to ${this.options.fileName} so ${flushFor} could write; the whole package was rewritten.${backup}`,
+          );
+        }
         return;
       }
       if (outcome.code === "stale_version") {
@@ -504,17 +526,18 @@ export class DocxSession {
   }
 
   /**
-   * A write asks for the lease: save the unsaved edits, then let it go so
-   * the write lands on the saved version. The reload that shows the write
+   * A write (whose lease owner is `requester`) asks for the lease: save the
+   * unsaved edits, then let it go so the write lands on the saved version.
+   * The save asks nothing (see `runSave`). The reload that shows the write
    * follows from the watcher.
    */
-  async flush(): Promise<void> {
-    if (this.flushing || this.disposed) return;
-    this.flushing = true;
+  async flush(requester: string): Promise<void> {
+    if (this.flushRequester !== undefined || this.disposed) return;
+    this.flushRequester = requester;
     try {
       if (await this.options.ui.saveThroughWorkbench()) await this.options.lease?.release();
     } finally {
-      this.flushing = false;
+      this.flushRequester = undefined;
     }
   }
 

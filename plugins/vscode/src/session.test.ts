@@ -159,6 +159,7 @@ const harness = (overrides: Partial<SessionOptions> = {}): Harness => {
         await session.revert();
       },
       notifyUpdated: (message) => notices.push(message),
+      showInfo: (message) => calls.push(`info ${message}`),
       showLoadFailed: (message) => calls.push(`loadFailed ${message}`),
       showError: (message) => calls.push(`error ${message}`),
       showLeaseLost: (message) => calls.push(`leaseLost ${message}`),
@@ -543,7 +544,7 @@ describe("flush requests", () => {
     // Typing between the save's start and its end would normally keep the lease.
     h.serializeAs = { bytes: EDITED, strategy: SELECTIVE };
 
-    await h.session.flush();
+    await h.session.flush("folio-cli");
 
     expect(h.calls).toEqual(["saveThroughWorkbench"]);
     expect(h.saves[0]?.leaseToken).toBe("lease-token");
@@ -557,9 +558,47 @@ describe("flush requests", () => {
     edit(h);
     await settle();
 
-    await h.session.flush();
+    await h.session.flush("folio-cli");
 
     expect(h.lease.token).toBe("lease-token");
+  });
+
+  test("a full rewrite for a flush skips the warning and says so afterwards", async () => {
+    const h = harness();
+    edit(h);
+    await settle();
+    h.serializeAs = { bytes: EDITED, strategy: REPACK };
+    h.outcomes = [
+      {
+        type: "saved",
+        fileVersion: fileVersionOf(EDITED),
+        status: "committed",
+        backup: "/work/.folio/backups/Report.docx/old.docx",
+      },
+    ];
+
+    await h.session.flush("folio-cli");
+
+    expect(h.calls).toEqual([
+      "saveThroughWorkbench",
+      "info Saved your edits to Report.docx so folio-cli could write; the whole package was rewritten. The previous version is backed up at /work/.folio/backups/Report.docx/old.docx.",
+    ]);
+    expect(h.lease.released).toBe(1);
+    // The user was told, not asked: the next rewrite of their own still asks.
+    expect(h.rewrite.confirmed).toBe(false);
+    edit(h);
+    await h.session.save();
+    expect(h.calls.at(-1)).toBe("confirmRewrite");
+  });
+
+  test("a flush with a text-only save says nothing", async () => {
+    const h = harness();
+    edit(h);
+    await settle();
+
+    await h.session.flush("folio-cli");
+
+    expect(h.calls).toEqual(["saveThroughWorkbench"]);
   });
 });
 
