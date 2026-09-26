@@ -263,17 +263,23 @@ const paragraphJoinMap = (
 ): StepMap => {
   const ranges: number[] = [];
   let active: { from: number; to: number } | null = null;
-  const append = (deletion: { from: number; to: number }): void => {
-    if (active && deletion.from <= active.to) {
-      active.to = Math.max(active.to, deletion.to);
-      return;
+  const append = ({
+    current,
+    deletion,
+  }: {
+    current: { from: number; to: number } | null;
+    deletion: { from: number; to: number };
+  }): { from: number; to: number } => {
+    if (current && deletion.from <= current.to) {
+      current.to = Math.max(current.to, deletion.to);
+      return current;
     }
-    if (active) ranges.push(active.from - origin, active.to - active.from, 0);
-    active = { ...deletion };
+    if (current) ranges.push(current.from - origin, current.to - current.from, 0);
+    return deletion;
   };
   for (const join of joins.toReversed()) {
-    append({ from: join.closing, to: join.closing + 1 });
-    append({ from: join.opening, to: join.opening + 1 });
+    active = append({ current: active, deletion: { from: join.closing, to: join.closing + 1 } });
+    active = append({ current: active, deletion: { from: join.opening, to: join.opening + 1 } });
   }
   if (active) ranges.push(active.from - origin, active.to - active.from, 0);
   return new StepMap(ranges);
