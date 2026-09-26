@@ -11,7 +11,7 @@
  *
  * Every shape is built through the same public path a host uses:
  * `fromMarkdown` → model edits → `createDocx`, or an OOXML package written the
- * way Word writes it, and then `ensureParaIds`. Bytes are cached per shape, so
+ * way a word processor writes it, and then `ensureParaIds`. Bytes are cached per shape, so
  * a suite can build each one once and parse it per case.
  *
  * Each shape names a `focus`: the text of the paragraph a test should aim at
@@ -200,7 +200,7 @@ const paragraph = (inner: string, pPr = ""): string =>
 
 const textParagraph = (text: string, pPr = ""): string => paragraph(run(text), pPr);
 
-/** A styles part with the styles a Word document typically carries. */
+/** A styles part with the styles a word-processor document typically carries. */
 const WORD_STYLES = `${XML_DECL}<w:styles xmlns:w="${W_NS}">
 <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="MS Mincho" w:cs="Arial"/><w:sz w:val="22"/><w:lang w:val="en-US" w:eastAsia="ja-JP" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>
 <w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>

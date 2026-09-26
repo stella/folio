@@ -76,7 +76,7 @@ export type ConformanceOperation = {
   placements: readonly SelectionPlacement[];
   /**
    * How suggesting mode records the operation. `direct` operations are not
-   * revisions in Word either (a comment, resolving a change), so rejecting
+   * revisions in OOXML either (a comment, resolving a change), so rejecting
    * every change is not expected to undo them.
    */
   suggesting?: "tracked" | "direct";
