@@ -1751,12 +1751,20 @@ export const TablePluginExtension = createExtension({
       }
 
       if (dispatch) {
+        // A cell selection is addressed by the positions of cells, which the
+        // table map gives relative to the table's content start.
         const tableStart = context.tablePos + 1;
-        // Find first and last cell in the table
-        const $first = state.doc.resolve(tableStart);
-        const $last = state.doc.resolve(context.tablePos + context.table.nodeSize - 2);
-        const cellSel = CellSelection.create(state.doc, $first.pos, $last.pos);
-        dispatch(state.tr.setSelection(cellSel));
+        const { map } = TableMap.get(context.table);
+        const first = map[0];
+        const last = map.at(-1);
+        if (first === undefined || last === undefined) {
+          return false;
+        }
+        dispatch(
+          state.tr.setSelection(
+            CellSelection.create(state.doc, tableStart + first, tableStart + last),
+          ),
+        );
       }
       return true;
     }
@@ -1773,18 +1781,19 @@ export const TablePluginExtension = createExtension({
       }
 
       if (dispatch) {
+        // The table map names the cell covering each slot of the row, which
+        // is also right for a row whose first slot a merge from above covers.
         const tableStart = context.tablePos + 1;
-        // Navigate to the target row
-        let rowPos = tableStart;
-        for (let r = 0; r < context.rowIndex; r++) {
-          const row = context.table.child(r);
-          rowPos += row.nodeSize;
+        const tableMap = TableMap.get(context.table);
+        const firstCell = tableMap.map[context.rowIndex * tableMap.width];
+        if (firstCell === undefined) {
+          return false;
         }
-        const row = context.table.child(context.rowIndex);
-        const firstCellPos = rowPos + 1; // inside the row
-        const lastCellPos = rowPos + row.nodeSize - 2;
-        const cellSel = CellSelection.create(state.doc, firstCellPos, lastCellPos);
-        dispatch(state.tr.setSelection(cellSel));
+        dispatch(
+          state.tr.setSelection(
+            CellSelection.rowSelection(state.doc.resolve(tableStart + firstCell)),
+          ),
+        );
       }
       return true;
     }
