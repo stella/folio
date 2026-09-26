@@ -42,20 +42,30 @@ describe("transaction invariants", () => {
   });
 
   test("a transaction that references an undefined numbering instance throws with its steps", async () => {
-    // A package with no numbering part: the list command names an instance
-    // nothing defines (#1091), which the save path would refuse.
+    // Instance 42 is defined nowhere, so the save path would refuse the
+    // document (the #1091 class).
     const state = caretIn(await withInvariantPlugin("plain-markdown"), "First item");
+    const paragraphPos = state.selection.$from.before();
+    const paragraph = state.doc.nodeAt(paragraphPos);
+    if (!paragraph) {
+      throw new Error("no paragraph at the caret");
+    }
 
     let thrown: unknown;
     try {
-      toggleNumberedList(state, (tr) => state.apply(tr));
+      state.apply(
+        state.tr.setNodeMarkup(paragraphPos, undefined, {
+          ...paragraph.attrs,
+          numPr: { kind: "reference", numId: 42, ilvl: 0 },
+        }),
+      );
     } catch (error) {
       thrown = error;
     }
 
     expect(thrown).toBeInstanceOf(TransactionInvariantError);
     const error = thrown as TransactionInvariantError;
-    expect(error.message).toContain("Numbering definition 2 is missing.");
+    expect(error.message).toContain("Numbering definition 42 is missing.");
     expect(error.steps.length).toBeGreaterThan(0);
     expect(error.message).toContain('"stepType"');
   });
