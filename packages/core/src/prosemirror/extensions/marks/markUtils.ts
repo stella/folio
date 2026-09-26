@@ -25,6 +25,7 @@ import {
   expectTextEffectMarkAttrs,
 } from "../../attrs";
 import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
+import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
 import { normalizeHorizontalScalePercent } from "../../../utils/horizontalScale";
 import {
@@ -935,7 +936,12 @@ export function textFormattingToMarks(
 }
 
 /**
- * Clear all text formatting (remove all marks)
+ * Clear character formatting from the selection.
+ *
+ * Only the marks that carry run formatting go. A comment anchor, a hyperlink,
+ * a note reference, a tracked insertion or deletion and a run's identity are
+ * not formatting, and removing them deleted the comment's range, unlinked the
+ * text, orphaned the note and silently resolved the revision.
  */
 export const clearFormatting: Command = (state, dispatch) => {
   const { from, to, empty } = state.selection;
@@ -959,7 +965,9 @@ export const clearFormatting: Command = (state, dispatch) => {
         const start = Math.max(from, pos);
         const end = Math.min(to, pos + node.nodeSize);
         for (const mark of node.marks) {
-          tr = tr.removeMark(start, end, mark.type);
+          if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) {
+            tr = tr.removeMark(start, end, mark.type);
+          }
         }
       }
     });
