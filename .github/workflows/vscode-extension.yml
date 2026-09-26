@@ -1,0 +1,77 @@
+name: VS Code extension
+
+# Builds, tests, and packages plugins/vscode into a .vsix on pull requests that
+# can change it: the extension itself, and the CLI and engine it bundles.
+
+on:
+  pull_request:
+    paths:
+      - plugins/vscode/**
+      - packages/cli/**
+      - packages/agents/src/**
+      - packages/core/src/**
+      - packages/docx-core/src/**
+      - scripts/sync-plugin-cli-version*.ts
+      - .github/workflows/vscode-extension.yml
+  workflow_dispatch:
+
+concurrency:
+  group: vscode-extension-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and package the .vsix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      # The workspace install provides the CLI's dependencies, which the
+      # extension bundles; the extension's own install provides its tooling.
+      - run: bun install --frozen-lockfile
+
+      - run: bun install --frozen-lockfile
+        working-directory: plugins/vscode
+
+      - name: Plugin versions match the CLI
+        run: bun scripts/sync-plugin-cli-version.ts
+
+      - name: Typecheck
+        run: bun run typecheck
+        working-directory: plugins/vscode
+
+      - name: Test
+        run: bun run test
+        working-directory: plugins/vscode
+
+      - name: Package
+        run: bun run package
+        working-directory: plugins/vscode
+
+      - name: Bundled CLI renders a document
+        working-directory: plugins/vscode
+        run: |
+          node dist/cli/folio.mjs render ../../parity/fixtures/layout-kitchen-sink.docx \
+            -o "$RUNNER_TEMP/preview.html" --output json | tee "$RUNNER_TEMP/render.json"
+          node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); if (!r.ok || !(r.data.pageCount > 0)) process.exit(1);' "$RUNNER_TEMP/render.json"
+
+      - name: Upload the .vsix
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: folio-vscode-vsix
+          path: plugins/vscode/folio.vsix
+          if-no-files-found: error
+          retention-days: 14

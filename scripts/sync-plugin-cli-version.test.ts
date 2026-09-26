@@ -10,7 +10,8 @@ describe("plugin CLI versions", () => {
 
     const found = await pluginVersions();
 
-    expect(found.length).toBe(4);
+    expect(found.map(({ file }) => file)).toContain("plugins/vscode/package.json");
+    expect(found.length).toBe(5);
     for (const { file, versions } of found) {
       expect([file, versions.every((entry) => entry === version)]).toEqual([file, true]);
     }

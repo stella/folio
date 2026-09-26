@@ -1,0 +1,7 @@
+# The extension installs apart from the workspace, so its packaging tools stay
+# out of the root lockfile and audit. The policy matches the root bunfig.toml.
+[install]
+linker = "isolated"
+globalStore = true
+# 5-day quarantine: reject package versions published less than 5 days ago.
+minimumReleaseAge = 432_000
