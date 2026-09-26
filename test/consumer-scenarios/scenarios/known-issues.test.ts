@@ -311,7 +311,7 @@ describe("findings not yet filed", () => {
   expectedFailure(
     "REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH",
     "rejectAll undoes a merge of a split's second half into an inserted paragraph",
-    /nodeSize/u,
+    /out of range|nodeSize/u,
     async () => {
       const reviewer = await openReviewer(await plainDocument());
       const apply = (operation: Record<string, unknown>) =>

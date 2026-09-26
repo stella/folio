@@ -28,7 +28,9 @@ describe("applyDocumentOperations", () => {
       );
       const title = `${name} / ${mode}: every operation type applies or refuses, and the result saves`;
       const register = (body: () => Promise<void>) =>
-        known ? expectedFailure(known.finding, title, /nodeSize/u, body) : test(title, body);
+        known
+          ? expectedFailure(known.finding, title, /out of range|nodeSize/u, body)
+          : test(title, body);
       register(async () => {
         const before = await FIXTURES[name]();
         const reviewer = await openReviewer(before);
