@@ -258,10 +258,13 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
   let followingContainerChild = false;
   const flush = (): void => {
     if (!chain) return;
-    const children: PMNode[] = [];
-    for (let index = chain.chunks.length - 1; index >= 0; index--)
-      chain.chunks[index]?.forEach((child) => children.push(child));
-    const final = rebuild(chain.node, { content: Fragment.fromArray(children) });
+    let final = chain.node;
+    if (chain.chunks.length > 1) {
+      const children: PMNode[] = [];
+      for (let index = chain.chunks.length - 1; index >= 0; index--)
+        chain.chunks[index]?.forEach((child) => children.push(child));
+      final = rebuild(chain.node, { content: Fragment.fromArray(children) });
+    }
     if (!chain.before.sameMarkup(final))
       context.changedRanges.push({
         from: chain.position,
@@ -407,7 +410,10 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       }
     }
   }
-  const rebuilt = rebuild(node, { content: reversed });
+  const unchanged =
+    reversed.length === node.childCount &&
+    reversed.every((child, index) => child === node.child(index));
+  const rebuilt = unchanged ? node : rebuild(node, { content: reversed });
   if (node.type.spec["tableRole"] !== "table") return rebuilt;
   const tableResult = resolveAllTableChanges({ table: rebuilt, mode: context.mode });
   context.structural ||= tableResult.structural;
