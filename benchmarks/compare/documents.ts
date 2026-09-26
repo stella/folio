@@ -173,7 +173,7 @@ const numberingXml = (): string => {
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
     `<w:abstractNum w:abstractNumId="0">${levels}</w:abstractNum>` +
-    '<w:num w:numId="1"><w:abstractNumOverride w:val="0"/><w:abstractNumId w:val="0"/></w:num>' +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
     "</w:numbering>"
   );
 };
@@ -197,6 +197,9 @@ const DRAWING =
   '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="190500" cy="190500"/></a:xfrm>' +
   '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
   "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>";
+
+const drawing = (id: number): string =>
+  DRAWING.replace('wp:docPr id="1"', `wp:docPr id="${String(id)}"`);
 
 const EQUATION =
   "<m:oMath><m:sSup><m:e><m:r><m:t>a</m:t></m:r></m:e>" +
@@ -393,12 +396,16 @@ const buildNotes = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
 };
 
 /** Run content a redline must move whole: splitting one is a corrupt document. */
-const INDIVISIBLE_ATOMS = Object.freeze([DRAWING, EQUATION, "<w:r><w:br/></w:r>"] as const);
+const INDIVISIBLE_ATOMS = Object.freeze([
+  drawing,
+  (): string => EQUATION,
+  (): string => "<w:r><w:br/></w:r>",
+] as const);
 
 const buildGraphics = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
   const body: string[] = [];
   for (let index = 0; index < blocks; index++) {
-    const atom = INDIVISIBLE_ATOMS[index % INDIVISIBLE_ATOMS.length] ?? DRAWING;
+    const atom = (INDIVISIBLE_ATOMS[index % INDIVISIBLE_ATOMS.length] ?? drawing)(index + 1);
     body.push(
       paragraph(`${run(sentence(random, "latin", 8))}${atom}${run(sentence(random, "latin", 6))}`),
     );

@@ -266,6 +266,26 @@ const BODY_REWRITES = {
   rewrite,
 } as const satisfies Record<EditVariant, BodyRewrite>;
 
+/** Cloned paragraphs need fresh identities for their drawings and prior revisions. */
+const reassignCopiedIds = (xml: string, pattern: RegExp): string => {
+  let nextId = Math.max(0, ...[...xml.matchAll(pattern)].map((match) => Number(match[2]))) + 1;
+  const seen = new Set<number>();
+  return xml.replaceAll(pattern, (_match, prefix: string, value: string, suffix: string) => {
+    const id = Number(value);
+    if (!seen.has(id)) {
+      seen.add(id);
+      return `${prefix}${value}${suffix}`;
+    }
+    return `${prefix}${String(nextId++)}${suffix}`;
+  });
+};
+
+const uniqueCopiedIds = (xml: string): string =>
+  reassignCopiedIds(
+    reassignCopiedIds(xml, /(<wp:docPr\b[^>]*?\bid=")(\d+)(")/gu),
+    /(<w:(?:ins|del)\b[^>]*?\bw:id=")(\d+)(")/gu,
+  );
+
 const NOTE_PARTS = Object.freeze(["word/footnotes.xml", "word/endnotes.xml"] as const);
 
 const NUMBERING_PART = "word/numbering.xml";
@@ -367,6 +387,6 @@ export const applyVariant = ({ parts, variant }: ApplyVariantOptions): DocxPacka
   if (variant !== "identical" && rewritten.join("") === children.join("")) {
     return null;
   }
-  target.set("word/document.xml", replaceBodyChildren(documentXml, rewritten));
+  target.set("word/document.xml", uniqueCopiedIds(replaceBodyChildren(documentXml, rewritten)));
   return target;
 };
