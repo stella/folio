@@ -635,13 +635,15 @@ At 320 blocks the terms are small and the difference is inside the noise; at
 2,200 they were most of apply. Parse, align and serialize do not move, and
 should not: nothing in them changed.
 
-The products do not move either. Digests recorded from main's code and from
-this branch agree on all 136 configurations measured at `s`, `m` and
-`prose/l`, with identical change counts, invariant outcomes and refusals.
-`digests.json` as committed was not the reference: 104 of those 136 had
-drifted on main before this change, and 29 configurations fail an invariant or
-refuse on main (`lists/*/numbering`, `notes/*/notes`, `notes/*/everywhere`,
-`graphics/*`, `fields/*`, `sections/s/structural`). They fail identically here.
+The products do not move either. Every configuration at `s` and `m`, plus
+`prose/l`, was run from main's code and from this branch, one after the other,
+and the two reports agree on all 228 cases: digests (137 of them), change
+counts, invariant outcomes and refusals. The comparison was made twice, once on
+the main this branched from and once after rebasing onto the pair-gap and
+word-boundary change. `digests.json` as committed was not the reference: most
+of its entries had drifted on main before this change, and 28 configurations
+fail an invariant or refuse on main (`lists/*/numbering`, `notes/*/notes`,
+`notes/*/everywhere`, `graphics/*`, `fields/*`). They fail identically here.
 
 `inline-provenance.test.ts` hands the provenance check a document that throws
 if asked to resolve a position, and checks that a run is read against its own
