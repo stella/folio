@@ -1924,6 +1924,58 @@ function assignBooleanToggle(
   }
 }
 
+const PARAGRAPH_INDENTATION_VALUE_FIELDS = [
+  "indentLeft",
+  "indentRight",
+  "indentFirstLine",
+] as const;
+
+/**
+ * `w:ind` as the paragraph states it now.
+ *
+ * An indentation command edits the attrs and leaves `_originalFormatting`
+ * alone, so a paragraph that arrived with any `w:pPr` of its own saved its
+ * source indentation whatever the editor showed. A field the source stated is
+ * written at its current value; one it did not is written only when the style
+ * cascade does not already supply that value, as for a paragraph without
+ * `_originalFormatting`.
+ */
+function assignParagraphIndentation(
+  result: ParagraphFormatting,
+  attrs: ParagraphAttrs,
+  orig: ParagraphFormatting,
+): void {
+  let changed = false;
+  for (const key of PARAGRAPH_INDENTATION_VALUE_FIELDS) {
+    const value = authoredParagraphValue(
+      key,
+      attrs[key] ?? undefined,
+      orig,
+      attrs._resolvedFormatting,
+    );
+    if (value === (orig[key] ?? undefined)) {
+      continue;
+    }
+    changed = true;
+    if (value === undefined) {
+      Reflect.deleteProperty(result, key);
+    } else {
+      result[key] = value;
+    }
+  }
+  // `hangingIndent` reads as the sign of `indentFirstLine` and means nothing
+  // without it.
+  const hanging = result.indentFirstLine !== undefined && attrs.hangingIndent === true;
+  if (!changed && hanging === (orig.hangingIndent === true)) {
+    return;
+  }
+  if (hanging) {
+    result.hangingIndent = true;
+  } else {
+    Reflect.deleteProperty(result, "hangingIndent");
+  }
+}
+
 function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting | undefined {
   const directAlignment = directParagraphAlignment(attrs);
   const directSpacing = directParagraphSpacing(attrs);
@@ -2051,6 +2103,7 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
         delete result.styleId;
       }
     }
+    assignParagraphIndentation(result, attrs, orig);
     assignBooleanToggle(result, attrs, orig, "pageBreakBefore");
     assignBooleanToggle(result, attrs, orig, "widowControl");
     assignBooleanToggle(result, attrs, orig, "keepNext");

@@ -70,20 +70,44 @@ export const paragraphIndentationFromFormatting = (
   return Object.keys(indentation).length > 0 ? indentation : undefined;
 };
 
-/** Read direct indentation without materializing values inherited from a style. */
+const PARAGRAPH_INDENTATION_VALUE_KEYS = ["indentLeft", "indentRight", "indentFirstLine"] as const;
+
+/**
+ * Read direct indentation without materializing values inherited from a style:
+ * the `w:ind` a save writes for the paragraph.
+ *
+ * A field the source stated reads at its current value. A field it did not
+ * reads only when an edit set it to something the style cascade does not
+ * supply — reading `_originalFormatting` alone missed every indentation a
+ * command set on a paragraph whose source stated none. A hanging indent reads
+ * with a negative `indentFirstLine`, as the model states it.
+ */
 export const directParagraphIndentation = (
   attrs: ParagraphAttrs,
 ): DirectParagraphIndentation | undefined => {
-  const original = paragraphIndentationFromFormatting(attrs._originalFormatting);
-  if (!original) {
-    return undefined;
-  }
+  const original = attrs._originalFormatting ?? undefined;
+  const resolved = attrs._resolvedFormatting;
   const indentation: DirectParagraphIndentation = {};
-  for (const key of DIRECT_PARAGRAPH_INDENTATION_KEYS) {
-    if (original[key] === undefined) {
+  for (const key of PARAGRAPH_INDENTATION_VALUE_KEYS) {
+    const value = attrs[key];
+    if (typeof value !== "number") {
       continue;
     }
-    copyIndentationValue({ target: indentation, key, value: attrs[key] });
+    const stated = original?.[key] !== undefined;
+    // Without `_originalFormatting` a save writes only non-zero values.
+    const inherited = resolved?.[key] === value || (original === undefined && value === 0);
+    if (stated || !inherited) {
+      copyIndentationValue({ target: indentation, key, value });
+    }
+  }
+  if (indentation.indentFirstLine !== undefined) {
+    const hanging = attrs.hangingIndent === true;
+    indentation.hangingIndent = hanging;
+    if (hanging) {
+      indentation.indentFirstLine = -Math.abs(indentation.indentFirstLine);
+    }
+  } else if (original?.hangingIndent !== undefined && typeof attrs.hangingIndent === "boolean") {
+    indentation.hangingIndent = attrs.hangingIndent;
   }
   return Object.keys(indentation).length > 0 ? indentation : undefined;
 };
