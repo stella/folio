@@ -3,7 +3,7 @@
  *
  * A prefix is an alias for its namespace URI, so `<w:p>`, `<x:p>` and `<p>`
  * under a WordprocessingML default namespace are one element. Every fixture
- * folio tests with is spelled the way Word spells it, which is how a patcher
+ * folio tests with uses the conventional prefixes, which is how a patcher
  * that reads XML as a string can match `<w:p` literally and still pass. These
  * helpers rewrite any fixture into equivalent spellings, and compare parts by
  * what they mean rather than how they are spelled, so a test can hold a
@@ -23,11 +23,11 @@ import {
 } from "../xmlParser";
 
 /**
- * - `alias`: WordprocessingML under `x:`, the Word 2010 extensions under `x14:`.
+ * - `alias`: WordprocessingML under `x:`, the `w14` extensions under `x14:`.
  * - `default`: WordprocessingML elements unprefixed under a default namespace;
  *   its attributes (which never take a default namespace) under `x:`, and the
- *   Word 2010 extensions under `x14:`.
- * - `w14-alias`: only the Word 2010 extensions move, to `x14:`; `w:` stays.
+ *   `w14` extensions under `x14:`.
+ * - `w14-alias`: only the `w14` extensions move, to `x14:`; `w:` stays.
  */
 export type PrefixVariant = "alias" | "default" | "w14-alias";
 

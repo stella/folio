@@ -10,7 +10,7 @@
  * spells it `<x:p`: the patch reports success having touched nothing.
  *
  * {@link resolveWordprocessingPrefixes} is the one place those patchers ask
- * how a part spells WordprocessingML, the Word 2010 extensions (`w14`) and
+ * how a part spells WordprocessingML, the `w14` extensions and
  * markup compatibility (`mc`). A patcher either scans with every prefix the
  * part binds, or refuses a part that is not {@link WordprocessingPrefixes.canonical}.
  * A binding it cannot follow with a string scan — a nested element that
@@ -27,7 +27,7 @@ export type WordprocessingPrefixes = {
    * default namespace. Never empty: an undeclared part reads as `w`.
    */
   main: readonly string[];
-  /** Prefixes bound to the Word 2010 extensions (`w14`). */
+  /** Prefixes bound to the `w14` extensions namespace. */
   w14: readonly string[];
   /** Whether a `w14` prefix is declared on the root (else `w14` is assumed). */
   w14Declared: boolean;
@@ -158,7 +158,7 @@ const CONVENTIONAL_PREFIX: Record<NamespaceSlot, string> = { main: "w", w14: "w1
  * Resolve the prefixes `xml` binds to WordprocessingML, `w14` and `mc`.
  *
  * Root declarations decide. A namespace the root never declares is read under
- * its conventional prefix, as Word does for a malformed part. A declaration on
+ * its conventional prefix, the tolerant reading of a malformed part. A declaration on
  * a nested element is accepted only when it repeats a binding the scan already
  * uses; anything else changes what a literal tag means partway through the
  * part and is reported as unsupported.

@@ -3,11 +3,11 @@
  * binds WordprocessingML to — or refuses.
  *
  * The parser resolves names by namespace URI, so a package spelled `<x:p>`
- * or `<p xmlns="…/main">` opens exactly like Word's `<w:p>`. The patchers that
+ * or `<p xmlns="…/main">` opens exactly like the conventional `<w:p>`. The patchers that
  * splice part XML as text (`ensureParaIds`, the selective-save splices, the
  * note-part and numbering patches, the styles append, the comment-range
  * guard every splice goes through) find elements by literal tags, and every
- * fixture folio owns is spelled the way Word spells it, so a patcher that
+ * fixture folio owns uses the conventional prefixes, so a patcher that
  * only knew `w:` passed every test while reporting success on a respelled
  * package it had not touched. This suite respells each corpus fixture (see
  * `namespacePrefixVariants.ts`) and holds each patcher to: the same result,
@@ -103,7 +103,7 @@ const withoutParagraphIds = async (docx: Uint8Array): Promise<Uint8Array> => {
   return zip.generateAsync({ type: "uint8array" });
 };
 
-/** The two sides of one comparison: the fixture as Word spells it, and respelled. */
+/** The two sides of one comparison: the fixture as written, and respelled. */
 type Pair = { canonical: Uint8Array; variant: Uint8Array };
 
 const respell = async (canonical: Uint8Array, variant: PrefixVariant): Promise<Pair | null> => {
@@ -365,4 +365,38 @@ describe("string-level XML patchers are prefix independent", () => {
     expect(await blockRows(variantReview.saved)).toEqual(await blockRows(canonicalReview.saved));
     count("review", variant);
   });
+
+  test.each(PREFIX_VARIANTS)(
+    "a style the model adds is appended to a %s styles part, not rewritten over it",
+    async (variant) => {
+      const canonical = await loadFixture("generated:lists");
+      const respelled = await rewritePackagePrefixes(canonical, variant);
+      if (!respelled?.rewritten.includes("word/styles.xml")) {
+        throw new Error(`generated fixture has no ${variant} styles part`);
+      }
+      const addStyle = async (docx: Uint8Array) => {
+        const doc = await parseDocx(toArrayBuffer(docx));
+        const styles = doc.package.styles?.styles ?? [];
+        const base = styles.find((style) => style.type === "paragraph");
+        if (!base) throw new Error("no paragraph style to clone");
+        styles.push({ ...structuredClone(base), styleId: "AddedByModel", default: false });
+        return repackDocx(doc);
+      };
+      const [canonicalOut, variantOut] = await Promise.all([
+        addStyle(canonical),
+        addStyle(respelled.docx),
+      ]);
+      const [sourceParts, variantParts] = await Promise.all([
+        readParts(respelled.docx),
+        readParts(variantOut),
+      ]);
+      const styles = variantParts.get("word/styles.xml") ?? "";
+      // Appended before the root's own close tag; the source bytes kept.
+      const source = sourceParts.get("word/styles.xml") ?? "";
+      const close = source.lastIndexOf("</");
+      expect(styles.startsWith(source.slice(0, close))).toBe(true);
+      expect(styles).toContain('styleId="AddedByModel"');
+      await expectSameParts(canonicalOut, variantOut);
+    },
+  );
 });

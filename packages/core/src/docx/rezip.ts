@@ -2733,7 +2733,10 @@ async function serializeAddedStylesIntoZip(
   // The root closes under whatever prefix the part binds WordprocessingML
   // to. Reading only `</w:styles>` took an `x:styles` part for "no usable
   // styles part" and replaced it wholesale with the model's serialization.
-  const rootName = originalXml === null ? undefined : parseXmlDocument(originalXml)?.name;
+  const rootName =
+    originalXml === null
+      ? undefined
+      : /<(?![?!])(?<name>[^\s/>]+)/u.exec(originalXml)?.groups?.["name"];
   const rootClose =
     originalXml !== null && rootName !== undefined && getLocalName(rootName) === "styles"
       ? originalXml.lastIndexOf(`</${rootName}>`)
