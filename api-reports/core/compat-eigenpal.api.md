@@ -953,7 +953,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
     };
     styleId?: string | null;
     listLevel?: number | null;
-    numbering?: FolioAIListReference | null;
+    numbering?: FolioAIListNumbering | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;
     spacing?: FolioAIParagraphSpacing | null;
     indentation?: FolioAIParagraphIndentation | null;

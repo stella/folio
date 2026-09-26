@@ -103,6 +103,9 @@ export const clearStyle: Command;
 export const clearTextColor: Command;
 
 // @public
+export const continueNumbering: Command;
+
+// @public
 export function createDocumentStylesPlugin(styles: import__stll_docx_core_model.StyleDefinitions | StyleResolver | null | undefined): Plugin_2;
 
 // @public
@@ -327,6 +330,17 @@ export function isInTable(state: EditorState): boolean;
 export function isMarkActive(state: EditorState, markType: MarkType, attrs?: Record<string, unknown>): boolean;
 
 // @public
+export type ListNumberingMenuState = {
+    readonly type: "none";
+} | {
+    readonly type: "listItem";
+    readonly canContinue: boolean;
+};
+
+// @public
+export const listNumberingMenuState: (state: EditorState) => ListNumberingMenuState;
+
+// @public
 export type ListState = {
     readonly type: "none";
 } | {
@@ -347,6 +361,11 @@ export type ListType = ListState["type"];
 
 // @public (undocumented)
 export function mergeCells(state: EditorState, dispatch?: (tr: Transaction) => void): boolean;
+
+// @public (undocumented)
+export const NO_LIST_NUMBERING_MENU: {
+    readonly type: "none";
+};
 
 // @public
 export const NO_LIST_STATE: {
@@ -482,6 +501,9 @@ export type ResolvedParagraphStyle = {
 export const resolveListState: (numbering: NumberingMap | null | undefined, numPr: ParagraphNumberingOverride | undefined) => ListState;
 
 // @public
+export const restartNumbering: Command;
+
+// @public
 export const sameListState: (left: ListState | undefined, right: ListState | undefined) => boolean;
 
 // @public (undocumented)
@@ -569,6 +591,9 @@ export function setLineSpacing(value: number, rule?: import__stll_docx_core_mode
 
 // @public (undocumented)
 export const setLtr: Command;
+
+// @public
+export function setNumberingValue(value: number): Command;
 
 // @public (undocumented)
 export function setOutsideTableBorders(state: EditorState, dispatch?: (tr: Transaction) => void, borderSpec?: TableBorderCommandSpec): boolean;
