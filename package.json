@@ -104,6 +104,7 @@
     "sync-ai:check": "bash .ai/shared/scripts/sync-ai-skills.sh --check .",
     "test:packaged-consumer": "bun scripts/packaged-consumer-build.ts",
     "test:packaged-consumer-smoke": "bun scripts/packaged-consumer-smoke.ts",
+    "test:consumer-scenarios": "bun scripts/consumer-scenarios.ts",
     "validate-dist": "bun scripts/validate-dist.ts docx-core && bun scripts/validate-dist.ts core && bun scripts/validate-dist.ts react && bun scripts/validate-dist.ts agents && bun scripts/validate-dist.ts cli && bun scripts/validate-dist.ts vue && bun scripts/validate-dist.ts nuxt",
     "validate-dist:docx-core": "bun scripts/validate-dist.ts docx-core",
     "validate-dist:core": "bun scripts/validate-dist.ts core",

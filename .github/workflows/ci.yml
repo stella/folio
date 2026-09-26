@@ -502,6 +502,33 @@ jobs:
         env:
           DIFFERENTIAL_REQUIRED: "1"
 
+  consumer-scenarios:
+    name: Consumer scenarios (tarballs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      # The scenarios run under Node, as an integrator runs the packages; 22 is
+      # the oldest Node the CLI supports.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - run: bun install --frozen-lockfile
+
+      # Builds and packs docx-core, core, agents and cli, installs the tarballs
+      # into a project outside the workspace, typechecks the scenarios against
+      # the published declarations, and runs them against public entry points
+      # only: synthetic documents, act, save, reopen, compare every reader.
+      - name: Scenarios over packed tarballs
+        run: bun scripts/consumer-scenarios.ts --typecheck
+
   packaged-consumer:
     name: Packaged-consumer build (tarballs)
     runs-on: ubuntu-latest
