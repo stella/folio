@@ -67,9 +67,12 @@ import {
 import {
   acceptAIEditRevision,
   acceptAllSuggestions,
+  acceptSuggestion,
   rejectAIEditRevision,
   rejectAllSuggestions,
+  rejectSuggestion,
   resolveAllChangesInHeadlessState,
+  suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
@@ -2132,6 +2135,13 @@ export class FolioDocxReviewer {
 
   private acceptChangeInternal(target: FolioReviewChange | number): boolean {
     const id = revisionIdOf(target);
+    // A suggested change first becomes an ordinary tracked change: a
+    // suggested paragraph insert is flagged on its node, which accepting the
+    // revision marks alone leaves behind, and a save drops a flagged node.
+    const suggestionId = suggestionIdOfRevision(this.state, id);
+    if (suggestionId !== null) {
+      this.runCommand(acceptSuggestion(suggestionId, { author: this.author }));
+    }
     const bodyChanged = this.runCommand(acceptAIEditRevision(id));
     const sectionChanged = this.resolveFinalSectionProperties("accept", id) > 0;
     return bodyChanged || sectionChanged;
@@ -2147,6 +2157,11 @@ export class FolioDocxReviewer {
 
   private rejectChangeInternal(target: FolioReviewChange | number): boolean {
     const id = revisionIdOf(target);
+    // A suggestion is rejected whole, node flags included.
+    const suggestionId = suggestionIdOfRevision(this.state, id);
+    if (suggestionId !== null && this.runCommand(rejectSuggestion(suggestionId))) {
+      return true;
+    }
     const bodyChanged = this.runCommand(rejectAIEditRevision(id));
     const sectionChanged = this.resolveFinalSectionProperties("reject", id) > 0;
     return bodyChanged || sectionChanged;

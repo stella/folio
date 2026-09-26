@@ -1942,6 +1942,16 @@ export function getSuggestions(state: EditorState): FolioSuggestion[] {
   return suggestions.toSorted((a, b) => (a.ranges[0]?.from ?? 0) - (b.ranges[0]?.from ?? 0));
 }
 
+/** The suggestion a revision belongs to, or `null` for an ordinary tracked change. */
+export function suggestionIdOfRevision(state: EditorState, revisionId: number): string | null {
+  for (const [suggestionId, entry] of collectSuggestions(state)) {
+    if (entry.revisionIds.has(revisionId)) {
+      return suggestionId;
+    }
+  }
+  return null;
+}
+
 /**
  * The document range covering every mark belonging to `suggestionId`, plus the
  * revision ids those marks carry. Returns null when the suggestion is absent

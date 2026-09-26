@@ -82,6 +82,31 @@ describe("resolving every suggestion headlessly", () => {
     ]);
   });
 
+  test("acceptChange on a suggested paragraph insert keeps the paragraph through the save", async () => {
+    const reviewer = await suggest();
+    const insertion = reviewer
+      .getChanges()
+      .find(({ type, text }) => type === "insertion" && text === "Suggested clause.");
+    if (!insertion) {
+      throw new Error("the suggested insertion is not listed");
+    }
+    expect(reviewer.acceptChange(insertion)).toBe(true);
+    expect(await savedTexts(reviewer)).toContain("Suggested clause.");
+  });
+
+  test("rejectChange on a suggested paragraph insert removes the paragraph", async () => {
+    const reviewer = await suggest();
+    const insertion = reviewer
+      .getChanges()
+      .find(({ type, text }) => type === "insertion" && text === "Suggested clause.");
+    if (!insertion) {
+      throw new Error("the suggested insertion is not listed");
+    }
+    expect(reviewer.rejectChange(insertion)).toBe(true);
+    expect(reviewer.getContent().map(({ text }) => text)).not.toContain("");
+    expect(reviewer.getContent().map(({ text }) => text)).not.toContain("Suggested clause.");
+  });
+
   test("rejectAll removes every suggestion", async () => {
     const reviewer = await suggest();
     reviewer.rejectAll();
