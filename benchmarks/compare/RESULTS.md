@@ -658,6 +658,80 @@ identity. On `prose/l/heavy` that is O(paragraphs x steps) and about three
 quarters of what is left of apply. It is a product cost, not a compare one,
 and wants its own change.
 
+### The editor plugins map a transaction once
+
+Profiled first: on `prose/l/heavy`, applying the batch's transactions through
+the plugin stack was 12.5s of the 16.0s the child process spent in
+`applyComparison` (the timed comparison plus its invariant re-runs), almost all
+of it `StepMap._map` and the `MapResult` objects it allocates. Two shapes, both quadratic. The allocator mapped every
+paragraph through every step; the tracker, base-direction detection (through
+`getTransactionDirtyRange`) and run identity sliced the mapping once per step
+and mapped that step's range through all the steps after it. The tracker then
+looked each mapped range up with `nodesBetween` and `nodeAt`, which scan the
+document's children from index 0, so it was O(blocks) per step on top.
+
+`sweepPositions` keeps the positions sorted, one lane per `assoc`, and applies
+each step map once: the positions a changed range covers are mapped exactly by
+the map itself, and everything after it moves by one shift. Mapping is monotone
+for a fixed `assoc`, so the order survives every map, and a position that
+enters at step k — a step's own range — is inserted into the sorted lanes
+there. A mapping that carries mirror pairs (a collaborative rebase) still walks
+every map, because a mirrored map recovers a deleted position from its twin.
+`nodesBetweenIndexed`, `nodeAtIndexed` and `enclosingParagraphIndexed`
+binary-search a cached table of child offsets and otherwise do what the
+ProseMirror methods do.
+
+Main against this branch, back to back under the machine-wide benchmark lock,
+CPU time per stage, median of 5 runs after 2 warm-ups, each in its own process.
+The host was shared (one-minute load 22 to 45 across the run), so CPU time is
+the column to read.
+
+| Configuration        | Load    | apply CPU before | apply CPU after | total CPU before | total CPU after |
+| -------------------- | ------- | ---------------- | --------------- | ---------------- | --------------- |
+| `prose/l/identical`  | 33 / 32 | 117.8ms          | 107.9ms         | 509.2ms          | 528.3ms         |
+| `prose/l/light`      | 31 / 38 | 436.0ms          | 354.6ms         | 977.4ms          | 890.3ms         |
+| `prose/l/heavy`      | 38 / 45 | 2873.8ms         | 714.4ms         | 3656.7ms         | 1354.4ms        |
+| `prose/l/churn`      | 40 / 34 | 2325.0ms         | 935.3ms         | 2922.8ms         | 1427.1ms        |
+| `prose/l/reorder`    | 30 / 28 | 548.8ms          | 423.5ms         | 949.6ms          | 873.6ms         |
+| `prose/l/structural` | 26 / 24 | 1268.9ms         | 882.5ms         | 1715.0ms         | 1438.4ms        |
+| `prose/m/light`      | 22 / 22 | 70.0ms           | 61.6ms          | 185.6ms          | 195.8ms         |
+| `prose/m/heavy`      | 22 / 22 | 129.5ms          | 123.7ms         | 271.6ms          | 275.6ms         |
+| `prose/m/churn`      | 22 / 22 | 146.1ms          | 120.7ms         | 292.6ms          | 264.8ms         |
+
+The whole `--filter prose/l --quick` run, under `/usr/bin/time`: 248.3s of CPU
+before, 184.6s after.
+
+The editor pays the same cost on any large multi-step transaction, not only in
+compare. `benchmarks/editor-transaction.bench.ts` applies one 1,000-step
+transaction to a 2,000-paragraph document through the full plugin stack. Same
+hold of the lock, median of 7 after a warm-up:
+
+| Transaction                       | CPU before | CPU after |
+| --------------------------------- | ---------- | --------- |
+| replace-all, one word per step    | 102.3ms    | 25.0ms    |
+| format-all, one mark step per run | 64.2ms     | 6.9ms     |
+
+The products do not move. Every configuration at `s` and `m` (216 cases, 130
+digests), plus `prose/l` (12 cases), was run from main's code and from this
+branch, and the reports agree on every digest, change count, invariant outcome
+and refusal; the same 28 configurations fail an invariant or refuse on both.
+`pluginStepMapping.property.test.ts` keeps each plugin's per-step
+implementation as the reference and checks random multi-step transactions,
+one to three per batch, against it: the tracker's whole state including the
+insertion order of the sets selective save reads, the allocator's surviving
+owners, the dirty range and run identity's inserted ranges.
+`positionSweep.property.test.ts` and `indexedNodeLookup.property.test.ts` do
+the same for the two helpers. `pluginStepMapping.test.ts` is the guard: it
+counts step-map calls while each plugin handles a 600-paragraph, 200-step
+transaction, and main's plugins fail it at 41,000 to 245,000 calls against a
+bound of 1,608.
+
+What is left of `prose/l/heavy`'s apply is the applier itself:
+`applyMinimalTrackedReplacement` and `planDocumentReplacement` resolve and
+`nodeAt` their way to each replacement from the root, O(blocks) per change. In
+the same profile, applying transactions through the plugin stack fell from
+12.5s to 0.3s.
+
 ## Correctness gaps the baseline surfaced
 
 Three configurations failed, and each named a real gap rather than a flake.
