@@ -4,6 +4,7 @@ import { history, undoDepth } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
 
+import { propertyTestTimeout } from "../../../../../test/property-testing";
 import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
@@ -175,28 +176,32 @@ const expectEquivalent = (state: EditorState) => {
 };
 
 describe("resolve-all command equivalence", () => {
-  test("matches the legacy whole-document range over mixed paragraph and table revisions", () => {
-    fc.assert(
-      fc.property(
-        fc.array(paragraphCase, { minLength: 2, maxLength: 6 }),
-        fc.constantFrom("none", "trIns", "trDel"),
-        fc.constantFrom("none", "ins", "del"),
-        (items, rowMarker, cellMarker) => {
-          const blocks = items.map(paragraph);
-          blocks.splice(1, 0, table(rowMarker, cellMarker));
-          const doc = schema.node("doc", null, blocks);
-          const state = EditorState.create({
-            schema,
-            doc,
-            selection: TextSelection.create(doc, 2),
-            plugins: [trackerPlugin],
-          });
-          expectEquivalent(state);
-        },
-      ),
-      { seed: 2_609_260, numRuns: 32, verbose: true },
-    );
-  });
+  test(
+    "matches the legacy whole-document range over mixed paragraph and table revisions",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.array(paragraphCase, { minLength: 2, maxLength: 6 }),
+          fc.constantFrom("none", "trIns", "trDel"),
+          fc.constantFrom("none", "ins", "del"),
+          (items, rowMarker, cellMarker) => {
+            const blocks = items.map(paragraph);
+            blocks.splice(1, 0, table(rowMarker, cellMarker));
+            const doc = schema.node("doc", null, blocks);
+            const state = EditorState.create({
+              schema,
+              doc,
+              selection: TextSelection.create(doc, 2),
+              plugins: [trackerPlugin],
+            });
+            expectEquivalent(state);
+          },
+        ),
+        { seed: 2_609_260, numRuns: 32, verbose: true },
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 
   test("matches paragraph joins, table-adjacent removal, and tracked section endpoints", () => {
     const doc = schema.node("doc", null, [

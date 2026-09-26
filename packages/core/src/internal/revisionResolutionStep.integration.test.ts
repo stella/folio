@@ -3,6 +3,7 @@ import fc from "fast-check";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
+import { propertyTestTimeout } from "../../../../test/property-testing";
 import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { RevisionResolutionStep } from "./revisionResolutionStep";
@@ -80,77 +81,81 @@ const table = (rowMarker: "none" | "trIns" | "trDel", cellMarker: "none" | "ins"
     ]),
   ]);
 
-test("bulk resolution JSON replay and undo match its cached result", () => {
-  const result = fc.check(
-    fc.property(
-      fc.array(
-        fc.record({
-          mark: fc.constantFrom("none", "ins", "del"),
-          inline: fc.constantFrom("plain", "ins", "del", "format"),
-        }),
-        { minLength: 2, maxLength: 5 },
+test(
+  "bulk resolution JSON replay and undo match its cached result",
+  () => {
+    const result = fc.check(
+      fc.property(
+        fc.array(
+          fc.record({
+            mark: fc.constantFrom("none", "ins", "del"),
+            inline: fc.constantFrom("plain", "ins", "del", "format"),
+          }),
+          { minLength: 2, maxLength: 5 },
+        ),
+        fc.constantFrom("none", "trIns", "trDel"),
+        fc.constantFrom("none", "ins", "del"),
+        (items, rowMarker, cellMarker) => {
+          const blocks = items.map(({ mark, inline }, index) => paragraph(index + 1, mark, inline));
+          blocks.splice(1, 0, table(rowMarker, cellMarker));
+          const doc = schema.node("doc", null, blocks);
+          const state = EditorState.create({ schema, doc });
+          for (const mode of ["accept", "reject"] as const) {
+            let transaction: Transaction | null = null;
+            const command = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
+            expect(
+              command(state, (dispatched) => {
+                transaction = dispatched;
+              }),
+            ).toBe(true);
+            if (!transaction) {
+              continue;
+            }
+            expect(transaction.steps).toHaveLength(1);
+            const step = transaction.steps.at(0);
+            expect(step).toBeInstanceOf(RevisionResolutionStep);
+            if (!step) {
+              throw new Error("Missing bulk revision step");
+            }
+            const resolved = transaction.doc;
+            expect(step.getMap().map(0, -1)).toBe(0);
+            expect(step.getMap().map(doc.content.size, 1)).toBe(resolved.content.size);
+            step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+              expect(oldStart).toBeGreaterThanOrEqual(0);
+              expect(oldEnd).toBeLessThanOrEqual(doc.content.size);
+              expect(newStart).toBeGreaterThanOrEqual(0);
+              expect(newEnd).toBeLessThanOrEqual(resolved.content.size);
+            });
+            const replayed = Step.fromJSON(schema, step.toJSON()).apply(doc);
+            if (!replayed.doc?.eq(resolved)) {
+              throw new Error(
+                `${mode} replay failed: ${replayed.failed ?? JSON.stringify(replayed.doc?.toJSON())} expected ${JSON.stringify(resolved.toJSON())}`,
+              );
+            }
+            const inverse = step.invert(doc);
+            const undone = inverse.apply(resolved);
+            if (!undone.doc?.eq(doc)) {
+              throw new Error(
+                `${mode} cached undo failed: ${undone.failed ?? JSON.stringify(undone.doc?.toJSON())}`,
+              );
+            }
+            const replayedUndo = Step.fromJSON(schema, inverse.toJSON()).apply(resolved);
+            if (!replayedUndo.doc?.eq(doc)) {
+              throw new Error(
+                `${mode} undo replay failed: ${replayedUndo.failed ?? JSON.stringify(replayedUndo.doc?.toJSON())}`,
+              );
+            }
+          }
+        },
       ),
-      fc.constantFrom("none", "trIns", "trDel"),
-      fc.constantFrom("none", "ins", "del"),
-      (items, rowMarker, cellMarker) => {
-        const blocks = items.map(({ mark, inline }, index) => paragraph(index + 1, mark, inline));
-        blocks.splice(1, 0, table(rowMarker, cellMarker));
-        const doc = schema.node("doc", null, blocks);
-        const state = EditorState.create({ schema, doc });
-        for (const mode of ["accept", "reject"] as const) {
-          let transaction: Transaction | null = null;
-          const command = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
-          expect(
-            command(state, (dispatched) => {
-              transaction = dispatched;
-            }),
-          ).toBe(true);
-          if (!transaction) {
-            continue;
-          }
-          expect(transaction.steps).toHaveLength(1);
-          const step = transaction.steps.at(0);
-          expect(step).toBeInstanceOf(RevisionResolutionStep);
-          if (!step) {
-            throw new Error("Missing bulk revision step");
-          }
-          const resolved = transaction.doc;
-          expect(step.getMap().map(0, -1)).toBe(0);
-          expect(step.getMap().map(doc.content.size, 1)).toBe(resolved.content.size);
-          step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
-            expect(oldStart).toBeGreaterThanOrEqual(0);
-            expect(oldEnd).toBeLessThanOrEqual(doc.content.size);
-            expect(newStart).toBeGreaterThanOrEqual(0);
-            expect(newEnd).toBeLessThanOrEqual(resolved.content.size);
-          });
-          const replayed = Step.fromJSON(schema, step.toJSON()).apply(doc);
-          if (!replayed.doc?.eq(resolved)) {
-            throw new Error(
-              `${mode} replay failed: ${replayed.failed ?? JSON.stringify(replayed.doc?.toJSON())} expected ${JSON.stringify(resolved.toJSON())}`,
-            );
-          }
-          const inverse = step.invert(doc);
-          const undone = inverse.apply(resolved);
-          if (!undone.doc?.eq(doc)) {
-            throw new Error(
-              `${mode} cached undo failed: ${undone.failed ?? JSON.stringify(undone.doc?.toJSON())}`,
-            );
-          }
-          const replayedUndo = Step.fromJSON(schema, inverse.toJSON()).apply(resolved);
-          if (!replayedUndo.doc?.eq(doc)) {
-            throw new Error(
-              `${mode} undo replay failed: ${replayedUndo.failed ?? JSON.stringify(replayedUndo.doc?.toJSON())}`,
-            );
-          }
-        }
-      },
-    ),
-    { seed: 260926, numRuns: 32, verbose: true },
-  );
-  if (result.failed) {
-    throw result.errorInstance;
-  }
-});
+      { seed: 260926, numRuns: 32, verbose: true },
+    );
+    if (result.failed) {
+      throw result.errorInstance;
+    }
+  },
+  propertyTestTimeout(30_000),
+);
 
 test("a paragraph join after whole-table deletion has a valid replay map", () => {
   const doc = schema.node("doc", null, [

@@ -3,7 +3,6 @@ import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, type Step } from "prosemirror-transform";
 import {
   getProseParagraphPropertySourceToken,
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   recreateProseNodeWithParagraphPropertySource as rebuild,
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "../prosemirror/attrs";
@@ -321,12 +320,6 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           ...owner.attrs,
           pPrMark: next.attrs["pPrMark"],
           _sectionProperties: next.attrs["_sectionProperties"],
-          ...(empty
-            ? {
-                [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]:
-                  getProseParagraphPropertySourceToken(next) ?? null,
-              }
-            : {}),
         },
       });
       chain.chunks.push(paragraph.content);
