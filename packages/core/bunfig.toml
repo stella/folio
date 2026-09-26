@@ -3,4 +3,10 @@
 # layout engine measures through a pure provider seam whose default throws until
 # a backend is installed at a composition root (the React editor does this at
 # runtime). The preload is shared with @stll/folio-react at the repo root.
-preload = ["../../test/installMeasureProvider.preload.ts"]
+# Every extension-manager runtime also checks the document after each
+# transaction (prosemirror/plugins/transactionInvariants), so an editor test
+# whose command leaves a document the save path would refuse fails there.
+preload = [
+  "../../test/installMeasureProvider.preload.ts",
+  "../../test/transactionInvariants.preload.ts",
+]

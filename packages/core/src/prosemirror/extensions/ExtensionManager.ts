@@ -12,6 +12,10 @@ import { Schema } from "prosemirror-model";
 import type { NodeSpec, MarkSpec } from "prosemirror-model";
 import type { Plugin as PMPlugin } from "prosemirror-state";
 
+import {
+  areTransactionInvariantsEnabled,
+  createTransactionInvariantPlugin,
+} from "../plugins/transactionInvariants";
 import { createTextInputPlugin } from "../textInput";
 
 import type {
@@ -88,10 +92,14 @@ export class ExtensionManager {
     // Every editor runtime owns text input at the DOM/model boundary. Install
     // this centrally so body, header/footer, and note views share the policy.
     // Extension plugins and merged keymaps retain their relative priority.
+    // The invariant check runs last so it sees what every other plugin's
+    // appended transactions left behind. Off unless a test or development
+    // build sets `globalThis.__folioTransactionInvariants`.
     this.plugins = [
       createTextInputPlugin(),
       ...allPlugins,
       ...allKeyboardShortcuts.map((shortcuts) => keymap(shortcuts)),
+      ...(areTransactionInvariantsEnabled() ? [createTransactionInvariantPlugin()] : []),
     ];
 
     this.commands = allCommands;

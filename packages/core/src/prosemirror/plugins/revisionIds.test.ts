@@ -51,8 +51,11 @@ describe("mintRevisionId", () => {
 
 describe("seedRevisionIdsAbove", () => {
   test("resumes numbering just above the document's existing max id", () => {
-    seedRevisionIdsAbove(1_000_000);
-    expect(mintRevisionId()).toBe(1_000_001);
+    // The counter is module state shared with every earlier test in the run,
+    // so seed relative to where it stands rather than to a fixed id.
+    const maxId = mintRevisionId() + 1_000_000;
+    seedRevisionIdsAbove(maxId);
+    expect(mintRevisionId()).toBe(maxId + 1);
   });
 
   test("never lowers the counter", () => {

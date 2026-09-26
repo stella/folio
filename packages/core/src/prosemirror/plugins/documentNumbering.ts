@@ -125,6 +125,14 @@ export const getDocumentNumbering = (state: EditorState): NumberingMap | null =>
 export const getPackageNumberingDefinitions = (state: EditorState): NumberingDefinitions | null =>
   documentNumberingKey.getState(state)?.definitions ?? null;
 
+/**
+ * Whether the state knows its document's numbering at all. A state without
+ * the plugin cannot tell a package with no numbering part from one it was
+ * never told about.
+ */
+export const hasDocumentNumbering = (state: EditorState): boolean =>
+  documentNumberingKey.get(state) !== undefined;
+
 /** Replace numbering state while retaining every unrelated plugin state. */
 export const withDocumentNumbering = (
   state: EditorState,
