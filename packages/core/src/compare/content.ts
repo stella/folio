@@ -1130,43 +1130,75 @@ const separatorBetween = (whole: string, head: string, tail: string): string | n
   return separator.length === 0 || /^\s+$/u.test(separator) ? separator : null;
 };
 
+type SplitPlanOptions<Block extends FolioContentBlock> = {
+  baseBlock: Block;
+  head: Block;
+  tail: Block;
+};
+
+const splitPlan = <Block extends FolioContentBlock>({
+  baseBlock,
+  head,
+  tail,
+}: SplitPlanOptions<Block>): ParagraphMarkPlan<Block> | null => {
+  const separator = separatorBetween(baseBlock.text, head.text, tail.text);
+  return separator !== null && contentBlocksShareContainer(head, tail)
+    ? { type: "split", baseBlock, revisedBlocks: [head, tail], offset: head.text.length, separator }
+    : null;
+};
+
+type MergePlanOptions<Block extends FolioContentBlock> = {
+  revisedBlock: Block;
+  head: Block;
+  tail: Block;
+};
+
+const mergePlan = <Block extends FolioContentBlock>({
+  revisedBlock,
+  head,
+  tail,
+}: MergePlanOptions<Block>): ParagraphMarkPlan<Block> | null => {
+  const separator = separatorBetween(revisedBlock.text, head.text, tail.text);
+  return separator !== null && contentBlocksShareContainer(head, tail)
+    ? { type: "merge", baseBlocks: [head, tail], revisedBlock, separator }
+    : null;
+};
+
+/**
+ * A pair next to a one-sided block its text spells together with the pair's
+ * other side. Alignment pairs a split paragraph with whichever half reads more
+ * like it, so the unpaired half may stand before the pair or after it.
+ */
+const paragraphMarkPlan = <Block extends FolioContentBlock>(
+  step: FolioContentAlignmentStep<Block>,
+  next: FolioContentAlignmentStep<Block>,
+): ParagraphMarkPlan<Block> | null => {
+  if (step.type === "pair" && next.type === "revisedOnly") {
+    return splitPlan({ baseBlock: step.baseBlock, head: step.revisedBlock, tail: next.block });
+  }
+  if (step.type === "pair" && next.type === "baseOnly") {
+    return mergePlan({ revisedBlock: step.revisedBlock, head: step.baseBlock, tail: next.block });
+  }
+  if (step.type === "revisedOnly" && next.type === "pair") {
+    return splitPlan({ baseBlock: next.baseBlock, head: step.block, tail: next.revisedBlock });
+  }
+  if (step.type === "baseOnly" && next.type === "pair") {
+    return mergePlan({ revisedBlock: next.revisedBlock, head: step.block, tail: next.baseBlock });
+  }
+  return null;
+};
+
+/** Plans keyed by their first step; each consumes the step after it. */
 export const detectFolioContentParagraphMarkPlans = <Block extends FolioContentBlock>(
   steps: readonly FolioContentAlignmentStep<Block>[],
 ): ReadonlyMap<number, ParagraphMarkPlan<Block>> => {
   const plans = new Map<number, ParagraphMarkPlan<Block>>();
   for (const [index, step] of steps.entries()) {
     const next = steps[index + 1];
-    if (step.type !== "pair" || next === undefined) continue;
-    if (next.type === "revisedOnly") {
-      const separator = separatorBetween(
-        step.baseBlock.text,
-        step.revisedBlock.text,
-        next.block.text,
-      );
-      if (separator !== null && contentBlocksShareContainer(step.revisedBlock, next.block)) {
-        plans.set(index, {
-          type: "split",
-          baseBlock: step.baseBlock,
-          revisedBlocks: [step.revisedBlock, next.block],
-          offset: step.revisedBlock.text.length,
-          separator,
-        });
-      }
-      continue;
-    }
-    if (next.type !== "baseOnly") continue;
-    const separator = separatorBetween(
-      step.revisedBlock.text,
-      step.baseBlock.text,
-      next.block.text,
-    );
-    if (separator !== null && contentBlocksShareContainer(step.baseBlock, next.block)) {
-      plans.set(index, {
-        type: "merge",
-        baseBlocks: [step.baseBlock, next.block],
-        revisedBlock: step.revisedBlock,
-        separator,
-      });
+    if (next === undefined || plans.has(index - 1)) continue;
+    const plan = paragraphMarkPlan(step, next);
+    if (plan !== null) {
+      plans.set(index, plan);
     }
   }
   return plans;

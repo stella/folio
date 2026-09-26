@@ -465,9 +465,8 @@ describe("diffWordSegments", () => {
     expect(
       diffWordSegments("the the the the the SIGNATURE PAGE", "the the SIGNATURE PAGE the the the"),
     ).toEqual([
-      { type: "equal", text: "the the" },
-      { type: "del", text: " the the the" },
-      { type: "equal", text: " SIGNATURE PAGE" },
+      { type: "del", text: "the the the " },
+      { type: "equal", text: "the the SIGNATURE PAGE" },
       { type: "ins", text: " the the the" },
     ]);
   });
@@ -733,5 +732,116 @@ describe("diffWordSegments", () => {
     ]);
     // A standalone call owns a fresh allowance.
     expect(diffWordSegments(before, after)).toEqual(first);
+  });
+});
+
+const WORD_CHARACTER = /[\p{L}\p{N}\p{M}]/u;
+
+/** Sentences over disjoint vocabularies, each closed by its own mark. */
+const distinctSentences = (minLength: number) =>
+  fc.uniqueArray(fc.nat({ max: 60 }), { minLength, maxLength: 5 }).chain((ids) =>
+    fc.tuple(
+      ...ids.map((id) =>
+        fc
+          .tuple(
+            fc.array(fc.constantFrom("smlouva", "lhůta", "Goods", "days", "§", "15"), {
+              minLength: 1,
+              maxLength: 5,
+            }),
+            fc.constantFrom(".", "!", "?", "…", ";", ".)"),
+          )
+          .map(
+            ([stems, mark]) =>
+              `${stems.map((stem, index) => `${stem}${id}x${index}`).join(" ")}${mark}`,
+          ),
+      ),
+    ),
+  );
+
+const SWAPPED_DIRECTION = {
+  equal: "equal",
+  del: "ins",
+  ins: "del",
+} as const satisfies Record<WordDiffSegment["type"], WordDiffSegment["type"]>;
+
+const swapDirection = (segments: readonly WordDiffSegment[]): WordDiffSegment[] =>
+  segments.map(({ type, text }) => ({ type: SWAPPED_DIRECTION[type], text }));
+
+/** True when an unchanged run starts or ends inside a word, cutting it. */
+const splitsAWord = (segments: readonly WordDiffSegment[]): boolean =>
+  segments.slice(1).some(({ type, text }, index) => {
+    const previous = segments[index];
+    return (
+      (type === "equal" || previous?.type === "equal") &&
+      WORD_CHARACTER.test(previous?.text.slice(-1) ?? "") &&
+      WORD_CHARACTER.test(text.charAt(0))
+    );
+  });
+
+describe("diffWordSegments change boundaries", () => {
+  test("adding a sentence anywhere marks exactly it, its own mark included; removing it is the mirror image", () => {
+    fc.assert(
+      fc.property(
+        distinctSentences(2),
+        fc.nat(),
+        fc.constantFrom(" ", "\n", ...WORD_SEPARATORS),
+        (sentences, rawAt, separator) => {
+          const [added = "", ...kept] = sentences;
+          const at = rawAt % (kept.length + 1);
+          const shorter = kept.join(separator);
+          const longer = [...kept.slice(0, at), added, ...kept.slice(at)].join(separator);
+
+          const insertion = diffWordSegments(shorter, longer);
+          expect(rebuildBefore(insertion)).toBe(shorter);
+          expect(rebuildAfter(insertion)).toBe(longer);
+          const marked = insertion.filter(({ type }) => type !== "equal");
+          expect(marked.map(({ type }) => type)).toEqual(["ins"]);
+          expect(marked[0]?.text.trim()).toBe(added);
+          expect(splitsAWord(insertion)).toBe(false);
+
+          expect(diffWordSegments(longer, shorter)).toEqual(swapDirection(insertion));
+        },
+      ),
+      propertyConfig({ numRuns: 300 }),
+    );
+  });
+
+  test("a prepended sentence leaves the old first word unmarked, even when it opens with that word", () => {
+    fc.assert(
+      fc.property(distinctSentences(2), fc.boolean(), (sentences, sharesFirstWord) => {
+        const [added = "", ...kept] = sentences;
+        const shorter = kept.join(" ");
+        // The old first word, without a mark that would make it a sentence of its own.
+        const firstWord = (shorter.split(" ").at(0) ?? "").replace(/\p{P}+$/u, "");
+        const prepended = sharesFirstWord ? `${firstWord} ${added}` : added;
+        const longer = `${prepended} ${shorter}`;
+
+        const insertion = diffWordSegments(shorter, longer);
+        expect(insertion.filter(({ type }) => type !== "ins").map(({ text }) => text)).toEqual([
+          shorter,
+        ]);
+        expect(insertion.find(({ type }) => type === "ins")?.text.trim()).toBe(prepended);
+        expect(diffWordSegments(longer, shorter)).toEqual(swapDirection(insertion));
+      }),
+      propertyConfig({ numRuns: 300 }),
+    );
+  });
+
+  test("never cuts a word the change did not touch", () => {
+    fc.assert(
+      fc.property(sentence, sentence, (before, after) => {
+        const segments = diffWordSegments(before, after);
+        expect(splitsAWord(segments)).toBe(false);
+        expect(splitsAWord(diffWordSegments(after, before))).toBe(false);
+      }),
+      propertyConfig({ numRuns: 300 }),
+    );
+  });
+
+  test("an appended sentence keeps its own full stop, not the one before it", () => {
+    expect(diffWordSegments("Alpha beta.", "Alpha beta. Gamma delta.")).toEqual([
+      { type: "equal", text: "Alpha beta." },
+      { type: "ins", text: " Gamma delta." },
+    ]);
   });
 });
