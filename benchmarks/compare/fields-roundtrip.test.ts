@@ -17,9 +17,10 @@ test.each([
 ] as const)(
   "tracked %s simple fields survive schema and review round trips",
   async (_name, attrs) => {
-    const baseParts = buildDocumentPackage({ documentClass: "fields", size: "s" });
-    const targetParts = applyVariant({ parts: baseParts, variant: "light" });
-    if (!targetParts) throw new Error("Fields fixture does not support light");
+    const baseParts = new Map(buildDocumentPackage({ documentClass: "fields", size: "s" }));
+    const targetSource = applyVariant({ parts: baseParts, variant: "light" });
+    if (!targetSource) throw new Error("Fields fixture does not support light");
+    const targetParts = new Map(targetSource);
     for (const parts of [baseParts, targetParts]) {
       const document = parts.get("word/document.xml");
       if (typeof document !== "string") throw new Error("Missing document part");
@@ -63,9 +64,10 @@ test.each([
       `<w:fldSimple w:instr=" NUMPAGES "><w:r>${resultXml}</w:r></w:fldSimple>`,
   ],
 ] as const)("refuses a tracked simple field with %s result content", async (_name, resultOf) => {
-  const baseParts = buildDocumentPackage({ documentClass: "fields", size: "s" });
-  const targetParts = applyVariant({ parts: baseParts, variant: "light" });
-  if (!targetParts) throw new Error("Fields fixture does not support light");
+  const baseParts = new Map(buildDocumentPackage({ documentClass: "fields", size: "s" }));
+  const targetSource = applyVariant({ parts: baseParts, variant: "light" });
+  if (!targetSource) throw new Error("Fields fixture does not support light");
+  const targetParts = new Map(targetSource);
   for (const parts of [baseParts, targetParts]) {
     const document = parts.get("word/document.xml");
     if (typeof document !== "string") throw new Error("Missing document part");
