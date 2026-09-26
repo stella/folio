@@ -156,8 +156,12 @@ stay exported for validation-only paths.
   `insertBeforeBlock` with `text: ""` insert a blank line; `deleteBlock` on a
   blank removes it rather than doing nothing. Only an operation that would
   change nothing at all is refused.
-- `insertTableRow` builds the new row to the table's own column count, so
-  `cellTexts` fills the columns that exist and any it does not name stay empty.
+- `insertTableRow` builds one cell per column the new row has, so `cellTexts`
+  fills those cells in order and any it does not name stay empty. A vertical
+  merge crossing the insertion point grows through the new row and keeps its
+  column, so the row has fewer cells there; more `cellTexts` than cells is
+  refused as `payloadDoesNotFit` (the issue's `message` names the texts), never
+  truncated. The same holds for `insertTableColumn` across a horizontal merge.
 - A `queued` list in a `suggest_changes` result means the host parked those
   operations in its own review queue; treat it like `applied` for the purpose
   of "the edit has been proposed", never as a failure.

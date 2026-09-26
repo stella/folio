@@ -1547,6 +1547,8 @@ export type FolioDocumentOperationIssue = {
   code: FolioAIEditSkippedOperation["reason"];
   retryable: boolean;
   recovery: FolioDocumentOperationRecovery;
+  /** The skip's detail, when it has one; see {@link FolioAIEditSkippedOperation.message}. */
+  message?: string;
 };
 
 export type FolioDocumentOperationStory =
@@ -1705,6 +1707,7 @@ const recoveryByReason = {
   noopOperation: "removeOperation",
   documentVersionMismatch: "refreshDocument",
   documentNotEditable: "retryLater",
+  payloadDoesNotFit: "changeTarget",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (
@@ -1715,7 +1718,7 @@ export const getFolioDocumentOperationIssues = (
   operations.forEach(({ id }, index) => {
     indexById.set(id, index);
   });
-  return skipped.map(({ id, reason }) => {
+  return skipped.map(({ id, reason, message }) => {
     const operationIndex = indexById.get(id) ?? -1;
     return {
       operationId: id,
@@ -1726,8 +1729,12 @@ export const getFolioDocumentOperationIssues = (
         reason !== "emptyOperation" &&
         reason !== "noopOperation" &&
         reason !== "pendingParagraphPropertyChange" &&
-        reason !== "pendingRunPropertyChange",
+        reason !== "pendingRunPropertyChange" &&
+        // The same values never fit the same target; only a changed operation
+        // can succeed.
+        reason !== "payloadDoesNotFit",
       recovery: recoveryByReason[reason],
+      ...(message !== undefined && { message }),
     };
   });
 };

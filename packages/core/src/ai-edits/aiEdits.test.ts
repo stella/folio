@@ -21,7 +21,7 @@ import {
   createFolioAIEditSnapshotWithStyleResolver,
   createFolioAITextRangeHandle,
 } from "./snapshot";
-import type { FolioAIEditOperation } from "./types";
+import type { FolioAIEditApplyMode, FolioAIEditOperation } from "./types";
 import { createScopedWordDiffOptions } from "./word-diff";
 
 const schema = new Schema({
@@ -3404,7 +3404,13 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.applied).toEqual([]);
-    expect(result.skipped).toEqual([{ id: "insert-column", reason: "unsupportedBlock" }]);
+    expect(result.skipped).toEqual([
+      {
+        id: "insert-column",
+        reason: "payloadDoesNotFit",
+        message: expect.stringContaining('cellTexts[1] "Two"'),
+      },
+    ]);
     expect(view.state.doc).toEqual(state.doc);
   });
 
@@ -5410,48 +5416,85 @@ describe("Folio AI edit operations", () => {
     });
   });
 
-  // The row a span narrows has fewer cells than the table has columns.
-  // `cellTexts` fills the cells the row actually has, and is only SIZED
-  // against the column count — measuring it against the cells refused a row
-  // the table can perfectly well hold.
-  test("a row inserted under a vertical span takes as many texts as it has cells", () => {
-    const cell = (text: string, attrs: Record<string, unknown> = {}) =>
-      schema.node("tableCell", attrs, [schema.node("paragraph", null, [schema.text(text)])]);
-    const table = schema.node("table", null, [
-      schema.node("tableRow", null, [
-        cell("spans down", { rowspan: 2 }),
-        cell("b1"),
-        schema.node("tableCell", null, [
-          schema.node("paragraph", { paraId: "anchor-cell" }, [schema.text("c1")]),
+  // The row a span narrows has fewer cells than the table has columns: the
+  // spanning cell above grows through it and keeps the first column. The nth
+  // text fills the nth cell the row HAS, so a text past the last one has
+  // nowhere to go — and is refused by name, never dropped from an operation
+  // reported as applied.
+  describe("a row inserted under a vertical span", () => {
+    const spannedTable = () => {
+      const cell = (text: string, attrs: Record<string, unknown> = {}) =>
+        schema.node("tableCell", attrs, [schema.node("paragraph", null, [schema.text(text)])]);
+      return schema.node("table", null, [
+        schema.node("tableRow", null, [
+          cell("spans down", { rowspan: 2 }),
+          cell("b1"),
+          schema.node("tableCell", null, [
+            schema.node("paragraph", { paraId: "anchor-cell" }, [schema.text("c1")]),
+          ]),
         ]),
-      ]),
-      schema.node("tableRow", null, [cell("b2"), cell("c2")]),
-    ]);
-    const state = EditorState.create({ schema, doc: schema.node("doc", null, [table]) });
-    const view = makeView(state);
+        schema.node("tableRow", null, [cell("b2"), cell("c2")]),
+      ]);
+    };
+    const insertRow = (cellTexts: string[], mode: FolioAIEditApplyMode) => {
+      const state = EditorState.create({
+        schema,
+        doc: schema.node("doc", null, [spannedTable()]),
+      });
+      const view = makeView(state);
+      const result = applyFolioAIEditOperations({
+        view,
+        snapshot: createFolioAIEditSnapshot(state.doc),
+        operations: [
+          { id: "insert-row", type: "insertTableRow", blockId: "anchor-cell", cellTexts },
+        ],
+        mode,
+      });
+      return { state, view, result };
+    };
 
-    const result = applyFolioAIEditOperations({
-      view,
-      snapshot: createFolioAIEditSnapshot(state.doc),
-      operations: [
-        {
-          id: "insert-row",
-          type: "insertTableRow",
-          blockId: "anchor-cell",
-          cellTexts: ["first", "second", "third"],
-        },
-      ],
-      mode: "direct",
+    test.each(["direct", "tracked-changes"] as const)(
+      "takes as many texts as it has cells (%s)",
+      (mode) => {
+        const { view, result } = insertRow(["first", "second"], mode);
+
+        expect(result.skipped).toEqual([]);
+        const liveTable = view.state.doc.child(0);
+        expect(liveTable.child(0).child(0).attrs["rowspan"]).toBe(3);
+        const inserted = liveTable.child(1);
+        expect(inserted.childCount).toBe(2);
+        expect(inserted.child(0).textContent).toBe("first");
+        expect(inserted.child(1).textContent).toBe("second");
+      },
+    );
+
+    test.each(["direct", "tracked-changes"] as const)(
+      "refuses a text it has no cell for, naming it (%s)",
+      (mode) => {
+        const { state, view, result } = insertRow(["first", "second", "third"], mode);
+
+        expect(result.applied).toEqual([]);
+        expect(result.skipped).toEqual([
+          {
+            id: "insert-row",
+            reason: "payloadDoesNotFit",
+            message: expect.stringContaining('cellTexts[2] "third"'),
+          },
+        ]);
+        expect(view.state.doc).toEqual(state.doc);
+      },
+    );
+
+    test("rejecting the tracked row shortens the span it grew", () => {
+      const { state, view, result } = insertRow(["first", "second"], "tracked-changes");
+      const revisionId = result.applied.at(0)?.revisionId;
+      if (revisionId === undefined) {
+        throw new Error("expected a row insertion revision");
+      }
+
+      expect(rejectAIEditRevision(revisionId)(view.state, view.dispatch)).toBe(true);
+      expect(view.state.doc.eq(state.doc)).toBe(true);
     });
-
-    expect(result.skipped).toEqual([]);
-    const inserted = view.state.doc.child(0).child(1);
-    // Two cells, because the spanning cell above still occupies the first
-    // column; three texts is within the table's three columns, so the
-    // operation is not refused.
-    expect(inserted.childCount).toBe(2);
-    expect(inserted.child(0).textContent).toBe("first");
-    expect(inserted.child(1).textContent).toBe("second");
   });
 
   test("tracked row insertion rejects a boundary crossed by a vertical span", () => {

@@ -744,6 +744,7 @@ const COMPARE_SKIP_DISPOSITION = {
   noopOperation: "unwritable",
   documentVersionMismatch: "fatal",
   documentNotEditable: "fatal",
+  payloadDoesNotFit: "unwritable",
 } as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
 
 export const getCompareSkipDisposition = (reason: FolioAIEditSkipReason): "fatal" | "unwritable" =>

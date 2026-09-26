@@ -106,6 +106,7 @@ import {
   applyTableColumnInsertion,
   applyTableRowDeletion,
   applyTableRowInsertion,
+  describeUnplacedCellTexts,
   findTableColumnInsertion,
   findTableRowInsertion,
   getTableColumnCoordinateKey,
@@ -2388,7 +2389,11 @@ const applyFolioAIEditOperationsInternal = ({
       doc: view.state.doc,
     });
     if (resolution.type === "skip") {
-      skipped.push({ id: operation.id, reason: resolution.reason });
+      skipped.push({
+        id: operation.id,
+        reason: resolution.reason,
+        ...(resolution.message !== undefined && { message: resolution.message }),
+      });
       continue;
     }
     if (commentText !== undefined && !hasRepresentableCommentAnchor(resolution.operation, mode)) {
@@ -3134,6 +3139,14 @@ const applyFolioAIEditOperationsInternal = ({
           cellTexts: item.operation.cellTexts,
           revision,
         });
+        if (result.type === "payloadDoesNotFit") {
+          skipped.push({
+            id: item.operation.id,
+            reason: "payloadDoesNotFit",
+            message: result.message,
+          });
+          continue;
+        }
         if (result.type === "unsupported") {
           skipped.push({
             id: item.operation.id,
@@ -4863,12 +4876,21 @@ const resolveOperation = ({
   if (operation.type === "insertTableRow") {
     const position = operation.position ?? "after";
     const insertion = findTableRowInsertion({ doc, blockFrom, position });
-    // Sized against the table's COLUMN count, which is what a caller reading
-    // the table counts. `cells.length` is smaller whenever a cell spans
-    // columns or a row above spans down into this one, and refusing on that
-    // would refuse a row the table can perfectly well hold.
-    if (!insertion || (operation.cellTexts?.length ?? 0) > insertion.columnCount) {
+    if (!insertion) {
       return { type: "skip", reason: "unsupportedBlock" };
+    }
+    // The nth text fills the nth cell the new row HAS, and a vertical merge
+    // crossing the insertion point extends through the row and takes a column
+    // away from it. A text with no cell to go to is refused here, before
+    // anything is written, rather than dropped from an operation reported as
+    // applied.
+    const overflow = describeUnplacedCellTexts({
+      cellTexts: operation.cellTexts,
+      capacity: insertion.cells.length,
+      target: "row",
+    });
+    if (overflow !== null) {
+      return { type: "skip", reason: "payloadDoesNotFit", message: overflow };
     }
     return {
       type: "resolved",
@@ -5284,7 +5306,11 @@ const resolveOperation = ({
   };
 };
 
-type OperationResolutionSkip = { type: "skip"; reason: FolioAIEditSkipReason };
+type OperationResolutionSkip = {
+  type: "skip";
+  reason: FolioAIEditSkipReason;
+  message?: string;
+};
 
 const resolveTextInCleanBlock = (
   cleanBlock: ReturnType<typeof buildCleanBlockText>,

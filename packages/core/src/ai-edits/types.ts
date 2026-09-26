@@ -517,10 +517,12 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * Initial text for each cell of the new row, in order — the same order
          * a block's `table.cellIndex` counts. Cells left unnamed stay empty.
          *
-         * Sized against the table's COLUMN count, which is the most cells any
-         * row of it could have: more texts than that is refused rather than
-         * silently truncated, and fewer is not, so a row the table can hold is
-         * no longer refused because a span makes it narrower than the table.
+         * Sized against the cells the new row really has, which is fewer than
+         * the table's columns where a vertical merge from the row above
+         * reaches through the insertion point (the merge grows through the
+         * new row and keeps its column). More texts than cells is refused as
+         * `payloadDoesNotFit`, naming the texts with no cell, before anything
+         * is written; fewer leaves the remaining cells empty.
          *
          * A line break in a cell's text starts a new paragraph in that cell,
          * as in `insertTable`.
@@ -539,7 +541,11 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /** Stable paragraph anchor inside the cell that receives the new sibling column. */
         blockId: string;
         position?: "after" | "before";
-        /** Initial text for newly created physical cells in row order. */
+        /**
+         * Initial text for newly created physical cells in row order. A
+         * horizontal merge the new column crosses widens instead of taking a
+         * cell, so more texts than new cells is refused as `payloadDoesNotFit`.
+         */
         cellTexts?: string[];
       }
     | {
@@ -621,7 +627,17 @@ export type FolioAIEditSkipReason =
    * no entity to attach suggestions to); the operation was neither applied
    * nor queued.
    */
-  | "documentNotEditable";
+  | "documentNotEditable"
+  /**
+   * The operation supplies more values than its target can hold, so applying
+   * it would drop some of them: an `insertTableRow` whose `cellTexts` outnumber
+   * the cells the new row has (a vertical merge crossing the insertion point
+   * extends through the new row and takes a column away from it), or an
+   * `insertTableColumn` whose `cellTexts` outnumber the cells the new column
+   * has. Nothing was applied; `message` names the values that do not fit.
+   * Supply fewer values, or anchor the operation where the table has room.
+   */
+  | "payloadDoesNotFit";
 
 export type FolioAIEditAppliedOperation = {
   id: string;
@@ -656,6 +672,11 @@ export type FolioAIEditAppliedOperation = {
 export type FolioAIEditSkippedOperation = {
   id: string;
   reason: FolioAIEditSkipReason;
+  /**
+   * What exactly was wrong when the reason alone does not say: the values a
+   * `payloadDoesNotFit` skip could not place.
+   */
+  message?: string;
 };
 
 /**

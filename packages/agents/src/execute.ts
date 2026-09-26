@@ -558,8 +558,14 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "documentNotEditable") {
     return "the document is not open for editing right now; nothing was applied or queued. Ask the user to open it for editing, then retry.";
   }
+  if (reason === "payloadDoesNotFit") {
+    return "the operation supplies more values than its target has cells for; nothing was applied. Supply fewer cellTexts, or anchor the row or column where no merged cell takes a slot.";
+  }
   return reason;
 };
+
+const explainSkippedOperation = ({ reason, message }: { reason: string; message?: string }) =>
+  message === undefined ? explainSkipReason(reason) : `${explainSkipReason(reason)} (${message})`;
 
 /**
  * Turn one apply-time `FolioAIEditNormalization` (an automatic adjustment the
@@ -593,7 +599,7 @@ type ApplyResultLike = {
   version: typeof FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION;
   applied: { id: string }[];
   queued?: { id: string }[];
-  skipped: { id: string; reason: string }[];
+  skipped: { id: string; reason: string; message?: string }[];
   issues?: FolioAgentApplyOperationsSummary["issues"];
   receipts?: FolioAgentApplyOperationsSummary["receipts"];
   normalizations?: readonly FolioAIEditNormalization[];
@@ -608,7 +614,7 @@ const summarizeApplyResult = (
   queued: (result.queued ?? []).map((entry) => ({ id: entry.id })),
   skipped: result.skipped.map((entry) => ({
     id: entry.id,
-    reason: explainSkipReason(entry.reason),
+    reason: explainSkippedOperation(entry),
   })),
   issues: result.issues ?? [],
   receipts: result.receipts ?? [],

@@ -26,14 +26,13 @@ export type TableRowInsertion = {
   cells: readonly PMNode[];
   rowspanUpdates: readonly number[];
   /**
-   * The table's column count, which is not `cells.length`. One cell can occupy
-   * several columns (a `colspan`), and one column can have no cell in this row
-   * at all (a `rowspan` from a row above reaches down into it).
+   * The table's column count, which is not `cells.length`: a column can have
+   * no cell in this row at all, when a `rowspan` from a row above reaches down
+   * through it. A template row has to span all of it.
    *
-   * It is what `cellTexts` is SIZED against — the most cells any row of this
-   * table could have — while the texts themselves fill the new row's cells in
-   * order. Sizing against `cells.length` refused a row the table can hold
-   * whenever a span made this row narrower than the table.
+   * `cellTexts` is sized against `cells.length` instead, because the nth text
+   * fills the nth cell the row has: a text past the last one has nowhere to
+   * go, and is refused rather than dropped.
    */
   columnCount: number;
 };
@@ -50,6 +49,54 @@ export type TableColumnDeletion = TableColumnInsertion;
 type TableRowColumnMutationResult =
   | { type: "applied"; transaction: Transaction; revisionId: number | null }
   | { type: "unsupported" };
+
+type TableColumnInsertionResult =
+  | TableRowColumnMutationResult
+  | { type: "payloadDoesNotFit"; message: string };
+
+const UNPLACED_TEXT_PREVIEW_LENGTH = 40;
+
+const previewCellText = (text: string): string =>
+  JSON.stringify(
+    text.length > UNPLACED_TEXT_PREVIEW_LENGTH
+      ? `${text.slice(0, UNPLACED_TEXT_PREVIEW_LENGTH)}…`
+      : text,
+  );
+
+type DescribeUnplacedCellTextsOptions = {
+  cellTexts: readonly string[] | undefined;
+  /** Cells the new row or column actually has. */
+  capacity: number;
+  target: "row" | "column";
+};
+
+/**
+ * Name the `cellTexts` a new row or column has no cell for, or `null` when
+ * every one of them has a place.
+ *
+ * A row is narrower than the table where a vertical merge from above reaches
+ * through it, and a column is shorter than the table where a horizontal merge
+ * spans across it; the merged cell takes that slot, so the texts are counted
+ * against the cells that are really built. Anything past the last one would
+ * be dropped by an operation reported as applied.
+ */
+export const describeUnplacedCellTexts = ({
+  cellTexts,
+  capacity,
+  target,
+}: DescribeUnplacedCellTextsOptions): string | null => {
+  if (cellTexts === undefined || cellTexts.length <= capacity) {
+    return null;
+  }
+  const unplaced = cellTexts
+    .slice(capacity)
+    .map((text, offset) => `cellTexts[${capacity + offset}] ${previewCellText(text)}`);
+  const cause =
+    target === "row"
+      ? "a merged cell from the row above reaches through the rest"
+      : "a merged cell spans across the rest";
+  return `the new ${target} has ${capacity} cell${capacity === 1 ? "" : "s"} (${cause}), so ${unplaced.join(", ")} would not be placed`;
+};
 
 export const getTableColumnCoordinateKey = ({
   tablePosition,
@@ -124,10 +171,11 @@ export const applyTableRowInsertion = ({
   revision,
   template,
 }: ApplyTableRowInsertionOptions): TableRowColumnMutationResult => {
-  if (revision && insertion.rowspanUpdates.length > 0) {
-    return { type: "unsupported" };
-  }
-
+  // A vertical merge crossing the insertion point grows by the new row in
+  // both modes. Tracked, that needs no record of its own: the merge reaches
+  // the new row through a continuation cell inside the inserted `w:tr`, so a
+  // reject that removes the row shortens the merge with it, exactly as
+  // `removeTableRow` does here.
   const liveRowspanUpdates: { position: number; cell: PMNode; rowspan: number }[] = [];
   for (const updatePosition of insertion.rowspanUpdates) {
     const cellPosition = insertion.tableStart + updatePosition;
@@ -151,8 +199,10 @@ export const applyTableRowInsertion = ({
         trIns: revision,
       }
     : null;
+  // A template spans the whole grid, so it only fits a row no merge crosses:
+  // under one it would put a cell in a column the merge already occupies.
   const templated =
-    template === undefined
+    template === undefined || insertion.rowspanUpdates.length > 0
       ? null
       : tableRowFromTemplate({ template, columnCount: insertion.columnCount });
   const row = templated
@@ -256,15 +306,26 @@ export const applyTableColumnInsertion = ({
   insertion,
   cellTexts,
   revision,
-}: ApplyTableColumnInsertionOptions): TableRowColumnMutationResult => {
+}: ApplyTableColumnInsertionOptions): TableColumnInsertionResult => {
   const tablePosition = tr.mapping.map(insertion.tablePosition, 1);
   const table = tr.doc.nodeAt(tablePosition);
   if (!table || table.type.spec["tableRole"] !== "table") {
     return { type: "unsupported" };
   }
 
+  const map = TableMap.get(table);
+  if (insertion.columnIndex >= 0 && insertion.columnIndex <= map.width) {
+    const overflow = describeUnplacedCellTexts({
+      cellTexts,
+      capacity: getInsertedPhysicalColumnRows(map, insertion.columnIndex).length,
+      target: "column",
+    });
+    if (overflow !== null) {
+      return { type: "payloadDoesNotFit", message: overflow };
+    }
+  }
   const actions = buildTableColumnInsertionActions({
-    map: TableMap.get(table),
+    map,
     table,
     columnIndex: insertion.columnIndex,
     cellTexts,
@@ -542,7 +603,8 @@ export const splitCellParagraphTexts = (text: string): string[] =>
  * Fill the new row's cells from `cellTexts`, in order: the nth text goes in
  * the nth cell the row actually has, which is how a caller reading the row
  * through the block snapshot counts them (`table.cellIndex`). Cells the caller
- * did not name stay empty.
+ * did not name stay empty. The resolver has already refused more texts than
+ * cells ({@link describeUnplacedCellTexts}).
  */
 const populateTableRow = (row: PMNode, cellTexts: readonly string[] | undefined): PMNode => {
   if (cellTexts === undefined) {
