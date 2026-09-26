@@ -24,10 +24,10 @@
     "declarationLines": 1318
   },
   "cli": {
-    "reportBytes": 779,
-    "reportLines": 30,
-    "declarationBytes": 33944,
-    "declarationLines": 763
+    "reportBytes": 4536,
+    "reportLines": 170,
+    "declarationBytes": 44835,
+    "declarationLines": 1002
   },
   "vue": {
     "reportBytes": 55443,
