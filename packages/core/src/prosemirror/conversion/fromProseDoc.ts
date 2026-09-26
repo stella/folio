@@ -2449,6 +2449,38 @@ const sameRevisionLayer = (
   left.initials === right.initials &&
   left.outerWrapperCount === right.outerWrapperCount;
 
+type EnclosingInsertionAncestorsOptions = {
+  /** The insertion a deletion mark shares its text with, if any. */
+  insertionMark: Mark | undefined;
+  ancestors: readonly TrackedRevisionAncestor[];
+  node: PMNode;
+};
+
+/** The deletion's ancestor path, with the insertion it sits in as the outermost layer. */
+const enclosingInsertionAncestors = ({
+  insertionMark,
+  ancestors,
+  node,
+}: EnclosingInsertionAncestorsOptions): readonly TrackedRevisionAncestor[] => {
+  if (!insertionMark) {
+    return ancestors;
+  }
+  const attrs = expectTrackedChangeMarkAttrs(insertionMark);
+  if (ancestors.some(({ revisionId }) => revisionId === attrs.revisionId)) {
+    return ancestors;
+  }
+  const layer: TrackedRevisionAncestor = {
+    type: attrs.moveKind === "moveTo" ? "moveTo" : "insertion",
+    revisionId: attrs.revisionId,
+    author: attrs.author || "Unknown",
+    ...(attrs.date ? { date: attrs.date } : {}),
+    ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
+    ...(attrs.initials ? { initials: attrs.initials } : {}),
+    outerWrapperCount: attrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
+  };
+  return [layer, ...ancestors];
+};
+
 const revisionInfoFromLayer = (layer: TrackedRevisionAncestor): TrackedChangeInfo => ({
   id: layer.revisionId,
   author: layer.author,
@@ -2878,11 +2910,20 @@ function extractParagraphContent(
       // Finish any current content
       flushCurrentInline();
 
-      const changeMark = insertionMark ?? deletionMark;
+      // Text both inserted and deleted (a tracked deletion over a pending
+      // insertion) is a deletion inside the insertion: `w:ins > w:del`, the
+      // shape the parser reads back as a deletion whose ancestor is the
+      // insertion. Written as the insertion alone, the deletion would be lost.
+      const changeMark = deletionMark ?? insertionMark;
       if (!changeMark) {
         return;
       }
       const changeAttrs = expectTrackedChangeMarkAttrs(changeMark);
+      const revisionAncestors = enclosingInsertionAncestors({
+        insertionMark: deletionMark ? insertionMark : undefined,
+        ancestors: changeAttrs._docxRevisionAncestors ?? [],
+        node,
+      });
       // Filter out the tracked change mark for text formatting extraction
       const otherMarks = node.marks.filter(
         (m) => m.type.name !== "insertion" && m.type.name !== "deletion",
@@ -2909,14 +2950,14 @@ function extractParagraphContent(
       // `w:del w:id="5"` from different reviewers would coincidentally
       // fuse into a phantom move pair.
       let type: TrackedRunWrapper["type"];
-      if (insertionMark) {
+      if (changeMark === insertionMark) {
         type = changeAttrs.moveKind === "moveTo" ? "moveTo" : "insertion";
       } else {
         type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
       const outerWrapperCount =
         changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
-      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(changeAttrs._docxRevisionAncestors ?? [])}`;
+      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}`;
       if (linkMark) {
         const linkKey = getLinkKey(linkMark);
         if (
@@ -2928,7 +2969,7 @@ function extractParagraphContent(
           const hyperlink = createIndexedHyperlink(linkMark);
           const wrapper = createTrackedRunWrapper(type, info, hyperlink);
           revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
-          revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
+          revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
           content.push(wrapper);
           currentTrackedChange = {
             type: "hyperlink",
@@ -2977,7 +3018,7 @@ function extractParagraphContent(
       ) {
         const wrapper = createTrackedRunWrapper(type, info);
         revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
-        revisionAncestorsByWrapper.set(wrapper, changeAttrs._docxRevisionAncestors ?? []);
+        revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
         content.push(wrapper);
         currentTrackedChange = { type: "direct", key: trackedChangeKey, wrapper };
       }
