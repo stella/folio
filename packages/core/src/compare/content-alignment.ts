@@ -654,6 +654,13 @@ const crossedExactTextBlocks = <Block extends FolioContentBlock>({
  */
 const GAP_PAIR_SIMILARITY_THRESHOLD = 0.5;
 
+/**
+ * Gap similarities are compared as integers, so a tie is exact rather than an
+ * accident of floating-point summation, and a tie-break can sit below the
+ * smallest similarity step.
+ */
+const GAP_PAIR_SIMILARITY_SCALE = 1_000;
+
 type GapBlockTokens = { counts: ReadonlyMap<string, number>; total: number };
 
 /**
@@ -735,6 +742,10 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
     return null;
   }
   const revisedTokens = revised.map((block) => gapBlockTokens(block.block.text));
+  // Equal display labels break ties between equally similar pairs: repeated
+  // wording ("Intentionally omitted.") leaves the label as a block's only identity. The
+  // bonuses of every pair together stay below one similarity step.
+  const similarityStep = Math.min(baseCount, revisedCount) + 1;
   // -1 marks a cell that may not pair.
   const similarity = new Float64Array(baseCount * revisedCount).fill(-1);
   const candidateBase = new Set<number>();
@@ -754,7 +765,12 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
         return null;
       }
       if (measured.value >= GAP_PAIR_SIMILARITY_THRESHOLD) {
-        similarity[baseOffset * revisedCount + revisedOffset] = measured.value;
+        const sameLabel =
+          baseBlock.block.displayLabel !== undefined &&
+          baseBlock.block.displayLabel === revisedBlock.block.displayLabel;
+        similarity[baseOffset * revisedCount + revisedOffset] =
+          Math.round(measured.value * GAP_PAIR_SIMILARITY_SCALE) * similarityStep +
+          (sameLabel ? 1 : 0);
         candidateBase.add(baseOffset);
         candidateRevised.add(revisedOffset);
       }

@@ -416,4 +416,19 @@ describe("content comparison pairing inside any gap", () => {
       ),
     ).toEqual(["- -> 1|c", "1|a -> -", "1|heading -> 1|heading", "1|r1 -> 1|r1", "1|r2 -> 1|r2"]);
   });
+
+  test("identical wording pairs by its display label", () => {
+    const omitted = (origin: string): Item => ({
+      origin,
+      text: "Intentionally omitted.",
+      label: `(${origin})`,
+    });
+    expect(
+      compareSections(
+        [section("1", [omitted("1"), omitted("2"), A])],
+        [section("1", [omitted("2"), A])],
+        "displayLabel",
+      ),
+    ).toEqual(["1|1 -> -", "1|2 -> 1|2", "1|a -> 1|a", "1|heading -> 1|heading"]);
+  });
 });
