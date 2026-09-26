@@ -74,6 +74,41 @@ const resolve = ({ state, mode }: { state: EditorState; mode: "accept" | "reject
 };
 import { stageSectionBoundaryProperties } from "./section-boundary-properties";
 
+test("stages nothing, and reads no accepted projection, for a target without endpoints", () => {
+  const deletion = schema.mark("deletion", { revisionId: 4, author: "Compare" });
+  const doc = documentWith(
+    paragraph("Before"),
+    schema.node("paragraph", null, [schema.text("Old", [deletion]), schema.text(" text")]),
+  );
+  // Accepting every change walks the document; a target that ends no section
+  // at a paragraph has nothing to stage, so the walk would be pure cost.
+  for (const walk of ["descendants", "nodesBetween"] as const) {
+    Object.defineProperty(doc, walk, {
+      configurable: true,
+      value: () => {
+        throw new Error("The accepted projection was built for a target without endpoints.");
+      },
+    });
+  }
+  const state = EditorState.create({ schema, doc });
+  const result = stageSectionBoundaryProperties({
+    state,
+    target: documentWith(paragraph("Before"), paragraph("Rewritten text")),
+    originalRevisionIdSeed: 10,
+    maxRanges: 1,
+    revisionStamp: { idSeed: 30, date: "2026-09-13T00:00:00.000Z" },
+    author: "Compare",
+    mapTargetProperties: () => {
+      throw new Error("No endpoint should be mapped.");
+    },
+  });
+  expect(result.status).toBe("matched");
+  if (result.status !== "matched") return;
+  expect(result.transaction.docChanged).toBe(false);
+  expect(result.nextRevisionId).toBe(30);
+  expect(result.rangeCount).toBe(0);
+});
+
 test("stages a boundary on an already inserted blank paragraph", () => {
   const inserted = schema.node("paragraph", {
     pPrMark: { kind: "ins", info: { id: 20, author: "Compare" } },

@@ -22,7 +22,7 @@ import {
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
 import {
-  paragraphRunStyleContextAt,
+  nearestParagraphRunStyleContext,
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
 import { isTableCellRetainedInReviewView } from "../prosemirror/tableCellRevisionVisibility";
@@ -55,6 +55,7 @@ export type MatchInlineProvenanceResult =
 
 type InlineCarrier = {
   carrier: RunFormattingCarrier;
+  paragraph: PMNode | null;
   text: string;
   targetBlockId: string | undefined;
 };
@@ -62,6 +63,8 @@ type InlineCarrier = {
 type CarrierRepresentation = RunFormattingCarrierRepresentation & {
   from: number;
   to: number;
+  /** The nearest enclosing paragraph, which the run's style context comes from. */
+  paragraph: PMNode | null;
 };
 
 type MatchedRepresentation = {
@@ -96,11 +99,12 @@ const hyperlinkIdentity = (node: PMNode): string => {
 const isInserted = (node: PMNode): boolean =>
   node.marks.some(({ type }) => type.name === "insertion");
 
-const carrierRepresentations = (carrier: RunFormattingCarrier): CarrierRepresentation[] =>
+const carrierRepresentations = ({ carrier, paragraph }: InlineCarrier): CarrierRepresentation[] =>
   carrier.representations.map((representation) => ({
     ...representation,
     from: representation.position,
     to: representation.position + representation.node.nodeSize,
+    paragraph,
   }));
 
 const targetBlockIdLookup = (anchors: FolioAIEditSnapshot["anchors"]) => {
@@ -150,7 +154,18 @@ const collectCarriers = ({
   const carriers: InlineCarrier[] = [];
   const targetBlockIdAt = targetSnapshot ? targetBlockIdLookup(targetSnapshot.anchors) : undefined;
   let unanchoredTargetCarrier = false;
+  // The walk visits every ancestor before its descendants, so the paragraphs
+  // still open at a position are exactly its paragraph ancestors. Recording the
+  // nearest one here spares a `doc.resolve` per run later, which re-descends
+  // from the root and made the provenance pass O(runs x blocks).
+  const openParagraphs: { node: PMNode; end: number }[] = [];
   doc.descendants((node, position) => {
+    while ((openParagraphs.at(-1)?.end ?? Number.POSITIVE_INFINITY) <= position) {
+      openParagraphs.pop();
+    }
+    if (node.type.name === "paragraph") {
+      openParagraphs.push({ node, end: position + node.nodeSize });
+    }
     if (
       (node.type.name === "tableCell" || node.type.name === "tableHeader") &&
       !isTableCellRetainedInReviewView(expectTableCellAttrs(node).cellMarker?.kind, "final")
@@ -172,7 +187,12 @@ const collectCarriers = ({
       unanchoredTargetCarrier = true;
       return false;
     }
-    carriers.push({ carrier, text: runFormattingCarrierReviewText(carrier), targetBlockId });
+    carriers.push({
+      carrier,
+      paragraph: openParagraphs.at(-1)?.node ?? null,
+      text: runFormattingCarrierReviewText(carrier),
+      targetBlockId,
+    });
     return false;
   });
   return unanchoredTargetCarrier ? null : carriers;
@@ -230,8 +250,8 @@ const matchCarrierStreams = ({
       if (liveOffset !== 0 || targetOffset !== 0 || !sameCarrierShape(liveCarrier, targetCarrier)) {
         return null;
       }
-      const liveRepresentations = carrierRepresentations(liveCarrier.carrier);
-      const targetRepresentations = carrierRepresentations(targetCarrier.carrier);
+      const liveRepresentations = carrierRepresentations(liveCarrier);
+      const targetRepresentations = carrierRepresentations(targetCarrier);
       for (const [index, liveRepresentation] of liveRepresentations.entries()) {
         const targetRepresentation = targetRepresentations.at(index);
         if (!targetRepresentation) {
@@ -255,8 +275,8 @@ const matchCarrierStreams = ({
     ) {
       return null;
     }
-    const liveRepresentation = carrierRepresentations(liveCarrier.carrier).at(0);
-    const targetRepresentation = carrierRepresentations(targetCarrier.carrier).at(0);
+    const liveRepresentation = carrierRepresentations(liveCarrier).at(0);
+    const targetRepresentation = carrierRepresentations(targetCarrier).at(0);
     if (!liveRepresentation || !targetRepresentation) {
       return null;
     }
@@ -288,16 +308,14 @@ const matchCarrierStreams = ({
 };
 
 const authoredFormattingAt = ({
-  doc,
   representation,
   styleResolver,
 }: {
-  doc: PMNode;
   representation: CarrierRepresentation;
   styleResolver: RunStyleResolver | null;
 }): TextFormatting =>
   readAuthoredRunFormatting({
-    context: paragraphRunStyleContextAt({ doc, pos: representation.from, styleResolver }),
+    context: nearestParagraphRunStyleContext(representation.paragraph, styleResolver),
     marks: representation.node.marks,
     styleResolver,
   });
@@ -343,12 +361,10 @@ export const matchInlineProvenance = ({
   const planned: PlannedChange[] = [];
   for (const segment of matched) {
     const liveFormatting = authoredFormattingAt({
-      doc: state.doc,
       representation: segment.live,
       styleResolver: liveStyleResolver,
     });
     const targetFormatting = authoredFormattingAt({
-      doc: targetDocument,
       representation: segment.target,
       styleResolver: targetStyleResolver,
     });
@@ -400,11 +416,7 @@ export const matchInlineProvenance = ({
   let nextRevisionId = revisionStamp.idSeed;
   const changedTargetBlockIds = new Set<string>();
   for (const change of planned.toReversed()) {
-    const context = paragraphRunStyleContextAt({
-      doc: state.doc,
-      pos: change.live.from,
-      styleResolver: liveStyleResolver,
-    });
+    const context = nearestParagraphRunStyleContext(change.live.paragraph, liveStyleResolver);
     const formattingMarks = reconcileRunFormattingMarks({
       authoredFormatting: change.formatting,
       context,
@@ -500,14 +512,12 @@ export const sameAuthoredInlineProvenance = (
       hyperlinkIdentity(live.node) === hyperlinkIdentity(target.node) &&
       canonicalJson(
         authoredFormattingAt({
-          doc: baseDocument,
           representation: live,
           styleResolver: baseStyleResolver,
         }),
       ) ===
         canonicalJson(
           authoredFormattingAt({
-            doc: targetDocument,
             representation: target,
             styleResolver: targetStyleResolver,
           }),

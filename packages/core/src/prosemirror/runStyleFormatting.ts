@@ -343,13 +343,26 @@ export const paragraphRunStyleContextAt = ({
       return paragraphRunStyleContext(ancestor, styleResolver);
     }
   }
-  return {
-    baseParagraphFormatting: undefined,
-    paragraphFormatting: undefined,
-    paragraphMarkFormatting: undefined,
-    paragraphMarkPrecedesStyle: false,
-  };
+  return nearestParagraphRunStyleContext(null, styleResolver);
 };
+
+/**
+ * {@link paragraphRunStyleContextAt} for a caller that already knows the
+ * nearest paragraph, or that there is none. A document walk knows it for free,
+ * where `doc.resolve` re-descends from the root once per run.
+ */
+export const nearestParagraphRunStyleContext = (
+  paragraph: PMNode | null,
+  styleResolver?: RunStyleResolver | null,
+): ParagraphRunStyleContext =>
+  paragraph
+    ? paragraphRunStyleContext(paragraph, styleResolver)
+    : {
+        baseParagraphFormatting: undefined,
+        paragraphFormatting: undefined,
+        paragraphMarkFormatting: undefined,
+        paragraphMarkPrecedesStyle: false,
+      };
 
 type ResolveEffectiveRunStyleFormattingOptions = {
   marks: readonly Mark[];

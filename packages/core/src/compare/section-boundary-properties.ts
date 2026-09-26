@@ -131,6 +131,19 @@ const boundaryParagraphEntriesOf = (document: PMNode): BoundaryParagraph[] | nul
   return children.flatMap((child) => (child.type === "paragraph" ? [child.paragraph] : []));
 };
 
+const hasSectionEndpoint = (document: PMNode): boolean => {
+  let found = false;
+  document.forEach((node) => {
+    if (
+      node.type.name === "paragraph" &&
+      expectParagraphAttrs(node)._sectionProperties !== undefined
+    ) {
+      found = true;
+    }
+  });
+  return found;
+};
+
 type MappedSectionBoundaryProperties =
   | { kind: "inserted"; target: SectionProperties }
   | { kind: "retained"; previous: SectionProperties; target: SectionProperties };
@@ -168,6 +181,18 @@ export const stageSectionBoundaryProperties = ({
   }) => MappedSectionBoundaryProperties | null;
 }): StageSectionBoundaryPropertiesResult => {
   if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) return { status: "budget-exceeded" };
+  // A target no paragraph of which ends a section has no endpoint to stage,
+  // whatever the accepted projection says, so it is not worth building: that
+  // is an accept-all over the whole redlined story. Whether the rest of the
+  // accepted story agrees with the target is the round-trip check's question.
+  if (!hasSectionEndpoint(target)) {
+    return {
+      status: "matched",
+      transaction: state.tr,
+      nextRevisionId: revisionStamp.idSeed,
+      rangeCount: 0,
+    };
+  }
   const reviewedState = resolveAllChangesInHeadlessStateWithMapping(state, "accept");
   const reviewed = boundaryParagraphEntriesOf(reviewedState.state.doc);
   const targets = boundaryParagraphEntriesOf(target);
