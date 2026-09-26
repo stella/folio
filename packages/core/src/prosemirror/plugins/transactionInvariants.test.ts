@@ -70,6 +70,39 @@ describe("transaction invariants", () => {
     expect(error.message).toContain('"stepType"');
   });
 
+  test("a broken reference the document arrived with is tolerated where it is, not where it moves", async () => {
+    const document = await parseShapeDocument(await documentShape("plain-markdown").build());
+    const loaded = createHarnessState(document, "editing");
+    const paragraphs: { pos: number; attrs: Record<string, unknown> }[] = [];
+    loaded.doc.forEach((node, pos) => {
+      paragraphs.push({ pos, attrs: node.attrs });
+    });
+    const [first, second] = paragraphs;
+    if (!first || !second) {
+      throw new Error("the shape has fewer than two paragraphs");
+    }
+    const undefinedReference = { kind: "reference", numId: 42, ilvl: 0 };
+    // Arrived broken: the first paragraph names an instance nothing defines.
+    const broken = loaded.apply(
+      loaded.tr.setNodeMarkup(first.pos, undefined, { ...first.attrs, numPr: undefinedReference }),
+    );
+    const checked = broken.reconfigure({
+      plugins: [...broken.plugins, createTransactionInvariantPlugin()],
+    });
+
+    // An unrelated edit passes.
+    expect(() => checked.apply(checked.tr.insertText("x", second.pos + 1))).not.toThrow();
+
+    // Moving the broken reference onto another paragraph is a new issue.
+    expect(() =>
+      checked.apply(
+        checked.tr
+          .setNodeMarkup(first.pos, undefined, { ...first.attrs, numPr: null })
+          .setNodeMarkup(second.pos, undefined, { ...second.attrs, numPr: undefinedReference }),
+      ),
+    ).toThrow(TransactionInvariantError);
+  });
+
   test("a sound transaction passes", async () => {
     const state = caretIn(await withInvariantPlugin("single-decimal-list"), "Plain text.");
 

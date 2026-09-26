@@ -42,6 +42,8 @@ export const areTransactionInvariantsEnabled = (): boolean =>
 export type TransactionInvariantIssue = {
   path: string;
   message: string;
+  /** Position of the node the issue sits on, when the check knows it. */
+  pos?: number;
 };
 
 const MAX_REPORTED_STEPS_LENGTH = 4000;
@@ -91,6 +93,7 @@ const numberingReferenceIssues = (state: EditorState): TransactionInvariantIssue
       issues.push({
         path: `paragraph at ${pos}.numPr.numId`,
         message: `Numbering definition ${numId} is missing.`,
+        pos,
       });
     }
     return false;
@@ -107,18 +110,36 @@ export const checkEditorStateInvariants = (state: EditorState): TransactionInvar
 /**
  * The issues `after` has that `before` did not. A document can arrive broken
  * (a malformed attribute the editor tolerates); only what a transaction adds
- * is the transaction's fault. Issues are matched by message because their
- * paths move with the edit.
+ * is the transaction's fault. An issue that names its node persists only on
+ * that node, followed through the transactions' mappings, so moving a broken
+ * reference from one paragraph to another still counts as new. Issues without
+ * a position are matched by message, since their paths move with the edit.
  */
 const introducedIssues = (
   before: readonly TransactionInvariantIssue[],
   after: readonly TransactionInvariantIssue[],
+  transactions: readonly Transaction[],
 ): TransactionInvariantIssue[] => {
+  const mapPosition = (pos: number): number => {
+    let mapped = pos;
+    for (const transaction of transactions) {
+      mapped = transaction.mapping.map(mapped, 1);
+    }
+    return mapped;
+  };
+  const persisting = new Set<string>();
   const remaining = new Map<string, number>();
   for (const issue of before) {
-    remaining.set(issue.message, (remaining.get(issue.message) ?? 0) + 1);
+    if (issue.pos === undefined) {
+      remaining.set(issue.message, (remaining.get(issue.message) ?? 0) + 1);
+    } else {
+      persisting.add(`${mapPosition(issue.pos)}:${issue.message}`);
+    }
   }
   return after.filter((issue) => {
+    if (issue.pos !== undefined) {
+      return !persisting.has(`${issue.pos}:${issue.message}`);
+    }
     const count = remaining.get(issue.message) ?? 0;
     if (count === 0) {
       return true;
@@ -146,7 +167,11 @@ export const createTransactionInvariantPlugin = (): Plugin =>
       if (issues.length === 0) {
         return null;
       }
-      const introduced = introducedIssues(checkEditorStateInvariants(oldState), issues);
+      const introduced = introducedIssues(
+        checkEditorStateInvariants(oldState),
+        issues,
+        transactions,
+      );
       if (introduced.length > 0) {
         throw new TransactionInvariantError(introduced, transactions);
       }
