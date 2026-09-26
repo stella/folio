@@ -13,11 +13,17 @@
  * the Unicode data that engine needs, and a document in Latin, Cyrillic or
  * Greek needs none of it: `getShaper` is called only once a run in a shaping
  * script is about to be measured or painted, and never before.
+ *
+ * The same artifact resolves the bidirectional algorithm, because splitting a
+ * line into runs that each read one way is what shaping needs first.
  */
 
 import { TaggedError } from "better-result";
 
-import initializeShaper, { shapeRun as shapeRunInWasm } from "../generated/text_shaper.js";
+import initializeShaper, {
+  resolveBidi as resolveBidiInWasm,
+  shapeRun as shapeRunInWasm,
+} from "../generated/text_shaper.js";
 
 /** Which way a run advances. Resolved by the producer, never guessed here. */
 export const SHAPING_DIRECTION = {
@@ -66,8 +72,42 @@ export type ShapedRun = {
   readonly unitsPerEm: number;
 };
 
+/** The paragraph direction of a line whose bidirectional levels are resolved. */
+export const BIDI_DIRECTION = {
+  leftToRight: "ltr",
+  rightToLeft: "rtl",
+  /** Rules P2 and P3: the first strong character outside an isolate decides. */
+  auto: "auto",
+} as const;
+
+export type BidiDirection = (typeof BIDI_DIRECTION)[keyof typeof BIDI_DIRECTION];
+
+export type ResolveBidiRequest = {
+  /** One paragraph laid out as one line; a paragraph separator does not split it. */
+  readonly text: string;
+  readonly direction: BidiDirection;
+};
+
+/**
+ * One line after the Unicode Bidirectional Algorithm (UAX #9), rules P2
+ * through L2. Indices count code points, not UTF-16 units.
+ */
+export type BidiLine = {
+  /** 0 when the paragraph reads left to right, 1 when right to left. */
+  readonly paragraphLevel: number;
+  /**
+   * Embedding level per code point, after rule L1; odd levels read right to
+   * left. Characters rule X9 removes (explicit formatting characters such as
+   * isolates) carry a level but draw nothing.
+   */
+  readonly levels: readonly number[];
+  /** Code-point indices in visual order, left to right (rule L2). */
+  readonly visualOrder: readonly number[];
+};
+
 export type Shaper = {
   readonly shapeRun: (request: ShapeRunRequest) => ShapedRun;
+  readonly resolveBidi: (request: ResolveBidiRequest) => BidiLine;
 };
 
 export class ShaperError extends TaggedError("ShaperError")<{
@@ -102,7 +142,27 @@ const decode = (buffer: Int32Array): ShapedRun => {
   return { glyphs, unitsPerEm };
 };
 
+/** `[paragraphLevel, count, level * count, visualIndex * count]`. */
+const decodeBidi = (buffer: Int32Array): BidiLine => {
+  const count = buffer[1] ?? 0;
+  const levelsAt = HEADER_FIELDS;
+  const orderAt = HEADER_FIELDS + count;
+  return {
+    paragraphLevel: buffer[0] ?? 0,
+    levels: Array.from(buffer.subarray(levelsAt, orderAt)),
+    visualOrder: Array.from(buffer.subarray(orderAt, orderAt + count)),
+  };
+};
+
+const RIGHT_TO_LEFT_BY_BIDI_DIRECTION = {
+  ltr: false,
+  rtl: true,
+  auto: undefined,
+} as const satisfies Record<BidiDirection, boolean | undefined>;
+
 const shaper: Shaper = {
+  resolveBidi: ({ text, direction }) =>
+    decodeBidi(resolveBidiInWasm(text, RIGHT_TO_LEFT_BY_BIDI_DIRECTION[direction])),
   shapeRun: ({
     font,
     faceIndex = 0,
@@ -132,17 +192,28 @@ const shaper: Shaper = {
   },
 };
 
+/**
+ * Where the artifact comes from when the caller already holds it: a runtime
+ * that cannot fetch its own package files (a single-file executable, an
+ * embedded asset) hands over the WebAssembly bytes instead.
+ */
+export type ShaperSource = {
+  readonly wasm: Uint8Array | ArrayBuffer;
+};
+
 let loading: Promise<Shaper> | undefined;
 
 /**
  * Loads the shaper, once, and hands back the single implementation both the
  * measurer and the PDF backend use.
  *
- * Calling this is what fetches the artifact, so a caller asks for it only after
- * establishing that some run actually needs shaping.
+ * Calling this without a source is what fetches the artifact, so a caller asks
+ * for it only after establishing that some run actually needs shaping. With a
+ * source, the bytes given are instantiated and nothing is fetched. Either way
+ * the first successful load is the one every later call shares.
  */
-export const getShaper = (): Promise<Shaper> => {
-  loading ??= initializeShaper()
+export const getShaper = (source?: ShaperSource): Promise<Shaper> => {
+  loading ??= initializeShaper(source === undefined ? undefined : { module_or_path: source.wasm })
     .then(() => {
       resolved = shaper;
       return shaper;

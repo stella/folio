@@ -15,6 +15,11 @@ clusters, advances and offsets in the font's own design units, so the caller
 scales them: a measurement in CSS pixels and a PDF text matrix in points come
 from the same numbers without either rounding the other's.
 
+A second entry resolves the Unicode Bidirectional Algorithm (UAX #9) for one
+line: the embedding level of every character, with isolates, embeddings and
+overrides, and the visual order of the line. A caller needs both before it can
+split text into runs that each read one way.
+
 The crate supports native Rust consumers directly. Browser and server consumers
 enable the `wasm` feature; `@stll/folio-core`'s `src/shaping/shaper.ts` provides
 the corresponding TypeScript binding, and is the only module that imports the
@@ -25,7 +30,8 @@ generated artifact.
 The WebAssembly artifact is committed under `packages/core/src/generated` with
 its own size budget, separate from the DOCX kernel's. It is fetched the first
 time a document actually contains a run that shapes: a document in Latin,
-Cyrillic or Greek never loads it.
+Cyrillic or Greek never loads it. A runtime that cannot fetch package files
+passes the bytes to `getShaper({ wasm })` instead.
 
 Regenerate it with `bun --filter @stll/folio-core wasm:generate`. The committed
 bytes are compared against a fresh build, and CI builds on linux/amd64, so on
@@ -36,7 +42,7 @@ fails it uploads what it built, and that is what to commit.
 
 ## What it does not do
 
-It shapes one run. Splitting text into runs, resolving the bidirectional
-algorithm, and choosing which face covers which character are the caller's, and
-a run handed here must not span a direction change: the producer has already
-split at every boundary and knows which way each run reads.
+It shapes one run. Splitting text into runs, breaking lines, splitting
+paragraphs, and choosing which face covers which character are the caller's,
+and a run handed here must not span a direction change: the producer has
+already split at every boundary and knows which way each run reads.

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-test("publish preparation preserves private exceptions to wildcard exports", async () => {
+test("publish preparation maps source, asset and private exports to dist", async () => {
   const packageRoot = await mkdtemp(path.join(tmpdir(), "folio-prepare-publish-"));
   try {
     await mkdir(path.join(packageRoot, "dist"));
@@ -11,6 +11,8 @@ test("publish preparation preserves private exceptions to wildcard exports", asy
     await writeFile(path.join(packageRoot, "dist/index.d.ts"), "export {};\n");
     await writeFile(path.join(packageRoot, "dist/documentClone.js"), "export {};\n");
     await writeFile(path.join(packageRoot, "dist/documentClone.d.ts"), "export {};\n");
+    await mkdir(path.join(packageRoot, "dist/generated"));
+    await writeFile(path.join(packageRoot, "dist/generated/artifact_bg.wasm"), "");
     await writeFile(
       path.join(packageRoot, "package.json"),
       `${JSON.stringify(
@@ -20,6 +22,7 @@ test("publish preparation preserves private exceptions to wildcard exports", asy
           exports: {
             ".": "./src/index.ts",
             "./document-clone": "./src/documentClone.ts",
+            "./artifact/wasm": "./src/generated/artifact_bg.wasm",
             "./private": null,
             "./*": "./src/*.ts",
           },
@@ -41,6 +44,7 @@ test("publish preparation preserves private exceptions to wildcard exports", asy
       types: "./dist/documentClone.d.ts",
       import: "./dist/documentClone.js",
     });
+    expect(manifest.exports["./artifact/wasm"]).toBe("./dist/generated/artifact_bg.wasm");
     expect(manifest.exports["./*"]).toEqual({
       types: "./dist/*.d.ts",
       import: "./dist/*.js",

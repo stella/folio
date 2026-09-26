@@ -2,6 +2,32 @@
 /* @ts-self-types="./text_shaper.d.ts" */
 
 /**
+ * Resolve the bidirectional levels and visual order of one line.
+ *
+ * `right_to_left` is the paragraph direction, or `None` for rules P2 and P3.
+ * Returns `[paragraphLevel, charCount, level * charCount, visualIndex *
+ * charCount]`, counting characters as Unicode scalar values.
+ * @param {string} text
+ * @param {boolean | null} [right_to_left]
+ * @returns {Int32Array}
+ */
+export function resolveBidi(text, right_to_left) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_export, wasm.__wbindgen_export2);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.resolveBidi(retptr, ptr0, len0, isLikeNone(right_to_left) ? 0xFFFFFF : right_to_left ? 1 : 0);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var v2 = getArrayI32FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export3(r0, r1 * 4, 4);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * Shape one run of text with one face.
  *
  * Returns `[unitsPerEm, glyphCount, (glyphId, cluster, xAdvance, yAdvance,

@@ -1,12 +1,12 @@
-//! The single entry point across the WebAssembly boundary.
+//! The entry points across the WebAssembly boundary.
 //!
-//! One call shapes one run. The result is a flat `Int32Array` rather than a
+//! One call shapes one run, or resolves the bidirectional levels of one line. The result is a flat `Int32Array` rather than a
 //! structure per glyph because a page of Arabic is tens of thousands of glyphs
 //! and an object each would cost more in boundary crossings than the shaping
 //! itself. The layout is fixed and documented on the TypeScript side, which is
 //! the only place that reads it.
 
-use crate::{Direction, ShapeRequest, ShapingError, shape_run};
+use crate::{BaseDirection, Direction, ShapeRequest, ShapingError, resolve_bidi, shape_run};
 use wasm_bindgen::prelude::*;
 
 /// Fields per glyph in the returned buffer.
@@ -84,4 +84,33 @@ pub fn shape_run_wasm(
         out.push(glyph.y_offset);
     }
     Ok(out)
+}
+
+/// Resolve the bidirectional levels and visual order of one line.
+///
+/// `right_to_left` is the paragraph direction, or `None` for rules P2 and P3.
+/// Returns `[paragraphLevel, charCount, level * charCount, visualIndex *
+/// charCount]`, counting characters as Unicode scalar values.
+#[wasm_bindgen(js_name = resolveBidi)]
+#[must_use]
+pub fn resolve_bidi_wasm(text: &str, right_to_left: Option<bool>) -> Vec<i32> {
+    let line = resolve_bidi(
+        text,
+        match right_to_left {
+            Some(false) => BaseDirection::LeftToRight,
+            Some(true) => BaseDirection::RightToLeft,
+            None => BaseDirection::Auto,
+        },
+    );
+    let count = line.levels.len();
+    let mut out = Vec::with_capacity(count.saturating_mul(2).saturating_add(2));
+    out.push(i32::from(line.paragraph_level));
+    out.push(i32::try_from(count).unwrap_or(i32::MAX));
+    out.extend(line.levels.iter().map(|level| i32::from(*level)));
+    out.extend(
+        line.visual_order
+            .iter()
+            .map(|index| i32::try_from(*index).unwrap_or(i32::MAX)),
+    );
+    out
 }
