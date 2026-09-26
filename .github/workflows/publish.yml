@@ -125,3 +125,16 @@ jobs:
         packages/cli/package.json
         packages/vue/package.json
         packages/nuxt/package.json
+
+  vscode:
+    name: Publish the VS Code extension
+    needs: release
+    # The extension's version follows @stll/folio-cli, so each release that
+    # bumps the CLI publishes it; any other release is a skipped duplicate.
+    permissions:
+      contents: read
+      id-token: write # Marketplace federated login in the called workflow.
+    uses: ./.github/workflows/publish-vscode.yml
+    with:
+      publish: true
+      source-ref: ${{ inputs.source-ref || github.sha }}

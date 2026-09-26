@@ -1,9 +1,12 @@
 name: Publish VS Code extension
 
-# Manual only. Builds plugins/vscode into one .vsix and publishes that exact
-# file to the VS Code Marketplace and Open VSX. Leave `publish` unchecked for
-# a dry run: it builds and packages, and signs in to the Marketplace to print
-# the publishing identity's user id, but publishes nothing.
+# Builds plugins/vscode into one .vsix and publishes that exact file to the
+# VS Code Marketplace and Open VSX. publish.yml calls it after every release,
+# so each @stll/folio-cli version ships the extension at the same version; a
+# release that left that version alone is skipped as a duplicate. Run it by
+# hand to retry a publish. Leave `publish` unchecked for a dry run: it builds
+# and packages, and signs in to the Marketplace to print the publishing
+# identity's user id, but publishes nothing.
 #
 # Setup, once:
 # - VS Code Marketplace: an Entra ID app registration with a federated
@@ -32,6 +35,21 @@ on:
         description: Publish to Open VSX
         type: boolean
         default: true
+  workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        default: false
+      marketplace:
+        type: boolean
+        default: true
+      open-vsx:
+        type: boolean
+        default: true
+      source-ref:
+        description: The released commit to build (defaults to the calling commit)
+        type: string
+        default: ""
 
 concurrency:
   group: publish-vscode
@@ -51,6 +69,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.source-ref || github.sha }}
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -128,6 +147,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.source-ref || github.sha }}
           sparse-checkout: |
             package.json
             plugins/vscode
@@ -183,7 +203,7 @@ jobs:
       - if: steps.setup.outputs.publish == 'true'
         name: Publish
         working-directory: plugins/vscode
-        run: node_modules/.bin/vsce publish --packagePath folio.vsix --azure-credential
+        run: node_modules/.bin/vsce publish --packagePath folio.vsix --azure-credential --skip-duplicate
 
   open-vsx:
     name: Publish to Open VSX
@@ -214,6 +234,7 @@ jobs:
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+          ref: ${{ inputs.source-ref || github.sha }}
           sparse-checkout: |
             package.json
             plugins/vscode
@@ -243,4 +264,4 @@ jobs:
         working-directory: plugins/vscode
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: node_modules/.bin/ovsx publish folio.vsix
+        run: node_modules/.bin/ovsx publish folio.vsix --skip-duplicate
