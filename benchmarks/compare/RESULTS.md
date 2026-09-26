@@ -822,3 +822,62 @@ are inapplicable; only the 27 identical-input cases skip the difference check.
 The reference and optimized runs include the same separate note, graphic, field,
 fixture-schema, and bookmark repairs. The refreshed digest manifest is isolated
 in #1101; it updates 173 stale entries without adding or removing cases.
+
+### Heavy comparison follow-up
+
+A lower-load interleaved main/branch/main/branch run reproduced a smaller wall
+regression. All four runs held one FIFO benchmark lock, started below load 16,
+and used four warm-ups plus nine measurements. Load fell from 13.91 to 6.67;
+no competing benchmark workers were detected. The reference was main
+`05a61a35e`; the branch was `4b60e7414`.
+
+| Run       | Median comparison wall (ms) | Whole-command CPU (s) | Max RSS (MiB) | Page faults |
+| --------- | --------------------------- | --------------------- | ------------- | ----------- |
+| Main A1   | 2,046.7                     | 62.56                 | 1,588.6       | 5,277       |
+| Branch B1 | 2,176.9                     | 64.84                 | 1,678.8       | 3,371       |
+| Main A2   | 1,797.7                     | 54.59                 | 1,636.0       | 3,312       |
+| Branch B2 | 1,928.5                     | 61.36                 | 1,699.9       | 3,294       |
+
+Wall time rose 6.4% and 7.3% within the two pairs; CPU also rose. RSS was 4–6%
+higher, while page faults did not increase. The original 50% wall increase was
+not reproduced. Whole-command CPU includes separate stage measurements,
+warm-ups, and invariant checks; it is not the CPU counterpart of the single
+comparison wall median.
+
+Separate diagnostic profiles found GC self time of 1.28 s on main versus 2.41 s
+on the branch, and whole-story resolution grew from 1.85 to 2.50 s. The structural
+pass rebuilt unchanged paragraphs and containers before discarding equal results.
+It now reuses those nodes, avoiding attribute/fragment allocation and preserving
+identity for downstream consumers. Joined paragraphs and changed containers still
+rebuild. No new sleep, timer, or asynchronous wait occurs in the resolver. Retained
+heap was similar (25.1 versus 25.5 MiB), pointing to temporary allocation rather
+than a retained-memory leak. Profile timings are diagnostic, not benchmark samples.
+
+The sharing properties fail before this fix and pass afterward. The 40 focused
+tests also cover all 69 small-corpus configurations, granular replay, joins, and
+table position maps. Every heavy follow-up run retains identical digests and
+passes all seven invariants, including Open XML SDK validation.
+
+Two further main/fixed-branch pairs used the same lock and four-warm-up,
+nine-sample policy. Both compared the same main revision with `4b60e7414` plus
+the unchanged-node sharing fix; unrelated main updates were excluded.
+
+| Pair                       | Median wall main → fixed (ms) | Command CPU main → fixed (s) | Max RSS main → fixed (MiB) | Page faults main → fixed |
+| -------------------------- | ----------------------------- | ---------------------------- | -------------------------- | ------------------------ |
+| Uninstrumented             | 2,178.1 → 2,710.1             | 70.58 → 69.21                | 1,557.9 → 1,642.2          | 5,265 → 3,344            |
+| Same-sample CPU diagnostic | 3,902.7 → 2,784.2             | 75.36 → 75.08                | 1,661.1 → 1,726.8          | 3,298 → 3,329            |
+
+Load ranged from 12.54 to 16.61 in the first pair and 12.11 to 17.04 in the
+diagnostic pair, with no competing benchmark worker detected. The diagnostic
+records CPU and wall for each individual comparison: median sample CPU was
+3,155.2 ms on main and 2,686.4 ms on the fixed branch. A main sample took
+5,502.4 ms wall but 3,290.5 ms CPU, with zero major faults and 11,708 involuntary
+context switches. Scheduling interference therefore materially affects these
+wall samples even below the agreed load guard. They are retained here as
+diagnostics, not used to claim a speedup or a remaining wall regression.
+
+The original repeatable 6–7% regression exposed real unnecessary allocation,
+which is fixed. The post-fix wall differences reverse direction between pairs;
+this shared-host follow-up does not establish a stable end-to-end wall result.
+RSS remains about 4–5% higher. No timer or major-page-fault stall was found, and
+the remaining wall-time uncertainty must not be presented as a measured gain.
