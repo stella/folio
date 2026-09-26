@@ -21,7 +21,11 @@ import {
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
-import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";
+import {
+  hasCanonicalWordprocessingPrefixes,
+  PARAGRAPH_SCAN_NAMES,
+  splicesAsCanonical,
+} from "./wordprocessingPrefixes";
 
 /**
  * Whether `char` ends an element's tag name in XML — a whitespace separator
@@ -509,9 +513,10 @@ const routeChangedParagraphs = (
 ): ParagraphRouting => {
   // The scan reads `<w:p` / `w14:paraId` literally and the splice writes the
   // serializer's `w:` markup, so both hold only for a part spelled that way:
-  // a root under another prefix, a second WordprocessingML prefix, `w14`
-  // under another prefix, or a nested rebinding all refuse.
-  if (!hasCanonicalWordprocessingPrefixes(originalXml)) {
+  // a root under another prefix, paragraphs or ids under a second
+  // WordprocessingML prefix, `w14` under another prefix, or a nested
+  // rebinding all refuse.
+  if (!splicesAsCanonical(originalXml, PARAGRAPH_SCAN_NAMES)) {
     return {
       type: "refused",
       reason: `non-canonical-wordprocessingml-prefix: ${rootElementName(originalXml) ?? "unknown"}`,

@@ -15,7 +15,11 @@ import { fromMarkdown } from "../markdown/fromMarkdown";
 import { ensureParaIds, EnsureParaIdsError } from "./ensureParaIds";
 import { rewritePackagePrefixes, type PrefixVariant } from "./__tests__/namespacePrefixVariants";
 import { createDocx } from "./rezip";
-import { resolveWordprocessingPrefixes } from "./wordprocessingPrefixes";
+import {
+  PARAGRAPH_SCAN_NAMES,
+  resolveWordprocessingPrefixes,
+  splicesAsCanonical,
+} from "./wordprocessingPrefixes";
 
 const W_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
@@ -157,6 +161,18 @@ describe("resolveWordprocessingPrefixes", () => {
       `<w:document xmlns:w="${W_URI}"><w:body><y:p xmlns:y="${W_URI}"/></w:body></w:document>`,
     );
     expect(resolution.type).toBe("unsupported");
+  });
+
+  test("a second WordprocessingML alias blocks a paragraph splice only where it spells a paragraph", () => {
+    const root = `<w:document xmlns:w="${W_URI}" xmlns:x="${W_URI}"><w:body>`;
+    expect(
+      splicesAsCanonical(`${root}<w:p><x:date x:val="d"/></w:p></w:body></w:document>`, [
+        ...PARAGRAPH_SCAN_NAMES,
+      ]),
+    ).toBe(true);
+    expect(
+      splicesAsCanonical(`${root}<x:p/></w:body></w:document>`, [...PARAGRAPH_SCAN_NAMES]),
+    ).toBe(false);
   });
 
   test("ignores declarations inside comments and CDATA", () => {

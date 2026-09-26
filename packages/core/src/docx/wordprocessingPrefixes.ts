@@ -259,6 +259,43 @@ export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefix
   };
 };
 
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+
+/**
+ * Whether a patcher that reads `<w:…>` literally sees every element it looks
+ * for in `xml`, and may splice the serializer's `w:` markup into it.
+ *
+ * True for the canonical spelling. Also true when the part binds
+ * WordprocessingML under an extra prefix besides `w` (folio keeps a source's
+ * alias binding, and verbatim-preserved markup keeps using it) but never
+ * spells any of `localNames` — the elements and attributes the patcher scans
+ * for — under that alias.
+ */
+export const splicesAsCanonical = (xml: string, localNames: readonly string[]): boolean => {
+  const resolution = resolveWordprocessingPrefixes(xml);
+  if (resolution.type !== "resolved") return false;
+  const { prefixes } = resolution;
+  if (prefixes.canonical) return true;
+  const only = (list: readonly string[], prefix: string): boolean =>
+    list.length === 1 && list[0] === prefix;
+  const aliases = prefixes.main.filter((prefix) => prefix !== "w");
+  if (
+    !prefixes.main.includes("w") ||
+    aliases.includes("") ||
+    !only(prefixes.w14, "w14") ||
+    !only(prefixes.mc, "mc")
+  ) {
+    return false;
+  }
+  const names = localNames.map(escapeRegExp).join("|");
+  return aliases.every(
+    (alias) => !new RegExp(`[<\\s/]${escapeRegExp(alias)}:(?:${names})[\\s/>=]`, "u").test(xml),
+  );
+};
+
+/** The names the paragraph splices scan for: paragraphs, their containers and ids. */
+export const PARAGRAPH_SCAN_NAMES = ["p", "tc", "txbxContent", "paraId", "textId"] as const;
+
 /** Whether `xml` spells WordprocessingML the way folio's serializer does. */
 export const hasCanonicalWordprocessingPrefixes = (xml: string): boolean => {
   const resolution = resolveWordprocessingPrefixes(xml);
