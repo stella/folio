@@ -59,6 +59,32 @@ describe("compareSectionBoundaryProperties", () => {
       ],
     });
   });
+
+  test("ignores block bookmark boundaries between retained endpoints", () => {
+    const current = schema.node("doc", null, [
+      paragraph("Before"),
+      schema.node("blockBookmarkBoundary", { type: "start", id: 1, name: "clause" }),
+      paragraph("After", { marginLeft: 720 }),
+      schema.node("blockBookmarkBoundary", { type: "end", id: 1 }),
+    ]);
+    const target = schema.node("doc", null, [
+      paragraph("Before"),
+      paragraph("After", { marginLeft: 1440 }),
+      schema.node("blockBookmarkBoundary", { type: "start", id: 1, name: "clause" }),
+      schema.node("blockBookmarkBoundary", { type: "end", id: 1 }),
+    ]);
+
+    expect(compareSectionBoundaryProperties({ current, target })).toEqual({
+      status: "matched",
+      changes: [
+        {
+          position: current.child(0).nodeSize + current.child(1).nodeSize,
+          current: { marginLeft: 720 },
+          target: { marginLeft: 1440 },
+        },
+      ],
+    });
+  });
 });
 
 import { EditorState } from "prosemirror-state";
