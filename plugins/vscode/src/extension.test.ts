@@ -124,10 +124,17 @@ beforeEach(() => {
 const definitions = () => state.providers.get("folio.mcp")?.provideMcpServerDefinitions() ?? [];
 
 describe("activate", () => {
-  test("registers the preview as an optional editor, its command, and the MCP provider", () => {
-    expect([...state.editors.keys()]).toEqual(["folio.docxPreview"]);
-    expect([...state.commands]).toEqual(["folio.openPreview"]);
+  test("registers the editor, the preview, their commands, and the MCP provider", () => {
+    expect([...state.editors.keys()]).toEqual(["folio.docxEditor", "folio.docxPreview"]);
+    expect([...state.commands]).toEqual(["folio.openEditor", "folio.openPreview"]);
     expect([...state.providers.keys()]).toEqual(["folio.mcp"]);
+  });
+
+  test("keeps one editor per document, alive while hidden", () => {
+    expect(state.editors.get("folio.docxEditor")?.options).toEqual({
+      supportsMultipleEditorsPerDocument: false,
+      webviewOptions: { retainContextWhenHidden: true },
+    });
   });
 
   test("defines the server as the bundled CLI under the editor's Node.js", () => {

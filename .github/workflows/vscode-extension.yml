@@ -1,7 +1,7 @@
 name: VS Code extension
 
 # Builds, tests, and packages plugins/vscode into a .vsix on pull requests that
-# can change it: the extension itself, and the CLI and engine it bundles.
+# can change it: the extension itself, and the CLI, engine, and editor it bundles.
 
 on:
   pull_request:
@@ -11,6 +11,8 @@ on:
       - packages/agents/src/**
       - packages/core/src/**
       - packages/docx-core/src/**
+      - packages/editor-web/**
+      - packages/react/src/**
       - scripts/sync-plugin-cli-version*.ts
       - .github/workflows/vscode-extension.yml
   workflow_dispatch:
@@ -67,6 +69,14 @@ jobs:
           node dist/cli/folio.mjs render ../../parity/fixtures/layout-kitchen-sink.docx \
             -o "$RUNNER_TEMP/preview.html" --output json | tee "$RUNNER_TEMP/render.json"
           node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); if (!r.ok || !(r.data.pageCount > 0)) process.exit(1);' "$RUNNER_TEMP/render.json"
+
+      - name: The package carries the editor bundle
+        working-directory: plugins/vscode
+        run: |
+          unzip -l folio.vsix | tee "$RUNNER_TEMP/vsix.txt" > /dev/null
+          grep -q 'extension/dist/editor/editor\.js$' "$RUNNER_TEMP/vsix.txt"
+          grep -q 'extension/dist/editor/editor\.css$' "$RUNNER_TEMP/vsix.txt"
+          grep -q 'extension/dist/editor/fonts/.*\.woff2$' "$RUNNER_TEMP/vsix.txt"
 
       - name: Upload the .vsix
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

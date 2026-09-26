@@ -8,19 +8,26 @@
 //                          preview and the MCP server
 //   dist/cli/text_shaper_bg.wasm, dist/cli/node_modules/@fontsource/*
 //                          the files the CLI loads at run time
+//   dist/editor/           the editor webview's bundle (editor.js, editor.css,
+//                          fonts/, licence notices), copied from
+//                          packages/editor-web/dist/vscode, which is built
+//                          first when it is missing
 //
 // It also copies the repository's LICENSE next to the manifest for packaging.
 // Run `bun install` at the repository root first: the CLI's dependencies
 // resolve from there.
 
+import { $ } from "bun";
 import { build, type Plugin } from "esbuild";
-import { copyFile, mkdir, readdir, readFile, rm } from "node:fs/promises";
+import { cp, copyFile, mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
 const extensionRoot = path.resolve(import.meta.dir, "..");
 const repoRoot = path.resolve(extensionRoot, "..", "..");
 const cliRoot = path.join(repoRoot, "packages", "cli");
+const editorWebRoot = path.join(repoRoot, "packages", "editor-web");
+const editorWebDist = path.join(editorWebRoot, "dist", "vscode");
 const dist = path.join(extensionRoot, "dist");
 const cliDist = path.join(dist, "cli");
 
@@ -90,6 +97,26 @@ const copyFonts = async (): Promise<void> => {
   }
 };
 
+const exists = async (file: string): Promise<boolean> => {
+  try {
+    await stat(file);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** The files the editor webview loads; the bundle is built when one is missing. */
+const EDITOR_FILES = ["editor.js", "editor.css", "fonts"];
+
+const copyEditor = async (): Promise<void> => {
+  const present = await Promise.all(
+    EDITOR_FILES.map((file) => exists(path.join(editorWebDist, file))),
+  );
+  if (!present.every(Boolean)) await $`bun scripts/build.ts`.cwd(editorWebRoot);
+  await cp(editorWebDist, path.join(dist, "editor"), { recursive: true });
+};
+
 await rm(dist, { recursive: true, force: true });
 
 await Promise.all([
@@ -135,6 +162,7 @@ await copyFile(
   path.join(cliDist, SHAPER_WASM),
 );
 await copyFonts();
+await copyEditor();
 await copyFile(path.join(repoRoot, "LICENSE"), path.join(extensionRoot, "LICENSE"));
 
 console.log(`Built ${path.relative(repoRoot, dist)}`);

@@ -3,16 +3,16 @@
   "displayName": "Folio DOCX",
   "version": "0.1.1",
   "private": true,
-  "description": "Preview .docx files with folio's page layout, and give agent mode folio's .docx tools over MCP: reading, comments, and tracked-change redlines.",
+  "description": "Open .docx files in VS Code and edit them on laid-out pages: type, track changes, comment, and save back to the same file. Also gives agent mode folio's .docx tools over MCP.",
   "categories": [
     "AI",
     "Visualization"
   ],
   "keywords": [
     "docx",
+    "editor",
     "mcp",
     "ooxml",
-    "preview",
     "redline",
     "tracked changes"
   ],
@@ -49,9 +49,16 @@
   "contributes": {
     "commands": [
       {
+        "command": "folio.openEditor",
+        "title": "Edit",
+        "category": "Folio",
+        "icon": "$(edit)"
+      },
+      {
         "command": "folio.openPreview",
-        "title": "Open with Folio DOCX Preview",
-        "category": "Folio"
+        "title": "Reopen with Folio Preview",
+        "category": "Folio",
+        "icon": "$(open-preview)"
       }
     ],
     "configuration": {
@@ -60,11 +67,39 @@
         "folio.author": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Name the folio MCP server records on every tracked change, comment, and reply. When empty, the server falls back to `FOLIO_AUTHOR`, then `git config user.name`, and refuses changes if neither is set."
+          "markdownDescription": "Name recorded on every tracked change, comment, and reply, by the `.docx` editor and by the MCP server. When empty, the editor uses `git config user.name`, then your OS account name; the server uses `FOLIO_AUTHOR`, then `git config user.name`, and refuses changes if neither is set."
+        },
+        "folio.editor.trackChanges": {
+          "type": "string",
+          "enum": [
+            "off",
+            "on"
+          ],
+          "default": "off",
+          "enumDescriptions": [
+            "Edits change the document directly.",
+            "Edits are recorded as tracked changes."
+          ],
+          "markdownDescription": "How the `.docx` editor starts: `off` edits the document directly, `on` records every edit as a tracked change. The editor's toolbar switches between them at any time."
+        },
+        "folio.editor.confirmRewrite": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Ask once per session before a save rewrites the whole document package instead of only the paragraphs you changed. The previous version is backed up in `.folio/backups/` either way."
         }
       }
     },
     "customEditors": [
+      {
+        "viewType": "folio.docxEditor",
+        "displayName": "Folio DOCX Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.docx"
+          }
+        ],
+        "priority": "default"
+      },
       {
         "viewType": "folio.docxPreview",
         "displayName": "Folio DOCX Preview",
@@ -85,20 +120,30 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "folio.openEditor",
+          "when": "resourceExtname == .docx"
+        },
+        {
           "command": "folio.openPreview",
           "when": "resourceExtname == .docx"
         }
       ],
-      "explorer/context": [
+      "editor/title": [
         {
           "command": "folio.openPreview",
-          "when": "resourceExtname == .docx",
+          "when": "activeCustomEditorId == folio.docxEditor",
+          "group": "navigation"
+        },
+        {
+          "command": "folio.openEditor",
+          "when": "activeCustomEditorId == folio.docxPreview",
           "group": "navigation"
         }
       ]
     }
   },
   "activationEvents": [
+    "onCustomEditor:folio.docxEditor",
     "onCustomEditor:folio.docxPreview",
     "onMcpCollection:folio.mcp"
   ],
@@ -109,11 +154,11 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "The preview works in untrusted workspaces. The MCP server, which can change files, is offered only once the workspace is trusted."
+      "description": "The editor and the preview work in untrusted workspaces. The MCP server, which can change files, is offered only once the workspace is trusted."
     },
     "virtualWorkspaces": {
       "supported": "limited",
-      "description": "The preview reads files through the editor's file system. The MCP server needs workspace folders on disk."
+      "description": "The editor opens files on a virtual file system read-only (Save As still works), and the preview reads them through the editor's file system. The MCP server needs workspace folders on disk."
     }
   }
 }

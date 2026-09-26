@@ -1,11 +1,13 @@
 /**
- * Folio DOCX: a read-only `.docx` preview, and the folio MCP server offered to
- * the editor's agent mode. Both run the folio CLI bundled in the extension.
+ * Folio DOCX: the `.docx` editor, a read-only preview, and the folio MCP
+ * server offered to the editor's agent mode. All three run the folio CLI
+ * bundled in the extension.
  */
 
 import path from "node:path";
 import * as vscode from "vscode";
 
+import { registerEditor } from "./editor";
 import { buildMcpLaunch, configuredAuthor, FOLIO_MCP_PROVIDER_ID } from "./mcp";
 import { registerPreview } from "./preview";
 import type { CliRuntime } from "./runtime";
@@ -96,7 +98,11 @@ export const activate = (context: vscode.ExtensionContext): void => {
     nodePath: process.execPath,
     cliEntry: context.asAbsolutePath(path.join("dist", "cli", "folio.mjs")),
   };
-  context.subscriptions.push(registerPreview(context, runtime), registerMcp(context, runtime));
+  context.subscriptions.push(
+    registerEditor(context, runtime),
+    registerPreview(context, runtime),
+    registerMcp(context, runtime),
+  );
 };
 
 export const deactivate = (): void => undefined;

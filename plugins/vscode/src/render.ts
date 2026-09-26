@@ -9,12 +9,12 @@
  * the document lives in.
  */
 
-import { spawn } from "node:child_process";
 import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { cliCommand, type CliRuntime } from "./runtime";
+import { runCli, type ProcessResult } from "./process";
+import type { CliRuntime } from "./runtime";
 
 export type RenderOutcome =
   | { readonly type: "document"; readonly html: string; readonly pageCount: number }
@@ -72,52 +72,6 @@ export type RenderOptions = {
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-type ProcessResult = {
-  readonly code: number | null;
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly timedOut: boolean;
-};
-
-type RunOptions = {
-  readonly runtime: CliRuntime;
-  readonly args: readonly string[];
-  readonly signal: AbortSignal;
-  readonly timeoutMs: number;
-};
-
-const run = ({ runtime, args, signal, timeoutMs }: RunOptions): Promise<ProcessResult> =>
-  new Promise((resolve, reject) => {
-    const { command, args: argv, env } = cliCommand(runtime, args);
-    const child = spawn(command, [...argv], {
-      env: { ...process.env, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-      signal,
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-    child.stderr.setEncoding("utf8").on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill();
-    }, timeoutMs);
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({ code, stdout, stderr, timedOut });
-    });
-  });
-
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
@@ -137,7 +91,7 @@ export const renderDocument = async ({
     await writeFile(input, bytes);
     let result: ProcessResult;
     try {
-      result = await run({
+      result = await runCli({
         runtime,
         args: ["render", input, "-o", output, "--output", "json"],
         signal,

@@ -159,7 +159,7 @@ class DocxPreviewProvider implements vscode.CustomReadonlyEditorProvider {
 }
 
 /** The file behind the active tab, whichever editor shows it. */
-const activeTabUri = (): vscode.Uri | undefined => {
+export const activeTabUri = (): vscode.Uri | undefined => {
   const input: unknown = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
   if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) {
     return input.uri;

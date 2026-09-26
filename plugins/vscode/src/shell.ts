@@ -1,8 +1,9 @@
 /**
- * The preview webview's page: a toolbar, a status line, and the pages. The
- * rendered document arrives later as a message; this page only hosts it.
+ * The webviews' pages. The preview's is a toolbar, a status line, and the
+ * pages; the rendered document arrives later as a message, and this page only
+ * hosts it. The editor's (at the end) loads the editor bundle.
  *
- * Content Security Policy: nothing loads from the network; the one script is
+ * The preview's Content Security Policy: nothing loads from the network; the one script is
  * the extension's own, admitted by nonce; fonts and images are the `data:`
  * URLs the renderer inlines. Styles allow inline CSS because the rendered
  * pages position every glyph with `style` attributes. A nonce cannot admit an
@@ -13,7 +14,7 @@ import { randomBytes } from "node:crypto";
 
 export const createNonce = (): string => randomBytes(18).toString("base64");
 
-/** The policy the page carries. */
+/** The policy the preview's page carries. */
 export const contentSecurityPolicy = (nonce: string): string =>
   [
     "default-src 'none'",
@@ -97,6 +98,53 @@ export const shellHtml = ({ nonce, scriptUri, fileName }: ShellOptions): string 
     '<button id="folio-retry" type="button">Try again</button>',
     "</section>",
     '<main id="folio-pages"></main>',
+    `<script nonce="${escapeAttribute(nonce)}" src="${escapeAttribute(scriptUri)}"></script>`,
+    "</body></html>",
+  ].join("\n");
+
+/**
+ * The editor webview's policy. The editor bundle, its stylesheet, and its
+ * fonts load from the extension (`cspSource`); the bundle runs no worker,
+ * fetches nothing, and evaluates no strings. Images and fonts the document
+ * carries arrive as `data:` and `blob:` URLs.
+ */
+export const editorContentSecurityPolicy = (nonce: string, cspSource: string): string =>
+  [
+    "default-src 'none'",
+    `script-src 'nonce-${nonce}' ${cspSource}`,
+    `style-src ${cspSource} 'unsafe-inline'`,
+    `font-src ${cspSource} data: blob:`,
+    `img-src ${cspSource} data: blob:`,
+    "worker-src 'none'",
+    "connect-src 'none'",
+  ].join("; ");
+
+export type EditorShellOptions = {
+  readonly nonce: string;
+  /** `webview.cspSource`. */
+  readonly cspSource: string;
+  /** `webview.asWebviewUri` of `dist/editor/editor.js` and `dist/editor/editor.css`. */
+  readonly scriptUri: string;
+  readonly styleUri: string;
+  readonly fileName: string;
+};
+
+/** The editor webview's page: the bundle creates its own root and asks for the document. */
+export const editorShellHtml = ({
+  nonce,
+  cspSource,
+  scriptUri,
+  styleUri,
+  fileName,
+}: EditorShellOptions): string =>
+  [
+    "<!doctype html>",
+    '<html lang="en"><head><meta charset="utf-8">',
+    `<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(editorContentSecurityPolicy(nonce, cspSource))}">`,
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    `<title>${escapeAttribute(fileName)}</title>`,
+    `<link rel="stylesheet" href="${escapeAttribute(styleUri)}">`,
+    "</head><body>",
     `<script nonce="${escapeAttribute(nonce)}" src="${escapeAttribute(scriptUri)}"></script>`,
     "</body></html>",
   ].join("\n");
