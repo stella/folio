@@ -14,9 +14,6 @@ export const BIDI_DIRECTION: {
     readonly auto: "auto";
 };
 
-// @public (undocumented)
-export type BidiDirection = (typeof BIDI_DIRECTION)[keyof typeof BIDI_DIRECTION];
-
 // @public
 export type BidiLine = {
     readonly paragraphLevel: number;
@@ -27,9 +24,6 @@ export type BidiLine = {
 // @public
 export const getShaper: (source?: ShaperSource) => Promise<Shaper>;
 
-// @public
-export function isRightToLeftCodePoint(cp: number): boolean;
-
 // @public (undocumented)
 export const parseSfnt: (bytes: Uint8Array) => Result<SfntFont, SfntParseError>;
 
@@ -38,25 +32,6 @@ export type ResolveBidiRequest = {
     readonly text: string;
     readonly direction: BidiDirection;
 };
-
-// @public
-export const SCRIPT_CLASS: {
-    readonly eastAsia: "eastAsia";
-    readonly complex: "complex";
-    readonly western: "western";
-};
-
-// @public (undocumented)
-export type ScriptClass = (typeof SCRIPT_CLASS)[keyof typeof SCRIPT_CLASS];
-
-// @public (undocumented)
-export type ScriptSegment = {
-    text: string;
-    script: ScriptClass;
-};
-
-// @public
-export function segmentByScript(text: string, eastAsiaHint?: boolean): ScriptSegment[];
 
 // @public (undocumented)
 export type SfntFont = {
@@ -79,21 +54,6 @@ export type SfntFont = {
 };
 
 // @public (undocumented)
-export class SfntParseError extends SfntParseError_base<{
-    message: string;
-}> {}
-
-// @public
-export type ShapedGlyph = {
-    readonly glyphId: number;
-    readonly cluster: number;
-    readonly xAdvance: number;
-    readonly yAdvance: number;
-    readonly xOffset: number;
-    readonly yOffset: number;
-};
-
-// @public (undocumented)
 export type ShapedRun = {
     readonly glyphs: readonly ShapedGlyph[];
     readonly unitsPerEm: number;
@@ -104,12 +64,6 @@ export type Shaper = {
     readonly shapeRun: (request: ShapeRunRequest) => ShapedRun;
     readonly resolveBidi: (request: ResolveBidiRequest) => BidiLine;
 };
-
-// @public (undocumented)
-export class ShaperError extends ShaperError_base<{
-    message: string;
-    cause?: unknown;
-}> {}
 
 // @public
 export type ShaperSource = {
@@ -133,14 +87,6 @@ export const SHAPING_DIRECTION: {
     readonly leftToRight: "ltr";
     readonly rightToLeft: "rtl";
 };
-
-// @public (undocumented)
-export type ShapingDirection = (typeof SHAPING_DIRECTION)[keyof typeof SHAPING_DIRECTION];
-
-// @public (undocumented)
-export class SubsetError extends SubsetError_base<{
-    message: string;
-}> {}
 
 // @public
 export const subsetTrueType: (font: SfntFont, glyphIds: ReadonlySet<number>) => Result<TrueTypeSubset, SubsetError>;
