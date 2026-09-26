@@ -16,7 +16,6 @@ import {
   splitCell as pmSplitCell,
   CellSelection,
   selectedRect,
-  removeRow,
   TableMap,
 } from "prosemirror-tables";
 import { Decoration, DecorationSet } from "prosemirror-view";
@@ -43,6 +42,7 @@ import {
   mergeTableRowAttrs,
 } from "../../attrs";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
+import { removeTableRow } from "../../tableGridMutation";
 import { setTableLookFlags } from "../../../docx/tableLook";
 import { createNodeExtension, createExtension } from "../create";
 import type {
@@ -1424,13 +1424,15 @@ export const TablePluginExtension = createExtension({
           dispatch(tr.scrollIntoView());
           return true;
         }
-        // Remove rows bottom-up through prosemirror-tables so cells that span
-        // into a deleted row have their rowspan adjusted (and their content
-        // preserved) instead of being orphaned. `removeRow` mutates the table,
-        // so the map is re-read after each removal.
+        // Remove rows bottom-up so cells that span into a deleted row have
+        // their rowspan adjusted (and their content preserved) instead of
+        // being orphaned. The row removal is the operation layer's, not
+        // prosemirror-tables' `removeRow`, which loses its column after a
+        // wide merged cell and leaves a merge further right a row too long.
+        // Each removal mutates the table, so the map is re-read after it.
         const rect = selectedRect(state);
         for (let row = lastRow; row >= firstRow; row--) {
-          removeRow(tr, rect, row);
+          removeTableRow(tr, rect, row);
           if (row > firstRow) {
             const updated = tr.doc.nodeAt(rect.tableStart - 1);
             if (updated) {
