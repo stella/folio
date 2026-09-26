@@ -410,6 +410,7 @@ export type FolioAIEditSeverity = "low" | "medium" | "high";
 export type FolioAIEditSkippedOperation = {
     id: string;
     reason: FolioAIEditSkipReason;
+    message?: string;
 };
 
 // @public (undocumented)
@@ -435,7 +436,17 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 * no entity to attach suggestions to); the operation was neither applied
 * nor queued.
 */
-"documentNotEditable";
+"documentNotEditable" |
+/**
+* The operation supplies more values than its target can hold, so applying
+* it would drop some of them: an `insertTableRow` whose `cellTexts` outnumber
+* the cells the new row has (a vertical merge crossing the insertion point
+* extends through the new row and takes a column away from it), or an
+* `insertTableColumn` whose `cellTexts` outnumber the cells the new column
+* has. Nothing was applied; `message` names the values that do not fit.
+* Supply fewer values, or anchor the operation where the table has room.
+*/
+"payloadDoesNotFit";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {
@@ -587,6 +598,7 @@ export type FolioDocumentOperationIssue = {
     code: FolioAIEditSkippedOperation["reason"];
     retryable: boolean;
     recovery: FolioDocumentOperationRecovery;
+    message?: string;
 };
 
 // @public (undocumented)

@@ -973,6 +973,7 @@ export type FolioDocumentOperationIssue = {
     code: FolioAIEditSkippedOperation["reason"];
     retryable: boolean;
     recovery: FolioDocumentOperationRecovery;
+    message?: string;
 };
 
 // @public (undocumented)
