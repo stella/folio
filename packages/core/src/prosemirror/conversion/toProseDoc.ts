@@ -78,6 +78,7 @@ import {
   paragraphNumberingReferenceId,
 } from "../../docx/numberingReference";
 import { paragraphNumberingAttr } from "../numberingAttr";
+import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
@@ -3113,9 +3114,6 @@ function convertField(
     hasConvertedPageBreakContent ||
     hasConvertedPreservedContent ||
     (hasStructuredSourceContent && (hasConvertedHyperlinkContent || hasConvertedWrapperContent));
-  if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
-    marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
-  }
   const resultRuns =
     field.type === "simpleField"
       ? field.content.flatMap((content) => (content.type === "run" ? [content] : []))
@@ -3127,6 +3125,12 @@ function convertField(
     resultRuns.every((run) => run.content.every((item) => item.type === "text" && item.text === ""))
       ? resultRuns
       : undefined;
+  const resultPropertyChanges = emptyResultRuns
+    ? emptyFieldRunPropertyChanges(emptyResultRuns)
+    : fieldPropertyChanges;
+  if (!createStructuredField && resultPropertyChanges && resultPropertyChanges.length > 0) {
+    marks.push(schema.mark("runPropertyChange", { changes: [...resultPropertyChanges] }));
+  }
   return schema.node(
     createStructuredField ? "structuredField" : "field",
     {

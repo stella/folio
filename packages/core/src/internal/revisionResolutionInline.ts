@@ -6,11 +6,12 @@ import { recordNodeResolution } from "./revisionResolutionEdits";
 import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
-import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import { expectFieldAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
 import {
   resolutionRemovesControl,
   withoutResolvedEnclosures,
 } from "../prosemirror/contentControlRevisions";
+import { resolveEmptyFieldResultRuns } from "../prosemirror/emptyFieldResultRuns";
 import { INLINE_CONTENT_CONTROL_NODE_NAME } from "../prosemirror/extensions/nodes/SdtExtension";
 import { continuedRunMarks } from "../prosemirror/rejoinRunCarriers";
 import { reconstructRejectedRunFormattingMarks } from "../prosemirror/runPropertyChangeResolution";
@@ -97,14 +98,27 @@ const resolveInlineNode = ({
   paragraphScope,
 }: ResolveInlineNodeOptions): PMNode | null => {
   let marks: readonly Mark[] = node.marks;
+  let attrs = node.attrs;
   const runPropertyChangeMark = marks.find((mark) => mark.type.name === "runPropertyChange");
   if (runPropertyChangeMark) {
     const { changes } = expectRunPropertyChangeMarkAttrs(runPropertyChangeMark);
     if (changes.length > 0) {
       marks = marks.filter((mark) => mark !== runPropertyChangeMark);
-      if (context.mode === "reject") {
+      const emptyRuns =
+        node.type.name === "field" || node.type.name === "structuredField"
+          ? expectFieldAttrs(node)._docxEmptyResultRuns
+          : undefined;
+      const resolvedRuns = emptyRuns
+        ? resolveEmptyFieldResultRuns({ runs: emptyRuns, mode: context.mode, revisionIds: null })
+        : null;
+      if (resolvedRuns) {
+        attrs = { ...attrs, _docxEmptyResultRuns: resolvedRuns.runs };
+      }
+      if (context.mode === "reject" && (!resolvedRuns || resolvedRuns.visibleFormattingChanged)) {
         marks = marks.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
-        const previousFormatting = changes.at(0)?.previousFormatting;
+        const previousFormatting = resolvedRuns
+          ? resolvedRuns.visibleFormatting
+          : changes.at(0)?.previousFormatting;
         for (const previousMark of reconstructRejectedRunFormattingMarks({
           node,
           paragraphContext: resolveParagraphRunStyleScope(paragraphScope, context.styleResolver),
@@ -135,6 +149,7 @@ const resolveInlineNode = ({
   if (context.keepType) {
     marks = marks.filter((mark) => mark.type !== context.keepType);
   }
+  if (attrs !== node.attrs) return rebuildNode(node, attrs, node.content, marks);
   return marksEqual(marks, node.marks) ? node : node.mark(marks);
 };
 

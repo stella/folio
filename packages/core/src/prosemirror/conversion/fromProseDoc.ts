@@ -4127,7 +4127,9 @@ function createFieldFromNode(
     extractedContent.length > 0
       ? synchronizeFieldDisplayText(extractedContent, displayText, displayRun)
       : [];
-  const fallbackFieldContent = displayText ? [displayRun] : [];
+  const fallbackFieldContent = displayText
+    ? [displayRun]
+    : reconcileEmptyFieldResultRuns(attrs._docxEmptyResultRuns, displayRun);
 
   if (attrs.fieldKind === "complex") {
     const complex: ComplexField = {
@@ -4138,9 +4140,7 @@ function createFieldFromNode(
       fieldResult:
         fieldContent.length > 0
           ? fieldContent.filter((content): content is Run => content.type === "run")
-          : fallbackFieldContent.length > 0
-            ? fallbackFieldContent
-            : (attrs._docxEmptyResultRuns ?? []),
+          : fallbackFieldContent,
     };
     if (attrs.fldLock !== undefined) {
       complex.fldLock = attrs.fldLock;
@@ -4158,12 +4158,7 @@ function createFieldFromNode(
     type: "simpleField",
     instruction: attrs.instruction,
     fieldType: attrs.fieldType,
-    content:
-      fieldContent.length > 0
-        ? fieldContent
-        : fallbackFieldContent.length > 0
-          ? fallbackFieldContent
-          : (attrs._docxEmptyResultRuns ?? []),
+    content: fieldContent.length > 0 ? fieldContent : fallbackFieldContent,
   };
   if (attrs.fldLock !== undefined) {
     simple.fldLock = attrs.fldLock;
@@ -4173,6 +4168,69 @@ function createFieldFromNode(
   }
   return simple;
 }
+
+const reconcileEmptyFieldResultRuns = (
+  runs: readonly Run[] | undefined,
+  displayRun: Run,
+): Run[] => {
+  if (!runs?.length) return [];
+
+  // convertField projects the first stated formatting and every empty result
+  // revision to marks; retain each revision on its authored run on save.
+  const firstFormatting = runs.findIndex((run) => run.formatting !== undefined);
+  const formattingOwner = firstFormatting < 0 ? 0 : firstFormatting;
+  const projectedChanges = displayRun.propertyChanges ?? [];
+  const projectedById = new Map<number, number[]>();
+  projectedChanges.forEach((change, index) => {
+    const positions = projectedById.get(change.info.id) ?? [];
+    positions.push(index);
+    projectedById.set(change.info.id, positions);
+  });
+  const usedChanges = new Set<number>();
+  const reconciled = runs.map((run, index) => {
+    const propertyChanges = run.propertyChanges?.flatMap((change) => {
+      const projectedIndex = projectedById.get(change.info.id)?.shift();
+      if (projectedIndex === undefined) return [];
+      usedChanges.add(projectedIndex);
+      const projected = projectedChanges[projectedIndex];
+      return projected ? [projected] : [];
+    });
+    if (index !== formattingOwner && !run.propertyChanges && index !== 0) return run;
+
+    let formatting = index === formattingOwner ? displayRun.formatting : run.formatting;
+    if (
+      index === formattingOwner &&
+      !formatting &&
+      run.formatting &&
+      Object.keys(run.formatting).length === 0
+    ) {
+      formatting = run.formatting;
+    }
+    const preservedAttributes =
+      index === 0
+        ? (displayRun.preservedAttributes ?? run.preservedAttributes)
+        : run.preservedAttributes;
+    const current: Run = {
+      type: "run",
+      content: run.content,
+      ...(formatting ? { formatting } : {}),
+      ...(propertyChanges?.length ? { propertyChanges } : {}),
+      ...(preservedAttributes ? { preservedAttributes } : {}),
+    };
+    return current;
+  });
+  const newChanges = projectedChanges.filter((_, index) => !usedChanges.has(index));
+  if (newChanges.length > 0) {
+    const first = reconciled[0];
+    if (first) {
+      reconciled[0] = {
+        ...first,
+        propertyChanges: [...(first.propertyChanges ?? []), ...newChanges],
+      };
+    }
+  }
+  return reconciled;
+};
 
 const synchronizeFieldDisplayText = (
   content: SimpleField["content"],

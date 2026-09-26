@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, NodeSelection, type Transaction } from "prosemirror-state";
 
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
@@ -21,6 +21,14 @@ import { pixelsToEmu } from "../../utils/units";
 import { expectHardBreakAttrs, expectParagraphAttrs } from "../attrs";
 import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
+import {
+  acceptChange,
+  rejectAIEditRevision,
+  rejectChange,
+  resolveAllChangesInHeadlessState,
+} from "../commands/comments";
+import { toggleBold } from "../commands/formatting";
+import { pluginsForHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 import { stableProjectionIdentity } from "./__tests__/stableProjectionIdentity";
@@ -314,6 +322,10 @@ describe("fromProseDoc", () => {
       label: "an empty result run",
     },
     {
+      content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "" }] }],
+      label: "an explicit empty result property set",
+    },
+    {
       content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] }],
       label: "a formatted empty result run",
     },
@@ -323,6 +335,13 @@ describe("fromProseDoc", () => {
         { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
       ],
       label: "differently formatted empty result runs",
+    },
+    {
+      content: [
+        { type: "run", content: [{ type: "text", text: "" }] },
+        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+      ],
+      label: "an unformatted run before a formatted one",
     },
   ] as const)("preserves a simple field with $label", ({ content }) => {
     const paragraph = {
@@ -344,6 +363,13 @@ describe("fromProseDoc", () => {
         { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
       ],
       label: "differently formatted empty result runs",
+    },
+    {
+      fieldResult: [
+        { type: "run", content: [{ type: "text", text: "" }] },
+        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+      ],
+      label: "an unformatted run before a formatted one",
     },
   ] as const)("preserves a complex field with $label", ({ fieldResult }) => {
     const paragraph = {
@@ -404,6 +430,362 @@ describe("fromProseDoc", () => {
 
     expect(result.content).toEqual([
       { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "42" }] },
+    ]);
+  });
+
+  test.each([
+    { fieldKind: "simple", mode: "accept", expectedFormatting: { bold: true } },
+    { fieldKind: "simple", mode: "reject", expectedFormatting: { italic: true } },
+    { fieldKind: "complex", mode: "accept", expectedFormatting: { bold: true } },
+    { fieldKind: "complex", mode: "reject", expectedFormatting: { italic: true } },
+  ] as const)(
+    "$mode of an empty $fieldKind field's run property change updates its retained result",
+    ({ fieldKind, mode, expectedFormatting }) => {
+      const run: Run = {
+        type: "run",
+        formatting: { bold: true },
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { id: 42, author: "Reviewer", date: "2026-09-26" },
+            previousFormatting: { italic: true },
+            currentFormatting: { bold: true },
+          },
+        ],
+        content: [{ type: "text", text: "" }],
+      };
+      const untouched: Run = {
+        type: "run",
+        formatting: { underline: { style: "single" } },
+        content: [{ type: "text", text: "" }],
+      };
+      const field = (
+        fieldKind === "simple"
+          ? {
+              type: "simpleField",
+              instruction: " PAGE ",
+              fieldType: "PAGE",
+              content: [run, untouched],
+            }
+          : {
+              type: "complexField",
+              instruction: " PAGE ",
+              fieldType: "PAGE",
+              fieldCode: [],
+              fieldResult: [run, untouched],
+            }
+      ) satisfies ParagraphContent;
+      const source: Document = {
+        package: { document: { content: [{ type: "paragraph", content: [field] }] } },
+      };
+      const doc = toProseDoc(source);
+      const state = EditorState.create({ doc });
+      let transaction: Transaction | undefined;
+      const command =
+        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size);
+      expect(
+        command(state, (dispatched) => {
+          transaction = dispatched;
+        }),
+      ).toBe(true);
+      if (!transaction) throw new Error("Expected a revision transaction");
+      const paragraph = fromProseDoc(transaction.doc).package.document.content.at(0);
+      const resolved = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      if (resolved?.type !== "simpleField" && resolved?.type !== "complexField") {
+        throw new Error("Expected a field");
+      }
+      const result = resolved.type === "simpleField" ? resolved.content : resolved.fieldResult;
+
+      expect(result.at(0)).toEqual({
+        type: "run",
+        formatting: expectedFormatting,
+        content: [{ type: "text", text: "" }],
+      });
+      expect(result.at(1)).toEqual(untouched);
+    },
+  );
+
+  test("individual revision IDs remain reachable across distinct empty result runs", () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " PAGE ",
+                  fieldType: "PAGE",
+                  content: [
+                    {
+                      type: "run",
+                      formatting: { bold: true },
+                      propertyChanges: [
+                        {
+                          type: "runPropertyChange",
+                          info: { id: 41, author: "Reviewer", date: "2026-09-26" },
+                          previousFormatting: { italic: true },
+                          currentFormatting: { bold: true },
+                        },
+                      ],
+                      content: [{ type: "text", text: "" }],
+                    },
+                    {
+                      type: "run",
+                      formatting: { underline: { style: "single" } },
+                      propertyChanges: [
+                        {
+                          type: "runPropertyChange",
+                          info: { id: 42, author: "Reviewer", date: "2026-09-26" },
+                          previousFormatting: { smallCaps: true },
+                          currentFormatting: { underline: { style: "single" } },
+                        },
+                      ],
+                      content: [{ type: "text", text: "" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const doc = toProseDoc(source);
+    let state = EditorState.create({ doc });
+    const resolve = (revisionId: number): void => {
+      let transaction: Transaction | undefined;
+      expect(
+        rejectAIEditRevision(revisionId)(state, (dispatched) => {
+          transaction = dispatched;
+        }),
+      ).toBe(true);
+      if (!transaction) throw new Error("Expected a revision transaction");
+      state = state.apply(transaction);
+    };
+
+    resolve(41);
+    const intermediateParagraph = fromProseDoc(state.doc).package.document.content.at(0);
+    const intermediateField =
+      intermediateParagraph?.type === "paragraph" ? intermediateParagraph.content.at(0) : undefined;
+    if (intermediateField?.type !== "simpleField") throw new Error("Expected simple field");
+    expect(intermediateField.content.at(0)).toEqual({
+      type: "run",
+      formatting: { italic: true },
+      content: [{ type: "text", text: "" }],
+    });
+    expect(intermediateField.content.at(1)).toMatchObject({
+      propertyChanges: [{ info: { id: 42 } }],
+    });
+
+    resolve(42);
+    const resolvedParagraph = fromProseDoc(state.doc).package.document.content.at(0);
+    const resolvedField =
+      resolvedParagraph?.type === "paragraph" ? resolvedParagraph.content.at(0) : undefined;
+    if (resolvedField?.type !== "simpleField") throw new Error("Expected simple field");
+    expect(resolvedField.content).toEqual([
+      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+      { type: "run", formatting: { smallCaps: true }, content: [{ type: "text", text: "" }] },
+    ]);
+    expect(rejectAIEditRevision(42)(state)).toBe(false);
+  });
+
+  test("formatting an empty field updates its first retained run and leaves later runs intact", () => {
+    const untouched: Run = {
+      type: "run",
+      formatting: { italic: true },
+      content: [{ type: "text", text: "" }],
+    };
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " PAGE ",
+                  fieldType: "PAGE",
+                  content: [
+                    { type: "run", formatting: {}, content: [{ type: "text", text: "" }] },
+                    untouched,
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const doc = toProseDoc(source);
+    const state = EditorState.create({ doc, selection: NodeSelection.create(doc, 1) });
+    let transaction: Transaction | undefined;
+    expect(
+      toggleBold(state, (dispatched) => {
+        transaction = dispatched;
+      }),
+    ).toBe(true);
+    if (!transaction) throw new Error("Expected a formatting transaction");
+    const paragraph = fromProseDoc(transaction.doc).package.document.content.at(0);
+    const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    if (field?.type !== "simpleField") throw new Error("Expected simple field");
+
+    expect(field.content.at(0)).toMatchObject({ formatting: { bold: true } });
+    expect(field.content.at(1)).toEqual(untouched);
+  });
+
+  test.each(["accept", "reject"] as const)(
+    "%s all resolves property changes on every empty field result run",
+    (mode) => {
+      const first: Run = {
+        type: "run",
+        formatting: { bold: true },
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { id: 41, author: "Reviewer", date: "2026-09-26" },
+            previousFormatting: { italic: true },
+            currentFormatting: { bold: true },
+          },
+        ],
+        content: [{ type: "text", text: "" }],
+      };
+      const second: Run = {
+        type: "run",
+        formatting: { underline: { style: "single" } },
+        propertyChanges: [
+          {
+            type: "runPropertyChange",
+            info: { id: 42, author: "Reviewer", date: "2026-09-26" },
+            previousFormatting: { smallCaps: true },
+            currentFormatting: { underline: { style: "single" } },
+          },
+        ],
+        content: [{ type: "text", text: "" }],
+      };
+      const source: Document = {
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "simpleField",
+                    instruction: " PAGE ",
+                    fieldType: "PAGE",
+                    content: [first, second],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      const doc = toProseDoc(source);
+      const untouchedParagraph = fromProseDoc(doc).package.document.content.at(0);
+      const untouchedField =
+        untouchedParagraph?.type === "paragraph" ? untouchedParagraph.content.at(0) : undefined;
+      if (untouchedField?.type !== "simpleField") throw new Error("Expected simple field");
+      expect(untouchedField.content).toEqual([first, second]);
+
+      const state = EditorState.create({ doc });
+      let transaction: Transaction | undefined;
+      const command =
+        mode === "accept" ? acceptChange(0, doc.content.size) : rejectChange(0, doc.content.size);
+      expect(
+        command(state, (dispatched) => {
+          transaction = dispatched;
+        }),
+      ).toBe(true);
+      if (!transaction) throw new Error("Expected a revision transaction");
+      const paragraph = fromProseDoc(transaction.doc).package.document.content.at(0);
+      const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+      if (field?.type !== "simpleField") throw new Error("Expected simple field");
+
+      expect(field.content).toEqual([
+        {
+          type: "run",
+          formatting: mode === "accept" ? { bold: true } : { italic: true },
+          content: [{ type: "text", text: "" }],
+        },
+        {
+          type: "run",
+          formatting: mode === "accept" ? { underline: { style: "single" } } : { smallCaps: true },
+          content: [{ type: "text", text: "" }],
+        },
+      ]);
+
+      const headless = resolveAllChangesInHeadlessState(
+        EditorState.create({ doc, plugins: pluginsForHeadlessRevisionResolution([]) }),
+        mode,
+      );
+      const headlessParagraph = fromProseDoc(headless.doc).package.document.content.at(0);
+      const headlessField =
+        headlessParagraph?.type === "paragraph" ? headlessParagraph.content.at(0) : undefined;
+      if (headlessField?.type !== "simpleField") throw new Error("Expected simple field");
+      expect(headlessField.content).toEqual(field.content);
+    },
+  );
+
+  test("rejecting a later empty run property change preserves the earlier run's formatting", () => {
+    const source: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "complexField",
+                  instruction: " PAGE ",
+                  fieldType: "PAGE",
+                  fieldCode: [],
+                  fieldResult: [
+                    {
+                      type: "run",
+                      formatting: { bold: true },
+                      content: [{ type: "text", text: "" }],
+                    },
+                    {
+                      type: "run",
+                      formatting: { underline: { style: "single" } },
+                      propertyChanges: [
+                        {
+                          type: "runPropertyChange",
+                          info: { id: 42, author: "Reviewer", date: "2026-09-26" },
+                          previousFormatting: { italic: true },
+                          currentFormatting: { underline: { style: "single" } },
+                        },
+                      ],
+                      content: [{ type: "text", text: "" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const doc = toProseDoc(source);
+    const state = EditorState.create({ doc });
+    let transaction: Transaction | undefined;
+    expect(
+      rejectChange(0, doc.content.size)(state, (dispatched) => {
+        transaction = dispatched;
+      }),
+    ).toBe(true);
+    if (!transaction) throw new Error("Expected a revision transaction");
+    const paragraph = fromProseDoc(transaction.doc).package.document.content.at(0);
+    const field = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    if (field?.type !== "complexField") throw new Error("Expected complex field");
+
+    expect(field.fieldResult).toEqual([
+      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
+      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
     ]);
   });
 

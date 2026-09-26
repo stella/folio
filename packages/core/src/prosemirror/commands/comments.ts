@@ -31,10 +31,12 @@ import {
 } from "@stll/docx-core/model";
 
 import {
+  expectFieldAttrs,
   expectParagraphAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectTrackedChangeMarkAttrs,
 } from "../attrs";
+import { resolveEmptyFieldResultRuns } from "../emptyFieldResultRuns";
 import type { TrackedRevisionAncestor } from "../schema/marks";
 import {
   addedBreakCarrierBefore,
@@ -730,6 +732,38 @@ const resolveRunPropertyChange = ({
   );
   if (remaining.length > 0) {
     tr.addMark(from, to, mark.type.create({ changes: remaining }));
+  }
+  const emptyRuns =
+    node.type.name === "field" || node.type.name === "structuredField"
+      ? expectFieldAttrs(node)._docxEmptyResultRuns
+      : undefined;
+  const resolvedRuns = emptyRuns
+    ? resolveEmptyFieldResultRuns({ runs: emptyRuns, mode, revisionIds: revisionSet })
+    : null;
+  if (resolvedRuns) {
+    const current = tr.doc.nodeAt(from);
+    if (!current) panic("A resolved field has no node at its position");
+    tr.setNodeMarkup(from, undefined, {
+      ...current.attrs,
+      _docxEmptyResultRuns: resolvedRuns.runs,
+    });
+    if (resolvedRuns.visibleFormattingChanged) {
+      const styleContext = paragraphRunStyleContextAt({ doc: tr.doc, pos: from, styleResolver });
+      for (const currentMark of node.marks) {
+        if (RUN_FORMATTING_MARK_NAMES.has(currentMark.type.name)) {
+          tr.removeMark(from, to, currentMark.type);
+        }
+      }
+      for (const nextMark of reconstructRejectedRunFormattingMarks({
+        node,
+        paragraphContext: styleContext,
+        previousFormatting: resolvedRuns.visibleFormatting,
+        styleResolver,
+      })) {
+        tr.addMark(from, to, nextMark);
+      }
+    }
+    return;
   }
   if (mode === "accept") {
     return;
