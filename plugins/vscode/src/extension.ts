@@ -1,15 +1,13 @@
 /**
- * Folio DOCX: the `.docx` editor, a read-only preview, and the folio MCP
- * server offered to the editor's agent mode. All three run the folio CLI
- * bundled in the extension.
+ * Folio DOCX: the `.docx` editor, and the folio MCP server offered to the
+ * editor's agent mode. Both run the folio CLI bundled in the extension.
  */
 
 import path from "node:path";
 import * as vscode from "vscode";
 
-import { registerEditor } from "./editor";
+import { registerEditor, type EditorTestHooks } from "./editor";
 import { buildMcpLaunch, configuredAuthor, FOLIO_MCP_PROVIDER_ID } from "./mcp";
-import { registerPreview } from "./preview";
 import type { CliRuntime } from "./runtime";
 
 const AUTHOR_SETTING = "folio.author";
@@ -93,16 +91,19 @@ const registerMcp = (context: vscode.ExtensionContext, runtime: CliRuntime): vsc
   );
 };
 
-export const activate = (context: vscode.ExtensionContext): void => {
+/**
+ * The extension's exports: nothing, except the editor's test hooks when the
+ * smoke test runs it with `FOLIO_VSCODE_TEST=1`.
+ */
+export const activate = (context: vscode.ExtensionContext): EditorTestHooks | undefined => {
   const runtime: CliRuntime = {
     nodePath: process.execPath,
     cliEntry: context.asAbsolutePath(path.join("dist", "cli", "folio.mjs")),
   };
-  context.subscriptions.push(
-    registerEditor(context, runtime),
-    registerPreview(context, runtime),
-    registerMcp(context, runtime),
-  );
+  const testMode = process.env["FOLIO_VSCODE_TEST"] === "1";
+  const editor = registerEditor(context, runtime, testMode);
+  context.subscriptions.push(editor.disposable, registerMcp(context, runtime));
+  return testMode ? editor.testHooks : undefined;
 };
 
 export const deactivate = (): void => undefined;

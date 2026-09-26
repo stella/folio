@@ -26,7 +26,6 @@ import {
 } from "./editor-settings";
 import { readCommitForVersion, updatedNotice } from "./journal";
 import { EditorLease } from "./lease";
-import { activeTabUri, PREVIEW_VIEW_TYPE } from "./preview";
 import type { CliRuntime } from "./runtime";
 import { fileVersionOf, saveWithCli } from "./save";
 import { DocxSession, SaveCancelled, type RewriteWarning, type SessionUi } from "./session";
@@ -68,7 +67,9 @@ class FolioDocxDocument implements vscode.CustomDocument {
   readonly fileName: string;
   readonly session: DocxSession;
   panel: vscode.WebviewPanel | undefined;
-  private readonly disposables: vscode.Disposable[] = [];
+  /** What the webview sent, kept only for the smoke test (`FOLIO_VSCODE_TEST`). */
+  readonly received: unknown[] = [];
+  readonly disposables: vscode.Disposable[] = [];
 
   /** `createSession` may keep the document: its callbacks run only once it is built. */
   constructor(uri: vscode.Uri, createSession: (document: FolioDocxDocument) => DocxSession) {
@@ -120,13 +121,41 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
     confirmed: false,
   };
 
-  constructor(runtime: CliRuntime, editorRoot: vscode.Uri) {
+  private readonly testMode: boolean;
+  /** The open documents, by URI. */
+  private readonly documents = new Map<string, FolioDocxDocument>();
+  /** Documents "Open Read-Only" is opening, by URI. */
+  private readonly readOnlyRequests = new Set<string>();
+
+  constructor(runtime: CliRuntime, editorRoot: vscode.Uri, testMode: boolean) {
     this.runtime = runtime;
     this.editorRoot = editorRoot;
+    this.testMode = testMode;
   }
 
   dispose(): void {
     this.changed.dispose();
+  }
+
+  documentFor(uri: vscode.Uri): FolioDocxDocument | undefined {
+    return this.documents.get(uri.toString());
+  }
+
+  /** Open `uri` in the editor in viewing mode, or switch its open editor to it. */
+  async openReadOnly(uri: vscode.Uri): Promise<void> {
+    const open = this.documentFor(uri);
+    if (open !== undefined) {
+      open.session.setMode("viewing");
+      open.panel?.reveal();
+      return;
+    }
+    const key = uri.toString();
+    this.readOnlyRequests.add(key);
+    try {
+      await vscode.commands.executeCommand("vscode.openWith", uri, EDITOR_VIEW_TYPE);
+    } finally {
+      this.readOnlyRequests.delete(key);
+    }
   }
 
   async openCustomDocument(
@@ -135,6 +164,7 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
   ): Promise<FolioDocxDocument> {
     // The CLI saves files on disk; any other file system opens read-only.
     const documentPath = uri.scheme === "file" ? uri.fsPath : null;
+    const readOnly = this.readOnlyRequests.has(uri.toString());
     const restored =
       openContext.backupId === undefined ? null : await this.readBackup(openContext.backupId);
     const bytes = restored?.bytes ?? (await vscode.workspace.fs.readFile(uri));
@@ -152,10 +182,19 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       bytes,
       baseline: restored?.baseline ?? fileVersionOf(bytes),
       restored: restored !== null,
-      mode: initialMode(configuration.get(TRACK_CHANGES_SETTING), documentPath !== null),
+      mode: readOnly
+        ? "viewing"
+        : initialMode(configuration.get(TRACK_CHANGES_SETTING), documentPath !== null),
     };
     const document = new FolioDocxDocument(uri, (created) => this.createSession(created, opened));
     document.watch();
+    const key = uri.toString();
+    this.documents.set(key, document);
+    document.disposables.push({
+      dispose: () => {
+        if (this.documents.get(key) === document) this.documents.delete(key);
+      },
+    });
     return document;
   }
 
@@ -166,7 +205,7 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       documentPath === null
         ? null
         : new EditorLease(documentPath, {
-            onFlushRequest: () => void document.session.flush(),
+            onFlushRequest: (request) => void document.session.flush(request.owner),
             onLost: (message) => document.session.leaseLost(message),
           });
     return new DocxSession({
@@ -288,15 +327,10 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
         vscode.window.setStatusBarMessage(`$(sync) ${message}`, 8000);
       },
       showLoadFailed: (message) => {
-        const offerPreview = async () => {
-          const choice = await vscode.window.showErrorMessage(
-            `Folio could not open ${fileName}: ${message}`,
-            "Open Folio Preview",
-          );
-          if (choice === undefined) return;
-          await vscode.commands.executeCommand("vscode.openWith", document.uri, PREVIEW_VIEW_TYPE);
-        };
-        void offerPreview();
+        void vscode.window.showErrorMessage(`Folio could not open ${fileName}: ${message}`);
+      },
+      showInfo: (message) => {
+        void vscode.window.showInformationMessage(`Folio: ${message}`);
       },
       showError: (message) => {
         void vscode.window.showErrorMessage(`Folio: ${message}`);
@@ -332,12 +366,14 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       scriptUri: webview.asWebviewUri(vscode.Uri.joinPath(this.editorRoot, "editor.js")).toString(),
       styleUri: webview.asWebviewUri(vscode.Uri.joinPath(this.editorRoot, "editor.css")).toString(),
       fileName: document.fileName,
+      testMode: this.testMode,
     });
     document.panel = panel;
     document.session.attach((message) => void webview.postMessage(message));
-    const received = webview.onDidReceiveMessage((message: unknown) =>
-      document.session.handleMessage(message),
-    );
+    const received = webview.onDidReceiveMessage((message: unknown) => {
+      if (this.testMode) document.received.push(message);
+      document.session.handleMessage(message);
+    });
     panel.onDidDispose(() => {
       received.dispose();
       if (document.panel === panel) {
@@ -383,27 +419,63 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
   }
 }
 
+/** The file behind the active tab, whichever editor shows it. */
+const activeTabUri = (): vscode.Uri | undefined => {
+  const input: unknown = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) {
+    return input.uri;
+  }
+  return undefined;
+};
+
+/**
+ * What the smoke test (`test/smoke`) reaches through the extension's exports.
+ * `activate` returns it only when `FOLIO_VSCODE_TEST=1`, which is also what
+ * puts the test script in the webview.
+ */
+export type EditorTestHooks = {
+  /** The messages the webview of `uri` sent, oldest first. */
+  readonly received: (uri: vscode.Uri) => readonly unknown[];
+  /** Post `message` to the webview of `uri`; `false` when it has none. */
+  readonly post: (uri: vscode.Uri, message: unknown) => Promise<boolean>;
+};
+
+export type RegisteredEditor = {
+  readonly disposable: vscode.Disposable;
+  readonly testHooks: EditorTestHooks;
+};
+
 export const registerEditor = (
   context: vscode.ExtensionContext,
   runtime: CliRuntime,
-): vscode.Disposable => {
+  testMode: boolean,
+): RegisteredEditor => {
   const provider = new DocxEditorProvider(
     runtime,
     vscode.Uri.joinPath(context.extensionUri, "dist", "editor"),
+    testMode,
   );
-  return vscode.Disposable.from(
+  const disposable = vscode.Disposable.from(
     provider,
     vscode.window.registerCustomEditorProvider(EDITOR_VIEW_TYPE, provider, {
       supportsMultipleEditorsPerDocument: false,
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.commands.registerCommand("folio.openEditor", async (target?: vscode.Uri) => {
+    vscode.commands.registerCommand("folio.openReadOnly", async (target?: vscode.Uri) => {
       const uri = target ?? activeTabUri();
       if (uri === undefined) {
-        void vscode.window.showInformationMessage("Folio: select a .docx file to edit.");
+        void vscode.window.showInformationMessage("Folio: select a .docx file to open.");
         return;
       }
-      await vscode.commands.executeCommand("vscode.openWith", uri, EDITOR_VIEW_TYPE);
+      await provider.openReadOnly(uri);
     }),
   );
+  const testHooks: EditorTestHooks = {
+    received: (uri) => provider.documentFor(uri)?.received ?? [],
+    post: async (uri, message) => {
+      const panel = provider.documentFor(uri)?.panel;
+      return panel === undefined ? false : await panel.webview.postMessage(message);
+    },
+  };
+  return { disposable, testHooks };
 };

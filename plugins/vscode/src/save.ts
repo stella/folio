@@ -11,8 +11,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { saveStrategyFlag, type FolioEditorSaveStrategy } from "./editor-protocol";
-import { runCli } from "./process";
-import { stderrTail } from "./render";
+import { runCli, stderrTail } from "./process";
 import type { CliRuntime } from "./runtime";
 
 /** The lease owner the editor records, and the surface its saves journal. */

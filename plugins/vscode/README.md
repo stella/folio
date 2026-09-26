@@ -19,8 +19,8 @@ Save writes back to the same file.
   with tracked changes. When an agent writes to a document you have open with
   unsaved edits, the editor saves your edits first, then shows the agent's
   change. With no unsaved edits it just reloads and says who changed it.
-- **Preview.** A read-only page preview is one click away: **Reopen with
-  Folio Preview** in the editor's title bar, and **Edit** to come back.
+- **Read-only when you want it.** **Folio: Open Read-Only** (command palette,
+  or right-click a `.docx`) opens the same pages with editing off.
 
 ## Try a build locally
 
@@ -49,7 +49,8 @@ works offline.
 - While a document has unsaved edits, the editor holds folio's write lease on
   it (`.<name>.docx.folio-lock`). A folio write that finds it asks the editor
   to save and let go instead of failing, then applies its change to the saved
-  version.
+  version. That save never stops to ask; if it had to rewrite the whole
+  package, a notice afterwards says so and where the backup is.
 - A change on disk that did not come through folio (another program saved the
   file) while you have unsaved edits shows a notice: reload theirs, keep
   yours, or save yours as a copy.
@@ -80,12 +81,14 @@ the server from the MCP server list to apply them.
 
 ## Development
 
-- `bun run build`: bundle the extension, the preview's webview script, and the
-  CLI from `packages/cli` into `dist/`, and copy the editor bundle from
-  `packages/editor-web/dist/vscode` into `dist/editor` (building it first when
-  it is missing)
+- `bun run build`: bundle the extension and the CLI from `packages/cli` into
+  `dist/`, and copy the editor bundle from `packages/editor-web/dist/vscode`
+  into `dist/editor` (building it first when it is missing)
 - `bun run test`: unit tests for saving, the lease, backups, the webview
-  protocols, the MCP launch, and the render process
+  protocol, and the MCP launch
+- `bun run test:smoke`: after a build, download VS Code into `.vscode-test/`,
+  open a `.docx` in it with this extension, type, save, and revert (CI runs it
+  under `xvfb-run`)
 - `bun run typecheck`
 
 The version follows `@stll/folio-cli`: `scripts/sync-plugin-cli-version.ts`

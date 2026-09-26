@@ -1,6 +1,7 @@
 /**
  * Run the bundled folio CLI in a child process and collect what it printed.
- * `render` and `save` both go through here.
+ * Saving goes through here: the CLI does the work outside the extension host,
+ * so a large document never stalls every other extension.
  */
 
 import { spawn } from "node:child_process";
@@ -17,17 +18,15 @@ export type ProcessResult = {
 export type RunOptions = {
   readonly runtime: CliRuntime;
   readonly args: readonly string[];
-  readonly signal?: AbortSignal;
   readonly timeoutMs: number;
 };
 
-export const runCli = ({ runtime, args, signal, timeoutMs }: RunOptions): Promise<ProcessResult> =>
+export const runCli = ({ runtime, args, timeoutMs }: RunOptions): Promise<ProcessResult> =>
   new Promise((resolve, reject) => {
     const { command, args: argv, env } = cliCommand(runtime, args);
     const child = spawn(command, [...argv], {
       env: { ...process.env, ...env },
       stdio: ["ignore", "pipe", "pipe"],
-      ...(signal !== undefined && { signal }),
       windowsHide: true,
     });
     let stdout = "";
@@ -52,3 +51,7 @@ export const runCli = ({ runtime, args, signal, timeoutMs }: RunOptions): Promis
       resolve({ code, stdout, stderr, timedOut });
     });
   });
+
+/** The last lines of a crashed process's stderr, for an error message. */
+export const stderrTail = (stderr: string, lines = 5): string =>
+  stderr.trim().split("\n").slice(-lines).join("\n");

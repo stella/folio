@@ -2,10 +2,9 @@
 // Build the extension into dist/:
 //
 //   dist/extension.js      the extension host bundle (CommonJS, `vscode` external)
-//   dist/webview/main.js   the preview webview's script
 //   dist/cli/folio.mjs     the folio CLI from packages/cli, bundled with its
-//                          dependencies, which the extension runs for the
-//                          preview and the MCP server
+//                          dependencies, which the extension runs to save
+//                          and as the MCP server
 //   dist/cli/text_shaper_bg.wasm, dist/cli/node_modules/@fontsource/*
 //                          the files the CLI loads at run time
 //   dist/editor/           the editor webview's bundle (editor.js, editor.css,
@@ -128,15 +127,6 @@ await Promise.all([
     format: "cjs",
     target: "node22",
     external: ["vscode"],
-    logLevel: "warning",
-  }),
-  build({
-    entryPoints: [path.join(extensionRoot, "src", "webview", "main.ts")],
-    outfile: path.join(dist, "webview", "main.js"),
-    bundle: true,
-    platform: "browser",
-    format: "iife",
-    target: "es2022",
     logLevel: "warning",
   }),
   build({
