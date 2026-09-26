@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Legördülő lehetőségek",
     "contentControlDropdownNoOptions": "Nincsenek lehetőségek",
     "contextMenu": {
+      "continueNumbering": "Számozás folytatása",
       "copy": "Másolás",
       "copyShortcut": "Ctrl+C",
       "cut": "Kivágás",
@@ -75,7 +76,9 @@
       "paste": "Beillesztés",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Újrakezdés 1-től",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Számozási érték beállítása…"
     },
     "copy": "Másolás",
     "copyLink": "Hivatkozás másolása",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Beillesztési mód",
         "title": "Irányított beillesztés"
+      },
+      "setNumberingValue": {
+        "title": "Számozási érték beállítása",
+        "valueLabel": "Érték beállítása"
       },
       "splitCell": {
         "mergeBeforeSplit": "A kijelölt cellák egyesítése felosztás előtt",

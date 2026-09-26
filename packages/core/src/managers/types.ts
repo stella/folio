@@ -1,3 +1,5 @@
+import type { ListNumberingMenuState } from "../prosemirror/listNumbering";
+
 // ============================================================================
 // TABLE SELECTION
 // ============================================================================
@@ -24,6 +26,8 @@ export type ContextMenuSnapshot = {
   selectionRange: { from: number; to: number };
   cursorInTable: boolean;
   cursorInTrackedChange: boolean;
+  /** Restart / continue / set-value entries for the list item under the caret. */
+  listNumbering: ListNumberingMenuState;
 };
 
 // ============================================================================

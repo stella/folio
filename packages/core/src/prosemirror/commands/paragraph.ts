@@ -81,6 +81,14 @@ export const toggleNumberedList: Command = cmds.requireCommand("toggleNumberedLi
 export const increaseListLevel: Command = cmds.requireCommand("increaseListLevel")();
 export const decreaseListLevel: Command = cmds.requireCommand("decreaseListLevel")();
 export const removeList: Command = cmds.requireCommand("removeList")();
+/** *Restart at 1* on the selected list item. */
+export const restartNumbering: Command = cmds.requireCommand("restartNumbering")();
+/** *Continue Numbering*: carry the selected list on from the previous one. */
+export const continueNumbering: Command = cmds.requireCommand("continueNumbering")();
+/** *Set Numbering Value*: the selected item starts its list over at `value`. */
+export function setNumberingValue(value: number): Command {
+  return cmds.requireCommand("setNumberingValue")(value);
+}
 
 // Spacing
 export function setSpaceBefore(twips: number): Command {

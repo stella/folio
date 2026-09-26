@@ -55,6 +55,12 @@
     @apply="(props) => emit('table-properties-apply', props)"
   />
 
+  <SetNumberingValueDialog
+    :is-open="showNumberingValue"
+    @close="emit('update:showNumberingValue', false)"
+    @apply="(value) => emit('numbering-value-apply', value)"
+  />
+
   <WatermarkDialog
     :is-open="showWatermark"
     :current-watermark="currentWatermark"
@@ -75,6 +81,7 @@ import HyperlinkDialog from "../dialogs/HyperlinkDialog.vue";
 import ImagePropertiesDialog from "../dialogs/ImagePropertiesDialog.vue";
 import InsertSymbolDialog from "../dialogs/InsertSymbolDialog.vue";
 import PageSetupDialog from "../dialogs/PageSetupDialog.vue";
+import SetNumberingValueDialog from "../dialogs/SetNumberingValueDialog.vue";
 import TablePropertiesDialog from "../dialogs/TablePropertiesDialog.vue";
 import WatermarkDialog from "../dialogs/WatermarkDialog.vue";
 
@@ -103,6 +110,7 @@ defineProps<{
   showPageSetup: boolean;
   showTableProperties: boolean;
   showWatermark: boolean;
+  showNumberingValue: boolean;
   currentWatermark: Watermark | undefined;
   tableProperties: TablePropertiesCommand;
 }>();
@@ -115,6 +123,8 @@ const emit = defineEmits<{
   (e: "update:showPageSetup", value: boolean): void;
   (e: "update:showTableProperties", value: boolean): void;
   (e: "update:showWatermark", value: boolean): void;
+  (e: "update:showNumberingValue", value: boolean): void;
+  (e: "numbering-value-apply", value: number): void;
   (e: "insert-symbol", symbol: string): void;
   (e: "hyperlink-submit", data: HyperlinkSubmitPayload): void;
   (e: "hyperlink-remove"): void;

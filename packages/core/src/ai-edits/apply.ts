@@ -34,6 +34,7 @@ import {
 } from "../prosemirror/paragraphSpacing";
 import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
 import { getDocumentNumbering } from "../prosemirror/plugins/documentNumbering";
+import { concreteListReference, resolveNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
@@ -568,11 +569,12 @@ const paragraphPropertiesPatch = ({
       patch["numPr"] = null;
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
+      const listReference = concreteListReference(properties.numbering);
       Object.assign(
         patch,
         listLevelAttrPatch(
           attrs,
-          { numId: properties.numbering.numId, ilvl: properties.numbering.level },
+          { numId: listReference.numId, ilvl: listReference.level },
           numbering,
         ),
       );
@@ -580,7 +582,7 @@ const paragraphPropertiesPatch = ({
         // An explicit instance can omit `w:ilvl`. Keep that authored absence:
         // Word renders level zero, but serializing it creates direct formatting.
         patch["numPr"] = paragraphNumberingAttr(
-          paragraphNumberingReference({ numId: properties.numbering.numId }),
+          paragraphNumberingReference({ numId: listReference.numId }),
         );
         patch["numPrFromStyle"] = null;
       }
@@ -2097,7 +2099,10 @@ const buildInsertedParagraphs = ({
     if (isFirstParagraph && operation.pageBreakBefore === true) {
       attrs["pageBreakBefore"] = true;
     }
-    const explicitNumbering = operation.numbering;
+    const explicitNumbering =
+      operation.numbering === undefined || operation.numbering === null
+        ? operation.numbering
+        : concreteListReference(operation.numbering);
     const listLevel = operation.listLevel;
     if (formatsParagraph) {
       if (explicitNumbering === null) {
@@ -2267,7 +2272,7 @@ const buildInsertedParagraphs = ({
 const applyFolioAIEditOperationsInternal = ({
   view,
   snapshot,
-  operations,
+  operations: requestedOperations,
   mode = "tracked-changes",
   author = "AI",
   initials,
@@ -2322,7 +2327,12 @@ const applyFolioAIEditOperationsInternal = ({
     return id;
   };
   const styleResolver = getDocumentStyleResolver(view.state);
-  const numbering = getDocumentNumbering(view.state);
+  // A new-list request becomes a reference to the instance minted for it, so
+  // everything below applies one kind of numbering.
+  const { operations, numbering } = resolveNewListOperations(
+    requestedOperations,
+    getDocumentNumbering(view.state),
+  );
   const formattingFromStyleForInsertion = (item: ResolvedOperation) => {
     if (item.operation.type !== "insertAfterBlock" && item.operation.type !== "insertBeforeBlock") {
       return undefined;

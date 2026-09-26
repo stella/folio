@@ -69,6 +69,7 @@ type Messages = {
     "contentControlDropdownAriaLabel": "Dropdown options";
     "contentControlDropdownNoOptions": "No options";
     "contextMenu": {
+      "continueNumbering": "Continue Numbering";
       "copy": "Copy";
       "copyShortcut": "Ctrl+C";
       "cut": "Cut";
@@ -78,7 +79,9 @@ type Messages = {
       "paste": "Paste";
       "pastePlainTextShortcut": "Ctrl+Shift+V";
       "pasteShortcut": "Ctrl+V";
+      "restartNumbering": "Restart at 1";
       "selectAllShortcut": "Ctrl+A";
+      "setNumberingValue": "Set Numbering Value…";
     };
     "copy": "Copy";
     "copyLink": "Copy link";
@@ -270,6 +273,10 @@ type Messages = {
       "pasteSpecial": {
         "pasteMode": "Paste mode";
         "title": "Paste Special";
+      };
+      "setNumberingValue": {
+        "title": "Set Numbering Value";
+        "valueLabel": "Set value to";
       };
       "splitCell": {
         "mergeBeforeSplit": "Merge selected cells before splitting";

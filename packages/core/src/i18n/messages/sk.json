@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Možnosti rozbaľovacieho zoznamu",
     "contentControlDropdownNoOptions": "Žiadne možnosti",
     "contextMenu": {
+      "continueNumbering": "Pokračovať v číslovaní",
       "copy": "Kopírovať",
       "copyShortcut": "Ctrl+C",
       "cut": "Vystrihnúť",
@@ -75,7 +76,9 @@
       "paste": "Prilepiť",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Začať znova od 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Nastaviť hodnotu číslovania…"
     },
     "copy": "Kopírovať",
     "copyLink": "Kopírovať odkaz",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Režim prilepenia",
         "title": "Prilepiť špeciálne"
+      },
+      "setNumberingValue": {
+        "title": "Nastavenie hodnoty číslovania",
+        "valueLabel": "Nastaviť hodnotu na"
       },
       "splitCell": {
         "mergeBeforeSplit": "Pred rozdelením zlúčiť vybraté bunky",

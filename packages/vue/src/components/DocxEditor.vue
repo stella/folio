@@ -107,6 +107,7 @@
       v-model:show-page-setup="showPageSetup"
       v-model:show-table-properties="showTableProperties"
       v-model:show-watermark="showWatermark"
+      v-model:show-numbering-value="showNumberingValue"
       :view="activeEditorView"
       :scroll-visible-position-into-view="scrollVisiblePositionIntoView"
       :bookmarks="bookmarks"
@@ -120,6 +121,7 @@
       @page-setup-apply="handlePageSetupApply"
       @table-properties-apply="handleTablePropertiesApply"
       @watermark-apply="handleWatermarkApply"
+      @numbering-value-apply="handleNumberingValueApply"
     />
 
     <div v-if="parseError" class="docx-editor-vue__error">{{ parseError }}</div>
@@ -656,6 +658,7 @@ const showFindReplace = ref(false);
 const showHyperlink = ref(false);
 const showInsertSymbol = ref(false);
 const showImageProperties = ref(false);
+const showNumberingValue = ref(false);
 const showPageSetup = ref(false);
 const showTableProperties = ref(false);
 const showWatermark = ref(false);
@@ -980,6 +983,7 @@ const {
   selectedImage,
   zoom,
   showImageProperties,
+  showNumberingValue,
   getCommands,
   clearOverlay: selectionSync.clearOverlay,
   setPmSelection,
@@ -1301,6 +1305,16 @@ function handleWatermarkApply(watermark: Watermark | undefined): void {
 // it honors the host `onInsertTable` prop or falls back to the core helper.
 function handleMenuTableInsert(rows: number, cols: number): void {
   handleInsertTableAction(rows, cols);
+}
+
+function handleNumberingValueApply(value: number): void {
+  const view = activeEditorView.value;
+  const factory = getCommands()["setNumberingValue"];
+  if (readOnly.value || !view || !factory) {
+    return;
+  }
+  factory(value)(view.state, (transaction) => view.dispatch(transaction), view);
+  view.focus();
 }
 
 function handleTablePropertiesApply(properties: TablePropertiesCommand): void {

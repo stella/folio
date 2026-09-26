@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Dropdown-Optionen",
     "contentControlDropdownNoOptions": "Keine Optionen",
     "contextMenu": {
+      "continueNumbering": "Nummerierung fortsetzen",
       "copy": "Kopieren",
       "copyShortcut": "Ctrl+C",
       "cut": "Ausschneiden",
@@ -75,7 +76,9 @@
       "paste": "Einfügen",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Neu beginnen mit 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Nummerierungswert festlegen…"
     },
     "copy": "Kopieren",
     "copyLink": "Link kopieren",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Einfügemodus",
         "title": "Inhalte einfügen"
+      },
+      "setNumberingValue": {
+        "title": "Nummerierungswert festlegen",
+        "valueLabel": "Wert festlegen auf"
       },
       "splitCell": {
         "mergeBeforeSplit": "Ausgewählte Zellen vor dem Teilen verbinden",

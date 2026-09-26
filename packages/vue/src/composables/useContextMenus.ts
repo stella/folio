@@ -19,6 +19,11 @@ import {
   type ImageLayoutTarget,
 } from "@stll/folio-core/layout-painter/imageLayout";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
+import {
+  listNumberingMenuState,
+  NO_LIST_NUMBERING_MENU,
+  type ListNumberingMenuState,
+} from "@stll/folio-core/prosemirror";
 import type { WrapType } from "@stll/folio-core/docx/wrapTypes";
 import {
   copyImageToClipboard,
@@ -66,6 +71,8 @@ export type TextContextMenuState = {
   onImage: boolean;
   canMergeCells: boolean;
   canSplitCell: boolean;
+  /** Restart / continue / set-value entries for the list item under the caret. */
+  listNumbering: ListNumberingMenuState;
 };
 
 /**
@@ -85,6 +92,8 @@ export type UseContextMenusOptions = {
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
   zoom: Ref<number>;
   showImageProperties: Ref<boolean>;
+  /** Opens the Set Numbering Value dialog. */
+  showNumberingValue: Ref<boolean>;
   getCommands: () => Record<string, CommandFactory>;
   clearOverlay: () => void;
   setPmSelection: (anchor: number, head?: number) => void;
@@ -125,6 +134,7 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
     onImage: false,
     canMergeCells: false,
     canSplitCell: false,
+    listNumbering: NO_LIST_NUMBERING_MENU,
   });
 
   // Image-specific right-click menu — shows wrap-mode options instead of the
@@ -264,6 +274,7 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
       onImage: !!imageEl,
       canMergeCells: !!tableCtx.hasMultiCellSelection,
       canSplitCell: !!tableCtx.canSplitCell,
+      listNumbering: listNumberingMenuState(view.state),
     };
   }
 
@@ -406,11 +417,16 @@ export function useContextMenus(opts: UseContextMenusOptions): UseContextMenusRe
       case "mergeCells":
       case "splitCell":
       case "selectTable":
-      case "deleteTable": {
+      case "deleteTable":
+      case "restartNumbering":
+      case "continueNumbering": {
         const factory = cmds[action];
         if (factory) runCommand(view, factory());
         break;
       }
+      case "setNumberingValue":
+        opts.showNumberingValue.value = true;
+        break;
     }
     view.focus();
   }

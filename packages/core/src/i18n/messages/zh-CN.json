@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "下拉选项",
     "contentControlDropdownNoOptions": "没有选项",
     "contextMenu": {
+      "continueNumbering": "继续编号",
       "copy": "复制",
       "copyShortcut": "Ctrl+C",
       "cut": "剪切",
@@ -75,7 +76,9 @@
       "paste": "粘贴",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "重新开始于 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "设置编号值…"
     },
     "copy": "复制",
     "copyLink": "复制链接",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "粘贴方式",
         "title": "选择性粘贴"
+      },
+      "setNumberingValue": {
+        "title": "设置编号值",
+        "valueLabel": "值设置为"
       },
       "splitCell": {
         "mergeBeforeSplit": "拆分前合并所选单元格",

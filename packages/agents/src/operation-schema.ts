@@ -222,9 +222,23 @@ export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
       required: ["numId", "level"],
       additionalProperties: false,
     },
+    {
+      type: "object",
+      properties: {
+        start: { type: "string", enum: ["new"] },
+        kind: { type: "string", enum: ["numbered", "bullet"] },
+        level: { type: "integer", minimum: 0, maximum: 8 },
+      },
+      required: ["start", "kind"],
+      additionalProperties: false,
+    },
     { type: "null" },
   ],
-  description: "Concrete numbering instance and level; null removes paragraph numbering.",
+  description:
+    "An existing numbering instance and level (`numId` from a prior read); or " +
+    '`{ start: "new", kind: "numbered" | "bullet", level? }` to start a new list, numbered from ' +
+    "the first item, with every paragraph this operation numbers in it (separate operations " +
+    "start separate lists; works in a document with no lists); null removes paragraph numbering.",
 } as const satisfies FolioJsonSchema;
 
 export const FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA = {

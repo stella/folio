@@ -139,6 +139,9 @@ export type FolioCommandArguments = {
   increaseListLevel: [];
   decreaseListLevel: [];
   removeList: [];
+  restartNumbering: [];
+  continueNumbering: [];
+  setNumberingValue: [value: number];
   setSpaceBefore: [twips: number];
   setSpaceAfter: [twips: number];
   applyStyle: [styleId: string, resolvedAttrs?: ResolvedStyleAttrs];

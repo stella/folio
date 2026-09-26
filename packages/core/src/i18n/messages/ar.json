@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "خيارات القائمة المنسدلة",
     "contentControlDropdownNoOptions": "لا توجد خيارات",
     "contextMenu": {
+      "continueNumbering": "متابعة الترقيم",
       "copy": "نسخ",
       "copyShortcut": "Ctrl+C",
       "cut": "قص",
@@ -75,7 +76,9 @@
       "paste": "لصق",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "إعادة البدء عند 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "تعيين قيمة الترقيم…"
     },
     "copy": "نسخ",
     "copyLink": "نسخ الرابط",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "وضع اللصق",
         "title": "لصق خاص"
+      },
+      "setNumberingValue": {
+        "title": "تعيين قيمة الترقيم",
+        "valueLabel": "تعيين القيمة إلى"
       },
       "splitCell": {
         "mergeBeforeSplit": "دمج الخلايا المحددة قبل التقسيم",

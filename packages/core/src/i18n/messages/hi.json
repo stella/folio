@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "ड्रॉपडाउन विकल्प",
     "contentControlDropdownNoOptions": "कोई विकल्प नहीं",
     "contextMenu": {
+      "continueNumbering": "क्रमांकन जारी रखें",
       "copy": "कॉपी करें",
       "copyShortcut": "Ctrl+C",
       "cut": "काटें",
@@ -75,7 +76,9 @@
       "paste": "पेस्ट करें",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "1 पर पुनः आरंभ करें",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "क्रमांकन मान सेट करें…"
     },
     "copy": "कॉपी करें",
     "copyLink": "लिंक कॉपी करें",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "चिपकाने का मोड",
         "title": "विशेष चिपकाएँ"
+      },
+      "setNumberingValue": {
+        "title": "क्रमांकन मान सेट करें",
+        "valueLabel": "मान सेट करें"
       },
       "splitCell": {
         "mergeBeforeSplit": "विभाजित करने से पहले चयनित कक्षों को मर्ज करें",

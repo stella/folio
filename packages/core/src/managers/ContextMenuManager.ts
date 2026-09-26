@@ -13,6 +13,7 @@
 import type { EditorState } from "prosemirror-state";
 
 import { isInTable } from "../prosemirror/commands/table";
+import { listNumberingMenuState, NO_LIST_NUMBERING_MENU } from "../prosemirror/listNumbering";
 import { Subscribable } from "./Subscribable";
 import type { ContextMenuAnchor, ContextMenuSnapshot } from "./types";
 
@@ -23,6 +24,7 @@ const CLOSED_STATE: ContextMenuSnapshot = {
   selectionRange: { from: 0, to: 0 },
   cursorInTable: false,
   cursorInTrackedChange: false,
+  listNumbering: NO_LIST_NUMBERING_MENU,
 };
 
 export type OpenContextMenuOptions = {
@@ -59,6 +61,7 @@ export class ContextMenuManager extends Subscribable<ContextMenuSnapshot> {
       selectionRange: { from: selection.from, to: selection.to },
       cursorInTable,
       cursorInTrackedChange,
+      listNumbering: state ? listNumberingMenuState(state) : NO_LIST_NUMBERING_MENU,
     });
   }
 

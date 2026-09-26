@@ -60,6 +60,7 @@ import {
   type FunctionalComponent,
   type VNodeChild,
 } from "vue";
+import type { ListNumberingMenuState } from "@stll/folio-core/prosemirror";
 import { useTranslation } from "../i18n";
 import { useDocxPortalClass } from "../composables/usePortalClass";
 
@@ -95,6 +96,8 @@ const props = defineProps<{
   // cell (prosemirror-tables' splitCell no-ops if it can't split).
   canMergeCells?: boolean;
   canSplitCell?: boolean;
+  /** Restart / continue / set-value entries for the list item under the caret. */
+  listNumbering?: ListNumberingMenuState;
   /** Host-provided entries that lead the menu (already selection-filtered). */
   customItems?: readonly CustomTextMenuItem[];
 }>();
@@ -230,6 +233,28 @@ const visibleItems = computed<ContextMenuItem[]>(() => {
       { id: "div5", label: "", action: "", divider: true },
       { id: "selectTable", label: t("table.selectTable"), action: "selectTable" },
       { id: "deleteTable", label: t("table.deleteTable"), action: "deleteTable" },
+    );
+  }
+
+  if (props.listNumbering?.type === "listItem" && props.isEditable) {
+    items.push(
+      { id: "div-list", label: "", action: "", divider: true },
+      {
+        id: "restartNumbering",
+        label: t("contextMenu.restartNumbering"),
+        action: "restartNumbering",
+      },
+      {
+        id: "continueNumbering",
+        label: t("contextMenu.continueNumbering"),
+        action: "continueNumbering",
+        disabled: !props.listNumbering.canContinue,
+      },
+      {
+        id: "setNumberingValue",
+        label: t("contextMenu.setNumberingValue"),
+        action: "setNumberingValue",
+      },
     );
   }
 

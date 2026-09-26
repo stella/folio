@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Opções da lista suspensa",
     "contentControlDropdownNoOptions": "Nenhuma opção",
     "contextMenu": {
+      "continueNumbering": "Continuar numeração",
       "copy": "Copiar",
       "copyShortcut": "Ctrl+C",
       "cut": "Recortar",
@@ -75,7 +76,9 @@
       "paste": "Colar",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Reiniciar em 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Definir valor de numeração…"
     },
     "copy": "Copiar",
     "copyLink": "Copiar link",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Modo de colagem",
         "title": "Colar especial"
+      },
+      "setNumberingValue": {
+        "title": "Definir valor de numeração",
+        "valueLabel": "Definir valor como"
       },
       "splitCell": {
         "mergeBeforeSplit": "Mesclar as células selecionadas antes de dividir",

@@ -49,6 +49,9 @@ export type TextContextAction =
   | "addComment"
   | "acceptChange"
   | "rejectChange"
+  | "restartNumbering"
+  | "continueNumbering"
+  | "setNumberingValue"
   | `custom:${string}`;
 
 /** Built-in actions — everything except host-provided `custom:*` entries. */
@@ -202,10 +205,13 @@ function getActionIcon(action: TextContextAction): React.ReactNode {
       return <MessageSquarePlusIcon size={ICON_SIZE} />;
     case "acceptChange":
     case "rejectChange":
+    case "restartNumbering":
+    case "continueNumbering":
+    case "setNumberingValue":
     case "separator":
-      // Tracked-change menu items use a different icon set rendered by
-      // the surrounding menu component; this dispatcher leaves them
-      // iconless.
+      // Tracked-change and list-numbering items use a different icon set
+      // rendered by the surrounding menu component; this dispatcher leaves
+      // them iconless.
       return null;
   }
 }

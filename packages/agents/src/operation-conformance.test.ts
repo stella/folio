@@ -387,6 +387,7 @@ const CONTRACT_OPERATION_FIXTURES: Record<FolioDocumentOperationType, Record<str
     type: "insertBeforeBlock",
     blockId: "0304003A",
     text: "New paragraph.",
+    numbering: { start: "new", kind: "bullet", level: 1 },
   },
   replaceBlock: {
     id: "op-replace-block",
@@ -653,6 +654,40 @@ describe("document operation contract JSON schema conformance", () => {
       InvalidFolioDocumentOperationBatchError,
     );
     expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
+  });
+
+  test.each([
+    { label: "an unknown list kind", numbering: { start: "new", kind: "roman" } },
+    { label: "a level past the ninth", numbering: { start: "new", kind: "bullet", level: 9 } },
+    {
+      label: "a new list naming an instance",
+      numbering: { start: "new", kind: "bullet", numId: 3 },
+    },
+    { label: "another start", numbering: { start: "old", kind: "bullet" } },
+    { label: "a new list without a kind", numbering: { start: "new" } },
+  ] as const)("rejects $label in both the parser and schema", ({ numbering }) => {
+    const operation = {
+      id: "invalid-new-list",
+      type: "setBlockParagraphProperties",
+      blockId: "0304003A",
+      properties: { numbering },
+    };
+    expect(() => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] })).toThrow(
+      InvalidFolioDocumentOperationBatchError,
+    );
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
+  });
+
+  test("admits a new list in both the parser and schema", () => {
+    const operation = {
+      id: "new-list",
+      type: "setBlockParagraphProperties",
+      blockId: "0304003A",
+      properties: { numbering: { start: "new", kind: "numbered" } },
+    };
+    const batch = { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations: [operation] };
+    expect(parseFolioDocumentOperationBatch(batch).operations).toEqual([operation]);
+    expect(admits(OPERATION_SCHEMA, operation)).toBe(true);
   });
 
   test.each([

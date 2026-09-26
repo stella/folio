@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Rippmenüü valikud",
     "contentControlDropdownNoOptions": "Valikuid pole",
     "contextMenu": {
+      "continueNumbering": "Jätka nummerdamist",
       "copy": "Kopeeri",
       "copyShortcut": "Ctrl+C",
       "cut": "Lõika",
@@ -75,7 +76,9 @@
       "paste": "Kleebi",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Alusta uuesti 1-st",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Määra nummerdusväärtus…"
     },
     "copy": "Kopeeri",
     "copyLink": "Kopeeri link",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Kleepimisrežiim",
         "title": "Teisiti kleepimine"
+      },
+      "setNumberingValue": {
+        "title": "Nummerdusväärtuse määramine",
+        "valueLabel": "Määra väärtuseks"
       },
       "splitCell": {
         "mergeBeforeSplit": "Ühenda valitud lahtrid enne tükeldamist",

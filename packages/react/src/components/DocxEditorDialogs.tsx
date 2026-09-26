@@ -41,6 +41,11 @@ const PageSetupDialog = lazy(() =>
     default: m.PageSetupDialog,
   })),
 );
+const SetNumberingValueDialog = lazy(() =>
+  import("./dialogs/SetNumberingValueDialog").then((m) => ({
+    default: m.SetNumberingValueDialog,
+  })),
+);
 const InsertSymbolDialog = lazy(() =>
   import("./dialogs/InsertSymbolDialog").then((m) => ({
     default: m.InsertSymbolDialog,
@@ -99,6 +104,12 @@ export type InsertSymbolMount = {
   onInsert: (symbol: string) => void;
 };
 
+export type SetNumberingValueMount = {
+  isOpen: boolean;
+  onClose: () => void;
+  onApply: (value: number) => void;
+};
+
 export type DocxEditorDialogsProps = {
   findReplace: FindReplaceMount;
   tableProperties: TablePropertiesMount;
@@ -107,6 +118,7 @@ export type DocxEditorDialogsProps = {
   pageSetup: PageSetupMount;
   footnoteProperties: FootnotePropertiesMount;
   insertSymbol: InsertSymbolMount;
+  setNumberingValue: SetNumberingValueMount;
 };
 
 export function DocxEditorDialogs({
@@ -117,6 +129,7 @@ export function DocxEditorDialogs({
   pageSetup,
   footnoteProperties,
   insertSymbol,
+  setNumberingValue,
 }: DocxEditorDialogsProps) {
   return (
     <Suspense fallback={null}>
@@ -178,6 +191,13 @@ export function DocxEditorDialogs({
           isOpen={insertSymbol.isOpen}
           onClose={insertSymbol.onClose}
           onInsert={insertSymbol.onInsert}
+        />
+      )}
+      {setNumberingValue.isOpen && (
+        <SetNumberingValueDialog
+          isOpen={setNumberingValue.isOpen}
+          onClose={setNumberingValue.onClose}
+          onApply={setNumberingValue.onApply}
         />
       )}
     </Suspense>

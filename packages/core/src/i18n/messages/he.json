@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "אפשרויות רשימה נפתחת",
     "contentControlDropdownNoOptions": "אין אפשרויות",
     "contextMenu": {
+      "continueNumbering": "המשך מספור",
       "copy": "העתק",
       "copyShortcut": "Ctrl+C",
       "cut": "גזור",
@@ -75,7 +76,9 @@
       "paste": "הדבק",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "התחל מחדש ב-1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "הגדר ערך מספור…"
     },
     "copy": "העתק",
     "copyLink": "העתק קישור",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "מצב הדבקה",
         "title": "הדבקה מיוחדת"
+      },
+      "setNumberingValue": {
+        "title": "הגדרת ערך מספור",
+        "valueLabel": "הגדר ערך ל"
       },
       "splitCell": {
         "mergeBeforeSplit": "מזג את התאים שנבחרו לפני הפיצול",

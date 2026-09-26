@@ -11,6 +11,7 @@ import type {
   FolioContentSnapshot,
   FolioContentTableLocation,
 } from "../compare/content-types";
+import type { ListKind } from "../docx/listNumberingInstances";
 import type { BreakContent, ParagraphAlignment } from "../types/document";
 
 export type FolioAIBlockKind = FolioContentParagraphKind;
@@ -65,6 +66,25 @@ export type FolioAIParagraphSpacing = FolioContentParagraphSpacing;
 export type FolioAIParagraphIndentation = FolioContentParagraphIndentation;
 export type FolioAIListReference = FolioContentListReference;
 
+/** The kinds of list an operation can start. */
+export type FolioAIListKind = ListKind;
+
+/**
+ * Start a new list: a numbering instance of `kind`, defined for the
+ * operation, with its paragraphs at `level` (zero-based, default 0). Every
+ * paragraph one operation numbers this way joins the same new list; separate
+ * operations start separate lists. A package without a numbering part gets
+ * one.
+ */
+export type FolioAINewListReference = {
+  start: "new";
+  kind: FolioAIListKind;
+  level?: number;
+};
+
+/** An existing numbering instance and level, or a new list. */
+export type FolioAIListNumbering = FolioAIListReference | FolioAINewListReference;
+
 /** Which paragraphs split from one insertion's `text` receive its paragraph formatting. */
 export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
 
@@ -82,7 +102,7 @@ export type FolioAIBlockParagraphProperties = {
    * an authored level.
    */
   listLevel?: number | null;
-  numbering?: FolioAIListReference | null;
+  numbering?: FolioAIListNumbering | null;
   /** Direct `w:jc`. `null` clears the override and restores style inheritance. */
   alignment?: ParagraphAlignment | null;
   /** Direct `w:spacing` attributes. `null` removes the whole direct child. */
@@ -316,7 +336,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * they retain that instance without an authored level.
          */
         listLevel?: number | null;
-        numbering?: FolioAIListReference | null;
+        numbering?: FolioAIListNumbering | null;
         /**
          * Direct `w:jc` for the inserted block. `null` clears alignment copied
          * from the anchor and lets the inserted paragraph's style decide.

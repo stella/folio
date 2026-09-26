@@ -89,6 +89,9 @@ import {
   removeTabStop,
   increaseListLevel,
   decreaseListLevel,
+  restartNumbering,
+  continueNumbering,
+  setNumberingValue,
   clearFormatting,
   captureFormatMarks,
   applyFormatMarks,
@@ -572,6 +575,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [footnotePropsOpen, setFootnotePropsOpen] = useState(false);
   // Insert-symbol dialog state
   const [showInsertSymbol, setShowInsertSymbol] = useState(false);
+  // Set-numbering-value dialog state
+  const [numberingValueDialogOpen, setNumberingValueDialogOpen] = useState(false);
   // Ruler visibility — seeded from the prop, then user-driven via the toolbar toggle.
   const [rulerVisible, setRulerVisible] = useState(showRulerProp);
   const toggleRuler = useCallback(() => setRulerVisible((visible) => !visible), []);
@@ -2469,6 +2474,21 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       );
     }
+    if (contextMenu.listNumbering.type === "listItem") {
+      items.push(
+        { action: "restartNumbering", label: t("contextMenu.restartNumbering") },
+        {
+          action: "continueNumbering",
+          label: t("contextMenu.continueNumbering"),
+          disabled: !contextMenu.listNumbering.canContinue,
+        },
+        {
+          action: "setNumberingValue",
+          label: t("contextMenu.setNumberingValue"),
+          dividerAfter: true,
+        },
+      );
+    }
     items.push({
       action: "selectAll",
       label: t("selectAll"),
@@ -2479,6 +2499,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     contextMenu.hasSelection,
     contextMenu.cursorInTable,
     contextMenu.cursorInTrackedChange,
+    contextMenu.listNumbering,
     customContextMenuItems,
     readOnly,
     t,
@@ -2672,6 +2693,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           rejectChange(range.from, range.to)(view.state, view.dispatch);
           break;
         }
+        case "restartNumbering":
+          restartNumbering(view.state, view.dispatch);
+          break;
+        case "continueNumbering":
+          continueNumbering(view.state, view.dispatch);
+          break;
+        case "setNumberingValue":
+          setNumberingValueDialogOpen(true);
+          break;
         case "separator":
           // Separators are visual dividers in the menu, never
           // emitted as an actual user action.
@@ -4150,6 +4180,24 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       handleApplyFootnoteProperties,
     ],
   );
+  const closeNumberingValueDialog = useCallback(() => setNumberingValueDialogOpen(false), []);
+  const applyNumberingValue = useCallback(
+    (value: number) => {
+      const view = getActiveEditorView();
+      if (view) {
+        setNumberingValue(value)(view.state, view.dispatch);
+      }
+    },
+    [getActiveEditorView],
+  );
+  const numberingValueDialog = useMemo(
+    () => ({
+      isOpen: numberingValueDialogOpen,
+      onClose: closeNumberingValueDialog,
+      onApply: applyNumberingValue,
+    }),
+    [applyNumberingValue, closeNumberingValueDialog, numberingValueDialogOpen],
+  );
   const insertSymbolDialog = useMemo(
     () => ({
       isOpen: showInsertSymbol,
@@ -4704,6 +4752,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
               pageSetup={pageSetupDialog}
               footnoteProperties={footnotePropertiesDialog}
               insertSymbol={insertSymbolDialog}
+              setNumberingValue={numberingValueDialog}
             />
             {/* InlineHeaderFooterEditor is rendered inside the editor content area (position:relative div) */}
             {/* Hidden file input for image insertion */}

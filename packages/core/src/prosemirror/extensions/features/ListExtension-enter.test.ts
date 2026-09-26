@@ -174,6 +174,8 @@ const listMarkers = (state: EditorState): string[] =>
 
 describe("ListExtension Enter numbering", () => {
   test("toolbar intent, not a conventional id, selects and toggles imported list kinds", () => {
+    // A lone item has no neighbouring list of the other kind to join, so the
+    // toggle defines a new instance of the requested kind.
     let numbered = swappedToolbarState(1);
     expect(
       toggleBulletList(numbered, (transaction) => {
@@ -182,9 +184,10 @@ describe("ListExtension Enter numbering", () => {
     ).toBe(true);
     expect(numbered.doc.firstChild?.attrs["numPr"]).toEqual({
       kind: "reference",
-      numId: 2,
+      numId: 3,
       ilvl: 0,
     });
+    expect(numbered.doc.firstChild?.attrs["listIsBullet"]).toBe(true);
 
     let bullet = swappedToolbarState(2);
     expect(
@@ -194,9 +197,10 @@ describe("ListExtension Enter numbering", () => {
     ).toBe(true);
     expect(bullet.doc.firstChild?.attrs["numPr"]).toEqual({
       kind: "reference",
-      numId: 1,
+      numId: 3,
       ilvl: 0,
     });
+    expect(bullet.doc.firstChild?.attrs["listNumFmt"]).toBe("decimal");
 
     let sameBullet = swappedToolbarState(2);
     expect(

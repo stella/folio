@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Nolaižamā saraksta opcijas",
     "contentControlDropdownNoOptions": "Nav opciju",
     "contextMenu": {
+      "continueNumbering": "Turpināt numerāciju",
       "copy": "Kopēt",
       "copyShortcut": "Ctrl+C",
       "cut": "Izgriezt",
@@ -75,7 +76,9 @@
       "paste": "Ielīmēt",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Sākt no jauna ar 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Iestatīt numerācijas vērtību…"
     },
     "copy": "Kopēt",
     "copyLink": "Kopēt saiti",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Ielīmēšanas režīms",
         "title": "Īpašā ielīmēšana"
+      },
+      "setNumberingValue": {
+        "title": "Numerācijas vērtības iestatīšana",
+        "valueLabel": "Iestatīt vērtību uz"
       },
       "splitCell": {
         "mergeBeforeSplit": "Pirms sadalīšanas sapludināt atlasītās šūnas",

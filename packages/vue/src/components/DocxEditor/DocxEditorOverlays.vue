@@ -18,6 +18,7 @@
     :on-image="contextMenu.onImage"
     :can-merge-cells="contextMenu.canMergeCells"
     :can-split-cell="contextMenu.canSplitCell"
+    :list-numbering="contextMenu.listNumbering"
     :custom-items="customTextMenuItems"
     @action="(action: string) => emit('context-menu-action', action)"
     @close="emit('close-context-menu')"
@@ -36,6 +37,7 @@
 
 <script setup lang="ts">
 import type { ImageLayoutTarget } from "@stll/folio-core/layout-painter/imageLayout";
+import type { ListNumberingMenuState } from "@stll/folio-core/prosemirror";
 
 import ImageContextMenu from "../ImageContextMenu.vue";
 import type { ImageContextMenuState, ImageContextMenuTextAction } from "../imageContextMenuTypes";
@@ -51,6 +53,7 @@ type TextContextMenuState = {
   onImage: boolean;
   canMergeCells: boolean;
   canSplitCell: boolean;
+  listNumbering: ListNumberingMenuState;
 };
 
 defineProps<{

@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Išskleidžiamojo sąrašo parinktys",
     "contentControlDropdownNoOptions": "Parinkčių nėra",
     "contextMenu": {
+      "continueNumbering": "Tęsti numeravimą",
       "copy": "Kopijuoti",
       "copyShortcut": "Ctrl+C",
       "cut": "Iškirpti",
@@ -75,7 +76,9 @@
       "paste": "Įklijuoti",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "Pradėti iš naujo nuo 1",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Nustatyti numeravimo reikšmę…"
     },
     "copy": "Kopijuoti",
     "copyLink": "Kopijuoti nuorodą",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Įklijavimo režimas",
         "title": "Specialusis įklijavimas"
+      },
+      "setNumberingValue": {
+        "title": "Numeravimo reikšmės nustatymas",
+        "valueLabel": "Nustatyti reikšmę"
       },
       "splitCell": {
         "mergeBeforeSplit": "Prieš skaidydami sujunkite pažymėtus langelius",

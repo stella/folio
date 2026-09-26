@@ -5,14 +5,18 @@
  * A list command's result is only real once it is saved: the paragraph can
  * paint as a list item while the model references a numbering instance the
  * package does not define, and the first sign is a save that throws (#1091).
- * So each cell here
+ * It can also join a list it has no business joining, which the save accepts
+ * and a reader only notices as renumbered clauses (#1092). So each cell here
  * applies one gesture the way the editor applies it (the command, or the typed
  * marker fed through the text-input funnel with the editor's plugin order),
  * saves with `repackDocx`, parses the bytes back, and checks the invariants
  * that hold for every list in every package:
  *
  * - the save succeeds and every `w:numPr` names an instance the package defines;
- * - the paragraph is a list item of the requested kind;
+ * - the paragraph is a list item of the requested kind, showing the requested
+ *   first marker (a new list; the target never touches another list);
+ * - every other paragraph keeps its label (no list, heading numbering included,
+ *   is renumbered by a gesture elsewhere);
  * - while suggesting, the change is a tracked paragraph-property change.
  *
  * New gestures and package shapes are rows in the tables below; the
@@ -26,6 +30,7 @@ import { ensureParaIds } from "../../../docx/ensureParaIds";
 import { parseDocx } from "../../../docx/parser";
 import { createDocx, repackDocx } from "../../../docx/rezip";
 import { attemptSelectiveSave } from "../../../docx/selectiveSave";
+import { FolioDocxReviewer } from "../../../ai-edits/headless";
 import { fromMarkdown } from "../../../markdown/fromMarkdown";
 import type { BlockContent, Document, Paragraph } from "../../../types/document";
 import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
@@ -37,6 +42,7 @@ import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { dispatchEditorTextInput } from "../../textInput";
+import { continueNumbering, restartNumbering, setNumberingValue } from "../../listNumbering";
 import { toggleBulletList, toggleNumberedList } from "./ListExtension";
 import { getChangeTrackerState } from "./ParagraphChangeTrackerExtension";
 
@@ -262,6 +268,13 @@ const expectEveryReferenceDefined = (document: Document): void => {
   }
 };
 
+type Label = { text: string; label: string };
+
+const labelsOf = async (bytes: ArrayBuffer): Promise<Label[]> =>
+  (await FolioDocxReviewer.fromBuffer(bytes))
+    .getContent()
+    .map(({ text, displayLabel }) => ({ text, label: displayLabel ?? "" }));
+
 const targetParagraph = (document: Document): Paragraph => {
   const paragraph = paragraphsOf(document.package.document.content).find((candidate) =>
     candidate.content.some(
@@ -291,12 +304,13 @@ describe("list gestures × package shapes × editing modes", () => {
           }
           test(gestureName(gesture), async () => {
             const document = await packageOf(shape.build());
+            const before = await labelsOf(await repackDocx(document));
             const editor = editorFor(document, mode);
 
             applyGesture(editor, gesture);
 
             for (const saved of await savesOf(editor, document)) {
-              await expectListInvariants({ saved, gesture, mode });
+              await expectListInvariants({ saved, before, gesture, mode });
             }
           });
         }
@@ -307,6 +321,7 @@ describe("list gestures × package shapes × editing modes", () => {
 
 type ListInvariantsOptions = {
   saved: ArrayBuffer;
+  before: readonly Label[];
   gesture: Gesture;
   mode: EditingMode;
 };
@@ -328,6 +343,7 @@ const savesOf = async (editor: Editor, document: Document): Promise<ArrayBuffer[
 
 const expectListInvariants = async ({
   saved,
+  before,
   gesture,
   mode,
 }: ListInvariantsOptions): Promise<void> => {
@@ -337,6 +353,22 @@ const expectListInvariants = async ({
   const target = targetParagraph(reparsed);
   expect(target.listRendering?.isBullet ?? false).toBe(gesture.expected.kind === "bullet");
 
+  const after = await labelsOf(saved);
+  expect(after.map(({ text }) => text)).toEqual(before.map(({ text }) => text));
+  expect(after.find(({ text }) => text === TARGET)?.label).toBe(gesture.expected.label);
+  expect(after.filter(({ text }) => text !== TARGET)).toEqual(
+    before.filter(({ text }) => text !== TARGET),
+  );
+
+  // A new list: no other paragraph shares the target's instance.
+  const targetNumId = paragraphNumberingReferenceId(target.formatting?.numPr);
+  const sharing = paragraphsOf(reparsed.package.document.content).filter(
+    (paragraph) =>
+      paragraph !== target &&
+      paragraphNumberingReferenceId(paragraph.formatting?.numPr) === targetNumId,
+  );
+  expect(sharing).toHaveLength(0);
+
   // Suggesting records exactly one change whose previous state is
   // the plain paragraph, so a reject restores it.
   const changes = target.propertyChanges ?? [];
@@ -345,3 +377,161 @@ const expectListInvariants = async ({
     paragraphNumberingReferenceId(changes.at(0)?.previousFormatting?.numPr ?? undefined),
   ).toBeUndefined();
 };
+
+// ============================================================================
+// WHICH LIST A GESTURE JOINS
+// ============================================================================
+
+type Session = {
+  document: Document;
+  editor: Editor;
+};
+
+const sessionOf = async (model: Document, mode: EditingMode = "editing"): Promise<Session> => {
+  const document = await packageOf(model);
+  return { document, editor: editorFor(document, mode) };
+};
+
+const caretAt = (editor: Editor, text: string): void => {
+  const start = paragraphStart(editor.state, text);
+  editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, start)));
+};
+
+const run = (editor: Editor, text: string, command: Command): boolean => {
+  caretAt(editor, text);
+  return command(editor.state, editor.dispatch);
+};
+
+const typeAt = (editor: Editor, text: string, marker: string): void => {
+  caretAt(editor, text);
+  typeText(editor, marker);
+};
+
+/** Save, check every reference is defined, and read the labels back. */
+const savedLabels = async ({ document, editor }: Session): Promise<string[]> => {
+  const saved = await repackDocx(fromProseDoc(editor.state.doc, document));
+  expectEveryReferenceDefined(
+    await parseDocx(saved, { preloadFonts: false, detectVariables: false }),
+  );
+  return (await labelsOf(saved)).map(({ text, label }) => `${label} ${text}`.trim());
+};
+
+type Gesturer = (editor: Editor, text: string) => void;
+
+const clickNumbered: Gesturer = (editor, text) => {
+  run(editor, text, toggleNumberedList);
+};
+
+const typeOne: Gesturer = (editor, text) => {
+  typeAt(editor, text, "1. ");
+};
+
+describe("which list a gesture joins", () => {
+  const secondList =
+    "1. Alpha\n2. Beta\n\nUnrelated prose between the lists.\n\nNew list one\n\nNew list two";
+
+  test.each([
+    ["Numbered List", clickNumbered],
+    ["typed 1.", typeOne],
+  ] as const)(
+    "%s after prose starts a new list, and the next paragraph continues it",
+    async (_name, gesture) => {
+      const session = await sessionOf(fromMarkdown(secondList));
+      gesture(session.editor, "New list one");
+      gesture(session.editor, "New list two");
+
+      expect(await savedLabels(session)).toEqual([
+        "1. Alpha",
+        "2. Beta",
+        "Unrelated prose between the lists.",
+        "1. New list one",
+        "2. New list two",
+      ]);
+    },
+  );
+
+  test("a paragraph directly under a list of the requested kind continues it", async () => {
+    const session = await sessionOf(fromMarkdown("1. Alpha\n2. Beta\n\nGamma"));
+    run(session.editor, "Gamma", toggleNumberedList);
+
+    expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "3. Gamma"]);
+  });
+
+  test("a paragraph directly under a list of the other kind starts its own", async () => {
+    const session = await sessionOf(fromMarkdown("1. Alpha\n2. Beta\n\nGamma"));
+    run(session.editor, "Gamma", toggleBulletList);
+
+    expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "• Gamma"]);
+  });
+
+  test("a body paragraph never joins heading numbering its style supplies", async () => {
+    const session = await sessionOf(styleNumberedHeadings());
+    run(session.editor, TARGET, toggleNumberedList);
+    typeAt(session.editor, "Payment is due in ten days.", "1. ");
+
+    const labels = await savedLabels(session);
+    expect(labels).toContain("1. Scope");
+    expect(labels).toContain("2. Payment");
+    expect(labels).toContain(`1. ${TARGET}`);
+    expect(labels).toContain("1. Payment is due in ten days.");
+  });
+});
+
+// ============================================================================
+// RESTART / CONTINUE / SET VALUE
+// ============================================================================
+
+describe("restart, continue and set numbering value", () => {
+  const threeItems = "1. Alpha\n2. Beta\n3. Gamma";
+
+  for (const mode of EDITING_MODES) {
+    test(`restart at 1, ${mode}`, async () => {
+      const session = await sessionOf(fromMarkdown(threeItems), mode);
+      expect(run(session.editor, "Beta", restartNumbering)).toBe(true);
+
+      expect(await savedLabels(session)).toEqual(["1. Alpha", "1. Beta", "2. Gamma"]);
+    });
+
+    test(`set numbering value, ${mode}`, async () => {
+      const session = await sessionOf(fromMarkdown(threeItems), mode);
+      expect(run(session.editor, "Beta", setNumberingValue(5))).toBe(true);
+
+      expect(await savedLabels(session)).toEqual(["1. Alpha", "5. Beta", "6. Gamma"]);
+    });
+  }
+
+  for (const mode of ["editing"] as const) {
+    test(`continue undoes a restart, ${mode}`, async () => {
+      const session = await sessionOf(fromMarkdown(threeItems), mode);
+      run(session.editor, "Beta", restartNumbering);
+      expect(run(session.editor, "Beta", continueNumbering)).toBe(true);
+
+      expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "3. Gamma"]);
+    });
+  }
+
+  test("continue carries a second list on from the first", async () => {
+    const session = await sessionOf(fromMarkdown("1. Alpha\n2. Beta\n\nProse.\n\nGamma\n\nDelta"));
+    run(session.editor, "Gamma", toggleNumberedList);
+    run(session.editor, "Delta", toggleNumberedList);
+    expect(run(session.editor, "Gamma", continueNumbering)).toBe(true);
+
+    expect(await savedLabels(session)).toEqual([
+      "1. Alpha",
+      "2. Beta",
+      "Prose.",
+      "3. Gamma",
+      "4. Delta",
+    ]);
+  });
+
+  test("are not applicable outside a list, or with no earlier list to continue", async () => {
+    const { editor } = await sessionOf(fromMarkdown("Plain.\n\n1. Alpha"));
+    caretAt(editor, "Plain.");
+    expect(restartNumbering(editor.state)).toBe(false);
+    expect(setNumberingValue(3)(editor.state)).toBe(false);
+    caretAt(editor, "Alpha");
+    expect(continueNumbering(editor.state)).toBe(false);
+    expect(restartNumbering(editor.state)).toBe(true);
+  });
+});

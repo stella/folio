@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 
 import { sanitizeXmlCharacters } from "@stll/docx-core";
 
+import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
 import { isNumberingReference } from "./docx/numberingReference";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
@@ -25,6 +26,8 @@ import type {
   FolioAIEditSkippedOperation,
   FolioAIEditSnapshot,
   FolioAIInlineFormattingPatch,
+  FolioAIListNumbering,
+  FolioAINewListReference,
   FolioAIParagraphIndentation,
   FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
@@ -615,12 +618,49 @@ const readClearableParagraphIndentation = ({
   return indentation;
 };
 
-const readClearableNumbering = ({ value, key, path }: ReadClearableParagraphIndentationParams) => {
+/** `w:ilvl` names one of an abstract numbering's nine levels. */
+const MAX_NEW_LIST_LEVEL = 8;
+
+const LIST_KIND_SET: ReadonlySet<string> = new Set(LIST_KINDS);
+
+const isListKind = (value: string): value is ListKind => LIST_KIND_SET.has(value);
+
+/** `{ start: "new", kind, level? }`: a list the operation starts. */
+const readNewListReference = (
+  candidate: Record<string, unknown>,
+  numberingPath: string,
+): FolioAINewListReference => {
+  assertAllowedKeys(candidate, numberingPath, ["start", "kind", "level"]);
+  const kind = candidate["kind"];
+  if (typeof kind !== "string" || !isListKind(kind)) {
+    return invalidBatch(`${numberingPath}.kind`, `expected one of ${LIST_KINDS.join(", ")}`);
+  }
+  if (candidate["level"] === undefined) {
+    return { start: "new", kind };
+  }
+  const level = readNonNegativeInteger(candidate, "level", numberingPath);
+  if (level > MAX_NEW_LIST_LEVEL) {
+    return invalidBatch(`${numberingPath}.level`, `expected at most ${MAX_NEW_LIST_LEVEL}`);
+  }
+  return { start: "new", kind, level };
+};
+
+const readClearableNumbering = ({
+  value,
+  key,
+  path,
+}: ReadClearableParagraphIndentationParams): FolioAIListNumbering | null | undefined => {
   const candidate = value[key];
   if (candidate === undefined || candidate === null) return candidate;
   const numberingPath = `${path}.${key}`;
   if (!isPlainObject(candidate))
     return invalidBatch(numberingPath, "expected an object or null when provided");
+  if (candidate["start"] !== undefined) {
+    if (candidate["start"] !== "new") {
+      return invalidBatch(`${numberingPath}.start`, 'expected "new"');
+    }
+    return readNewListReference(candidate, numberingPath);
+  }
   assertAllowedKeys(candidate, numberingPath, ["numId", "level"]);
   const numId = readNonNegativeInteger(candidate, "numId", numberingPath);
   // The agent contract clears numbering with `null`, never with the reserved

@@ -70,6 +70,7 @@ import {
   resolveAllChangesInHeadlessState,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import {
   footnoteToProseDoc,
   headerFooterToProseDoc,
@@ -1332,9 +1333,10 @@ export class FolioDocxReviewer {
    * packages can be compared entry by entry.
    */
   readNumberingDefinitions(): FolioNumberingLevel[] {
-    return numberingLevelsOf(this.baseDocument.package.numbering).toSorted(
-      (left, right) => left.numId - right.numId || left.level - right.level,
-    );
+    // Including the lists operations started, which only their paragraphs define so far.
+    return numberingLevelsOf(
+      completeNumberingForDoc(this.baseDocument.package.numbering, this.state.doc),
+    ).toSorted((left, right) => left.numId - right.numId || left.level - right.level);
   }
 
   /** Return parsed package metadata without exposing the mutable document model. */
@@ -2695,6 +2697,11 @@ export class FolioDocxReviewer {
     for (const entry of secondaryStoryStates) {
       if (entry.state === entry.initialState) {
         continue;
+      }
+      // A list an operation started in this story is defined by its paragraphs.
+      const numbering = completeNumberingForDoc(document.package.numbering, entry.state.doc);
+      if (numbering) {
+        document.package.numbering = numbering;
       }
       if (entry.handle.type === "header" || entry.handle.type === "footer") {
         const source =

@@ -74,6 +74,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Dropdown options",
       "contentControlDropdownNoOptions": "No options",
       "contextMenu": {
+        "continueNumbering": "Continue Numbering",
         "copy": "Copy",
         "copyShortcut": "Ctrl+C",
         "cut": "Cut",
@@ -83,7 +84,9 @@ export const CATALOGS = {
         "paste": "Paste",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Restart at 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Set Numbering Value…"
       },
       "copy": "Copy",
       "copyLink": "Copy link",
@@ -275,6 +278,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Paste mode",
           "title": "Paste Special"
+        },
+        "setNumberingValue": {
+          "title": "Set Numbering Value",
+          "valueLabel": "Set value to"
         },
         "splitCell": {
           "mergeBeforeSplit": "Merge selected cells before splitting",
@@ -721,6 +728,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Dropdown-Optionen",
       "contentControlDropdownNoOptions": "Keine Optionen",
       "contextMenu": {
+        "continueNumbering": "Nummerierung fortsetzen",
         "copy": "Kopieren",
         "copyShortcut": "Ctrl+C",
         "cut": "Ausschneiden",
@@ -730,7 +738,9 @@ export const CATALOGS = {
         "paste": "Einfügen",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Neu beginnen mit 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Nummerierungswert festlegen…"
       },
       "copy": "Kopieren",
       "copyLink": "Link kopieren",
@@ -922,6 +932,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Einfügemodus",
           "title": "Inhalte einfügen"
+        },
+        "setNumberingValue": {
+          "title": "Nummerierungswert festlegen",
+          "valueLabel": "Wert festlegen auf"
         },
         "splitCell": {
           "mergeBeforeSplit": "Ausgewählte Zellen vor dem Teilen verbinden",
@@ -1368,6 +1382,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Options de la liste déroulante",
       "contentControlDropdownNoOptions": "Aucune option",
       "contextMenu": {
+        "continueNumbering": "Continuer la numérotation",
         "copy": "Copier",
         "copyShortcut": "Ctrl+C",
         "cut": "Couper",
@@ -1377,7 +1392,9 @@ export const CATALOGS = {
         "paste": "Coller",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Recommencer à 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Définir la valeur de numérotation…"
       },
       "copy": "Copier",
       "copyLink": "Copier le lien",
@@ -1569,6 +1586,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Mode de collage",
           "title": "Collage spécial"
+        },
+        "setNumberingValue": {
+          "title": "Définir la valeur de numérotation",
+          "valueLabel": "Définir la valeur à"
         },
         "splitCell": {
           "mergeBeforeSplit": "Fusionner les cellules sélectionnées avant de les fractionner",
@@ -2015,6 +2036,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Opciones desplegables",
       "contentControlDropdownNoOptions": "Sin opciones",
       "contextMenu": {
+        "continueNumbering": "Continuar numeración",
         "copy": "Copiar",
         "copyShortcut": "Ctrl+C",
         "cut": "Cortar",
@@ -2024,7 +2046,9 @@ export const CATALOGS = {
         "paste": "Pegar",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Reiniciar en 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Establecer valor de numeración…"
       },
       "copy": "Copiar",
       "copyLink": "Copiar enlace",
@@ -2216,6 +2240,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Modo de pegado",
           "title": "Pegado especial"
+        },
+        "setNumberingValue": {
+          "title": "Establecer valor de numeración",
+          "valueLabel": "Establecer valor en"
         },
         "splitCell": {
           "mergeBeforeSplit": "Combinar las celdas seleccionadas antes de dividirlas",
@@ -2662,6 +2690,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Možnosti rozbalovací nabídky",
       "contentControlDropdownNoOptions": "Žádné možnosti",
       "contextMenu": {
+        "continueNumbering": "Pokračovat v číslování",
         "copy": "Kopírovat",
         "copyShortcut": "Ctrl+C",
         "cut": "Vyjmout",
@@ -2671,7 +2700,9 @@ export const CATALOGS = {
         "paste": "Vložit",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Začít znovu od 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Nastavit hodnotu číslování…"
       },
       "copy": "Kopírovat",
       "copyLink": "Kopírovat odkaz",
@@ -2863,6 +2894,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Režim vložení",
           "title": "Vložit jinak"
+        },
+        "setNumberingValue": {
+          "title": "Nastavit hodnotu číslování",
+          "valueLabel": "Nastavit hodnotu na"
         },
         "splitCell": {
           "mergeBeforeSplit": "Před rozdělením sloučit vybrané buňky",
@@ -3309,6 +3344,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "خيارات القائمة المنسدلة",
       "contentControlDropdownNoOptions": "لا توجد خيارات",
       "contextMenu": {
+        "continueNumbering": "متابعة الترقيم",
         "copy": "نسخ",
         "copyShortcut": "Ctrl+C",
         "cut": "قص",
@@ -3318,7 +3354,9 @@ export const CATALOGS = {
         "paste": "لصق",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "إعادة البدء عند 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "تعيين قيمة الترقيم…"
       },
       "copy": "نسخ",
       "copyLink": "نسخ الرابط",
@@ -3510,6 +3548,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "وضع اللصق",
           "title": "لصق خاص"
+        },
+        "setNumberingValue": {
+          "title": "تعيين قيمة الترقيم",
+          "valueLabel": "تعيين القيمة إلى"
         },
         "splitCell": {
           "mergeBeforeSplit": "دمج الخلايا المحددة قبل التقسيم",
@@ -3956,6 +3998,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Rippmenüü valikud",
       "contentControlDropdownNoOptions": "Valikuid pole",
       "contextMenu": {
+        "continueNumbering": "Jätka nummerdamist",
         "copy": "Kopeeri",
         "copyShortcut": "Ctrl+C",
         "cut": "Lõika",
@@ -3965,7 +4008,9 @@ export const CATALOGS = {
         "paste": "Kleebi",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Alusta uuesti 1-st",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Määra nummerdusväärtus…"
       },
       "copy": "Kopeeri",
       "copyLink": "Kopeeri link",
@@ -4157,6 +4202,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Kleepimisrežiim",
           "title": "Teisiti kleepimine"
+        },
+        "setNumberingValue": {
+          "title": "Nummerdusväärtuse määramine",
+          "valueLabel": "Määra väärtuseks"
         },
         "splitCell": {
           "mergeBeforeSplit": "Ühenda valitud lahtrid enne tükeldamist",
@@ -4603,6 +4652,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "אפשרויות רשימה נפתחת",
       "contentControlDropdownNoOptions": "אין אפשרויות",
       "contextMenu": {
+        "continueNumbering": "המשך מספור",
         "copy": "העתק",
         "copyShortcut": "Ctrl+C",
         "cut": "גזור",
@@ -4612,7 +4662,9 @@ export const CATALOGS = {
         "paste": "הדבק",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "התחל מחדש ב-1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "הגדר ערך מספור…"
       },
       "copy": "העתק",
       "copyLink": "העתק קישור",
@@ -4804,6 +4856,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "מצב הדבקה",
           "title": "הדבקה מיוחדת"
+        },
+        "setNumberingValue": {
+          "title": "הגדרת ערך מספור",
+          "valueLabel": "הגדר ערך ל"
         },
         "splitCell": {
           "mergeBeforeSplit": "מזג את התאים שנבחרו לפני הפיצול",
@@ -5250,6 +5306,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "ड्रॉपडाउन विकल्प",
       "contentControlDropdownNoOptions": "कोई विकल्प नहीं",
       "contextMenu": {
+        "continueNumbering": "क्रमांकन जारी रखें",
         "copy": "कॉपी करें",
         "copyShortcut": "Ctrl+C",
         "cut": "काटें",
@@ -5259,7 +5316,9 @@ export const CATALOGS = {
         "paste": "पेस्ट करें",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "1 पर पुनः आरंभ करें",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "क्रमांकन मान सेट करें…"
       },
       "copy": "कॉपी करें",
       "copyLink": "लिंक कॉपी करें",
@@ -5451,6 +5510,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "चिपकाने का मोड",
           "title": "विशेष चिपकाएँ"
+        },
+        "setNumberingValue": {
+          "title": "क्रमांकन मान सेट करें",
+          "valueLabel": "मान सेट करें"
         },
         "splitCell": {
           "mergeBeforeSplit": "विभाजित करने से पहले चयनित कक्षों को मर्ज करें",
@@ -5897,6 +5960,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Legördülő lehetőségek",
       "contentControlDropdownNoOptions": "Nincsenek lehetőségek",
       "contextMenu": {
+        "continueNumbering": "Számozás folytatása",
         "copy": "Másolás",
         "copyShortcut": "Ctrl+C",
         "cut": "Kivágás",
@@ -5906,7 +5970,9 @@ export const CATALOGS = {
         "paste": "Beillesztés",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Újrakezdés 1-től",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Számozási érték beállítása…"
       },
       "copy": "Másolás",
       "copyLink": "Hivatkozás másolása",
@@ -6098,6 +6164,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Beillesztési mód",
           "title": "Irányított beillesztés"
+        },
+        "setNumberingValue": {
+          "title": "Számozási érték beállítása",
+          "valueLabel": "Érték beállítása"
         },
         "splitCell": {
           "mergeBeforeSplit": "A kijelölt cellák egyesítése felosztás előtt",
@@ -6544,6 +6614,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Išskleidžiamojo sąrašo parinktys",
       "contentControlDropdownNoOptions": "Parinkčių nėra",
       "contextMenu": {
+        "continueNumbering": "Tęsti numeravimą",
         "copy": "Kopijuoti",
         "copyShortcut": "Ctrl+C",
         "cut": "Iškirpti",
@@ -6553,7 +6624,9 @@ export const CATALOGS = {
         "paste": "Įklijuoti",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Pradėti iš naujo nuo 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Nustatyti numeravimo reikšmę…"
       },
       "copy": "Kopijuoti",
       "copyLink": "Kopijuoti nuorodą",
@@ -6745,6 +6818,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Įklijavimo režimas",
           "title": "Specialusis įklijavimas"
+        },
+        "setNumberingValue": {
+          "title": "Numeravimo reikšmės nustatymas",
+          "valueLabel": "Nustatyti reikšmę"
         },
         "splitCell": {
           "mergeBeforeSplit": "Prieš skaidydami sujunkite pažymėtus langelius",
@@ -7191,6 +7268,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Nolaižamā saraksta opcijas",
       "contentControlDropdownNoOptions": "Nav opciju",
       "contextMenu": {
+        "continueNumbering": "Turpināt numerāciju",
         "copy": "Kopēt",
         "copyShortcut": "Ctrl+C",
         "cut": "Izgriezt",
@@ -7200,7 +7278,9 @@ export const CATALOGS = {
         "paste": "Ielīmēt",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Sākt no jauna ar 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Iestatīt numerācijas vērtību…"
       },
       "copy": "Kopēt",
       "copyLink": "Kopēt saiti",
@@ -7392,6 +7472,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Ielīmēšanas režīms",
           "title": "Īpašā ielīmēšana"
+        },
+        "setNumberingValue": {
+          "title": "Numerācijas vērtības iestatīšana",
+          "valueLabel": "Iestatīt vērtību uz"
         },
         "splitCell": {
           "mergeBeforeSplit": "Pirms sadalīšanas sapludināt atlasītās šūnas",
@@ -7838,6 +7922,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Opcje listy rozwijanej",
       "contentControlDropdownNoOptions": "Brak opcji",
       "contextMenu": {
+        "continueNumbering": "Kontynuuj numerowanie",
         "copy": "Kopiuj",
         "copyShortcut": "Ctrl+C",
         "cut": "Wytnij",
@@ -7847,7 +7932,9 @@ export const CATALOGS = {
         "paste": "Wklej",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Uruchom ponownie od 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Ustaw wartość numerowania…"
       },
       "copy": "Kopiuj",
       "copyLink": "Kopiuj link",
@@ -8039,6 +8126,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Tryb wklejania",
           "title": "Wklej specjalnie"
+        },
+        "setNumberingValue": {
+          "title": "Ustawianie wartości numerowania",
+          "valueLabel": "Ustaw wartość na"
         },
         "splitCell": {
           "mergeBeforeSplit": "Scal zaznaczone komórki przed podziałem",
@@ -8485,6 +8576,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Opções da lista suspensa",
       "contentControlDropdownNoOptions": "Nenhuma opção",
       "contextMenu": {
+        "continueNumbering": "Continuar numeração",
         "copy": "Copiar",
         "copyShortcut": "Ctrl+C",
         "cut": "Recortar",
@@ -8494,7 +8586,9 @@ export const CATALOGS = {
         "paste": "Colar",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Reiniciar em 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Definir valor de numeração…"
       },
       "copy": "Copiar",
       "copyLink": "Copiar link",
@@ -8686,6 +8780,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Modo de colagem",
           "title": "Colar especial"
+        },
+        "setNumberingValue": {
+          "title": "Definir valor de numeração",
+          "valueLabel": "Definir valor como"
         },
         "splitCell": {
           "mergeBeforeSplit": "Mesclar as células selecionadas antes de dividir",
@@ -9132,6 +9230,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Možnosti rozbaľovacieho zoznamu",
       "contentControlDropdownNoOptions": "Žiadne možnosti",
       "contextMenu": {
+        "continueNumbering": "Pokračovať v číslovaní",
         "copy": "Kopírovať",
         "copyShortcut": "Ctrl+C",
         "cut": "Vystrihnúť",
@@ -9141,7 +9240,9 @@ export const CATALOGS = {
         "paste": "Prilepiť",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "Začať znova od 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Nastaviť hodnotu číslovania…"
       },
       "copy": "Kopírovať",
       "copyLink": "Kopírovať odkaz",
@@ -9333,6 +9434,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Režim prilepenia",
           "title": "Prilepiť špeciálne"
+        },
+        "setNumberingValue": {
+          "title": "Nastavenie hodnoty číslovania",
+          "valueLabel": "Nastaviť hodnotu na"
         },
         "splitCell": {
           "mergeBeforeSplit": "Pred rozdelením zlúčiť vybraté bunky",
@@ -9779,6 +9884,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "Açılan liste seçenekleri",
       "contentControlDropdownNoOptions": "Seçenek yok",
       "contextMenu": {
+        "continueNumbering": "Numaralandırmaya Devam Et",
         "copy": "Kopyala",
         "copyShortcut": "Ctrl+C",
         "cut": "Kes",
@@ -9788,7 +9894,9 @@ export const CATALOGS = {
         "paste": "Yapıştır",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "1'den Yeniden Başlat",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "Numaralandırma Değerini Ayarla…"
       },
       "copy": "Kopyala",
       "copyLink": "Bağlantıyı kopyala",
@@ -9980,6 +10088,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "Yapıştırma modu",
           "title": "Özel Yapıştır"
+        },
+        "setNumberingValue": {
+          "title": "Numaralandırma Değerini Ayarla",
+          "valueLabel": "Değeri şuna ayarla"
         },
         "splitCell": {
           "mergeBeforeSplit": "Bölmeden önce seçili hücreleri birleştir",
@@ -10426,6 +10538,7 @@ export const CATALOGS = {
       "contentControlDropdownAriaLabel": "下拉选项",
       "contentControlDropdownNoOptions": "没有选项",
       "contextMenu": {
+        "continueNumbering": "继续编号",
         "copy": "复制",
         "copyShortcut": "Ctrl+C",
         "cut": "剪切",
@@ -10435,7 +10548,9 @@ export const CATALOGS = {
         "paste": "粘贴",
         "pastePlainTextShortcut": "Ctrl+Shift+V",
         "pasteShortcut": "Ctrl+V",
-        "selectAllShortcut": "Ctrl+A"
+        "restartNumbering": "重新开始于 1",
+        "selectAllShortcut": "Ctrl+A",
+        "setNumberingValue": "设置编号值…"
       },
       "copy": "复制",
       "copyLink": "复制链接",
@@ -10627,6 +10742,10 @@ export const CATALOGS = {
         "pasteSpecial": {
           "pasteMode": "粘贴方式",
           "title": "选择性粘贴"
+        },
+        "setNumberingValue": {
+          "title": "设置编号值",
+          "valueLabel": "值设置为"
         },
         "splitCell": {
           "mergeBeforeSplit": "拆分前合并所选单元格",

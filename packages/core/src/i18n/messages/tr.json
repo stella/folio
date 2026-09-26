@@ -66,6 +66,7 @@
     "contentControlDropdownAriaLabel": "Açılan liste seçenekleri",
     "contentControlDropdownNoOptions": "Seçenek yok",
     "contextMenu": {
+      "continueNumbering": "Numaralandırmaya Devam Et",
       "copy": "Kopyala",
       "copyShortcut": "Ctrl+C",
       "cut": "Kes",
@@ -75,7 +76,9 @@
       "paste": "Yapıştır",
       "pastePlainTextShortcut": "Ctrl+Shift+V",
       "pasteShortcut": "Ctrl+V",
-      "selectAllShortcut": "Ctrl+A"
+      "restartNumbering": "1'den Yeniden Başlat",
+      "selectAllShortcut": "Ctrl+A",
+      "setNumberingValue": "Numaralandırma Değerini Ayarla…"
     },
     "copy": "Kopyala",
     "copyLink": "Bağlantıyı kopyala",
@@ -267,6 +270,10 @@
       "pasteSpecial": {
         "pasteMode": "Yapıştırma modu",
         "title": "Özel Yapıştır"
+      },
+      "setNumberingValue": {
+        "title": "Numaralandırma Değerini Ayarla",
+        "valueLabel": "Değeri şuna ayarla"
       },
       "splitCell": {
         "mergeBeforeSplit": "Bölmeden önce seçili hücreleri birleştir",

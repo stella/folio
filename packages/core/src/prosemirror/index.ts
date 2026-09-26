@@ -51,6 +51,11 @@ export {
   sameListState,
 } from "./listState";
 export type { ActiveListState, ListState, ListType } from "./listState";
+export {
+  listNumberingMenuState,
+  NO_LIST_NUMBERING_MENU,
+  type ListNumberingMenuState,
+} from "./listNumbering";
 
 // Re-export TextSelection for restoring selections after toolbar interactions
 export { TextSelection } from "prosemirror-state";
@@ -115,6 +120,9 @@ export {
   increaseListLevel,
   decreaseListLevel,
   removeList,
+  restartNumbering,
+  continueNumbering,
+  setNumberingValue,
   getParagraphAlignment,
   getParagraphBidi,
   isInList,
