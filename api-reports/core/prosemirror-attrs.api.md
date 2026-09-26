@@ -126,6 +126,9 @@ export const expectUnderlineMarkAttrs: (mark: Mark) => UnderlineAttrs;
 export const isTrackedRevisionAncestorArray: (value: unknown) => value is readonly TrackedRevisionAncestor[];
 
 // @public (undocumented)
+export const isValidEmptyFieldResultRuns: (value: unknown) => value is NonNullable<FieldAttrs["_docxEmptyResultRuns"]>;
+
+// @public (undocumented)
 export const mergeImageAttrs: (node: Node_2, patch: NodeAttrPatch<ImageAttrs>) => ImageAttrs;
 
 // @public (undocumented)
