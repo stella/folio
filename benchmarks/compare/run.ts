@@ -23,6 +23,7 @@ import path from "node:path";
 import { compareDocx } from "@stll/folio-core/compare/compare";
 
 import { loadCorpus, readDocument, type CorpusPair } from "./corpus";
+import { checkRecordedDigests } from "./digest-check";
 import {
   buildDocumentPackage,
   DOCUMENT_CLASSES,
@@ -464,26 +465,19 @@ const applyDigestMode = (report: Report, mode: CliOptions["mode"]): number => {
     return 0;
   }
   const recorded = readDigests();
-  const drifted = measured.filter(({ id, digests }) => {
-    const previous = recorded[id];
-    return (
-      previous !== undefined &&
-      (previous.buffer !== digests.buffer || previous.changes !== digests.changes)
-    );
-  });
-  const missing = measured.filter(({ id }) => recorded[id] === undefined);
-  for (const { id } of drifted) {
+  const { drifted, missing, checked } = checkRecordedDigests(measured, recorded);
+  for (const id of drifted) {
     console.log(`digest changed: ${id}`);
   }
-  for (const { id } of missing) {
+  for (const id of missing) {
     console.log(`no recorded digest: ${id}`);
   }
   console.log(
-    drifted.length === 0
-      ? `\nEvery product matches the recorded digest (${String(measured.length - missing.length)} checked).`
-      : `\n${String(drifted.length)} products differ from the recorded digests.`,
+    drifted.length === 0 && missing.length === 0
+      ? `\nEvery product matches the recorded digest (${String(checked)} checked).`
+      : `\n${String(drifted.length)} products differ and ${String(missing.length)} have no recorded digest.`,
   );
-  return drifted.length === 0 ? 0 : 1;
+  return drifted.length === 0 && missing.length === 0 ? 0 : 1;
 };
 
 const runParent = (options: CliOptions): number => {
