@@ -72,6 +72,64 @@ const resolve = ({
 };
 
 describe("matchInlineAtoms", () => {
+  test("compares equivalent simple and complex fields by their document facts", () => {
+    const simple = field();
+    const complex = simple.type.create({ ...simple.attrs, fieldKind: "complex" });
+    expect(sameInlineAtoms(documentWith([simple]), documentWith([complex]))).toBe(true);
+    expect(
+      sameInlineAtoms(
+        documentWith([simple]),
+        documentWith([complex.type.create({ ...complex.attrs, instruction: " NUMWORDS " })]),
+      ),
+    ).toBe(false);
+    expect(
+      sameInlineAtoms(
+        documentWith([simple]),
+        documentWith([complex.type.create({ ...complex.attrs, displayText: "2" })]),
+      ),
+    ).toBe(false);
+    expect(
+      sameInlineAtoms(
+        documentWith([simple]),
+        documentWith([complex.type.create({ ...complex.attrs, fldLock: true })]),
+      ),
+    ).toBe(false);
+    expect(
+      sameInlineAtoms(
+        documentWith([simple]),
+        documentWith([complex.type.create({ ...complex.attrs, fieldResultIsFallback: true })]),
+      ),
+    ).toBe(false);
+  });
+
+  test("does not hide formatting differences between semantically equivalent field forms", async () => {
+    const simple = await docxWith([
+      {
+        type: "simpleField",
+        fieldType: "PAGE",
+        instruction: " PAGE ",
+        content: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+      },
+    ]);
+    const complexWithBoldResult = await docxWith([
+      {
+        type: "complexField",
+        fieldType: "PAGE",
+        instruction: " PAGE ",
+        fieldCode: [],
+        fieldResult: [
+          { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "1" }] },
+        ],
+      },
+    ]);
+    const compared = await compareDocx(simple, complexWithBoldResult, {
+      author: "Compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    });
+    if (compared.isErr()) throw compared.error;
+    expect(compared.value.changes.some(({ kind }) => kind === "format")).toBe(true);
+  });
+
   test("replaces a materialized field result with its serialized carrier", async () => {
     const base = await docxWith([{ type: "run", content: [{ type: "text", text: "Count: 12" }] }]);
     const target = await docxWith([

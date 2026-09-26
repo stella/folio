@@ -32,7 +32,7 @@ import type {
 } from "../../types/document";
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { SEQUENCE_CHILDREN } from "@stll/docx-core/schema";
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 import {
   modelParagraphFormattingEmission,
   type ModeledParagraphFormattingEmission,
@@ -660,6 +660,33 @@ function serializeComplexField(field: ComplexField): string {
   return parts.join("");
 }
 
+class UnrepresentableTrackedSimpleFieldError extends TaggedError(
+  "UnrepresentableTrackedSimpleFieldError",
+)<{ message: string; contentType: SimpleField["content"][number]["type"] }> {}
+
+/** A revision can contain run-level field characters, but not `w:fldSimple`. */
+function serializeTrackedSimpleField(field: SimpleField): string {
+  const fieldResult: Run[] = [];
+  for (const item of field.content) {
+    if (item.type !== "run") {
+      throw new UnrepresentableTrackedSimpleFieldError({
+        message: `A tracked simple field with ${item.type} result content cannot be serialized as valid OOXML.`,
+        contentType: item.type,
+      });
+    }
+    fieldResult.push(item);
+  }
+  return serializeComplexField({
+    type: "complexField",
+    instruction: field.instruction,
+    fieldType: field.fieldType,
+    fieldCode: [],
+    fieldResult,
+    fldLock: field.fldLock,
+    dirty: field.dirty,
+  });
+}
+
 /**
  * Serialize an inline SDT (w:sdt).
  *
@@ -829,7 +856,9 @@ function serializeTrackedChange(
       case "simpleField":
       case "complexField": {
         const xml =
-          item.type === "simpleField" ? serializeSimpleField(item) : serializeComplexField(item);
+          item.type === "simpleField"
+            ? serializeTrackedSimpleField(item)
+            : serializeComplexField(item);
         return disposition === "removed" ? rewriteRunTextAsDeleted(xml) : xml;
       }
       case "mathEquation":

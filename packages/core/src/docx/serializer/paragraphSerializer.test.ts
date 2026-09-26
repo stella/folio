@@ -248,6 +248,80 @@ describe("serializeSimpleField structural round-trip", () => {
 });
 
 describe("serializeParagraph tracked-change hardening", () => {
+  test("preserves a tracked simple field's result formatting and state in run-level field content", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "deletion",
+          info: { id: 1, author: "Reviewer" },
+          content: [
+            {
+              type: "simpleField",
+              fieldType: "PAGE",
+              instruction: " PAGE ",
+              fldLock: true,
+              dirty: true,
+              content: [
+                { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "1" }] },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const xml = serializeParagraph(paragraph);
+    expect(xml).not.toContain("<w:fldSimple");
+    expect(xml).toContain('<w:fldChar w:fldCharType="begin" w:fldLock="1" w:dirty="1"/>');
+    const source = parseXmlDocument(
+      xml.replace(
+        /^<w:p(?=[\s>])/u,
+        '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+      ),
+    );
+    if (!source) throw new Error("failed to parse serialized tracked field");
+    const deletion = parseParagraph(source, null, null, null, null, null).content.at(0);
+    expect(deletion?.type).toBe("deletion");
+    if (deletion?.type !== "deletion") return;
+    const field = deletion.content.at(0);
+    expect(field).toMatchObject({
+      type: "complexField",
+      instruction: " PAGE ",
+      fldLock: true,
+      dirty: true,
+      fieldResult: [{ type: "run", formatting: { bold: true } }],
+    });
+  });
+
+  test("refuses a tracked simple field whose structured result cannot become run-level field content", () => {
+    const paragraph: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "deletion",
+          info: { id: 1, author: "Reviewer" },
+          content: [
+            {
+              type: "simpleField",
+              fieldType: "PAGE",
+              instruction: " PAGE ",
+              content: [
+                {
+                  type: "hyperlink",
+                  anchor: "_page",
+                  children: [{ type: "run", content: [{ type: "text", text: "1" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(() => serializeParagraph(paragraph)).toThrow(
+      "A tracked simple field with hyperlink result content cannot be serialized as valid OOXML.",
+    );
+  });
+
   test("keeps a complex field inside its authored revision wrapper through the editor model", () => {
     const namespace = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
     const source = parseXmlDocument(`

@@ -155,6 +155,17 @@ const CONVERSION_LOCAL_ATTRS: Readonly<Record<string, readonly string[]>> = {
 };
 
 const documentFactAttrs = (node: PMNode): Record<string, unknown> => {
+  // OOXML cannot put w:fldSimple inside a revision. A tracked simple field is
+  // written as field-character runs, whose parsed fieldKind is "complex" even
+  // though its instruction, cached result, state and formatting are unchanged.
+  // A synthesized fallback result is different: it was never authored.
+  if (
+    node.type.name === "field" &&
+    (node.attrs["fieldKind"] === "simple" || node.attrs["fieldKind"] === "complex") &&
+    node.attrs["fieldResultIsFallback"] == null
+  ) {
+    return Object.fromEntries(Object.entries(node.attrs).filter(([name]) => name !== "fieldKind"));
+  }
   const local = CONVERSION_LOCAL_ATTRS[node.type.name];
   if (!local) return node.attrs;
   return Object.fromEntries(Object.entries(node.attrs).filter(([name]) => !local.includes(name)));
