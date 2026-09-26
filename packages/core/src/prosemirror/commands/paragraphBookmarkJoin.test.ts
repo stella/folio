@@ -83,6 +83,68 @@ test("whole-story resolution preserves positions through a bookmark-spanning joi
   expect(replayed.doc?.eq(bulk.doc)).toBe(true);
 });
 
+test("range resolution maps a field and trailing insertion through a bookmark-spanning join", () => {
+  const field = schema.node("field", {
+    fieldType: "REF",
+    instruction: " REF _Ref1 \\h ",
+    displayText: "clause 1",
+    fieldKind: "complex",
+  });
+  const first = schema.node(
+    "paragraph",
+    { pPrMark: { kind: "del", info: { id: 1, author: "Reviewer", date: "2026-09-09" } } },
+    [schema.text("before"), field, schema.text("after")],
+  );
+  const source = schema.node("doc", null, [
+    boundary("start", 1),
+    first,
+    boundary("end", 1),
+    boundary("start", 2),
+    schema.node("paragraph", null, schema.text("tail")),
+    boundary("end", 2),
+  ]);
+  const fieldPosition = source.child(0).nodeSize + 1 + "before".length;
+  const { doc, mapping } = resolve(
+    EditorState.create({ schema, doc: source }),
+    acceptChange(0, source.content.size),
+  );
+
+  const mapped = mapping.mapResult(fieldPosition, 1);
+  expect(mapped.deleted).toBe(false);
+  expect(doc.nodeAt(mapped.pos)?.type.name).toBe("field");
+  const joinedEnd = doc.child(0).nodeSize + doc.child(1).nodeSize - 1;
+  expect(mapping.invert().mapResult(joinedEnd, -1).deleted).toBe(false);
+});
+
+test("an emptied paragraph keeps the following paragraph's property source across bookmarks", () => {
+  const first = schema.node("paragraph", {
+    pPrMark: { kind: "del", info: { id: 1, author: "Reviewer", date: "2026-09-09" } },
+    styleId: "Heading1",
+    _docxParagraphSourceToken: "first-source",
+  });
+  const second = schema.node(
+    "paragraph",
+    {
+      styleId: "Normal",
+      _docxParagraphSourceToken: "second-source",
+    },
+    schema.text("kept"),
+  );
+  const source = schema.node("doc", null, [
+    first,
+    boundary("end", 1),
+    boundary("start", 2),
+    second,
+  ]);
+  const { doc } = resolve(
+    EditorState.create({ schema, doc: source }),
+    acceptChange(0, source.content.size),
+  );
+
+  expect(doc.firstChild?.attrs["styleId"]).toBe("Normal");
+  expect(doc.firstChild?.attrs["_docxParagraphSourceToken"]).toBe("second-source");
+});
+
 test("whole-story resolution joins a chain across two bookmark pairs", () => {
   const marked = (text: string, id: number) =>
     schema.node(

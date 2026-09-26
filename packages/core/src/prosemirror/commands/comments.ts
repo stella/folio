@@ -19,7 +19,6 @@ import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
 import {
   getProseParagraphPropertySourceToken,
-  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
   markParagraphPropertySourceTransfers,
 } from "../../docx/paragraphPropertySource";
 
@@ -80,7 +79,7 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "./propertyChangeScope";
-import { joinParagraphsAcrossBookmarks } from "./paragraphBookmarkJoin";
+import { inlineBookmarksForParagraphJoin } from "./paragraphBookmarkJoin";
 
 /**
  * Add a comment mark to the current selection.
@@ -596,20 +595,14 @@ function resolveChange(
             };
             const leftToken = getProseParagraphPropertySourceToken(paragraph);
             const rightToken = getProseParagraphPropertySourceToken(nextNode);
-            const joined = joinParagraphsAcrossBookmarks({
+            const inlineBookmarks = inlineBookmarksForParagraphJoin({
               first: paragraph,
               boundaries,
               second: nextNode,
-              owner: formattingOwner,
-              attrs: {
-                ...joinedAttrs,
-                ...(emptyFirstParagraph && {
-                  [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: rightToken ?? null,
-                }),
-              },
             });
-            if (!joined) continue;
-            tr.replaceWith(mappedPos, nextPos + nextNode.nodeSize, joined);
+            if (!inlineBookmarks) continue;
+            tr.replaceWith(joinPos - 1, nextPos + 1, inlineBookmarks);
+            tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
             if (emptyFirstParagraph)
               markParagraphPropertySourceTransfers(tr, [
                 {

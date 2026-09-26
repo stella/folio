@@ -1,13 +1,9 @@
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 
-import { recreateProseNodeWithParagraphPropertySource } from "../../docx/paragraphPropertySource";
-
-type JoinParagraphsAcrossBookmarksOptions = {
+type InlineBookmarksForParagraphJoinOptions = {
   first: PMNode;
   boundaries: readonly PMNode[];
   second: PMNode;
-  owner: PMNode;
-  attrs: PMNode["attrs"];
 };
 
 /** The inline form of boundaries whose enclosing paragraph break was removed. */
@@ -19,16 +15,13 @@ export const inlineBookmarksOf = (boundaries: readonly PMNode[]): PMNode[] | nul
   return boundaries.map((node) => inlineType.create(node.attrs));
 };
 
-/** Place block-level bookmark boundaries at the text junction when a break goes away. */
-export const joinParagraphsAcrossBookmarks = ({
+/** Inline boundaries that can replace the paragraph break without replacing either paragraph's content. */
+export const inlineBookmarksForParagraphJoin = ({
   first,
   boundaries,
   second,
-  owner,
-  attrs,
-}: JoinParagraphsAcrossBookmarksOptions): PMNode | null => {
-  if (first.type.name !== "paragraph" || second.type !== first.type || owner.type !== first.type)
-    return null;
+}: InlineBookmarksForParagraphJoinOptions): PMNode[] | null => {
+  if (first.type.name !== "paragraph" || second.type !== first.type) return null;
   const inline = inlineBookmarksOf(boundaries);
   if (!inline) return null;
   const content = Fragment.fromArray([
@@ -36,7 +29,5 @@ export const joinParagraphsAcrossBookmarks = ({
     ...inline,
     ...second.content.content,
   ]);
-  return first.type.validContent(content)
-    ? recreateProseNodeWithParagraphPropertySource(owner, { attrs, content })
-    : null;
+  return first.type.validContent(content) ? inline : null;
 };
