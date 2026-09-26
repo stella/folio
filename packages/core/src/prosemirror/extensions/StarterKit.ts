@@ -12,6 +12,7 @@ import type { SelectionChangeCallback } from "../plugins/selectionTracker";
 // Core
 import { DocExtension } from "./core/DocExtension";
 import { HistoryExtension } from "./core/HistoryExtension";
+import type { HistoryShortcutOwner } from "./core/HistoryExtension";
 import { ParagraphExtension } from "./core/ParagraphExtension";
 import { TextExtension } from "./core/TextExtension";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
@@ -66,6 +67,8 @@ export type StarterKitOptions = {
   historyDepth?: number;
   /** History new group delay (default: 500) */
   historyNewGroupDelay?: number;
+  /** Who answers the undo and redo keys (default: `"editor"`). */
+  historyShortcuts?: HistoryShortcutOwner;
   /** Selection change callback */
   onSelectionChange?: SelectionChangeCallback;
 };
@@ -100,6 +103,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
       ...(options.historyNewGroupDelay !== undefined
         ? { newGroupDelay: options.historyNewGroupDelay }
         : {}),
+      ...(options.historyShortcuts !== undefined ? { shortcuts: options.historyShortcuts } : {}),
     }),
   );
 

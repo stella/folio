@@ -1,6 +1,34 @@
 import { describe, expect, test } from "bun:test";
 
-import { isKeydownInShortcutScope } from "./editorShortcuts";
+import { classifyEditorKeydown, isKeydownInShortcutScope } from "./editorShortcuts";
+import type { HostShortcut } from "./editorShortcuts";
+
+type Keydown = Parameters<typeof classifyEditorKeydown>[0];
+
+const press = (key: string, modifiers: Partial<Omit<Keydown, "key">> = {}): Keydown => ({
+  key,
+  metaKey: false,
+  ctrlKey: false,
+  shiftKey: false,
+  altKey: false,
+  repeat: false,
+  ...modifiers,
+});
+
+const classify = (keydown: Keydown, hostShortcuts: readonly HostShortcut[] = []) =>
+  classifyEditorKeydown(keydown, { isMac: false, isInputLike: false, hostShortcuts }).type;
+
+describe("classifyEditorKeydown host shortcuts", () => {
+  test("print is the editor's until the host takes it", () => {
+    expect(classify(press("p", { ctrlKey: true }))).toBe("print");
+    expect(classify(press("p", { ctrlKey: true }), ["print"])).toBe("none");
+  });
+
+  test("taking print leaves the other shortcuts with the editor", () => {
+    expect(classify(press("f", { ctrlKey: true }), ["print", "history"])).toBe("openFind");
+    expect(classify(press("Delete"), ["print", "history"])).toBe("deleteSelectedTable");
+  });
+});
 
 /**
  * Bun's test runtime has no DOM, so roots and targets are the narrow surface

@@ -104,6 +104,7 @@ import {
   hasStructuralChanges,
   hasUntrackedChanges,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
 import type { CommandMap } from "@stll/folio-core/prosemirror/extensions/types";
 import {
@@ -346,6 +347,8 @@ export type UseDocxEditorOptions = {
   author?: MaybeRefOrGetter<string>;
   /** External ProseMirror plugins supplied by the host app. */
   externalPlugins?: readonly Plugin[];
+  /** Who answers the undo and redo keys. Read once, when the editor is created. */
+  historyShortcuts?: HistoryShortcutOwner;
   /** Reactive Yjs collaboration owner and the ProseMirror binding plugins. */
   collaboration?: MaybeRefOrGetter<UseDocxEditorCollaboration | undefined>;
   /**
@@ -487,6 +490,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorMode,
     author,
     externalPlugins = [],
+    historyShortcuts = "editor",
     collaboration,
     onAnonymizationMatchesChange,
     showTemplateDirectives,
@@ -537,7 +541,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // ---- Long-lived controller singletons -----------------------------------
   // One ExtensionManager owns the schema + plugins + commands for the body view.
-  const extensionManager = new ExtensionManager(createStarterKit());
+  const extensionManager = new ExtensionManager(createStarterKit({ historyShortcuts }));
   extensionManager.buildSchema();
   extensionManager.initializeRuntime();
 

@@ -59,6 +59,7 @@ import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
+import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 // ProseMirror editor
@@ -470,6 +471,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     initialZoom = 1,
     enableWheelZoom = true,
     keyboardShortcuts = "document",
+    hostShortcuts: hostShortcutsProp,
     readOnly: readOnlyProp = false,
     autoOpenReviewSidebar = true,
     components,
@@ -675,20 +677,24 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     setShowOutline(showOutlineProp);
   }, [showOutlineProp]);
 
+  // Read once: the extension manager below binds the undo keys when it is built.
+  const [hostShortcuts] = useState(() => hostShortcutsProp ?? []);
+  const historyShortcuts = historyShortcutOwner(hostShortcuts);
+
   // History hook for undo/redo - start with null document
   const history = useDocumentHistory<Document | null>(initialDocument || null, {
     maxEntries: 100,
     groupingInterval: 500,
-    enableKeyboardShortcuts: true,
+    enableKeyboardShortcuts: historyShortcuts === "editor",
   });
 
   // Extension manager — built once, provides schema + plugins + commands
   const extensionManager = useMemo(() => {
-    const mgr = new ExtensionManager(createStarterKit());
+    const mgr = new ExtensionManager(createStarterKit({ historyShortcuts }));
     mgr.buildSchema();
     mgr.initializeRuntime();
     return mgr;
-  }, []);
+  }, [historyShortcuts]);
 
   const [initialSuggestionMode] = useState(() => ({
     active: editingMode === "suggesting",
@@ -1810,6 +1816,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     tableSelection,
     onDirectPrint: handleDirectPrint,
     scope: keyboardShortcuts,
+    hostShortcuts,
     // The find/replace dialog renders inside the editor root, so the root alone
     // scopes a press with the caret in the dialog to this editor.
     roots: shortcutRoots,

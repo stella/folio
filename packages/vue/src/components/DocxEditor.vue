@@ -442,6 +442,7 @@ import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   clearAllCaches,
@@ -742,6 +743,7 @@ const {
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,
+  historyShortcuts: historyShortcutOwner(props.hostShortcuts ?? []),
   collaboration: () => props.collaboration,
   // Anonymization highlights + template directives are driven by the overlay
   // components below; these thread the plugin callbacks and the directive gate.

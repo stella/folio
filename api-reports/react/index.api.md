@@ -118,6 +118,7 @@ import { getFolioSelectionViewportRect } from '@stll/folio-core/paged-layout/sel
 import { getTemplateDirectives } from '@stll/folio-core/prosemirror/plugins/templateDirectives';
 import { getTemplateSlashMenu } from '@stll/folio-core/prosemirror/plugins/templateSlashMenu';
 import { hashFolioAIBlockText } from '@stll/folio-core/ai-edits';
+import { HostShortcut } from '@stll/folio-core/managers/editorShortcuts';
 import { ImageMeta } from '@stll/folio-core/markdown';
 import { ImageRef } from '@stll/folio-core/markdown';
 import { insertImageFromFile } from '@stll/folio-core/prosemirror';
@@ -394,6 +395,7 @@ export type DocxEditorProps = {
     initialZoom?: number | "fit-width";
     enableWheelZoom?: boolean;
     keyboardShortcuts?: KeyboardShortcutScope;
+    hostShortcuts?: readonly HostShortcut[];
     readOnly?: boolean;
     autoOpenReviewSidebar?: boolean;
     components?: Partial<FolioUIComponents>;
