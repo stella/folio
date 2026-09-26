@@ -203,8 +203,10 @@ function collectAffectedParaIds(
   const ids = new Set<string>();
   const positions = new Set<number>();
   let hasUntracked = false;
+  const start = Math.max(0, Math.min(from, doc.content.size));
+  const end = Math.max(start, Math.min(to, doc.content.size));
 
-  nodesBetweenIndexed(doc, from, to, (node, pos) => {
+  nodesBetweenIndexed(doc, start, end, (node, pos) => {
     if (node.type.name === "paragraph") {
       positions.add(pos);
       const paraId = node.attrs["paraId"];
