@@ -14,7 +14,7 @@ import type {
   TrackedRunContent,
 } from "../types/document";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
-import { isMarkdownListItem, renderParagraph } from "./renderParagraph";
+import { renderParagraphBlock } from "./renderParagraph";
 import { renderTable } from "./renderTable";
 import type { RenderContext } from "./types";
 
@@ -104,8 +104,7 @@ export function renderBlocks(
         // A hidden-marker (`w:vanish`) list paragraph renders as plain prose,
         // and a numbered heading as a heading, so neither joins a run of list
         // items (neither may suppress the blank line around one).
-        const isListItem = isMarkdownListItem(ctx, block);
-        const md = renderParagraph(ctx, pkg, block);
+        const { markdown: md, isListItem } = renderParagraphBlock(ctx, pkg, block);
         if (!md) {
           prevWasListItem = false;
           continue;

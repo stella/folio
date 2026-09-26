@@ -36,6 +36,12 @@ const foldedFieldSuffix = (attrs: Readonly<ParagraphAttrs>): string => {
   return tab === -1 ? "" : marker.slice(tab);
 };
 
+const withoutNumbering = (attrs: Readonly<ParagraphAttrs>): ParagraphAttrs => {
+  const unnumbered = { ...attrs };
+  Reflect.deleteProperty(unnumbered, "numPr");
+  return unnumbered;
+};
+
 const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
   const marker = attrs.listMarker;
   if (!marker) {
@@ -66,8 +72,12 @@ export const createListLabelCounter = (): ListLabelCounter => {
     original: createListCounterState(),
   };
   return (attrs) => {
-    const visible = advanceVisibleListMarker(attrs, streams);
-    if (attrs.listMarkerHidden === true || !hasListRendering(attrs)) {
+    // A paragraph numbered at a level its list does not define carries no
+    // rendering (see `hasListRendering`): Word paints no marker for it and it
+    // counts as unnumbered, as the parser counts it.
+    const rendered = hasListRendering(attrs);
+    const visible = advanceVisibleListMarker(rendered ? attrs : withoutNumbering(attrs), streams);
+    if (attrs.listMarkerHidden === true || !rendered) {
       return undefined;
     }
     // An unnumbered paragraph's counted marker is a removed number (a tracked

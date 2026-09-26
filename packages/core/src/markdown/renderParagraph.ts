@@ -33,6 +33,23 @@ export function renderParagraph(
   pkg: DocxPackage | undefined,
   para: Paragraph,
 ): string {
+  return renderParagraphBlock(ctx, pkg, para).markdown;
+}
+
+/** A rendered paragraph, and whether it is a Markdown list item. */
+export type RenderedParagraph = { markdown: string; isListItem: boolean };
+
+/**
+ * Render a paragraph. A list item is a paragraph that shows a marker, which is
+ * when the list counter gives it a label: a numbered heading renders as a
+ * heading, and a level that hides its marker (`w:vanish`) or that its list
+ * does not define as prose, as every other reader reads them.
+ */
+export function renderParagraphBlock(
+  ctx: RenderContext,
+  pkg: DocxPackage | undefined,
+  para: Paragraph,
+): RenderedParagraph {
   // Every paragraph advances the list counter, whatever it renders as: the
   // items after a numbered heading continue from its number.
   const label = ctx.nextListLabel(listLabelAttrs(para));
@@ -44,40 +61,32 @@ export function renderParagraph(
     // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
     // own) keeps its number; a bulleted one its glyph, as a heading has no
     // Markdown bullet syntax to borrow.
-    const number = label;
     if (!inline) {
-      return ""; // Drop empty headings — `#` alone is just literal text.
+      // Drop empty headings — `#` alone is just literal text.
+      return { markdown: "", isListItem: false };
     }
     const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
-    return number ? `${hashes} ${number} ${inline}` : `${hashes} ${inline}`;
+    return {
+      markdown: label ? `${hashes} ${label} ${inline}` : `${hashes} ${inline}`,
+      isListItem: false,
+    };
   }
 
-  // A numbering level with `w:vanish` keeps `listRendering` but hides the
-  // marker, so render it as plain prose rather than a Markdown list item.
-  if (para.listRendering && !para.listRendering.markerHidden) {
-    return renderListItem(para.listRendering, label ?? "", inline);
+  if (para.listRendering && label !== undefined) {
+    return { markdown: renderListItem(para.listRendering, label, inline), isListItem: true };
   }
 
   if (isQuoteStyle(styleId, ctx.builtInStyles)) {
-    return inline
-      .split("\n")
-      .map((line) => `> ${line}`)
-      .join("\n");
+    return {
+      markdown: inline
+        .split("\n")
+        .map((line) => `> ${line}`)
+        .join("\n"),
+      isListItem: false,
+    };
   }
 
-  return escapeLeadingBlockMarker(inline);
-}
-
-/**
- * Whether the paragraph renders as a Markdown list item. A numbered heading
- * renders as a heading, and a hidden-marker (`w:vanish`) level as prose.
- */
-export function isMarkdownListItem(ctx: RenderContext, para: Paragraph): boolean {
-  return (
-    !!para.listRendering &&
-    !para.listRendering.markerHidden &&
-    markdownHeadingLevel(ctx, para) === undefined
-  );
+  return { markdown: escapeLeadingBlockMarker(inline), isListItem: false };
 }
 
 /** The paragraph's 0-based heading level, as `builtInStyles` classifies it. */

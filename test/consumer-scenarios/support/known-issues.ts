@@ -21,8 +21,6 @@ export const FINDINGS = {
     'getContent(), the snapshot and read_document render a footnote/endnote reference as its w:id ("7"), while the page shows its number ("1", or "i" for an endnote)',
   COMPARE_INSERTED_LIST_ITEMS:
     "generateRedlineDocx inserts a paragraph the revised version has as a list item as a plain paragraph (the insertion carries only its style), so accepting the redline loses the bullet or number",
-  UNMARKED_LIST_ITEM_KIND:
-    "a paragraph whose numbering names a level its instance does not define shows no marker, but getContent(), the snapshot and read_document call it a listItem while docxToMarkdown renders plain text",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;

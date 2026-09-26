@@ -15,6 +15,7 @@ import {
 } from "@stll/folio-core/server";
 
 import {
+  directNumberedDocument,
   FIXTURE_NAMES,
   FIXTURES,
   listDocument,
@@ -232,5 +233,30 @@ describe("list labels after an operation", () => {
       "labels before the save are stale",
     );
     await assertHealthy(reviewer, "insert into a list");
+  });
+
+  test("a paragraph numbered at a level its instance does not define reads alike everywhere", async () => {
+    const reviewer = await openReviewer(await directNumberedDocument());
+    const anchor = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
+    assert.ok(anchor);
+    reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "insertAfterBlock",
+          blockId: anchor.id,
+          text: "Level eight.",
+          numbering: { numId: 7, level: 8 },
+        },
+      ],
+    });
+    // No marker is painted for it: prose that keeps its level.
+    const unmarked = reviewer.getContent().find(({ text }) => text === "Level eight.");
+    assert.equal(unmarked?.kind, "paragraph");
+    assert.equal(unmarked?.displayLabel, undefined);
+    assert.equal(unmarked?.listLevel, 8);
+    await assertHealthy(reviewer, "undefined level");
   });
 });

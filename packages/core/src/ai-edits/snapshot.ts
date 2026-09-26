@@ -684,7 +684,7 @@ const createFolioAIEditSnapshotInternal = (
     const headingLevel = getHeadingLevel(node, builtInStyles);
     const listLabel =
       node.type.name === "paragraph" ? nextListLabel(expectParagraphAttrs(node)) : undefined;
-    const kind = getBlockKind(node, headingLevel, listLabel);
+    const kind = getBlockKind(headingLevel, listLabel);
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
     const styleId = getStyleId(node);
     const listLevel = getListLevel(node);
@@ -763,31 +763,21 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
  * What a reader sees the block as, heading first: a numbered heading (`1.
  * Scope`, numbered through its style or its own `w:numPr`) is a heading that
  * shows a number, with the number in `displayLabel` and its level in
- * `listLevel`. A paragraph is a list item when it shows a marker; one whose
- * numbering shows none (a `w:vanish` level, or `w:numId="0"` cancelling its
- * style's numbering) reads as prose and is a paragraph, keeping its
- * `listLevel` and `listReference`.
+ * `listLevel`. A paragraph is a list item when it shows a marker, which is
+ * when it has a label. One whose numbering shows none (a `w:vanish` level, a
+ * level its list does not define, or `w:numId="0"` cancelling its style's
+ * numbering) reads as prose and is a paragraph, keeping its `listLevel` and
+ * `listReference`.
  */
 const getBlockKind = (
-  node: PMNode,
   headingLevel: number | undefined,
   listLabel: string | undefined,
 ): FolioAIBlockKind => {
   if (headingLevel !== undefined) {
     return "heading";
   }
-  return showsListMarker(node, listLabel) ? "listItem" : "paragraph";
+  return listLabel === undefined ? "paragraph" : "listItem";
 };
-
-/**
- * Whether the paragraph shows a list marker: it has a label or references a
- * numbering instance (a document whose markers were never resolved still
- * numbers the paragraph), and its level does not hide the marker with
- * `w:vanish`. The reserved `w:numId="0"` references nothing.
- */
-const showsListMarker = (node: PMNode, listLabel: string | undefined): boolean =>
-  node.attrs["listMarkerHidden"] !== true &&
-  (listLabel !== undefined || statedNumbering(node).kind === "reference");
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
 const getHeadingLevel = (node: PMNode, styles: BuiltInStyleIndex): number | undefined => {

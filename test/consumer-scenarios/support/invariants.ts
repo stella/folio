@@ -7,7 +7,7 @@
 import assert from "node:assert/strict";
 
 import { openReviewer } from "./documents.ts";
-import { type BlockView, labelFields, readAll } from "./readers.ts";
+import { labelFields, readAll } from "./readers.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -87,25 +87,8 @@ export const saveAndReopen = async (
   return { bytes, reopened };
 };
 
-/**
- * UNMARKED_LIST_ITEM_KIND: a numbered paragraph that shows no marker is a
- * `listItem` to the content readers and plain text in Markdown. Tolerated
- * unless `strict`, and pinned by an expected failure.
- */
-const unmarkedListItemAsParagraph = (block: BlockView): BlockView =>
-  block.kind === "listItem" && block.number === undefined ? { ...block, kind: "paragraph" } : block;
-
-export type ReaderAgreementOptions = {
-  /** Fail on disagreements a known finding already reports. */
-  strict?: boolean;
-};
-
 /** Every reader of `bytes` shows the same blocks, kinds, levels and numbers. */
-export const assertReadersAgree = async (
-  bytes: Uint8Array,
-  context: string,
-  { strict = false }: ReaderAgreementOptions = {},
-): Promise<void> => {
+export const assertReadersAgree = async (bytes: Uint8Array, context: string): Promise<void> => {
   const views = await readAll(bytes);
 
   assert.deepEqual(views.snapshot, views.getContent, `${context}: snapshot vs getContent()`);
@@ -127,9 +110,7 @@ export const assertReadersAgree = async (
   );
   assert.deepEqual(
     views.markdown,
-    strict
-      ? views.getContentAsMarkdown
-      : views.getContentAsMarkdown.map(unmarkedListItemAsParagraph),
+    views.getContentAsMarkdown,
     `${context}: docxToMarkdown vs getContent()`,
   );
 };

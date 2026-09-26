@@ -18,14 +18,13 @@ import {
 } from "@stll/folio-core/server";
 
 import {
-  directNumberedDocument,
   openReviewer,
   packDocument,
   plainDocument,
   toArrayBuffer,
   unusedNumberingDocument,
 } from "../support/documents.ts";
-import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
+import { saveAndReopen } from "../support/invariants.ts";
 import { runFlow } from "../support/fuzz.ts";
 import { expectedFailure, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
 import { MODES } from "../support/operations.ts";
@@ -160,33 +159,6 @@ describe("findings not yet filed", () => {
         "Referenced.1",
         "the note reference reads as its id",
       );
-    },
-  );
-
-  expectedFailure(
-    "UNMARKED_LIST_ITEM_KIND",
-    "a paragraph numbered at a level its instance does not define reads alike everywhere",
-    /docxToMarkdown vs getContent/u,
-    async () => {
-      const reviewer = await openReviewer(await directNumberedDocument());
-      const anchor = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
-      assert.ok(anchor);
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "direct",
-        operations: [
-          {
-            id: "1",
-            type: "insertAfterBlock",
-            blockId: anchor.id,
-            text: "Level eight.",
-            numbering: { numId: 7, level: 8 },
-          },
-        ],
-      });
-      await assertReadersAgree(new Uint8Array(await reviewer.toBuffer()), "undefined level", {
-        strict: true,
-      });
     },
   );
 

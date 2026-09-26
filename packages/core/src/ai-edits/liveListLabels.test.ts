@@ -190,3 +190,40 @@ describe("list labels after an operation", () => {
     expect(contentLabels(reopened)).toEqual(expected);
   });
 });
+
+describe("a paragraph numbered at a level its list does not define", () => {
+  test("shows no marker, reads as a paragraph that keeps its level, and does not count", async () => {
+    const reviewer = await reviewerOf(LIST);
+    const numId = reviewer.getContent().find(({ text }) => text === "Deposit on signature")
+      ?.listReference?.numId;
+    expect(numId).toBeDefined();
+    apply(reviewer, "direct", [
+      {
+        id: "1",
+        type: "insertAfterBlock",
+        blockId: blockId(reviewer, "Deposit on signature"),
+        text: "Level eight.",
+        numbering: { numId: numId ?? 0, level: 8 },
+      },
+    ]);
+
+    await expectLabels(reviewer, [
+      "Payment happens in stages.",
+      "1. Deposit on signature",
+      "Level eight.",
+      "2. Balance on delivery",
+      "3. Retention after inspection",
+      "Closing remarks.",
+    ]);
+    for (const current of [
+      reviewer,
+      await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()),
+    ]) {
+      expect(current.getContent().find(({ text }) => text === "Level eight.")).toMatchObject({
+        kind: "paragraph",
+        listLevel: 8,
+        listReference: { numId, level: 8 },
+      });
+    }
+  });
+});
