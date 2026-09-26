@@ -995,9 +995,23 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
         ) {
           issues.push({ path: `${path}.content`, message: "Expected only empty text." });
         }
-        if (run["formatting"] !== undefined && !isRecord(run["formatting"])) {
-          issues.push({ path: `${path}.formatting`, message: "Expected formatting object." });
+        const formatting = run["formatting"];
+        if (formatting !== undefined) {
+          if (!isRecord(formatting)) {
+            issues.push({ path: `${path}.formatting`, message: "Expected formatting object." });
+          } else {
+            validateTextFormatting(formatting, `${path}.formatting`, issues);
+          }
         }
+        optionalPropertyChanges(run, "propertyChanges", `${path}.propertyChanges`, issues, [
+          "runPropertyChange",
+        ]);
+        optionalPreservedAttributes(
+          run,
+          "preservedAttributes",
+          `${path}.preservedAttributes`,
+          issues,
+        );
       }
     }
   }

@@ -683,13 +683,21 @@ describe("ProseMirror attr readers", () => {
     }
   });
 
-  test("rejects nonempty content in retained empty field result runs", () => {
+  test("rejects malformed retained empty field result runs", () => {
     const field = schema.nodes.field.create({
       fieldType: "PAGE",
       instruction: " PAGE ",
       displayText: "",
       fieldKind: "simple",
-      _docxEmptyResultRuns: [{ type: "run", content: [{ type: "text", text: "visible" }] }],
+      _docxEmptyResultRuns: [
+        {
+          type: "run",
+          content: [{ type: "text", text: "visible" }],
+          formatting: { bold: "yes" },
+          propertyChanges: [{ type: "unknown" }],
+          preservedAttributes: "invalid",
+        },
+      ],
     });
 
     const result = readFieldAttrs(field);
@@ -697,6 +705,15 @@ describe("ProseMirror attr readers", () => {
     if (!result.ok) {
       expect(result.issues.map((issue) => issue.path)).toContain(
         "field.attrs._docxEmptyResultRuns[0].content",
+      );
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "field.attrs._docxEmptyResultRuns[0].formatting.bold",
+      );
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "field.attrs._docxEmptyResultRuns[0].propertyChanges[0].type",
+      );
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "field.attrs._docxEmptyResultRuns[0].preservedAttributes",
       );
     }
   });
