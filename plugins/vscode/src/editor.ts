@@ -177,7 +177,7 @@ class DocxEditorProvider implements vscode.CustomEditorProvider<FolioDocxDocumen
       locale: vscode.env.language,
       mode,
       disk: {
-        read: () => vscode.workspace.fs.readFile(uri),
+        read: async () => await vscode.workspace.fs.readFile(uri),
         versionOf: async (filePath) => {
           try {
             return fileVersionOf(await readFile(filePath));
