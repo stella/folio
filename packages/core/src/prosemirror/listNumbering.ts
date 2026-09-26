@@ -9,8 +9,10 @@
  * paragraph style supplies (a heading's numbering from `styles.xml`) is never
  * joined implicitly; it belongs to the style, not to the body text around it.
  *
- * Every change made while suggesting is recorded as a `w:pPrChange` on each
- * paragraph it changes.
+ * Every change made while suggesting is recorded as one `w:pPrChange` per
+ * paragraph. A paragraph that already carries one keeps a single record whose
+ * previous state is the paragraph's original, so rejecting it restores what the
+ * paragraph was before any of the tracked changes.
  */
 
 import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
@@ -27,7 +29,7 @@ import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/
 import type { ListLevel } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "./commands/propertyChangeScope";
-import { LIST_RENDERING_ATTR_KEYS } from "./listMarker";
+import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "./listMarker";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
@@ -53,6 +55,8 @@ type RevisionInfo = { id: number; author: string; date: string };
 // TRACKED PARAGRAPH-PROPERTY CHANGES
 // ============================================================================
 
+type PreviousFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+
 /**
  * The paragraph's properties as a `w:pPrChange` records them before a list
  * change: every non-null in-scope attr (a reject restores the scope
@@ -75,24 +79,87 @@ const listChangeSnapshot = (attrs: Record<string, unknown>): Record<string, unkn
   return previousFormatting;
 };
 
+/**
+ * The original state a pending record describes, completed with the list
+ * attrs it may not state. A record written by a list command states them all.
+ * One written for another property (or read from a file) states the scope
+ * only: its numbering is the original's, and an absent one means the original
+ * had none, so the rendering is recomputed from it rather than copied from
+ * the live paragraph, whose list may since have changed.
+ */
+const originalListFormatting = (
+  record: PreviousFormatting,
+  numbering: NumberingMap | null,
+): Record<string, unknown> => {
+  const original: Record<string, unknown> = { ...record };
+  if (LIST_RENDERING_ATTR_KEYS.some((key) => Object.hasOwn(record, key))) {
+    return original;
+  }
+  const numId = paragraphNumberingReferenceId(record.numPr ?? undefined);
+  const rendering =
+    numId === undefined
+      ? CLEARED_LIST_RENDERING_ATTRS
+      : listAttrsFromNumbering(
+          { numId, ilvl: paragraphNumberingLevel(record.numPr ?? undefined) ?? 0 },
+          numbering,
+        );
+  for (const key of LIST_RENDERING_ATTR_KEYS) {
+    original[key] = rendering[key] ?? null;
+  }
+  original["numPr"] = record.numPr ?? null;
+  return original;
+};
+
+const canonicalJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, nested: unknown) =>
+    nested !== null && typeof nested === "object" && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested)
+            .filter(([, entry]) => entry !== null && entry !== undefined)
+            .toSorted(([left], [right]) => left.localeCompare(right)),
+        )
+      : nested,
+  );
+
 type TrackListChangeOptions = {
   current: ParagraphAttrs;
   next: Record<string, unknown>;
   rev: RevisionInfo;
+  numbering: NumberingMap | null;
 };
 
-/** `next` with the list change appended as a tracked paragraph-property change. */
+/**
+ * `next` with the list change recorded as a tracked paragraph-property change.
+ *
+ * A paragraph holds at most one serializable `w:pPrChange`. When it already
+ * has one, the record is replaced by one that keeps the original previous
+ * state: a second change under tracking is a further change to the same
+ * paragraph, and rejecting it must restore the paragraph as it was before
+ * either. When the change brings the paragraph back to that original, there
+ * is nothing left to track and the record is dropped.
+ */
 const trackListChange = ({
   current,
   next,
   rev,
+  numbering,
 }: TrackListChangeOptions): Record<string, unknown> => {
+  const existing = current._propertyChanges ?? [];
+  const pending = existing.find(({ info }) => info.provenance !== "suggested");
+  const retained = existing.filter((change) => change !== pending);
+  const previousFormatting = pending?.previousFormatting
+    ? originalListFormatting(pending.previousFormatting, numbering)
+    : listChangeSnapshot(current);
+
+  if (pending && canonicalJson(previousFormatting) === canonicalJson(listChangeSnapshot(next))) {
+    return { ...next, _propertyChanges: retained.length > 0 ? retained : null };
+  }
   const record: ParagraphPropertyChangeAttrs = {
     type: "paragraphPropertyChange",
     info: { id: rev.id, author: rev.author, date: rev.date },
-    previousFormatting: listChangeSnapshot(current),
+    previousFormatting,
   };
-  return { ...next, _propertyChanges: [...(current._propertyChanges ?? []), record] };
+  return { ...next, _propertyChanges: [...retained, record] };
 };
 
 // ============================================================================
@@ -235,8 +302,11 @@ export const applyParagraphUpdates = ({
   updates,
 }: ApplyParagraphUpdatesOptions): void => {
   const rev = makeRevisionInfo(state);
+  const numbering = getDocumentNumbering(state);
   for (const { pos, node, next } of updates) {
-    const attrs = rev ? trackListChange({ current: expectParagraphAttrs(node), next, rev }) : next;
+    const attrs = rev
+      ? trackListChange({ current: expectParagraphAttrs(node), next, rev, numbering })
+      : next;
     tr.setNodeMarkup(pos, undefined, attrs);
   }
   if (rev) {

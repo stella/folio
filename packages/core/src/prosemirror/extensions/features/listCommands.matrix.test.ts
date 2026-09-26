@@ -42,6 +42,7 @@ import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { createDocumentStylesPlugin } from "../../plugins/documentStyles";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
 import { dispatchEditorTextInput } from "../../textInput";
+import { rejectAllChanges } from "../../commands/comments";
 import { continueNumbering, restartNumbering, setNumberingValue } from "../../listNumbering";
 import { toggleBulletList, toggleNumberedList } from "./ListExtension";
 import { getChangeTrackerState } from "./ParagraphChangeTrackerExtension";
@@ -305,10 +306,6 @@ describe("list gestures × package shapes × editing modes", () => {
     for (const mode of EDITING_MODES) {
       describe(`${shape.name}, ${mode}`, () => {
         for (const gesture of LIST_GESTURES) {
-          // List autoformat does not run while suggesting yet.
-          if (gesture.type === "typed" && mode === "suggesting") {
-            continue;
-          }
           test(gestureName(gesture), async () => {
             const document = await packageOf(shape.build());
             const before = await labelsOf(await repackDocx(document));
@@ -423,6 +420,14 @@ const savedLabels = async ({ document, editor }: Session): Promise<string[]> => 
   return (await labelsOf(saved)).map(({ text, label }) => `${label} ${text}`.trim());
 };
 
+const paragraphAttrsOf = (editor: Editor, text: string): Record<string, unknown> => {
+  const node = editor.state.doc.nodeAt(paragraphStart(editor.state, text) - 1);
+  if (!node) {
+    throw new Error(`no paragraph reads "${text}"`);
+  }
+  return node.attrs;
+};
+
 type Gesturer = (editor: Editor, text: string) => void;
 
 const clickNumbered: Gesturer = (editor, text) => {
@@ -533,7 +538,7 @@ describe("restart, continue and set numbering value", () => {
     });
   }
 
-  for (const mode of ["editing"] as const) {
+  for (const mode of EDITING_MODES) {
     test(`continue undoes a restart, ${mode}`, async () => {
       const session = await sessionOf(fromMarkdown(threeItems), mode);
       run(session.editor, "Beta", restartNumbering);
@@ -570,6 +575,49 @@ describe("restart, continue and set numbering value", () => {
 });
 
 // ============================================================================
+// SUGGESTING
+// ============================================================================
+
+describe("list changes while suggesting", () => {
+  test("a second toggle is a further tracked change whose reject restores the original", async () => {
+    const session = await sessionOf(
+      fromMarkdown("1. A\n2. B\n\nPlain one\n\nPlain two"),
+      "suggesting",
+    );
+    const { editor } = session;
+    expect(run(editor, "Plain one", toggleBulletList)).toBe(true);
+    expect(run(editor, "Plain one", toggleNumberedList)).toBe(true);
+
+    const changes = paragraphAttrsOf(editor, "Plain one")["_propertyChanges"];
+    expect(Array.isArray(changes) ? changes : []).toHaveLength(1);
+    expect(paragraphAttrsOf(editor, "Plain one")["listIsBullet"]).toBeNull();
+    // Directly under the numbered list, so it continues it.
+    expect(await savedLabels(session)).toContain("3. Plain one");
+
+    rejectAllChanges()(editor.state, editor.dispatch);
+    expect(paragraphAttrsOf(editor, "Plain one")["numPr"]).toBeNull();
+    expect(paragraphAttrsOf(editor, "Plain one")["_propertyChanges"]).toBeNull();
+    expect(await savedLabels(session)).toContain("Plain one");
+  });
+
+  test("toggling back to the original leaves nothing tracked", async () => {
+    const { editor } = await sessionOf(fromMarkdown("Plain one"), "suggesting");
+    run(editor, "Plain one", toggleBulletList);
+    run(editor, "Plain one", toggleBulletList);
+
+    expect(paragraphAttrsOf(editor, "Plain one")["numPr"]).toBeNull();
+    expect(paragraphAttrsOf(editor, "Plain one")["_propertyChanges"]).toBeNull();
+  });
+
+  test("a typed marker becomes a list and leaves no typing behind", async () => {
+    const session = await sessionOf(fromMarkdown("Plain two"), "suggesting");
+    typeAt(session.editor, "Plain two", "1. ");
+
+    expect(await savedLabels(session)).toEqual(["1. Plain two"]);
+  });
+});
+
+// ============================================================================
 // AUTOFORMAT: UNDO, AND WHAT STAYS TEXT
 // ============================================================================
 
@@ -591,7 +639,7 @@ const pressBackspace = (editor: Editor): boolean => {
 };
 
 describe("list autoformat", () => {
-  for (const mode of ["editing"] as const) {
+  for (const mode of EDITING_MODES) {
     test(`Backspace right after the conversion puts the marker back, ${mode}`, async () => {
       const { editor } = await sessionOf(fromMarkdown("Plain"), mode);
       typeAt(editor, "Plain", "1. ");

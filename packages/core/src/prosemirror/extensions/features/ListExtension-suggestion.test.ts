@@ -6,7 +6,7 @@ import { parseNumbering } from "../../../docx/numberingParser";
 import { acceptChange, rejectChange } from "../../commands/comments";
 import { createDocumentNumberingPlugin } from "../../plugins/documentNumbering";
 import { createSuggestionModePlugin } from "../../plugins/suggestionMode";
-import { toggleBulletList } from "./ListExtension";
+import { toggleBulletList, toggleNumberedList } from "./ListExtension";
 
 const BULLET_NUMBERING = parseNumbering(`
   <w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
@@ -262,7 +262,7 @@ describe("ListExtension suggestion mode integration", () => {
     ]);
   });
 
-  test("refuses a second list formatting change while w:pPrChange is pending", () => {
+  test("a second list change while w:pPrChange is pending keeps one record of the original", () => {
     const plugin = createSuggestionModePlugin(true, "Jane");
     let state = EditorState.create({
       doc: schema.node("doc", null, [schema.node("paragraph", null, [schema.text("Hello")])]),
@@ -275,17 +275,15 @@ describe("ListExtension suggestion mode integration", () => {
         state = state.apply(tr);
       }),
     ).toBe(true);
-    const pending = state.doc.toJSON();
-    let dispatched = false;
     expect(
-      toggleBulletList(state, (tr) => {
-        dispatched = true;
+      toggleNumberedList(state, (tr) => {
         state = state.apply(tr);
       }),
-    ).toBe(false);
-    expect(dispatched).toBe(false);
-    expect(state.doc.toJSON()).toEqual(pending);
-    expect(state.doc.child(0).attrs._propertyChanges).toHaveLength(1);
-    expect(toggleBulletList(state)).toBe(false);
+    ).toBe(true);
+
+    const changes = state.doc.child(0).attrs._propertyChanges;
+    expect(changes).toHaveLength(1);
+    expect(changes[0].previousFormatting.numPr).toBeNull();
+    expect(state.doc.child(0).attrs.listNumFmt).toBe("decimal");
   });
 });

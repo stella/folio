@@ -8,10 +8,9 @@
 import { panic } from "better-result";
 import { InputRule, inputRules, undoInputRule } from "prosemirror-inputrules";
 import type { Node as PMNode } from "prosemirror-model";
-import type { Command, EditorState, Plugin, Transaction } from "prosemirror-state";
+import { Plugin, type Command, type EditorState, type Transaction } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
-import { hasSerializableParagraphPropertyChange } from "../../commands/propertyChangeScope";
 import {
   NO_PARAGRAPH_NUMBERING,
   paragraphNumberingLevel,
@@ -31,7 +30,11 @@ import {
 import { resolveListState, type ListType } from "../../listState";
 import { paragraphNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
-import { makeRevisionInfo } from "../../plugins/suggestionMode";
+import {
+  makeRevisionInfo,
+  SUGGESTED_TEXT_INPUT_META,
+  suggestRangeDeletion,
+} from "../../plugins/suggestionMode";
 import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
@@ -154,24 +157,6 @@ function toggleList(intent: ActiveListType): Command {
     if (paragraph.type.name !== "paragraph") {
       return false;
     }
-
-    if (makeRevisionInfo(state)) {
-      let hasPendingChange = false;
-      state.doc.nodesBetween($from.pos, $to.pos, (node) => {
-        if (
-          node.type.name === "paragraph" &&
-          hasSerializableParagraphPropertyChange(expectParagraphAttrs(node)._propertyChanges)
-        ) {
-          hasPendingChange = true;
-          return false;
-        }
-        return undefined;
-      });
-      if (hasPendingChange) {
-        return false;
-      }
-    }
-
     if (!dispatch) {
       return true;
     }
@@ -578,8 +563,8 @@ const listAutoformatRule = (): InputRule =>
     if (start !== $from.start()) {
       return null;
     }
-    // Suggesting mode rewrites typed text as a tracked insertion before any
-    // rule runs; autoformatting there would drop that transaction's metadata.
+    // While suggesting, the suggestion plugin claims the typed text first;
+    // `suggestedListAutoformat` converts the marker after it.
     if (makeRevisionInfo(state)) {
       return null;
     }
@@ -591,7 +576,50 @@ const listAutoformatRule = (): InputRule =>
     return numberParagraphs({ state, tr, from: start, to: start, requests }) ? tr : null;
   });
 
-const listAutoformatPlugins = (): Plugin[] => [inputRules({ rules: [listAutoformatRule()] })];
+/**
+ * List autoformat while suggesting. The suggestion plugin has already
+ * recorded the typed space as a tracked insertion; this follows it with the
+ * marker's removal (a retraction of the author's own typing, or a tracked
+ * deletion of text that was there before) and the list as a tracked
+ * paragraph-property change. The follow-up is appended to the typing
+ * transaction, so one undo reverts both, and it is stored as the input rule's
+ * last conversion, so Backspace puts the marker back as it does while editing.
+ */
+const suggestedListAutoformat = (autoformat: Plugin): Plugin =>
+  new Plugin({
+    appendTransaction(transactions, _oldState, state) {
+      if (!transactions.some((tr) => tr.getMeta(SUGGESTED_TEXT_INPUT_META) === " ")) {
+        return null;
+      }
+      const { $head, empty } = state.selection;
+      if (!empty || !makeRevisionInfo(state) || !acceptsListMarker($head.parent)) {
+        return null;
+      }
+      const requests = listRequestsForMarker(
+        $head.parent.textBetween(0, $head.parentOffset, null, "\ufffc"),
+      );
+      if (!requests) {
+        return null;
+      }
+      const start = $head.start();
+      const tr = state.tr;
+      if (!suggestRangeDeletion(state, tr, start, $head.pos)) {
+        return null;
+      }
+      const from = tr.mapping.map(start);
+      if (!numberParagraphs({ state, tr, from, to: from, requests })) {
+        return null;
+      }
+      const caret = tr.mapping.map($head.pos);
+      tr.setMeta(autoformat, { transform: tr, from: caret, to: caret, text: "" });
+      return tr;
+    },
+  });
+
+const listAutoformatPlugins = (): Plugin[] => {
+  const autoformat = inputRules({ rules: [listAutoformatRule()] });
+  return [autoformat, suggestedListAutoformat(autoformat)];
+};
 
 // ============================================================================
 // EXTENSION

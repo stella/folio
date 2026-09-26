@@ -12,6 +12,7 @@
  */
 
 import { isHistoryTransaction } from "prosemirror-history";
+import { undoInputRule } from "prosemirror-inputrules";
 import type { Node as PMNode, MarkType, Slice } from "prosemirror-model";
 import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
@@ -28,6 +29,12 @@ import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 export const suggestionModeKey = new PluginKey<SuggestionModeState>("suggestionMode");
 export const SUGGESTION_META = "suggestionModeApplied";
 export const SUGGESTION_BYPASS_META = "suggestionModeBypass";
+/**
+ * The text a tracked text-input transaction typed. Rules that react to typing
+ * (list autoformat) read it, because this plugin claims text input before any
+ * input rule sees it.
+ */
+export const SUGGESTED_TEXT_INPUT_META = "suggestionModeTextInput";
 
 type SuggestionModeState = {
   active: boolean;
@@ -288,6 +295,7 @@ function applySuggestionInsert(
 
   const tr = view.state.tr;
   tr.setMeta(SUGGESTION_META, true);
+  tr.setMeta(SUGGESTED_TEXT_INPUT_META, text);
 
   const insertAttrs =
     findAdjacentRevision(view.state.doc, from, "insertion", pluginState.author) ||
@@ -317,6 +325,27 @@ function applySuggestionInsert(
   tr.addMark(insertAt, insertAt + text.length, insertionType.create(insertAttrs));
 
   view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
+/**
+ * Remove `from`..`to` of `tr.doc` as a suggestion: text the current author
+ * inserted is retracted, anything else is marked deleted. `false` when the
+ * editor is not suggesting.
+ */
+export function suggestRangeDeletion(
+  state: EditorState,
+  tr: Transaction,
+  from: number,
+  to: number,
+): boolean {
+  const pluginState = suggestionModeKey.getState(state);
+  const insertionType = state.schema.marks["insertion"];
+  const deletionType = state.schema.marks["deletion"];
+  if (!pluginState?.active || !insertionType || !deletionType) {
+    return false;
+  }
+  markRangeAsDeleted(tr, tr.doc, from, to, insertionType, deletionType, pluginState);
   return true;
 }
 
@@ -744,6 +773,11 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
 
         if (event.key === "Enter") {
           return handleSuggestionEnter(view, pluginState);
+        }
+        // Backspace right after an autoformat puts the typed text back, as it
+        // does while editing.
+        if (event.key === "Backspace" && undoInputRule(view.state, view.dispatch)) {
+          return true;
         }
         if (event.key === "Backspace" || event.key === "Delete") {
           const boundaryTarget = paragraphBoundaryTarget(
