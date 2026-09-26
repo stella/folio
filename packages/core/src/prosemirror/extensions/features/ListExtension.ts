@@ -161,19 +161,23 @@ function toggleList(intent: ActiveListType): Command {
       return true;
     }
 
-    const isInSameList =
-      resolveListState(getDocumentNumbering(state), expectParagraphAttrs(paragraph).numPr).type ===
-      intent;
+    const numbering = getDocumentNumbering(state);
+    const isItemOfKind = (node: PMNode): boolean =>
+      resolveListState(numbering, expectParagraphAttrs(node).numPr).type === intent;
     const tr = state.tr;
-    if (isInSameList) {
+    if (isItemOfKind(paragraph)) {
+      // Only the items of that kind leave it: a plain paragraph in the
+      // selection has nothing to clear and nothing to track.
       applyParagraphUpdates({
         tr,
         state,
-        updates: paragraphsBetween(state.doc, $from.pos, $to.pos).map(({ pos, node }) => ({
-          pos,
-          node,
-          next: clearListAttrs(expectParagraphAttrs(node)),
-        })),
+        updates: paragraphsBetween(state.doc, $from.pos, $to.pos)
+          .filter(({ node }) => isItemOfKind(node))
+          .map(({ pos, node }) => ({
+            pos,
+            node,
+            next: clearListAttrs(expectParagraphAttrs(node)),
+          })),
       });
     } else {
       numberParagraphs({ state, tr, from: $from.pos, to: $to.pos, requests: [{ kind: intent }] });

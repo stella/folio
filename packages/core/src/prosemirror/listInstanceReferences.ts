@@ -68,6 +68,26 @@ const undefinedListInstanceReferences = (
   return sink.references;
 };
 
+/** The instances one paragraph names, live or as a tracked change's previous state. */
+export const paragraphListReferences = (node: PMNode): number[] => {
+  if (node.type.name !== PARAGRAPH_NODE) {
+    return [];
+  }
+  const attrs = expectParagraphAttrs(node);
+  const numIds: number[] = [];
+  const add = (numPr: ListRenderingSourceAttrs["numPr"] | null | undefined): void => {
+    const numId = paragraphNumberingReferenceId(numPr ?? undefined);
+    if (numId !== undefined) {
+      numIds.push(numId);
+    }
+  };
+  add(attrs.numPr);
+  for (const change of attrs._propertyChanges ?? []) {
+    add(change.previousFormatting?.numPr);
+  }
+  return numIds;
+};
+
 /**
  * `definitions` plus every instance `doc` references and only its paragraphs
  * define: what the package's numbering part has to hold for `doc` to save.

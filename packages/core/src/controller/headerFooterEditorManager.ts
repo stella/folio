@@ -15,7 +15,7 @@ import { EditorView, type DirectEditorProps } from "prosemirror-view";
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
+import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
@@ -318,10 +318,11 @@ export const createHeaderFooterEditorManager = (
           continue;
         }
         // A list started in this story defined its instance on its paragraphs.
-        numbering = completeNumberingForDoc(numbering, view.state.doc);
+        const story = storyListNumbering(view.state, numbering);
+        numbering = story.numbering;
         const updated: HeaderFooter = {
           ...existing,
-          content: proseDocToBlocks(view.state.doc, existing.content, document.package.styles),
+          content: proseDocToBlocks(story.doc, existing.content, document.package.styles),
         };
         clearHeaderFooterVerbatimXml(updated);
         if (kind === "header") {

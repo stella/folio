@@ -8,7 +8,7 @@ import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
+import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
@@ -282,7 +282,8 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       for (const story of mounted.values()) {
         if (!story.dirty) continue;
         // A list started in this story defined its instance on its paragraphs.
-        numbering = completeNumberingForDoc(numbering, story.view.state.doc);
+        const lists = storyListNumbering(story.view.state, numbering);
+        numbering = lists.numbering;
         if (story.note.kind === "footnote") {
           const index = footnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
           const current = index === -1 ? null : footnotes?.at(index);
@@ -294,11 +295,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           }
           const updated: Footnote = {
             ...current,
-            content: proseDocToBlocks(
-              story.view.state.doc,
-              current.content,
-              document.package.styles,
-            ),
+            content: proseDocToBlocks(lists.doc, current.content, document.package.styles),
           };
           footnotes[index] = updated;
           story.appliedNote = updated;
@@ -320,7 +317,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         }
         const updated: Endnote = {
           ...current,
-          content: proseDocToBlocks(story.view.state.doc, current.content, document.package.styles),
+          content: proseDocToBlocks(lists.doc, current.content, document.package.styles),
         };
         endnotes[index] = updated;
         story.appliedNote = updated;

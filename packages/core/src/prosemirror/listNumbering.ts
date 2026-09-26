@@ -136,7 +136,11 @@ type TrackListChangeOptions = {
  * state: a second change under tracking is a further change to the same
  * paragraph, and rejecting it must restore the paragraph as it was before
  * either. When the change brings the paragraph back to that original, there
- * is nothing left to track and the record is dropped.
+ * is nothing left to track and the author's own record is dropped.
+ *
+ * A pending record by another author (another reviewer's, or one read from
+ * the file) keeps its author, id and date: the change joins that revision
+ * rather than re-attributing it, and it is never dropped.
  */
 const trackListChange = ({
   current,
@@ -150,15 +154,19 @@ const trackListChange = ({
   const previousFormatting = pending?.previousFormatting
     ? originalListFormatting(pending.previousFormatting, numbering)
     : listChangeSnapshot(current);
+  const ownPending = pending !== undefined && pending.info.author === rev.author;
 
-  if (pending && canonicalJson(previousFormatting) === canonicalJson(listChangeSnapshot(next))) {
+  if (ownPending && canonicalJson(previousFormatting) === canonicalJson(listChangeSnapshot(next))) {
     return { ...next, _propertyChanges: retained.length > 0 ? retained : null };
   }
-  const record: ParagraphPropertyChangeAttrs = {
-    type: "paragraphPropertyChange",
-    info: { id: rev.id, author: rev.author, date: rev.date },
-    previousFormatting,
-  };
+  const record: ParagraphPropertyChangeAttrs =
+    pending && !ownPending
+      ? { ...pending, previousFormatting }
+      : {
+          type: "paragraphPropertyChange",
+          info: { id: rev.id, author: rev.author, date: rev.date },
+          previousFormatting,
+        };
   return { ...next, _propertyChanges: [...retained, record] };
 };
 

@@ -43,17 +43,23 @@ export function SetNumberingValueDialog({
   const handleOpenChange = useCloseOnDialogOpenChange(onClose);
   const t = useTranslations("folio");
   const id = useId();
-  const [value, setValue] = useState(DEFAULT_VALUE);
+  // The raw field text, so the field can be cleared while a value is typed.
+  const [text, setText] = useState(String(DEFAULT_VALUE));
 
   useEffect(() => {
     if (isOpen) {
-      setValue(DEFAULT_VALUE);
+      setText(String(DEFAULT_VALUE));
     }
   }, [isOpen]);
 
   const inputId = `${id}-numbering-value`;
+  const parsed = text.trim() === "" ? Number.NaN : Number(text);
+  const valid = Number.isFinite(parsed);
   const apply = () => {
-    onApply(Math.min(MAX_VALUE, Math.max(MIN_VALUE, Math.trunc(value))));
+    if (!valid) {
+      return;
+    }
+    onApply(Math.min(MAX_VALUE, Math.max(MIN_VALUE, Math.trunc(parsed))));
     onClose();
   };
 
@@ -76,7 +82,7 @@ export function SetNumberingValueDialog({
                 id={inputId}
                 max={MAX_VALUE}
                 min={MIN_VALUE}
-                onChange={(event) => setValue(Number(event.target.value) || MIN_VALUE)}
+                onChange={(event) => setText(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
@@ -84,7 +90,7 @@ export function SetNumberingValueDialog({
                   }
                 }}
                 type="number"
-                value={value}
+                value={text}
               />
             </label>
           </div>
@@ -93,7 +99,12 @@ export function SetNumberingValueDialog({
             <DialogClose className={DIALOG_SECONDARY_BUTTON_CLASS}>
               {t("common.cancel")}
             </DialogClose>
-            <button className={DIALOG_PRIMARY_BUTTON_CLASS} onClick={apply} type="button">
+            <button
+              className={DIALOG_PRIMARY_BUTTON_CLASS}
+              disabled={!valid}
+              onClick={apply}
+              type="button"
+            >
               {t("common.apply")}
             </button>
           </div>

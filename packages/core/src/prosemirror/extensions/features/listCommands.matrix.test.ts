@@ -663,6 +663,38 @@ describe("list changes while suggesting", () => {
     expect(await savedLabels(session)).toContain("Plain one");
   });
 
+  test("another author's pending change keeps its author and still restores the original", async () => {
+    const session = await sessionOf(fromMarkdown("Plain one"), "suggesting");
+    const { editor } = session;
+    const pos = paragraphStart(editor.state, "Plain one") - 1;
+    editor.dispatch(
+      editor.state.tr.setNodeAttribute(pos, "_propertyChanges", [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: 900, author: "Alice", date: "2026-01-01T00:00:00Z" },
+          previousFormatting: {},
+        },
+      ]),
+    );
+    run(editor, "Plain one", toggleBulletList);
+    run(editor, "Plain one", toggleBulletList);
+
+    const changes = paragraphAttrsOf(editor, "Plain one")["_propertyChanges"];
+    expect(Array.isArray(changes) ? changes.map(({ info }) => info.author) : []).toEqual(["Alice"]);
+  });
+
+  test("toggling a list off leaves the plain paragraphs of the selection untouched", async () => {
+    const session = await sessionOf(fromMarkdown("1. Alpha\n\nPlain"), "suggesting");
+    const { editor } = session;
+    const from = paragraphStart(editor.state, "Alpha");
+    const to = paragraphStart(editor.state, "Plain") + 2;
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, from, to)));
+    expect(toggleNumberedList(editor.state, editor.dispatch)).toBe(true);
+
+    expect(paragraphAttrsOf(editor, "Alpha")["numPr"]).toBeNull();
+    expect(paragraphAttrsOf(editor, "Plain")["_propertyChanges"]).toBeNull();
+  });
+
   test("toggling back to the original leaves nothing tracked", async () => {
     const { editor } = await sessionOf(fromMarkdown("Plain one"), "suggesting");
     run(editor, "Plain one", toggleBulletList);
