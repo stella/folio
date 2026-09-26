@@ -76,8 +76,7 @@ const mount = ({ document, author, mode, locale }: Extract<HostMessage, { type: 
 const handle = (message: HostMessage) => {
   switch (message.type) {
     case "load":
-      // A webview restored after a reload of the page says `ready` again; the
-      // extension answers with `load`, which replaces what is on screen.
+      // A second `load` (after one that failed, say) replaces the document.
       if (editor === null) mount(message);
       else editor.reload(message.document);
       return;

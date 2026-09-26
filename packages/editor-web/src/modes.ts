@@ -1,10 +1,13 @@
-import type { EditorMode } from "@stll/folio-react";
-
 /**
  * How the user changes the document: `editing` writes directly, `suggesting`
  * records tracked changes, `viewing` is read-only.
+ *
+ * The same set as folio-react's `EditorMode`, spelled out so the protocol
+ * module imports nothing from the editor and a host can bundle it alone.
+ * `mount.tsx` passes modes both ways between the two types, so the compiler
+ * fails if they drift apart.
  */
-export type FolioEditingMode = EditorMode;
+export type FolioEditingMode = "editing" | "suggesting" | "viewing";
 
 const EDITING_MODES = {
   editing: true,

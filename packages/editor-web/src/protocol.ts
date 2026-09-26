@@ -11,7 +11,7 @@ import { isEditingMode } from "./modes";
 
 /** Extension to webview. */
 export type HostMessage =
-  /** Open the document. Sent once, in answer to `ready`. */
+  /** Open the document, in answer to `ready`. A later `load` replaces it. */
   | {
       readonly type: "load";
       readonly document: FolioEditorDocument;
