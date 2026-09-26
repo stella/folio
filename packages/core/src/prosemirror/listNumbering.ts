@@ -238,10 +238,64 @@ type ResolveListTargetOptions = {
   requests: readonly ListRequest[];
 };
 
+/** Every instance a paragraph of `doc` names: directly, through its style, or as a tracked change's previous state. */
+const referencedNumIds = (doc: PMNode): Set<number> => {
+  const referenced = new Set<number>();
+  const add = (numPr: ParagraphAttrs["numPr"] | null | undefined): void => {
+    const numId = paragraphNumberingReferenceId(numPr ?? undefined);
+    if (numId !== undefined) {
+      referenced.add(numId);
+    }
+  };
+  doc.descendants((node) => {
+    if (node.type.name !== PARAGRAPH_NODE) {
+      return true;
+    }
+    const attrs = expectParagraphAttrs(node);
+    add(attrs.numPr);
+    add(attrs.numPrFromStyle);
+    for (const change of attrs._propertyChanges ?? []) {
+      add(change.previousFormatting?.numPr);
+    }
+    return false;
+  });
+  return referenced;
+};
+
+/**
+ * An instance the package defines for `request` that nothing uses yet: a host
+ * that prepares a document with an empty list of each kind means the first
+ * list of that kind to be it. An instance tied to a paragraph style (a level
+ * naming a `w:pStyle`, or a style link) belongs to that style and is never
+ * offered.
+ */
+const unusedInstanceFor = (
+  numbering: NumberingMap,
+  doc: PMNode,
+  request: ListRequest,
+): number | undefined => {
+  const referenced = referencedNumIds(doc);
+  return numbering.definitions.nums.find(({ numId, abstractNumId }) => {
+    const abstract = numbering.getAbstract(abstractNumId);
+    const level = numbering.getLevel(numId, 0);
+    return (
+      !referenced.has(numId) &&
+      abstract !== null &&
+      abstract.styleLink === undefined &&
+      abstract.numStyleLink === undefined &&
+      abstract.levels.every(({ pStyle }) => pStyle === undefined) &&
+      level !== null &&
+      levelMatches(level, request) &&
+      (level.start ?? 1) === (request.start ?? level.start ?? 1)
+    );
+  })?.numId;
+};
+
 /**
  * The list a paragraph range joins: the list directly above it, else the one
- * directly below it, when it matches one of `requests`; otherwise a new list
- * defined from the first request.
+ * directly below it, when it matches one of `requests`; otherwise a new list:
+ * an unused instance the package already defines for the first request, or
+ * one defined for it.
  */
 export const resolveListTarget = ({
   numbering,
@@ -262,6 +316,10 @@ export const resolveListTarget = ({
     ) {
       return { numId: membership.numId, ilvl: membership.ilvl, numbering };
     }
+  }
+  const unused = numbering ? unusedInstanceFor(numbering, $from.doc, first) : undefined;
+  if (numbering && unused !== undefined) {
+    return { numId: unused, ilvl: 0, numbering };
   }
   const minted = mintListInstance(numbering?.definitions, first);
   return { numId: minted.numId, ilvl: 0, numbering: createNumberingMap(minted.definitions) };

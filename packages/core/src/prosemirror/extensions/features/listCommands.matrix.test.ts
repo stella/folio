@@ -35,6 +35,7 @@ import { fromMarkdown } from "../../../markdown/fromMarkdown";
 import type { BlockContent, Document, Paragraph } from "../../../types/document";
 import { paragraphNumberingReferenceId } from "../../../docx/numberingReference";
 import { fromProseDoc } from "../../conversion/fromProseDoc";
+import { expectParagraphAttrs } from "../../attrs";
 import { toProseDoc } from "../../conversion/toProseDoc";
 import { ExtensionManager } from "../ExtensionManager";
 import { createStarterKit } from "../StarterKit";
@@ -86,7 +87,42 @@ const styleNumberedHeadings = (): Document => {
   return model;
 };
 
+const HOST_DECIMAL_NUM_ID = 901;
+const HOST_BULLET_NUM_ID = 902;
+
+/**
+ * A host-prepared package: an unused decimal and an unused bullet instance,
+ * first in `w:numbering`, that no paragraph references yet.
+ */
+const hostPreparedLists = (markdown: string): Document => {
+  const model = fromMarkdown(markdown);
+  const existing = model.package.numbering ?? { abstractNums: [], nums: [] };
+  model.package.numbering = {
+    abstractNums: [
+      {
+        abstractNumId: 900,
+        levels: [{ ilvl: 0, start: 1, numFmt: "decimal", lvlText: "%1." }],
+      },
+      {
+        abstractNumId: 901,
+        levels: [{ ilvl: 0, start: 1, numFmt: "bullet", lvlText: "•" }],
+      },
+      ...existing.abstractNums,
+    ],
+    nums: [
+      { numId: HOST_DECIMAL_NUM_ID, abstractNumId: 900 },
+      { numId: HOST_BULLET_NUM_ID, abstractNumId: 901 },
+      ...existing.nums,
+    ],
+  };
+  return model;
+};
+
 const PACKAGE_SHAPES: readonly PackageShape[] = [
+  {
+    name: "unused host lists 901 decimal + 902 bullet first",
+    build: () => hostPreparedLists(`Intro paragraph.\n\n${TARGET}\n\nTail.`),
+  },
   {
     name: "no numbering part",
     build: () => fromMarkdown(`Intro paragraph.\n\n${TARGET}\n\nTail.`),
@@ -500,6 +536,33 @@ describe("which list a gesture joins", () => {
     typeAt(session.editor, "Second", "ii. ");
 
     expect(await savedLabels(session)).toEqual(["Intro.", "i. First", "ii. Second"]);
+  });
+
+  test("a first list takes the host's unused instance of its kind; a second list does not join it", async () => {
+    const session = await sessionOf(
+      hostPreparedLists("First\n\nProse between.\n\nSecond\n\nPoint\n\nOther prose.\n\nMore"),
+    );
+    run(session.editor, "First", toggleNumberedList);
+    typeAt(session.editor, "Second", "1. ");
+    run(session.editor, "Point", toggleBulletList);
+    typeAt(session.editor, "More", "- ");
+
+    const numIdOf = (text: string): number | undefined => {
+      const node = session.editor.state.doc.nodeAt(paragraphStart(session.editor.state, text) - 1);
+      return node ? paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr) : undefined;
+    };
+    expect(numIdOf("First")).toBe(HOST_DECIMAL_NUM_ID);
+    expect(numIdOf("Second")).not.toBe(HOST_DECIMAL_NUM_ID);
+    expect(numIdOf("Point")).toBe(HOST_BULLET_NUM_ID);
+    expect(numIdOf("More")).not.toBe(HOST_BULLET_NUM_ID);
+    expect(await savedLabels(session)).toEqual([
+      "1. First",
+      "Prose between.",
+      "1. Second",
+      "• Point",
+      "Other prose.",
+      "• More",
+    ]);
   });
 
   test("a body paragraph never joins heading numbering its style supplies", async () => {
