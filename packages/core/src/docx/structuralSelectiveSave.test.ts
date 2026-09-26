@@ -49,19 +49,43 @@ const packageBytes = async (
   options: PackageBytesOptions = {},
 ): Promise<ArrayBuffer> => {
   const zip = new JSZip();
-  zip.file("[Content_Types].xml", `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="bin" ContentType="application/octet-stream"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`);
-  zip.file("_rels/.rels", `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`);
-  zip.file("word/_rels/document.xml.rels", `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`);
+  zip.file(
+    "[Content_Types].xml",
+    `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="bin" ContentType="application/octet-stream"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`,
+  );
+  zip.file(
+    "_rels/.rels",
+    `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`,
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>`,
+  );
   zip.file("word/document.xml", source);
-  zip.file("customXml/item1.xml", '<opaque xmlns="urn:structural-save-test">  preserved &amp; untouched  </opaque>');
+  zip.file(
+    "customXml/item1.xml",
+    '<opaque xmlns="urn:structural-save-test">  preserved &amp; untouched  </opaque>',
+  );
   zip.file("word/media/opaque.bin", new Uint8Array([0, 255, 17, 128, 42]));
   if (options.commentsXml !== undefined) {
     zip.file("word/comments.xml", options.commentsXml);
     const contentTypes = zip.file("[Content_Types].xml");
     const relationships = zip.file("word/_rels/document.xml.rels");
     if (!contentTypes || !relationships) panic("Expected fixture package metadata");
-    zip.file("[Content_Types].xml", (await contentTypes.async("text")).replace("</Types>", '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>'));
-    zip.file("word/_rels/document.xml.rels", (await relationships.async("text")).replace("/>", '><Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>'));
+    zip.file(
+      "[Content_Types].xml",
+      (await contentTypes.async("text")).replace(
+        "</Types>",
+        '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
+      ),
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      (await relationships.async("text")).replace(
+        "/>",
+        '><Relationship Id="rId7" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>',
+      ),
+    );
   }
   return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
 };

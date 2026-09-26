@@ -21,7 +21,8 @@ const isWordElement = (element: XmlElement, name: string): boolean =>
 type BodyBlock = { element: XmlElement; start: number; end: number };
 
 /** Match XML tokens, skipping quoted delimiters, comments, CDATA and processing instructions. */
-const XML_TOKEN = /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
+const XML_TOKEN =
+  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
 
 const readBody = (xml: string) => {
   const root = parseXmlDocument(xml);
@@ -41,7 +42,10 @@ const readBody = (xml: string) => {
     const tag = token[0];
     if (tag.startsWith("<!") || tag.startsWith("<?")) continue;
     const closing = tag.startsWith("</");
-    const name = tag.slice(closing ? 2 : 1).split(/[\s/>]/u).at(0);
+    const name = tag
+      .slice(closing ? 2 : 1)
+      .split(/[\s/>]/u)
+      .at(0);
     if (!name) return null;
     if (closing) {
       if (stack.pop() !== name) return null;
@@ -78,12 +82,26 @@ function* descendants(element: XmlElement): Generator<XmlElement> {
 
 /** Cross-paragraph ranges require a wider edit contract than paragraph identity. */
 const RANGE_ELEMENTS = new Set([
-  "commentRangeStart", "commentRangeEnd", "commentReference",
-  "bookmarkStart", "bookmarkEnd", "permStart", "permEnd", "fldChar",
-  "moveFromRangeStart", "moveFromRangeEnd", "moveToRangeStart", "moveToRangeEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+  "bookmarkStart",
+  "bookmarkEnd",
+  "permStart",
+  "permEnd",
+  "fldChar",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
 ]);
 const DEPENDENT_ELEMENTS = new Set([
-  "sectPr", "footnoteReference", "endnoteReference", "drawing", "pict", "object",
+  "sectPr",
+  "footnoteReference",
+  "endnoteReference",
+  "drawing",
+  "pict",
+  "object",
 ]);
 
 const paragraphIsSafe = (element: XmlElement, touched: boolean): boolean => {
@@ -142,7 +160,9 @@ type StructuralPatchOptions = {
  * Id-less sources need an explicit ensureParaIds ingest before structural editing.
  */
 export const buildStructuralDocumentPatch = ({
-  originalXml, serializedXml, changedIds,
+  originalXml,
+  serializedXml,
+  changedIds,
 }: StructuralPatchOptions): string | null => {
   const source = readBody(originalXml);
   const current = readBody(serializedXml);
@@ -151,8 +171,11 @@ export const buildStructuralDocumentPatch = ({
   // without placing either endpoint in an edited paragraph.
   for (const root of [source.root, current.root]) {
     for (const element of descendants(root)) {
-      if (WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
-        RANGE_ELEMENTS.has(getLocalName(element.name))) return null;
+      if (
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
+        RANGE_ELEMENTS.has(getLocalName(element.name))
+      )
+        return null;
     }
   }
   const allSourceIds = paragraphIds(source.root);
@@ -199,7 +222,8 @@ export const buildStructuralDocumentPatch = ({
   if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter)) return null;
 
   const bindings = readRootNamespaceBindings(serializedXml);
-  const fragmentFor = (block: BodyBlock) => paragraphFragment({ xml: serializedXml, block, bindings });
+  const fragmentFor = (block: BodyBlock) =>
+    paragraphFragment({ xml: serializedXml, block, bindings });
   const splices: XmlSplice[] = [];
   for (const [key, block] of before) {
     if (!after.has(key)) splices.push({ start: block.start, end: block.end, newXml: "" });
@@ -214,14 +238,20 @@ export const buildStructuralDocumentPatch = ({
       continue;
     }
     const id = paraIdAttribute(block.element)?.toUpperCase();
-    const replacement = id !== undefined && changed.has(id)
-      ? fragmentFor(block)
-      : originalXml.slice(original.start, original.end);
+    const replacement =
+      id !== undefined && changed.has(id)
+        ? fragmentFor(block)
+        : originalXml.slice(original.start, original.end);
     if (pending.length > 0 || replacement !== originalXml.slice(original.start, original.end)) {
-      splices.push({ start: original.start, end: original.end, newXml: pending.join("") + replacement });
+      splices.push({
+        start: original.start,
+        end: original.end,
+        newXml: pending.join("") + replacement,
+      });
     }
     pending = [];
   }
-  if (pending.length > 0) splices.push({ start: source.bodyEnd, end: source.bodyEnd, newXml: pending.join("") });
+  if (pending.length > 0)
+    splices.push({ start: source.bodyEnd, end: source.bodyEnd, newXml: pending.join("") });
   return spliceXml(originalXml, splices);
 };
