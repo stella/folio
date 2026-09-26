@@ -3,6 +3,7 @@
   "cli": ["agents", "core"],
   "core": ["docx-core"],
   "docx-core": [],
+  "editor-web": ["core", "react"],
   "nuxt": ["vue"],
   "playground": ["core", "react"],
   "playground-vue": ["vue"],

@@ -37,6 +37,7 @@ export type StarterKitOptions = {
     disable?: string[];
     historyDepth?: number;
     historyNewGroupDelay?: number;
+    historyShortcuts?: HistoryShortcutOwner;
     onSelectionChange?: SelectionChangeCallback;
 };
 

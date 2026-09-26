@@ -1,0 +1,57 @@
+/*
+ * The VS Code webview frame for folio's editor: the page fills the webview,
+ * and folio's semantic tokens resolve to the active theme's `--vscode-*`
+ * colors, which VS Code updates in place when the theme changes. The
+ * `.folio-root` selector outranks the standalone stylesheet's zero-specificity
+ * `:where(.folio-root)` defaults, light and dark alike.
+ */
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+#folio-editor,
+#folio-editor > .folio-root {
+  height: 100%;
+}
+
+.folio-root {
+  --background: var(--vscode-editor-background);
+  --foreground: var(--vscode-editor-foreground);
+  --card: var(--vscode-editorWidget-background);
+  --card-foreground: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  --popover: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  --popover-foreground: var(--vscode-menu-foreground, var(--vscode-foreground));
+  --primary: var(--vscode-button-background);
+  --primary-foreground: var(--vscode-button-foreground);
+  --secondary: var(--vscode-button-secondaryBackground);
+  --secondary-foreground: var(--vscode-button-secondaryForeground);
+  --muted: var(--vscode-editorWidget-background);
+  --muted-foreground: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground));
+  --accent-foreground: var(--vscode-foreground);
+  --destructive: var(--vscode-errorForeground);
+  --destructive-foreground: var(--vscode-errorForeground);
+  --info: var(--vscode-editorInfo-foreground);
+  --info-foreground: var(--vscode-editorInfo-foreground);
+  --success: var(--vscode-testing-iconPassed);
+  --success-foreground: var(--vscode-testing-iconPassed);
+  --warning: var(--vscode-editorWarning-foreground);
+  --warning-foreground: var(--vscode-editorWarning-foreground);
+  --highlight: var(--vscode-editor-findMatchHighlightBackground);
+  --highlight-foreground: var(--vscode-editor-foreground);
+  --border: var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+  --input: var(--vscode-input-border, var(--vscode-dropdown-border, transparent));
+  --ring: var(--vscode-focusBorder);
+}

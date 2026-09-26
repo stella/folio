@@ -25,7 +25,10 @@ import type {
 } from "@stll/folio-core/content-controls";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { DocxCompatibility } from "@stll/folio-core/docx/compatibility";
-import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
+import type {
+  HostShortcut,
+  KeyboardShortcutScope,
+} from "@stll/folio-core/managers/editorShortcuts";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
 import type { TripwireResult } from "@stll/folio-core/docx/selectiveSaveTripwire";
 import type { ListState, SelectionState, TableContextInfo } from "@stll/folio-core/prosemirror";
@@ -204,6 +207,14 @@ export type DocxEditorProps = {
    *    the shortcuts itself.
    */
   keyboardShortcuts?: KeyboardShortcutScope;
+  /**
+   * Shortcuts the host binds itself; the editor leaves their keys alone
+   * (default: none). `"history"` unbinds undo and redo (Mod-z, Mod-y,
+   * Mod-Shift-z) so a host with its own undo stack calls
+   * `DocxEditorRef.undo` / `redo` instead; `"print"` leaves Cmd/Ctrl+P to the
+   * host. Read when the editor mounts; remount to change it.
+   */
+  hostShortcuts?: readonly HostShortcut[];
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
   /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */

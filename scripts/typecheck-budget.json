@@ -19,6 +19,10 @@
     "types": 163324,
     "instantiations": 226443
   },
+  "editor-web": {
+    "types": 187082,
+    "instantiations": 265882
+  },
   "vue": {
     "types": 203810,
     "instantiations": 912298

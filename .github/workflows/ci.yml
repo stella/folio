@@ -463,6 +463,11 @@ jobs:
       - name: Run measure/paint parity specs
         run: bun run test:measure-parity
 
+      # The editor bundle a VS Code webview loads, built and driven under the
+      # webview's Content Security Policy against a fake extension.
+      - name: Run editor-web webview check
+        run: bun --filter @stll/folio-editor-web test:e2e
+
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)
     runs-on: ubuntu-latest

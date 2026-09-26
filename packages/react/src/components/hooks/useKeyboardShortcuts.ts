@@ -8,7 +8,10 @@ import {
   isKeydownInShortcutScope,
   isMacPlatform,
 } from "@stll/folio-core/managers/editorShortcuts";
-import type { KeyboardShortcutScope } from "@stll/folio-core/managers/editorShortcuts";
+import type {
+  HostShortcut,
+  KeyboardShortcutScope,
+} from "@stll/folio-core/managers/editorShortcuts";
 import type { PagedEditorRef } from "../../paged-editor/PagedEditor";
 import { readFindSelectionSeed } from "../dialogs/findReplaceSelectionSeed";
 import type { UseFindReplaceReturn } from "../dialogs/useFindReplace";
@@ -24,6 +27,8 @@ export type UseKeyboardShortcutsArgs = {
   onDirectPrint: () => void;
   /** Which presses these shortcuts answer. */
   scope: KeyboardShortcutScope;
+  /** Shortcuts the host binds itself; their presses pass through untouched. */
+  hostShortcuts: readonly HostShortcut[];
   /**
    * Elements a press must land inside under the `"editor"` scope. The editor
    * root covers the find/replace dialog, which renders inside it; pass a
@@ -36,7 +41,8 @@ export type UseKeyboardShortcutsArgs = {
  * Page-level keyboard shortcuts:
  *  - Cmd/Ctrl+F → open find dialog with selected text
  *  - Cmd/Ctrl+H → open replace dialog
- *  - Cmd/Ctrl+P → trigger the custom print path (intercepts the OS dialog)
+ *  - Cmd/Ctrl+P → trigger the custom print path (intercepts the OS dialog),
+ *    unless `hostShortcuts` gives print to the host
  *  - Delete/Backspace → delete the currently selected table when nothing else
  *    is selected (works with both ProseMirror `CellSelection` whole-table
  *    selections and the layout-overlay table selection). Suppressed when
@@ -57,13 +63,14 @@ export function useKeyboardShortcuts({
   tableSelection,
   onDirectPrint,
   scope,
+  hostShortcuts,
   roots,
 }: UseKeyboardShortcutsArgs): void {
   // Keep callbacks and roots fresh without re-attaching the listener on every
   // change to `findReplace.state` (which updates on every search keystroke) or
   // on a fresh `roots` array identity.
-  const callbacksRef = useRef({ findReplace, tableSelection, onDirectPrint, roots });
-  callbacksRef.current = { findReplace, tableSelection, onDirectPrint, roots };
+  const callbacksRef = useRef({ findReplace, tableSelection, onDirectPrint, hostShortcuts, roots });
+  callbacksRef.current = { findReplace, tableSelection, onDirectPrint, hostShortcuts, roots };
 
   useEffect(() => {
     if (scope === "none") {
@@ -95,6 +102,7 @@ export function useKeyboardShortcuts({
       const intent = classifyEditorKeydown(e, {
         isMac: isMacPlatform(),
         isInputLike: isFocusInInputLike(e.target, editorDom),
+        hostShortcuts: callbacksRef.current.hostShortcuts,
       });
 
       switch (intent.type) {

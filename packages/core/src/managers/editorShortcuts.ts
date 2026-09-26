@@ -14,6 +14,7 @@
 import type { EditorState, Transaction } from "prosemirror-state";
 
 import { deleteTable, getTableContext } from "../prosemirror/commands/table";
+import type { HistoryShortcutOwner } from "../prosemirror/extensions/core/HistoryExtension";
 
 export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") {
@@ -50,22 +51,38 @@ export type EditorKeydownIntent =
   | { type: "print" }
   | { type: "none" };
 
+/**
+ * An editor shortcut the host binds itself. The editor leaves its keys alone,
+ * so the host's binding (an IDE's undo stack, its own print command) is the
+ * only one that runs.
+ *  - `"history"`: undo and redo (Mod-z, Mod-y, Mod-Shift-z).
+ *  - `"print"`: Cmd/Ctrl+P.
+ */
+export type HostShortcut = "history" | "print";
+
+/** Who answers the undo and redo keys when the host owns `hostShortcuts`. */
+export const historyShortcutOwner = (
+  hostShortcuts: readonly HostShortcut[],
+): HistoryShortcutOwner => (hostShortcuts.includes("history") ? "host" : "editor");
+
 export type ClassifyEditorKeydownOptions = {
   /** Whether the platform uses Cmd (Mac) rather than Ctrl as the primary modifier. */
   isMac: boolean;
   /** Whether focus is in a non-editor input/textarea/contenteditable. */
   isInputLike: boolean;
+  /** Shortcuts the host binds itself; their keys map to `none`. */
+  hostShortcuts: readonly HostShortcut[];
 };
 
 /**
  * Map a keydown to an editor intent:
  *  - Cmd/Ctrl+F or Cmd/Ctrl+H → open find
- *  - Cmd/Ctrl+P (no auto-repeat) → custom print
+ *  - Cmd/Ctrl+P (no auto-repeat) → custom print, unless the host owns print
  *  - Delete/Backspace (no modifiers, focus not in an input) → delete selected table
  */
 export function classifyEditorKeydown(
-  e: KeyboardEvent,
-  { isMac, isInputLike }: ClassifyEditorKeydownOptions,
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "shiftKey" | "altKey" | "repeat">,
+  { isMac, isInputLike, hostShortcuts }: ClassifyEditorKeydownOptions,
 ): EditorKeydownIntent {
   const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
 
@@ -84,7 +101,7 @@ export function classifyEditorKeydown(
     if (key === "f" || key === "h") {
       return { type: "openFind" };
     }
-    if (key === "p" && !e.repeat) {
+    if (key === "p" && !e.repeat && !hostShortcuts.includes("print")) {
       return { type: "print" };
     }
   }
