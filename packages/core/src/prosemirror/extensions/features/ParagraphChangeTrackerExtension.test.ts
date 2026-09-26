@@ -16,6 +16,8 @@ import {
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
 
+import { ParaIdAllocatorExtension } from "./ParaIdAllocatorExtension";
+
 // Minimal schema with paraId support
 const schema = new Schema({
   nodes: {
@@ -30,6 +32,13 @@ const schema = new Schema({
       },
       toDOM: () => ["p", 0],
     },
+    table: {
+      group: "block",
+      content: "tableRow+",
+      attrs: { width: { default: null } },
+    },
+    tableRow: { content: "tableCell+" },
+    tableCell: { content: "paragraph+" },
     text: { group: "inline" },
   },
   marks: {
@@ -394,5 +403,169 @@ describe("ParagraphChangeTrackerExtension", () => {
       expect(changed.has("P3")).toBe(true);
       expect(changed.has("P2")).toBe(false);
     });
+  });
+});
+
+describe("paragraph tracking with the ID allocator", () => {
+  const allocator = ParaIdAllocatorExtension().onSchemaReady({ schema }).plugins?.at(0);
+  if (!allocator) {
+    throw new Error("Expected paragraph ID allocator plugin");
+  }
+  const trackedState = (...paras: { text: string; paraId?: string }[]) =>
+    EditorState.create({ doc: createDoc(...paras), plugins: [plugin, allocator] });
+
+  test.each([0, 2, 5])("tracks both split halves at offset %i", (offset) => {
+    const initial = trackedState({ text: "Hello", paraId: "11111111" });
+    const next = initial.apply(initial.tr.split(offset + 1));
+    const firstId = next.doc.child(0).attrs.paraId;
+    const secondId = next.doc.child(1).attrs.paraId;
+
+    expect(firstId).toBe("11111111");
+    expect(secondId).toMatch(/^[0-9A-F]{8}$/u);
+    expect(secondId).not.toBe(firstId);
+    expect(getChangedParagraphIds(next)).toEqual(new Set([firstId, secondId]));
+    expect(hasStructuralChanges(next)).toBe(true);
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test.each([null, "", "00000000", "11111111", "22222222"])(
+    "tracks only the inserted paragraph after allocating its supplied ID %j",
+    (paraId) => {
+      const initial = trackedState({ text: "Original", paraId: "11111111" });
+      const inserted = schema.node("paragraph", { paraId }, schema.text("Inserted"));
+      const next = initial.apply(initial.tr.insert(0, inserted));
+      const insertedId = next.doc.child(0).attrs.paraId;
+
+      expect(insertedId).toMatch(/^[0-9A-F]{8}$/u);
+      expect(insertedId).not.toBe("00000000");
+      expect(insertedId).not.toBe("11111111");
+      expect(next.doc.child(1).attrs.paraId).toBe("11111111");
+      expect(getChangedParagraphIds(next)).toEqual(new Set([insertedId]));
+      expect(hasStructuralChanges(next)).toBe(true);
+      expect(hasUntrackedChanges(next)).toBe(false);
+    },
+  );
+
+  test("retains existing edits when a later insertion receives an ID", () => {
+    const initial = trackedState(
+      { text: "Edited", paraId: "11111111" },
+      { text: "Unchanged", paraId: "22222222" },
+    );
+    const edited = initial.apply(initial.tr.insertText("!", 1));
+    const next = edited.apply(edited.tr.insert(0, schema.node("paragraph")));
+
+    expect(getChangedParagraphIds(next)).toEqual(
+      new Set(["11111111", next.doc.child(0).attrs.paraId]),
+    );
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("detects deletion without dirtying surviving paragraphs", () => {
+    const initial = trackedState(
+      { text: "Deleted", paraId: "11111111" },
+      { text: "Kept", paraId: "22222222" },
+    );
+    const next = initial.apply(initial.tr.delete(0, initial.doc.child(0).nodeSize));
+
+    expect(next.doc.childCount).toBe(1);
+    expect(getChangedParagraphIds(next)).toEqual(new Set());
+    expect(hasStructuralChanges(next)).toBe(true);
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("tracks the surviving paragraph after a join", () => {
+    const initial = trackedState(
+      { text: "First", paraId: "11111111" },
+      { text: "Second", paraId: "22222222" },
+    );
+    const next = initial.apply(initial.tr.join(initial.doc.child(0).nodeSize));
+
+    expect(next.doc.child(0).textContent).toBe("FirstSecond");
+    expect(getChangedParagraphIds(next)).toEqual(new Set(["11111111"]));
+    expect(hasStructuralChanges(next)).toBe(true);
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("detects count-neutral deletion and insertion in one transaction", () => {
+    const initial = trackedState(
+      { text: "Replaced", paraId: "11111111" },
+      { text: "Kept", paraId: "22222222" },
+    );
+    const next = initial.apply(
+      initial.tr.replaceWith(0, initial.doc.child(0).nodeSize, schema.node("paragraph")),
+    );
+
+    expect(next.doc.childCount).toBe(initial.doc.childCount);
+    expect(getChangedParagraphIds(next)).toEqual(new Set([next.doc.child(0).attrs.paraId]));
+    expect(hasStructuralChanges(next)).toBe(true);
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("detects a count-neutral paragraph move", () => {
+    const initial = trackedState(
+      { text: "Moved", paraId: "11111111" },
+      { text: "Kept", paraId: "22222222" },
+    );
+    const moved = initial.doc.child(0);
+    const tr = initial.tr.delete(0, moved.nodeSize);
+    tr.insert(tr.doc.content.size, moved);
+    const next = initial.apply(tr);
+
+    expect(next.doc.child(1).attrs.paraId).toBe("11111111");
+    expect(hasStructuralChanges(next)).toBe(true);
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("detects a table attribute change with stable paragraph membership", () => {
+    const paragraph = schema.node("paragraph", { paraId: "11111111" }, schema.text("Cell"));
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph])]),
+    ]);
+    const initial = EditorState.create({
+      doc: schema.node("doc", null, [table]),
+      plugins: [plugin, allocator],
+    });
+    const next = initial.apply(initial.tr.setNodeAttribute(0, "width", 5000));
+
+    expect(hasStructuralChanges(next)).toBe(true);
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("unrelated source ID backfill does not poison a new paragraph insertion", () => {
+    const initial = trackedState({ text: "Unedited source" });
+    const next = initial.apply(initial.tr.insert(0, schema.node("paragraph")));
+
+    expect(getChangedParagraphIds(next)).toEqual(new Set([next.doc.child(0).attrs.paraId]));
+    expect(hasUntrackedChanges(next)).toBe(false);
+  });
+
+  test("does not forgive editing an unidentified source paragraph after allocation", () => {
+    const initial = trackedState({ text: "Unidentified source" });
+    const next = initial.apply(initial.tr.insertText("!", 1));
+
+    expect(next.doc.child(0).attrs.paraId).toMatch(/^[0-9A-F]{8}$/u);
+    expect(hasUntrackedChanges(next)).toBe(true);
+    const inserted = next.apply(next.tr.insert(0, schema.node("paragraph")));
+    expect(hasUntrackedChanges(inserted)).toBe(true);
+  });
+
+  test("does not forgive deleting an unidentified source paragraph", () => {
+    const initial = trackedState(
+      { text: "Unidentified source" },
+      { text: "Kept", paraId: "11111111" },
+    );
+    const next = initial.apply(initial.tr.delete(0, initial.doc.child(0).nodeSize));
+
+    expect(hasUntrackedChanges(next)).toBe(true);
+  });
+
+  test("clear resets dirty paragraph ownership before subsequent allocation", () => {
+    const initial = trackedState({ text: "First", paraId: "11111111" });
+    const edited = initial.apply(initial.tr.insertText("!", 1));
+    const cleared = edited.apply(clearTrackedChanges(edited));
+    const next = cleared.apply(cleared.tr.insert(0, schema.node("paragraph")));
+
+    expect(getChangedParagraphIds(next)).toEqual(new Set([next.doc.child(0).attrs.paraId]));
+    expect(hasUntrackedChanges(next)).toBe(false);
   });
 });
