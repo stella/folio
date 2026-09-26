@@ -31,18 +31,15 @@ type NumberingLevel = NonNullable<
   NonNullable<Document["package"]["numbering"]>["abstractNums"]
 >[number]["levels"][number];
 
-const level = (
-  ilvl: number,
-  lvlText: string,
-  extra: Partial<NumberingLevel> = {},
-): NumberingLevel => ({
-  ilvl,
+/** A decimal level unless the options say otherwise. */
+type LevelOptions = Pick<NumberingLevel, "ilvl" | "lvlText"> & Partial<NumberingLevel>;
+
+const level = (options: LevelOptions): NumberingLevel => ({
   start: 1,
   numFmt: "decimal",
-  lvlText,
   suffix: "space",
   pPr: { indentLeft: 0, indentFirstLine: 0 },
-  ...extra,
+  ...options,
 });
 
 /** The ids the fixture's numbering definitions use. */
@@ -84,12 +81,15 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
       {
         abstractNumId: CLAUSES,
         multiLevelType: "multilevel",
-        levels: [level(0, "%1."), level(1, "%1.%2.")],
+        levels: [level({ ilvl: 0, lvlText: "%1." }), level({ ilvl: 1, lvlText: "%1.%2." })],
       },
       {
         abstractNumId: ARTICLES,
         multiLevelType: "multilevel",
-        levels: [level(0, "(%1)"), level(1, "%2)", { numFmt: "lowerLetter" })],
+        levels: [
+          level({ ilvl: 0, lvlText: "(%1)" }),
+          level({ ilvl: 1, lvlText: "%2)", numFmt: "lowerLetter" }),
+        ],
       },
     ],
     nums: [
@@ -185,7 +185,7 @@ const snapshotView = (block: {
     block.displayLabel !== undefined && block.displayLabel !== block.styleId
       ? normalizeNumber(block.displayLabel)
       : undefined;
-  return blockView(block.text, block.headingLevel, number);
+  return blockView({ text: block.text, headingLevel: block.headingLevel, number });
 };
 
 /**
@@ -201,21 +201,28 @@ const markdownViews = (markdown: string, texts: readonly string[]): BlockView[] 
     const prefix = line.slice(0, line.length - text.length).trim();
     const heading = /^(?<hashes>#{1,6})(?:\s+(?<marker>.*))?$/u.exec(prefix);
     if (heading?.groups) {
-      return blockView(
+      return blockView({
         text,
-        heading.groups["hashes"]?.length,
-        normalizeNumber(heading.groups["marker"]),
-      );
+        headingLevel: heading.groups["hashes"]?.length,
+        number: normalizeNumber(heading.groups["marker"]),
+      });
     }
-    return blockView(text, undefined, normalizeNumber(prefix === "-" ? "•" : prefix));
+    return blockView({
+      text,
+      headingLevel: undefined,
+      number: normalizeNumber(prefix === "-" ? "•" : prefix),
+    });
   });
 };
 
-const blockView = (
-  text: string,
-  headingLevel: number | undefined,
-  number: string | undefined,
-): BlockView => {
+type BlockViewOptions = {
+  text: string;
+  headingLevel: number | undefined;
+  number: string | undefined;
+};
+
+/** A view without the fields the reader left undefined. */
+const blockView = ({ text, headingLevel, number }: BlockViewOptions): BlockView => {
   const view: BlockView = { text };
   if (headingLevel !== undefined) {
     view.headingLevel = headingLevel;
