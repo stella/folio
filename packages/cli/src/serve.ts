@@ -47,7 +47,7 @@ export type PreviewServer = {
 type FileStamp = { size: number; modifiedMs: number; ino: number };
 
 type Rendered =
-  | { type: "page"; fileVersion: string; html: string; pageCount: number }
+  | { type: "page"; fileVersion: string; html: string; pageCount: number; pageWidthPx: number }
   | { type: "error"; fileVersion: string | null; message: string };
 
 /** The latest `toVersion` the journal committed for this document, if any. */
@@ -71,9 +71,16 @@ const journalToVersion = async (documentPath: string): Promise<string | null> =>
 };
 
 const SHELL_STYLE =
-  "html, body { margin: 0; height: 100%; background: #e8e8e8; } iframe { border: 0; width: 100%; height: 100%; display: block; }";
+  "html, body { margin: 0; height: 100%; overflow: hidden; background: #e8e8e8; } iframe { border: 0; width: 100%; height: 100%; display: block; }";
 
-const shellHtml = (title: string, nonce: string): string =>
+/**
+ * `document.html` lays its pages out at their real pixel size with no zoom,
+ * so a pane narrower than the page would otherwise clip the left margin and
+ * scroll horizontally. The shell scales the iframe down (never up) to the
+ * widest page, keeping it centered and fully visible; `fit` reruns on resize
+ * and whenever a live reload reports a new page width.
+ */
+const shellHtml = (title: string, nonce: string, pageWidthPx: number | null): string =>
   [
     "<!doctype html>",
     `<html><head><meta charset="utf-8"><title>${escapeHtmlText(title)}</title>`,
@@ -81,11 +88,29 @@ const shellHtml = (title: string, nonce: string): string =>
     '<iframe id="document" sandbox src="document.html" title="document"></iframe>',
     `<script nonce="${nonce}">`,
     "const frame = document.getElementById('document');",
+    `let pageWidthPx = ${pageWidthPx !== null && pageWidthPx > 0 ? String(pageWidthPx) : "null"};`,
     "let version = null;",
+    "frame.style.transformOrigin = 'top left';",
+    "const fit = () => {",
+    "  if (!pageWidthPx) return;",
+    "  const scale = Math.min(1, document.documentElement.clientWidth / pageWidthPx);",
+    "  const inverse = (100 / scale) + '%';",
+    "  frame.style.width = inverse;",
+    "  frame.style.height = inverse;",
+    "  frame.style.transform = 'scale(' + scale + ')';",
+    "};",
+    "fit();",
+    "window.addEventListener('resize', fit);",
     "const events = new EventSource('events');",
     "events.onmessage = (event) => {",
     "  const next = JSON.parse(event.data).fileVersion;",
-    "  if (version !== null && next !== version) frame.src = 'document.html?v=' + next;",
+    "  if (version !== null && next !== version) {",
+    "    fetch('version').then((response) => response.json()).then((info) => {",
+    "      pageWidthPx = info.pageWidthPx > 0 ? info.pageWidthPx : null;",
+    "      fit();",
+    "    }).catch(() => {});",
+    "    frame.src = 'document.html?v=' + next;",
+    "  }",
     "  version = next;",
     "};",
     "</script></body></html>",
@@ -143,11 +168,16 @@ export const startPreviewServer = async ({
       if (list.isErr()) {
         return { type: "error", fileVersion: file.value.fileVersion, message: list.error.message };
       }
+      // The widest page, so the shell page can scale the iframe to fit a
+      // narrower viewport without cutting off any page's margin.
+      let pageWidthPx = 0;
+      for (const page of list.value.pages) pageWidthPx = Math.max(pageWidthPx, page.widthPx);
       return {
         type: "page",
         fileVersion: file.value.fileVersion,
         html: displayListHtml(list.value, title),
         pageCount: list.value.pages.length,
+        pageWidthPx,
       };
     })();
     const result = await rendering;
@@ -200,10 +230,16 @@ export const startPreviewServer = async ({
     const route = url.pathname.slice(prefix.length);
     if (route === "") {
       const nonce = randomBytes(16).toString("base64");
-      respond(response, 200, shellHtml(title, nonce), {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; frame-src 'self'; connect-src 'self'`,
-      });
+      const page = await current();
+      respond(
+        response,
+        200,
+        shellHtml(title, nonce, page.type === "page" ? page.pageWidthPx : null),
+        {
+          "Content-Type": "text/html; charset=utf-8",
+          "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; frame-src 'self'; connect-src 'self'`,
+        },
+      );
       return;
     }
     if (route === "document.html") {
@@ -223,7 +259,9 @@ export const startPreviewServer = async ({
           path: realPath,
           fileVersion: page.fileVersion,
           journalToVersion: await journalToVersion(realPath),
-          ...(page.type === "page" ? { pageCount: page.pageCount } : { error: page.message }),
+          ...(page.type === "page"
+            ? { pageCount: page.pageCount, pageWidthPx: page.pageWidthPx }
+            : { error: page.message }),
         }),
         { "Content-Type": "application/json" },
       );

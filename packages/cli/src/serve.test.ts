@@ -88,6 +88,29 @@ describe("folio serve", () => {
   );
 
   test(
+    "scales the shell's iframe to the page width, without upscaling",
+    async () => {
+      const { url } = await start();
+
+      const shell = await send(url);
+      const version: unknown = JSON.parse((await send(`${url}version`)).body);
+      const pageWidthPx =
+        typeof version === "object" && version !== null && "pageWidthPx" in version
+          ? version.pageWidthPx
+          : undefined;
+
+      expect(typeof pageWidthPx).toBe("number");
+      expect(pageWidthPx).toBeGreaterThan(0);
+      expect(shell.body).toContain(`let pageWidthPx = ${String(pageWidthPx)};`);
+      expect(shell.body).toContain(
+        "Math.min(1, document.documentElement.clientWidth / pageWidthPx)",
+      );
+      expect(shell.body).toContain("frame.style.transform = 'scale(' + scale + ')';");
+    },
+    SERVE_TIMEOUT_MS,
+  );
+
+  test(
     "refuses other hosts and methods, and never writes",
     async () => {
       const { url } = await start();
