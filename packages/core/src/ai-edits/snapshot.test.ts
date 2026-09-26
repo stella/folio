@@ -11,6 +11,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
 import { type Node as PMNode, Schema } from "prosemirror-model";
 
 import { compareContent } from "../compare/content";
@@ -560,5 +561,62 @@ describe("createFolioAIEditSnapshot", () => {
 
     expect(resolveSequentialBlockAnchor("seq-0002", snapshot)?.text).toBe("second");
     expect(resolveSequentialBlockAnchor("seq-0003", snapshot)).toBeUndefined();
+  });
+
+  test("classifies a numbered heading as a heading that shows its number", () => {
+    const heading2 = { kind: "heading", level: 1 };
+    const numbered = paragraphNumberingFromSlots({ numId: 5, ilvl: 0 });
+    const numberedParagraph = (attrs: Record<string, unknown>, text: string) =>
+      folioSchema.node("paragraph", attrs, [folioSchema.text(text)]);
+    const doc = folioSchema.node("doc", null, [
+      numberedParagraph({ outlineLevel: heading2, numPr: numbered, listMarker: "1." }, "Numbered"),
+      numberedParagraph(
+        { outlineLevel: heading2, numPr: numbered, listMarker: "Art. 2", listMarkerHidden: true },
+        "Hidden marker heading",
+      ),
+      numberedParagraph(
+        { numPr: numbered, listMarker: "3.", listMarkerHidden: true },
+        "Hidden marker",
+      ),
+      numberedParagraph({ numPr: paragraphNumberingFromSlots({ numId: 0 }) }, "Cancelled"),
+      numberedParagraph({ numPr: numbered, listMarker: "4." }, "Item"),
+    ]);
+
+    const blocks = createFolioAIEditSnapshot(doc).blocks.map(
+      ({ text, kind, headingLevel, displayLabel, listLevel }) => ({
+        text,
+        kind,
+        headingLevel,
+        displayLabel,
+        listLevel,
+      }),
+    );
+
+    expect(blocks).toEqual([
+      { text: "Numbered", kind: "heading", headingLevel: 2, displayLabel: "1.", listLevel: 0 },
+      {
+        text: "Hidden marker heading",
+        kind: "heading",
+        headingLevel: 2,
+        displayLabel: undefined,
+        listLevel: 0,
+      },
+      // Numbered in the package, no number on the page: prose that keeps its level.
+      {
+        text: "Hidden marker",
+        kind: "paragraph",
+        headingLevel: undefined,
+        displayLabel: undefined,
+        listLevel: 0,
+      },
+      {
+        text: "Cancelled",
+        kind: "paragraph",
+        headingLevel: undefined,
+        displayLabel: undefined,
+        listLevel: undefined,
+      },
+      { text: "Item", kind: "listItem", headingLevel: undefined, displayLabel: "4.", listLevel: 0 },
+    ]);
   });
 });

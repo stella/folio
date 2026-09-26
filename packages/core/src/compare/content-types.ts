@@ -126,6 +126,11 @@ export type FolioContentBlock<Kind extends string = string> = {
   idStability?: FolioContentIdStability;
   /** One-based heading depth when the block has outline semantics. */
   headingLevel?: number;
+  /**
+   * The number or bullet the block shows beside its text (`2.1.`, `a)`, `•`),
+   * a numbered heading's included; an unnumbered heading's style id. Absent
+   * when the block shows neither, a marker its level hides included.
+   */
   displayLabel?: string;
   styleId?: string;
   /** Direct paragraph alignment; absent when alignment comes only from a style. */

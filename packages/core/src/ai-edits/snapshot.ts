@@ -748,21 +748,38 @@ export const createFolioAIEditSnapshotWithStyleResolver = (
   styleResolver: RunStyleResolver | null,
 ): FolioAIEditSnapshot => createFolioAIEditSnapshotInternal(doc, styleResolver);
 
+/**
+ * What a reader sees the block as, heading first: a numbered heading (`1.
+ * Scope`, numbered through its style or its own `w:numPr`) is a heading that
+ * shows a number, with the number in `displayLabel` and its level in
+ * `listLevel`. A paragraph is a list item when it shows a marker; one whose
+ * numbering shows none (a `w:vanish` level, or `w:numId="0"` cancelling its
+ * style's numbering) reads as prose and is a paragraph, keeping its
+ * `listLevel` and `listReference`.
+ */
 const getBlockKind = (node: PMNode, headingLevel: number | undefined): FolioAIBlockKind => {
-  const listMarker: unknown = node.attrs["listMarker"];
-  const numPr: unknown = node.attrs["numPr"];
-  if (
-    (typeof listMarker === "string" && listMarker.trim().length > 0) ||
-    (numPr !== undefined && numPr !== null)
-  ) {
-    return "listItem";
-  }
-
   if (headingLevel !== undefined) {
     return "heading";
   }
+  return showsListMarker(node) ? "listItem" : "paragraph";
+};
 
-  return "paragraph";
+/**
+ * Whether the paragraph shows a list marker: it has a resolved marker or
+ * references a numbering instance (a document whose markers were never
+ * resolved still numbers the paragraph), and its level does not hide the
+ * marker with `w:vanish`. The reserved `w:numId="0"` references nothing.
+ */
+const showsListMarker = (node: PMNode): boolean =>
+  node.attrs["listMarkerHidden"] !== true &&
+  (getListMarkerText(node) !== undefined || statedNumbering(node).kind === "reference");
+
+/** The resolved marker text (`1.`, `a)`, `•`), when the paragraph carries one. */
+const getListMarkerText = (node: PMNode): string | undefined => {
+  const listMarker: unknown = node.attrs["listMarker"];
+  return typeof listMarker === "string" && listMarker.trim().length > 0
+    ? listMarker.trim()
+    : undefined;
 };
 
 /** The block's 1-based heading level, as {@link resolveHeadingLevel} classifies it. */
@@ -779,15 +796,19 @@ const getHeadingLevel = (node: PMNode, styles: BuiltInStyleIndex): number | unde
 };
 
 const getDisplayLabel = (node: PMNode, isHeading: boolean): string | undefined => {
-  const listMarker: unknown = node.attrs["listMarker"];
-  if (typeof listMarker === "string" && listMarker.trim().length > 0) {
-    return listMarker.trim();
+  // The number a reader sees beside the text, heading or not. A marker its
+  // level hides (`w:vanish`) is not one.
+  if (node.attrs["listMarkerHidden"] !== true) {
+    const marker = getListMarkerText(node);
+    if (marker !== undefined) {
+      return marker;
+    }
   }
 
-  // A heading's label is its style id — what the model sees and refers back
-  // to. It labels a block the classifier already decided is a heading, so a
-  // localized id such as `Nadpis1` reaches the model instead of being dropped
-  // for not starting with "heading".
+  // An unnumbered heading's label is its style id — what the model sees and
+  // refers back to. It labels a block the classifier already decided is a
+  // heading, so a localized id such as `Nadpis1` reaches the model instead of
+  // being dropped for not starting with "heading".
   const styleId: unknown = node.attrs["styleId"];
   if (isHeading && typeof styleId === "string") {
     return styleId;

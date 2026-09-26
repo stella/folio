@@ -441,8 +441,10 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
     description:
       "Read the full document body as a list of blocks (paragraphs, headings, list items). Call this first, " +
       "or whenever you need fresh block ids after a mutation — block ids from a stale read may no longer " +
-      "resolve. Each block includes a `blockTextHash`; echo it as `precondition.blockTextHash` on a " +
-      "suggest_changes / add_comment operation to guard against the block changing before that call runs.",
+      "resolve. A block shows its number or bullet (`2.1.`, `a)`, `•`) as `displayLabel`, a numbered heading " +
+      "included; a heading also has `headingLevel` and a numbered block `listLevel`. Each block includes a " +
+      "`blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / add_comment " +
+      "operation to guard against the block changing before that call runs.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -473,8 +475,10 @@ export const FOLIO_AGENT_TOOL_REGISTRY = {
     name: FOLIO_AGENT_TOOL_NAMES.readSection,
     description:
       "Read one logical heading section using a handle from get_document_outline. Content is block-bounded " +
-      "and paginated with an afterBlockId cursor, avoiding a full-document read. Each block includes a " +
-      "`blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / add_comment operation.",
+      "and paginated with an afterBlockId cursor, avoiding a full-document read. Blocks have the same " +
+      "fields as read_document's, `displayLabel`, `headingLevel` and `listLevel` included. Each block " +
+      "includes a `blockTextHash`; echo it as `precondition.blockTextHash` on a suggest_changes / " +
+      "add_comment operation.",
     inputSchema: {
       type: "object",
       properties: {

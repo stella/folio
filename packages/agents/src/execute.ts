@@ -35,6 +35,7 @@ import type { FolioAgentToolInputByName, FolioToolCallResultFor } from "./tool-c
 import { FOLIO_AGENT_TOOL_NAMES } from "./types";
 import type {
   FolioAgentApplyOperationsSummary,
+  FolioAgentBlock,
   FolioAgentCommentFilter,
   FolioAgentFindTextResult,
   FolioAgentInputNormalization,
@@ -66,6 +67,31 @@ const VALID_TOOL_NAMES: readonly string[] = Object.values(FOLIO_AGENT_TOOL_NAMES
  */
 const blockTextHashOf = (text: string): string =>
   hashFolioAIBlockText(normalizeFolioAIBlockText(text));
+
+/**
+ * A snapshot block as a `read_document` / `read_section` row: the number or
+ * label a reader sees beside it and its heading and list levels ride along,
+ * so the model is given the numbers the document shows. Absent fields stay
+ * absent to keep the rows compact.
+ */
+const toAgentBlock = (block: FolioAIBlock): FolioAgentBlock => {
+  const row: FolioAgentBlock = {
+    blockId: block.id,
+    kind: block.kind,
+    text: block.text,
+    blockTextHash: blockTextHashOf(block.text),
+  };
+  if (block.displayLabel !== undefined) {
+    row.displayLabel = block.displayLabel;
+  }
+  if (block.headingLevel !== undefined) {
+    row.headingLevel = block.headingLevel;
+  }
+  if (block.listLevel !== undefined) {
+    row.listLevel = block.listLevel;
+  }
+  return row;
+};
 
 /** `find_text` requires a short `query` and caps how much of a large match set it returns in one call. */
 const MAX_QUERY_LENGTH = 1_000;
@@ -134,14 +160,7 @@ const readDocument = (
   // comparison can address them. A model reading the document wants its
   // content, not a line per blank line.
   const blocks = bridge.snapshot().blocks.filter(isFolioAIContentBlock);
-  return ok(
-    blocks.map((block) => ({
-      blockId: block.id,
-      kind: block.kind,
-      text: block.text,
-      blockTextHash: blockTextHashOf(block.text),
-    })),
-  );
+  return ok(blocks.map(toAgentBlock));
 };
 
 const getDocumentOutline = (
@@ -222,12 +241,7 @@ const readSection = (
   return ok({
     handle,
     heading: resolved.section.heading,
-    blocks: selected.map(({ id, kind, text }) => ({
-      blockId: id,
-      kind,
-      text,
-      blockTextHash: blockTextHashOf(text),
-    })),
+    blocks: selected.map(toAgentBlock),
     totalBlocks: resolved.section.blocks.length,
     truncated: hasMore,
     ...(hasMore && lastBlockId !== undefined && { nextAfterBlockId: lastBlockId }),

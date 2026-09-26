@@ -86,11 +86,27 @@ export type FolioToolCallResult<TResult = unknown> =
   | { ok: true; result: TResult }
   | { ok: false; error: string };
 
-/** One document block as exposed to a model: id, kind, and its plain text. */
+/**
+ * One document block as exposed to a model: id, kind, its plain text, and the
+ * number or level a reader sees beside it. Absent fields are omitted.
+ */
 export type FolioAgentBlock = {
   blockId: string;
+  /**
+   * `heading`, `listItem` or `paragraph`. A numbered heading (`1. Scope`) is a
+   * `heading` with its number in `displayLabel`.
+   */
   kind: string;
   text: string;
+  /**
+   * What the document shows beside the text: the list or heading number
+   * (`2.1.`, `a)`, `•`), or an unnumbered heading's style id (`Heading1`).
+   */
+  displayLabel?: string;
+  /** One-based heading level, on headings. */
+  headingLevel?: number;
+  /** Zero-based numbering level, on numbered paragraphs and headings. */
+  listLevel?: number;
   /**
    * Normalized-text hash of this block at read time. Echo it back as
    * `precondition.blockTextHash` on a `suggest_changes` / `add_comment`

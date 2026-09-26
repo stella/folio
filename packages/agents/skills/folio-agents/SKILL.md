@@ -126,6 +126,9 @@ stay exported for validation-only paths.
   `read_comments`. Never invent or reuse one from outside the conversation;
   ids are opaque values a caller reads, never ones it constructs, and they
   change whenever the document's structure changes.
+- A clause number ("clause 2.1") is found through a block's `displayLabel`,
+  the number the document shows beside it; a numbered heading is
+  `kind: "heading"` with its `headingLevel` and its number in `displayLabel`.
 - `suggest_changes` operations that get skipped (`skipped: [{ id, reason }]`)
   return a plain-language reason, not a machine code (e.g. "the block changed
   since your snapshot; re-read the document and retry with fresh ids"). Treat

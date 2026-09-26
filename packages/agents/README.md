@@ -20,7 +20,7 @@ bun add @stll/folio-agents
 
 | Tool                   | What it does                                                           |
 | ---------------------- | ---------------------------------------------------------------------- |
-| `read_document`        | Read the document body as `{ blockId, kind, text }` blocks             |
+| `read_document`        | Read the document body as `{ blockId, kind, text, displayLabel? }` blocks |
 | `get_document_outline` | Read heading hierarchy and stable section handles                      |
 | `read_section`         | Read a bounded logical section, with block cursor pagination           |
 | `list_stories`         | List main, header, footer, footnote, and endnote story handles         |
@@ -36,6 +36,12 @@ bun add @stll/folio-agents
 | `read_selection`       | Read the current text selection (live editor only)                     |
 | `scroll_to_block`      | Scroll the live editor to a block (live editor only)                   |
 | `show_in_document`     | Reveal a stable block or exact text range (live editor only)           |
+
+A `read_document` / `read_section` block also carries, when present, the
+number or bullet the document shows beside it (`displayLabel`: `2.1.`, `a)`,
+`•`; an unnumbered heading's style id), its `headingLevel` (one-based) and
+its `listLevel` (zero-based). A numbered heading is `kind: "heading"` with its
+number in `displayLabel`; absent fields are omitted.
 
 Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —

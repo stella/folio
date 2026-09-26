@@ -897,13 +897,19 @@ export type FolioReviewCommentFilter = {
 
 /**
  * One LLM-ready line for a block: `[<blockId>] text`, with an `(h<level>)` tag
- * for headings and the list marker for list items, so a model can copy the
- * block id straight back into an operation.
+ * for headings, then the number a numbered heading shows, and the list marker
+ * for list items, so a model can copy the block id straight back into an
+ * operation and match the numbers the document shows.
  */
 const formatBlockLine = (block: FolioAIBlock, text: string): string => {
   const label = `[${block.id}]`;
   if (block.kind === "heading") {
-    return `${label} (h${headingLevel(block)}) ${text}`;
+    // An unnumbered heading's `displayLabel` is its style id, not a number.
+    const number =
+      block.displayLabel !== undefined && block.displayLabel !== block.styleId
+        ? `${block.displayLabel} `
+        : "";
+    return `${label} (h${headingLevel(block)}) ${number}${text}`;
   }
   if (block.kind === "listItem") {
     return `${label} ${block.displayLabel ?? "•"} ${text}`;
