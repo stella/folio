@@ -900,7 +900,15 @@ function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
     // A suggested paragraph-mark revision (the join a suggested block
     // deletion proposes) is a proposal like any other: the paragraph keeps
     // its break until the suggestion is accepted.
-    if (expectParagraphAttrs(node).pPrMark?.info.provenance !== "suggested") {
+    // The applier stamps the provenance onto the mark's info at run time; the
+    // model type of that info does not declare it.
+    const markInfo: unknown = expectParagraphAttrs(node).pPrMark?.info;
+    const suggestedMark =
+      typeof markInfo === "object" &&
+      markInfo !== null &&
+      "provenance" in markInfo &&
+      markInfo.provenance === "suggested";
+    if (!suggestedMark) {
       return stripped;
     }
     return { ...(stripped ?? node.attrs), pPrMark: null };
