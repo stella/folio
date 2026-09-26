@@ -161,11 +161,11 @@ describe("the bidirectional algorithm", () => {
         .resolveBidi({ text, direction: BIDI_DIRECTION.leftToRight })
         .visualOrder.map((index) => characters[index] ?? "")
         .join("")
-        .replaceAll(/[⁦-⁩]/gu, "");
+        .replaceAll(/[\u2066-\u2069]/gu, "");
     };
-    const name = "محمد";
-    const reversed = "دمحم";
+    const name = "\u0645\u062D\u0645\u062F";
+    const reversed = "\u062F\u0645\u062D\u0645";
     expect(visual(`by ${name} 2026`)).toBe(`by 2026 ${reversed}`);
-    expect(visual(`by ⁨${name}⁩ 2026`)).toBe(`by ${reversed} 2026`);
+    expect(visual(`by \u2068${name}\u2069 2026`)).toBe(`by ${reversed} 2026`);
   });
 });
