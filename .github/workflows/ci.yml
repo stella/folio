@@ -64,6 +64,10 @@ jobs:
             packages/vue/package.json
             packages/nuxt/CHANGELOG.md
             packages/nuxt/package.json
+            plugins/claude-code/.claude-plugin/plugin.json
+            plugins/claude-code/.mcp.json
+            plugins/herdr/bin/folio-command.sh
+            plugins/herdr/herdr-plugin.toml
           package-files: |
             packages/docx-core/package.json
             packages/core/package.json
