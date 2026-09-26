@@ -37,6 +37,7 @@ import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
 import { ForwardRefExoticComponent } from 'react';
+import { HostShortcut } from '@stll/folio-core/managers/editorShortcuts';
 import { JSX } from 'react';
 import { KeyboardShortcutScope } from '@stll/folio-core/managers/editorShortcuts';
 import { Layout } from '@stll/folio-core/layout-engine/types';
