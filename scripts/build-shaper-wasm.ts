@@ -16,9 +16,11 @@ const mode = buildModeFrom(process.argv[2], "bun scripts/build-shaper-wasm.ts");
 // Most of it is the OpenType layout engine and the Unicode data it needs:
 // script and joining properties, the Arabic and Indic shapers, and the
 // normalizer. That work has no smaller correct form; a table-driven substitute
-// would be the same data with the lookups reimplemented.
-const maximumWasmBytes = 552 * 1024;
-const maximumBrotliBytes = 198 * 1024;
+// would be the same data with the lookups reimplemented. The bidirectional
+// algorithm travels with it (its class and bracket tables are most of the rest),
+// because splitting text into shapeable runs needs its levels first.
+const maximumWasmBytes = 588 * 1024;
+const maximumBrotliBytes = 212 * 1024;
 
 const shaper = {
   label: "text shaper",

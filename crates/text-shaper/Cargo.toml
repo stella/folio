@@ -20,6 +20,7 @@ wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
 rustybuzz = { version = "0.20.1", default-features = false, features = ["std"] }
+unicode-bidi = { version = "0.3.18", default-features = false, features = ["hardcoded-data"] }
 wasm-bindgen = { version = "0.2.126", optional = true }
 
 [dev-dependencies]

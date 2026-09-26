@@ -14,10 +14,16 @@
 //! positions points. None of those can be derived from a code point alone, at
 //! any level of font-table reading, which is why this exists rather than a
 //! `cmap` lookup.
+//!
+//! The same artifact resolves the bidirectional algorithm, because a caller
+//! cannot split text into shapeable runs without it: a run must not span a
+//! direction change.
 
+mod bidi;
 mod shape;
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 pub mod wasm;
 
+pub use bidi::{BaseDirection, BidiLine, resolve_bidi};
 pub use shape::{Direction, ShapeRequest, ShapedGlyph, ShapedRun, ShapingError, shape_run};
