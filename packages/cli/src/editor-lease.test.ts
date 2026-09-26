@@ -299,7 +299,7 @@ describe("flush handshake", () => {
       await acquireLeaseForWrite({ documentPath: file, txId: "tx", force: false })
     ).unwrap();
 
-    expect(acquired.flush).toEqual({ type: "none" });
+    expect(acquired.flush).toEqual({ type: "notAsked" });
     expect(Date.now() - started).toBeLessThan(1000);
     await acquired.lease.release();
   });

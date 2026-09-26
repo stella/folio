@@ -711,7 +711,8 @@ export const executeWriteTool = async (
     // identity then. Its version is still checked below.
     const replacedInPlace =
       inPlace &&
-      (flush.type !== "none" || recovered.value.some(({ action }) => action === "rolledForward"));
+      (flush.type !== "notAsked" ||
+        recovered.value.some(({ action }) => action === "rolledForward"));
     const expectedIdentity = replacedInPlace ? source.value.identity : sourceIdentity;
     if (!sameFile(source.value.identity, expectedIdentity)) {
       return Result.err(unsafePath(`${sourcePath} was replaced while the write started.`));

@@ -147,7 +147,7 @@ const leaseForSave = async (
   if (options.leaseToken !== undefined) {
     const adopted = await adoptLease(documentPath, options.leaseToken);
     return adopted.isOk()
-      ? Result.ok({ lease: adopted.value, flush: { type: "none" } })
+      ? Result.ok({ lease: adopted.value, flush: { type: "notAsked" } })
       : Result.err(adopted.error);
   }
   return await acquireLeaseForWrite({
@@ -230,7 +230,8 @@ export const saveDocumentBytes = async (
     if (source.isErr()) return Result.err(source.error);
     const replacedInPlace =
       inPlace &&
-      (flush.type !== "none" || recovered.value.some(({ action }) => action === "rolledForward"));
+      (flush.type !== "notAsked" ||
+        recovered.value.some(({ action }) => action === "rolledForward"));
     const expectedIdentity = replacedInPlace ? source.value.identity : sourceIdentity;
     if (!sameFile(source.value.identity, expectedIdentity)) {
       return Result.err(unsafePath(`${sourcePath} was replaced while the save started.`));

@@ -176,7 +176,8 @@ const currentVersion = async (documentPath: string): Promise<string | null> => {
 
 /** Whether a writer waited for an editor, and what came of it. */
 export type FlushOutcome =
-  | { type: "none" }
+  /** The lease was free, stale, or held by a holder that does not flush; no one was asked. */
+  | { type: "notAsked" }
   /** The holder released within the wait; `versionBefore` is the file's version when asked. */
   | { type: "flushed"; holder: LockHolder; versionBefore: string | null }
   /** The holder never released; the lease was taken by the ordinary rules (stale, or `force`). */
@@ -215,14 +216,14 @@ export const acquireLeaseForWrite = async ({
   const take = (takeOver: boolean) =>
     acquireLease({ documentPath, txId, owner, force: takeOver, now: new Date() });
   const first = await take(false);
-  if (first.isOk()) return Result.ok({ lease: first.value, flush: { type: "none" } });
+  if (first.isOk()) return Result.ok({ lease: first.value, flush: { type: "notAsked" } });
   if (first.error.code !== FOLIO_CLI_ERROR_CODES.locked) return Result.err(first.error);
   let holder = await flushableHolder(documentPath);
   if (holder === null || flushWaitMs <= 0) {
     if (!force) return Result.err(first.error);
     const forced = await take(true);
     return forced.isOk()
-      ? Result.ok({ lease: forced.value, flush: { type: "none" } })
+      ? Result.ok({ lease: forced.value, flush: { type: "notAsked" } })
       : Result.err(forced.error);
   }
 
