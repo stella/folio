@@ -133,6 +133,9 @@ export type FolioAgentBlock = {
     blockId: string;
     kind: string;
     text: string;
+    displayLabel?: string;
+    headingLevel?: number;
+    listLevel?: number;
     blockTextHash: string;
 };
 
