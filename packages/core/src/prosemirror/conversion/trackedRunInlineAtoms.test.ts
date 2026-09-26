@@ -112,8 +112,11 @@ const documentXml = async (buffer: ArrayBuffer): Promise<string> => {
   return part.async("text");
 };
 
-const elementCount = (xml: string, tag: AtomFixture["xmlTag"] | "fldSimple"): number =>
+const elementCount = (xml: string, tag: AtomFixture["xmlTag"]): number =>
   xml.match(new RegExp(`<w:${tag}(?:[\\s/>])`, "gu"))?.length ?? 0;
+
+const fieldBeginCount = (xml: string): number =>
+  xml.match(/<w:fldChar w:fldCharType="begin"(?:\s[^>]*)?\/>/gu)?.length ?? 0;
 
 const hasUnderline = (xml: string): boolean => /<w:u(?:[\s/>])/u.test(xml);
 
@@ -225,12 +228,14 @@ describe("tracked run inline atom ownership", () => {
       ),
     );
 
-    expect(elementCount(await documentXml(pending), "fldSimple")).toBe(1);
+    const pendingXml = await documentXml(pending);
+    expect(pendingXml).not.toContain("<w:fldSimple");
+    expect(fieldBeginCount(pendingXml)).toBe(1);
     expect(
-      elementCount(await documentXml(await resolveAll(pending, "accept", "deletion")), "fldSimple"),
+      fieldBeginCount(await documentXml(await resolveAll(pending, "accept", "deletion"))),
     ).toBe(0);
     expect(
-      elementCount(await documentXml(await resolveAll(pending, "reject", "deletion")), "fldSimple"),
+      fieldBeginCount(await documentXml(await resolveAll(pending, "reject", "deletion"))),
     ).toBe(1);
   });
 
@@ -268,37 +273,32 @@ describe("tracked run inline atom ownership", () => {
     expect(rejectedXml).toContain(mathXml);
   });
 
-  test("resolves a structured-field carrier after serialize and reopen", async () => {
-    const pending = await createDocx(
-      reviewedFieldDocument(
+  test("rejects a tracked structured-field result while preserving an untracked one", async () => {
+    const field: SimpleField = {
+      type: "simpleField",
+      instruction: " REF field-link \\h ",
+      fieldType: "REF",
+      content: [
         {
-          type: "simpleField",
-          instruction: " REF field-link \\h ",
-          fieldType: "REF",
-          content: [
-            {
-              type: "hyperlink",
-              anchor: "field-link",
-              children: [{ type: "run", content: [{ type: "text", text: "Field value" }] }],
-            },
-          ],
+          type: "hyperlink",
+          anchor: "field-link",
+          children: [{ type: "run", content: [{ type: "text", text: "Field value" }] }],
         },
-        "insertion",
-      ),
-    );
+      ],
+    };
 
-    expect(elementCount(await documentXml(pending), "fldSimple")).toBe(1);
-    expect(
-      elementCount(
-        await documentXml(await resolveAll(pending, "accept", "insertion")),
-        "fldSimple",
-      ),
-    ).toBe(1);
-    expect(
-      elementCount(
-        await documentXml(await resolveAll(pending, "reject", "insertion")),
-        "fldSimple",
-      ),
-    ).toBe(0);
+    // A complex field under w:ins can contain runs, but cannot retain a
+    // structured simple-field result as an atomic revision child.
+    await expect(createDocx(reviewedFieldDocument(field, "insertion"))).rejects.toMatchObject({
+      _tag: "UnrepresentableTrackedSimpleFieldError",
+      contentType: "hyperlink",
+    });
+
+    const untracked = await createDocx(withMainContent([{ type: "paragraph", content: [field] }]));
+    const reviewer = await FolioDocxReviewer.fromBuffer(untracked);
+    expect(reviewer.getChanges()).toHaveLength(0);
+    const savedXml = await documentXml(await reviewer.toBuffer());
+    expect(savedXml).toContain('<w:fldSimple w:instr=" REF field-link \\h ">');
+    expect(savedXml).toContain('<w:hyperlink w:anchor="field-link">');
   });
 });
