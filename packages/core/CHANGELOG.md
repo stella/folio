@@ -1,5 +1,18 @@
 # @stll/folio-core
 
+## 0.50.0
+
+### Minor Changes
+
+- [#1061](https://github.com/stella/folio/pull/1061) [`a37cdab`](https://github.com/stella/folio/commit/a37cdab4c079d0d57bbda6bf44d15670b99241da) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share the headless render path: `buildDocxDisplayList` lays a package out and builds its display list for any backend, `writeDisplayListPdf` writes one, `exportDocxToPdf` accepts `pages` to write a subset, `selectDisplayPages` narrows a display list and re-indexes its links and outline, `renderDisplayListToHtml` serializes the DOM backend's pages to a standalone HTML document with inlined binaries (the DOM backend gains `binaryUrls: "dataUrl"`), and `createFontsourceFaces` routes `@fontsource` faces to the measurer, the PDF writer, and matching `@font-face` rules from caller-supplied file access.
+
+- [#1055](https://github.com/stella/folio/pull/1055) [`8450922`](https://github.com/stella/folio/commit/8450922f8afc1b5fe20a6b0ec7f9c75361a89bea) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `FolioDocxReviewer.save()`, which reports whether the package was written by the selective patch or a full repack (with the reason) and, with `repack: "refuse"`, declines a full repack instead of rewriting every part. Comments a stamped batch creates take the stamp's date, `replyTo` accepts a `date`, and `createReviewerBridge` accepts a `revisionStamp` that it applies to its batches and replies.
+
+### Patch Changes
+
+- Updated dependencies [[`d2fa7cd`](https://github.com/stella/folio/commit/d2fa7cd623b17238d89116aed3fd909549a6c272)]:
+  - @stll/docx-core@0.28.0
+
 ## 0.49.0
 
 ### Minor Changes

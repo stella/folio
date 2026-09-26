@@ -1,5 +1,11 @@
 # @stll/docx-core
 
+## 0.28.0
+
+### Minor Changes
+
+- [#1054](https://github.com/stella/folio/pull/1054) [`d2fa7cd`](https://github.com/stella/folio/commit/d2fa7cd623b17238d89116aed3fd909549a6c272) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `@stll/docx-core/ops`: text and formatting operations on the document model (insert text, delete a range, set run or paragraph properties, split and join paragraphs), addressed by paragraph id and logical offset, each applied deterministically with an exact recorded inverse.
+
 ## 0.27.0
 
 ### Minor Changes

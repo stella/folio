@@ -1,5 +1,16 @@
 # @stll/folio-agents
 
+## 0.14.0
+
+### Minor Changes
+
+- [#1055](https://github.com/stella/folio/pull/1055) [`8450922`](https://github.com/stella/folio/commit/8450922f8afc1b5fe20a6b0ec7f9c75361a89bea) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `FolioDocxReviewer.save()`, which reports whether the package was written by the selective patch or a full repack (with the reason) and, with `repack: "refuse"`, declines a full repack instead of rewriting every part. Comments a stamped batch creates take the stamp's date, `replyTo` accepts a `date`, and `createReviewerBridge` accepts a `revisionStamp` that it applies to its batches and replies.
+
+### Patch Changes
+
+- Updated dependencies [[`a37cdab`](https://github.com/stella/folio/commit/a37cdab4c079d0d57bbda6bf44d15670b99241da), [`8450922`](https://github.com/stella/folio/commit/8450922f8afc1b5fe20a6b0ec7f9c75361a89bea)]:
+  - @stll/folio-core@0.50.0
+
 ## 0.13.9
 
 ### Patch Changes

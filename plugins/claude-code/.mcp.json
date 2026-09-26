@@ -2,7 +2,7 @@
   "mcpServers": {
     "folio": {
       "command": "npx",
-      "args": ["-y", "@stll/folio-cli@0.0.0", "mcp", "--root", "${CLAUDE_PROJECT_DIR}"],
+      "args": ["-y", "@stll/folio-cli@0.1.0", "mcp", "--root", "${CLAUDE_PROJECT_DIR}"],
       "env": {
         "FOLIO_AUTHOR": "${user_config.author}"
       }
