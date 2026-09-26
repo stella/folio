@@ -33,7 +33,9 @@
     "./src/bin.ts"
   ],
   "exports": {
-    ".": "./src/cli.ts"
+    ".": "./src/cli.ts",
+    "./editor-lease": "./src/editor-lease.ts",
+    "./save": "./src/save.ts"
   },
   "publishConfig": {
     "access": "public"

@@ -11,7 +11,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, type FileHandle } from "node:fs/promises";
 import path from "node:path";
 
-import { errnoCode, NO_FOLLOW, type FileIdentity } from "./document";
+import { errnoCode, NO_FOLLOW, type FileIdentity } from "./file-system";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 
 export const SIDECAR_DIRECTORY = ".folio";

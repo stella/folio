@@ -53,7 +53,7 @@ const idSourceOf = ({ idStability }: FolioAIBlock): FolioBlockIdSource =>
 
 type BlockIdSources = ReadonlyMap<string, FolioBlockIdSource>;
 
-const blockIdSources = (reviewer: FolioDocxReviewer): BlockIdSources =>
+export const blockIdSources = (reviewer: FolioDocxReviewer): BlockIdSources =>
   new Map(reviewer.snapshot().blocks.map((block) => [block.id, idSourceOf(block)]));
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

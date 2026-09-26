@@ -23,9 +23,9 @@ import path from "node:path";
 import { escapeHtmlText } from "@stll/folio-core/display-list/html/renderDisplayListToHtml";
 
 import { readDocumentFile } from "./document";
-import { journalPathFor } from "./journal";
+import { latestCommitFor } from "./journal";
 import { buildDisplayList, displayListHtml } from "./render";
-import { inspectPath, readSidecarFile, SIDECAR_DIRECTORY } from "./sidecar";
+import { SIDECAR_DIRECTORY } from "./sidecar";
 
 export const PREVIEW_HOST = "127.0.0.1";
 
@@ -49,26 +49,6 @@ type FileStamp = { size: number; modifiedMs: number; ino: number };
 type Rendered =
   | { type: "page"; fileVersion: string; html: string; pageCount: number; pageWidthPx: number }
   | { type: "error"; fileVersion: string | null; message: string };
-
-/** The latest `toVersion` the journal committed for this document, if any. */
-const journalToVersion = async (documentPath: string): Promise<string | null> => {
-  const journalPath = journalPathFor(documentPath, undefined);
-  // Read only through a plain `.folio` directory; the preview never creates one.
-  const parent = await inspectPath(path.dirname(journalPath));
-  if (parent.isErr() || parent.value.type !== "directory") return null;
-  const bytes = await readSidecarFile(journalPath);
-  if (bytes.isErr()) return null;
-  const lines = new TextDecoder().decode(bytes.value).split("\n");
-  for (let index = lines.length - 1; index >= 0; index--) {
-    const parsed = Result.try((): unknown => JSON.parse(lines[index] ?? ""));
-    if (!parsed.isOk() || typeof parsed.value !== "object" || parsed.value === null) continue;
-    const entry: Record<string, unknown> = { ...parsed.value };
-    if (entry["type"] === "commit" && entry["path"] === documentPath) {
-      return typeof entry["toVersion"] === "string" ? entry["toVersion"] : null;
-    }
-  }
-  return null;
-};
 
 const SHELL_STYLE =
   "html, body { margin: 0; height: 100%; overflow: hidden; background: #e8e8e8; } iframe { border: 0; width: 100%; height: 100%; display: block; }";
@@ -258,7 +238,7 @@ export const startPreviewServer = async ({
         JSON.stringify({
           path: realPath,
           fileVersion: page.fileVersion,
-          journalToVersion: await journalToVersion(realPath),
+          journalToVersion: (await latestCommitFor(realPath))?.toVersion ?? null,
           ...(page.type === "page"
             ? { pageCount: page.pageCount, pageWidthPx: page.pageWidthPx }
             : { error: page.message }),

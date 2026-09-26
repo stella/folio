@@ -341,6 +341,13 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
   },
   cli: {
     "@stll/folio-cli": ["runFolioCli"],
+    "@stll/folio-cli/editor-lease": [
+      "acquireEditorLease",
+      "keepEditorLeaseAlive",
+      "watchFlushRequests",
+      "acquireLeaseForWrite",
+    ],
+    "@stll/folio-cli/save": ["saveDocumentBytes"],
   },
   vue: {
     "@stll/folio-vue": ["DocxEditor", "createDocx", "useWheelZoom", "i18nPlugin"],

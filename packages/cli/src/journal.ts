@@ -195,6 +195,59 @@ export const findCommit = async (
   return Result.ok(found);
 };
 
+/** The newest commit the journal records for one document. */
+export type LatestCommit = {
+  txId: string;
+  tool: string;
+  author: string;
+  time: string;
+  fromVersion: string;
+  toVersion: string;
+};
+
+const parseLatest = (value: Record<string, unknown>): LatestCommit | null => {
+  const { txId, tool, author, time, fromVersion, toVersion } = value;
+  return typeof txId === "string" &&
+    typeof tool === "string" &&
+    typeof author === "string" &&
+    typeof time === "string" &&
+    typeof fromVersion === "string" &&
+    typeof toVersion === "string"
+    ? { txId, tool, author, time, fromVersion, toVersion }
+    : null;
+};
+
+/**
+ * The newest commit to `documentPath` in its journal (default
+ * `.folio/journal.jsonl` beside it) that recovery did not discard, or
+ * `null`. Reads only through a plain `.folio` directory and never creates
+ * one, so a read-only preview can call it.
+ */
+export const latestCommitFor = async (
+  documentPath: string,
+  journalPath?: string,
+): Promise<LatestCommit | null> => {
+  const journal = journalPathFor(documentPath, journalPath);
+  const parent = await inspectPath(path.dirname(journal));
+  if (parent.isErr() || parent.value.type !== "directory") return null;
+  const bytes = await readSidecarFile(journal);
+  if (bytes.isErr()) return null;
+  const lines = new TextDecoder().decode(bytes.value).split("\n");
+  const discarded = new Set<unknown>();
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const parsed = Result.try((): unknown => JSON.parse(lines[index] ?? ""));
+    if (!parsed.isOk() || !isRecord(parsed.value)) continue;
+    const entry = parsed.value;
+    if (entry["path"] !== documentPath) continue;
+    if (entry["type"] === "recovery" && entry["action"] === "discarded") {
+      discarded.add(entry["txId"]);
+    } else if (entry["type"] === "commit" && !discarded.has(entry["txId"])) {
+      return parseLatest(entry);
+    }
+  }
+  return null;
+};
+
 export const stagePrefixFor = (documentPath: string): string =>
   `.${path.basename(documentPath)}.folio-stage-`;
 
