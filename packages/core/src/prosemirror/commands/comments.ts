@@ -17,7 +17,11 @@ import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
 import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
-import { markParagraphPropertySourceTransfers } from "../../docx/paragraphPropertySource";
+import {
+  getProseParagraphPropertySourceToken,
+  PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR,
+  markParagraphPropertySourceTransfers,
+} from "../../docx/paragraphPropertySource";
 
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
 import type { RunPropertyChange } from "../../types/document";
@@ -76,6 +80,7 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "./propertyChangeScope";
+import { joinParagraphsAcrossBookmarks } from "./paragraphBookmarkJoin";
 
 /**
  * Add a comment mark to the current selection.
@@ -515,7 +520,15 @@ function resolveChange(
           continue;
         }
         const joinPos = mappedPos + paragraph.nodeSize;
-        const nextNode = joinPos < tr.doc.content.size ? tr.doc.nodeAt(joinPos) : null;
+        let nextPos = joinPos;
+        const boundaries: PMNode[] = [];
+        while (nextPos < tr.doc.content.size) {
+          const boundary = tr.doc.nodeAt(nextPos);
+          if (boundary?.type.name !== "blockBookmarkBoundary") break;
+          boundaries.push(boundary);
+          nextPos += boundary.nodeSize;
+        }
+        const nextNode = nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
         if (!joinable) {
           // Nothing to join with: the next sibling is a table, or the paragraph
@@ -573,7 +586,40 @@ function resolveChange(
         // away removes its section endpoint, so the joined paragraph keeps
         // only a section endpoint already owned by the following paragraph.
         try {
-          joinAtParagraphMark({ tr, paragraphPos: mappedPos, paragraph, next: nextNode });
+          if (boundaries.length > 0) {
+            const emptyFirstParagraph = holdsNoContent(paragraph);
+            const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
+            const joinedAttrs = {
+              ...formattingOwner.attrs,
+              pPrMark: nextNode.attrs["pPrMark"],
+              _sectionProperties: nextNode.attrs["_sectionProperties"],
+            };
+            const leftToken = getProseParagraphPropertySourceToken(paragraph);
+            const rightToken = getProseParagraphPropertySourceToken(nextNode);
+            const joined = joinParagraphsAcrossBookmarks({
+              first: paragraph,
+              boundaries,
+              second: nextNode,
+              owner: formattingOwner,
+              attrs: {
+                ...joinedAttrs,
+                ...(emptyFirstParagraph && {
+                  [PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR]: rightToken ?? null,
+                }),
+              },
+            });
+            if (!joined) continue;
+            tr.replaceWith(mappedPos, nextPos + nextNode.nodeSize, joined);
+            if (emptyFirstParagraph)
+              markParagraphPropertySourceTransfers(tr, [
+                {
+                  displacedToken: typeof leftToken === "string" ? leftToken : null,
+                  selectedToken: typeof rightToken === "string" ? rightToken : null,
+                },
+              ]);
+          } else {
+            joinAtParagraphMark({ tr, paragraphPos: mappedPos, paragraph, next: nextNode });
+          }
           if (ownsSectionEndpoint(paragraph)) {
             removedSectionEndpointCount++;
             removedSectionReferences.push(...sectionReferencesOf(paragraph));
