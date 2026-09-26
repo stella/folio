@@ -377,12 +377,13 @@ test.describe("lists", () => {
       });
 
     // Switching resolves a numbered definition instead of relying on a conventional id.
+    // A numbered level states no bullet flag, as an imported one does.
     await clickToolbarButton(page, "Numbered List");
     await expect
       .poll(() => caretParagraphListState(page))
       .toMatchObject({
         numPr: { kind: "reference" },
-        listIsBullet: false,
+        listIsBullet: null,
       });
 
     // Clicking the already-active numbered-list button clears list formatting.

@@ -268,13 +268,10 @@ test.describe("list autoformat", () => {
 
     await page.keyboard.type("- ");
 
+    // A new list: whichever instance the document defines for it, at level 0.
     await expect
       .poll(async () => (await caretParagraph(page))?.numPr)
-      .toEqual({
-        kind: "reference",
-        numId: 1,
-        ilvl: 0,
-      });
+      .toMatchObject({ kind: "reference", ilvl: 0 });
     expect((await caretParagraph(page))?.text).toBe(before?.text);
 
     await page.keyboard.press("Backspace");
