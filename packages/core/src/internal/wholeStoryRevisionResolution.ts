@@ -280,7 +280,9 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     if (paragraph === null) {
       // Break the loop's inference cycle through filler, paragraph, and chain.
       const hasSibling: boolean = index + reversed.length + (chain ? 1 : 0) > 0;
-      const filler = hasSibling ? null : node.type.schema.nodes["paragraph"]?.createAndFill();
+      const filler: PMNode | null | undefined = hasSibling
+        ? null
+        : node.type.schema.nodes["paragraph"]?.createAndFill();
       context.replacements.push({
         from: entry.position,
         to: entry.position + entry.original.nodeSize,
@@ -344,7 +346,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       removedEndpoint(paragraph, context);
       continue;
     }
-    const resolved = marker
+    const resolved: PMNode = marker
       ? rebuild(paragraph, { attrs: { ...paragraph.attrs, pPrMark: null } })
       : paragraph;
     chain = {
