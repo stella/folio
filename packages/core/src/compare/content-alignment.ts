@@ -657,10 +657,15 @@ const GAP_PAIR_SIMILARITY_THRESHOLD = 0.5;
 
 type GapBlockTokens = { counts: ReadonlyMap<string, number>; total: number };
 
+/**
+ * Words as case-folded runs of letters, marks and digits: punctuation glued to
+ * a word ("paragraph." against "paragraph") and a capital at a sentence start
+ * would otherwise count a kept word as changed.
+ */
 const gapBlockTokens = (text: string): GapBlockTokens => {
   const counts = new Map<string, number>();
   let total = 0;
-  for (const match of text.matchAll(/\S+/gu)) {
+  for (const match of text.toLowerCase().matchAll(/[\p{L}\p{M}\p{N}]+/gu)) {
     total += 1;
     counts.set(match[0], (counts.get(match[0]) ?? 0) + 1);
   }
@@ -674,8 +679,14 @@ const gapBlockSimilarity = (
   revised: GapBlockTokens,
   workSession: FolioContentAlignmentWorkSession,
 ): GapSimilarity => {
+  // A block without words (an empty paragraph) offers no wording to weigh, so
+  // it pairs at the threshold: filling an empty paragraph keeps its mark,
+  // where a deletion beside an insertion would leave a blank one behind.
+  if (base.total === 0 && revised.total === 0) {
+    return { status: "measured", value: 1 };
+  }
   if (base.total === 0 || revised.total === 0) {
-    return { status: "measured", value: 0 };
+    return { status: "measured", value: GAP_PAIR_SIMILARITY_THRESHOLD };
   }
   const [tokens, counterparts] =
     base.counts.size <= revised.counts.size
