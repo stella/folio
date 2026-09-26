@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { StepMap } from "prosemirror-transform";
 
-import { indexedPositionMap } from "./revisionResolutionTracking";
+import { indexedPositionMap } from "./indexedPositionMap";
 
 test("indexed position mapping matches StepMap at every changed boundary", () => {
   fc.assert(

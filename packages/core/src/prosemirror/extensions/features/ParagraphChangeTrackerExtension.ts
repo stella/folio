@@ -18,11 +18,11 @@ import {
 } from "prosemirror-transform";
 import type { Mapping } from "prosemirror-transform";
 
+import { indexedPositionMap } from "../../../internal/indexedPositionMap";
 import type {
   RemovedSectionReference,
   TrackedSectionEndpointRemoval,
 } from "../../../internal/sectionEndpointResolution";
-import { indexedPositionMap } from "../../../internal/revisionResolutionTracking";
 import { canonicalJson } from "../../../utils/canonicalJson";
 import { sectionPropertiesOf } from "../../sectionCarrier";
 import { createExtension } from "../create";
