@@ -1,5 +1,11 @@
 # @stll/folio-cli
 
+## 0.1.1
+
+### Patch Changes
+
+- [#1068](https://github.com/stella/folio/pull/1068) [`a16deb9`](https://github.com/stella/folio/commit/a16deb9c4137c348d022e467c0e0f1d67323ae81) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The VS Code extension shows the stella logo in the Marketplace and the Extensions view.
+
 ## 0.1.0
 
 ### Minor Changes
