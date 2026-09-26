@@ -762,11 +762,50 @@ already-built document.
 Tree construction uses fixed linear passes; indexed mapping and table-width
 removal add logarithmic factors. The per-change fragment copies are gone.
 
-Timing measurements are pending a serialized run. Earlier samples overlapped
-other benchmark processes under extreme host load and are discarded; they do
-not support performance claims. The microbenchmark remains available at
-`packages/core/scripts/benchmark-resolve-all.ts` and measures the editor command
-plus transaction application with history and paragraph tracking enabled.
+The corrected granular reference and optimized implementation ran consecutively
+under the machine-wide benchmark lock, one process at a time. Each case's before
+run immediately precedes its after run. The batch waited for host load below 40;
+load fell from 38.04 to 14.90 during measurement on eight logical CPUs, with no
+competing benchmark workers detected at the boundaries. CPU time is the primary
+comparison on this shared host. Earlier overlapping samples and the partial run
+that failed its load guard are discarded.
+
+`packages/core/scripts/benchmark-resolve-all.ts` measures the editor command plus
+transaction application with history and paragraph tracking enabled. There are
+two changes per paragraph. Results below are the upper median of four samples
+after one warm-up; wall and process CPU (user + system) are summarized separately.
+
+| Paragraphs | Command | CPU before (ms) | CPU after (ms) | Wall before (ms) | Wall after (ms) | Steps before → after |
+| ---------- | ------- | --------------- | -------------- | ---------------- | --------------- | -------------------- |
+| 250        | accept  | 29.6            | 18.2           | 17.0             | 9.1             | 500 → 1              |
+| 250        | reject  | 17.0            | 12.1           | 17.0             | 5.8             | 500 → 1              |
+| 1,000      | accept  | 198.0           | 46.3           | 241.6            | 32.1            | 2,000 → 1            |
+| 1,000      | reject  | 182.0           | 37.6           | 176.8            | 23.3            | 2,000 → 1            |
+| 2,200      | accept  | 674.8           | 53.6           | 796.1            | 58.2            | 4,400 → 1            |
+| 2,200      | reject  | 636.7           | 40.8           | 706.6            | 91.5            | 4,400 → 1            |
+| 4,400      | accept  | 2,676.0         | 80.7           | 3,064.9          | 84.7            | 8,800 → 1            |
+| 4,400      | reject  | 3,167.6         | 76.6           | 4,834.4          | 113.7           | 8,800 → 1            |
+
+The comparison benchmark uses `--quick`: median of three measurements after one
+warm-up. Both products retain identical digests and pass all applicable invariants.
+
+| Configuration        | Apply wall before (ms) | Apply wall after (ms) | Total wall before (ms) | Total wall after (ms) |
+| -------------------- | ---------------------- | --------------------- | ---------------------- | --------------------- |
+| `prose/l/structural` | 3,971.1                | 1,015.2               | 4,183.1                | 1,869.4               |
+| `prose/l/heavy`      | 3,208.4                | 2,562.4               | 3,897.9                | 5,831.9               |
+
+Whole-command `/usr/bin/time -l` includes warm-up, measurements, invariant checks,
+and child processes, so its CPU totals are not per-comparison medians:
+
+| Configuration        | Command CPU before (s) | Command CPU after (s) | Command wall before (s) | Command wall after (s) |
+| -------------------- | ---------------------- | --------------------- | ----------------------- | ---------------------- |
+| `prose/l/structural` | 39.15                  | 27.89                 | 43.45                   | 28.21                  |
+| `prose/l/heavy`      | 51.96                  | 45.49                 | 71.65                   | 51.76                  |
+
+CPU totals improve in both cases, but the heavy comparison's median wall time
+increases. These shared-host samples do not establish a consistent end-to-end
+wall-time improvement. The direct command measurements and step counts isolate
+the bulk-resolution gain.
 
 The focused suite passes 169 tests. Its equivalence test exercises all 69
 applicable small-corpus configurations, including body, headers, footers,
@@ -775,7 +814,11 @@ replay with the retained range commands. Focused properties cover tracker state,
 selection, undo, paragraph joins, table topology, required-content fitting, and
 nested revisions.
 
-Paired structural and heavy cases retain identical before/after digests and pass
-the available invariants. The full corrected-baseline digest comparison remains
-incomplete; note, graphic, field, and bookmark defects are isolated in separate
-fixes. The local .NET schema validator was unavailable.
+The corrected granular and bulk resolver runs match every buffer and change-list
+digest across all 207 applicable corpus configurations. All applicable invariants
+pass, including Open XML SDK validation with .NET 8. The 117 other configurations
+are inapplicable; only the 27 identical-input cases skip the difference check.
+
+The reference and optimized runs include the same separate note, graphic, field,
+fixture-schema, and bookmark repairs. The refreshed digest manifest is isolated
+in #1101; it updates 173 stale entries without adding or removing cases.
