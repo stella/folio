@@ -261,7 +261,7 @@ describe("flush handshake", () => {
     expect(waited).toBeGreaterThanOrEqual(300);
     expect(waited).toBeLessThan(10_000);
     expect(await versionOf(file)).toBe(read);
-    expect(await readdir(dir)).toEqual([".contract.docx.folio-lock", "contract.docx"]);
+    expect((await readdir(dir)).toSorted()).toEqual([".contract.docx.folio-lock", "contract.docx"]);
     expect((await editor.verify()).isOk()).toBe(true);
   });
 
