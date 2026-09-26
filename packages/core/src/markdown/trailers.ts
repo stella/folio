@@ -30,12 +30,12 @@ export function appendTrailers(ctx: RenderContext, doc: Document, body: string):
   const sections: string[] = body.trim() ? [body] : [];
 
   if (ctx.footnoteRefs.length > 0) {
-    const refs = ctx.footnoteRefs.map(({ refId, markerNumber, kind }) => {
+    const refs = ctx.footnoteRefs.map(({ refId, marker, kind }) => {
       const note =
         kind === "endnote"
           ? doc.package.endnotes?.find((n) => n.id === refId)
           : doc.package.footnotes?.find((f) => f.id === refId);
-      return `[^${markerNumber}]: ${note ? noteText(ctx, doc, note) : ""}`;
+      return `${marker}: ${note ? noteText(ctx, doc, note) : ""}`;
     });
     sections.push(refs.join("\n"));
   }

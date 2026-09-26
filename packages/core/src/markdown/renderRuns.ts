@@ -30,7 +30,7 @@ import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
 import { registerImage } from "./images";
 import { getHyperlinkRuns } from "../docx/hyperlinkParser";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
-import { pushWarning } from "./internals";
+import { numberNoteReference, pushWarning } from "./internals";
 import type { RenderContext } from "./types";
 
 /**
@@ -159,13 +159,11 @@ function renderRunContent(
         if (ctx.opts.footnotes === "strip") {
           break;
         }
-        const markerNumber = ctx.footnoteRefs.length + 1;
-        ctx.footnoteRefs.push({
-          refId: item.id,
-          markerNumber,
-          kind: item.type === "endnoteRef" ? "endnote" : "footnote",
-        });
-        out += `[^${markerNumber}]`;
+        out += numberNoteReference(
+          ctx,
+          item.type === "endnoteRef" ? "endnote" : "footnote",
+          item.id,
+        ).marker;
         break;
       }
       case "drawing": {

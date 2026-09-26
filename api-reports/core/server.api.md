@@ -526,6 +526,11 @@ export type FolioAIBlockStructuralBoundary = {
     type: "pageBreak";
     offset: number;
     clear?: import__stll_docx_core_model.BreakContent["clear"];
+} | {
+    type: "noteReference";
+    noteType: "footnote" | "endnote";
+    offset: number;
+    length: number;
 };
 
 // @public (undocumented)

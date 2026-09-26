@@ -36,7 +36,16 @@ import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphP
 import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { splitsSurrogatePair } from "./character-boundaries";
-import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
+import {
+  buildCleanBlockText,
+  type CleanBlockText,
+  type CleanTextStructuralBoundary,
+} from "./clean-text";
+import {
+  createNoteReferenceLabeler,
+  type NoteReferenceLabeler,
+  type NoteReferenceLabels,
+} from "./note-references";
 import type {
   FolioAIBlock,
   FolioAIBlockAnchor,
@@ -382,16 +391,27 @@ const EMPTY_FOLIO_AI_BLOCK_STRUCTURAL_BOUNDARY_HASH = hashFolioAIBlockText(
 );
 
 /**
- * Canonical public projection of the clean view's zero-width structure.
+ * Canonical public projection of the clean view's inline structure.
  *
  * A field boundary stays internal: it marks text the reader already sees, so it
- * belongs to range resolution rather than to a block's published structure.
+ * belongs to range resolution rather than to a block's published structure. A
+ * note reference is published: its marker reads like text, and a reader has to
+ * be able to tell it is not.
  */
 export const projectFolioAIBlockStructuralBoundaries = ({
   structuralBoundaries,
 }: Pick<CleanBlockText, "structuralBoundaries">): readonly FolioAIBlockStructuralBoundary[] => {
   let projected: FolioAIBlockStructuralBoundary[] | undefined;
   for (const boundary of structuralBoundaries) {
+    if (boundary.type === "noteReference") {
+      (projected ??= []).push({
+        type: "noteReference",
+        noteType: boundary.noteType,
+        offset: boundary.offset,
+        length: boundary.length,
+      });
+      continue;
+    }
     if (boundary.type !== "pageBreakRun" || !boundary.presentInCleanView) {
       continue;
     }
@@ -480,6 +500,35 @@ type AncestorPathEntry = { node: PMNode; start: number; end: number; index: numb
  */
 export const isHiddenTableRow = (node: PMNode): boolean =>
   node.type.name === TABLE_ROW_NODE_NAME && node.attrs["hidden"] === true;
+
+const noteReferenceLabelsByStory = new WeakMap<PMNode, NoteReferenceLabels>();
+
+/**
+ * The marker every footnote/endnote reference of a story reads as: numbered in
+ * reading order over the blocks {@link createFolioAIEditSnapshot} reads (a
+ * hidden row's references are as absent as its text), so the applier, the
+ * range resolvers and the snapshot all read the same text.
+ */
+export const collectNoteReferenceLabels = (doc: PMNode): NoteReferenceLabels => {
+  // A document node is immutable, so its numbering is too.
+  const cached = noteReferenceLabelsByStory.get(doc);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const labeler = createNoteReferenceLabeler();
+  doc.descendants((node) => {
+    if (isHiddenTableRow(node)) {
+      return false;
+    }
+    if (node.isTextblock) {
+      labeler.numberBlock(node);
+      return false;
+    }
+    return true;
+  });
+  noteReferenceLabelsByStory.set(doc, labeler);
+  return labeler;
+};
 
 /** One table of a story, numbered the way {@link createFolioAIEditSnapshot} numbers it. */
 export type FolioStoryTable = {
@@ -596,6 +645,10 @@ const createFolioAIEditSnapshotInternal = (
   // Resolved once: the walk below classifies every block, and the index is
   // what lets a localized heading style reach the model as a heading.
   const builtInStyles = styleResolver?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
+  // Numbered block by block as the walk reads them, so each reference marker
+  // carries the number the page shows (and the Markdown export writes), not the
+  // package id; the same numbering `collectNoteReferenceLabels` gives.
+  const noteReferences: NoteReferenceLabeler = createNoteReferenceLabeler();
   const draftBlocks: {
     block: FolioAIBlock;
     anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
@@ -642,7 +695,8 @@ const createFolioAIEditSnapshotInternal = (
     // mid-edit and write find/replace operations against that
     // confused string. Apply uses the same clean view to resolve
     // operation positions, so the offsets stay consistent.
-    const cleanBlock = buildCleanBlockText(node, pos);
+    noteReferences.numberBlock(node);
+    const cleanBlock = buildCleanBlockText(node, pos, { fieldResults: "text", noteReferences });
     const { text } = cleanBlock;
     const structuralBoundaries = projectFolioAIBlockStructuralBoundaries(cleanBlock);
     const structuralBoundaryHash =
@@ -900,20 +954,34 @@ const getPreviewRuns = ({
   let cleanOffset = 0;
 
   node.descendants((child, relativePosition) => {
-    const text = child.isText ? child.text : runFormattingInlineAtomCleanText(child);
+    const start = nodeFrom + 1 + relativePosition;
+    // A note reference previews as the marker the clean text shows for it.
+    const noteReference = cleanBlock.structuralBoundaries.find(
+      (boundary): boundary is Extract<CleanTextStructuralBoundary, { type: "noteReference" }> =>
+        boundary.type === "noteReference" && boundary.from === start,
+    );
+    let text: string | null | undefined;
+    if (noteReference !== undefined) {
+      text = cleanBlock.text.slice(
+        noteReference.offset,
+        noteReference.offset + noteReference.length,
+      );
+    } else {
+      text = child.isText ? child.text : runFormattingInlineAtomCleanText(child);
+    }
     if (text === undefined || text === null || text.length === 0) return true;
     if (
       child.marks.some((mark) => mark.type.name === DELETION_MARK || mark.type.name === HIDDEN_MARK)
     ) {
       return false;
     }
-    const start = nodeFrom + 1 + relativePosition;
     while ((cleanBlock.offsets[cleanOffset] ?? Number.POSITIVE_INFINITY) < start) {
       cleanOffset++;
     }
-    // A text node advances one PM position per character; an atom holds all of
-    // its characters at its own single position.
-    const lastCharacterPosition = child.isText ? start + text.length - 1 : start;
+    // A text node advances one PM position per character; an atom, and a note
+    // reference's marker, hold all of their characters at one position.
+    const lastCharacterPosition =
+      child.isText && noteReference === undefined ? start + text.length - 1 : start;
     if (
       cleanBlock.offsets[cleanOffset] !== start ||
       cleanBlock.offsets[cleanOffset + text.length - 1] !== lastCharacterPosition

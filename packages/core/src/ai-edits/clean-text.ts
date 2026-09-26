@@ -6,6 +6,13 @@ import {
   runFormattingInlineControlCharacter,
 } from "../prosemirror/runFormattingInlineCarriers";
 import type { PageBreakRunAttrs } from "../prosemirror/schema/nodes";
+import {
+  createNoteReferenceNumbering,
+  noteReferenceMarker,
+  type NoteReferenceKind,
+  type NoteReferenceNumbering,
+} from "../utils/noteReferenceLabels";
+import { noteReferenceOf, type NoteReferenceLabels } from "./note-references";
 
 /**
  * "Post-tracked-changes" view of a textblock: the string the user
@@ -65,6 +72,21 @@ export type CleanTextStructuralBoundary =
       length: number;
       from: number;
       to: number;
+    }
+  | {
+      /**
+       * A footnote or endnote reference, read as its marker (`[^1]`). The
+       * marker is not text: a range may start or end at its edges but never
+       * inside it, and no text change may rewrite or remove it.
+       */
+      type: "noteReference";
+      offset: number;
+      /** Characters the marker contributes. */
+      length: number;
+      from: number;
+      to: number;
+      noteType: NoteReferenceKind;
+      noteId: string;
     };
 
 const EMPTY_CLEAN_TEXT_STRUCTURAL_BOUNDARIES: readonly CleanTextStructuralBoundary[] =
@@ -118,7 +140,7 @@ export const resolveCleanTextRange = ({
   let from = baseFrom;
   let to = baseTo;
   for (const boundary of structuralBoundaries) {
-    if (boundary.type === "field") {
+    if (boundary.type === "field" || boundary.type === "noteReference") {
       if (cutsIntoSpan(boundary, startOffset) || cutsIntoSpan(boundary, endOffset)) {
         return null;
       }
@@ -157,20 +179,80 @@ export type BuildCleanBlockTextOptions = {
    * offsets that locate it.
    */
   fieldResults: "text" | "omitted";
+  /**
+   * How a footnote/endnote reference reads. Labels numbered over the whole
+   * story (`collectNoteReferenceLabels`) give the marker every other reader
+   * shows; without them a block numbers its own references. `"sourceText"` is
+   * the editor's own text for the reference, which only a comparison of two
+   * documents' editor text wants.
+   */
+  noteReferences?: NoteReferenceLabels | "sourceText";
 };
 
 const DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS: BuildCleanBlockTextOptions = { fieldResults: "text" };
 
+/**
+ * The marker a reference reads as: the story's number when the labels know
+ * the note, else the next number of a block-local sequence.
+ */
+const noteReferenceLabelFor = (
+  node: PMNode,
+  labels: NoteReferenceLabels | undefined,
+  local: () => NoteReferenceNumbering,
+): string | null => {
+  const reference = noteReferenceOf(node);
+  if (reference === null) {
+    return null;
+  }
+  const known = labels?.labelOf(reference);
+  if (known !== undefined) {
+    return known;
+  }
+  const { displayNumber } = local().next(reference.noteType, reference.noteId);
+  return noteReferenceMarker(reference.noteType, displayNumber);
+};
+
 export const buildCleanBlockText = (
   blockNode: PMNode,
   blockFrom: number,
-  { fieldResults }: BuildCleanBlockTextOptions = DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS,
+  {
+    fieldResults,
+    noteReferences,
+  }: BuildCleanBlockTextOptions = DEFAULT_BUILD_CLEAN_BLOCK_TEXT_OPTIONS,
 ): CleanBlockText => {
   let text = "";
   const offsets: number[] = [];
   let structuralBoundaries: CleanTextStructuralBoundary[] | undefined;
   let lastEnd = blockFrom + 1;
+  const labels = noteReferences === "sourceText" ? undefined : noteReferences;
+  let localNumbering: NoteReferenceNumbering | undefined;
+  const local = () => (localNumbering ??= createNoteReferenceNumbering());
   blockNode.descendants((node, pos) => {
+    if (noteReferences !== "sourceText" && node.isText && !isOmittedFromCleanView(node)) {
+      const reference = noteReferenceOf(node);
+      const label = reference === null ? null : noteReferenceLabelFor(node, labels, local);
+      if (reference !== null && label !== null) {
+        const from = blockFrom + 1 + pos;
+        const to = from + node.nodeSize;
+        (structuralBoundaries ??= []).push({
+          type: "noteReference",
+          offset: text.length,
+          length: label.length,
+          from,
+          to,
+          noteType: reference.noteType,
+          noteId: reference.noteId,
+        });
+        // Like a field result: every character of the marker anchors at the
+        // reference itself, so no offset inside it names a document position.
+        for (let index = 0; index < label.length; index++) {
+          offsets.push(from);
+        }
+        text += label;
+        lastEnd = to;
+        return false;
+      }
+    }
     if (node.type.name === "pageBreakRun") {
       const from = blockFrom + 1 + pos;
       const { clear } = expectPageBreakRunAttrs(node);
@@ -255,12 +337,27 @@ export const buildCleanBlockText = (
  *
  * This is the view a consumer embeds when it wants the model to reason about
  * the redline itself, in contrast to {@link buildCleanBlockText}'s
- * post-tracked-changes view.
+ * post-tracked-changes view. A footnote or endnote reference reads as its
+ * marker (`[^1]`), numbered within the block.
  */
-export const buildAnnotatedBlockText = (blockNode: PMNode): string => {
+export const buildAnnotatedBlockText = (blockNode: PMNode): string =>
+  buildAnnotatedBlockTextWithNoteReferences(blockNode, undefined);
+
+/**
+ * {@link buildAnnotatedBlockText} with a story's reference numbering, so a
+ * reference reads as the marker every other reader of the story shows.
+ */
+export const buildAnnotatedBlockTextWithNoteReferences = (
+  blockNode: PMNode,
+  noteReferences: NoteReferenceLabels | undefined,
+): string => {
   const segments: { annotation: RunAnnotation; text: string }[] = [];
+  let localNumbering: NoteReferenceNumbering | undefined;
+  const local = () => (localNumbering ??= createNoteReferenceNumbering());
   blockNode.descendants((node) => {
-    const text = node.isText ? node.text : runFormattingInlineAtomCleanText(node);
+    const text = node.isText
+      ? (noteReferenceLabelFor(node, noteReferences, local) ?? node.text)
+      : runFormattingInlineAtomCleanText(node);
     if (text === undefined || text === null) {
       return true;
     }

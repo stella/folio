@@ -195,7 +195,7 @@ const atomBlockOf = (
   { node, from }: TextBlock,
   fieldResults: BuildCleanBlockTextOptions["fieldResults"],
 ): AtomBlock => {
-  const clean = buildCleanBlockText(node, from, { fieldResults });
+  const clean = buildCleanBlockText(node, from, { fieldResults, noteReferences: "sourceText" });
   const supported: InlineAtom[] = [];
   const unsupportedTopology: { offset: number; key: string }[] = [];
   node.descendants((child, relativePosition) => {
@@ -503,7 +503,10 @@ const sameParagraphSourcePosition = ({
   if (typeof paraId !== "string" || paraId.length === 0) return null;
   const source = sourceBlocks.get(paraId);
   if (!source || source.node.type !== reviewed.node.type) return null;
-  const clean = buildCleanBlockText(source.node, source.from, { fieldResults });
+  const clean = buildCleanBlockText(source.node, source.from, {
+    fieldResults,
+    noteReferences: "sourceText",
+  });
   return clean.text === reviewed.cleanText ? (clean.offsets[offset] ?? null) : null;
 };
 

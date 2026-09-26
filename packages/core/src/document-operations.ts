@@ -1710,6 +1710,7 @@ const recoveryByReason = {
   payloadDoesNotFit: "changeTarget",
   overlappingOperation: "refreshDocument",
   splitsCharacter: "changeTarget",
+  protectedReference: "narrowMatch",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (
@@ -1734,7 +1735,9 @@ export const getFolioDocumentOperationIssues = (
         reason !== "pendingRunPropertyChange" &&
         // The same values never fit the same target; only a changed operation
         // can succeed.
-        reason !== "payloadDoesNotFit",
+        reason !== "payloadDoesNotFit" &&
+        // A marker-cutting edit stays blocked until the match is narrowed.
+        reason !== "protectedReference",
       recovery: recoveryByReason[reason],
       ...(message !== undefined && { message }),
     };

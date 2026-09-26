@@ -9,6 +9,12 @@
 import { createBuiltInStyleIndex } from "../docx/builtInStyles";
 import { createListLabelCounter } from "../prosemirror/listLabels";
 import type { StyleDefinitions } from "../types/document";
+import {
+  createNoteReferenceNumbering,
+  noteReferenceMarker,
+  noteReferenceToken,
+  type NoteReferenceKind,
+} from "../utils/noteReferenceLabels";
 import type { MarkdownOptions, RenderContext } from "./types";
 
 /**
@@ -37,6 +43,7 @@ export function newContext(
     imagesByPath: new Map(),
     warnings: [],
     footnoteRefs: [],
+    noteNumbering: createNoteReferenceNumbering(),
     commentRefs: [],
     hyperlinkRefs: [],
     imageCounter: 0,
@@ -52,4 +59,22 @@ export function pushWarning(ctx: RenderContext, message: string): void {
   if (!ctx.warnings.includes(message)) {
     ctx.warnings.push(message);
   }
+}
+
+/**
+ * Number a footnote or endnote reference in reading order and record its
+ * note for the definitions trailer on the note's first reference. Returns the
+ * bare token (`1`, `e1`) and the inline marker (`[^1]`, `[^e1]`).
+ */
+export function numberNoteReference(
+  ctx: RenderContext,
+  kind: NoteReferenceKind,
+  refId: number,
+): { token: string; marker: string } {
+  const { displayNumber, first } = ctx.noteNumbering.next(kind, refId);
+  const marker = noteReferenceMarker(kind, displayNumber);
+  if (first) {
+    ctx.footnoteRefs.push({ refId, marker, kind });
+  }
+  return { token: noteReferenceToken(kind, displayNumber), marker };
 }

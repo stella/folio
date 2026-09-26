@@ -265,6 +265,16 @@ const readStory = (
 
 const CONTEXT_RADIUS = 40;
 const WORD_CHARACTER_AT_END = /[\p{L}\p{M}\p{N}_]$/u;
+
+/** Whether `[start, end)` of a block's text starts or ends inside a note reference's marker. */
+const cutsIntoNoteReference = (block: FolioAIBlock, start: number, end: number): boolean =>
+  (block.structuralBoundaries ?? []).some(
+    (boundary) =>
+      boundary.type === "noteReference" &&
+      [start, end].some(
+        (offset) => offset > boundary.offset && offset < boundary.offset + boundary.length,
+      ),
+  );
 const WORD_CHARACTER_AT_START = /^[\p{L}\p{M}\p{N}_]/u;
 /**
  * Window (UTF-16 code units) sliced on each side of a match for the
@@ -311,6 +321,11 @@ const findTextMatches = (
             ),
           ))
       ) {
+        continue;
+      }
+      // A footnote/endnote marker (`[^1]`) is a reference, not text: a match
+      // that starts or ends inside one names no text a range could select.
+      if (cutsIntoNoteReference(block, at, at + matchedText.length)) {
         continue;
       }
       const range = createFolioAITextRangeHandle({
@@ -554,6 +569,9 @@ const explainSkipReason = (reason: string): string => {
   }
   if (reason === "documentVersionMismatch") {
     return "the document changed after these edits were proposed; re-read it and regenerate the edits against the current version.";
+  }
+  if (reason === "protectedReference") {
+    return "the edit would change or remove a footnote/endnote reference (a `[^1]` / `[^e1]` marker), or write a marker as text; a reference is not text. Keep every marker your `find` covers in the replacement, in order, or match only the words beside it.";
   }
   if (reason === "documentNotEditable") {
     return "the document is not open for editing right now; nothing was applied or queued. Ask the user to open it for editing, then retry.";

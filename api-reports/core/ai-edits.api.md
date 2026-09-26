@@ -143,6 +143,11 @@ export type FolioAIBlockStructuralBoundary = {
     type: "pageBreak";
     offset: number;
     clear?: import__stll_docx_core_model.BreakContent["clear"];
+} | {
+    type: "noteReference";
+    noteType: "footnote" | "endnote";
+    offset: number;
+    length: number;
 };
 
 // @public
@@ -478,7 +483,15 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 * there cannot be written back whole. Nothing was applied; move the offset
 * to the boundary before or after the character.
 */
-"splitsCharacter";
+"splitsCharacter" |
+/**
+* The text change would rewrite or remove a footnote or endnote reference
+* (the `[^1]` / `[^e1]` markers the text shows), or write a marker-shaped
+* string of its own. A reference is structure, not text: keep each marker
+* the match covers in the replacement, in order, or match only the prose
+* beside it.
+*/
+"protectedReference";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {

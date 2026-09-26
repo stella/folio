@@ -704,3 +704,135 @@ describe("readers agree on numbered headings and lists", () => {
     });
   });
 });
+
+/**
+ * A footnote or endnote reference is held by the editor as a text node whose
+ * characters are the note's package id. Markdown numbered references the way
+ * the page does while every other reader printed the id, and the agent tools let
+ * a model find and replace it as text. Package ids here are out of reading
+ * order and far from 1, 2, 3, and the paragraph carries a comment, so a reader
+ * leaking an id, numbering by id, or reading a comment reference as text shows
+ * as a disagreement.
+ */
+const noteParagraph = (text: string): Paragraph => ({
+  type: "paragraph",
+  formatting: {},
+  content: [{ type: "run", formatting: {}, content: [{ type: "text", text }] }],
+});
+
+const NOTES_TEXT = "Term A[^1] and Term B[^2] see[^e1].";
+
+const buildNotedDocument = async (): Promise<Uint8Array> => {
+  const document = fromMarkdown("Placeholder.\n\nClosing paragraph.");
+  const pkg = document.package;
+  const first = pkg.document.content[0];
+  if (first?.type !== "paragraph") {
+    throw new Error("fixture paragraph is missing");
+  }
+  first.content = [
+    {
+      type: "run",
+      formatting: {},
+      content: [
+        { type: "text", text: "Term A" },
+        { type: "footnoteRef", id: 30 },
+        { type: "text", text: " and Term B" },
+        { type: "footnoteRef", id: 10 },
+        { type: "text", text: " see" },
+        { type: "endnoteRef", id: 7 },
+        { type: "text", text: "." },
+      ],
+    },
+  ];
+  pkg.footnotes = [
+    { type: "footnote", id: 30, noteType: "normal", content: [noteParagraph("First note.")] },
+    { type: "footnote", id: 10, noteType: "normal", content: [noteParagraph("Second note.")] },
+  ];
+  pkg.endnotes = [
+    { type: "endnote", id: 7, noteType: "normal", content: [noteParagraph("An endnote.")] },
+  ];
+  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
+
+  // A comment over a reference, written by the reviewer and saved, so the
+  // package carries the comment's range and reference runs beside the notes.
+  const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes), { author: "R" });
+  const block = reviewer.getContent()[0];
+  if (!block) {
+    throw new Error("fixture block is missing");
+  }
+  const commented = reviewer.applyOperations(
+    [
+      {
+        id: "comment",
+        type: "commentOnBlock",
+        blockId: block.id,
+        quote: "Term B[^2]",
+        comment: { text: "Check." },
+      },
+    ],
+    { mode: "direct" },
+  );
+  if (commented.skipped.length > 0) {
+    throw new Error(`fixture comment was refused: ${JSON.stringify(commented.skipped)}`);
+  }
+  return new Uint8Array(await reviewer.toBuffer());
+};
+
+describe("readers agree on note references", () => {
+  test("every reader shows the reading-order marker, never the package id", async () => {
+    const bytes = await buildNotedDocument();
+    const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes));
+    const bridge = createReviewerBridge(reviewer);
+    const read = executeFolioToolCall("read_document", {}, bridge);
+    if (!read.ok) {
+      throw new Error(read.error);
+    }
+    const markdown = await docxToMarkdown(toArrayBuffer(bytes), {
+      annotations: "strip",
+      trackedChanges: "clean",
+      comments: "strip",
+      footnotes: "keep",
+    });
+    const texts = {
+      getContent: reviewer.getContent()[0]?.text,
+      snapshot: bridge.snapshot().blocks[0]?.text,
+      readDocument: read.result[0]?.text,
+      getContentAsText: reviewer
+        .getContentAsText()
+        .split("\n")[0]
+        ?.replace(/^\[[^\]]+\] /u, ""),
+      markdown: markdown.split("\n")[0],
+      comment: reviewer.getComments()[0]?.anchoredText,
+    };
+    expect(texts).toEqual({
+      getContent: NOTES_TEXT,
+      snapshot: NOTES_TEXT,
+      readDocument: NOTES_TEXT,
+      getContentAsText: NOTES_TEXT,
+      markdown: NOTES_TEXT,
+      comment: "Term B[^2]",
+    });
+    // One definition per note, under the marker the body shows.
+    expect(markdown).toContain("[^1]: First note.\n[^2]: Second note.\n[^e1]: An endnote.");
+  });
+
+  test("find_text never matches inside a marker, and matches a whole one", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(await buildNotedDocument()));
+    const bridge = createReviewerBridge(reviewer);
+    const find = (query: string) => {
+      const result = executeFolioToolCall("find_text", { query }, bridge);
+      if (!result.ok) {
+        throw new Error(result.error);
+      }
+      return result.result.matches.map((match) =>
+        "range" in match ? [match.range.startOffset, match.range.endOffset] : [],
+      );
+    };
+    for (const packageId of ["30", "10", "7"]) {
+      expect({ packageId, matches: find(packageId) }).toEqual({ packageId, matches: [] });
+    }
+    expect(find("1")).toEqual([]);
+    expect(find("[^1]")).toEqual([[6, 10]]);
+    expect(find("B[^2]")).toEqual([[20, 25]]);
+  });
+});

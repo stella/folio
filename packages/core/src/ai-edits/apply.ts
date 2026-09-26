@@ -87,6 +87,14 @@ import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
+  cutsIntoNoteReference,
+  noteReferenceOf,
+  noteReferenceSpansWithin,
+  planChangesAroundNoteReferences,
+  segmentsAroundNoteReferences,
+  type NoteReferenceLabels,
+} from "./note-references";
+import {
   hasInlineEmphasis,
   parseInlineEmphasisRuns,
   stripInlineEmphasisMarkers,
@@ -100,6 +108,7 @@ import {
   widenChangesToAtomicSpans,
 } from "./minimal-replacement";
 import {
+  collectNoteReferenceLabels,
   hashFolioAIBlockStructuralBoundaries,
   hashFolioAIBlockText,
   isHiddenTableRow,
@@ -1518,6 +1527,7 @@ let revisionIdCursor = Date.now() * 1000;
  */
 const collectLiveBlocksByHash = (doc: PMNode) => {
   const byHash = new Map<string, LiveBlockEntry[]>();
+  const noteReferences = collectNoteReferenceLabels(doc);
   doc.descendants((node, pos) => {
     // The snapshot skips a hidden row's whole subtree, and resolution pairs a
     // snapshot anchor with the live block at the same ordinal among the blocks
@@ -1535,7 +1545,7 @@ const collectLiveBlocksByHash = (doc: PMNode) => {
     // block under the same key. Otherwise a block mid-edit gets a
     // different hash than the snapshot recorded and the resolver
     // skips it as "changed".
-    const cleanText = buildCleanBlockText(node, pos).text;
+    const cleanText = buildCleanBlockText(node, pos, { fieldResults: "text", noteReferences }).text;
     const hash = hashFolioAIBlockText(normalizeFolioAIBlockText(cleanText));
     const bucket = byHash.get(hash) ?? [];
     bucket.push({ from: pos, to: pos + node.nodeSize, node });
@@ -2703,6 +2713,10 @@ const applyFolioAIEditOperationsInternal = ({
   // the fallback for ordinal-encoded snapshot ids.
   const liveBlocks = collectLiveBlocksByHash(view.state.doc);
   const liveBlocksByParaId = collectLiveBlocksByParaId(view.state.doc);
+  // Reference markers are numbered once, from the document the batch starts
+  // from: an operation that removes an earlier reference must not renumber the
+  // markers a later operation in the same batch matched against.
+  const noteReferences = collectNoteReferenceLabels(view.state.doc);
 
   for (const [index, operation] of operations.entries()) {
     const commentText = getOperationCommentText(operation);
@@ -2716,6 +2730,7 @@ const applyFolioAIEditOperationsInternal = ({
       operation,
       liveBlocks,
       liveBlocksByParaId,
+      noteReferences,
       doc: view.state.doc,
     });
     if (resolution.type === "skip") {
@@ -3076,6 +3091,7 @@ const applyFolioAIEditOperationsInternal = ({
           const minimal = applyMinimalDirectReplacement({
             tr,
             item,
+            noteReferences,
             replacement: item.operation.replace,
             commentMark,
             replacementBackground,
@@ -3098,6 +3114,7 @@ const applyFolioAIEditOperationsInternal = ({
           const tracked = applyMinimalTrackedReplacement({
             tr,
             item,
+            noteReferences,
             replacement: stripInlineEmphasisMarkers(item.operation.replace),
             commentMark,
             replacementBackground,
@@ -3126,6 +3143,12 @@ const applyFolioAIEditOperationsInternal = ({
             ];
             break;
           }
+        }
+        // The whole-span fallback replaces every character of the match, and a
+        // note reference inside it would go with them.
+        if (rangeHoldsNoteReference(item)) {
+          skipped.push({ id: item.operation.id, reason: "protectedReference" });
+          continue;
         }
         const stepsBeforeBackgroundClear = tr.steps.length;
         const backgroundResult = clearReplacementBackground({
@@ -3283,6 +3306,7 @@ const applyFolioAIEditOperationsInternal = ({
             ? applyMinimalDirectReplacement({
                 tr,
                 item,
+                noteReferences,
                 replacement: item.operation.text,
                 commentMark,
                 replacementBackground,
@@ -3294,6 +3318,7 @@ const applyFolioAIEditOperationsInternal = ({
             ? applyMinimalTrackedReplacement({
                 tr,
                 item,
+                noteReferences,
                 replacement: stripInlineEmphasisMarkers(item.operation.text),
                 commentMark,
                 replacementBackground,
@@ -3322,7 +3347,12 @@ const applyFolioAIEditOperationsInternal = ({
           clearedBackground = tracked.backgroundRevisionIds.length > 0;
           backgroundRevisionIds = tracked.backgroundRevisionIds;
         } else if (changesText) {
-          // The whole-span fallback would discard a field if atomic planning failed.
+          // The whole-span fallback would discard a field or a note reference
+          // if atomic planning failed.
+          if (rangeHoldsNoteReference(item)) {
+            skipped.push({ id: item.operation.id, reason: "protectedReference" });
+            continue;
+          }
           if (buildCleanBlockText(item.blockNode, item.blockFrom).structuralBoundaries.length > 0) {
             skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
             continue;
@@ -4531,13 +4561,34 @@ const applyTextReplacement = ({
   return nextTr;
 };
 
+/** Whether the resolved range covers a footnote or endnote reference. */
+const rangeHoldsNoteReference = ({
+  blockNode,
+  blockFrom,
+  from,
+  to,
+}: Pick<ResolvedOperation, "blockNode" | "blockFrom" | "from" | "to">): boolean => {
+  let holds = false;
+  blockNode.descendants((node, pos) => {
+    if (holds) {
+      return false;
+    }
+    const start = blockFrom + 1 + pos;
+    if (noteReferenceOf(node) !== null && start < to && start + node.nodeSize > from) {
+      holds = true;
+    }
+    return !holds;
+  });
+  return holds;
+};
+
 /**
  * The clean-text span a text replacement matched: where it starts in the
  * block's clean text and what it says. `null` when the operation does not
  * replace text or its match is no longer in the block.
  */
 const replacedCleanSpan = (
-  item: ResolvedOperation,
+  item: Pick<ResolvedOperation, "operation">,
   cleanBlock: CleanBlockText,
 ): { start: number; text: string } | null => {
   switch (item.operation.type) {
@@ -4598,13 +4649,20 @@ type PlanDocumentReplacementOptions = {
   doc: PMNode;
   item: ResolvedOperation;
   replacement: string;
-  /** The changes from the matched text to the replacement, before field widening. */
-  planChanges: (source: string) => readonly TextChange[];
+  /** The batch's reference markers, which the matched text was resolved against. */
+  noteReferences: NoteReferenceLabels;
+  /**
+   * The changes from one piece of the matched text to its replacement, before
+   * field widening. Called once per piece between the note references the
+   * match holds, so no change can reach into one.
+   */
+  planChanges: (source: string, replacement: string) => readonly TextChange[];
   /**
    * Another plan of the same replacement whose untouched fields the changes
-   * must leave untouched too (see {@link keepAtomicSpans}).
+   * must leave untouched too (see {@link keepAtomicSpans}). Planned piece by
+   * piece between the note references, like `planChanges`.
    */
-  keepFieldsOf?: (source: string) => readonly TextChange[];
+  keepFieldsOf?: (source: string, replacement: string) => readonly TextChange[];
 };
 
 /**
@@ -4617,10 +4675,14 @@ const planDocumentReplacement = ({
   doc,
   item,
   replacement,
+  noteReferences,
   planChanges,
   keepFieldsOf,
 }: PlanDocumentReplacementOptions): DocumentReplacementPlan | null => {
-  const cleanBlock = buildCleanBlockText(item.blockNode, item.blockFrom);
+  const cleanBlock = buildCleanBlockText(item.blockNode, item.blockFrom, {
+    fieldResults: "text",
+    noteReferences,
+  });
   const span = replacedCleanSpan(item, cleanBlock);
   if (span === null) {
     return null;
@@ -4632,15 +4694,29 @@ const planDocumentReplacement = ({
       ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
       : [],
   );
-  const widened = widenChangesToAtomicSpans(span.text, planChanges(span.text), atomicSpans);
-  const changes =
+  const noteReferenceSpans = noteReferenceSpansWithin(cleanBlock, spanStart, spanEnd);
+  const pieceChanges = planChangesAroundNoteReferences(
+    span.text,
+    replacement,
+    noteReferenceSpans,
+    planChanges,
+  );
+  if (pieceChanges === null) {
+    return null;
+  }
+  const widened = widenChangesToAtomicSpans(span.text, pieceChanges, atomicSpans);
+  const keptPieces =
     keepFieldsOf === undefined
+      ? null
+      : planChangesAroundNoteReferences(span.text, replacement, noteReferenceSpans, keepFieldsOf);
+  const changes =
+    keptPieces === null
       ? widened
       : keepAtomicSpans(
           span.text,
           replacement,
           widened,
-          widenChangesToAtomicSpans(span.text, keepFieldsOf(span.text), atomicSpans),
+          widenChangesToAtomicSpans(span.text, keptPieces, atomicSpans),
           atomicSpans,
         );
   if (applyTextChanges(span.text, changes) !== replacement) {
@@ -4653,7 +4729,10 @@ const planDocumentReplacement = ({
     if (from === undefined || !node) {
       return null;
     }
-    return { from, to: node.isText ? from + 1 : from + node.nodeSize };
+    // A note reference's marker is one unit: its characters all anchor at the
+    // reference, which is one text node that nothing may split.
+    const whole = !node.isText || noteReferenceOf(node) !== null;
+    return { from, to: whole ? from + node.nodeSize : from + 1 };
   };
   const matchedFrom = item.from;
   const matchedTo = item.to;
@@ -4917,6 +4996,7 @@ type MinimalDirectReplacementResult = {
 type MinimalDirectReplacementOptions = {
   tr: Transaction;
   item: ResolvedOperation;
+  noteReferences: NoteReferenceLabels;
   /** The replacement text; carries no inline emphasis markers. */
   replacement: string;
   commentMark: Mark | null;
@@ -4935,6 +5015,7 @@ type MinimalDirectReplacementOptions = {
 const applyMinimalDirectReplacement = ({
   tr,
   item,
+  noteReferences,
   replacement,
   commentMark,
   replacementBackground,
@@ -4944,7 +5025,8 @@ const applyMinimalDirectReplacement = ({
     doc: tr.doc,
     item,
     replacement,
-    planChanges: (source) => planTextChanges(source, replacement),
+    noteReferences,
+    planChanges: planTextChanges,
   });
   if (plan === null || plan.changes.length === 0) {
     return null;
@@ -5019,6 +5101,7 @@ const applyMinimalDirectReplacement = ({
 type MinimalTrackedReplacementOptions = {
   tr: Transaction;
   item: ResolvedOperation;
+  noteReferences: NoteReferenceLabels;
   /** The replacement text, inline emphasis markers already stripped. */
   replacement: string;
   commentMark: Mark | null;
@@ -5064,6 +5147,7 @@ type MinimalTrackedReplacementResult =
 const applyMinimalTrackedReplacement = ({
   tr,
   item,
+  noteReferences,
   replacement,
   commentMark,
   replacementBackground,
@@ -5087,10 +5171,11 @@ const applyMinimalTrackedReplacement = ({
     doc: tr.doc,
     item,
     replacement,
-    planChanges: (source) => changesFromSegments(diffText(source, replacement)),
+    noteReferences,
+    planChanges: (source, target) => changesFromSegments(diffText(source, target)),
     // A field the direct edit keeps stays a field once this redline is
     // accepted, rather than coming back as its displayed text.
-    keepFieldsOf: (source) => planTextChanges(source, replacement),
+    keepFieldsOf: planTextChanges,
   });
   if (plan === null) {
     return null;
@@ -5101,7 +5186,8 @@ const applyMinimalTrackedReplacement = ({
     doc: tr.doc,
     item,
     replacement,
-    planChanges: (source) => planTextChanges(source, replacement),
+    noteReferences,
+    planChanges: planTextChanges,
   });
   const allocatedMarks =
     directPlan === null
@@ -5387,6 +5473,7 @@ type ResolveOperationArgs = {
   operation: FolioAIEditOperation;
   liveBlocks: Map<string, LiveBlockEntry[]>;
   liveBlocksByParaId: Map<string, LiveBlockEntry>;
+  noteReferences: NoteReferenceLabels;
   doc: PMNode;
 };
 
@@ -5409,6 +5496,7 @@ const resolveStableBlock = ({
   blockId,
   liveBlocks,
   liveBlocksByParaId,
+  noteReferences,
 }: ResolveStableBlockArgs): StableBlockResolution | OperationResolutionSkip => {
   const anchor = snapshot.anchors[blockId];
   if (!anchor) {
@@ -5433,7 +5521,10 @@ const resolveStableBlock = ({
     return { type: "skip", reason: "changedBlock" };
   }
 
-  const cleanBlock = buildCleanBlockText(live.node, live.from);
+  const cleanBlock = buildCleanBlockText(live.node, live.from, {
+    fieldResults: "text",
+    noteReferences,
+  });
   const currentText = cleanBlock.text;
   const currentTextHash = hashFolioAIBlockText(normalizeFolioAIBlockText(currentText));
   const structuralBoundaryHash = hashFolioAIBlockStructuralBoundaries(cleanBlock);
@@ -5454,11 +5545,68 @@ const resolveStableBlock = ({
   };
 };
 
-const resolveOperation = ({
+const resolveOperation = (
+  args: ResolveOperationArgs,
+): { type: "resolved"; operation: ResolvedBase } | OperationResolutionSkip => {
+  const resolution = resolveOperationTarget(args);
+  if (resolution.type === "skip") {
+    return resolution;
+  }
+  const protectedReference = refuseNoteReferenceEdit(resolution.operation, args.noteReferences);
+  return protectedReference ?? resolution;
+};
+
+/**
+ * A text change may rewrite the prose around a footnote or endnote reference
+ * but never the reference: its marker is structure the clean text shows, not
+ * characters it holds. The replacement has to keep every marker its match
+ * covers, in order, and may not write a marker-shaped string of its own; the
+ * replacement's inline emphasis would rebuild the match whole, reference
+ * included, so it cannot carry one either. Checked before anything is applied,
+ * so direct and tracked mode refuse the same operations.
+ */
+const refuseNoteReferenceEdit = (
+  item: ResolvedBase,
+  noteReferences: NoteReferenceLabels,
+): OperationResolutionSkip | null => {
+  const { operation } = item;
+  let replacement: string;
+  if (operation.type === "replaceInBlock" || operation.type === "replaceRange") {
+    replacement = operation.replace;
+  } else if (operation.type === "replaceBlock") {
+    replacement = operation.text;
+  } else {
+    return null;
+  }
+  const cleanBlock = buildCleanBlockText(item.blockNode, item.blockFrom, {
+    fieldResults: "text",
+    noteReferences,
+  });
+  const span = replacedCleanSpan({ operation }, cleanBlock);
+  if (span === null) {
+    return null;
+  }
+  const spans = noteReferenceSpansWithin(cleanBlock, span.start, span.start + span.text.length);
+  // Dropping a block's formatting rebuilds it from the replacement text alone.
+  const rebuildsBlock = operation.type === "replaceBlock" && operation.preserveFormatting === false;
+  if (spans.length > 0 && (hasInlineEmphasis(replacement) || rebuildsBlock)) {
+    return { type: "skip", reason: "protectedReference" };
+  }
+  if (operation.type === "replaceBlock" && replacement === span.text) {
+    return null;
+  }
+  return segmentsAroundNoteReferences(span.text, stripInlineEmphasisMarkers(replacement), spans) ===
+    null
+    ? { type: "skip", reason: "protectedReference" }
+    : null;
+};
+
+const resolveOperationTarget = ({
   snapshot,
   operation,
   liveBlocks,
   liveBlocksByParaId,
+  noteReferences,
   doc,
 }: ResolveOperationArgs):
   | { type: "resolved"; operation: ResolvedBase }
@@ -5474,6 +5622,7 @@ const resolveOperation = ({
     blockId,
     liveBlocks,
     liveBlocksByParaId,
+    noteReferences,
   });
   if (primaryBlock.type === "skip") {
     return primaryBlock;
@@ -5509,6 +5658,9 @@ const resolveOperation = ({
     );
     if (characterSplit !== null) {
       return { type: "skip", reason: "splitsCharacter", message: characterSplit };
+    }
+    if (cutsIntoNoteReference(cleanBlock, startOffset, endOffset)) {
+      return { type: "skip", reason: "protectedReference" };
     }
     const range = resolveCleanTextRange({ cleanBlock, startOffset, endOffset });
     if (range === null) {
@@ -5733,6 +5885,7 @@ const resolveOperation = ({
         blockId: operation.endBlockId,
         liveBlocks,
         liveBlocksByParaId,
+        noteReferences,
       });
       if (endTarget.type === "skip") {
         return endTarget;
@@ -5919,7 +6072,9 @@ const resolveOperation = ({
     // preserve or replace whole. Other structural boundaries need their own edit.
     if (
       replaceChangesText &&
-      cleanBlock.structuralBoundaries.some((boundary) => boundary.type !== "field")
+      cleanBlock.structuralBoundaries.some(
+        (boundary) => boundary.type !== "field" && boundary.type !== "noteReference",
+      )
     ) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
@@ -6070,6 +6225,9 @@ const resolveTextInCleanBlock = (
   );
   if (characterSplit !== null) {
     return { type: "skip", reason: "splitsCharacter", message: `the match's ${characterSplit}` };
+  }
+  if (cutsIntoNoteReference(cleanBlock, firstIndex, firstIndex + find.length)) {
+    return { type: "skip", reason: "protectedReference" };
   }
 
   const range = resolveCleanTextRange({

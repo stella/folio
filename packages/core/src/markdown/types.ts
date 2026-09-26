@@ -8,6 +8,7 @@
 
 import type { BuiltInStyleIndex } from "../docx/builtInStyles";
 import type { ListLabelCounter } from "../prosemirror/listLabels";
+import type { NoteReferenceKind, NoteReferenceNumbering } from "../utils/noteReferenceLabels";
 
 /**
  * Metadata describing a single image registration. Owned by the markdown
@@ -120,12 +121,18 @@ export type RenderContext = {
   imagesByPath: Map<string, ImageRef>;
   /** Diagnostics accumulator. */
   warnings: string[];
-  /** Footnote/endnote refs collected during this render, in document order. */
+  /**
+   * Footnote/endnote refs collected during this render, one per note in the
+   * order it is first referenced. `marker` is what the body line shows
+   * (`[^1]`, `[^e1]`) and what the definition trailer repeats.
+   */
   footnoteRefs: {
     refId: number;
-    markerNumber: number;
-    kind: "footnote" | "endnote";
+    marker: string;
+    kind: NoteReferenceKind;
   }[];
+  /** Reading-order note numbering, shared with the AI text view. */
+  noteNumbering: NoteReferenceNumbering;
   /** Comment refs collected during this render (sidecar mode only). */
   commentRefs: { commentId: number; markerNumber: number }[];
   /** Hyperlink refs collected during this render (reference mode only). */

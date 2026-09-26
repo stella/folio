@@ -30,16 +30,31 @@ export type FolioAIInlineFormattingPatch = FolioContentInlineFormattingPatch;
 export type FolioAIBlockPreviewRun = FolioContentRun;
 
 /**
- * A zero-width inline structure at one clean-text boundary. `pageBreak`
- * always represents an authored `<w:br w:type="page"/>`; an omitted `clear`
- * remains distinct from any explicit value even though it does not affect
- * layout for this break type.
+ * Inline structure inside a block's clean text.
+ *
+ * `pageBreak` is zero-width at one clean-text boundary and always represents
+ * an authored `<w:br w:type="page"/>`; an omitted `clear` remains distinct from
+ * any explicit value even though it does not affect layout for this break type.
+ *
+ * `noteReference` is a footnote or endnote reference, which the text shows as
+ * its marker (`[^1]` for the first footnote, `[^e1]` for the first endnote —
+ * the numbering the Markdown export uses) over `length` characters from
+ * `offset`. The marker is structure, not text: a range may not cut into it,
+ * and a text edit that would rewrite or remove it is refused
+ * (`protectedReference`).
  */
-export type FolioAIBlockStructuralBoundary = {
-  type: "pageBreak";
-  offset: number;
-  clear?: BreakContent["clear"];
-};
+export type FolioAIBlockStructuralBoundary =
+  | {
+      type: "pageBreak";
+      offset: number;
+      clear?: BreakContent["clear"];
+    }
+  | {
+      type: "noteReference";
+      noteType: "footnote" | "endnote";
+      offset: number;
+      length: number;
+    };
 
 /**
  * Where a block sits inside its innermost enclosing table. Every index is
@@ -656,7 +671,15 @@ export type FolioAIEditSkipReason =
    * there cannot be written back whole. Nothing was applied; move the offset
    * to the boundary before or after the character.
    */
-  | "splitsCharacter";
+  | "splitsCharacter"
+  /**
+   * The text change would rewrite or remove a footnote or endnote reference
+   * (the `[^1]` / `[^e1]` markers the text shows), or write a marker-shaped
+   * string of its own. A reference is structure, not text: keep each marker
+   * the match covers in the replacement, in order, or match only the prose
+   * beside it.
+   */
+  | "protectedReference";
 
 export type FolioAIEditAppliedOperation = {
   id: string;

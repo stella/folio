@@ -11,7 +11,12 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { buildCleanBlockText, resolveCleanTextRange } from "./clean-text";
-import { createFolioAIEditSnapshot, hashFolioAIBlockText, isFolioAIContentBlock } from "./snapshot";
+import {
+  collectNoteReferenceLabels,
+  createFolioAIEditSnapshot,
+  hashFolioAIBlockText,
+  isFolioAIContentBlock,
+} from "./snapshot";
 import type { FolioAIBlockAnchor, FolioAIEditSnapshot, FolioAITextRangeHandle } from "./types";
 import { findParagraphByParaId } from "../prosemirror/utils/findParagraphByParaId";
 import { getFolioParaIdFromBlockId, getSequentialFolioBlockIdIndex } from "../types/block-id";
@@ -76,7 +81,10 @@ export const resolveFolioAITextRange = ({
     return null;
   }
 
-  const cleanBlock = buildCleanBlockText(blockNode, blockRange.from);
+  const cleanBlock = buildCleanBlockText(blockNode, blockRange.from, {
+    fieldResults: "text",
+    noteReferences: collectNoteReferenceLabels(doc),
+  });
   const resolved = resolveCleanTextRange({
     cleanBlock,
     startOffset: range.startOffset,
@@ -134,7 +142,10 @@ export const resolvePassageRange = ({
     return null;
   }
 
-  const cleanBlock = buildCleanBlockText(blockNode, blockRange.from);
+  const cleanBlock = buildCleanBlockText(blockNode, blockRange.from, {
+    fieldResults: "text",
+    noteReferences: collectNoteReferenceLabels(doc),
+  });
   const match = matchPassage(cleanBlock.text, needleSource);
   if (match === null) {
     return null;

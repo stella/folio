@@ -127,7 +127,7 @@ import {
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
 import type { FolioReplacementBackground, FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
-import { buildAnnotatedBlockText } from "./clean-text";
+import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
   getTrackedChangeStatsFromDoc,
@@ -137,6 +137,7 @@ import {
   type FolioReviewChangeKind,
 } from "./read";
 import {
+  collectNoteReferenceLabels,
   createFolioAIEditSnapshotWithStyleResolver,
   detachFolioAIEditSnapshotExternalHyperlinks,
   folioStoryTables,
@@ -859,7 +860,9 @@ const formatStorySnapshotForLLM = (snapshot: FolioAIEditSnapshot, annotated: boo
   // root and scans each level's fragment from index 0, so looking every block
   // up costs O(blocks^2) on a flat document.
   const nodeByStart = new Map<number, PMNode>();
-  sourceDocumentOf(snapshot).descendants((node, pos) => {
+  const sourceDocument = sourceDocumentOf(snapshot);
+  const noteReferences = collectNoteReferenceLabels(sourceDocument);
+  sourceDocument.descendants((node, pos) => {
     if (!node.isTextblock) {
       return true;
     }
@@ -874,7 +877,9 @@ const formatStorySnapshotForLLM = (snapshot: FolioAIEditSnapshot, annotated: boo
     .map((block) => {
       const from = startById.get(block.id);
       const node = from === undefined ? undefined : nodeByStart.get(from);
-      const text = node ? buildAnnotatedBlockText(node) : block.text;
+      const text = node
+        ? buildAnnotatedBlockTextWithNoteReferences(node, noteReferences)
+        : block.text;
       return formatBlockLine(block, text);
     })
     .join("\n");

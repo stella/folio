@@ -23,7 +23,12 @@ import {
   type FolioNodeRevisionKind,
 } from "../prosemirror/revisionCarriers";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
-import { createFolioAIEditSnapshot, sourceDocumentOf } from "./snapshot";
+import { readerTextOf } from "./note-references";
+import {
+  collectNoteReferenceLabels,
+  createFolioAIEditSnapshot,
+  sourceDocumentOf,
+} from "./snapshot";
 import type { FolioAIEditSnapshot } from "./types";
 
 export type FolioReviewChangeKind =
@@ -170,6 +175,7 @@ const getTrackedChangesFromProjectedDoc = (
   // carry a marked row of its own.
   const rowRevisionScopes: RowRevisionScope[] = [];
   const derivedFormattingRepresentationPositions = new Set<number>();
+  const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
@@ -356,7 +362,7 @@ const getTrackedChangesFromProjectedDoc = (
       }
     }
 
-    const text = node.text ?? "";
+    const text = readerTextOf(node, noteReferences);
     for (const mark of node.marks) {
       if (mark.type.name === "runPropertyChange") {
         continue;
@@ -441,6 +447,7 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
   }
   const blockStarts = blockStartIdsFromDoc(doc);
   const anchors = new Map<number, FolioCommentAnchor>();
+  const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
@@ -451,7 +458,7 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
     if (!node.isInline || node.text === undefined) {
       return undefined;
     }
-    const text = node.text;
+    const text = readerTextOf(node, noteReferences);
     for (const mark of node.marks) {
       if (mark.type !== commentType || typeof mark.attrs["commentId"] !== "number") {
         continue;

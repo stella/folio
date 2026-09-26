@@ -22,7 +22,7 @@ import { escapeTableCell } from "./escape";
 import { registerImage } from "./images";
 import { getHyperlinkRuns } from "../docx/hyperlinkParser";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
-import { pushWarning } from "./internals";
+import { numberNoteReference, pushWarning } from "./internals";
 import { renderParagraph } from "./renderParagraph";
 import type { RenderContext } from "./types";
 
@@ -447,13 +447,12 @@ function renderHtmlRun(
         if (ctx.opts.footnotes === "strip") {
           break;
         }
-        const markerNumber = ctx.footnoteRefs.length + 1;
-        ctx.footnoteRefs.push({
-          refId: item.id,
-          markerNumber,
-          kind: item.type === "endnoteRef" ? "endnote" : "footnote",
-        });
-        text += `<sup>[${markerNumber}]</sup>`;
+        const { token } = numberNoteReference(
+          ctx,
+          item.type === "endnoteRef" ? "endnote" : "footnote",
+          item.id,
+        );
+        text += `<sup>[${token}]</sup>`;
         break;
       }
       default:

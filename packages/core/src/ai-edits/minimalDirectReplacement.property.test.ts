@@ -14,6 +14,11 @@
  * - the package saves and reopens with the same text and the same controls
  *   and note references.
  *
+ * A note reference reads as its marker (`[^1]`) and is not text: an edit that
+ * cuts into a marker, or whose replacement does not keep every marker it
+ * covers, is refused (`protectedReference`) and changes nothing; every other
+ * edit leaves every reference where it was. No mode ever removes one.
+ *
  * The same paragraphs, with highlighted runs among them, drive the
  * tracked-changes and suggested modes. The redline marks as deleted exactly
  * the characters its changes remove and inserts exactly their new text;
@@ -40,14 +45,21 @@ import {
 } from "../prosemirror/commands/comments";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
 import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
-import { buildCleanBlockText } from "./clean-text";
+import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
 import { FolioDocxReviewer } from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
+import type { FolioAIEditOperation } from "./types";
 import {
   changesFromSegments,
   planTextChanges,
   type TextChange,
   widenChangesToAtomicSpans,
 } from "./minimal-replacement";
+import {
+  createNoteReferenceLabeler,
+  noteReferenceOf,
+  planChangesAroundNoteReferences,
+} from "./note-references";
 import { diffWordSegments, type WordDiffGranularity } from "./word-diff";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -238,9 +250,14 @@ const createDocx = async (paragraphXml: string): Promise<ArrayBuffer> => {
 
 type CleanCharacter = { character: string; marks: readonly Mark[]; control: number | null };
 
-/** Every clean-text character of a paragraph, with its marks and the control it sits in. */
+/**
+ * Every clean-text character of a paragraph, with its marks and the control it
+ * sits in. A note reference contributes its marker's characters.
+ */
 const cleanCharacters = (paragraph: PMNode): CleanCharacter[] => {
   const characters: CleanCharacter[] = [];
+  const noteLabels = createNoteReferenceLabeler();
+  noteLabels.numberBlock(paragraph);
   const controls = new Map<PMNode, number>();
   const controlOf = (parent: PMNode | null): number | null =>
     parent === null ? null : (controls.get(parent) ?? null);
@@ -257,13 +274,79 @@ const cleanCharacters = (paragraph: PMNode): CleanCharacter[] => {
       return false;
     }
     if (node.isText) {
-      for (const character of node.text ?? "") {
+      const reference = noteReferenceOf(node);
+      const text =
+        reference === null ? (node.text ?? "") : (noteLabels.labelOf(reference) ?? "[^?]");
+      for (const character of text) {
         characters.push({ character, marks: node.marks, control: controlOf(parent) });
       }
     }
     return true;
   });
   return characters;
+};
+
+/** The note references of a paragraph, in order, by package id. */
+const noteReferenceIds = (paragraph: PMNode): string[] => {
+  const ids: string[] = [];
+  paragraph.descendants((node) => {
+    const reference = noteReferenceOf(node);
+    if (reference !== null) {
+      ids.push(`${reference.noteType}:${reference.noteId}`);
+    }
+    return true;
+  });
+  return ids;
+};
+
+/**
+ * What the contract says of an edit, derived from the text alone. A match that
+ * cuts into a note reference's marker is refused as `protectedReference`, one
+ * that cuts into a field result as `unsupportedBlock`; so is, as
+ * `protectedReference`, a replacement that does not keep each marker the
+ * match covers, in order, or writes a marker of its own. Anything else is
+ * planned piece by piece between the markers.
+ */
+const editContract = (
+  clean: CleanBlockText,
+  { start, end, find, replace }: PickedEdit,
+):
+  | { refusal: "protectedReference" | "unsupportedBlock" }
+  | { refusal: null; spans: { offset: number; length: number }[] } => {
+  const cutsInto = (type: "noteReference" | "field") =>
+    clean.structuralBoundaries.some(
+      (boundary) =>
+        boundary.type === type &&
+        [start, end].some(
+          (edge) => edge > boundary.offset && edge < boundary.offset + boundary.length,
+        ),
+    );
+  if (cutsInto("noteReference")) {
+    return { refusal: "protectedReference" };
+  }
+  if (cutsInto("field")) {
+    return { refusal: "unsupportedBlock" };
+  }
+  const markers = clean.structuralBoundaries.flatMap((boundary) =>
+    boundary.type === "noteReference" ? [boundary] : [],
+  );
+  const spans = markers
+    .filter(({ offset, length }) => offset >= start && offset + length <= end)
+    .map(({ offset, length }) => ({ offset: offset - start, length }));
+  let cursor = 0;
+  let prose = "";
+  for (const { offset, length } of spans) {
+    const at = replace.indexOf(find.slice(offset, offset + length), cursor);
+    if (at === -1) {
+      return { refusal: "protectedReference" };
+    }
+    prose += replace.slice(cursor, at);
+    cursor = at + length;
+  }
+  prose += replace.slice(cursor);
+  return /\[\^e?[1-9]\d*\]/u.test(prose)
+    ? { refusal: "protectedReference" }
+    : { refusal: null, spans };
 };
 
 const countNodes = (paragraph: PMNode, name: string): number => {
@@ -277,10 +360,6 @@ const countNodes = (paragraph: PMNode, name: string): number => {
   return count;
 };
 
-const markedCharacters = (characters: readonly CleanCharacter[], mark: string): number =>
-  characters.filter((entry) => entry.marks.some((candidate) => candidate.type.name === mark))
-    .length;
-
 /** The edit: the whole text or a slice of it, with some words changed. */
 const editArbitrary = fc.record({
   whole: fc.boolean(),
@@ -290,7 +369,7 @@ const editArbitrary = fc.record({
     fc.record({
       at: fc.double({ min: 0, max: 1, noNaN: true }),
       remove: fc.nat({ max: 6 }),
-      insert: fc.constantFrom("", "‸", "new ", " and", "X", "shall not "),
+      insert: fc.constantFrom("", "‸", "new ", " and", "X", "shall not ", "[^1]"),
     }),
     { minLength: 1, maxLength: 3 },
   ),
@@ -299,6 +378,29 @@ const editArbitrary = fc.record({
 type Edit = typeof editArbitrary extends fc.Arbitrary<infer Value> ? Value : never;
 
 type PickedEdit = { start: number; end: number; find: string; replace: string };
+
+/** The same edit as a find-and-replace or as a replacement of the range it matches. */
+const operationType = fc.constantFrom("replaceInBlock" as const, "replaceRange" as const);
+
+const editOperation = (
+  type: "replaceInBlock" | "replaceRange",
+  block: { id: string; text: string },
+  { start, end, find, replace }: PickedEdit,
+): FolioAIEditOperation => {
+  if (type === "replaceInBlock") {
+    return { id: "edit", type, blockId: block.id, find, replace };
+  }
+  const range = createFolioAITextRangeHandle({
+    blockId: block.id,
+    text: block.text,
+    startOffset: start,
+    endOffset: end,
+  });
+  if (range === null) {
+    throw new Error("a picked edit always names a non-empty range");
+  }
+  return { id: "edit", type, range, replace };
+};
 
 /** The unique match and its changed replacement `edit` picks from `text`, if any. */
 const pickEdit = (text: string, edit: Edit): PickedEdit | null => {
@@ -339,7 +441,8 @@ describe("a direct replacement changes only the characters it changes", () => {
       fc.asyncProperty(
         fc.array(item, { minLength: 1, maxLength: 8 }),
         editArbitrary,
-        async (items, edit) => {
+        operationType,
+        async (items, edit, type) => {
           const reviewer = await FolioDocxReviewer.fromBuffer(
             await createDocx(items.map(itemXml).join("")),
           );
@@ -352,31 +455,32 @@ describe("a direct replacement changes only the characters it changes", () => {
 
           const before = firstParagraph(reviewer);
           const beforeCharacters = cleanCharacters(before.node);
+          const beforeReferences = noteReferenceIds(before.node);
           const cleanBefore = buildCleanBlockText(before.node, before.from);
           const fields = cleanBefore.structuralBoundaries.flatMap((boundary) =>
             boundary.type === "field"
               ? [{ offset: boundary.offset - start, length: boundary.length }]
               : [],
           );
-          const changes = widenChangesToAtomicSpans(find, planTextChanges(find, replace), fields);
+          const contract = editContract(cleanBefore, picked);
 
-          const result = reviewer.applyOperations(
-            [{ id: "edit", type: "replaceInBlock", blockId: block.id, find, replace }],
-            { mode: "direct" },
-          );
-          const findCutsField = cleanBefore.structuralBoundaries.some(
-            (boundary) =>
-              boundary.type === "field" &&
-              [start, end].some(
-                (edge) => edge > boundary.offset && edge < boundary.offset + boundary.length,
-              ),
-          );
-          if (findCutsField) {
-            // A match that begins or ends inside a field result names text no
-            // run holds; the operation contract refuses it before any change.
-            expect(result.skipped).toEqual([{ id: "edit", reason: "unsupportedBlock" }]);
+          const result = reviewer.applyOperations([editOperation(type, block, picked)], {
+            mode: "direct",
+          });
+          if (contract.refusal !== null) {
+            // A match that begins or ends inside a field result or a note
+            // reference names text no run holds, and a reference is not text
+            // a replacement may drop or write: the operation contract refuses
+            // it before any change.
+            expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
+            expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
             return;
           }
+          const changes = widenChangesToAtomicSpans(
+            find,
+            planChangesAroundNoteReferences(find, replace, contract.spans, planTextChanges) ?? [],
+            fields,
+          );
           expect(result.skipped).toEqual([]);
 
           const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
@@ -430,9 +534,10 @@ describe("a direct replacement changes only the characters it changes", () => {
           const xml =
             (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
           expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(countNodes(before.node, "sdt"));
-          expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(
-            markedCharacters(afterCharacters, "footnoteRef"),
-          );
+          // No reference is removed, rewritten or reordered.
+          expect(noteReferenceIds(after.node)).toEqual(beforeReferences);
+          expect(noteReferenceIds(firstParagraph(reopened).node)).toEqual(beforeReferences);
+          expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(beforeReferences.length);
         },
       ),
       propertyConfig({ numRuns: 60 }),
@@ -573,7 +678,8 @@ describe("a tracked or suggested replacement redlines only the characters it cha
         editArbitrary,
         fc.constantFrom<ReviewMode>("tracked-changes", "suggested"),
         fc.constantFrom<WordDiffGranularity>("word", "character"),
-        async (items, edit, mode, granularity) => {
+        operationType,
+        async (items, edit, mode, granularity, type) => {
           const source = await createDocx(items.map(itemXml).join(""));
           const reviewer = await FolioDocxReviewer.fromBuffer(source);
           const block = reviewer.snapshot().blocks.at(0);
@@ -585,33 +691,35 @@ describe("a tracked or suggested replacement redlines only the characters it cha
           const originalXml = firstParagraphXml(reviewer);
           const before = firstParagraph(reviewer);
           const beforeCharacters = cleanCharacters(before.node);
+          const beforeReferences = noteReferenceIds(before.node);
           const cleanBefore = buildCleanBlockText(before.node, before.from);
           const fields = cleanBefore.structuralBoundaries.flatMap((boundary) =>
             boundary.type === "field"
               ? [{ offset: boundary.offset - start, length: boundary.length }]
               : [],
           );
-          const changes = widenChangesToAtomicSpans(
-            find,
-            changesFromSegments(diffWordSegments(find, replace, { granularity })),
-            fields,
-          );
+          const contract = editContract(cleanBefore, picked);
 
-          const result = reviewer.applyOperations(
-            [{ id: "edit", type: "replaceInBlock", blockId: block.id, find, replace }],
-            { mode, wordDiff: { granularity } },
-          );
-          const findCutsField = cleanBefore.structuralBoundaries.some(
-            (boundary) =>
-              boundary.type === "field" &&
-              [start, end].some(
-                (edge) => edge > boundary.offset && edge < boundary.offset + boundary.length,
-              ),
-          );
-          if (findCutsField) {
-            expect(result.skipped).toEqual([{ id: "edit", reason: "unsupportedBlock" }]);
+          const result = reviewer.applyOperations([editOperation(type, block, picked)], {
+            mode,
+            wordDiff: { granularity },
+          });
+          if (contract.refusal !== null) {
+            // A match that begins or ends inside a field result or a note
+            // reference names text no run holds, and a reference is not text
+            // a replacement may drop or write: the operation contract refuses
+            // it before any change.
+            expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
+            expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
             return;
           }
+          const changes = widenChangesToAtomicSpans(
+            find,
+            planChangesAroundNoteReferences(find, replace, contract.spans, (piece, target) =>
+              changesFromSegments(diffWordSegments(piece, target, { granularity })),
+            ) ?? [],
+            fields,
+          );
           expect(result.skipped).toEqual([]);
           const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
 
@@ -674,6 +782,8 @@ describe("a tracked or suggested replacement redlines only the characters it cha
           for (const entry of acceptedCharacters) {
             expect(entry.marks.some((mark) => REVISION_MARKS.has(mark.type.name))).toBe(false);
           }
+          // Accepted or rejected, every reference is where it was.
+          expect(noteReferenceIds(accepted.node)).toEqual(beforeReferences);
           // The change revises the text inside a control, not the control:
           // accepting the deletion of all its text leaves it standing,
           // emptied, as the direct replacement does.
