@@ -33,13 +33,19 @@ class PreviewSession implements vscode.Disposable {
   /** What the webview shows, re-sent when a hidden webview comes back. */
   private latest: HostMessage;
   private disposed = false;
+  private readonly uri: vscode.Uri;
+  private readonly panel: vscode.WebviewPanel;
+  private readonly runtime: CliRuntime;
 
   constructor(
-    private readonly uri: vscode.Uri,
-    private readonly panel: vscode.WebviewPanel,
-    private readonly runtime: CliRuntime,
+    uri: vscode.Uri,
+    panel: vscode.WebviewPanel,
+    runtime: CliRuntime,
     webviewRoot: vscode.Uri,
   ) {
+    this.uri = uri;
+    this.panel = panel;
+    this.runtime = runtime;
     this.fileName = baseName(uri);
     this.latest = { type: "loading", fileName: this.fileName };
     const { webview } = panel;
@@ -134,10 +140,13 @@ class PreviewSession implements vscode.Disposable {
 }
 
 class DocxPreviewProvider implements vscode.CustomReadonlyEditorProvider {
-  constructor(
-    private readonly runtime: CliRuntime,
-    private readonly webviewRoot: vscode.Uri,
-  ) {}
+  private readonly runtime: CliRuntime;
+  private readonly webviewRoot: vscode.Uri;
+
+  constructor(runtime: CliRuntime, webviewRoot: vscode.Uri) {
+    this.runtime = runtime;
+    this.webviewRoot = webviewRoot;
+  }
 
   openCustomDocument(uri: vscode.Uri): vscode.CustomDocument {
     return { uri, dispose: () => undefined };

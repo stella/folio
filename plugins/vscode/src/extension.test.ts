@@ -19,13 +19,24 @@ class EventEmitter {
 
 class McpStdioServerDefinition {
   cwd: { fsPath: string } | undefined;
+  readonly label: string;
+  readonly command: string;
+  readonly args: string[];
+  readonly env: Record<string, string>;
+  readonly version: string;
   constructor(
-    readonly label: string,
-    readonly command: string,
-    readonly args: string[],
-    readonly env: Record<string, string>,
-    readonly version: string,
-  ) {}
+    label: string,
+    command: string,
+    args: string[],
+    env: Record<string, string>,
+    version: string,
+  ) {
+    this.label = label;
+    this.command = command;
+    this.args = args;
+    this.env = env;
+    this.version = version;
+  }
 }
 
 type Provider = {
