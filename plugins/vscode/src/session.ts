@@ -181,10 +181,15 @@ export class DocxSession {
     if (post === undefined) this.rejectPending("The editor closed.");
   }
 
-  /** A copy of `bytes`: a posted message is transferred, and the session keeps its own. */
+  /**
+   * A plain `Uint8Array` copy of `bytes`. The session keeps its own bytes,
+   * and the workbench's file system hands out Node.js `Buffer`s, which
+   * `postMessage` does not pass as binary: it sends them by constructor name,
+   * so a `Buffer` would reach the webview as JSON and the load be ignored.
+   */
   private webviewDocument(bytes: Uint8Array): FolioEditorDocument {
     return {
-      bytes: bytes.slice(),
+      bytes: new Uint8Array(bytes),
       fileVersion: this.loadedVersion,
       fileName: this.options.fileName,
     };

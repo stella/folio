@@ -211,6 +211,18 @@ describe("loading", () => {
     expect(load.locale).toBe("en");
   });
 
+  test("sends the bytes as a plain Uint8Array, even when the file system gave a Buffer", () => {
+    const h = harness({
+      initial: { bytes: Buffer.from(OPENED), baseline: fileVersionOf(OPENED), restored: false },
+    });
+
+    const [load] = h.posted;
+    if (load?.type !== "load") throw new Error("expected a load");
+    // postMessage passes binary data by constructor name; a Buffer would arrive as JSON.
+    expect(load.document.bytes.constructor.name).toBe("Uint8Array");
+    expect(load.document.bytes).toEqual(OPENED);
+  });
+
   test("ignores messages of the wrong shape", () => {
     const h = harness();
 
