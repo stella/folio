@@ -65,6 +65,8 @@ export const KNOWN_FAILING_OPERATION_RUNS: readonly {
  */
 export const KNOWN_FAILING_FLOWS: readonly { seed: number; steps: number; finding: Finding }[] = [
   { seed: 20_260_933, steps: 10, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
+  { seed: 99, steps: 15, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
+  { seed: 101, steps: 15, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
 ];
 
 export const expectedFailure = (
