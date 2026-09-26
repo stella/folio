@@ -766,6 +766,8 @@ const COMPARE_SKIP_DISPOSITION = {
   splitsCharacter: "unwritable",
   protectedReference: "unwritable",
   missingStyle: "fatal",
+  missingNumbering: "fatal",
+  invalidResult: "fatal",
   pendingDeletion: "unwritable",
 } as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
 

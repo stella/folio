@@ -125,7 +125,10 @@ stay exported for validation-only paths.
   prior tool call in the same conversation — `read_document`, `find_text`, or
   `read_comments`. Never invent or reuse one from outside the conversation;
   ids are opaque values a caller reads, never ones it constructs, and they
-  change whenever the document's structure changes.
+  change whenever the document's structure changes. The same holds for a
+  numbering instance (`numbering.numId`): use one a list block of this
+  document carries; an instance the document does not define skips the
+  operation (`missingNumbering`) before anything is applied.
 - A clause number ("clause 2.1") is found through a block's `displayLabel`,
   the number the document shows beside it; a numbered heading is
   `kind: "heading"` with its `headingLevel` and its number in `displayLabel`.
@@ -133,7 +136,9 @@ stay exported for validation-only paths.
   return a plain-language reason, not a machine code (e.g. "the block changed
   since your snapshot; re-read the document and retry with fresh ids"). Treat
   a skip as a retry signal: re-read (`read_document` or `find_text`) and
-  reissue with fresh ids, not a dead end.
+  reissue with fresh ids, not a dead end. The one exception is
+  `invalidResult`: the operation would have left a document that cannot be
+  saved, so nothing from it was applied; rephrase it rather than resend it.
 - Every operation of one `suggest_changes` call addresses the document as it
   was read. Give each block or stretch of text at most one operation that
   deletes, rewrites, splits or merges it: a later operation on a target an

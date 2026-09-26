@@ -330,6 +330,19 @@ type LiveDocumentOperationUndoEntry = {
 
 let documentOperationUndoHandleCursor = Date.now();
 
+/**
+ * The comments a batch's applied operations own. A run whose result the
+ * save-time check refused allocated comments nothing in the document names;
+ * they stay out of the comment list.
+ */
+const appliedOperationComments = (
+  created: readonly Comment[],
+  applied: readonly { commentId?: number }[],
+): Comment[] => {
+  const appliedIds = new Set(applied.map(({ commentId }) => commentId));
+  return created.filter((comment) => appliedIds.has(comment.id));
+};
+
 function isDisplayMode(value: unknown): value is DisplayMode {
   return typeof value === "string" && DISPLAY_MODES.some((mode) => mode === value);
 }
@@ -3053,8 +3066,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           }),
         });
 
-        if (createdComments.length > 0) {
-          updateComments((currentComments) => [...currentComments, ...createdComments]);
+        const batchComments = appliedOperationComments(createdComments, result.applied);
+        if (batchComments.length > 0) {
+          updateComments((currentComments) => [...currentComments, ...batchComments]);
         }
 
         if (result.undoHandle !== null) {
@@ -3141,8 +3155,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           },
         });
 
-        if (createdComments.length > 0) {
-          updateComments((currentComments) => [...currentComments, ...createdComments]);
+        const batchComments = appliedOperationComments(createdComments, applied);
+        if (batchComments.length > 0) {
+          updateComments((currentComments) => [...currentComments, ...batchComments]);
         }
 
         return { applied, skipped };

@@ -1715,6 +1715,15 @@ export class FolioDocxReviewer {
       }),
     });
 
+    // A run whose result was refused allocated comments that no range in the
+    // story names; only the applied operations' comments are the batch's.
+    const appliedCommentIds = new Set(
+      result.applied.flatMap(({ commentId }) => (commentId === undefined ? [] : [commentId])),
+    );
+    const createdByBatch = this.createdComments.splice(createdCommentsLengthBefore);
+    this.createdComments.push(
+      ...createdByBatch.filter((comment) => appliedCommentIds.has(comment.id)),
+    );
     this.setEditableStoryState(story, view.state);
     if (result.undoHandle !== null) {
       this.documentOperationUndoEntries.push({

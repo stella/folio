@@ -591,6 +591,12 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "pendingDeletion") {
     return "this block is pending deletion (a tracked change deletes it; it reads as a blank block); nothing was applied, since text written there would join the next paragraph once the deletion is accepted. Reject that deletion first, or insert a new block next to it (insertAfterBlock / insertBeforeBlock).";
   }
+  if (reason === "missingNumbering") {
+    return "`numbering.numId` names a numbering instance this document does not define; nothing was applied. Re-read the document and use a `numId` it defines (the one a neighbouring list item carries), or omit `numbering`.";
+  }
+  if (reason === "invalidResult") {
+    return "applying this operation would have left a document that cannot be saved, so nothing from it was applied. Do not retry it as written; re-read the document and express the change differently.";
+  }
   return reason;
 };
 

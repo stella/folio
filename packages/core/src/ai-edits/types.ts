@@ -691,6 +691,19 @@ export type FolioAIEditSkipReason =
    */
   | "missingStyle"
   /**
+   * The operation names a numbering instance (`numbering.numId`) the document
+   * does not define. Nothing was applied: a paragraph referencing a missing
+   * `w:num` cannot be saved. Re-read the document and use an instance it
+   * defines, or clear the numbering.
+   */
+  | "missingNumbering"
+  /**
+   * Applying the operation would have left a document that cannot be saved:
+   * the save-time model validator rejected the result. Nothing from the
+   * operation was applied; `message` carries the validator's path and reason.
+   */
+  | "invalidResult"
+  /**
    * The block is pending deletion: a tracked change deletes its text and its
    * paragraph mark, or the table row or cell holding it, so a reader lists it
    * as a blank block and accepting removes it. Nothing was applied: text
@@ -737,7 +750,9 @@ export type FolioAIEditSkippedOperation = {
    * What exactly was wrong when the reason alone does not say: the values a
    * `payloadDoesNotFit` skip could not place, the earlier operation an
    * `overlappingOperation` skip conflicts with, the offset and character of a
-   * `splitsCharacter` skip, or the undefined style of a `missingStyle` skip.
+   * `splitsCharacter` skip, the undefined style of a `missingStyle` skip, the
+   * undefined instance of a `missingNumbering` skip, or the validator's path
+   * and message of an `invalidResult` one.
    */
   message?: string;
 };

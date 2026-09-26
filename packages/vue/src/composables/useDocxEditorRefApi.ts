@@ -31,7 +31,6 @@ import type { EditorView } from "prosemirror-view";
 import { closeHistory, redo as historyRedo, undo as historyUndo } from "prosemirror-history";
 
 import {
-  applyFolioAIEditOperations,
   applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
@@ -204,6 +203,20 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   exposed: DocxEditorRef;
 } {
   const documentOperationUndoEntries: LiveDocumentOperationUndoEntry[] = [];
+  /**
+   * A run whose result the save-time check refused allocated comments that
+   * nothing in the document names; only the applied operations' stay.
+   */
+  function dropRefusedOperationComments(
+    createdCommentIds: readonly number[],
+    applied: readonly { commentId?: number }[],
+  ): void {
+    const appliedIds = new Set(applied.map(({ commentId }) => commentId));
+    const refused = new Set(createdCommentIds.filter((id) => !appliedIds.has(id)));
+    if (refused.size > 0) {
+      opts.setComments(opts.getComments().filter((comment) => !refused.has(comment.id)));
+    }
+  }
   function print(): void {
     opts.onPrint?.();
     window.print();
@@ -466,17 +479,23 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           operationView.state = view.state;
         },
       };
+      const createdCommentIds: number[] = [];
       const result = applyFolioDocumentOperations({
         view: operationView,
         snapshot,
         batch,
         author: operationAuthor,
-        createCommentId: (text) => opts.createAIEditComment(text, operationAuthor),
+        createCommentId: (text) => {
+          const id = opts.createAIEditComment(text, operationAuthor);
+          createdCommentIds.push(id);
+          return id;
+        },
         createUndoHandle: () => ({
           type: "documentOperationUndo",
           id: `vue-${String(documentOperationUndoHandleCursor++)}`,
         }),
       });
+      dropRefusedOperationComments(createdCommentIds, result.applied);
       if (result.undoHandle !== null) {
         documentOperationUndoEntries.push({
           undoHandle: result.undoHandle,
@@ -531,14 +550,22 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           })),
         };
       }
-      return applyFolioAIEditOperations({
+      // Through the document-operation applier, like the batch path, so a
+      // result the save-time check refuses never reaches the editor.
+      const createdCommentIds: number[] = [];
+      const { applied, skipped } = applyFolioDocumentOperations({
         view,
         snapshot,
-        operations,
-        mode,
+        batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
         author: operationAuthor,
-        createCommentId: (text) => opts.createAIEditComment(text, operationAuthor),
+        createCommentId: (text) => {
+          const id = opts.createAIEditComment(text, operationAuthor);
+          createdCommentIds.push(id);
+          return id;
+        },
       });
+      dropRefusedOperationComments(createdCommentIds, applied);
+      return { applied, skipped };
     },
     acceptAIEditOperation: (revisionIds) => {
       const view = opts.editorView.value;

@@ -237,7 +237,9 @@ export const FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA = {
     { type: "null" },
   ],
   description:
-    "An existing numbering instance and level (`numId` from a prior read); or " +
+    "An existing numbering instance and level (`numId` from a prior read; it must name an " +
+    "instance the document defines, one a list block read from it carries, or the operation " +
+    "skips with `missingNumbering`); or " +
     '`{ start: "new", kind: "numbered" | "bullet", level? }` to start a new list, numbered from ' +
     "the first item, with every paragraph this operation numbers in it (separate operations " +
     "start separate lists; works in a document with no lists); null removes paragraph numbering.",
