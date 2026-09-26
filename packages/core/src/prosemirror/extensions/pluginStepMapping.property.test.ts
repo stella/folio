@@ -33,7 +33,7 @@ import {
   randomDocument,
   randomOperations,
   randomSchema,
-} from "../__fixtures__/randomTransactions";
+} from "../__tests__/randomTransactions";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
 import {
   ParagraphChangeTrackerExtension,

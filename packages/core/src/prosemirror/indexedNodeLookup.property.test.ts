@@ -12,7 +12,7 @@ import type { Node as PMNode } from "prosemirror-model";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
-import { randomDocument } from "./__fixtures__/randomTransactions";
+import { randomDocument } from "./__tests__/randomTransactions";
 import { enclosingParagraphIndexed, nodeAtIndexed, nodesBetweenIndexed } from "./indexedNodeLookup";
 
 setDefaultTimeout(propertyTestTimeout(30_000));

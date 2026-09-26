@@ -15,7 +15,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { StepMap } from "prosemirror-transform";
 
-import { randomSchema } from "../__fixtures__/randomTransactions";
+import { randomSchema } from "../__tests__/randomTransactions";
 import { AutoBidiDetectionExtension } from "./features/AutoBidiDetectionExtension";
 import { ParagraphChangeTrackerExtension } from "./features/ParagraphChangeTrackerExtension";
 import { ParaIdAllocatorExtension } from "./features/ParaIdAllocatorExtension";

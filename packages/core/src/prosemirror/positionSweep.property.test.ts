@@ -17,7 +17,7 @@ import {
   buildRandomTransaction,
   randomDocument,
   randomOperations,
-} from "./__fixtures__/randomTransactions";
+} from "./__tests__/randomTransactions";
 import { sweepPositions, type PositionQuery } from "./positionSweep";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
