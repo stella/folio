@@ -252,37 +252,8 @@ type ParagraphChain = {
   node: PMNode;
   chunks: Fragment[];
   position: number;
-  sourceEnd: number;
   before: PMNode;
-  joinBoundaries: { closing: number; opening: number }[];
-  crossesBookmarks: boolean;
-};
-const paragraphJoinMap = (
-  joins: readonly { closing: number; opening: number }[],
-  origin: number,
-): StepMap => {
-  const ranges: number[] = [];
-  let active: { from: number; to: number } | null = null;
-  const append = ({
-    current,
-    deletion,
-  }: {
-    current: { from: number; to: number } | null;
-    deletion: { from: number; to: number };
-  }): { from: number; to: number } => {
-    if (current && deletion.from <= current.to) {
-      current.to = Math.max(current.to, deletion.to);
-      return current;
-    }
-    if (current) ranges.push(current.from - origin, current.to - current.from, 0);
-    return deletion;
-  };
-  for (const join of joins.toReversed()) {
-    active = append({ current: active, deletion: { from: join.closing, to: join.closing + 1 } });
-    active = append({ current: active, deletion: { from: join.opening, to: join.opening + 1 } });
-  }
-  if (active) ranges.push(active.from - origin, active.to - active.from, 0);
-  return new StepMap(ranges);
+  joinBoundaries: { closing: number; bookmarks: Fragment }[];
 };
 type ResolveStructureOptions = { node: PMNode; position: number; context: StructuralContext };
 const resolveStructure = ({ node, position, context }: ResolveStructureOptions): PMNode | null => {
@@ -326,21 +297,24 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       position: chain.position,
       steps: context.steps,
     });
-    if (chain.crossesBookmarks) {
+    for (const { closing, bookmarks } of chain.joinBoundaries) {
+      if (bookmarks.size === 0) {
+        context.deleted.push({ from: closing, to: closing + 2 });
+        continue;
+      }
+      // Higher-address deletions run first. Replace just the two paragraph
+      // tokens and retained bookmarks, not any already-removed blocks between.
+      const to = closing + bookmarks.size + 2;
       context.replacements.push({
-        from: chain.position,
-        to: chain.sourceEnd,
-        slice: new Slice(Fragment.from(final), 0, 0),
+        from: closing,
+        to,
+        slice: new Slice(bookmarks, 0, 0),
       });
       context.bookmarkJoins.push({
-        from: chain.position,
-        to: chain.sourceEnd,
-        positionMap: paragraphJoinMap(chain.joinBoundaries, chain.position),
+        from: closing,
+        to,
+        positionMap: new StepMap([0, 1, 0, bookmarks.size + 1, 1, 0]),
       });
-    } else {
-      for (const { closing, opening } of chain.joinBoundaries) {
-        context.deleted.push({ from: closing, to: opening + 1 });
-      }
     }
     reversed.push(chain.chunks.length === 1 && final.eq(chain.before) ? chain.before : final);
     chain = null;
@@ -384,14 +358,15 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     const joins = marker && markWasAdded !== (context.mode === "accept");
     if (joins && chain) {
       const boundaries = pendingBookmarks.toReversed();
+      let bookmarks = Fragment.empty;
       if (boundaries.length > 0) {
         const inline = inlineBookmarksOf(boundaries);
         if (!inline) {
           context.failed = true;
           return null;
         }
-        chain.chunks.push(Fragment.fromArray(inline));
-        chain.crossesBookmarks = true;
+        bookmarks = Fragment.fromArray(inline);
+        chain.chunks.push(bookmarks);
         pendingBookmarks = [];
       }
       const empty = holdsNoContent(paragraph);
@@ -413,12 +388,11 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         },
       });
       chain.chunks.push(paragraph.content);
-      const nextStart = chain.position;
       chain.position = entry.position;
       chain.before = paragraph;
       chain.joinBoundaries.push({
         closing: entry.position + paragraph.nodeSize - 1,
-        opening: nextStart,
+        bookmarks,
       });
       removedEndpoint(paragraph, context);
       continue;
@@ -441,10 +415,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       node: resolved,
       chunks: [resolved.content],
       position: entry.position,
-      sourceEnd: entry.position + entry.original.nodeSize,
       before: paragraph,
       joinBoundaries: [],
-      crossesBookmarks: false,
     };
     followingContainerChild = true;
   }

@@ -95,9 +95,17 @@ test(
         ),
         fc.constantFrom("none", "trIns", "trDel"),
         fc.constantFrom("none", "ins", "del"),
-        (items, rowMarker, cellMarker) => {
+        fc.boolean(),
+        (items, rowMarker, cellMarker, withBookmarks) => {
           const blocks = items.map(({ mark, inline }, index) => paragraph(index + 1, mark, inline));
-          blocks.splice(1, 0, table(rowMarker, cellMarker));
+          const between = [table(rowMarker, cellMarker)];
+          if (withBookmarks) {
+            between.unshift(
+              schema.node("blockBookmarkBoundary", { type: "start", id: 1, name: "range" }),
+            );
+            between.push(schema.node("blockBookmarkBoundary", { type: "end", id: 1 }));
+          }
+          blocks.splice(1, 0, ...between);
           const doc = schema.node("doc", null, blocks);
           const state = EditorState.create({ schema, doc });
           for (const mode of ["accept", "reject"] as const) {
