@@ -66,7 +66,9 @@ import {
 } from "../internal/sectionEndpointResolution";
 import {
   acceptAIEditRevision,
+  acceptAllSuggestions,
   rejectAIEditRevision,
+  rejectAllSuggestions,
   resolveAllChangesInHeadlessState,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
@@ -799,6 +801,26 @@ const resolveReviewedState = (state: EditorState, view: FolioReviewedView): Edit
     return state;
   }
   return resolveAllChangesInHeadlessState(state, view === "original" ? "reject" : "accept");
+};
+
+/**
+ * Turn `"suggested"` edits into ordinary tracked changes (accept) or remove
+ * them (reject) before a bulk resolve. The bulk resolver reads revision marks;
+ * a suggested whole-paragraph or table insert is flagged on the node instead,
+ * and a save drops a node still flagged, so accepting without this step lost
+ * the accepted paragraph.
+ */
+const settleSuggestions = (
+  state: EditorState,
+  mode: "accept" | "reject",
+  author: string,
+): EditorState => {
+  let settled = state;
+  const command = mode === "accept" ? acceptAllSuggestions({ author }) : rejectAllSuggestions();
+  command(state, (transaction) => {
+    settled = state.apply(transaction);
+  });
+  return settled;
 };
 
 const createHeadlessPlugins = (
@@ -2205,7 +2227,10 @@ export class FolioDocxReviewer {
         continue;
       }
       count += getTrackedChangesFromDoc(state.doc).length;
-      this.setEditableStoryState(handle, resolveAllChangesInHeadlessState(state, mode));
+      this.setEditableStoryState(
+        handle,
+        resolveAllChangesInHeadlessState(settleSuggestions(state, mode, this.author), mode),
+      );
     }
     return count;
   }
