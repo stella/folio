@@ -105,7 +105,10 @@ const windowErrors = (
   }
   let content;
   try {
-    content = proseDocToBlocks(doc.copy(Fragment.fromArray(children)));
+    // Nothing is saved from this conversion: the validator reads references
+    // and structure, not which tier a paragraph property came from, so there
+    // is deliberately no property-source base to restore against.
+    content = proseDocToBlocks(doc.copy(Fragment.fromArray(children)), []);
   } catch (error) {
     return [
       {
