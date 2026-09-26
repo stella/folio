@@ -109,8 +109,8 @@ above roughly a thousand blocks, and that is the first thing to profile.
    the total and is paid in full on both sides even when three paragraphs
    differ. The alignment needs block text and container coordinates, not a
    ProseMirror document.
-4. **Accepting all changes is O(changes x blocks).** Now the largest single
-   cost on a large structural comparison, and measured rather than guessed:
+4. ~~**Accepting all changes is O(changes x blocks).**~~ Done; see "Whole-story
+   resolution" below. Previously the largest single cost on a large structural comparison:
    of `prose/l/structural`'s 8.9s, the apply stage is 8.3s, and 3.3s of that
    is one `readReviewedStory({ view: "final" })` on the redlined base — of
    which 3.28s is `acceptAllChanges` and 0.05s is everything else. The same
@@ -604,3 +604,51 @@ All three are now closed.
 Everything else passes every invariant: the round-trip algebra in both
 directions, self-comparison, and byte determinism, across all nine classes at
 both sizes.
+
+## Whole-story resolution
+
+Accept-all and reject-all now rebuild the story in fixed tree passes and apply
+one serializable step. Paragraph, run, row, and cell revisions share that path
+in the editor and headless readers. Position maps and dirty-paragraph lookups
+are indexed; applying the transaction no longer scans the document per change.
+Individual, ID, and range commands retain their granular steps. Transported or
+rebased steps replay those granular edits; local application and undo reuse the
+already-built document.
+
+Tree construction uses fixed linear passes; indexed mapping and table-width
+removal add logarithmic factors. The per-change fragment copies are gone.
+
+Paired runs against main `169fdad18`, Bun 1.4.2, eight logical CPUs. Each
+configuration ran before then after, with one warm-up and three measured
+iterations (`--quick`). Stage medians are sampled independently of wall time.
+
+| Configuration | Revision | Wall | parse | align | apply | serialize |
+| --- | --- | --- | --- | --- | --- | --- |
+| `prose/l/structural` | before | 4809.5ms | 228.8ms | 29.8ms | 2931.2ms | 197.4ms |
+| `prose/l/structural` | after | 2274.8ms | 308.3ms | 29.6ms | 1378.0ms | 164.5ms |
+| `prose/l/heavy` | before | 9698.1ms | 382.2ms | 43.3ms | 9439.4ms | 912.2ms |
+| `prose/l/heavy` | after | 11311.8ms | 420.3ms | 25.9ms | 4934.8ms | 511.5ms |
+
+The apply stage fell by about half in both cases. The host was heavily loaded:
+structural before 287.6 → 243.5, after 243.5 → 218.6; heavy before 196.5 → 269.1,
+after 269.1 → 287.6. Heavy wall time increased despite its lower apply median;
+these samples do not establish a whole-comparison wall-time improvement.
+
+`bun packages/core/scripts/benchmark-resolve-all.ts` measures the editor command
+plus `state.apply`, with history and paragraph tracking enabled. Every paragraph
+has one insertion and one deletion. One warm-up, four measured samples; the
+reported value is the upper median. The old and new commands ran back to back:
+load 218.6 → 198.9 before, 198.9 → 194.0 after.
+
+| Paragraphs | Changes | Accept before → after | Reject before → after | Steps before → after |
+| --- | --- | --- | --- | --- |
+| 250 | 500 | 12.9 → 7.4ms | 23.5 → 2.5ms | 500 → 1 |
+| 1000 | 2000 | 181.7 → 32.3ms | 152.5 → 23.8ms | 2000 → 1 |
+| 2200 | 4400 | 694.3 → 59.7ms | 1091.3 → 28.7ms | 4400 → 1 |
+| 4400 | 8800 | 3907.0 → 50.2ms | 7579.9 → 77.5ms | 8800 → 1 |
+
+The equivalence test exercises all 69 applicable small-corpus configurations,
+including body, headers, footers, footnotes, and endnotes. It compares resolved
+documents and serialized-step replay with the retained range commands. Focused
+properties cover tracker state, selection, undo, paragraph joins, table topology,
+required-content fitting, and nested revisions.

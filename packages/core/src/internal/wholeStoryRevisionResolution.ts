@@ -278,7 +278,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     if (!entry) continue;
     let paragraph = entry.node;
     if (paragraph === null) {
-      const hasSibling = index + reversed.length + (chain ? 1 : 0) > 0;
+      // Break the loop's inference cycle through filler, paragraph, and chain.
+      const hasSibling: boolean = index + reversed.length + (chain ? 1 : 0) > 0;
       const filler = hasSibling ? null : node.type.schema.nodes["paragraph"]?.createAndFill();
       context.replacements.push({
         from: entry.position,
