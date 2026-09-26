@@ -117,6 +117,7 @@ above roughly a thousand blocks, and that is the first thing to profile.
    saves at most that conversion plus part of the target's block snapshot,
    about 4% of the comparison, and needs a second block projection that
    must agree with the first byte for byte. Apply was the larger cost.
+
 4. **Accepting all changes is O(changes x blocks).** Now the largest single
    cost on a large structural comparison, and measured rather than guessed:
    of `prose/l/structural`'s 8.9s, the apply stage is 8.3s, and 3.3s of that

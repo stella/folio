@@ -289,7 +289,12 @@ const refusingToResolve = (doc: PMNode): PMNode => {
 };
 
 describe("sameAuthoredInlineProvenance", () => {
-  const provenanceParagraph = (label: string, bold: boolean, inherited = false): PMNode =>
+  type ProvenanceParagraphOptions = { label: string; bold?: boolean; inherited?: boolean };
+  const provenanceParagraph = ({
+    label,
+    bold = true,
+    inherited = false,
+  }: ProvenanceParagraphOptions): PMNode =>
     schema.node("paragraph", inherited ? { defaultTextFormatting: { bold: true } } : null, [
       schema.text(`${label} plain `),
       schema.text(`${label} bold`, bold ? [schema.mark("bold")] : []),
@@ -304,14 +309,20 @@ describe("sameAuthoredInlineProvenance", () => {
   }: { nestedBold?: boolean; nestedInherited?: boolean } = {}): PMNode =>
     schema.node("doc", null, [
       ...Array.from({ length: 50 }, (_unused, index) =>
-        provenanceParagraph(`body ${String(index)}`, true, index % 2 === 0),
+        provenanceParagraph({ label: `body ${String(index)}`, inherited: index % 2 === 0 }),
       ),
       tableOf([
-        provenanceParagraph("outer cell", true),
-        tableOf([provenanceParagraph("nested cell", nestedBold, nestedInherited)]),
-        provenanceParagraph("after nested table", true, true),
+        provenanceParagraph({ label: "outer cell" }),
+        tableOf([
+          provenanceParagraph({
+            label: "nested cell",
+            bold: nestedBold,
+            inherited: nestedInherited,
+          }),
+        ]),
+        provenanceParagraph({ label: "after nested table", inherited: true }),
       ]),
-      provenanceParagraph("closing", true),
+      provenanceParagraph({ label: "closing" }),
     ]);
   const snapshotOf = (doc: PMNode): FolioAIEditSnapshot => {
     const snapshot = createFolioAIEditSnapshot(doc);
