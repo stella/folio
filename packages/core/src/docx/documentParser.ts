@@ -337,10 +337,10 @@ export function parseDocumentBody(
   // Parse XML
   const doc = parseXml(xml);
 
-  // Find root document element (w:document)
+  // Find root document element (w:document), under whatever prefix — or
+  // default namespace — the part binds WordprocessingML to.
   const documentEl = (doc.elements ?? []).find(
-    (el: XmlElement) =>
-      el.type === "element" && (el.name === "w:document" || el.name?.endsWith(":document")),
+    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "document",
   );
   if (!documentEl) {
     return result;

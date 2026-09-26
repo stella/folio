@@ -93,11 +93,12 @@ import {
   serializeNewFootnotesPart,
 } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
-import { readRootNamespaceBindings } from "./serializer/partNamespaces";
+import { readRootNamespaceBindings, serializePartElement } from "./serializer/partNamespaces";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
 import { missingNoteReferenceStyles, noteReferenceNeeds } from "./noteReferenceStyles";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
+import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";
 import { serializeThemeXml } from "./serializer/themeSerializer";
 import {
   isUnsafePackagePath,
@@ -2596,6 +2597,28 @@ const STYLES_PART_PATH = "word/styles.xml";
 const STYLES_CLOSE_ROOT = "</w:styles>";
 
 /**
+ * One serialized element with the namespace declarations its own prefixes
+ * need, for splicing into a part whose root binds them differently (or not
+ * at all). A prefix no table knows throws rather than being written unbound.
+ */
+const selfBoundFragment = (fragment: string, partPath: string): string => {
+  const openEnd = fragment.indexOf(">");
+  const selfClosing = fragment[openEnd - 1] === "/";
+  const rootName = /^<(?<name>[^\s/>]+)/u.exec(fragment)?.groups?.["name"];
+  if (openEnd === -1 || rootName === undefined) {
+    throw new DocxPackageFidelityError(`Cannot splice a malformed element into ${partPath}`);
+  }
+  return serializePartElement({
+    partPath,
+    rootName,
+    rootAttributes: fragment.slice(rootName.length + 1, selfClosing ? openEnd - 1 : openEnd).trim(),
+    baselinePrefixes: [],
+    sourceBindings: undefined,
+    body: selfClosing ? "" : fragment.slice(openEnd + 1, fragment.lastIndexOf("</")),
+  });
+};
+
+/**
  * The style table a package folio creates starts from: `docDefaults` and
  * `Normal`, and nothing else. A document that carries its own style table
  * replaces this part wholesale.
@@ -2707,7 +2730,14 @@ async function serializeAddedStylesIntoZip(
   }
   const file = findNotePartEntry(originalZip, STYLES_PART_PATH);
   const originalXml = file ? await file.async("text") : null;
-  const rootClose = originalXml?.lastIndexOf(STYLES_CLOSE_ROOT) ?? -1;
+  // The root closes under whatever prefix the part binds WordprocessingML
+  // to. Reading only `</w:styles>` took an `x:styles` part for "no usable
+  // styles part" and replaced it wholesale with the model's serialization.
+  const rootName = originalXml === null ? undefined : parseXmlDocument(originalXml)?.name;
+  const rootClose =
+    originalXml !== null && rootName !== undefined && getLocalName(rootName) === "styles"
+      ? originalXml.lastIndexOf(`</${rootName}>`)
+      : -1;
   if (file === null || originalXml === null || rootClose < 0) {
     // No usable styles part: write the whole model serialization so every
     // style `document.xml` references resolves, and wire the part up.
@@ -2736,9 +2766,16 @@ async function serializeAddedStylesIntoZip(
   if (added.length === 0) {
     return;
   }
+  // The serializer writes `w:`; a part spelled otherwise gets each appended
+  // style with its own namespace declarations, so the prefixes resolve.
+  const canonical = hasCanonicalWordprocessingPrefixes(originalXml);
   const patched =
     originalXml.slice(0, rootClose) +
-    added.map(serializeStyle).join("") +
+    added
+      .map((style) =>
+        canonical ? serializeStyle(style) : selfBoundFragment(serializeStyle(style), file.name),
+      )
+      .join("") +
     originalXml.slice(rootClose);
   newZip.file(file.name, patched, {
     compression: "DEFLATE",

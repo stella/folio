@@ -21,6 +21,7 @@ import {
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";
 
 /**
  * Whether `char` ends an element's tag name in XML — a whitespace separator
@@ -506,9 +507,15 @@ const routeChangedParagraphs = (
   serializedXml: string,
   changedIds: ReadonlySet<string>,
 ): ParagraphRouting => {
-  const rootName = rootElementName(originalXml);
-  if (rootName !== undefined && !rootName.startsWith("w:")) {
-    return { type: "refused", reason: `non-canonical-wordprocessingml-prefix: ${rootName}` };
+  // The scan reads `<w:p` / `w14:paraId` literally and the splice writes the
+  // serializer's `w:` markup, so both hold only for a part spelled that way:
+  // a root under another prefix, a second WordprocessingML prefix, `w14`
+  // under another prefix, or a nested rebinding all refuse.
+  if (!hasCanonicalWordprocessingPrefixes(originalXml)) {
+    return {
+      type: "refused",
+      reason: `non-canonical-wordprocessingml-prefix: ${rootElementName(originalXml) ?? "unknown"}`,
+    };
   }
 
   const original = addressableParagraphs(originalXml);
@@ -1625,7 +1632,12 @@ export const patchNumberingDefinitions = ({
     !WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(original) ?? "")
   )
     return null;
-  if (getNamespacePrefix(original.name ?? "") !== "w") {
+  // The literal splice below finds `<w:abstractNum` / `<w:num`; any other
+  // spelling goes through the parser, which reads definitions by namespace.
+  if (
+    getNamespacePrefix(original.name ?? "") !== "w" ||
+    !hasCanonicalWordprocessingPrefixes(originalXml)
+  ) {
     return patchNumberingByNamespace({ original, currentXml, changed, added });
   }
   const spliced = buildPatchedNumberingXml(originalXml, currentXml, changed);

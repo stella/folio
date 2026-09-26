@@ -1,0 +1,312 @@
+/**
+ * Which prefixes a WordprocessingML part spells its namespaces with.
+ *
+ * A prefix is an alias: `<w:p>`, `<x:p>` and an unprefixed `<p>` under a
+ * default namespace are the same paragraph when the prefix (or the default)
+ * is bound to the WordprocessingML URI. The parser resolves names by URI, so
+ * every such package opens. The patchers that work on part XML as a string
+ * (`ensureParaIds`, the selective-save splices) find elements by their
+ * literal tags instead, and a literal `<w:p` finds nothing in a part that
+ * spells it `<x:p`: the patch reports success having touched nothing.
+ *
+ * {@link resolveWordprocessingPrefixes} is the one place those patchers ask
+ * how a part spells WordprocessingML, the Word 2010 extensions (`w14`) and
+ * markup compatibility (`mc`). A patcher either scans with every prefix the
+ * part binds, or refuses a part that is not {@link WordprocessingPrefixes.canonical}.
+ * A binding it cannot follow with a string scan — a nested element that
+ * rebinds a prefix the scan relies on, or binds one of these namespaces
+ * under a prefix of its own — is reported as unsupported rather than guessed.
+ */
+
+import { NAMESPACES, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
+
+/** How one part spells the namespaces a string-level patcher scans for. */
+export type WordprocessingPrefixes = {
+  /**
+   * Prefixes bound to WordprocessingML (Transitional or Strict), `""` for the
+   * default namespace. Never empty: an undeclared part reads as `w`.
+   */
+  main: readonly string[];
+  /** Prefixes bound to the Word 2010 extensions (`w14`). */
+  w14: readonly string[];
+  /** Whether a `w14` prefix is declared on the root (else `w14` is assumed). */
+  w14Declared: boolean;
+  /** Prefixes bound to markup compatibility (`mc`). */
+  mc: readonly string[];
+  /** Whether an `mc` prefix is declared on the root (else `mc` is assumed). */
+  mcDeclared: boolean;
+  /**
+   * The spelling folio's serializer writes: WordprocessingML only as `w`,
+   * `w14` and `mc` under their conventional prefixes. Splicing serializer
+   * output into a part is only sound when this holds.
+   */
+  canonical: boolean;
+};
+
+export type WordprocessingPrefixResolution =
+  | { type: "resolved"; prefixes: WordprocessingPrefixes }
+  | { type: "unsupported"; reason: string };
+
+const XMLNS = "xmlns";
+
+type Declaration = { prefix: string; uri: string };
+
+const isWhitespace = (character: string | undefined): boolean =>
+  character === " " || character === "\t" || character === "\n" || character === "\r";
+
+/** End offset (exclusive) of the tag opening at `start`, skipping quoted values. */
+const tagEnd = (xml: string, start: number): number => {
+  let quote: string | null = null;
+  for (let index = start + 1; index < xml.length; index += 1) {
+    const character = xml[index];
+    if (quote !== null) {
+      if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return index + 1;
+    }
+  }
+  return -1;
+};
+
+/** The `xmlns` / `xmlns:*` declarations written in one start tag. */
+const declarationsIn = (tag: string): Declaration[] => {
+  const declarations: Declaration[] = [];
+  const pattern =
+    /\sxmlns(?::(?<prefix>[^\s=/>]+))?\s*=\s*(?<quote>["'])(?<uri>[\s\S]*?)\k<quote>/gu;
+  for (const match of tag.matchAll(pattern)) {
+    declarations.push({
+      prefix: match.groups?.["prefix"] ?? "",
+      uri: match.groups?.["uri"] ?? "",
+    });
+  }
+  return declarations;
+};
+
+const OPAQUE_REGIONS = [
+  { open: "<!--", close: "-->" },
+  { open: "<![CDATA[", close: "]]>" },
+  { open: "<?", close: "?>" },
+] as const;
+
+type TagVisitor = (tag: string, isRoot: boolean) => void;
+
+/** Visit every start tag of `xml` that declares a namespace, root first. */
+const visitDeclaringStartTags = (xml: string, visit: TagVisitor): boolean => {
+  let seenRoot = false;
+  let pos = 0;
+  scan: while (pos < xml.length) {
+    const start = xml.indexOf("<", pos);
+    if (start === -1) {
+      break;
+    }
+    for (const { open, close } of OPAQUE_REGIONS) {
+      if (xml.startsWith(open, start)) {
+        const closeStart = xml.indexOf(close, start + open.length);
+        if (closeStart === -1) {
+          return false;
+        }
+        pos = closeStart + close.length;
+        continue scan;
+      }
+    }
+    const next = xml[start + 1];
+    if (next === "!" || next === "/") {
+      const end = xml.indexOf(">", start);
+      if (end === -1) {
+        return false;
+      }
+      pos = end + 1;
+      continue;
+    }
+    const end = tagEnd(xml, start);
+    if (end === -1) {
+      return false;
+    }
+    const isRoot = !seenRoot;
+    seenRoot = true;
+    const tag = xml.slice(start, end);
+    if (isRoot || tag.includes(XMLNS)) {
+      visit(tag, isRoot);
+    }
+    pos = end;
+  }
+  return seenRoot;
+};
+
+const MAIN_URIS = WORDPROCESSINGML_NAMESPACE_URIS;
+const W14_URI: string = NAMESPACES.w14;
+const MC_URI: string = NAMESPACES.mc;
+
+type NamespaceSlot = "main" | "w14" | "mc";
+
+const slotOf = (uri: string): NamespaceSlot | null => {
+  if (MAIN_URIS.has(uri)) return "main";
+  if (uri === W14_URI) return "w14";
+  if (uri === MC_URI) return "mc";
+  return null;
+};
+
+const CONVENTIONAL_PREFIX: Record<NamespaceSlot, string> = { main: "w", w14: "w14", mc: "mc" };
+
+/**
+ * Resolve the prefixes `xml` binds to WordprocessingML, `w14` and `mc`.
+ *
+ * Root declarations decide. A namespace the root never declares is read under
+ * its conventional prefix, as Word does for a malformed part. A declaration on
+ * a nested element is accepted only when it repeats a binding the scan already
+ * uses; anything else changes what a literal tag means partway through the
+ * part and is reported as unsupported.
+ */
+export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefixResolution => {
+  const bound: Record<NamespaceSlot, string[]> = { main: [], w14: [], mc: [] };
+  const rootPrefixes = new Map<string, string>();
+  const nested: Declaration[] = [];
+
+  const complete = visitDeclaringStartTags(xml, (tag, isRoot) => {
+    for (const declaration of declarationsIn(tag)) {
+      if (!isRoot) {
+        nested.push(declaration);
+        continue;
+      }
+      rootPrefixes.set(declaration.prefix, declaration.uri);
+      const slot = slotOf(declaration.uri);
+      if (slot !== null) {
+        bound[slot].push(declaration.prefix);
+      }
+    }
+  });
+  if (!complete) {
+    return { type: "unsupported", reason: "no root element or unterminated markup" };
+  }
+
+  const declared: Record<NamespaceSlot, boolean> = {
+    main: bound.main.length > 0,
+    w14: bound.w14.length > 0,
+    mc: bound.mc.length > 0,
+  };
+  for (const slot of ["main", "w14", "mc"] as const) {
+    if (declared[slot]) {
+      if (slot !== "main" && bound[slot].includes("")) {
+        // Attributes never take the default namespace; `w14:paraId` and
+        // `mc:Ignorable` need a prefix.
+        return { type: "unsupported", reason: `${slot} is bound only as the default namespace` };
+      }
+      continue;
+    }
+    const conventional = CONVENTIONAL_PREFIX[slot];
+    if (rootPrefixes.has(conventional)) {
+      if (slot === "main") {
+        return {
+          type: "unsupported",
+          reason: `no WordprocessingML binding; ${conventional} is bound to another namespace`,
+        };
+      }
+      // Nothing to read under the conventional prefix, and nothing may be
+      // written there either; the scan simply finds no such attributes.
+      continue;
+    }
+    bound[slot].push(conventional);
+  }
+
+  const inUse = new Map<string, NamespaceSlot>();
+  for (const slot of ["main", "w14", "mc"] as const) {
+    for (const prefix of bound[slot]) {
+      inUse.set(prefix, slot);
+    }
+  }
+  for (const { prefix, uri } of nested) {
+    const slot = slotOf(uri);
+    const spelling = prefix === "" ? "the default namespace" : `prefix ${prefix}`;
+    if (slot !== null) {
+      if (!bound[slot].includes(prefix)) {
+        return {
+          type: "unsupported",
+          reason: `a nested element binds ${slot} under ${spelling}`,
+        };
+      }
+      continue;
+    }
+    if (inUse.has(prefix)) {
+      return {
+        type: "unsupported",
+        reason: `a nested element rebinds ${spelling} to ${uri === "" ? "no namespace" : uri}`,
+      };
+    }
+  }
+
+  const only = (prefixes: readonly string[], prefix: string): boolean =>
+    prefixes.length === 1 && prefixes[0] === prefix;
+  // An empty list means the conventional prefix is bound to another
+  // namespace, so the serializer's `w14:` / `mc:` would not mean what it says.
+  const canonical = only(bound.main, "w") && only(bound.w14, "w14") && only(bound.mc, "mc");
+
+  return {
+    type: "resolved",
+    prefixes: {
+      main: bound.main,
+      w14: bound.w14,
+      w14Declared: declared.w14,
+      mc: bound.mc,
+      mcDeclared: declared.mc,
+      canonical,
+    },
+  };
+};
+
+/** Whether `xml` spells WordprocessingML the way folio's serializer does. */
+export const hasCanonicalWordprocessingPrefixes = (xml: string): boolean => {
+  const resolution = resolveWordprocessingPrefixes(xml);
+  return resolution.type === "resolved" && resolution.prefixes.canonical;
+};
+
+/** `<p`, `<w:p`, … — the open-tag literal of `localName` under `prefix`. */
+export const openTagLiteral = (prefix: string, localName: string): string =>
+  prefix === "" ? `<${localName}` : `<${prefix}:${localName}`;
+
+/** `</p>`, `</w:p>`, … — the close-tag literal of `localName` under `prefix`. */
+export const closeTagLiteral = (prefix: string, localName: string): string =>
+  prefix === "" ? `</${localName}>` : `</${prefix}:${localName}>`;
+
+/**
+ * Whether `xml` opens `localName` under one of `prefixes` at `start`, and the
+ * length of the literal that matched (`-1` when none did). The character after
+ * the name must end it, so `<w:pPr` is not `<w:p`.
+ */
+export const matchOpenTag = (
+  xml: string,
+  start: number,
+  prefixes: readonly string[],
+  localName: string,
+): number => {
+  for (const prefix of prefixes) {
+    const literal = openTagLiteral(prefix, localName);
+    if (!xml.startsWith(literal, start)) continue;
+    const after = xml[start + literal.length];
+    if (after === ">" || after === "/" || isWhitespace(after)) {
+      return literal.length;
+    }
+  }
+  return -1;
+};
+
+/** The length of the close tag of `localName` under one of `prefixes` at `start`, or -1. */
+export const matchCloseTag = (
+  xml: string,
+  start: number,
+  prefixes: readonly string[],
+  localName: string,
+): number => {
+  for (const prefix of prefixes) {
+    const literal = closeTagLiteral(prefix, localName);
+    if (xml.startsWith(literal, start)) {
+      return literal.length;
+    }
+  }
+  return -1;
+};

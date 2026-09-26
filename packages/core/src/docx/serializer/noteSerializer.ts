@@ -122,8 +122,10 @@ function serializeRequiredNoteSeparators(elementName: "footnote" | "endnote"): s
 
 function insertNoteReferenceMark(xml: string, elementName: "footnote" | "endnote"): string {
   // The authored mark now reaches the model as a preserved run child, so a
-  // note that already carries one must not be given a second.
-  if (xml.includes(`<w:${elementName}Ref`)) {
+  // note that already carries one must not be given a second. A preserved
+  // child keeps the source's spelling (`x:footnoteRef`, or unprefixed under a
+  // default namespace), so the check cannot assume `w:`.
+  if (new RegExp(`<(?:[\\w.-]+:)?${elementName}Ref[\\s/>]`, "u").test(xml)) {
     return xml;
   }
   const paragraphOpen = /<w:p(?=[\s>])[^>]*>/u.exec(xml);

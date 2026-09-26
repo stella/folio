@@ -256,8 +256,7 @@ export function parseFootnotes(
 
   // Find the root footnotes element
   const rootElement = doc.elements?.find(
-    (el: XmlElement) =>
-      el.type === "element" && (el.name === "w:footnotes" || el.name?.endsWith(":footnotes")),
+    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "footnotes",
   );
 
   if (!rootElement) {
@@ -381,8 +380,7 @@ export function parseEndnotes(
 
   // Find the root endnotes element
   const rootElement = doc.elements?.find(
-    (el: XmlElement) =>
-      el.type === "element" && (el.name === "w:endnotes" || el.name?.endsWith(":endnotes")),
+    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "endnotes",
   );
 
   if (!rootElement) {

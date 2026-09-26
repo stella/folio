@@ -42,10 +42,7 @@ import {
 function parseListItems(el: XmlElement): { displayText: string; value: string }[] {
   const items: { displayText: string; value: string }[] = [];
   for (const child of el.elements ?? []) {
-    if (
-      child.type === "element" &&
-      (child.name === "w:listItem" || child.name?.endsWith(":listItem"))
-    ) {
+    if (child.type === "element" && getLocalName(child.name ?? "") === "listItem") {
       // OOXML §17.5.2.10: `w:displayText` is optional, and `w:value` is
       // optional too. Fall back each to the other so a partially specified
       // listItem stays selectable + visible — without this, the dropdown

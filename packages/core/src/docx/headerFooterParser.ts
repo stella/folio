@@ -45,7 +45,7 @@ import type { StyleMap } from "./styleParser";
 import { parseWatermark } from "./watermarkParser";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { type PreviewLedger, standalonePreviewLedger } from "./previewBudget";
-import { collectXmlnsDeclarations, parseXml } from "./xmlParser";
+import { collectXmlnsDeclarations, getLocalName, parseXml } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
 // Re-export reference parsers for backward compatibility
@@ -118,7 +118,7 @@ export function parseHeader(
 
   // Find the root header element (w:hdr)
   const rootElement = doc.elements?.find(
-    (el: XmlElement) => el.type === "element" && (el.name === "w:hdr" || el.name?.endsWith(":hdr")),
+    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "hdr",
   );
 
   if (!rootElement) {
@@ -199,7 +199,7 @@ export function parseFooter(
 
   // Find the root footer element (w:ftr)
   const rootElement = doc.elements?.find(
-    (el: XmlElement) => el.type === "element" && (el.name === "w:ftr" || el.name?.endsWith(":ftr")),
+    (el: XmlElement) => el.type === "element" && getLocalName(el.name ?? "") === "ftr",
   );
 
   if (!rootElement) {

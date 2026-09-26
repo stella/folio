@@ -20,7 +20,13 @@ type CommentMarker = Extract<
 >;
 type TableCellBlock = TableCell["content"][number];
 
-const COMMENT_RANGE_MARKER_PATTERN = /<w:commentRange(Start|End)\s[^>]*w:id="(\d+)"/gu;
+/**
+ * A range marker under any prefix, or none: this is the guard a splice is
+ * refused by, and a guard that only knows `w:` passes every patch of a part
+ * that spells WordprocessingML another way.
+ */
+const COMMENT_RANGE_MARKER_PATTERN =
+  /<(?:[\w.-]+:)?commentRange(Start|End)(?:\s[^>]*?)?\s(?:[\w.-]+:)?id=["'](\d+)["']/gu;
 
 /**
  * Comment ids whose range is not a start followed by an end in this story's
