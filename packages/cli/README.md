@@ -136,8 +136,10 @@ A write that finds it writes a request and waits up to `--flush-wait` ms
 (default 5000) for the editor to save under its lease (`--lease-token`) and
 release; the write then runs on the saved version. An agent tool's
 `--expect-version` from before the flush is accepted when the journal shows
-the editor's save from exactly that version; its block ids and text-hash
-preconditions decide the rest. An editor that does not release in time is
+the editor's save from exactly that version and every block it targets is a
+package `w14:paraId` in both versions; its text-hash preconditions decide the
+rest. A call targeting a text-derived id (`blockIdSource: synthetic`), or no
+block, is refused with `stale_version` and re-reads. An editor that does not release in time is
 treated by the ordinary lease rules. `@stll/folio-cli/editor-lease` exports
 the editor side.
 

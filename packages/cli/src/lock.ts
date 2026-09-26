@@ -9,6 +9,8 @@
  *
  * The lock appears complete or not at all: it is written to a private
  * temporary file and hard-linked into place, which fails when a lock exists.
+ * Changing a lock that exists (renewing, taking over, releasing, clearing a
+ * stale one) is a compare-and-swap under a short swap lock beside it.
  * A lease is stale once it expires or, on the same host, once its process has
  * exited. A lock that cannot be parsed is treated as held until it is older
  * than a lease. Reads never consult it.
@@ -19,6 +21,7 @@ import { randomUUID } from "node:crypto";
 import { link, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { errnoCode } from "./file-system";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
@@ -206,6 +209,71 @@ const placeLock = async (
 const encodeHolder = (holder: LockHolder): Uint8Array =>
   new TextEncoder().encode(`${JSON.stringify(holder)}\n`);
 
+/** How long a swap lock may stand before another process breaks it (its holder crashed). */
+const SWAP_STALE_MS = 10 * 1000;
+
+/** How long to wait for another process's swap before refusing. */
+const SWAP_WAIT_MS = 5 * 1000;
+
+const SWAP_POLL_MS = 5;
+
+/** `.<name>.folio-lock.swap`: held for the instant one process changes an existing lock. */
+export const lockSwapPathFor = (documentPath: string): string =>
+  `${lockPathFor(documentPath)}.swap`;
+
+/**
+ * Run `change` holding the swap lock beside the lease. Every change to an
+ * existing lock (a renewal, a forced takeover, a release, removing a stale
+ * lock) re-reads the lock and replaces or removes it inside `change`, so the
+ * check and the change are one step to every other folio process: a renewal
+ * never overwrites a lock another holder took, and a release never removes
+ * one. Creating a lock needs no swap lock, since `link` refuses when a lock
+ * exists. The swap lock is itself created with `link`; one older than
+ * {@link SWAP_STALE_MS} is left by a crash and is broken.
+ */
+const underSwapLock = async <T>(
+  documentPath: string,
+  change: () => Promise<Result<T, FolioCliError>>,
+): Promise<Result<T, FolioCliError>> => {
+  const swapPath = lockSwapPathFor(documentPath);
+  const marker = new TextEncoder().encode(`${process.pid}\n`);
+  const deadline = Date.now() + SWAP_WAIT_MS;
+  for (;;) {
+    const taken = await placeLock(swapPath, marker, "create");
+    if (taken.isErr()) return Result.err(taken.error);
+    if (taken.value.type === "placed") break;
+    const entry = await inspectPath(swapPath);
+    if (
+      entry.isOk() &&
+      entry.value.type === "file" &&
+      entry.value.modifiedMs + SWAP_STALE_MS <= Date.now()
+    ) {
+      await rm(swapPath, { force: true });
+      continue;
+    }
+    if (Date.now() >= deadline) {
+      return Result.err(
+        cliError({
+          code: FOLIO_CLI_ERROR_CODES.locked,
+          message: `The write lease on ${documentPath} is being changed by another process.`,
+          hint: "Retry in a moment.",
+        }),
+      );
+    }
+    await sleep(SWAP_POLL_MS);
+  }
+  try {
+    return await change();
+  } finally {
+    await rm(swapPath, { force: true });
+  }
+};
+
+/** Whether two reads of the lock saw the same lock. */
+const sameLock = (left: LeaseState, right: LeaseState): boolean =>
+  (left.type === "held" && right.type === "held" && left.holder.token === right.holder.token) ||
+  (left.type === "unreadable" && right.type === "unreadable");
+
 /** The handle on a lease whose lock carries `initial`'s token. */
 const leaseFor = (documentPath: string, initial: LockHolder, leaseMs: number): AcquiredLease => {
   const lockPath = lockPathFor(documentPath);
@@ -217,16 +285,23 @@ const leaseFor = (documentPath: string, initial: LockHolder, leaseMs: number): A
     holder: initial,
     verify: async () => ((await holds()) ? Result.ok() : Result.err(lostError(documentPath))),
     renew: async (now = new Date()) => {
-      if (!(await holds())) return Result.err(lostError(documentPath));
       const expiresAt = new Date(now.getTime() + leaseMs).toISOString();
       const renewed = { ...lease.holder, expiresAt };
-      const placed = await placeLock(lockPath, encodeHolder(renewed), "replace");
-      if (placed.isErr()) return Result.err(placed.error);
+      // Compare and swap: replaced only while the lock still carries our token.
+      const swapped = await underSwapLock(documentPath, async () => {
+        if (!(await holds())) return Result.err(lostError(documentPath));
+        const placed = await placeLock(lockPath, encodeHolder(renewed), "replace");
+        return placed.isErr() ? Result.err(placed.error) : Result.ok();
+      });
+      if (swapped.isErr()) return Result.err(swapped.error);
       lease.holder = renewed;
       return Result.ok(renewed);
     },
     release: async () => {
-      if (await holds()) await rm(lockPath, { force: true });
+      await underSwapLock(documentPath, async () => {
+        if (await holds()) await rm(lockPath, { force: true });
+        return Result.ok();
+      });
     },
   };
   return lease;
@@ -292,16 +367,24 @@ export const acquireLease = async ({
     if (placed.value.type === "placed") return Result.ok(lease);
     const existing = await readLease(documentPath);
     if (force) {
-      const replaced = await placeLock(lockPath, contents, "replace");
+      const replaced = await underSwapLock(documentPath, () =>
+        placeLock(lockPath, contents, "replace"),
+      );
       if (replaced.isErr()) return Result.err(replaced.error);
       return Result.ok(lease);
     }
     if (!isStaleLease(existing, now)) {
       return Result.err(lockedError(documentPath, existing));
     }
-    // Two writers can both judge the same lock stale; the one whose lock is
-    // replaced fails its fencing check before it journals or renames.
-    await rm(lockPath, { force: true });
+    // Removed only if it is still the lock judged stale: a lease renewed or
+    // taken over meanwhile is left alone, and this attempt retries.
+    const removed = await underSwapLock(documentPath, async () => {
+      if (sameLock(existing, await readLease(documentPath))) {
+        await rm(lockPath, { force: true });
+      }
+      return Result.ok();
+    });
+    if (removed.isErr()) return Result.err(removed.error);
   }
   return Result.err(lockedError(documentPath, { type: "free" }));
 };

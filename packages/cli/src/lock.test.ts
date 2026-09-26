@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFile, utimes, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
 import { makeTempDir } from "./__tests__/fixtures";
 import {
   acquireLease,
   lockPathFor,
+  lockSwapPathFor,
   readLease,
   TRANSACTION_LEASE_MS,
   type LockHolder,
@@ -94,6 +96,61 @@ describe("acquireLease", () => {
       expect(lease.isOk()).toBe(true);
       expect(await readFile(lockPathFor(documentPath), "utf8")).toContain('"txId":"tx-new"');
       await lease.unwrap().release();
+    }
+  });
+});
+
+const tokenOnDisk = async (): Promise<string | null> => {
+  const state = await readLease(documentPath);
+  return state.type === "held" ? state.holder.token : null;
+};
+
+describe("renewal against a takeover", () => {
+  test("a renewal queued behind a takeover refuses instead of overwriting it", async () => {
+    const editor = (
+      await acquireLease({ documentPath, txId: "editor", force: false, leaseMs: 30_000 })
+    ).unwrap();
+    // Another process is mid-swap: the renewal waits for it.
+    await writeFile(lockSwapPathFor(documentPath), "other\n");
+    const renewal = editor.renew();
+    await sleep(30);
+    // The takeover that swap made lands, then the swap ends.
+    await writeHolder({ token: "taken-over" });
+    await rm(lockSwapPathFor(documentPath));
+
+    const renewed = await renewal;
+
+    expect(renewed.isErr() && renewed.error.code).toBe("locked");
+    expect(await tokenOnDisk()).toBe("taken-over");
+  });
+
+  test("a forced takeover and a renewal racing always leave the takeover's lock", async () => {
+    for (let round = 0; round < 25; round++) {
+      const editor = (
+        await acquireLease({ documentPath, txId: "editor", force: false, leaseMs: 30_000 })
+      ).unwrap();
+      if (round % 2 === 0) {
+        // Line both up behind one swap so they start together when it ends.
+        await writeFile(lockSwapPathFor(documentPath), "other\n");
+      }
+      const racing = Promise.all([
+        editor.renew(),
+        acquireLease({ documentPath, txId: "agent", force: true }),
+      ]);
+      if (round % 2 === 0) {
+        await sleep(10);
+        await rm(lockSwapPathFor(documentPath));
+      }
+      const [renewed, forced] = await racing;
+      const agent = forced.unwrap();
+
+      expect([round, await tokenOnDisk()]).toEqual([round, agent.holder.token]);
+      expect((await editor.verify()).isErr()).toBe(true);
+      await editor.release();
+      expect([round, await tokenOnDisk()]).toEqual([round, agent.holder.token]);
+      expect(renewed.isOk() || renewed.error.code === "locked").toBe(true);
+      await agent.release();
+      expect(await readdir(dir)).toEqual([]);
     }
   });
 });

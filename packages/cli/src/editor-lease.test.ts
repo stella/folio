@@ -16,6 +16,7 @@ import {
   watchFlushRequests,
   type FlushWatcher,
 } from "./editor-lease";
+import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteOptions } from "./execute-write";
 import { lockPathFor, readLease, type AcquiredLease } from "./lock";
 import { findFileTool } from "./registry";
@@ -27,9 +28,12 @@ let file = "";
 let watcher: FlushWatcher | undefined;
 let editor: AcquiredLease | undefined;
 
+/** A clause without a paraId, whose block id is derived from its text and position. */
+const UNNUMBERED = { text: "Czech law governs this contract." };
+
 beforeEach(async () => {
   ({ dir, cleanup } = await makeTempDir());
-  file = await writeDocx(dir, "contract.docx", CONTRACT_PARAGRAPHS);
+  file = await writeDocx(dir, "contract.docx", [...CONTRACT_PARAGRAPHS, UNNUMBERED]);
 });
 
 afterEach(async () => {
@@ -81,7 +85,29 @@ const unsavedEdit = (): Promise<Uint8Array> =>
     ...CONTRACT_PARAGRAPHS.slice(0, 2),
     { text: "Late payment accrues 2% interest.", paraId: "10000003" },
     ...CONTRACT_PARAGRAPHS.slice(3),
+    UNNUMBERED,
   ]);
+
+/** The block id `read` gives the paragraph without a paraId, checking it is synthetic. */
+const syntheticIdOf = async (fileVersion: string): Promise<string> => {
+  const tool = findFileTool("read_document");
+  if (!tool) throw new Error("read_document is not registered");
+  const data = (
+    await executeReadTool(tool, { path: file, fileVersion, args: {} }, CLI_READ_BOUNDS)
+  ).unwrap();
+  const result: unknown = isObject(data) ? data["result"] : undefined;
+  const blocks: unknown = isObject(result) ? result["blocks"] : undefined;
+  const block = (Array.isArray(blocks) ? blocks : [])
+    .filter(isObject)
+    .find(({ text }) => text === UNNUMBERED.text);
+  if (block?.["blockIdSource"] !== "synthetic" || typeof block["blockId"] !== "string") {
+    throw new Error("no synthetic block id");
+  }
+  return block["blockId"];
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * An editor with unsaved edits that saves them and releases when asked;
@@ -144,6 +170,30 @@ describe("flush handshake", () => {
       .map((line) => JSON.parse(line).tool);
     expect(tools).toEqual(["editor_save", "suggest_changes"]);
     expect((await readdir(dir)).toSorted()).toEqual([".folio", "contract.docx"]);
+  });
+
+  test("a write targeting any text-derived block id is not carried over the flush", async () => {
+    const read = await versionOf(file);
+    const synthetic = await syntheticIdOf(read);
+    const { flushed } = await startEditor();
+
+    const result = await write(
+      "suggest_changes",
+      {
+        operations: [
+          ...REPLACE_FIFTY.operations,
+          { type: "replaceInBlock", blockId: synthetic, find: "Czech", replace: "Slovak" },
+        ],
+      },
+      read,
+    );
+    const saved = await flushed;
+
+    expect(result.isErr() && result.error.code).toBe("stale_version");
+    expect(await versionOf(file)).toBe(saved);
+    const content = await texts(file);
+    expect(content).toContain(UNNUMBERED.text);
+    expect(content.some((text) => text.includes("$500"))).toBe(false);
   });
 
   test("a stale block precondition after the flush is the usual stale_target", async () => {

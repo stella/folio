@@ -20,6 +20,7 @@ import type { FolioAIEditApplyMode, FolioDocxReviewer } from "@stll/folio-core/s
 import {
   checkExpectedVersion,
   errnoCode,
+  fileVersionOf,
   openReviewer,
   readDocumentFile,
   sameFile,
@@ -27,12 +28,12 @@ import {
   type LoadedFile,
 } from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
-import type { FileToolCall } from "./execute-read";
+import { blockIdSources, type FileToolCall } from "./execute-read";
 import { acquireLeaseForWrite, type FlushOutcome } from "./editor-lease";
 import { findCommit, journalPathFor, latestCommitFor, recoverStages } from "./journal";
 import { diffPackages, nextRevisionIdSeed } from "./package-parts";
 import type { FolioFileToolSpec, ResolveChangeAction } from "./registry";
-import { SIDECAR_DIRECTORY, unsafePath } from "./sidecar";
+import { inspectPath, readSidecarFile, SIDECAR_DIRECTORY, unsafePath } from "./sidecar";
 import { commitTransaction, type WriteDestination } from "./transaction";
 
 export type { WriteDestination } from "./transaction";
@@ -382,40 +383,109 @@ type RebaseCheck = {
   tool: FolioFileToolSpec;
   flush: FlushOutcome;
   inPlace: boolean;
-  documentPath: string;
+  /** The file as the editor's save left it. */
+  source: LoadedFile;
+  args: Readonly<Record<string, unknown>>;
   expected: string | undefined;
-  current: string;
 };
 
 /** How a write that waited for an editor's save came to run on the saved version. */
 type Rebased = { fromVersion: string; toVersion: string; flushedBy: string };
 
+const BLOCK_ID_KEY = /blockId$/iu;
+
+/** Every block id an operation targets: any `...blockId` string, at any depth. */
+const targetedBlockIds = (value: unknown, found: Set<string> = new Set()): Set<string> => {
+  if (Array.isArray(value)) {
+    for (const item of value) targetedBlockIds(item, found);
+  } else if (isRecord(value)) {
+    for (const [key, entry] of Object.entries(value)) {
+      if (BLOCK_ID_KEY.test(key) && typeof entry === "string") found.add(entry);
+      else targetedBlockIds(entry, found);
+    }
+  }
+  return found;
+};
+
+/** The ids of the blocks whose id is the package's own `w14:paraId`. */
+const durableBlockIds = async (file: LoadedFile): Promise<ReadonlySet<string> | null> => {
+  const reviewer = await openReviewer(file);
+  if (reviewer.isErr()) return null;
+  const durable = new Set<string>();
+  for (const [id, source] of blockIdSources(reviewer.value)) {
+    if (source === "package") durable.add(id);
+  }
+  return durable;
+};
+
+/**
+ * The version the caller read, from the backup the editor's save made of
+ * it; `null` when it is gone or no longer holds that version.
+ */
+const readFlushedFrom = async (
+  documentPath: string,
+  version: string,
+): Promise<LoadedFile | null> => {
+  const backupPath = path.join(
+    path.dirname(documentPath),
+    SIDECAR_DIRECTORY,
+    "backups",
+    path.basename(documentPath),
+    `${version}.docx`,
+  );
+  const entry = await inspectPath(backupPath);
+  if (entry.isErr() || entry.value.type !== "file") return null;
+  const bytes = await readSidecarFile(backupPath);
+  if (bytes.isErr() || fileVersionOf(bytes.value) !== version) return null;
+  return {
+    path: backupPath,
+    bytes: bytes.value,
+    fileVersion: version,
+    identity: entry.value.identity,
+    links: entry.value.links,
+  };
+};
+
 /**
  * Whether a write whose `fileVersion` went stale only because the editor
  * holding the lease saved when asked may run on the saved version. It may
- * when it is an in-place agent tool (its targets are block ids, with
- * optional text-hash preconditions re-checked against the new version), the
- * version it read was current when the flush was requested, and the
- * journal's newest commit is the editor's save from exactly that version to
- * the file as it is now. Anything else stays `stale_version`.
+ * when it is an in-place agent tool, the version it read was current when
+ * the flush was requested, the journal's newest commit is the editor's save
+ * from exactly that version to the file as it is now, and every block the
+ * call targets is named by a durable `w14:paraId` both in the version it
+ * read and in the saved one. A text- or position-derived id could name
+ * another paragraph once the user's edits moved things, so such a call, or
+ * one that targets no block, stays `stale_version` and the caller re-reads.
+ * Text-hash preconditions are then re-checked against the saved version.
  */
 const rebasedOntoFlush = async ({
   tool,
   flush,
   inPlace,
-  documentPath,
+  source,
+  args,
   expected,
-  current,
 }: RebaseCheck): Promise<Rebased | null> => {
   if (flush.type !== "flushed" || tool.type !== "agentWrite" || !inPlace) return null;
   if (expected === undefined || expected !== flush.versionBefore) return null;
-  const latest = await latestCommitFor(documentPath);
-  return latest !== null &&
-    latest.tool === EDITOR_SAVE_TOOL &&
-    latest.fromVersion === expected &&
-    latest.toVersion === current
-    ? { fromVersion: expected, toVersion: current, flushedBy: flush.holder.owner }
-    : null;
+  const latest = await latestCommitFor(source.path);
+  if (
+    latest === null ||
+    latest.tool !== EDITOR_SAVE_TOOL ||
+    latest.fromVersion !== expected ||
+    latest.toVersion !== source.fileVersion
+  ) {
+    return null;
+  }
+  const targets = targetedBlockIds(args);
+  if (targets.size === 0) return null;
+  const read = await readFlushedFrom(source.path, expected);
+  if (read === null) return null;
+  for (const file of [read, source]) {
+    const durable = await durableBlockIds(file);
+    if (durable === null || [...targets].some((id) => !durable.has(id))) return null;
+  }
+  return { fromVersion: expected, toVersion: source.fileVersion, flushedBy: flush.holder.owner };
 };
 
 const DOCX_NAME = /\.docx$/iu;
@@ -660,9 +730,9 @@ export const executeWriteTool = async (
           tool,
           flush,
           inPlace,
-          documentPath: destinationPath,
+          source: source.value,
+          args: call.args,
           expected: call.fileVersion,
-          current: source.value.fileVersion,
         })
       : null;
     if (version.isErr() && rebased === null) {
