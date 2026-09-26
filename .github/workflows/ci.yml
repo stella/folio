@@ -68,6 +68,7 @@ jobs:
             plugins/claude-code/.mcp.json
             plugins/herdr/bin/folio-command.sh
             plugins/herdr/herdr-plugin.toml
+            plugins/vscode/package.json
           package-files: |
             packages/docx-core/package.json
             packages/core/package.json
