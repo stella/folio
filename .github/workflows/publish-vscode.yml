@@ -2,15 +2,17 @@ name: Publish VS Code extension
 
 # Manual only. Builds plugins/vscode into one .vsix and publishes that exact
 # file to the VS Code Marketplace and Open VSX. Leave `publish` unchecked for
-# a build-and-package dry run.
+# a dry run: it builds and packages, and signs in to the Marketplace to print
+# the publishing identity's user id, but publishes nothing.
 #
 # Setup, once:
-# - VS Code Marketplace: an Entra ID app registration that is a member of
-#   the `stll` publisher, with a federated credential for this repository's
-#   `vscode-marketplace` environment
-#   (subject `repo:stella/folio:environment:vscode-marketplace`). Set the
-#   repository variables VSCE_AZURE_CLIENT_ID and VSCE_AZURE_TENANT_ID.
-#   No personal access token is stored.
+# - VS Code Marketplace: an Entra ID app registration with a federated
+#   credential for this repository's `vscode-marketplace` environment
+#   (subject `repo:stella/folio:environment:vscode-marketplace`), and the
+#   variables VSCE_AZURE_CLIENT_ID and VSCE_AZURE_TENANT_ID on that
+#   environment. A dry run prints the identity's Marketplace user id; add it
+#   as a Contributor on the `stll` publisher. No personal access token is
+#   stored.
 # - Open VSX: create the `stll` namespace, then store a token as the
 #   OVSX_PAT secret of the `open-vsx` environment.
 # A registry that is not set up is skipped with a notice.
@@ -19,11 +21,11 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish (leave unchecked for a build and package dry run)
+        description: Publish (unchecked, a dry run that builds, packages, and prints the Marketplace user id)
         type: boolean
         default: false
       marketplace:
-        description: Publish to the VS Code Marketplace
+        description: VS Code Marketplace (sign in and print the user id; publish when Publish is checked)
         type: boolean
         default: true
       open-vsx:
@@ -86,9 +88,12 @@ jobs:
           if-no-files-found: error
 
   marketplace:
-    name: Publish to the VS Code Marketplace
+    name: VS Code Marketplace
     needs: package
-    if: inputs.publish && inputs.marketplace
+    # Runs on a dry run too: it signs in and prints the publishing identity's
+    # Marketplace user id, which the `stll` publisher needs before the first
+    # publish. Only the publish steps wait for the `publish` input.
+    if: inputs.marketplace
     runs-on: ubuntu-latest
     environment: vscode-marketplace
     permissions:
@@ -101,18 +106,25 @@ jobs:
           CLIENT_ID: ${{ vars.VSCE_AZURE_CLIENT_ID }}
           TENANT_ID: ${{ vars.VSCE_AZURE_TENANT_ID }}
           VERSION: ${{ needs.package.outputs.version }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           if [ -z "$CLIENT_ID" ] || [ -z "$TENANT_ID" ]; then
-            echo "::notice title=VS Code Marketplace skipped::Set the VSCE_AZURE_CLIENT_ID and VSCE_AZURE_TENANT_ID repository variables to publish. See the header of publish-vscode.yml."
+            echo "::notice title=VS Code Marketplace skipped::Set the VSCE_AZURE_CLIENT_ID and VSCE_AZURE_TENANT_ID variables on the vscode-marketplace environment. See the header of publish-vscode.yml."
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISH" != "true" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           elif [ "$VERSION" = "0.0.0" ]; then
             echo "::notice title=VS Code Marketplace skipped::The extension is at 0.0.0; release @stll/folio-cli first, which sets its version."
-            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
           else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - if: steps.setup.outputs.configured == 'true'
+      - if: steps.setup.outputs.publish == 'true'
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
@@ -120,26 +132,28 @@ jobs:
             package.json
             plugins/vscode
 
-      - if: steps.setup.outputs.configured == 'true'
+      - if: steps.setup.outputs.publish == 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: "package.json"
 
-      - if: steps.setup.outputs.configured == 'true'
+      - if: steps.setup.outputs.publish == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
 
-      - if: steps.setup.outputs.configured == 'true'
+      - if: steps.setup.outputs.publish == 'true'
         run: bun install --frozen-lockfile --ignore-scripts
         working-directory: plugins/vscode
 
-      - if: steps.setup.outputs.configured == 'true'
+      - if: steps.setup.outputs.publish == 'true'
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
         with:
           name: folio-vscode-vsix
           path: plugins/vscode
 
+      # Signed in last, right before publishing: the federated credential is
+      # short-lived.
       - if: steps.setup.outputs.configured == 'true'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
         with:
@@ -147,7 +161,26 @@ jobs:
           tenant-id: ${{ vars.VSCE_AZURE_TENANT_ID }}
           allow-no-subscriptions: true
 
+      # 499b84ac-1321-427f-aa17-267ca6975798 is the Azure DevOps resource the
+      # Marketplace profile API belongs to.
       - if: steps.setup.outputs.configured == 'true'
+        name: Print the Marketplace user id
+        run: |
+          id=$(az rest --method get \
+            --url "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1-preview.3" \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query id -o tsv)
+          echo "Marketplace user id: $id"
+          echo "Add this User Id as Contributor on publisher stll: $id"
+          {
+            echo "### VS Code Marketplace identity"
+            echo ""
+            echo "Marketplace user id: \`$id\`"
+            echo ""
+            echo "Add this User Id as Contributor on publisher stll."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: steps.setup.outputs.publish == 'true'
         name: Publish
         working-directory: plugins/vscode
         run: node_modules/.bin/vsce publish --packagePath folio.vsix --azure-credential
