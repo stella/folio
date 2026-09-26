@@ -287,7 +287,7 @@ const keyOperation = (
  * an entry here fails the coverage check.
  */
 export const KEY_BINDING_OPERATIONS: Readonly<
-  Record<string, readonly ConformanceOperation[] | { excluded: string }>
+  Record<string, readonly ConformanceOperation[] | { excluded: string; macOSOnly?: true }>
 > = {
   Enter: [keyOperation("Enter", ["caret-middle", "caret-end", "paragraph"])],
   "Shift-Enter": [keyOperation("Shift-Enter")],
@@ -311,14 +311,17 @@ export const KEY_BINDING_OPERATIONS: Readonly<
   },
   "Mod-a": { excluded: "Select all; moves the selection only (the `document` placement)." },
   Escape: { excluded: "Selects the parent node; moves the selection only." },
-  "Ctrl-a": { excluded: "macOS line-start motion; moves the selection only." },
-  "Ctrl-e": { excluded: "macOS line-end motion; moves the selection only." },
-  "Ctrl-h": { excluded: "macOS alias of Backspace, which is driven." },
-  "Ctrl-d": { excluded: "macOS alias of Delete, which is driven." },
-  "Alt-Backspace": { excluded: "macOS alias of Mod-Backspace, which is driven." },
-  "Ctrl-Alt-Backspace": { excluded: "macOS alias of Mod-Delete, which is driven." },
-  "Alt-Delete": { excluded: "macOS alias of Mod-Delete, which is driven." },
-  "Alt-d": { excluded: "macOS alias of Mod-Delete, which is driven." },
+  "Ctrl-a": { excluded: "macOS line-start motion; moves the selection only.", macOSOnly: true },
+  "Ctrl-e": { excluded: "macOS line-end motion; moves the selection only.", macOSOnly: true },
+  "Ctrl-h": { excluded: "macOS alias of Backspace, which is driven.", macOSOnly: true },
+  "Ctrl-d": { excluded: "macOS alias of Delete, which is driven.", macOSOnly: true },
+  "Alt-Backspace": { excluded: "macOS alias of Mod-Backspace, which is driven.", macOSOnly: true },
+  "Ctrl-Alt-Backspace": {
+    excluded: "macOS alias of Mod-Delete, which is driven.",
+    macOSOnly: true,
+  },
+  "Alt-Delete": { excluded: "macOS alias of Mod-Delete, which is driven.", macOSOnly: true },
+  "Alt-d": { excluded: "macOS alias of Mod-Delete, which is driven.", macOSOnly: true },
 };
 
 const typing = (text: string, label: string): ConformanceOperation => ({

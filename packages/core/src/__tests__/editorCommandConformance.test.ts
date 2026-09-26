@@ -78,7 +78,12 @@ describe("editor command conformance: coverage", () => {
     }
     const catalogued = Object.keys(KEY_BINDING_OPERATIONS);
     expect([...bindings].filter((binding) => !catalogued.includes(binding)).toSorted()).toEqual([]);
-    expect(catalogued.filter((binding) => !bindings.has(binding)).toSorted()).toEqual([]);
+    // The base keymap binds the macOS motion aliases only on macOS.
+    const onThisPlatform = catalogued.filter((binding) => {
+      const entry = KEY_BINDING_OPERATIONS[binding];
+      return !(entry && "macOSOnly" in entry && entry.macOSOnly === true);
+    });
+    expect(onThisPlatform.filter((binding) => !bindings.has(binding)).toSorted()).toEqual([]);
   });
 
   test("operation ids are unique", () => {
