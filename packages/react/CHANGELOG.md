@@ -1,5 +1,16 @@
 # @stll/folio-react
 
+## 0.23.0
+
+### Minor Changes
+
+- [#1073](https://github.com/stella/folio/pull/1073) [`1fe6f3b`](https://github.com/stella/folio/commit/1fe6f3bfe4f2afc22cbed6bc3fe34ed61128e9a3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `DocxEditor` takes `hostShortcuts` so a host with its own undo stack or print command owns those keys: `"history"` leaves Mod-z / Mod-y / Mod-Shift-z unbound, `"print"` leaves Cmd/Ctrl+P alone. `createStarterKit` takes the matching `historyShortcuts: "editor" | "host"`.
+
+### Patch Changes
+
+- Updated dependencies [[`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351), [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351), [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351), [`1fe6f3b`](https://github.com/stella/folio/commit/1fe6f3bfe4f2afc22cbed6bc3fe34ed61128e9a3), [`7d622f9`](https://github.com/stella/folio/commit/7d622f944365c283b0595d0a65b9e5d974af974c), [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351)]:
+  - @stll/folio-core@0.51.0
+
 ## 0.22.1
 
 ### Patch Changes

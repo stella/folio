@@ -14,5 +14,5 @@ else
   # plugin's scripts with a cwd inside it, so a plain npx here would resolve
   # the monorepo's own unbuilt @stll/folio-cli workspace package instead of
   # fetching the published one. Run it from outside any checkout instead.
-  FOLIO=(bash -c 'cd "$1" && shift && exec npx -y @stll/folio-cli@0.1.1 "$@"' bash "${HOME:-/tmp}")
+  FOLIO=(bash -c 'cd "$1" && shift && exec npx -y @stll/folio-cli@0.2.0 "$@"' bash "${HOME:-/tmp}")
 fi

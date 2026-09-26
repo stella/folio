@@ -1,5 +1,18 @@
 # @stll/folio-cli
 
+## 0.2.0
+
+### Minor Changes
+
+- [#1072](https://github.com/stella/folio/pull/1072) [`ff14d26`](https://github.com/stella/folio/commit/ff14d260555f483090a43a3026416567b5c2c985) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `folio save`, which commits a package a live editor serialized with the same lease, backup, and journal as a tool call. A write that finds an editor holding the lease with unsaved edits now asks it to save and release first, then applies on the saved version instead of failing with `locked`.
+
+### Patch Changes
+
+- [#1070](https://github.com/stella/folio/pull/1070) [`d875deb`](https://github.com/stella/folio/commit/d875deb4d89361501f696c7deff124167d62a5c0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Scale `folio serve`'s preview page down to fit a browser window narrower than the document, instead of clipping the left margin and scrolling horizontally. Fix the herdr plugin's `npx` fallback so it no longer fails when the plugin runs from inside a folio checkout, and resolve a relative clicked `.docx` path against the pane it was clicked in.
+- Updated dependencies [[`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351), [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351), [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351), [`1fe6f3b`](https://github.com/stella/folio/commit/1fe6f3bfe4f2afc22cbed6bc3fe34ed61128e9a3), [`7d622f9`](https://github.com/stella/folio/commit/7d622f944365c283b0595d0a65b9e5d974af974c), [`169fdad`](https://github.com/stella/folio/commit/169fdad184f0242a7145ce7373adfcdb8733c351)]:
+  - @stll/folio-core@0.51.0
+  - @stll/folio-agents@0.14.1
+
 ## 0.1.1
 
 ### Patch Changes
