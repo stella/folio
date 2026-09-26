@@ -3446,12 +3446,21 @@ const applyFolioAIEditOperationsInternal = ({
         };
         const rowPositions: number[] = [];
         let rowOffset = livePosition + 1;
+        let holdsPendingInsertedRow = false;
         liveTable.forEach((row) => {
           if (row.type.spec["tableRole"] === "row" && row.attrs["trDel"] == null) {
             rowPositions.push(rowOffset);
+            holdsPendingInsertedRow ||= row.attrs["trIns"] != null;
           }
           rowOffset += row.nodeSize;
         });
+        // A row cannot be both a pending insertion and a pending deletion (the
+        // model refuses the pair at save), so a table holding an inserted row
+        // is refused, as `deleteTableRow` refuses that row.
+        if (holdsPendingInsertedRow) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
         if (rowPositions.length === 0) {
           skipped.push({ id: item.operation.id, reason: "noopOperation" });
           continue;
