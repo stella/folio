@@ -135,6 +135,13 @@ const LIST_GESTURES: readonly Gesture[] = [
   { type: "typed", marker: "- ", expected: BULLET },
   { type: "typed", marker: "* ", expected: BULLET },
   { type: "typed", marker: "1. ", expected: { kind: "numbered", label: "1." } },
+  { type: "typed", marker: "1) ", expected: { kind: "numbered", label: "1)" } },
+  { type: "typed", marker: "3. ", expected: { kind: "numbered", label: "3." } },
+  { type: "typed", marker: "a. ", expected: { kind: "numbered", label: "a." } },
+  { type: "typed", marker: "a) ", expected: { kind: "numbered", label: "a)" } },
+  { type: "typed", marker: "A. ", expected: { kind: "numbered", label: "A." } },
+  { type: "typed", marker: "i. ", expected: { kind: "numbered", label: "i." } },
+  { type: "typed", marker: "I. ", expected: { kind: "numbered", label: "I." } },
 ];
 
 const gestureName = (gesture: Gesture): string =>
@@ -464,6 +471,32 @@ describe("which list a gesture joins", () => {
     expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "• Gamma"]);
   });
 
+  test("a typed value continues the list above when the format matches, else starts one", async () => {
+    const session = await sessionOf(fromMarkdown("1. Alpha\n\nBeta\n\nGamma"));
+    typeAt(session.editor, "Beta", "2. ");
+    typeAt(session.editor, "Gamma", "a) ");
+
+    expect(await savedLabels(session)).toEqual(["1. Alpha", "2. Beta", "a) Gamma"]);
+  });
+
+  test("an ambiguous letter continues the letters above it", async () => {
+    const items = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"];
+    const session = await sessionOf(fromMarkdown(items.join("\n\n")));
+    for (const [index, text] of items.entries()) {
+      typeAt(session.editor, text, `${String.fromCodePoint(97 + index)}. `);
+    }
+
+    expect((await savedLabels(session)).at(-1)).toBe("i. P9");
+  });
+
+  test("an ambiguous letter with no list above is a roman numeral", async () => {
+    const session = await sessionOf(fromMarkdown("Intro.\n\nFirst\n\nSecond"));
+    typeAt(session.editor, "First", "i. ");
+    typeAt(session.editor, "Second", "ii. ");
+
+    expect(await savedLabels(session)).toEqual(["Intro.", "i. First", "ii. Second"]);
+  });
+
   test("a body paragraph never joins heading numbering its style supplies", async () => {
     const session = await sessionOf(styleNumberedHeadings());
     run(session.editor, TARGET, toggleNumberedList);
@@ -533,5 +566,67 @@ describe("restart, continue and set numbering value", () => {
     caretAt(editor, "Alpha");
     expect(continueNumbering(editor.state)).toBe(false);
     expect(restartNumbering(editor.state)).toBe(true);
+  });
+});
+
+// ============================================================================
+// AUTOFORMAT: UNDO, AND WHAT STAYS TEXT
+// ============================================================================
+
+const pressBackspace = (editor: Editor): boolean => {
+  const event = {
+    type: "keydown",
+    key: "Backspace",
+    keyCode: 8,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    // SAFETY: the key handlers read only these fields.
+  } as unknown as KeyboardEvent;
+  return editor.state.plugins.some((plugin) =>
+    // SAFETY: the stand-in view carries the state and dispatch the handlers read.
+    Boolean(plugin.props.handleKeyDown?.call(plugin, editor as never, event)),
+  );
+};
+
+describe("list autoformat", () => {
+  for (const mode of ["editing"] as const) {
+    test(`Backspace right after the conversion puts the marker back, ${mode}`, async () => {
+      const { editor } = await sessionOf(fromMarkdown("Plain"), mode);
+      typeAt(editor, "Plain", "1. ");
+      expect(editor.state.doc.firstChild?.attrs["numPr"]).not.toBeNull();
+
+      expect(pressBackspace(editor)).toBe(true);
+      expect(editor.state.doc.firstChild?.textContent).toBe("1. Plain");
+      expect(editor.state.doc.firstChild?.attrs["numPr"]).toBeNull();
+    });
+  }
+
+  test.each([
+    ["a four-digit number", "2024. "],
+    ["zero", "0. "],
+    ["an abbreviation", "No. "],
+    ["mixed case", "Ab. "],
+    ["a word spelled in roman digits", "mix. "],
+    ["a large roman numeral", "cm. "],
+    ["a malformed roman numeral", "iiii. "],
+    ["a dotted number", "1.1. "],
+  ])("%s stays text", async (_name, marker) => {
+    const { editor } = await sessionOf(fromMarkdown("Plain"));
+    typeAt(editor, "Plain", marker);
+
+    expect(editor.state.doc.firstChild?.textContent).toBe(`${marker}Plain`);
+    expect(editor.state.doc.firstChild?.attrs["numPr"]).toBeNull();
+  });
+
+  test("a marker typed mid-paragraph stays text", async () => {
+    const { editor } = await sessionOf(fromMarkdown("See clause"));
+    const end = paragraphStart(editor.state, "See clause") + "See clause".length;
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.create(editor.state.doc, end)));
+    typeText(editor, " 1. ");
+
+    expect(editor.state.doc.firstChild?.textContent).toBe("See clause 1. ");
+    expect(editor.state.doc.firstChild?.attrs["numPr"]).toBeNull();
   });
 });

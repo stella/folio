@@ -17,6 +17,7 @@ import {
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
 } from "../../../docx/numberingReference";
+import { LIST_MARKER_PATTERN, listRequestsForMarker } from "../../listAutoformatMarkers";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import {
   applyParagraphUpdates,
@@ -554,23 +555,22 @@ function insertTab(): Command {
 // AUTOFORMAT (list markers typed at the start of a paragraph)
 // ============================================================================
 
-/**
- * Word's as-you-type markers. Each ends in the space that triggers the rule.
- * `1.` makes a numbered list, like the toolbar button; another typed number
- * stays text rather than being silently renumbered.
- */
-const BULLET_AUTOFORMAT = /^[-*] $/u;
-const NUMBERED_AUTOFORMAT = /^1\. $/u;
+/** Whether a typed marker may become a list here at all. */
+const acceptsListMarker = (paragraph: PMNode): boolean =>
+  paragraph.type.name === "paragraph" &&
+  // Toggling a list that already carries numbering would change or remove it.
+  paragraphNumberingReferenceId(expectParagraphAttrs(paragraph).numPr) === undefined;
 
 /**
  * Replace a typed marker with the list the toolbar button produces: the same
  * target resolution and the same attrs, so an autoformatted list saves exactly
- * like a clicked one.
+ * like a clicked one. The marker's format and value choose the list (see
+ * `listAutoformatMarkers.ts`).
  */
-const listAutoformatRule = (marker: RegExp, request: ListRequest): InputRule =>
-  new InputRule(marker, (state, _match, start, end) => {
+const listAutoformatRule = (): InputRule =>
+  new InputRule(LIST_MARKER_PATTERN, (state, match, start, end) => {
     const { $from } = state.selection;
-    if ($from.parent.type.name !== "paragraph") {
+    if (!acceptsListMarker($from.parent)) {
       return null;
     }
     // A rule matches a window of text ending at the caret, so `^` alone would
@@ -578,27 +578,20 @@ const listAutoformatRule = (marker: RegExp, request: ListRequest): InputRule =>
     if (start !== $from.start()) {
       return null;
     }
-    // Toggling a list that already carries this numbering would remove it.
-    if (paragraphNumberingReferenceId(expectParagraphAttrs($from.parent).numPr) !== undefined) {
-      return null;
-    }
     // Suggesting mode rewrites typed text as a tracked insertion before any
     // rule runs; autoformatting there would drop that transaction's metadata.
     if (makeRevisionInfo(state)) {
       return null;
     }
+    const requests = listRequestsForMarker(match[0]);
+    if (!requests) {
+      return null;
+    }
     const tr = state.tr.delete(start, end);
-    return numberParagraphs({ state, tr, from: start, to: start, requests: [request] }) ? tr : null;
+    return numberParagraphs({ state, tr, from: start, to: start, requests }) ? tr : null;
   });
 
-const listAutoformatPlugins = (): Plugin[] => [
-  inputRules({
-    rules: [
-      listAutoformatRule(BULLET_AUTOFORMAT, { kind: "bullet" }),
-      listAutoformatRule(NUMBERED_AUTOFORMAT, { kind: "numbered" }),
-    ],
-  }),
-];
+const listAutoformatPlugins = (): Plugin[] => [inputRules({ rules: [listAutoformatRule()] })];
 
 // ============================================================================
 // EXTENSION

@@ -104,10 +104,11 @@ describe("list autoformat", () => {
     expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
   });
 
-  test("a number other than one stays text", () => {
+  test("another number starts the list at that value", () => {
     const { text, attrs } = typeMarker("2.");
 
-    expect(text).toBe("2. ");
-    expect(attrs["numPr"]).toBeNull();
+    expect(text).toBe("");
+    expect(attrs["listNumFmt"]).toBe("decimal");
+    expect(attrs["listStartOverride"]).toBe(2);
   });
 });
