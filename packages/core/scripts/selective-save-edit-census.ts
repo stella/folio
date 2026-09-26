@@ -44,6 +44,8 @@ import {
   qualify,
   WML_NAMESPACE,
 } from "../../../scripts/lib/container-survival/schemaSpace";
+import { serializeDocument } from "@stll/folio-core/docx/serializer/documentSerializer";
+import { censusParagraphOrdinals } from "./selective-save-census-identity";
 import { subjectKey } from "../../../scripts/lib/container-survival/laws";
 
 class EditCensusError extends TaggedError("EditCensusError")<{
@@ -96,12 +98,12 @@ const inventory = (xml: string, skipped: ReadonlySet<number>): Map<string, numbe
 };
 
 const targets = (doc: PMNode) => {
-  const found: { node: PMNode; pos: number; ordinal: number }[] = [];
-  let ordinal = 0;
+  const found: { node: PMNode; pos: number; paraId: string }[] = [];
   doc.forEach((node, pos) => {
     if (node.type.name !== "paragraph") return;
-    if (node.textContent.length >= 4) found.push({ node, pos, ordinal });
-    ordinal += 1;
+    const paraId = node.attrs["paraId"];
+    if (node.textContent.length >= 4 && typeof paraId === "string")
+      found.push({ node, pos, paraId });
   });
   return found;
 };
@@ -146,7 +148,14 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
     const sourceBuffer = buffer instanceof Uint8Array ? buffer.slice().buffer : buffer;
     const parsed = await parseDocx(sourceBuffer);
     const pm = toProseDoc(parsed);
-    const target = targets(pm).at(0);
+    const allocator =
+      ParaIdAllocatorExtension().onSchemaReady({ schema: pm.type.schema }).plugins ?? [];
+    const tracker =
+      ParagraphChangeTrackerExtension().onSchemaReady({ schema: pm.type.schema }).plugins ?? [];
+    const initial = ensureParaIdsInState(
+      EditorState.create({ doc: pm, plugins: [...allocator, ...tracker] }),
+    );
+    const target = targets(initial.doc).at(0);
     if (target === undefined || pm.childCount < 2) {
       ineligible += 1;
       return;
@@ -157,20 +166,21 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
       ineligible += 1;
       return;
     }
-    const before = inventory(originalXml, new Set([target.ordinal]));
+    const sourceOrdinal = censusParagraphOrdinals(
+      originalXml,
+      serializeDocument(fromProseDoc(initial.doc, parsed)),
+    ).get(target.paraId);
+    if (sourceOrdinal === undefined) {
+      ineligible += 1;
+      return;
+    }
+    const before = inventory(originalXml, new Set([sourceOrdinal]));
     for (const edit of EDITS) {
       const total = totalFor(group, edit);
       try {
-        const allocator =
-          ParaIdAllocatorExtension().onSchemaReady({ schema: pm.type.schema }).plugins ?? [];
-        const tracker =
-          ParagraphChangeTrackerExtension().onSchemaReady({ schema: pm.type.schema }).plugins ?? [];
-        const initial = ensureParaIdsInState(
-          EditorState.create({ doc: pm, plugins: [...allocator, ...tracker] }),
-        );
         const middle = target.pos + 1 + Math.floor(target.node.content.size / 2);
         let tr = initial.tr;
-        const skipped = new Set([target.ordinal]);
+        let editedParagraphCount = 1;
         switch (edit) {
           case "type-text":
             tr.insertText("X", middle);
@@ -191,12 +201,12 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
                 message: "Enter command did not create one top-level paragraph",
               });
             }
-            skipped.add(target.ordinal + 1);
+            editedParagraphCount = 2;
             break;
           }
           case "delete-paragraph":
             tr.delete(target.pos, target.pos + target.node.nodeSize);
-            skipped.clear();
+            editedParagraphCount = 0;
             break;
           case "paste-three-paragraphs":
             tr.insert(
@@ -205,7 +215,7 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
                 target.node.type.create(null, pm.type.schema.text(`Pasted paragraph ${index + 1}`)),
               ),
             );
-            for (let index = 1; index <= 3; index++) skipped.add(target.ordinal + index);
+            editedParagraphCount = 4;
             break;
         }
         const state = initial.apply(tr);
@@ -218,6 +228,23 @@ const measure = async ({ source, group, buffer }: MeasureOptions): Promise<void>
         const savedZip = await JSZip.loadAsync(saved);
         const xml = await savedZip.file("word/document.xml")?.async("text");
         if (xml === undefined) throw new EditCensusError({ message: "Saved main part missing" });
+        const savedOrdinals = censusParagraphOrdinals(xml, serializeDocument(document));
+        const skipped = new Set<number>();
+        state.doc.forEach((node, pos) => {
+          if (
+            pos < target.pos ||
+            node.type.name !== "paragraph" ||
+            skipped.size === editedParagraphCount
+          )
+            return;
+          const paraId = node.attrs["paraId"];
+          const ordinal = typeof paraId === "string" ? savedOrdinals.get(paraId) : undefined;
+          if (ordinal === undefined)
+            throw new EditCensusError({ message: "Cannot locate edited paragraph in saved XML" });
+          skipped.add(ordinal);
+        });
+        if (skipped.size !== editedParagraphCount)
+          throw new EditCensusError({ message: "Missing edited paragraphs in saved XML" });
         const after = inventory(xml, skipped);
         let losses = 0;
         for (const [pair, count] of before) {
