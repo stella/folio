@@ -57,11 +57,20 @@ describe("run identity through undo", () => {
     if (!before) {
       throw new Error("the shape has no focus paragraph");
     }
+    const caret = before.selection.from;
     const view = new HeadlessEditorView(before);
     view.typeText("x");
     const typed = view.state;
-    const redone = runHistory(runHistory(typed, undo), redo);
+    const typedMarks = (state: EditorState) =>
+      (state.doc.nodeAt(caret)?.marks ?? []).map((mark) => mark.type.name);
+    expect(typed.doc.textBetween(caret, caret + 1)).toBe("x");
+    expect(typedMarks(typed)).not.toContain("runIdentity");
 
+    const undone = runHistory(typed, undo);
+    expect(undone.doc.eq(before.doc)).toBe(true);
+
+    const redone = runHistory(undone, redo);
     expect(redone.doc.eq(typed.doc)).toBe(true);
+    expect(typedMarks(redone)).not.toContain("runIdentity");
   });
 });

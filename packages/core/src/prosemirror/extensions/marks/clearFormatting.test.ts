@@ -4,15 +4,21 @@ import type { EditorState } from "prosemirror-state";
 import { documentShape } from "../../../__tests__/documentShapes";
 import {
   createHarnessState,
+  findTextblock,
   HeadlessEditorView,
   parseShapeDocument,
   placeSelection,
 } from "../../../__tests__/editorHarness";
 import { clearFormatting } from "./markUtils";
 
-const markNames = (state: EditorState): Set<string> => {
+/** The marks on the inline content of the paragraph holding `focus`. */
+const paragraphMarkNames = (state: EditorState, focus: string): Set<string> => {
+  const paragraph = findTextblock(state.doc, focus);
+  if (!paragraph) {
+    throw new Error(`No paragraph holds "${focus}"`);
+  }
   const names = new Set<string>();
-  state.doc.descendants((node) => {
+  paragraph.node.descendants((node) => {
     for (const mark of node.marks) {
       names.add(mark.type.name);
     }
@@ -29,7 +35,10 @@ const clearParagraph = async (shapeId: string, focus: string) => {
   }
   const view = new HeadlessEditorView(before);
   expect(clearFormatting(view.state, view.dispatch)).toBe(true);
-  return { before, after: view.state };
+  return {
+    before: paragraphMarkNames(before, focus),
+    after: paragraphMarkNames(view.state, focus),
+  };
 };
 
 describe("clearFormatting", () => {
@@ -42,15 +51,15 @@ describe("clearFormatting", () => {
     const { before, after } = await clearParagraph(shapeId, focus);
 
     for (const name of kept) {
-      expect(markNames(before).has(name)).toBe(true);
-      expect(markNames(after).has(name)).toBe(true);
+      expect(before.has(name)).toBe(true);
+      expect(after.has(name)).toBe(true);
     }
   });
 
   test("removes character formatting", async () => {
     const { before, after } = await clearParagraph("tracked-changes", "Bold by a tracked change.");
 
-    expect(markNames(before).has("bold")).toBe(true);
-    expect(markNames(after).has("bold")).toBe(false);
+    expect(before.has("bold")).toBe(true);
+    expect(after.has("bold")).toBe(false);
   });
 });

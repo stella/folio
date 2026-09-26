@@ -62,9 +62,17 @@ export type DocumentShape = {
   features: readonly DocumentShapeFeature[];
   /** Text of the paragraph a case should aim at. It occurs once in the body. */
   focus: string;
-  /** The package, after `ensureParaIds`. Deterministic; cached per shape. */
+  /**
+   * The package, after `ensureParaIds`, cached per shape. Its content is
+   * deterministic; a package built through `createDocx` stamps its creation
+   * time in `docProps/core.xml`, so the bytes of two builds can differ.
+   */
   build: () => Promise<Uint8Array>;
+  /** A new build, bypassing the cache. */
+  rebuild: () => Promise<Uint8Array>;
 };
+
+type DocumentShapeDefinition = Omit<DocumentShape, "rebuild">;
 
 // ============================================================================
 // PACKAGE BUILDERS
@@ -362,9 +370,10 @@ const cached = (build: () => Promise<Uint8Array>): (() => Promise<Uint8Array>) =
   };
 };
 
-const shape = (definition: DocumentShape): DocumentShape => ({
+const shape = (definition: DocumentShapeDefinition): DocumentShape => ({
   ...definition,
   build: cached(definition.build),
+  rebuild: definition.build,
 });
 
 export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
