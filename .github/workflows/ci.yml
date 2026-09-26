@@ -492,6 +492,9 @@ jobs:
       - name: Build Open XML SDK differential projector
         run: dotnet build packages/core/scripts/differential/dotnet -c Release
 
+      - name: Validate generated compare fixtures
+        run: bun test benchmarks/compare/documents.test.ts
+
       # DIFFERENTIAL_REQUIRED turns a missing reference into a failure rather
       # than a skip, so the full-corpus parity gate cannot silently pass.
       - name: Differential parity (full corpus)
