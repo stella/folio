@@ -1,5 +1,0 @@
----
-"@stll/folio-core": minor
----
-
-Add the `@stll/folio-core/text-shaping` entry: the text shaper, and the sfnt reader and glyph-id subsetter. `getShaper({ wasm })` instantiates the shaper from WebAssembly bytes (exported as `@stll/folio-core/text-shaping/wasm`) instead of fetching it, and `shaper.resolveBidi` resolves the Unicode Bidirectional Algorithm (levels and visual order, with isolates) for one line.

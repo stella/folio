@@ -1,5 +1,15 @@
 # @stll/folio-core
 
+## 0.52.0
+
+### Minor Changes
+
+- [#1084](https://github.com/stella/folio/pull/1084) [`6d48dae`](https://github.com/stella/folio/commit/6d48dae93ac690f52b82e35b015d12b24ef94fd1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add the `@stll/folio-core/text-shaping` entry: the text shaper, and the sfnt reader and glyph-id subsetter. `getShaper({ wasm })` instantiates the shaper from WebAssembly bytes (exported as `@stll/folio-core/text-shaping/wasm`) instead of fetching it, and `shaper.resolveBidi` resolves the Unicode Bidirectional Algorithm (levels and visual order, with isolates) for one line.
+
+### Patch Changes
+
+- [#1083](https://github.com/stella/folio/pull/1083) [`e67484d`](https://github.com/stella/folio/commit/e67484d5560bb40b5ea0c81ba2eca6a0a7cfdfec) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compareDocx` is faster on large documents, up to about twice as fast on a heavily edited one: checking run formatting no longer re-walks the document once per run, and a target without section breaks in the body no longer costs an extra accept-all pass.
+
 ## 0.51.0
 
 ### Minor Changes
