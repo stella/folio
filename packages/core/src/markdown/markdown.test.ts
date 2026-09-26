@@ -542,6 +542,22 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(md([deletedItem, para([run("Body")])], clean)).toBe("Body");
   });
 
+  test("a deleted paragraph whose insertion was deleted again counts as empty", () => {
+    const deletedItem: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 3, author: "A" },
+          content: [{ type: "deletion", info: { id: 4, author: "B" }, content: [run("Gone")] }],
+        },
+      ],
+      formatting: { styleId: "Heading1" },
+      pPrMark: delMark(),
+    };
+    expect(md([deletedItem, para([run("Body")])], clean)).toBe("Body");
+  });
+
   test("a chain of deleted marks collapses into one paragraph", () => {
     const a: Paragraph = {
       type: "paragraph",

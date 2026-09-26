@@ -6,7 +6,13 @@
 
 import { panic } from "better-result";
 
-import type { BlockContent, DocxPackage, Paragraph, ParagraphContent } from "../types/document";
+import type {
+  BlockContent,
+  DocxPackage,
+  Paragraph,
+  ParagraphContent,
+  TrackedRunContent,
+} from "../types/document";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { isMarkdownListItem, renderParagraph } from "./renderParagraph";
 import { renderTable } from "./renderTable";
@@ -51,7 +57,7 @@ function mergeAcceptedParagraphBreaks(blocks: BlockContent[]): BlockContent[] {
 }
 
 /** Paragraph content that shows nothing: range boundaries and anchors. */
-const ZERO_WIDTH_CONTENT: ReadonlySet<ParagraphContent["type"]> = new Set([
+const ZERO_WIDTH_CONTENT: ReadonlySet<string> = new Set([
   "bookmarkStart",
   "bookmarkEnd",
   "commentRangeStart",
@@ -63,16 +69,23 @@ const ZERO_WIDTH_CONTENT: ReadonlySet<ParagraphContent["type"]> = new Set([
   "moveToRangeEnd",
 ]);
 
+/** Whether an item shows nothing once every change is accepted. */
+const showsNothingOnAccept = (item: ParagraphContent | TrackedRunContent): boolean => {
+  if (item.type === "deletion" || item.type === "moveFrom" || ZERO_WIDTH_CONTENT.has(item.type)) {
+    return true;
+  }
+  // An insertion whose text was deleted again (`w:ins > w:del`).
+  if (item.type === "insertion" || item.type === "moveTo") {
+    return item.content.every(showsNothingOnAccept);
+  }
+  return (
+    item.type === "run" && item.content.every((content) => content.type === "renderedPageBreak")
+  );
+};
+
 /** Whether a paragraph keeps no visible content once every change is accepted. */
 const holdsNothingOnAccept = (paragraph: Paragraph): boolean =>
-  paragraph.content.every(
-    (item) =>
-      item.type === "deletion" ||
-      item.type === "moveFrom" ||
-      ZERO_WIDTH_CONTENT.has(item.type) ||
-      (item.type === "run" &&
-        item.content.every((content) => content.type === "renderedPageBreak")),
-  );
+  paragraph.content.every(showsNothingOnAccept);
 
 export function renderBlocks(
   ctx: RenderContext,
