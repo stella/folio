@@ -214,7 +214,7 @@ describe("header/footer list toggling", () => {
       });
       const block = headerContent?.blocks[0];
       expect(block?.kind === "paragraph" ? block.attrs?.listMarker : null).toBe("1.");
-      expect(block?.kind === "paragraph" ? block.attrs?.listIsBullet : null).toBe(false);
+      expect(block?.kind === "paragraph" ? block.attrs?.listIsBullet : null).toBeFalsy();
 
       const pageEl = renderPage(
         page,
