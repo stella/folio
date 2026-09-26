@@ -807,11 +807,16 @@ export const runConformanceCase = async (
     }
   }
 
-  if (editing.status === "changed" && suggesting.status === "refused") {
+  // A refusal is `false`; an operation that reports nothing (typing, paste, a
+  // claimed key) and leaves the document as it was is refusing just as silently.
+  if (
+    editing.status === "changed" &&
+    (suggesting.status === "refused" || suggesting.status === "unchanged")
+  ) {
     violations.push({
       kind: "silent-refusal",
       mode: "suggesting",
-      detail: "applies in editing mode but is refused in suggesting mode without a reason",
+      detail: `applies in editing mode but ${suggesting.status === "refused" ? "is refused" : "changes nothing"} in suggesting mode, without a reason`,
     });
   }
 
