@@ -312,13 +312,7 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "applyFolioAIEditsToBuffer",
     ],
     "@stll/folio-core/redline": ["generateRedlineDocx"],
-    "@stll/folio-core/text-shaping": [
-      "getShaper",
-      "parseSfnt",
-      "subsetTrueType",
-      "segmentByScript",
-      "BIDI_DIRECTION",
-    ],
+    "@stll/folio-core/text-shaping": ["getShaper", "parseSfnt", "subsetTrueType", "BIDI_DIRECTION"],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
