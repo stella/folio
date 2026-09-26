@@ -79,12 +79,14 @@ type ProcessResult = {
   readonly timedOut: boolean;
 };
 
-const run = (
-  runtime: CliRuntime,
-  args: readonly string[],
-  signal: AbortSignal,
-  timeoutMs: number,
-): Promise<ProcessResult> =>
+type RunOptions = {
+  readonly runtime: CliRuntime;
+  readonly args: readonly string[];
+  readonly signal: AbortSignal;
+  readonly timeoutMs: number;
+};
+
+const run = ({ runtime, args, signal, timeoutMs }: RunOptions): Promise<ProcessResult> =>
   new Promise((resolve, reject) => {
     const { command, args: argv, env } = cliCommand(runtime, args);
     const child = spawn(command, [...argv], {
@@ -135,12 +137,12 @@ export const renderDocument = async ({
     await writeFile(input, bytes);
     let result: ProcessResult;
     try {
-      result = await run(
+      result = await run({
         runtime,
-        ["render", input, "-o", output, "--output", "json"],
+        args: ["render", input, "-o", output, "--output", "json"],
         signal,
         timeoutMs,
-      );
+      });
     } catch (error) {
       if (signal.aborted) return { type: "cancelled" };
       return { type: "error", message: `The renderer could not start: ${describe(error)}` };

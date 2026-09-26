@@ -86,6 +86,7 @@ const handle = (message: HostMessage) => {
   switch (message.type) {
     case "loading":
       status.textContent = "Rendering…";
+      errorBox.classList.remove("visible");
       pages.classList.add("stale");
       return;
     case "document":

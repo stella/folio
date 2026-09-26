@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 
 import { debounce } from "./debounce";
 import { isWebviewMessage, type HostMessage } from "./protocol";
-import { renderDocument } from "./render";
+import { renderDocument, type RenderOutcome } from "./render";
 import type { CliRuntime } from "./runtime";
 import { createNonce, shellHtml } from "./shell";
 
@@ -110,7 +110,7 @@ class PreviewSession implements vscode.Disposable {
       bytes,
       fileName: this.fileName,
       signal: controller.signal,
-    }).catch((error: unknown) => ({ type: "error" as const, message: describe(error) }));
+    }).catch((error: unknown): RenderOutcome => ({ type: "error", message: describe(error) }));
     if (controller.signal.aborted || this.disposed || outcome.type === "cancelled") return;
     this.inFlight = undefined;
     if (outcome.type === "document") {
@@ -126,7 +126,7 @@ class PreviewSession implements vscode.Disposable {
       type: "error",
       fileName: this.fileName,
       message: outcome.message,
-      ...("hint" in outcome && outcome.hint !== undefined && { hint: outcome.hint }),
+      ...(outcome.hint !== undefined && { hint: outcome.hint }),
     });
   }
 
