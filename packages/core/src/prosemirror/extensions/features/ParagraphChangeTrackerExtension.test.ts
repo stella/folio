@@ -13,6 +13,7 @@ import {
   hasUntrackedChanges,
   clearTrackedChanges,
   ignoreTrackedChanges,
+  markChangedParagraphRanges,
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
 
@@ -394,6 +395,31 @@ describe("ParagraphChangeTrackerExtension", () => {
 
       expect(hasUntrackedChanges(next)).toBe(true);
     });
+  });
+
+  test("precise paragraph ranges replace a whole-document step map", () => {
+    const state = createState([
+      { text: "first", paraId: "P1" },
+      { text: "old", paraId: "P2" },
+      { text: "last", paraId: "P3" },
+    ]);
+    const replacement = createDoc(
+      { text: "first", paraId: "P1" },
+      { text: "new", paraId: "P2" },
+      { text: "last", paraId: "P3" },
+    );
+    const tr = state.tr.replaceWith(0, state.doc.content.size, replacement.content);
+    const secondFrom = replacement.child(0).nodeSize;
+    markChangedParagraphRanges(tr, {
+      ranges: [{ from: secondFrom, to: secondFrom + replacement.child(1).nodeSize }],
+      mappingFrom: tr.steps.length,
+      replacesStepMapAt: 0,
+    });
+
+    const next = state.apply(tr);
+    expect([...getChangedParagraphIds(next)]).toEqual(["P2"]);
+    expect(hasStructuralChanges(next)).toBe(false);
+    expect(hasUntrackedChanges(next)).toBe(false);
   });
 
   describe("accumulation across multiple transactions", () => {

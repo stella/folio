@@ -7,27 +7,23 @@
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { removeRow, TableMap } from "prosemirror-tables";
+import { resolveWholeStory } from "../../internal/wholeStoryRevisionResolution";
+import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
+import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
 
-import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
-import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
+import { resolveParagraphChangeAttrs } from "./resolveParagraphProperties";
+import { resolveNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 
+import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
 import {
-  appendHeadlessInlineResolution,
-  type HeadlessInlineChangeTracking,
-} from "../../internal/headlessRevisionResolution";
-import { stateAllowsHeadlessRevisionResolution } from "../../internal/headlessRevisionResolutionGuard";
+  markParagraphPropertySourceTransfers,
+  joinProseParagraphsWithRightPropertySource,
+} from "../../docx/paragraphPropertySource";
+
 import type { RemovedSectionReference } from "../../internal/sectionEndpointResolution";
-import type {
-  ParagraphFormatting,
-  RunPropertyChange,
-  SectionProperties,
-  TableCellFormatting,
-  TableFormatting,
-  TablePropertyExceptionFormatting,
-  TableRowFormatting,
-} from "../../types/document";
+import type { RunPropertyChange } from "../../types/document";
 import {
   PARAGRAPH_MARK_CHANGE_KINDS,
   REVIEW_CARRIERS,
@@ -46,7 +42,6 @@ import {
   paragraphEndsItsContainer,
 } from "../containerFinalParagraph";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
-import { resolveParagraphDefaultTextFormatting } from "../conversion/toProseDoc";
 import {
   markChangedParagraphRanges,
   markStructuralChange,
@@ -63,14 +58,7 @@ import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
-import {
-  getFolioNodeRevisionCarriers,
-  nodePropertyRevisionSites,
-  propertyRevisionMetadata,
-  propertyRevisionRecords,
-  type NodeAttrsPropertyRevisionKind,
-  type NodeAttrsPropertyRevisionSite,
-} from "../revisionCarriers";
+import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -83,15 +71,7 @@ import {
 } from "./tableCellMergeResolution";
 import {
   hasSerializableParagraphPropertyChange,
-  paragraphRejectAttrPatch,
-  paragraphRejectOriginalFormatting,
   paragraphPropertiesSnapshot,
-  removeParagraphPropertyChanges,
-  sectionRejectProperties,
-  tableCellRejectAttrPatch,
-  tablePropertyExceptionsRejectAttrPatch,
-  tableRejectAttrPatch,
-  tableRowRejectAttrPatch,
 } from "./propertyChangeScope";
 
 /**
@@ -148,8 +128,6 @@ export function removeCommentMark(commentId: number): Command {
 
 type ResolveMode = "accept" | "reject";
 
-type ResolveExecution = "legacy" | "headless-bulk-inline";
-
 const revisionLayerOf = (mark: Mark): TrackedRevisionAncestor => {
   const attrs = expectTrackedChangeMarkAttrs(mark);
   let type: TrackedRevisionAncestor["type"];
@@ -174,26 +152,6 @@ const revisionLayerRemovesContent = (layer: TrackedRevisionAncestor, mode: Resol
     ? layer.type === "deletion" || layer.type === "moveFrom"
     : layer.type === "insertion" || layer.type === "moveTo";
 
-const containsNestedRevision = (doc: PMNode): boolean => {
-  let found = false;
-  doc.descendants((node) => {
-    if (found) {
-      return false;
-    }
-    for (const mark of node.marks) {
-      if (
-        (mark.type.name === "insertion" || mark.type.name === "deletion") &&
-        (expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.length ?? 0) > 0
-      ) {
-        found = true;
-        return false;
-      }
-    }
-    return undefined;
-  });
-  return found;
-};
-
 /**
  * Resolve a tracked change: accept or reject.
  * - Accept: keep insertions (remove mark), delete deletions (remove text)
@@ -211,7 +169,6 @@ function resolveChange(
   to: number,
   mode: "accept" | "reject",
   revisionIds?: readonly number[],
-  execution: ResolveExecution = "legacy",
 ): Command {
   return (state, dispatch) => {
     const insertionType = state.schema.marks["insertion"];
@@ -224,13 +181,6 @@ function resolveChange(
     // A range-wide removal lets ProseMirror coalesce one revision split by
     // inline formatting. The id-scoped path must keep matching each mark.
     const removeKeptMarksInBulk = revisionSet === null && keepType !== undefined;
-    const canBulkInlineResolution =
-      execution === "headless-bulk-inline" &&
-      revisionSet === null &&
-      from === 0 &&
-      to === state.doc.content.size &&
-      stateAllowsHeadlessRevisionResolution(state) &&
-      !containsNestedRevision(state.doc);
     const matchesRevision = (mark: { attrs: Record<string, unknown> }) =>
       revisionSet === null ||
       (typeof mark.attrs["revisionId"] === "number" && revisionSet.has(mark.attrs["revisionId"]));
@@ -254,110 +204,13 @@ function resolveChange(
           }
 
           const boundaryCovered = rangeCoversParagraphBoundary(from, to, pos, node);
-          let nextAttrs: Record<string, unknown> | null = null;
-
-          // Process paragraph property changes (w:pPrChange)
-          const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
-
-          if (Array.isArray(propertyChanges) && propertyChanges.length > 0 && boundaryCovered) {
-            const matchesPropertyChange = (change: ParagraphPropertyChangeAttrs) =>
-              revisionSet === null || revisionSet.has(change.info.id);
-            if (propertyChanges.some(matchesPropertyChange)) {
-              const rejection =
-                mode === "reject"
-                  ? removeParagraphPropertyChanges(propertyChanges, matchesPropertyChange)
-                  : null;
-              let remaining: ParagraphPropertyChangeAttrs[];
-              if (rejection === null) {
-                remaining = propertyChanges.filter((change) => !matchesPropertyChange(change));
-              } else if (rejection.type === "unchanged") {
-                remaining = propertyChanges;
-              } else {
-                remaining = rejection.remaining;
-              }
-              nextAttrs = {
-                ...node.attrs,
-                _propertyChanges: remaining.length > 0 ? remaining : null,
-              };
-              if (rejection?.type === "restore-previous") {
-                // Word stores the complete old pPr in the pPrChange, so a
-                // reject restores it WHOLESALE within CT_PPrBase scope: a
-                // property the change ADDED resets too. Out-of-scope attrs
-                // (inline sectPr, paragraph-mark rPr, identity) survive; see
-                // propertyChangeScope.ts. Earlier removed runs were folded
-                // into the next retained entry, so only a removed trailing
-                // run changes the live properties now.
-                const inheritedAlignment = expectParagraphAttrs(node).alignmentFromStyle;
-                let previousFormattingFromStyle: ParagraphFormatting | undefined;
-                if (styleResolver) {
-                  previousFormattingFromStyle = styleResolver.resolveParagraphStyle(
-                    rejection.previousFormatting?.styleId,
-                  ).paragraphFormatting;
-                } else if (inheritedAlignment !== undefined) {
-                  previousFormattingFromStyle = { alignment: inheritedAlignment };
-                }
-                Object.assign(
-                  nextAttrs,
-                  paragraphRejectAttrPatch(
-                    rejection.previousFormatting,
-                    previousFormattingFromStyle,
-                  ),
-                );
-                const restoredFormatting = paragraphRejectOriginalFormatting(
-                  rejection.previousFormatting,
-                  node.attrs["_originalFormatting"],
-                );
-                nextAttrs["_originalFormatting"] = restoredFormatting;
-                if (styleResolver) {
-                  nextAttrs["defaultTextFormatting"] =
-                    resolveParagraphDefaultTextFormatting(
-                      rejection.previousFormatting?.styleId,
-                      restoredFormatting ?? undefined,
-                      styleResolver,
-                    ) ?? null;
-                }
-              }
-            }
-          }
-
-          // Process inline section-property changes (w:sectPrChange) carried
-          // on the paragraph's `_sectionProperties` attr.
-          const sectionProperties = node.attrs["_sectionProperties"] as
-            | SectionProperties
-            | null
-            | undefined;
-          const sectionChanges = sectionProperties?.propertyChanges;
-          if (
-            sectionProperties &&
-            Array.isArray(sectionChanges) &&
-            sectionChanges.length > 0 &&
-            boundaryCovered
-          ) {
-            const matches = sectionChanges.filter(
-              (c) => revisionSet === null || (c.info && revisionSet.has(c.info.id)),
-            );
-            if (matches.length > 0) {
-              const remaining = sectionChanges.filter(
-                (c) => revisionSet !== null && (!c.info || !revisionSet.has(c.info.id)),
-              );
-              let restored: SectionProperties = { ...sectionProperties };
-              if (mode === "reject") {
-                for (const change of matches.toReversed()) {
-                  restored = sectionRejectProperties({
-                    live: restored,
-                    previousProperties: change.previousProperties,
-                    previousReferences: change.previousReferences,
-                  });
-                }
-              }
-              delete restored.propertyChanges;
-              if (remaining.length > 0) {
-                restored.propertyChanges = remaining;
-              }
-              nextAttrs = nextAttrs ?? { ...node.attrs };
-              nextAttrs["_sectionProperties"] = restored;
-            }
-          }
+          const nextAttrs = resolveParagraphChangeAttrs({
+            node,
+            boundaryCovered,
+            mode,
+            revisionSet,
+            styleResolver,
+          });
 
           if (nextAttrs) {
             const styleChanged = nextAttrs["styleId"] !== node.attrs["styleId"];
@@ -411,12 +264,12 @@ function resolveChange(
         if (nodeAttrSites.length > 0) {
           if (rangeCoversNode(from, to, pos, node)) {
             for (const site of nodeAttrSites) {
-              const nextAttrs = resolveNodePropertyChangeAttrs(
-                tr.doc.nodeAt(pos) ?? node,
+              const nextAttrs = resolveNodePropertyChangeAttrs({
+                node: tr.doc.nodeAt(pos) ?? node,
                 site,
                 mode,
                 revisionSet,
-              );
+              });
               if (nextAttrs) {
                 tr.setNodeMarkup(pos, undefined, nextAttrs);
                 markStructuralChange(tr);
@@ -429,9 +282,6 @@ function resolveChange(
         // tracked-change marks; widen the visitor so rejecting an inserted
         // picture removes it like inserted text. eigenpal #641.
         if (!node.isInline) {
-          return true;
-        }
-        if (canBulkInlineResolution) {
           return true;
         }
         const nodeEnd = pos + node.nodeSize;
@@ -548,40 +398,27 @@ function resolveChange(
         return true;
       });
 
-      let bulkInlineChangeTracking: HeadlessInlineChangeTracking | null = null;
-      // Whole-document headless resolution rewrites inline carriers in one
-      // linear pass. Interactive commands retain granular, serializable steps.
-      if (canBulkInlineResolution) {
-        bulkInlineChangeTracking = appendHeadlessInlineResolution({
-          tr,
-          mode,
-          keepType,
-          removeType,
-          styleResolver,
-        });
-      } else {
-        if (removeKeptMarksInBulk) {
-          tr.removeMark(from, to, keepType);
-        }
+      if (removeKeptMarksInBulk) {
+        tr.removeMark(from, to, keepType);
+      }
 
-        let rangesToDelete = deleteRanges;
-        if (revisionSet === null) {
-          // Adjacent inline ranges have no paragraph boundary between them, so
-          // one replacement has the same mapping outside the deleted content.
-          const coalescedDeleteRanges: { from: number; to: number }[] = [];
-          for (const range of deleteRanges) {
-            const previous = coalescedDeleteRanges.at(-1);
-            if (previous && range.from <= previous.to) {
-              previous.to = Math.max(previous.to, range.to);
-              continue;
-            }
-            coalescedDeleteRanges.push({ from: range.from, to: range.to });
+      let rangesToDelete = deleteRanges;
+      if (revisionSet === null) {
+        // Adjacent inline ranges have no paragraph boundary between them, so
+        // one replacement has the same mapping outside the deleted content.
+        const coalescedDeleteRanges: { from: number; to: number }[] = [];
+        for (const range of deleteRanges) {
+          const previous = coalescedDeleteRanges.at(-1);
+          if (previous && range.from <= previous.to) {
+            previous.to = Math.max(previous.to, range.to);
+            continue;
           }
-          rangesToDelete = coalescedDeleteRanges;
+          coalescedDeleteRanges.push({ from: range.from, to: range.to });
         }
-        for (const range of rangesToDelete.toReversed()) {
-          tr.delete(range.from, range.to);
-        }
+        rangesToDelete = coalescedDeleteRanges;
+      }
+      for (const range of rangesToDelete.toReversed()) {
+        tr.delete(range.from, range.to);
       }
 
       // Process paragraph-mark ops from end → start so earlier positions stay
@@ -748,10 +585,6 @@ function resolveChange(
       }
       if (resolvedTableCellStructure) {
         markStructuralChange(tr);
-      }
-
-      if (bulkInlineChangeTracking) {
-        markChangedParagraphRanges(tr, bulkInlineChangeTracking);
       }
 
       if (removedSectionEndpointCount > 0) {
@@ -1236,73 +1069,6 @@ function rangeCoversNode(
   return from <= pos && to >= pos + node.nodeSize;
 }
 
-type NodeAttrsRejectPatch = (previousFormatting: unknown, node: PMNode) => Record<string, unknown>;
-
-/**
- * The attrs a reject restores for each property revision the shared node-attr
- * pass owns. Total over those kinds, so a revision the model gains either
- * declares a different resolution or states here what rejecting it restores.
- *
- * Each patch narrows the stored set to the property set its own element
- * carries. The casts are the ProseMirror attrs boundary: attrs are untyped,
- * and a record reached through the site filed under a kind is the one that
- * kind's parser and converter wrote.
- */
-const NODE_ATTRS_REJECT_PATCHES = {
-  tablePropertyChange: (previousFormatting) =>
-    tableRejectAttrPatch(previousFormatting as TableFormatting | undefined),
-  tablePropertyExceptionChange: (previousFormatting) =>
-    tablePropertyExceptionsRejectAttrPatch(
-      previousFormatting as TablePropertyExceptionFormatting | undefined,
-    ),
-  tableRowPropertyChange: (previousFormatting) =>
-    tableRowRejectAttrPatch(previousFormatting as TableRowFormatting | undefined),
-  tableCellPropertyChange: (previousFormatting, node) =>
-    tableCellRejectAttrPatch(
-      previousFormatting as TableCellFormatting | undefined,
-      node.attrs["_originalFormatting"] as TableCellFormatting | null | undefined,
-    ),
-} as const satisfies Record<NodeAttrsPropertyRevisionKind, NodeAttrsRejectPatch>;
-
-/**
- * Resolve the tracked property-change records one site carries on a node.
- * Accept keeps the live formatting and clears the matched records; reject
- * additionally restores the stored previous formatting wholesale (the change
- * element stores the complete old property set — see propertyChangeScope.ts).
- * Returns the next attrs, or `null` when no record matches.
- */
-function resolveNodePropertyChangeAttrs(
-  node: PMNode,
-  site: NodeAttrsPropertyRevisionSite,
-  mode: "accept" | "reject",
-  revisionSet: Set<number> | null,
-): Record<string, unknown> | null {
-  const changes = propertyRevisionRecords(node, site);
-  if (changes.length === 0) {
-    return null;
-  }
-  const matches = changes.filter((change) => {
-    const metadata = propertyRevisionMetadata(change.info);
-    return revisionSet === null || (metadata !== null && revisionSet.has(metadata.id));
-  });
-  if (matches.length === 0) {
-    return null;
-  }
-  const remaining =
-    revisionSet === null ? [] : changes.filter((change) => !matches.includes(change));
-  const nextAttrs: Record<string, unknown> = {
-    ...node.attrs,
-    [site.attr]: remaining.length > 0 ? remaining : null,
-  };
-  if (mode === "reject") {
-    const rejectPatch = NODE_ATTRS_REJECT_PATCHES[site.kind];
-    for (const change of matches.toReversed()) {
-      Object.assign(nextAttrs, rejectPatch(change.previousFormatting, node));
-    }
-  }
-  return nextAttrs;
-}
-
 function isPPrMarkAttr(value: unknown): value is {
   kind: ParagraphMarkChangeKind;
   info: { id: number; author?: unknown; date?: unknown; initials?: unknown };
@@ -1463,48 +1229,74 @@ export function rejectChange(from: number, to: number): Command {
   return resolveChange(from, to, "reject");
 }
 
+const resolveAllChanges =
+  (mode: ResolveMode): Command =>
+  (state, dispatch) => {
+    if (!dispatch) return true;
+    const result = resolveWholeStory({
+      doc: state.doc,
+      mode,
+      styleResolver: getDocumentStyleResolver(state),
+    });
+    if (result.failed) return false;
+    if (result.resolved.eq(state.doc)) return true;
+    const tr = state.tr.step(
+      new RevisionResolutionStep({
+        beforeDoc: state.doc,
+        afterDoc: result.resolved,
+        steps: result.steps,
+        positionMap: result.positionMap,
+      }),
+    );
+    markChangedParagraphRanges(tr, {
+      ranges: finalRevisionParagraphRanges(result),
+      mappingFrom: tr.steps.length,
+      replacesStepMapAt: 0,
+    });
+    markParagraphPropertySourceTransfers(tr, result.transfers);
+    if (result.structural) markStructuralChange(tr);
+    if (result.removedEndpointCount > 0)
+      markTrackedSectionEndpointRemoval(tr, {
+        sourceDoc: state.doc,
+        removedEndpointCount: result.removedEndpointCount,
+        removedReferences: result.removedReferences,
+      });
+    dispatch(tr);
+    return true;
+  };
+
 /**
  * Accept all tracked changes in the document.
  */
 export function acceptAllChanges(): Command {
-  return (state, dispatch) => acceptChange(0, state.doc.content.size)(state, dispatch);
+  return resolveAllChanges("accept");
 }
 
 /**
  * Reject all tracked changes in the document.
  */
 export function rejectAllChanges(): Command {
-  return (state, dispatch) => rejectChange(0, state.doc.content.size)(state, dispatch);
+  return resolveAllChanges("reject");
 }
 
 /**
  * Resolve a complete state synchronously for a headless reader or writer.
  *
- * @internal The replacement transaction is consumed here and never exposed:
- * it is deliberately not an editor command and must not be transported or
- * mapped through concurrent edits.
+ * Uses the same single-step resolver as the interactive editor command.
  */
 export function resolveAllChangesInHeadlessState(
   state: EditorState,
   mode: ResolveMode,
 ): EditorState {
   let resolvedState = state;
-  resolveChange(
-    0,
-    state.doc.content.size,
-    mode,
-    undefined,
-    "headless-bulk-inline",
-  )(state, (transaction) => {
+  resolveAllChanges(mode)(state, (transaction) => {
     resolvedState = state.apply(transaction);
   });
   return resolvedState;
 }
 
 /**
- * Resolve through the editor command path when a caller must map a position in
- * the reviewed document back to the tracked source. The bulk resolver is
- * faster, but deliberately replaces inline content without retaining mapping.
+ * Resolve a story and retain its position map for callers addressing the tracked source.
  */
 export const resolveAllChangesInHeadlessStateWithMapping = (
   state: EditorState,
@@ -1512,11 +1304,7 @@ export const resolveAllChangesInHeadlessStateWithMapping = (
 ): { state: EditorState; mapping: Mapping } => {
   let resolvedState = state;
   let mapping = new Mapping();
-  resolveChange(
-    0,
-    state.doc.content.size,
-    mode,
-  )(state, (transaction) => {
+  resolveAllChanges(mode)(state, (transaction) => {
     resolvedState = state.apply(transaction);
     mapping = transaction.mapping;
   });

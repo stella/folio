@@ -14,7 +14,7 @@ import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
-const tableCellContinuationPayload = (
+export const tableCellContinuationPayload = (
   node: PMNode,
 ): DecodedTableCellParagraphSourcePayload | null => {
   const value = node.attrs["_docxVMergeContinuationCells"];
@@ -176,7 +176,7 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
   return true;
 };
 
-const tableCellContinuationCells = (cell: PMNode, rowspan: number): TableCell[] => {
+export const tableCellContinuationCells = (cell: PMNode, rowspan: number): TableCell[] => {
   const payload = tableCellContinuationPayload(cell);
   const cells = payload ? [...payload.cells] : [];
   while (cells.length < rowspan - 1) {
@@ -185,7 +185,7 @@ const tableCellContinuationCells = (cell: PMNode, rowspan: number): TableCell[] 
   return cells;
 };
 
-const tableCellContinuationFromNode = (cell: PMNode): TableCell => {
+export const tableCellContinuationFromNode = (cell: PMNode): TableCell => {
   const continuation = standaloneTableCellFromProseMirror(cell);
   const formatting: TableCellFormatting = {
     ...continuation.formatting,
@@ -305,7 +305,7 @@ export const resolveCollapsedTableCellMerge = (
   return true;
 };
 
-const createRestoredTableCell = (origin: PMNode, source: TableCell): PMNode | null => {
+export const createRestoredTableCell = (origin: PMNode, source: TableCell): PMNode | null => {
   const formatting = source.formatting ? { ...source.formatting } : undefined;
   if (formatting) {
     delete formatting.vMerge;
