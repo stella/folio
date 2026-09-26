@@ -143,3 +143,277 @@ describe("content comparison inside a gap that gained or lost blocks", () => {
     ]);
   });
 });
+
+const LABEL_MODES = ["text", "displayLabel", "none"] as const;
+type LabelMode = (typeof LABEL_MODES)[number];
+
+/** Two words every item shares, so unrelated items stay below the pairing threshold. */
+const itemText = (tag: string): string =>
+  `shall apply ${Array.from({ length: 5 }, (_, word) => `${tag}w${String(word)}`).join(" ")}`;
+const REWORDED = " and further";
+
+type Item = { origin: string; text: string; label?: string };
+type Section = { scope: string; heading: string; items: readonly Item[] };
+
+/** Ids carry the section and the item's origin, so pairings read side-independently. */
+const sectionBlocks = (
+  side: string,
+  sections: readonly Section[],
+  mode: LabelMode,
+): FolioContentBlock[] =>
+  sections.flatMap(({ scope, heading, items }): FolioContentBlock[] => [
+    {
+      id: `${side}|${scope}|heading`,
+      idStability: "positional",
+      kind: "heading",
+      headingLevel: 2,
+      text: heading,
+    },
+    ...items.map(({ origin, text, label: authored }, index): FolioContentBlock => {
+      const label = authored ?? `${String.fromCodePoint(97 + index)})`;
+      const block = {
+        id: `${side}|${scope}|${origin}`,
+        idStability: "positional",
+        kind: "paragraph",
+      } as const;
+      switch (mode) {
+        case "text":
+          return { ...block, text: `${label} ${text}` };
+        case "displayLabel":
+          return { ...block, text, displayLabel: label };
+        case "none":
+          return { ...block, text };
+        default: {
+          const unreachable: never = mode;
+          return unreachable;
+        }
+      }
+    }),
+  ]);
+
+const originOf = (block: FolioContentBlock): string => block.id.slice(block.id.indexOf("|") + 1);
+
+/** Every pairing a comparison made, as sorted `base -> revised` origins; `-` marks no partner. */
+const pairingsOf = (list: readonly FolioContentComparisonEvent[]): string[] => {
+  const movedFrom = new Map<string, FolioContentBlock>();
+  for (const event of list) {
+    if (event.type === "movedFrom") {
+      for (const block of event.baseBlocks) {
+        movedFrom.set(block.id, block);
+      }
+    }
+  }
+  return list
+    .flatMap((event) => {
+      switch (event.type) {
+        case "unchanged":
+        case "modified":
+        case "formatting":
+        case "split":
+        case "merge":
+          return [
+            `${event.baseBlocks.map(originOf).join("+")} -> ${event.revisedBlocks.map(originOf).join("+")}`,
+          ];
+        case "inserted":
+          return event.revisedBlocks.map((block) => `- -> ${originOf(block)}`);
+        case "deleted":
+          return event.baseBlocks.map((block) => `${originOf(block)} -> -`);
+        case "movedFrom":
+          return [];
+        case "movedTo": {
+          const from = movedFrom.get(event.baseBlockId);
+          return event.revisedBlocks.map(
+            (block) => `${from ? originOf(from) : "-"} -> ${originOf(block)}`,
+          );
+        }
+        default: {
+          const unreachable: never = event;
+          return unreachable;
+        }
+      }
+    })
+    .toSorted();
+};
+
+const compareSections = (
+  older: readonly Section[],
+  newer: readonly Section[],
+  mode: LabelMode,
+): string[] =>
+  pairingsOf(events(sectionBlocks("base", older, mode), sectionBlocks("revised", newer, mode)));
+
+type Amendment = { older: readonly Item[]; newer: readonly Item[] };
+
+/** A list with items deleted, inserted and at most one reworded; equal lengths included. */
+const amendmentArbitrary = fc
+  .record({
+    count: fc.integer({ min: 1, max: 5 }),
+    deletions: fc.array(fc.nat(), { maxLength: 2 }),
+    insertions: fc.array(fc.nat(), { maxLength: 3 }),
+    reworded: fc.option(fc.nat(), { nil: undefined }),
+  })
+  .filter(({ deletions, insertions }) => deletions.length + insertions.length > 0)
+  .map(({ count, deletions, insertions, reworded }): Amendment => {
+    const older = Array.from({ length: count }, (_, index) => ({
+      origin: `old${String(index)}`,
+      text: itemText(`o${String(index)}`),
+    }));
+    const newer = [...older];
+    for (const position of deletions) {
+      if (newer.length > 0) {
+        newer.splice(position % newer.length, 1);
+      }
+    }
+    const rewordedItem = reworded === undefined ? undefined : newer.at(reworded % newer.length);
+    if (reworded !== undefined && rewordedItem) {
+      newer[reworded % newer.length] = {
+        origin: rewordedItem.origin,
+        text: `${rewordedItem.text}${REWORDED}`,
+      };
+    }
+    for (const [ordinal, position] of insertions.entries()) {
+      newer.splice(position % (newer.length + 1), 0, {
+        origin: `new${String(ordinal)}`,
+        text: itemText(`n${String(ordinal)}`),
+      });
+    }
+    return { older, newer };
+  });
+
+type Neighbour = { before: boolean; repeats: readonly (number | null)[] };
+
+/** Unchanged sections whose items mostly repeat wording from either side of the amended list. */
+const neighboursArbitrary = fc.array(
+  fc.record({
+    before: fc.boolean(),
+    repeats: fc.array(fc.option(fc.nat(), { nil: null, freq: 4 }), {
+      minLength: 1,
+      maxLength: 3,
+    }),
+  }),
+  { minLength: 1, maxLength: 3 },
+);
+
+const AMENDED = "amended";
+
+const amendedPairings = (
+  { older, newer }: Amendment,
+  neighbours: readonly Neighbour[],
+  mode: LabelMode,
+): string[] => {
+  const pool = [...older, ...newer];
+  const unchanged = neighbours.map(({ before, repeats }, section) => ({
+    before,
+    section: {
+      scope: `neighbour${String(section)}`,
+      heading: `Section ${String(10 + section)}`,
+      items: repeats.map((repeat, index) => ({
+        origin: `item${String(index)}`,
+        text:
+          repeat === null
+            ? itemText(`x${String(section)}i${String(index)}`)
+            : (pool.at(repeat % pool.length)?.text ?? ""),
+      })),
+    },
+  }));
+  const around = (items: readonly Item[]): Section[] => [
+    ...unchanged.filter(({ before }) => before).map(({ section }) => section),
+    { scope: AMENDED, heading: "Section 5", items },
+    ...unchanged.filter(({ before }) => !before).map(({ section }) => section),
+  ];
+  return compareSections(around(older), around(newer), mode).filter((pairing) =>
+    pairing.includes(`${AMENDED}|`),
+  );
+};
+
+describe("content comparison pairing inside any gap", () => {
+  for (const mode of LABEL_MODES) {
+    test(`neighbouring sections repeating the amended section's wording never change pairings inside it (labels: ${mode})`, () => {
+      fc.assert(
+        fc.property(amendmentArbitrary, neighboursArbitrary, (amendment, neighbours) => {
+          expect(amendedPairings(amendment, neighbours, mode)).toEqual(
+            amendedPairings(amendment, [], mode),
+          );
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    });
+
+    test(`every kept block pairs with itself, including equal-size gaps (labels: ${mode})`, () => {
+      fc.assert(
+        fc.property(amendmentArbitrary, neighboursArbitrary, (amendment, neighbours) => {
+          const kept = amendment.older.filter(({ origin }) =>
+            amendment.newer.some((item) => item.origin === origin),
+          );
+          for (const context of [[], neighbours]) {
+            const pairings = amendedPairings(amendment, context, mode);
+            for (const { origin } of kept) {
+              expect(pairings).toContain(`${AMENDED}|${origin} -> ${AMENDED}|${origin}`);
+            }
+          }
+        }),
+        propertyConfig({ numRuns: 200 }),
+      );
+    });
+  }
+
+  const [A, B, C] = ["a", "b", "c"].map((tag) => ({ origin: tag, text: itemText(tag) }));
+  const section = (scope: string, items: readonly (Item | undefined)[]): Section => ({
+    scope,
+    heading: `Section ${scope}`,
+    items: items.filter((item) => item !== undefined),
+  });
+
+  test("an item inserted ahead of a list whose wording recurs later reads as one insertion", () => {
+    expect(
+      compareSections(
+        [section("1", [A, B]), section("2", [A])],
+        [section("1", [C, A, B]), section("2", [A])],
+        "text",
+      ),
+    ).toEqual([
+      "- -> 1|c",
+      "1|a -> 1|a",
+      "1|b -> 1|b",
+      "1|heading -> 1|heading",
+      "2|a -> 2|a",
+      "2|heading -> 2|heading",
+    ]);
+  });
+
+  test("an insertion beside a deletion in an equal gap keeps the surviving item", () => {
+    expect(
+      compareSections(
+        [section("1", [A, B]), section("2", [A])],
+        [section("1", [C, A]), section("2", [A])],
+        "none",
+      ),
+    ).toEqual([
+      "- -> 1|c",
+      "1|a -> 1|a",
+      "1|b -> -",
+      "1|heading -> 1|heading",
+      "2|a -> 2|a",
+      "2|heading -> 2|heading",
+    ]);
+  });
+
+  test("a reworded item beside a replaced one pairs with its own rewording", () => {
+    const rewordedB = B && { origin: B.origin, text: `${B.text}${REWORDED}` };
+    expect(compareSections([section("1", [A, B])], [section("1", [rewordedB, C])], "none")).toEqual(
+      ["- -> 1|c", "1|a -> -", "1|b -> 1|b", "1|heading -> 1|heading"],
+    );
+  });
+
+  test("renumbered duplicates keep their order around an insertion and a deletion", () => {
+    const repeated = itemText("r");
+    const [first, second] = ["r1", "r2"].map((origin) => ({ origin, text: repeated }));
+    expect(
+      compareSections(
+        [section("1", [first, second, A])],
+        [section("1", [C, first, second])],
+        "displayLabel",
+      ),
+    ).toEqual(["- -> 1|c", "1|a -> -", "1|heading -> 1|heading", "1|r1 -> 1|r1", "1|r2 -> 1|r2"]);
+  });
+});

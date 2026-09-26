@@ -648,8 +648,7 @@ const crossedExactTextBlocks = <Block extends FolioContentBlock>({
 };
 
 /**
- * Minimum multiset Dice similarity for two blocks to pair inside a gap whose
- * sides differ in length. At 0.5 a paragraph still pairs after gaining up to
+ * Minimum multiset Dice similarity for two blocks to pair inside a gap. At 0.5 a paragraph still pairs after gaining up to
  * twice its own length (2n / (n + 3n)); below it, more of the pair would read
  * as changed than kept, which a removal beside an insertion says better.
  */
@@ -710,8 +709,15 @@ type PairGapBySimilarityOptions<Block extends FolioContentBlock> = {
   workSession: FolioContentAlignmentWorkSession;
 };
 
+type GapSimilarityPairing = {
+  pairs: FolioContentBlockPair[];
+  /** Gap offsets of the blocks with at least one pairing candidate. */
+  candidateBase: ReadonlySet<number>;
+  candidateRevised: ReadonlySet<number>;
+};
+
 /**
- * The order-preserving pairs of one unequal gap that maximise their summed
+ * The order-preserving pairs of one gap that maximise their summed
  * similarity, each at least `GAP_PAIR_SIMILARITY_THRESHOLD`; offsets are into
  * the gap's slices. Pairing by position instead fuses an inserted block with
  * the neighbour it pushed down, and every block after it with the next one's
@@ -722,7 +728,7 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
   revised,
   canPair,
   workSession,
-}: PairGapBySimilarityOptions<Block>): FolioContentBlockPair[] | null => {
+}: PairGapBySimilarityOptions<Block>): GapSimilarityPairing | null => {
   const baseCount = base.length;
   const revisedCount = revised.length;
   if (!claimFolioContentAlignmentCells(baseCount, revisedCount, workSession)) {
@@ -731,6 +737,8 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
   const revisedTokens = revised.map((block) => gapBlockTokens(block.block.text));
   // -1 marks a cell that may not pair.
   const similarity = new Float64Array(baseCount * revisedCount).fill(-1);
+  const candidateBase = new Set<number>();
+  const candidateRevised = new Set<number>();
   for (const [baseOffset, baseBlock] of base.entries()) {
     const baseTokens = gapBlockTokens(baseBlock.block.text);
     for (const [revisedOffset, revisedBlock] of revised.entries()) {
@@ -747,6 +755,8 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
       }
       if (measured.value >= GAP_PAIR_SIMILARITY_THRESHOLD) {
         similarity[baseOffset * revisedCount + revisedOffset] = measured.value;
+        candidateBase.add(baseOffset);
+        candidateRevised.add(revisedOffset);
       }
     }
   }
@@ -784,7 +794,7 @@ const pairGapBySimilarity = <Block extends FolioContentBlock>({
       column += 1;
     }
   }
-  return pairs;
+  return { pairs, candidateBase, candidateRevised };
 };
 
 export type FolioContentAlignedBlockEvent<Block extends FolioContentBlock = FolioContentBlock> =
@@ -918,9 +928,12 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
   };
 
   /**
-   * A gap whose sides differ in length gained or lost blocks somewhere inside
-   * it, so its blocks pair by similarity; an equal gap keeps pairing by
-   * position, which reads a rewritten block as the modification it is.
+   * A gap's blocks pair by similarity, whether or not its sides are equal in
+   * length: an equal gap can hide an insertion beside a deletion, and pairing
+   * it by position reads each kept block as a rewrite of its neighbour. The
+   * similar pairs anchor the rest; blocks between two anchors pair by position
+   * only when neither side offered any candidate and the counts match, which
+   * reads a block rewritten beyond recognition as the modification it is.
    */
   const emitGap = (
     baseFrom: number,
@@ -928,24 +941,39 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
     revisedFrom: number,
     revisedTo: number,
   ): void => {
-    if (baseTo - baseFrom === revisedTo - revisedFrom) {
-      emitPositionalGap(baseFrom, baseTo, revisedFrom, revisedTo);
-      return;
-    }
-    const pairs = pairGapBySimilarity({
+    const pairing = pairGapBySimilarity({
       base: prepared.base.slice(baseFrom, baseTo),
       revised: prepared.revised.slice(revisedFrom, revisedTo),
       canPair: (baseBlock, revisedBlock) =>
         !fusesACrossing(baseBlock, revisedBlock) && canPair(baseBlock, revisedBlock),
       workSession,
     });
-    if (pairs === null) {
+    if (pairing === null) {
       emitPositionalGap(baseFrom, baseTo, revisedFrom, revisedTo);
       return;
     }
+    const { pairs, candidateBase, candidateRevised } = pairing;
     let baseCursor = baseFrom;
     let revisedCursor = revisedFrom;
+    const hasCandidate = (candidates: ReadonlySet<number>, from: number, to: number): boolean => {
+      for (let offset = from; offset < to; offset++) {
+        if (candidates.has(offset)) {
+          return true;
+        }
+      }
+      return false;
+    };
     const emitUnpairedUntil = (baseEnd: number, revisedEnd: number): void => {
+      if (
+        baseEnd - baseCursor === revisedEnd - revisedCursor &&
+        !hasCandidate(candidateBase, baseCursor - baseFrom, baseEnd - baseFrom) &&
+        !hasCandidate(candidateRevised, revisedCursor - revisedFrom, revisedEnd - revisedFrom)
+      ) {
+        emitPositionalGap(baseCursor, baseEnd, revisedCursor, revisedEnd);
+        baseCursor = baseEnd;
+        revisedCursor = revisedEnd;
+        return;
+      }
       for (; baseCursor < baseEnd; baseCursor++) {
         const block = prepared.base[baseCursor]?.block;
         if (block) {
