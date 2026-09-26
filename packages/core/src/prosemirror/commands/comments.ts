@@ -6,7 +6,7 @@
 
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
-import { removeRow, TableMap } from "prosemirror-tables";
+import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
 
@@ -75,7 +75,11 @@ import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
-import { reconcileTableGridAfterColumnRemoval } from "../tableGridMutation";
+import {
+  reconcileTableGridAfterColumnRemoval,
+  removeRowsWithoutCells,
+  removeTableRow,
+} from "../tableGridMutation";
 import {
   hasMatchingCollapsedTableCellMerge,
   resolveCollapsedTableCellMerge,
@@ -717,6 +721,7 @@ function resolveChange(
       tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
       let resolvedTableCellStructure = false;
       let failedTableCellMergeResolution = false;
+      const emptiedTables: EmptiedTable[] = [];
       for (const op of tableCellStructuralOps) {
         const mappedPos = tr.mapping.map(op.cellPos);
         const cell = tr.doc.nodeAt(mappedPos);
@@ -740,11 +745,14 @@ function resolveChange(
           resolvedTableCellStructure = true;
           continue;
         }
-        deleteTableCellAt(tr, mappedPos);
+        deleteTableCellAt(tr, mappedPos, emptiedTables);
         resolvedTableCellStructure = true;
       }
       if (failedTableCellMergeResolution) {
         return false;
+      }
+      for (const { position, mapFrom } of emptiedTables) {
+        removeRowsWithoutCells(tr, tr.mapping.slice(mapFrom).map(position));
       }
       if (resolvedTableCellStructure) {
         markStructuralChange(tr);
@@ -1090,7 +1098,10 @@ function isTableCellRevisionAttr(value: unknown): value is TableCellRevisionAttr
   );
 }
 
-function deleteTableCellAt(tr: Transaction, cellPos: number): void {
+/** A table a cell deletion left a row without cells in, to compact once every deletion ran. */
+type EmptiedTable = { position: number; mapFrom: number };
+
+function deleteTableCellAt(tr: Transaction, cellPos: number, emptied: EmptiedTable[]): void {
   const cell = tr.doc.nodeAt(cellPos);
   if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
     return;
@@ -1108,7 +1119,15 @@ function deleteTableCellAt(tr: Transaction, cellPos: number): void {
   const tablePosition = resolved.before(tableDepth);
   const cellOffset = cellPos - resolved.start(tableDepth);
   const removedColumn = TableMap.get(table).findCell(cellOffset).left;
-  if (row.childCount > 1) {
+  // A cell that spans down is not its row's to take with it: removing the row
+  // would move the cell into the row below and keep it. The cell goes alone,
+  // and the row it leaves empty is removed once the rest of the column has
+  // gone too, when the table is rectangular again.
+  const spansDown = Number(cell.attrs["rowspan"]) > 1;
+  if (row.childCount > 1 || spansDown) {
+    if (row.childCount === 1) {
+      emptied.push({ position: tablePosition, mapFrom: tr.mapping.maps.length });
+    }
     tr.delete(cellPos, cellPos + cell.nodeSize);
     reconcileTableGridAfterColumnRemoval({
       tr,
@@ -1139,20 +1158,7 @@ function deleteTableRowAt(tr: Transaction, rowPos: number): void {
   }
   const rowIndex = resolved.index();
   if (table.childCount > 1) {
-    const map = TableMap.get(table);
-    removeRow(
-      tr,
-      {
-        map,
-        table,
-        tableStart: resolved.start(),
-        left: 0,
-        top: rowIndex,
-        right: map.width,
-        bottom: rowIndex + 1,
-      },
-      rowIndex,
-    );
+    removeTableRow(tr, { map: TableMap.get(table), table, tableStart: resolved.start() }, rowIndex);
     return;
   }
 

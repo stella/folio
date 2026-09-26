@@ -10,7 +10,10 @@ import {
 } from "prosemirror-tables";
 
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
-import { reconcileTableGridAfterColumnRemoval } from "../prosemirror/tableGridMutation";
+import {
+  reconcileTableGridAfterColumnRemoval,
+  removeRowsWithoutCells,
+} from "../prosemirror/tableGridMutation";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
 import {
@@ -422,6 +425,7 @@ export const applyTableColumnDeletion = ({
     previousTable: table,
     removedColumn: columnIndex,
   });
+  removeRowsWithoutCells(tr, tablePosition);
   return applied(tr, null);
 };
 

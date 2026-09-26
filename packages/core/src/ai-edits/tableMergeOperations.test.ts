@@ -140,3 +140,33 @@ describe("inserting a row inside a vertical merge", () => {
     }
   });
 });
+describe("deleting the column beside a vertical merge", () => {
+  test("direct and accepted tracked deletion leave the same coherent table", async () => {
+    const base = await buildTableDocx(MERGED_LEFT);
+    const operation = (live: FolioDocxReviewer) =>
+      ({ type: "deleteTableColumn", blockId: blockId(live, "B1") }) as const;
+    const direct = await apply(base, "direct", operation);
+    const tracked = await apply(base, "tracked-changes", operation);
+    expect(direct.result.issues).toEqual([]);
+    expect(tracked.result.issues).toEqual([]);
+
+    const directReading = await readReviewerTables(direct.reviewer);
+    const accepted = await resolveTracked(tracked.reviewer, "accept");
+    const rejected = await resolveTracked(tracked.reviewer, "reject");
+    const original = await readReviewerTables(await open(base));
+
+    // The merged cell's second row held nothing but the merge once column B
+    // went, so the row goes with it and the merge closes over one row.
+    expect(cells(directReading)).toEqual([
+      [
+        ["0:0", "1x1", "A1"],
+        ["1:0", "1x1", "A3"],
+      ],
+    ]);
+    expect(cells(accepted)).toEqual(cells(directReading));
+    expect(cells(rejected)).toEqual(cells(original));
+    for (const reading of [directReading, accepted, rejected]) {
+      expect(tableReadingProblems(reading)).toEqual([]);
+    }
+  });
+});
