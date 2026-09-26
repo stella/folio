@@ -57,21 +57,6 @@ const replaySteps = (doc: PMNode, steps: readonly Step[]): StepResult => {
   return StepResult.ok(current);
 };
 
-type MapChange = {
-  oldStart: number;
-  oldEnd: number;
-  newStart: number;
-  newEnd: number;
-};
-
-const changesIn = (map: StepMap): MapChange[] => {
-  const changes: MapChange[] = [];
-  map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-    changes.push({ oldStart, oldEnd, newStart, newEnd });
-  });
-  return changes;
-};
-
 const isValidMapRanges = (value: unknown): value is number[] => {
   if (!Array.isArray(value) || value.length % 3 !== 0) {
     return false;
@@ -110,84 +95,115 @@ const isValidMapRanges = (value: unknown): value is number[] => {
   return true;
 };
 
-/** Compose two sorted, non-crossing change maps without mapping every range through every other range. */
-export const composeRevisionResolutionMaps = (first: StepMap, second: StepMap): StepMap => {
-  const earlier = changesIn(first);
-  const later = changesIn(second);
-  const projected: Array<{ from: number; to: number }> = earlier.map(({ oldStart, oldEnd }) => ({
-    from: oldStart,
-    to: oldEnd,
-  }));
-  let earlierIndex = 0;
-  let earlierDelta = 0;
-  const mapBack = (position: number, assoc: number): number => {
-    while (earlierIndex < earlier.length) {
-      const change = earlier[earlierIndex];
-      if (!change) {
-        break;
-      }
-      if (position < change.newStart) {
-        return position - earlierDelta;
-      }
-      if (position <= change.newEnd) {
-        if (change.newStart === change.newEnd) {
-          return assoc < 0 ? change.oldStart : change.oldEnd;
-        }
-        if (position === change.newStart) {
-          return change.oldStart;
-        }
-        if (position === change.newEnd) {
-          return change.oldEnd;
-        }
-        return assoc < 0 ? change.oldStart : change.oldEnd;
-      }
-      earlierDelta += change.newEnd - change.newStart - (change.oldEnd - change.oldStart);
-      earlierIndex += 1;
-    }
-    return position - earlierDelta;
-  };
-  const laterProjected: typeof projected = [];
-  for (const { oldStart, oldEnd } of later) {
-    const from = mapBack(oldStart, -1);
-    const to = mapBack(oldEnd, 1);
-    laterProjected.push({ from, to });
-  }
+type IndexedMapChange = {
+  oldStart: number;
+  oldEnd: number;
+  newStart: number;
+  newEnd: number;
+};
 
-  const mapFirst = indexedPositionMap(first);
-  const mapSecond = indexedPositionMap(second);
-  const ranges: number[] = [];
+const indexedStepMapResult = (map: StepMap) => {
+  const changes: IndexedMapChange[] = [];
+  map.forEach((oldStart, oldEnd, newStart, newEnd) => {
+    changes.push({ oldStart, oldEnd, newStart, newEnd });
+  });
+  return (position: number, assoc: number) => {
+    let low = 0;
+    let high = changes.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      const change = changes[middle];
+      if (change && change.oldEnd < position) low = middle + 1;
+      else high = middle;
+    }
+    const change = changes[low];
+    if (change && change.oldStart <= position) {
+      const oldSize = change.oldEnd - change.oldStart;
+      let side = assoc;
+      if (oldSize > 0 && position === change.oldStart) side = -1;
+      else if (oldSize > 0 && position === change.oldEnd) side = 1;
+      return {
+        pos: side < 0 ? change.newStart : change.newEnd,
+        deleted: assoc < 0 ? position !== change.oldStart : position !== change.oldEnd,
+      };
+    }
+    const previous = changes[low - 1];
+    return { pos: position + (previous ? previous.newEnd - previous.oldEnd : 0), deleted: false };
+  };
+};
+
+/** Compose by retaining precisely the source positions that survive both maps. */
+export const composeRevisionResolutionMaps = (first: StepMap, second: StepMap): StepMap => {
+  const firstResult = indexedStepMapResult(first);
+  const secondResult = indexedStepMapResult(second);
+  const inverseFirst = indexedPositionMap(first.invert());
+  const firstBreakpoints = [0];
+  const secondBreakpoints: number[] = [];
+  let lastSecondBoundary: number | undefined;
+  const projectSecondBoundary = (position: number) => {
+    if (position === lastSecondBoundary) return;
+    secondBreakpoints.push(inverseFirst(position, -1), inverseFirst(position, 1));
+    lastSecondBoundary = position;
+  };
+  first.forEach((oldStart, oldEnd) => {
+    firstBreakpoints.push(oldStart, oldEnd);
+  });
+  second.forEach((oldStart, oldEnd) => {
+    projectSecondBoundary(oldStart);
+    projectSecondBoundary(oldEnd);
+  });
+  const breakpoints: number[] = [];
   let firstIndex = 0;
   let secondIndex = 0;
-  let pending: { from: number; to: number } | null = null;
-  const appendRange = ({ from, to }: { from: number; to: number }): void => {
-    const newStart = mapSecond(mapFirst(from, -1), -1);
-    const newEnd = mapSecond(mapFirst(to, 1), 1);
-    ranges.push(from, to - from, newEnd - newStart);
-  };
-  while (firstIndex < projected.length || secondIndex < laterProjected.length) {
-    const left = projected[firstIndex];
-    const right = laterProjected[secondIndex];
-    const takeLeft = right === undefined || (left !== undefined && left.from <= right.from);
-    const change = takeLeft ? left : right;
-    if (!change) {
-      break;
-    }
-    if (takeLeft) {
-      firstIndex += 1;
-    } else {
-      secondIndex += 1;
-    }
-    if (pending && change.from <= pending.to) {
-      pending.to = Math.max(pending.to, change.to);
-      continue;
-    }
-    if (pending) {
-      appendRange(pending);
-    }
-    pending = { ...change };
+  while (firstIndex < firstBreakpoints.length || secondIndex < secondBreakpoints.length) {
+    const firstPosition = firstBreakpoints[firstIndex];
+    const secondPosition = secondBreakpoints[secondIndex];
+    const takeFirst =
+      secondPosition === undefined ||
+      (firstPosition !== undefined && firstPosition <= secondPosition);
+    const position = takeFirst ? firstPosition : secondPosition;
+    if (takeFirst) firstIndex++;
+    else secondIndex++;
+    if (position !== undefined && breakpoints.at(-1) !== position) breakpoints.push(position);
   }
-  if (pending) {
-    appendRange(pending);
+  const through = (position: number, assoc: number) => {
+    const earlier = firstResult(position, assoc);
+    const later = secondResult(earlier.pos, assoc);
+    return { pos: later.pos, deleted: earlier.deleted || later.deleted };
+  };
+  const ranges: number[] = [];
+  let oldEnd = 0;
+  let newEnd = 0;
+  const anchor = (position: number, mapped: number) => {
+    if (position > oldEnd || mapped > newEnd) {
+      ranges.push(oldEnd, position - oldEnd, mapped - newEnd);
+    }
+    oldEnd = position;
+    newEnd = mapped;
+  };
+  for (let index = 0; index < breakpoints.length; index++) {
+    const position = breakpoints[index];
+    if (position === undefined) continue;
+    const left = through(position, -1);
+    const right = through(position, 1);
+    if (!left.deleted && !right.deleted) {
+      anchor(position, Math.min(left.pos, right.pos));
+      anchor(position, Math.max(left.pos, right.pos));
+    } else if (!left.deleted) {
+      anchor(position, left.pos);
+    } else if (!right.deleted) {
+      anchor(position, right.pos);
+    }
+    const next = breakpoints[index + 1];
+    if (next === undefined) break;
+    const middle = (position + next) / 2;
+    const surviving = through(middle, 1);
+    if (!surviving.deleted) {
+      const offset = surviving.pos - middle;
+      anchor(position, position + offset);
+      oldEnd = next;
+      newEnd = next + offset;
+    }
   }
   return new StepMap(ranges);
 };
@@ -321,7 +337,7 @@ export class RevisionResolutionStep extends Step {
     };
   }
 
-  static fromJSON(schema: Schema, json: unknown): RevisionResolutionStep {
+  static override fromJSON(schema: Schema, json: unknown): RevisionResolutionStep {
     if (typeof json !== "object" || json === null || !("steps" in json) || !("mapRanges" in json)) {
       throw new RangeError("Invalid revision resolution step JSON");
     }

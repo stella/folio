@@ -91,6 +91,32 @@ describe("RevisionResolutionStep", () => {
     expect(ranges).toEqual([7, 30, 7]);
   });
 
+  test("preserves the boundary between a deletion and adjacent replacement", () => {
+    const inline = new StepMap([0, 1, 0]);
+    const structural = new StepMap([0, 1, 0, 1, 1, 1]);
+    const composed = composeRevisionResolutionMaps(inline, structural);
+    const sequential = new Mapping([inline, structural]);
+
+    for (let position = 0; position <= 5; position++) {
+      for (const assoc of [-1, 1]) {
+        const mapped = sequential.mapResult(position, assoc);
+        if (!mapped.deleted) {
+          expect(composed.map(position, assoc)).toBe(mapped.pos);
+        }
+      }
+    }
+  });
+
+  test("folds an insertion at a removed boundary into the same change", () => {
+    const inline = new StepMap([0, 1, 0]);
+    const structural = new StepMap([0, 0, 1]);
+    const composed = composeRevisionResolutionMaps(inline, structural);
+    const sequential = new Mapping([inline, structural]);
+
+    expect(composed.map(2, -1)).toBe(sequential.map(2, -1));
+    expect(composed.map(2, 1)).toBe(sequential.map(2, 1));
+  });
+
   test("composed maps keep all surviving positions over varied deletion layouts", () => {
     const mapFor = (size: number, seed: number) => {
       const ranges: number[] = [];
@@ -117,6 +143,84 @@ describe("RevisionResolutionStep", () => {
         for (const assoc of [-1, 1]) {
           if (!sequential.mapResult(position, assoc).deleted) {
             expect(composed.map(position, assoc)).toBe(sequential.map(position, assoc));
+          }
+        }
+      }
+    }
+  });
+
+  test("composed maps retain surviving positions around mixed structural replacements", () => {
+    const mapFor = (size: number, next: (limit: number) => number, deletionsOnly: boolean) => {
+      const ranges: number[] = [];
+      let position = 0;
+      while (position < size) {
+        position += next(4);
+        if (position >= size) break;
+        const oldSize = Math.min(deletionsOnly ? 1 + next(3) : next(4), size - position);
+        const newSize = deletionsOnly ? 0 : next(4);
+        if (oldSize === 0 && newSize === 0) {
+          position++;
+          continue;
+        }
+        ranges.push(position, oldSize, newSize);
+        position += oldSize;
+      }
+      return new StepMap(ranges);
+    };
+    for (let seed = 0; seed < 100; seed++) {
+      let randomState = seed + 1;
+      const next = (limit: number) => {
+        randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
+        return randomState % limit;
+      };
+      const inline = mapFor(40, next, true);
+      const structural = mapFor(inline.map(40), next, false);
+      const composed = composeRevisionResolutionMaps(inline, structural);
+      const sequential = new Mapping([inline, structural]);
+      for (let position = 0; position <= 40; position++) {
+        for (const assoc of [-1, 1]) {
+          const mapped = sequential.mapResult(position, assoc);
+          if (!mapped.deleted) {
+            expect(composed.map(position, assoc)).toBe(mapped.pos);
+          }
+        }
+      }
+    }
+  });
+
+  test("composed maps retain survivors when both phases include insertions", () => {
+    let randomState = 724;
+    const next = (limit: number) => {
+      randomState = (Math.imul(randomState, 1_664_525) + 1_013_904_223) >>> 0;
+      return randomState % limit;
+    };
+    const mapFor = (size: number) => {
+      const ranges: number[] = [];
+      let position = 0;
+      while (position < size) {
+        position += next(4);
+        if (position >= size) break;
+        const oldSize = Math.min(next(4), size - position);
+        const newSize = next(4);
+        if (oldSize === 0 && newSize === 0) {
+          position++;
+          continue;
+        }
+        ranges.push(position, oldSize, newSize);
+        position += oldSize;
+      }
+      return new StepMap(ranges);
+    };
+    for (let seed = 0; seed < 200; seed++) {
+      const first = mapFor(40);
+      const second = mapFor(first.map(40));
+      const composed = composeRevisionResolutionMaps(first, second);
+      const sequential = new Mapping([first, second]);
+      for (let position = 0; position <= 45; position++) {
+        for (const assoc of [-1, 1]) {
+          const mapped = sequential.mapResult(position, assoc);
+          if (!mapped.deleted) {
+            expect(composed.map(position, assoc)).toBe(mapped.pos);
           }
         }
       }
