@@ -82,6 +82,7 @@ import {
 import {
   applyTextChanges,
   changesFromSegments,
+  keepAtomicSpans,
   planTextChanges,
   type TextChange,
   widenChangesToAtomicSpans,
@@ -2854,6 +2855,9 @@ const applyFolioAIEditOperationsInternal = ({
     // but the doc was untouched.
     const stepsBefore = tr.steps.length;
     let appliedRevisionIds: number[] = [];
+    // Set when a text replacement wrote one formatting over a stretch that
+    // carried several; reported once the operation is known to apply.
+    let unifiedFormatting = false;
 
     // Suggested mode covers the inline text/format operations plus the block and
     // table row/column structural operations (see
@@ -2901,7 +2905,8 @@ const applyFolioAIEditOperationsInternal = ({
             ...(styleResolver !== undefined ? { styleResolver } : {}),
           });
           if (minimal !== null) {
-            tr = minimal;
+            tr = minimal.transaction;
+            unifiedFormatting = minimal.unifiesFormatting;
             break;
           }
         }
@@ -2936,6 +2941,7 @@ const applyFolioAIEditOperationsInternal = ({
           if (tracked) {
             tr = tracked.transaction;
             operationRevisionSeed = tracked.nextRevisionId;
+            unifiedFormatting = tracked.unifiesFormatting;
             appliedRevisionIds = [
               revisionIdDelete,
               revisionIdInsert,
@@ -3130,10 +3136,12 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         if (minimal !== null) {
-          tr = minimal;
+          tr = minimal.transaction;
+          unifiedFormatting = minimal.unifiesFormatting;
         } else if (tracked !== null) {
           tr = tracked.transaction;
           operationRevisionSeed = tracked.nextRevisionId;
+          unifiedFormatting = tracked.unifiesFormatting;
           clearedBackground = tracked.backgroundRevisionIds.length > 0;
           backgroundRevisionIds = tracked.backgroundRevisionIds;
         } else if (changesText) {
@@ -3919,6 +3927,9 @@ const applyFolioAIEditOperationsInternal = ({
     // reference keep working. The full set is on `revisionIds` for
     // accept/reject paths that must clear every mark belonging to
     // this op.
+    if (unifiedFormatting) {
+      normalizations.push({ id: item.operation.id, code: "uniformReplacementFormatting" });
+    }
     applied.push({
       id: item.operation.id,
       ...(committedCommentId !== undefined && { commentId: committedCommentId }),
@@ -4315,6 +4326,11 @@ type PlanDocumentReplacementOptions = {
   replacement: string;
   /** The changes from the matched text to the replacement, before field widening. */
   planChanges: (source: string) => readonly TextChange[];
+  /**
+   * Another plan of the same replacement whose untouched fields the changes
+   * must leave untouched too (see {@link keepAtomicSpans}).
+   */
+  keepFieldsOf?: (source: string) => readonly TextChange[];
 };
 
 /**
@@ -4328,6 +4344,7 @@ const planDocumentReplacement = ({
   item,
   replacement,
   planChanges,
+  keepFieldsOf,
 }: PlanDocumentReplacementOptions): DocumentReplacementPlan | null => {
   const cleanBlock = buildCleanBlockText(item.blockNode, item.blockFrom);
   const span = replacedCleanSpan(item, cleanBlock);
@@ -4341,7 +4358,17 @@ const planDocumentReplacement = ({
       ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
       : [],
   );
-  const changes = widenChangesToAtomicSpans(span.text, planChanges(span.text), atomicSpans);
+  const widened = widenChangesToAtomicSpans(span.text, planChanges(span.text), atomicSpans);
+  const changes =
+    keepFieldsOf === undefined
+      ? widened
+      : keepAtomicSpans(
+          span.text,
+          replacement,
+          widened,
+          widenChangesToAtomicSpans(span.text, keepFieldsOf(span.text), atomicSpans),
+          atomicSpans,
+        );
   if (applyTextChanges(span.text, changes) !== replacement) {
     return null;
   }
@@ -4514,6 +4541,105 @@ const planDocumentReplacement = ({
   };
 };
 
+/** The marks that present a character: its formatting, and the links and comments over it. */
+const presentationMarks = (marks: readonly Mark[]): readonly Mark[] =>
+  marks.filter((mark) => isFormattingMark(mark) || isCarriedMark(mark));
+
+/**
+ * Whether a change of `plan` replaces characters that do not all present
+ * alike. Its new text takes one formatting, the first replaced character's,
+ * and every link and comment over the stretch, so the others' formatting ends
+ * where the replaced text did. That is the rule for every mode, and the
+ * receipt says it was applied (`uniformReplacementFormatting`).
+ */
+const replacementUnifiesFormatting = (doc: PMNode, plan: DocumentReplacementPlan): boolean =>
+  plan.planned.some(({ change, pieces }) => {
+    if (pieces.length === 0 || change.text.length === 0) {
+      return false;
+    }
+    let first: readonly Mark[] | null = null;
+    for (let index = change.start; index < change.end; index++) {
+      const unit = plan.unitAt(plan.spanStart + index);
+      const marks = presentationMarks((unit ? doc.nodeAt(unit.from)?.marks : null) ?? Mark.none);
+      if (first === null) {
+        first = marks;
+      } else if (!Mark.sameSet(first, marks)) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+/**
+ * The marks each UTF-16 unit of `replacement` carries once a direct
+ * replacement has written it (see {@link applyMinimalDirectReplacement}): a
+ * character the direct plan keeps keeps its own, and one it writes takes the
+ * marks that plan gives its change. Background cleared from a touched stretch
+ * is left off either way.
+ *
+ * A tracked replacement writes its insertions with these marks, so accepting
+ * it leaves exactly the text and formatting the direct edit writes, although
+ * its redline cuts the text into coarser, readable changes than the direct
+ * edit does.
+ */
+const directReplacementMarks = ({
+  doc,
+  plan,
+  replacementBackground,
+}: {
+  doc: PMNode;
+  plan: DocumentReplacementPlan;
+  replacementBackground: FolioReplacementBackground;
+}): (readonly Mark[])[] => {
+  const clearsBackground = replacementBackground === "clear";
+  const touched = clearsBackground ? touchedBackgroundIndices({ doc, plan }) : new Set<number>();
+  const withoutBackground = (marks: readonly Mark[]): readonly Mark[] =>
+    marks.filter((mark) => !BACKGROUND_MARK_NAMES.has(mark.type.name));
+  const allocated: (readonly Mark[])[] = [];
+  // Span-relative index of the next matched character not yet allocated.
+  let cursor = 0;
+  const keepUntil = (end: number) => {
+    for (; cursor < end; cursor++) {
+      const index = plan.spanStart + cursor;
+      const unit = plan.unitAt(index);
+      const marks = (unit ? doc.nodeAt(unit.from)?.marks : null) ?? Mark.none;
+      allocated.push(touched.has(index) ? withoutBackground(marks) : marks);
+    }
+  };
+  for (const { change, pieces, insertion } of plan.planned) {
+    keepUntil(change.start);
+    cursor = change.end;
+    let marks: readonly Mark[];
+    if (insertion !== undefined) {
+      marks = insertion.marks(doc);
+    } else {
+      const first = pieces.at(0);
+      const last = pieces.at(-1);
+      if (first === undefined || last === undefined) {
+        panic("A planned replacement lost the characters it removes");
+      }
+      marks = addCarriedMarks(
+        inheritedReplacementMarks(doc, first.from, first.to),
+        surveyReplacedAnnotations(doc, first.from, last.to).carried,
+      );
+    }
+    // Direct writes onto a touched stretch after clearing it, and a pure
+    // insertion touches the characters on both sides of it.
+    const written = clearsBackground ? withoutBackground(marks) : marks;
+    for (let offset = 0; offset < change.text.length; offset++) {
+      allocated.push(written);
+    }
+  }
+  keepUntil(plan.spanEnd - plan.spanStart);
+  return allocated;
+};
+
+type MinimalDirectReplacementResult = {
+  transaction: Transaction;
+  /** See {@link replacementUnifiesFormatting}. */
+  unifiesFormatting: boolean;
+};
+
 type MinimalDirectReplacementOptions = {
   tr: Transaction;
   item: ResolvedOperation;
@@ -4539,7 +4665,7 @@ const applyMinimalDirectReplacement = ({
   commentMark,
   replacementBackground,
   styleResolver,
-}: MinimalDirectReplacementOptions): Transaction | null => {
+}: MinimalDirectReplacementOptions): MinimalDirectReplacementResult | null => {
   const plan = planDocumentReplacement({
     doc: tr.doc,
     item,
@@ -4550,6 +4676,7 @@ const applyMinimalDirectReplacement = ({
     return null;
   }
   const { planned, matchedFrom, matchedTo } = plan;
+  const unifiesFormatting = replacementUnifiesFormatting(tr.doc, plan);
 
   let nextTr = tr;
   if (replacementBackground === "clear") {
@@ -4612,7 +4739,7 @@ const applyMinimalDirectReplacement = ({
       nextTr = nextTr.addMark(from, to, commentMark);
     }
   }
-  return nextTr;
+  return { transaction: nextTr, unifiesFormatting };
 };
 
 type MinimalTrackedReplacementOptions = {
@@ -4642,6 +4769,8 @@ type MinimalTrackedReplacementResult =
       transaction: Transaction;
       backgroundRevisionIds: readonly number[];
       nextRevisionId: number;
+      /** See {@link replacementUnifiesFormatting}. */
+      unifiesFormatting: boolean;
     }
   | { type: "pendingRunPropertyChange" };
 
@@ -4685,10 +4814,28 @@ const applyMinimalTrackedReplacement = ({
     item,
     replacement,
     planChanges: (source) => changesFromSegments(diffText(source, replacement)),
+    // A field the direct edit keeps stays a field once this redline is
+    // accepted, rather than coming back as its displayed text.
+    keepFieldsOf: (source) => planTextChanges(source, replacement),
   });
   if (plan === null) {
     return null;
   }
+  // What the direct edit would write, character by character: the insertions
+  // below carry it, so accepting this redline gives exactly that.
+  const directPlan = planDocumentReplacement({
+    doc: tr.doc,
+    item,
+    replacement,
+    planChanges: (source) => planTextChanges(source, replacement),
+  });
+  const allocatedMarks =
+    directPlan === null
+      ? null
+      : directReplacementMarks({ doc: tr.doc, plan: directPlan, replacementBackground });
+  const unifiesFormatting =
+    directPlan === null ? false : replacementUnifiesFormatting(tr.doc, directPlan);
+
   let nextTr = tr;
   let backgroundRevisionIds: readonly number[] = [];
   let nextRevisionId = revisionIdBackgroundSeed;
@@ -4741,9 +4888,48 @@ const applyMinimalTrackedReplacement = ({
         !(clearsBackground && BACKGROUND_MARK_NAMES.has(mark.type.name)),
     );
 
+  // Where each change's text starts in the replacement.
+  const replacementStarts: number[] = [];
+  let replacementShift = 0;
+  for (const { change } of plan.planned) {
+    replacementStarts.push(change.start + replacementShift);
+    replacementShift += change.text.length - (change.end - change.start);
+  }
+  const insertedNodes = (
+    text: string,
+    replacementStart: number,
+    fallback: readonly Mark[],
+  ): PMNode[] => {
+    if (allocatedMarks?.length !== replacement.length) {
+      return cleanTextInlineNodes({ schema, text, marks: insertedMarks(fallback) });
+    }
+    const marksAt = (offset: number): readonly Mark[] =>
+      allocatedMarks[replacementStart + offset] ?? fallback;
+    const nodes: PMNode[] = [];
+    let groupStart = 0;
+    for (let offset = 1; offset <= text.length; offset++) {
+      if (offset < text.length && Mark.sameSet(marksAt(offset), marksAt(groupStart))) {
+        continue;
+      }
+      nodes.push(
+        ...cleanTextInlineNodes({
+          schema,
+          text: text.slice(groupStart, offset),
+          marks: insertedMarks(marksAt(groupStart)),
+        }),
+      );
+      groupStart = offset;
+    }
+    return nodes;
+  };
+
   // Right to left, so a change never moves the positions of one before it.
   // Marking a deletion moves nothing; only the inserted text does.
-  for (const change of plan.planned.toReversed()) {
+  for (let plannedIndex = plan.planned.length - 1; plannedIndex >= 0; plannedIndex--) {
+    const change = plan.planned[plannedIndex];
+    if (change === undefined) {
+      panic("A planned replacement change went missing", { plannedIndex });
+    }
     const doc = nextTr.doc;
     let at: number;
     let marks: readonly Mark[];
@@ -4774,7 +4960,7 @@ const applyMinimalTrackedReplacement = ({
     if (change.text.length === 0) {
       continue;
     }
-    const nodes = cleanTextInlineNodes({ schema, text: change.text, marks: insertedMarks(marks) });
+    const nodes = insertedNodes(change.text, replacementStarts[plannedIndex] ?? 0, marks);
     nextTr = nextTr.insert(at, nodes);
     const end = at + Fragment.fromArray(nodes).size;
     nextTr = nextTr.addMark(at, end, insertion);
@@ -4782,7 +4968,13 @@ const applyMinimalTrackedReplacement = ({
       nextTr = nextTr.addMark(at, end, commentMark);
     }
   }
-  return { type: "applied", transaction: nextTr, backgroundRevisionIds, nextRevisionId };
+  return {
+    type: "applied",
+    transaction: nextTr,
+    backgroundRevisionIds,
+    nextRevisionId,
+    unifiesFormatting,
+  };
 };
 
 type TouchedBackgroundOptions = {

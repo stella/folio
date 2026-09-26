@@ -34,14 +34,24 @@
  * A replacement carrying inline emphasis markup (`**bold**`) states its own
  * formatting and still replaces the match whole in direct mode.
  *
+ * A change across several words is trimmed only to whole words it shares
+ * with the replacement at either end ({@link planTextChanges}): the letters
+ * two different words happen to share are not the same text, and keeping one
+ * would leave part of a new word in the formatting of the word it replaced.
+ *
  * Tracked-changes and suggested modes cut their changes from the redline diff
  * instead ({@link changesFromSegments}: word or character granularity, as the
  * caller asked), and map them onto the document by the same rules. A change
  * marks exactly the characters it removes as a deletion, which keeps their
- * runs, and writes its text as an insertion after them, formatted as the
- * first removed character that is not a note reference; a pure insertion is
- * placed and formatted as above. Nothing outside a change is wrapped in a
- * revision.
+ * runs, and writes its text as an insertion after them. The insertion's
+ * formatting is not decided by the redline's cut: every character of it takes
+ * the formatting the direct edit gives that character, so accepting the
+ * redline leaves exactly what the direct edit writes, although the redline
+ * rewrites whole words the direct edit only touches. Nothing outside a change
+ * is wrapped in a revision.
+ *
+ * Whichever mode applies it, a replacement that rewrites characters of more
+ * than one formatting reports `uniformReplacementFormatting` in its receipt.
  *
  * This module is the pure half: clean-text offsets in, changes out. The
  * applier maps each change onto the document.
@@ -83,16 +93,91 @@ export const commonSuffixLength = (a: string, b: string): number => {
   return length > 0 && isLowSurrogate(a.charCodeAt(a.length - length)) ? length - 1 : length;
 };
 
-/** `change` without the characters its deleted and inserted text share at either end. */
+/** A letter, digit, combining mark or connector: what a word is made of. */
+const WORD_CHARACTER = /^[\p{L}\p{N}\p{M}\p{Pc}]$/u;
+
+const codePointBefore = (text: string, index: number): string => {
+  const low = text.charCodeAt(index - 1);
+  return index >= 2 && isLowSurrogate(low) && isHighSurrogate(text.charCodeAt(index - 2))
+    ? text.slice(index - 2, index)
+    : text.slice(index - 1, index);
+};
+
+const codePointAt = (text: string, index: number): string =>
+  String.fromCodePoint(text.codePointAt(index) ?? 0);
+
+/** Whether `index` separates two words of `text` rather than two letters of one. */
+const isWordBoundary = (text: string, index: number): boolean =>
+  index <= 0 ||
+  index >= text.length ||
+  !WORD_CHARACTER.test(codePointBefore(text, index)) ||
+  !WORD_CHARACTER.test(codePointAt(text, index));
+
+/** At most one word, with whatever separators around it. */
+const SINGLE_WORD = /^[^\p{L}\p{N}\p{M}\p{Pc}]*[\p{L}\p{N}\p{M}\p{Pc}]*[^\p{L}\p{N}\p{M}\p{Pc}]*$/u;
+
+/**
+ * The longest length up to `length` that ends (`fromEnd` false) or starts
+ * (`fromEnd` true) on a word boundary of both strings.
+ */
+const wordAlignedLength = (
+  left: string,
+  right: string,
+  length: number,
+  fromEnd: boolean,
+): number => {
+  for (let candidate = length; candidate > 0; candidate--) {
+    const leftIndex = fromEnd ? left.length - candidate : candidate;
+    const rightIndex = fromEnd ? right.length - candidate : candidate;
+    if (isWordBoundary(left, leftIndex) && isWordBoundary(right, rightIndex)) {
+      return candidate;
+    }
+  }
+  return 0;
+};
+
+/**
+ * `change` without the characters its deleted and inserted text share at either
+ * end.
+ *
+ * Within one word, letter by letter: `Supplier` to `Suppliers` inserts one `s`
+ * and leaves both runs of a word split across two alone. A change spanning
+ * several words keeps only whole words it shares at an end: the `s` that
+ * `agrees` and `performs` happen to end with is a coincidence, and keeping it
+ * would leave the last letter of `performs` in the formatting `agrees` had
+ * while the rest of the word takes the formatting of the text it replaces.
+ */
 const trimChange = (source: string, change: TextChange): TextChange | null => {
-  const removed = source.slice(change.start, change.end);
-  const prefix = commonPrefixLength(removed, change.text);
-  const suffix = commonSuffixLength(removed.slice(prefix), change.text.slice(prefix));
-  const trimmed = {
-    start: change.start + prefix,
-    end: change.end - suffix,
-    text: change.text.slice(prefix, change.text.length - suffix),
-  };
+  let removed = source.slice(change.start, change.end);
+  let inserted = change.text;
+  let prefix = 0;
+  let suffix = 0;
+  // Whole words first; once what is left lies within one word on both sides,
+  // letter by letter.
+  for (const granularity of ["word", "letter"] as const) {
+    const withinOneWord = SINGLE_WORD.test(removed) && SINGLE_WORD.test(inserted);
+    if (granularity === "letter" && !withinOneWord) {
+      break;
+    }
+    const sharedPrefix = commonPrefixLength(removed, inserted);
+    const nextPrefix = withinOneWord
+      ? sharedPrefix
+      : wordAlignedLength(removed, inserted, sharedPrefix, false);
+    removed = removed.slice(nextPrefix);
+    inserted = inserted.slice(nextPrefix);
+    const sharedSuffix = commonSuffixLength(removed, inserted);
+    const nextSuffix = withinOneWord
+      ? sharedSuffix
+      : wordAlignedLength(removed, inserted, sharedSuffix, true);
+    removed = removed.slice(0, removed.length - nextSuffix);
+    inserted = inserted.slice(0, inserted.length - nextSuffix);
+    prefix += nextPrefix;
+    suffix += nextSuffix;
+    if (withinOneWord) {
+      break;
+    }
+  }
+  const trimmed = { start: change.start + prefix, end: change.end - suffix, text: inserted };
   return trimmed.start === trimmed.end && trimmed.text.length === 0 ? null : trimmed;
 };
 
@@ -210,11 +295,13 @@ export const shortestTokenDiff = (
  *
  * Words (with their leading whitespace, and edge punctuation on its own; see
  * `tokenizeWords`) are aligned by the shortest edit script, and each changed
- * stretch is then trimmed to the characters that actually differ, so
- * appending a letter to a word that spans two runs leaves both runs alone. A
- * rewrite past {@link MAX_TOKEN_EDITS}, or a diff that does not reconstruct
- * both strings exactly (it never should), is one change over the whole span,
- * trimmed the same way.
+ * stretch is then trimmed: to whole words it shares at either end, and once
+ * what is left lies within one word on both sides, to the letters that
+ * actually differ. Appending a letter to a word that spans two runs leaves
+ * both runs alone, and a rewrite of several words never keeps a letter two of
+ * them merely happen to share. A rewrite past {@link MAX_TOKEN_EDITS}, or a
+ * diff that does not reconstruct both strings exactly (it never should), is
+ * one change over the whole span, trimmed the same way.
  */
 export const planTextChanges = (source: string, replacement: string): TextChange[] => {
   if (source === replacement) {
@@ -321,6 +408,81 @@ export const widenChangesToAtomicSpans = (
     merged.push({ start: from, end: to, text });
   }
   return merged;
+};
+
+/** Where each character `changes` keeps of `source` lands in the result. */
+const keptPositions = (source: string, changes: readonly TextChange[]): Map<number, number> => {
+  const kept = new Map<number, number>();
+  let shift = 0;
+  let cursor = 0;
+  for (const change of changes) {
+    for (; cursor < change.start; cursor++) {
+      kept.set(cursor, cursor + shift);
+    }
+    cursor = change.end;
+    shift += change.text.length - (change.end - change.start);
+  }
+  for (; cursor < source.length; cursor++) {
+    kept.set(cursor, cursor + shift);
+  }
+  return kept;
+};
+
+/**
+ * `changes` cut around every atomic span (a field result) that `kept`, another
+ * plan of the same replacement, leaves untouched.
+ *
+ * A redline's changes are cut for a reader and may swallow a field whose
+ * displayed text the replacement repeats; rewriting it deletes the field and
+ * inserts its text as plain text, which the direct edit, keeping the field,
+ * never does. Cutting the change around the field keeps it in both modes.
+ * Where the field's text does not stand in the change's new text exactly
+ * where `kept` puts it, the change is left whole.
+ */
+export const keepAtomicSpans = (
+  source: string,
+  replacement: string,
+  changes: readonly TextChange[],
+  kept: readonly TextChange[],
+  spans: readonly AtomicTextSpan[],
+): TextChange[] => {
+  if (spans.length === 0) {
+    return [...changes];
+  }
+  const keptAt = keptPositions(source, kept);
+  const cut: TextChange[] = [];
+  let shift = 0;
+  for (const change of changes) {
+    const replacementStart = change.start + shift;
+    shift += change.text.length - (change.end - change.start);
+    let sourceCursor = change.start;
+    let textCursor = 0;
+    for (const { offset, length } of spans) {
+      if (offset < sourceCursor || offset + length > change.end || length === 0) {
+        continue;
+      }
+      const lands = keptAt.get(offset);
+      const wholeAndInOrder =
+        lands !== undefined &&
+        Array.from({ length }, (_, index) => keptAt.get(offset + index)).every(
+          (position, index) => position === lands + index,
+        );
+      const local = lands === undefined ? -1 : lands - replacementStart;
+      if (
+        !wholeAndInOrder ||
+        local < textCursor ||
+        change.text.slice(local, local + length) !== source.slice(offset, offset + length)
+      ) {
+        continue;
+      }
+      cut.push({ start: sourceCursor, end: offset, text: change.text.slice(textCursor, local) });
+      sourceCursor = offset + length;
+      textCursor = local + length;
+    }
+    cut.push({ start: sourceCursor, end: change.end, text: change.text.slice(textCursor) });
+  }
+  const pieces = cut.filter(({ start, end, text }) => start < end || text.length > 0);
+  return applyTextChanges(source, pieces) === replacement ? pieces : [...changes];
 };
 
 /** `source` with `changes` applied; the invariant the planner owes. */

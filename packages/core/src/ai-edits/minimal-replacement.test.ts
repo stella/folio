@@ -61,6 +61,21 @@ const splitsSurrogatePair = (value: string, offset: number): boolean => {
   return before >= 0xd8_00 && before <= 0xdb_ff && after >= 0xdc_00 && after <= 0xdf_ff;
 };
 
+const WORD_CHARACTER = /[\p{L}\p{N}\p{M}\p{Pc}]/u;
+
+/** At most one run of word characters: a change inside one word. */
+const isOneWord = (value: string): boolean =>
+  (value.match(/[\p{L}\p{N}\p{M}\p{Pc}]+/gu) ?? []).length <= 1;
+
+const isWordBoundary = (value: string, index: number): boolean => {
+  if (index <= 0 || index >= value.length) {
+    return true;
+  }
+  const before = String.fromCodePoint(value.codePointAt(index - 1) ?? 0);
+  const after = String.fromCodePoint(value.codePointAt(index) ?? 0);
+  return !WORD_CHARACTER.test(before) || !WORD_CHARACTER.test(after);
+};
+
 /** Token LCS by dynamic programming, the length the shortest edit script must match. */
 const lcsLength = (before: readonly string[], after: readonly string[]): number => {
   let previous: number[] = Array.from({ length: after.length + 1 }, () => 0);
@@ -92,6 +107,23 @@ describe("planTextChanges", () => {
     ]);
   });
 
+  test("a change across words keeps only whole words it shares", () => {
+    // `agrees` and `performs` share a final `s`; keeping it would leave the
+    // last letter of `performs` in the formatting of `agrees`.
+    expect(planTextChanges("Supplier agrees", "Provider performs")).toEqual([
+      { start: 0, end: 15, text: "Provider performs" },
+    ]);
+    // Within one word the shared letters stay: they belong to the same word.
+    expect(planTextChanges("the Supplier agrees", "the Provider agrees")).toEqual([
+      { start: 4, end: 10, text: "Provid" },
+    ]);
+    expect(planTextChanges("3.6the", "3.6")).toEqual([{ start: 3, end: 6, text: "" }]);
+  });
+
+  test("a change within one word keeps the letters it shares", () => {
+    expect(planTextChanges("Supplier", "Suppliers")).toEqual([{ start: 8, end: 8, text: "s" }]);
+  });
+
   test("a short match between two changes is kept", () => {
     expect(planTextChanges("a b c", "x b y")).toEqual([
       { start: 0, end: 1, text: "x" },
@@ -106,9 +138,26 @@ describe("planTextChanges", () => {
         assertWellFormed(source, replacement, changes);
         for (const change of changes) {
           const removed = source.slice(change.start, change.end);
-          // Trimmed: nothing the removed and inserted text share at an end is rewritten.
-          expect(commonPrefixLength(removed, change.text)).toBe(0);
-          expect(commonSuffixLength(removed, change.text)).toBe(0);
+          const prefix = commonPrefixLength(removed, change.text);
+          const suffix = commonSuffixLength(removed, change.text);
+          if (isOneWord(removed) && isOneWord(change.text)) {
+            // Trimmed: nothing the removed and inserted text share at an end is rewritten.
+            expect(prefix).toBe(0);
+            expect(suffix).toBe(0);
+          } else {
+            // Across words, only what ends on a word boundary of both is kept.
+            for (let length = 1; length <= prefix; length++) {
+              expect(isWordBoundary(removed, length) && isWordBoundary(change.text, length)).toBe(
+                false,
+              );
+            }
+            for (let length = 1; length <= Math.min(suffix, removed.length - prefix); length++) {
+              expect(
+                isWordBoundary(removed, removed.length - length) &&
+                  isWordBoundary(change.text, change.text.length - length),
+              ).toBe(false);
+            }
+          }
           expect(splitsSurrogatePair(source, change.start)).toBe(false);
           expect(splitsSurrogatePair(source, change.end)).toBe(false);
         }

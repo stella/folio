@@ -723,7 +723,17 @@ export type FolioAIEditNormalization =
    * deletion: half a move pair is not a move, and `w:moveTo` without its
    * `w:moveFrom` is a relocation from nowhere.
    */
-  | { id: string; code: "unpairedMove"; moveId: string };
+  | { id: string; code: "unpairedMove"; moveId: string }
+  /**
+   * A text replacement rewrote a stretch whose characters did not all carry
+   * the same formatting, link or comment. The new text takes the formatting
+   * of the first character it replaces, and every link and comment over the
+   * stretch; text the replacement keeps keeps its own. A change spanning
+   * several words keeps only whole words, so no word is left partly in the
+   * old formatting. Direct and tracked modes allocate alike: accepting the
+   * tracked replacement leaves what the direct one writes.
+   */
+  | { id: string; code: "uniformReplacementFormatting" };
 
 export type FolioAIEditNormalizationCode = FolioAIEditNormalization["code"];
 

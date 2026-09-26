@@ -592,6 +592,15 @@ const explainApplyNormalization = (
         "embedded newlines.",
     };
   }
+  if (normalization.code === "uniformReplacementFormatting") {
+    return {
+      path: `operations[id=${normalization.id}]`,
+      message:
+        "the replaced text carried more than one formatting, link or comment; the new text " +
+        "takes the formatting of the first character it replaces and every link and comment " +
+        "over the replaced text. Check the result if part of it should be formatted differently.",
+    };
+  }
   return {
     path: `operations[id=${normalization.id}].moveId`,
     message:
