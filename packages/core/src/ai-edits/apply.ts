@@ -72,6 +72,7 @@ import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
+import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   hasInlineEmphasis,
@@ -5000,6 +5001,14 @@ const resolveOperation = ({
     if (hashFolioAIBlockText(selectedText) !== selectedTextHash) {
       return { type: "skip", reason: "staleRange" };
     }
+    const characterSplit = describeCharacterSplit(
+      currentText,
+      [startOffset, endOffset],
+      operation.type === "replaceRange" ? "grapheme" : "codePoint",
+    );
+    if (characterSplit !== null) {
+      return { type: "skip", reason: "splitsCharacter", message: characterSplit };
+    }
     const range = resolveCleanTextRange({ cleanBlock, startOffset, endOffset });
     if (range === null) {
       return { type: "skip", reason: "unsupportedBlock" };
@@ -5360,6 +5369,14 @@ const resolveOperation = ({
     if (currentText.slice(operation.offset, operation.offset + separator.length) !== separator) {
       return { type: "skip", reason: "staleRange" };
     }
+    const characterSplit = describeCharacterSplit(
+      currentText,
+      [startOffset, endOffset],
+      "grapheme",
+    );
+    if (characterSplit !== null) {
+      return { type: "skip", reason: "splitsCharacter", message: characterSplit };
+    }
     const range = resolveCleanTextRange({ cleanBlock, startOffset, endOffset });
     if (range === null || !canSplit(doc, range.from)) {
       return { type: "skip", reason: "unsupportedBlock" };
@@ -5498,7 +5515,11 @@ const resolveOperation = ({
   }
 
   const quote = getOperationQuote(operation);
-  const range = resolveTextInCleanBlock(cleanBlock, quote || currentText);
+  const range = resolveTextInCleanBlock(
+    cleanBlock,
+    quote || currentText,
+    operation.type === "replaceInBlock" ? "grapheme" : "codePoint",
+  );
   if (range.type !== "resolved") {
     return range;
   }
@@ -5525,9 +5546,8 @@ type OperationResolutionSkip = {
 const resolveTextInCleanBlock = (
   cleanBlock: ReturnType<typeof buildCleanBlockText>,
   find: string,
-):
-  | { type: "resolved"; from: number; to: number }
-  | { type: "skip"; reason: FolioAIEditSkipReason } => {
+  strictness: CharacterBoundaryStrictness,
+): { type: "resolved"; from: number; to: number } | OperationResolutionSkip => {
   if (find.length === 0) {
     return { type: "skip", reason: "emptyOperation" };
   }
@@ -5539,6 +5559,16 @@ const resolveTextInCleanBlock = (
   }
   if (text.includes(find, firstIndex + 1)) {
     return { type: "skip", reason: "ambiguousFind" };
+  }
+  // A `find` beginning or ending with half a surrogate pair — or, for a
+  // replacement, with part of a cluster — matches inside a character.
+  const characterSplit = describeCharacterSplit(
+    text,
+    [firstIndex, firstIndex + find.length],
+    strictness,
+  );
+  if (characterSplit !== null) {
+    return { type: "skip", reason: "splitsCharacter", message: `the match's ${characterSplit}` };
   }
 
   const range = resolveCleanTextRange({

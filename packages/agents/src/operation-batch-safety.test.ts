@@ -1,7 +1,7 @@
 /**
  * `suggest_changes` refuses what the document-operation applier refuses, and
  * says why in words a model can act on: an operation whose target an earlier
- * operation of the same call already claims.
+ * operation of the same call already claims, and an offset inside a character.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -98,5 +98,20 @@ describe("suggest_changes with two operations on one block", () => {
       "Second clause.",
       "Third clause.",
     ]);
+  });
+});
+
+describe("suggest_changes splitting inside an emoji", () => {
+  test("refuses the offset and names the boundaries either side", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Party 🧑 agrees."]), {
+      author: "QA",
+    });
+    const blockId = reviewer.snapshot().blocks[0]?.id ?? "";
+    const summary = suggest(reviewer, [{ id: "split", type: "splitBlock", blockId, offset: 7 }]);
+
+    expect(summary.applied).toEqual([]);
+    expect(summary.skipped[0]?.reason).toContain("inside a single character");
+    expect(summary.skipped[0]?.reason).toContain("use 6 or 8");
+    expect(await acceptedTexts(reviewer)).toEqual(["Party 🧑 agrees."]);
   });
 });

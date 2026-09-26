@@ -561,6 +561,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "payloadDoesNotFit") {
     return "the operation supplies more values than its target has cells for; nothing was applied. Supply fewer cellTexts, or anchor the row or column where no merged cell takes a slot.";
   }
+  if (reason === "splitsCharacter") {
+    return "an offset falls inside a single character (between the two halves of an emoji or other surrogate pair, or, for a text change or split, between a letter and its combining marks or inside an emoji sequence); nothing was applied. Move the offset to the boundary before or after that character and retry.";
+  }
   if (reason === "overlappingOperation") {
     return "an earlier operation in this batch already deletes, rewrites, splits or merges this block, or edits an overlapping stretch of its text; nothing of this operation was applied. Re-read the document after this batch and send it again on its own.";
   }

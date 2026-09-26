@@ -646,7 +646,17 @@ export type FolioAIEditSkipReason =
    * positions the other had moved. Nothing of it was applied; re-read the
    * document after the batch and send it again, on its own.
    */
-  | "overlappingOperation";
+  | "overlappingOperation"
+  /**
+   * An offset of the operation falls inside one character: between the two
+   * UTF-16 halves of a surrogate pair (an emoji, a character outside the
+   * Basic Multilingual Plane), or — for an operation that changes text or
+   * breaks a paragraph — inside a grapheme cluster (a letter and its combining
+   * marks, an emoji sequence joined with zero-width joiners, a flag). Text cut
+   * there cannot be written back whole. Nothing was applied; move the offset
+   * to the boundary before or after the character.
+   */
+  | "splitsCharacter";
 
 export type FolioAIEditAppliedOperation = {
   id: string;
@@ -683,8 +693,9 @@ export type FolioAIEditSkippedOperation = {
   reason: FolioAIEditSkipReason;
   /**
    * What exactly was wrong when the reason alone does not say: the values a
-   * `payloadDoesNotFit` skip could not place, or the earlier operation an
-   * `overlappingOperation` skip conflicts with.
+   * `payloadDoesNotFit` skip could not place, the earlier operation an
+   * `overlappingOperation` skip conflicts with, or the offset and character
+   * of a `splitsCharacter` skip.
    */
   message?: string;
 };

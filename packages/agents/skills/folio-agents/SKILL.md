@@ -139,6 +139,10 @@ stay exported for validation-only paths.
   deletes, rewrites, splits or merges it: a later operation on a target an
   earlier one of the same call already claims is skipped
   (`overlappingOperation`). Send it again, on its own, after re-reading.
+- Offsets and ranges count UTF-16 code units and must fall between two
+  characters: not inside an emoji, and for a text change or split not between
+  a letter and its combining marks either (`splitsCharacter`, with the
+  offsets on either side).
 - Successful mutations return input-ordered `receipts`. Use their typed
   `affected` targets to identify updated blocks, stable ranges, insertions,
   and created comments without inferring effects from document text.

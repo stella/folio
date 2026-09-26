@@ -34,6 +34,7 @@ import {
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
+import { splitsSurrogatePair } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText } from "./clean-text";
 import type {
   FolioAIBlock,
@@ -434,7 +435,10 @@ export const createFolioAITextRangeHandle = ({
     !Number.isInteger(endOffset) ||
     startOffset < 0 ||
     endOffset <= startOffset ||
-    endOffset > text.length
+    endOffset > text.length ||
+    // Half an emoji is no text a range can name: see `character-boundaries.ts`.
+    splitsSurrogatePair(text, startOffset) ||
+    splitsSurrogatePair(text, endOffset)
   ) {
     return null;
   }
