@@ -1757,7 +1757,7 @@ export const TablePluginExtension = createExtension({
         // table map gives relative to the table's content start.
         const tableStart = context.tablePos + 1;
         const { map } = TableMap.get(context.table);
-        const first = map[0];
+        const first = map.at(0);
         const last = map.at(-1);
         if (first === undefined || last === undefined) {
           return false;
