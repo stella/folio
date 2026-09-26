@@ -140,12 +140,17 @@ const sameStructuralBoundaries = (
   for (let index = 0; index < leftLength; index++) {
     const boundary = left[index];
     const other = right[index];
-    if (
-      boundary === undefined ||
-      other === undefined ||
-      boundary.type !== other.type ||
-      boundary.offset !== other.offset ||
-      boundary.clear !== other.clear
+    if (boundary === undefined || other === undefined || boundary.offset !== other.offset) {
+      return false;
+    }
+    if (boundary.type === "pageBreak") {
+      if (other.type !== "pageBreak" || boundary.clear !== other.clear) {
+        return false;
+      }
+    } else if (
+      other.type !== "noteReference" ||
+      boundary.noteType !== other.noteType ||
+      boundary.length !== other.length
     ) {
       return false;
     }
