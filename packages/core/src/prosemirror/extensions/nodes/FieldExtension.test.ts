@@ -72,6 +72,38 @@ describe("FieldExtension", () => {
     expect(schema.node("paragraph", null, [field]).textBetween(0, field.nodeSize)).toBe("{page}");
   });
 
+  test("carries empty result runs through field DOM attributes", () => {
+    const runs = [
+      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
+      { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+    ];
+    const field = schema.node("field", {
+      fieldType: "PAGE",
+      instruction: " PAGE ",
+      displayText: "",
+      fieldKind: "complex",
+      _docxEmptyResultRuns: runs,
+    });
+    expect(field.type.spec.toDOM?.(field)).toEqual([
+      "span",
+      expect.objectContaining({ "data-empty-result-runs": JSON.stringify(runs) }),
+      "{page}",
+    ]);
+
+    const parsed = field.type.spec.parseDOM?.at(0)?.getAttrs?.(
+      Object.assign(Object.create(null), {
+        dataset: {
+          fieldType: "PAGE",
+          instruction: " PAGE ",
+          fieldKind: "complex",
+          emptyResultRuns: JSON.stringify(runs),
+        },
+        textContent: "",
+      }),
+    );
+    expect(parsed).toMatchObject({ _docxEmptyResultRuns: runs });
+  });
+
   test("preserves hyperlink bookmark boundaries through DOM serialization", () => {
     const hyperlink = schema.mark("hyperlink", {
       href: "https://example.test/field",

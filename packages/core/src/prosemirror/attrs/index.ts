@@ -974,6 +974,33 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
   optionalBoolean(attrs, "fldLock", "field.attrs.fldLock", issues);
   optionalBoolean(attrs, "dirty", "field.attrs.dirty", issues);
   optionalBoolean(attrs, "fieldResultIsFallback", "field.attrs.fieldResultIsFallback", issues);
+  const emptyResultRuns = attrs["_docxEmptyResultRuns"];
+  if (emptyResultRuns !== undefined && emptyResultRuns !== null) {
+    if (!Array.isArray(emptyResultRuns) || emptyResultRuns.length === 0) {
+      issues.push({
+        path: "field.attrs._docxEmptyResultRuns",
+        message: "Expected a nonempty array of empty runs.",
+      });
+    } else {
+      for (const [index, run] of emptyResultRuns.entries()) {
+        const path = `field.attrs._docxEmptyResultRuns[${index}]`;
+        if (!isRecord(run) || run["type"] !== "run") {
+          issues.push({ path, message: "Expected a run." });
+          continue;
+        }
+        const content = run["content"];
+        if (
+          !Array.isArray(content) ||
+          !content.every((item) => isRecord(item) && item["type"] === "text" && item["text"] === "")
+        ) {
+          issues.push({ path: `${path}.content`, message: "Expected only empty text." });
+        }
+        if (run["formatting"] !== undefined && !isRecord(run["formatting"])) {
+          issues.push({ path: `${path}.formatting`, message: "Expected formatting object." });
+        }
+      }
+    }
+  }
 
   return attrsResult(attrs, issues);
 };

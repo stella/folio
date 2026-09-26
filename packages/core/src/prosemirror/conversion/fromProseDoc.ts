@@ -4138,7 +4138,9 @@ function createFieldFromNode(
       fieldResult:
         fieldContent.length > 0
           ? fieldContent.filter((content): content is Run => content.type === "run")
-          : fallbackFieldContent,
+          : fallbackFieldContent.length > 0
+            ? fallbackFieldContent
+            : (attrs._docxEmptyResultRuns ?? []),
     };
     if (attrs.fldLock !== undefined) {
       complex.fldLock = attrs.fldLock;
@@ -4156,7 +4158,12 @@ function createFieldFromNode(
     type: "simpleField",
     instruction: attrs.instruction,
     fieldType: attrs.fieldType,
-    content: fieldContent.length > 0 ? fieldContent : fallbackFieldContent,
+    content:
+      fieldContent.length > 0
+        ? fieldContent
+        : fallbackFieldContent.length > 0
+          ? fallbackFieldContent
+          : (attrs._docxEmptyResultRuns ?? []),
   };
   if (attrs.fldLock !== undefined) {
     simple.fldLock = attrs.fldLock;

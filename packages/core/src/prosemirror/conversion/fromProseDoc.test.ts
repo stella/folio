@@ -307,6 +307,106 @@ describe("fromProseDoc", () => {
     expect(fromProseDoc(cloned).package.document.content).toEqual([paragraph]);
   });
 
+  test.each([
+    { content: [], label: "no result run" },
+    {
+      content: [{ type: "run", content: [{ type: "text", text: "" }] }],
+      label: "an empty result run",
+    },
+    {
+      content: [{ type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] }],
+      label: "a formatted empty result run",
+    },
+    {
+      content: [
+        { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
+        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+      ],
+      label: "differently formatted empty result runs",
+    },
+  ] as const)("preserves a simple field with $label", ({ content }) => {
+    const paragraph = {
+      type: "paragraph",
+      content: [{ type: "simpleField", instruction: " PAGE ", fieldType: "PAGE", content }],
+    } as const satisfies Paragraph;
+    const document: Document = { package: { document: { content: [paragraph] } } };
+    const pmDoc = toProseDoc(document);
+    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+
+    expect(fromProseDoc(cloned).package.document.content).toEqual([paragraph]);
+  });
+
+  test.each([
+    { fieldResult: [], label: "no result run" },
+    {
+      fieldResult: [
+        { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "" }] },
+        { type: "run", formatting: { italic: true }, content: [{ type: "text", text: "" }] },
+      ],
+      label: "differently formatted empty result runs",
+    },
+  ] as const)("preserves a complex field with $label", ({ fieldResult }) => {
+    const paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "complexField",
+          instruction: " PAGE ",
+          fieldType: "PAGE",
+          fieldCode: [],
+          fieldResult,
+        },
+      ],
+    } as const satisfies Paragraph;
+    const document: Document = { package: { document: { content: [paragraph] } } };
+    const pmDoc = toProseDoc(document);
+    const cloned = pmDoc.type.schema.nodeFromJSON(JSON.parse(JSON.stringify(pmDoc.toJSON())));
+
+    expect(fromProseDoc(cloned).package.document.content).toEqual([paragraph]);
+  });
+
+  test("a newly populated result replaces an authored empty run", () => {
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "simpleField",
+                  instruction: " PAGE ",
+                  fieldType: "PAGE",
+                  content: [
+                    {
+                      type: "run",
+                      formatting: { bold: true },
+                      content: [{ type: "text", text: "" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const field = toProseDoc(document).firstChild?.firstChild;
+    if (!field) throw new Error("Expected field");
+    const edited = schema.node("doc", null, [
+      schema.node("paragraph", null, [
+        schema.node("field", { ...field.attrs, displayText: "42" }, null, field.marks),
+      ]),
+    ]);
+    const paragraph = fromProseDoc(edited).package.document.content.at(0);
+    const result = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+    if (result?.type !== "simpleField") throw new Error("Expected simple field");
+
+    expect(result.content).toEqual([
+      { type: "run", formatting: { bold: true }, content: [{ type: "text", text: "42" }] },
+    ]);
+  });
+
   test("does not invent a whitespace result for an empty complex field", () => {
     const paragraph = {
       type: "paragraph",

@@ -23,6 +23,7 @@ import type {
   ImageDocPrLink,
   FieldType,
   Hyperlink,
+  Run,
   LineSpacingRule,
   ImageFrameLocks,
   ImagePosition,
@@ -693,6 +694,8 @@ export type FieldAttrs = {
    * original, resultless bytes. See `ComplexField.fieldResultIsFallback`.
    */
   fieldResultIsFallback?: boolean;
+  /** Authored empty result runs, which have no visible ProseMirror children. */
+  _docxEmptyResultRuns?: Run[];
 };
 
 /**

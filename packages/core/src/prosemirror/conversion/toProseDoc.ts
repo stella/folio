@@ -3116,6 +3116,17 @@ function convertField(
   if (!createStructuredField && fieldPropertyChanges && fieldPropertyChanges.length > 0) {
     marks.push(schema.mark("runPropertyChange", { changes: [...fieldPropertyChanges] }));
   }
+  const resultRuns =
+    field.type === "simpleField"
+      ? field.content.flatMap((content) => (content.type === "run" ? [content] : []))
+      : field.fieldResult;
+  const emptyResultRuns =
+    displayText === "" &&
+    resultRuns.length > 0 &&
+    (field.type === "complexField" || field.content.length === resultRuns.length) &&
+    resultRuns.every((run) => run.content.every((item) => item.type === "text" && item.text === ""))
+      ? resultRuns
+      : undefined;
   return schema.node(
     createStructuredField ? "structuredField" : "field",
     {
@@ -3127,6 +3138,7 @@ function convertField(
       dirty: field.dirty ?? null,
       fieldResultIsFallback:
         field.type === "complexField" ? (field.fieldResultIsFallback ?? null) : null,
+      _docxEmptyResultRuns: emptyResultRuns ?? null,
     },
     createStructuredField ? inlineNodes : undefined,
     marks,

@@ -683,6 +683,24 @@ describe("ProseMirror attr readers", () => {
     }
   });
 
+  test("rejects nonempty content in retained empty field result runs", () => {
+    const field = schema.nodes.field.create({
+      fieldType: "PAGE",
+      instruction: " PAGE ",
+      displayText: "",
+      fieldKind: "simple",
+      _docxEmptyResultRuns: [{ type: "run", content: [{ type: "text", text: "visible" }] }],
+    });
+
+    const result = readFieldAttrs(field);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map((issue) => issue.path)).toContain(
+        "field.attrs._docxEmptyResultRuns[0].content",
+      );
+    }
+  });
+
   test("rejects malformed hard break attrs", () => {
     const node = schema.nodes.hardBreak.create({
       breakType: "page",

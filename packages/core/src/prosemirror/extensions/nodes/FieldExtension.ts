@@ -30,11 +30,21 @@ const createFieldAttrs = () => ({
   // Whether `displayText` is a rendering fallback folio synthesized rather
   // than authored content (see `ComplexField.fieldResultIsFallback`).
   fieldResultIsFallback: { default: null },
+  _docxEmptyResultRuns: { default: null },
 });
 
 /** A `data-` flag a pasted field carried: absent states nothing. */
 const statedFlag = (value: string | undefined): boolean | null =>
   value === undefined ? null : value === "true";
+
+const readEmptyResultRuns = (value: string | undefined): unknown => {
+  if (value === undefined) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+};
 
 const readFieldDomAttrs = (dom: HTMLElement) => ({
   fieldType: dom.dataset["fieldType"] ?? "UNKNOWN",
@@ -44,11 +54,19 @@ const readFieldDomAttrs = (dom: HTMLElement) => ({
   fldLock: statedFlag(dom.dataset["fldLock"]),
   dirty: statedFlag(dom.dataset["dirty"]),
   fieldResultIsFallback: statedFlag(dom.dataset["fieldResultIsFallback"]),
+  _docxEmptyResultRuns: readEmptyResultRuns(dom.dataset["emptyResultRuns"]),
 });
 
 const getFieldDomAttrs = (node: PMNode) => {
-  const { fieldType, instruction, fieldKind, fldLock, dirty, fieldResultIsFallback } =
-    expectFieldAttrs(node);
+  const {
+    fieldType,
+    instruction,
+    fieldKind,
+    fldLock,
+    dirty,
+    fieldResultIsFallback,
+    _docxEmptyResultRuns,
+  } = expectFieldAttrs(node);
   return {
     class: `docx-field docx-field-${fieldType.toLowerCase()}`,
     "data-field-type": fieldType,
@@ -59,6 +77,9 @@ const getFieldDomAttrs = (node: PMNode) => {
     ...(fieldResultIsFallback === undefined
       ? {}
       : { "data-field-result-is-fallback": String(fieldResultIsFallback) }),
+    ...(_docxEmptyResultRuns === undefined
+      ? {}
+      : { "data-empty-result-runs": JSON.stringify(_docxEmptyResultRuns) }),
     style:
       "outline: 1px solid var(--doc-field-outline, rgba(200,200,200,0.4)); padding: 0 1px; border-radius: 2px;",
   };
