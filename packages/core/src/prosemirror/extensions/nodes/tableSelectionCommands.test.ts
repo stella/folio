@@ -10,12 +10,12 @@ import {
   placeSelection,
 } from "../../../__tests__/editorHarness";
 
-// The shape's outer table: three rows over a three-column grid, with a
-// horizontal merge in row 1, a vertical merge down column 1 of rows 2–3 (one
-// cell with a row span) and a nested table in row 2.
+// The shape's outer table: four grid columns; rows 1–2 hold a 2×2 merged
+// block, a plain column and a vertical merge in column D; rows 3–4 a vertical
+// merge in column A and a nested table.
 const caretInTable = async () => {
   const document = await parseShapeDocument(await documentShape("tables").build());
-  const state = placeSelection(createHarnessState(document, "editing"), "Cell B1", "caret-middle");
+  const state = placeSelection(createHarnessState(document, "editing"), "Cell C2", "caret-middle");
   if (!state) {
     throw new Error("the shape has no focus paragraph");
   }
@@ -37,11 +37,15 @@ describe("table selection commands", () => {
     expect(cells).toEqual([
       "Merged A1",
       "Cell C1",
-      "Cell A2",
-      "Cell B1",
-      "Outer",
+      "Cell D1",
+      "Cell C2",
+      "Cell A3",
       "Cell B3",
-      "Cell C3",
+      "Outer",
+      "Cell D3",
+      "Cell B4",
+      "Cell C4",
+      "Cell D4",
     ]);
   });
 
@@ -57,6 +61,6 @@ describe("table selection commands", () => {
     selection.forEachCell((cell) => {
       cells.push(cell.firstChild?.textContent ?? "");
     });
-    expect(cells).toEqual(["Cell A2", "Cell B1", "Outer", "Cell B3", "Cell C3"]);
+    expect(cells).toEqual(["Merged A1", "Cell C1", "Cell D1", "Cell C2"]);
   });
 });

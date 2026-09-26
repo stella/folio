@@ -24,6 +24,7 @@ import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { redo, undo } from "prosemirror-history";
 import type { EditorState } from "prosemirror-state";
+import { TableMap } from "prosemirror-tables";
 
 import type { DocumentShape } from "./documentShapes";
 import {
@@ -463,6 +464,7 @@ export const CONFORMANCE_OPERATIONS: readonly ConformanceOperation[] = [
 export type ViolationKind =
   | "threw"
   | "invalid-model"
+  | "table-grid"
   | "readback-blocks"
   | "readback-painted"
   | "readback-markdown"
@@ -680,9 +682,38 @@ const compareObservations = (expected: Observation, actual: Observation): string
   compareSummaries(expected.summary, actual.summary) ??
   compareText(expected.markdown, actual.markdown);
 
+/**
+ * Every table whose cells no longer tile its grid: a merge left longer than
+ * the table, or a row the table fixer had to pad. Such a table saves as
+ * `w:vMerge` runs and grid columns its source never had.
+ */
+const tableGridIssues = (doc: PMNode): string[] => {
+  const issues: string[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.spec["tableRole"] !== "table") {
+      return true;
+    }
+    const map = TableMap.get(node);
+    const columnWidths: unknown = node.attrs["columnWidths"];
+    if (map.problems && map.problems.length > 0) {
+      issues.push(`table at ${pos}: ${JSON.stringify(map.problems)}`);
+    } else if (Array.isArray(columnWidths) && columnWidths.length !== map.width) {
+      issues.push(
+        `table at ${pos}: ${map.width} cell columns over a ${columnWidths.length}-column grid`,
+      );
+    }
+    return true;
+  });
+  return issues;
+};
+
 /** Checks (a)–(d) for one mode's changed state. */
 const checkChangedState = async (run: ModeRun, violations: Violation[]): Promise<void> => {
   const { mode, after, before, base } = run;
+  const gridIssues = tableGridIssues(after.doc);
+  if (gridIssues.length > 0 && tableGridIssues(before.doc).length === 0) {
+    violations.push({ kind: "table-grid", mode, detail: gridIssues.join("; ") });
+  }
   let saved: Awaited<ReturnType<typeof saveHarnessState>> | null = null;
   try {
     saved = await saveHarnessState(after, base);

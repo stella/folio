@@ -232,8 +232,19 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     tier: "full",
   },
   {
-    reason: "Suggesting mode deletes table rows, columns and tables directly",
-    operations: ["command:deleteRow", "command:deleteColumn", "command:deleteTable"],
+    reason:
+      "Suggesting mode changes table structure (rows, columns, merges, whole tables) directly",
+    operations: [
+      "command:deleteRow",
+      "command:deleteColumn",
+      "command:deleteTable",
+      "command:addRowAbove",
+      "command:addRowBelow",
+      "command:addColumnLeft",
+      "command:addColumnRight",
+      "command:splitCell",
+      "command:mergeCells",
+    ],
     shapes: ["tables"],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
@@ -272,8 +283,46 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   {
     reason:
       "Paragraphs a paste or a structural command creates carry no resolved style attributes (spacing, run defaults) until the document is reopened",
-    operations: ["paste:paragraphs", "paste:copied-blocks", "command:deleteColumn", "key:Delete"],
+    operations: [
+      "paste:paragraphs",
+      "paste:copied-blocks",
+      "key:Delete",
+      "command:deleteColumn",
+      "command:addRowAbove",
+      "command:addRowBelow",
+      "command:addColumnLeft",
+      "command:addColumnRight",
+      "command:splitCell",
+    ],
     kinds: ["readback-blocks", "readback-painted"],
+  },
+  {
+    reason:
+      "Adding or deleting a column and adding a row above walk rows without the table map: beside a vertical merge they misplace cells, and they rebuild w:tblGrid from the first row's cell count",
+    operations: [
+      "command:addColumnLeft",
+      "command:addColumnRight",
+      "command:deleteColumn",
+      "command:addRowAbove",
+    ],
+    shapes: ["tables"],
+    kinds: ["table-grid"],
+  },
+  {
+    reason:
+      "Pasting content copied across table rows duplicates paragraph-property source tokens, which the save refuses",
+    operations: ["paste:copied-blocks"],
+    shapes: ["tables"],
+    kinds: ["invalid-model", "table-grid"],
+  },
+  {
+    reason:
+      "Replacing a range that spans table rows leaves cells that no longer tile the table grid",
+    operations: REPLACING_OPERATIONS,
+    shapes: ["tables"],
+    placements: ["cross-paragraph"],
+    kinds: ["table-grid"],
+    tier: "full",
   },
   {
     reason:

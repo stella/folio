@@ -482,9 +482,10 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
   }),
   shape({
     id: "tables",
-    description: "A table with a horizontal merge, a vertical merge and a nested table",
+    description:
+      "A table with a merged block left of a vertical merge, a second vertical merge and a nested table",
     features: ["table", "nested-table", "merged-cells"],
-    focus: "Cell B1",
+    focus: "Cell C2",
     build: () => {
       const cell = (inner: string, tcPr = "") =>
         `<w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/>${tcPr}</w:tcPr>${inner}</w:tc>`;
@@ -494,10 +495,15 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
         `<w:tr>${cell(textParagraph("Inner 1"))}${cell(textParagraph("Inner 2"))}</w:tr></w:tbl>`;
       const table =
         '<w:tbl><w:tblPr><w:tblStyle w:val="TableGrid"/><w:tblW w:w="0" w:type="auto"/><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr>' +
-        '<w:tblGrid><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/><w:gridCol w:w="3000"/></w:tblGrid>' +
-        `<w:tr>${cell(textParagraph("Merged A1"), '<w:gridSpan w:val="2"/>')}${cell(textParagraph("Cell C1"))}</w:tr>` +
-        `<w:tr>${cell(textParagraph("Cell A2"), '<w:vMerge w:val="restart"/>')}${cell(textParagraph("Cell B1"))}${cell(textParagraph("Outer") + nested + paragraph(""))}</w:tr>` +
-        `<w:tr>${cell(paragraph(""), "<w:vMerge/>")}${cell(textParagraph("Cell B3"))}${cell(textParagraph("Cell C3"))}</w:tr>` +
+        '<w:tblGrid><w:gridCol w:w="2200"/><w:gridCol w:w="2200"/><w:gridCol w:w="2200"/><w:gridCol w:w="2200"/></w:tblGrid>' +
+        // Rows 1–2: a 2×2 merged block, then a plain column, then a vertical
+        // merge in the last column, so removing row 2 has to keep counting
+        // columns past the wide merged cell to reach that merge.
+        `<w:tr>${cell(textParagraph("Merged A1"), '<w:gridSpan w:val="2"/><w:vMerge w:val="restart"/>')}${cell(textParagraph("Cell C1"))}${cell(textParagraph("Cell D1"), '<w:vMerge w:val="restart"/>')}</w:tr>` +
+        `<w:tr>${cell(paragraph(""), '<w:gridSpan w:val="2"/><w:vMerge/>')}${cell(textParagraph("Cell C2"))}${cell(paragraph(""), "<w:vMerge/>")}</w:tr>` +
+        // Rows 3–4: a vertical merge in column A and a nested table.
+        `<w:tr>${cell(textParagraph("Cell A3"), '<w:vMerge w:val="restart"/>')}${cell(textParagraph("Cell B3"))}${cell(textParagraph("Outer") + nested + paragraph(""))}${cell(textParagraph("Cell D3"))}</w:tr>` +
+        `<w:tr>${cell(paragraph(""), "<w:vMerge/>")}${cell(textParagraph("Cell B4"))}${cell(textParagraph("Cell C4"))}${cell(textParagraph("Cell D4"))}</w:tr>` +
         "</w:tbl>";
       return buildRawPackage({
         styles: WORD_STYLES,
