@@ -6,7 +6,7 @@
 
 import { panic } from "better-result";
 
-import type { BlockContent, DocxPackage } from "../types/document";
+import type { BlockContent, DocxPackage, Paragraph, ParagraphContent } from "../types/document";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 import { isMarkdownListItem, renderParagraph } from "./renderParagraph";
 import { renderTable } from "./renderTable";
@@ -18,9 +18,12 @@ import type { RenderContext } from "./types";
  * its break on accept and merges with the following paragraph. Word's join
  * keeps the FIRST paragraph's properties (style, list) and drops the resolved
  * mark; the surviving break is the next paragraph's, so a run of consecutive
- * deletions collapses into one paragraph. A non-paragraph next block (table,
- * SDT) is structurally incompatible and stays unmerged, matching the editor's
- * accept-change join guard (`commands/comments.ts`).
+ * deletions collapses into one paragraph. A first paragraph with nothing left
+ * once its deletions are accepted (a whole deleted paragraph) contributes only
+ * the join, so the NEXT paragraph keeps its own properties, as the editor's
+ * accept does. A non-paragraph next block (table, SDT) is structurally
+ * incompatible and stays unmerged, matching the editor's accept-change join
+ * guard (`commands/comments.ts`).
  */
 function mergeAcceptedParagraphBreaks(blocks: BlockContent[]): BlockContent[] {
   const merged: BlockContent[] = [];
@@ -31,7 +34,8 @@ function mergeAcceptedParagraphBreaks(blocks: BlockContent[]): BlockContent[] {
       // chain keeps merging.
       const next = block.pPrMark;
       const content = [...prev.content, ...block.content];
-      const joined = cloneParagraphWithoutPropertySource(prev, {
+      const formattingOwner = holdsNothingOnAccept(prev) ? block : prev;
+      const joined = cloneParagraphWithoutPropertySource(formattingOwner, {
         content,
         ...(next ? { pPrMark: next } : {}),
       });
@@ -45,6 +49,30 @@ function mergeAcceptedParagraphBreaks(blocks: BlockContent[]): BlockContent[] {
   }
   return merged;
 }
+
+/** Paragraph content that shows nothing: range boundaries and anchors. */
+const ZERO_WIDTH_CONTENT: ReadonlySet<ParagraphContent["type"]> = new Set([
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+]);
+
+/** Whether a paragraph keeps no visible content once every change is accepted. */
+const holdsNothingOnAccept = (paragraph: Paragraph): boolean =>
+  paragraph.content.every(
+    (item) =>
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      ZERO_WIDTH_CONTENT.has(item.type) ||
+      (item.type === "run" &&
+        item.content.every((content) => content.type === "renderedPageBreak")),
+  );
 
 export function renderBlocks(
   ctx: RenderContext,

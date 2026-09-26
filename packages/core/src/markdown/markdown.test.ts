@@ -526,6 +526,22 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(md([heading, para([run(" tail")])], clean)).toBe("# Title tail");
   });
 
+  test("a wholly deleted paragraph leaves the next paragraph's properties alone", () => {
+    const deletedItem: Paragraph = {
+      type: "paragraph",
+      content: [
+        { type: "bookmarkStart", id: 1, name: "item" },
+        { type: "deletion", info: { id: 2, author: "A" }, content: [run("Gone")] },
+        { type: "bookmarkEnd", id: 1 },
+      ],
+      formatting: { styleId: "Heading1" },
+      pPrMark: delMark(),
+    };
+    // Accepting removes the paragraph; the one below keeps its own style, as
+    // the editor's accept does.
+    expect(md([deletedItem, para([run("Body")])], clean)).toBe("Body");
+  });
+
   test("a chain of deleted marks collapses into one paragraph", () => {
     const a: Paragraph = {
       type: "paragraph",
