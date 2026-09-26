@@ -1001,6 +1001,16 @@ function parseTableCellVerticalMergeRevisionValue(
   return undefined;
 }
 
+export function isTableCellMergeRevisionValue(value: unknown): value is "continue" | "rest" {
+  return value === "continue" || value === "rest";
+}
+
+export function isTableCellMergeRevisionContinuation(
+  value: "continue" | "rest" | undefined,
+): boolean {
+  return value === "continue";
+}
+
 // ============================================================================
 // TABLE ROW PROPERTIES PARSING (w:trPr)
 // ============================================================================

@@ -125,6 +125,28 @@ test("grid widths follow the cell whose removal actually shrinks the table", () 
   }
 });
 
+test("alternating removed cells retain their authored column widths", () => {
+  const widths = Array.from({ length: 128 }, (_, index) => 100 + index);
+  const cells = widths.map((_width, index) =>
+    cell(
+      `cell ${index}`,
+      index % 2 === 0
+        ? undefined
+        : {
+            cellMarker: { kind: "del", info: { revisionId: index + 100 } },
+          },
+    ),
+  );
+  const table = schema.node("table", { columnWidths: widths }, [row(cells)]);
+  const result = resolveAllTableChanges({ table, mode: "accept" });
+
+  expect(result.failed).toBe(false);
+  expect(result.node?.firstChild?.childCount).toBe(64);
+  expect(result.node?.attrs["columnWidths"]).toEqual(
+    widths.filter((_width, index) => index % 2 === 0),
+  );
+});
+
 test("rejecting a visible merge restores one spanning cell", () => {
   const table = schema.node("table", null, [
     row([cell("top")]),

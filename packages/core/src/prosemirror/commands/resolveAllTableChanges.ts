@@ -7,6 +7,10 @@ import {
   restoreTableCellsWithParagraphPropertySources,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
+import {
+  isTableCellMergeRevisionContinuation,
+  isTableCellMergeRevisionValue,
+} from "../../docx/tableParser";
 import type { TableCell } from "../../types/document";
 import { expectTableAttrs, mergeTableAttrs } from "../attrs";
 import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility";
@@ -233,8 +237,7 @@ const cellRevisionMarker = (cell: PMNode): CellMarker | null => {
     return null;
   }
   const verticalMergeOriginal =
-    "verticalMergeOriginal" in marker &&
-    (marker.verticalMergeOriginal === "continue" || marker.verticalMergeOriginal === "rest")
+    "verticalMergeOriginal" in marker && isTableCellMergeRevisionValue(marker.verticalMergeOriginal)
       ? marker.verticalMergeOriginal
       : undefined;
   return {
@@ -511,6 +514,44 @@ const failedTableResolution = (table: PMNode): ResolvedTableChanges => ({
   positionMap: StepMap.empty,
 });
 
+type ColumnWidthRemoval = { left: number; count: number };
+
+/** Replay width deletions by live column rank without shifting the remaining array. */
+const compactColumnWidths = (
+  widths: readonly number[],
+  removals: readonly ColumnWidthRemoval[],
+): number[] => {
+  if (removals.length === 0) return [...widths];
+  const length = widths.length;
+  const tree = new Int32Array(length + 1);
+  const removed = new Uint8Array(length);
+  for (let index = 1; index <= length; index++) tree[index] = index & -index;
+  let highestBit = 1;
+  while (highestBit * 2 <= length) highestBit *= 2;
+  let remaining = length;
+  for (const { left, count } of removals) {
+    const start = Math.min(left, remaining);
+    const removedCount = Math.min(count, remaining - start);
+    for (let deleted = 0; deleted < removedCount; deleted++) {
+      let rank = start + 1;
+      let originalIndex = 0;
+      for (let bit = highestBit; bit > 0; bit >>= 1) {
+        const next = originalIndex + bit;
+        if (next <= length && (tree[next] ?? 0) < rank) {
+          originalIndex = next;
+          rank -= tree[next] ?? 0;
+        }
+      }
+      removed[originalIndex] = 1;
+      for (let index = originalIndex + 1; index <= length; index += index & -index) {
+        tree[index] = (tree[index] ?? 0) - 1;
+      }
+      remaining--;
+    }
+  }
+  return widths.filter((_width, index) => removed[index] === 0);
+};
+
 /** Resolve all cell edits in reverse order against one grid and mutable slots. */
 const resolvePureTableMerges = ({
   table,
@@ -528,6 +569,7 @@ const resolvePureTableMerges = ({
   const widthCounts = new Map<number, number>();
   const authoredWidths = expectTableAttrs(table).columnWidths;
   const columnWidths = authoredWidths?.length === map.width ? [...authoredWidths] : undefined;
+  const widthRemovals: ColumnWidthRemoval[] = [];
   let currentWidth = map.width;
   let removedCell = false;
   const deletedRows = new Set<number>();
@@ -606,7 +648,7 @@ const resolvePureTableMerges = ({
           currentWidth--;
         }
         if (columnWidths && currentWidth < previousWidth) {
-          columnWidths.splice(entry.left, previousWidth - currentWidth);
+          widthRemovals.push({ left: entry.left, count: previousWidth - currentWidth });
         }
       }
     } else if (marker?.kind === "merge") {
@@ -617,7 +659,7 @@ const resolvePureTableMerges = ({
           entry.node.content,
           entry.node.marks,
         );
-      } else if ((marker.verticalMergeOriginal ?? "rest") === "rest") {
+      } else if (!isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal)) {
         entry.touched = true;
         const original = entry.node.attrs["_originalFormatting"];
         let formatting: unknown = original;
@@ -700,8 +742,8 @@ const resolvePureTableMerges = ({
       matched = true;
       if (
         mode === "reject" &&
-        change.verticalMerge === "continue" &&
-        (change.verticalMergeOriginal ?? "rest") === "rest"
+        isTableCellMergeRevisionContinuation(change.verticalMerge) &&
+        !isTableCellMergeRevisionContinuation(change.verticalMergeOriginal)
       ) {
         splitIndices.push(sourceIndex);
       }
@@ -831,12 +873,15 @@ const resolvePureTableMerges = ({
   const nextWidth = TableMap.get(nextTable).width;
   const gridChanged = removedCell && nextWidth < map.width;
   if (gridChanged) {
+    const survivingColumnWidths =
+      columnWidths === undefined ? undefined : compactColumnWidths(columnWidths, widthRemovals);
     const formatting = expectTableAttrs(nextTable)._originalFormatting;
     const originalFormatting = formatting ? { ...formatting } : undefined;
     if (originalFormatting) delete originalFormatting.gridSourceXml;
     nextTable = nextTable.type.create(
       mergeTableAttrs(nextTable, {
-        columnWidths: columnWidths?.length === nextWidth ? columnWidths : undefined,
+        columnWidths:
+          survivingColumnWidths?.length === nextWidth ? survivingColumnWidths : undefined,
         _originalFormatting: originalFormatting,
       }),
       nextTable.content,
