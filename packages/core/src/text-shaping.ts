@@ -7,6 +7,9 @@
  * layout engine selects font slots with, and an sfnt reader and glyph-id
  * subsetter for embedding the faces the shaped glyphs come from.
  *
+ * The artifact itself is exported as `@stll/folio-core/text-shaping/wasm`, for
+ * a caller that embeds it and passes its bytes to `getShaper({ wasm })`.
+ *
  * @packageDocumentation
  */
 

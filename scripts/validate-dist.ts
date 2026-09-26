@@ -312,6 +312,13 @@ const runtimeExpect: Record<string, Record<string, string[]>> = {
       "applyFolioAIEditsToBuffer",
     ],
     "@stll/folio-core/redline": ["generateRedlineDocx"],
+    "@stll/folio-core/text-shaping": [
+      "getShaper",
+      "parseSfnt",
+      "subsetTrueType",
+      "segmentByScript",
+      "BIDI_DIRECTION",
+    ],
     "@stll/folio-core/types/block-id": ["deriveBlockId", "isFolioBlockId"],
   },
   react: {
@@ -384,6 +391,26 @@ try {
 `
     : "";
 
+// The shaper must load from the bytes of its exported asset, which is how a
+// runtime that cannot fetch package files (a single-file executable) uses it.
+const shaperBytesRuntimeCheck =
+  target === "core"
+    ? `
+try {
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const { getShaper } = await import("@stll/folio-core/text-shaping");
+  const wasm = readFileSync(fileURLToPath(import.meta.resolve("@stll/folio-core/text-shaping/wasm")));
+  const shaper = await getShaper({ wasm });
+  const line = shaper.resolveBidi({ text: "a\\u05d0", direction: "ltr" });
+  if (line.levels.join() !== "0,1") {
+    failed = true;
+    console.error("the shaper loaded from bytes resolved unexpected levels: " + line.levels.join());
+  }
+} catch (err) { failed = true; console.error("shaper from bytes threw: " + (err?.message ?? err)); }
+`
+    : "";
+
 const nuxtRuntimeCheck =
   target === "nuxt"
     ? `
@@ -409,6 +436,7 @@ for (const [spec, names] of Object.entries(expect)) {
   } catch (err) { failed = true; console.error("import threw for " + spec + ": " + (err?.message ?? err)); }
 }
 ${messagesRuntimeCheck}
+${shaperBytesRuntimeCheck}
 ${nuxtRuntimeCheck}
 process.exit(failed ? 1 : 0);
 `;

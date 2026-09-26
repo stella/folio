@@ -83,7 +83,8 @@ const distTypesFromExport = (target: unknown): string | null => {
 //                                 modules, not a curated public surface; there
 //                                 is no single `.d.ts` to snapshot
 //   - explicit `null` targets     private exceptions to a wildcard export
-//   - non-JS assets (`*.css`)     stylesheet, carries no declarations
+//   - non-JS assets (`*.css`,     stylesheet or WebAssembly, carries no
+//     `*.wasm`)                   declarations
 const entriesFor = (pkg: PublishedPackage): { entries: Entry[]; missing: string[] } => {
   const pkgJson = JSON.parse(readFileSync(path.join(pkg.root, "package.json"), "utf8")) as {
     exports: Record<string, unknown>;
@@ -121,7 +122,7 @@ const entriesFor = (pkg: PublishedPackage): { entries: Entry[]; missing: string[
       );
       process.exit(1);
     }
-    if (path.extname(srcPath) === ".css") continue;
+    if (path.extname(srcPath) === ".css" || path.extname(srcPath) === ".wasm") continue;
     const dts = resolveDts(pkg.root, key, srcPath);
     if (dts) {
       entries.push({ key, slug: slugForKey(key), dts });

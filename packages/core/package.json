@@ -63,6 +63,7 @@
     "./docx": "./src/docx/index.ts",
     "./docx/document-clone": "./src/docx/documentClone.ts",
     "./text-shaping": "./src/text-shaping.ts",
+    "./text-shaping/wasm": "./src/generated/text_shaper_bg.wasm",
     "./docx/paragraphPropertySource": null,
     "./internal/*": null,
     "./*": "./src/*.ts"

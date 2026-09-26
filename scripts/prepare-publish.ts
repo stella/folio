@@ -63,6 +63,9 @@ const resolveDist = (subpath: string, srcPath: string, ext: string): string => {
   );
 };
 
+/** Exports that name a file to read rather than a module to import. */
+const ASSET_EXTENSIONS = new Set([".css", ".wasm"]);
+
 type ExportTarget = string | JsEntry | null;
 const distExports: Record<string, ExportTarget> = {};
 for (const [subpath, target] of Object.entries(pkg.exports)) {
@@ -88,11 +91,11 @@ for (const [subpath, target] of Object.entries(pkg.exports)) {
     continue;
   }
 
-  // A CSS (or other asset) export publishes as a plain string to the bundled
-  // dist asset — no `types`, no conditions.
+  // A CSS or WebAssembly asset export publishes as a plain string to the
+  // copied dist asset — no `types`, no conditions.
   const ext = path.extname(target);
-  if (ext === ".css") {
-    distExports[subpath] = resolveDist(subpath, target, ".css");
+  if (ASSET_EXTENSIONS.has(ext)) {
+    distExports[subpath] = resolveDist(subpath, target, ext);
     continue;
   }
 
