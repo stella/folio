@@ -11,6 +11,7 @@ import { compareDocx } from "@stll/folio-core";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 import type { CompareChange, CompareDocxOptions } from "@stll/folio-core/compare/types";
 
+import { equivalentNumberingAliases } from "./numbering-equivalence";
 import type { PackageValidator } from "./validator";
 
 export const INVARIANTS = Object.freeze([
@@ -83,7 +84,7 @@ const resolvedBufferOf = async (redlined: ArrayBuffer, view: ResolveView): Promi
   return await reviewer.toBuffer();
 };
 
-type ChangeCount = { count: number } | { error: string };
+type ChangeCount = { changes: readonly CompareChange[] } | { error: string };
 
 /**
  * Changes a redline can carry. A `numbering` change is reported precisely
@@ -102,8 +103,13 @@ const changeCountBetween = async (
   const result = await compareDocx(left, right, options);
   return result.isErr()
     ? { error: `${result.error.name}: ${result.error.message}` }
-    : { count: result.value.changes.filter(isRepresentable).length };
+    : { changes: result.value.changes.filter(isRepresentable) };
 };
+
+const isNumberingAliasChange = (change: CompareChange): boolean =>
+  change.kind === "paragraph-format" &&
+  Object.keys(change.properties).length === 1 &&
+  Object.hasOwn(change.properties, "numbering");
 
 /**
  * The round-trip algebra, as a comparison rather than a text equality: the two
@@ -123,12 +129,19 @@ const checkRoundTrip = async (
   if ("error" in outcome) {
     return { invariant, status: "failed", detail: outcome.error };
   }
-  return outcome.count === 0
+  let remaining = outcome.changes.length;
+  if (
+    outcome.changes.some(isNumberingAliasChange) &&
+    (await equivalentNumberingAliases(original, resolved))
+  ) {
+    remaining = outcome.changes.filter((change) => !isNumberingAliasChange(change)).length;
+  }
+  return remaining === 0
     ? { invariant, status: "passed" }
     : {
         invariant,
         status: "failed",
-        detail: `${String(outcome.count)} changes remain after ${view}All`,
+        detail: `${String(remaining)} changes remain after ${view}All`,
       };
 };
 
@@ -192,9 +205,13 @@ const selfCompareIsEmpty = (outcome: ChangeCount): InvariantOutcome => {
   if ("error" in outcome) {
     return { invariant, status: "failed", detail: outcome.error };
   }
-  return outcome.count === 0
+  return outcome.changes.length === 0
     ? { invariant, status: "passed" }
-    : { invariant, status: "failed", detail: `${String(outcome.count)} changes against itself` };
+    : {
+        invariant,
+        status: "failed",
+        detail: `${String(outcome.changes.length)} changes against itself`,
+      };
 };
 
 const schemaValidity = (errors: readonly string[] | null): InvariantOutcome => {
