@@ -70,9 +70,10 @@ describe("list autoformat", () => {
     const { text, attrs } = typeMarker("1.");
 
     expect(text).toBe("");
-    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 2, ilvl: 0 });
-    expect(attrs["listIsBullet"]).toBe(false);
+    expect(attrs["numPr"]).toEqual({ kind: "reference", numId: 1, ilvl: 0 });
+    expect(attrs["listIsBullet"]).toBeNull();
     expect(attrs["listNumFmt"]).toBe("decimal");
+    expect(attrs["listMarkerTemplate"]).toBe("%1.");
   });
 
   test("backspace right after the conversion puts the typed marker back", () => {

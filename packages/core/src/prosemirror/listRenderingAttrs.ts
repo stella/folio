@@ -92,8 +92,11 @@ export const listRenderingAttrPatch = (rendering: ListRendering): Partial<Paragr
   return definedAttrs(patch);
 };
 
+/** The attrs a rendering is read back from: a paragraph's, or a recorded previous state's. */
+export type ListRenderingSourceAttrs = Pick<ParagraphAttrs, ListRenderingAttrKey | "numPr">;
+
 type ListRenderingFromAttrsOptions = {
-  attrs: ParagraphAttrs;
+  attrs: ListRenderingSourceAttrs;
   numId: number;
 };
 

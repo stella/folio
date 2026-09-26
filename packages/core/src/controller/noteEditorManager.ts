@@ -8,6 +8,7 @@ import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
@@ -277,8 +278,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       let endnotes = document.package.endnotes;
       let footnotesChanged = false;
       let endnotesChanged = false;
+      let numbering = document.package.numbering;
       for (const story of mounted.values()) {
         if (!story.dirty) continue;
+        // A list started in this story defined its instance on its paragraphs.
+        numbering = completeNumberingForDoc(numbering, story.view.state.doc);
         if (story.note.kind === "footnote") {
           const index = footnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
           const current = index === -1 ? null : footnotes?.at(index);
@@ -334,6 +338,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           ...document.package,
           ...(footnotesChanged && footnotes ? { footnotes } : {}),
           ...(endnotesChanged && endnotes ? { endnotes } : {}),
+          ...(numbering ? { numbering } : {}),
         },
       };
     },

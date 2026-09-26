@@ -15,6 +15,7 @@ import { EditorView, type DirectEditorProps } from "prosemirror-view";
 import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
@@ -305,6 +306,7 @@ export const createHeaderFooterEditorManager = (
       let footers = document.package.footers;
       let headersChanged = false;
       let footersChanged = false;
+      let numbering = document.package.numbering;
 
       for (const { dirty, kind, rId, view } of mounted.values()) {
         if (!dirty) {
@@ -315,6 +317,8 @@ export const createHeaderFooterEditorManager = (
         if (!source || !existing) {
           continue;
         }
+        // A list started in this story defined its instance on its paragraphs.
+        numbering = completeNumberingForDoc(numbering, view.state.doc);
         const updated: HeaderFooter = {
           ...existing,
           content: proseDocToBlocks(view.state.doc, existing.content, document.package.styles),
@@ -339,6 +343,9 @@ export const createHeaderFooterEditorManager = (
         return document;
       }
       const packageWithSnapshots = { ...document.package };
+      if (numbering) {
+        packageWithSnapshots.numbering = numbering;
+      }
       if (headersChanged && headers) {
         packageWithSnapshots.headers = headers;
       }

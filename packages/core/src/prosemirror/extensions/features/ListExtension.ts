@@ -7,6 +7,7 @@
 
 import { panic } from "better-result";
 import { InputRule, inputRules, undoInputRule } from "prosemirror-inputrules";
+import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Plugin, Transaction } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../../attrs";
@@ -16,17 +17,21 @@ import {
 } from "../../commands/propertyChangeScope";
 import { makeRevisionInfo, SUGGESTION_META } from "../../plugins/suggestionMode";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "../../listMarker";
-import { isBulletLevel } from "../../../docx/numberingParser";
+import { mintListInstance } from "../../../docx/listNumberingInstances";
+import {
+  createNumberingMap,
+  isBulletLevel,
+  type NumberingMap,
+} from "../../../docx/numberingParser";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   NO_PARAGRAPH_NUMBERING,
   paragraphNumberingLevel,
-  paragraphNumberingReference,
   paragraphNumberingReferenceId,
 } from "../../../docx/numberingReference";
 import { resolveListState, type ListType } from "../../listState";
 import { paragraphNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
-import { listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
+import { listAttrsFromNumbering, listLevelAttrPatch } from "../../styles/resolvedStyleAttrs";
 import { createExtension } from "../create";
 import { goToNextCell, goToPrevCell } from "../nodes/TableExtension";
 import { Priority } from "../types";
@@ -125,36 +130,36 @@ function hasActiveListNumbering(attrs: ParagraphAttrs): attrs is ActiveListParag
 // LIST COMMANDS
 // ============================================================================
 
-/**
- * The numbering instances Folio mints for its own toolbar lists. They are the
- * ids the autoformat rules and the list buttons create; a document Folio did
- * not create numbers its lists however its author did, which is why nothing
- * reads a list's kind off its id any more.
- */
-const FOLIO_BULLET_NUM_ID = 1;
-const FOLIO_NUMBERED_NUM_ID = 2;
-
 type ActiveListType = Exclude<ListType, "none">;
 
-const targetNumIdForIntent = (
-  numbering: ReturnType<typeof getDocumentNumbering>,
-  preferredNumId: number,
-  ilvl: number,
-  intent: ActiveListType,
-): number => {
-  const matchesIntent = (numId: number): boolean => {
-    const level = numbering?.getLevel(numId, ilvl) ?? null;
-    return level !== null && (isBulletLevel(level) ? "bullet" : "numbered") === intent;
-  };
-  if (matchesIntent(preferredNumId)) {
-    return preferredNumId;
-  }
-  return (
-    numbering?.definitions.nums.find(({ numId }) => matchesIntent(numId))?.numId ?? preferredNumId
-  );
+type ListTarget = {
+  numId: number;
+  numbering: NumberingMap;
 };
 
-function toggleList(numId: number, intent: ActiveListType): Command {
+/**
+ * The instance a paragraph at `ilvl` joins to become a list of `intent`: the
+ * first the document has of that kind, or a new one defined for it (see
+ * `docx/listNumberingInstances.ts`). Never an instance of the other kind, and
+ * never an id nothing defines.
+ */
+const listTargetForIntent = (
+  numbering: NumberingMap | null,
+  ilvl: number,
+  intent: ActiveListType,
+): ListTarget => {
+  const existing = numbering?.definitions.nums.find(({ numId }) => {
+    const level = numbering.getLevel(numId, ilvl);
+    return level !== null && (isBulletLevel(level) ? "bullet" : "numbered") === intent;
+  });
+  if (numbering && existing) {
+    return { numId: existing.numId, numbering };
+  }
+  const minted = mintListInstance(numbering?.definitions, { kind: intent });
+  return { numId: minted.numId, numbering: createNumberingMap(minted.definitions) };
+};
+
+function toggleList(intent: ActiveListType): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
 
@@ -189,10 +194,12 @@ function toggleList(numId: number, intent: ActiveListType): Command {
       return true;
     }
 
-    // Which kind of list this id names comes from the numbering definitions,
-    // not from the id: `numId === 1` meant bullets only in a document Folio
-    // had created itself. A document that defines no such level has nothing to
-    // read, and the command is then the only statement of what it is creating.
+    // Every paragraph in the selection joins one instance, resolved once: a
+    // selection of plain paragraphs becomes one list, not one list apiece.
+    const ilvlOf = (node: PMNode): number =>
+      paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? 0;
+    const target = isInSameList ? null : listTargetForIntent(numbering, ilvlOf(paragraph), intent);
+
     let tr = state.tr;
     const seen = new Set<number>();
 
@@ -200,25 +207,18 @@ function toggleList(numId: number, intent: ActiveListType): Command {
       if (node.type.name === "paragraph" && !seen.has(pos)) {
         seen.add(pos);
 
-        let nextAttrs: Record<string, unknown>;
-
-        if (isInSameList) {
-          nextAttrs = clearListAttrs(expectParagraphAttrs(node));
-        } else {
-          const ilvl = paragraphNumberingLevel(expectParagraphAttrs(node).numPr) ?? 0;
-          const targetNumId = targetNumIdForIntent(numbering, numId, ilvl, intent);
-          const definition = numbering?.getLevel(targetNumId, ilvl) ?? null;
-          const isBullet = definition === null ? intent === "bullet" : isBulletLevel(definition);
-          nextAttrs = {
-            ...node.attrs,
-            ...CLEARED_LIST_RENDERING_ATTRS,
-            numPr: paragraphNumberingAttr(
-              paragraphNumberingReference({ numId: targetNumId, ilvl }),
-            ),
-            listIsBullet: isBullet,
-            listNumFmt: isBullet ? null : (definition?.numFmt ?? "decimal"),
-          };
-        }
+        // The definition, not the id, says what the paragraph now renders:
+        // the full attr group, so the painter, the next command and the save
+        // all read the same level.
+        let nextAttrs: Record<string, unknown> = target
+          ? {
+              ...node.attrs,
+              ...listAttrsFromNumbering(
+                { numId: target.numId, ilvl: ilvlOf(node) },
+                target.numbering,
+              ),
+            }
+          : clearListAttrs(expectParagraphAttrs(node));
 
         if (rev) {
           const existing = expectParagraphAttrs(node)._propertyChanges;
@@ -243,11 +243,10 @@ function toggleList(numId: number, intent: ActiveListType): Command {
   };
 }
 
-export const toggleBulletList: Command = (state, dispatch) =>
-  toggleList(FOLIO_BULLET_NUM_ID, "bullet")(state, dispatch);
+export const toggleBulletList: Command = (state, dispatch) => toggleList("bullet")(state, dispatch);
 
 export const toggleNumberedList: Command = (state, dispatch) =>
-  toggleList(FOLIO_NUMBERED_NUM_ID, "numbered")(state, dispatch);
+  toggleList("numbered")(state, dispatch);
 
 const attrsForListLevel = (
   state: EditorState,
@@ -603,8 +602,8 @@ function insertTab(): Command {
 
 /**
  * Word's as-you-type markers. Each ends in the space that triggers the rule.
- * `1.` starts a numbered list at one, like the toolbar button; another typed
- * number stays text rather than being silently renumbered.
+ * `1.` makes a numbered list, like the toolbar button; another typed number
+ * stays text rather than being silently renumbered.
  */
 const BULLET_AUTOFORMAT = /^[-*] $/u;
 const NUMBERED_AUTOFORMAT = /^1\. $/u;

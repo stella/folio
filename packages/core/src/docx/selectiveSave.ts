@@ -259,17 +259,20 @@ async function ensureCommentsExtendedPackaging(
  * (`w:nsid`/`w:tmpl`, custom formats, level sub-elements), so only the changed
  * definitions are spliced by id; every other definition stays byte-exact.
  *
- * Any absent numbering part, unchanged numbering, or unsplittable edit leaves
- * the original part untouched — the file is simply not added to `updates`.
+ * Unchanged numbering leaves the original part untouched. Numbering the
+ * splice cannot write (a package without a numbering part, or an edit it
+ * cannot split) answers `false`: the paragraphs may reference those
+ * definitions, so the caller falls back to a full repack rather than save a
+ * package whose `w:numPr` names an instance it does not define.
  */
 async function patchNumberingPart(
   zip: JSZip,
   doc: Document,
   updates: Map<string, string>,
-): Promise<void> {
+): Promise<boolean> {
   const numbering = doc.package.numbering;
   if (!numbering || (numbering.abstractNums.length === 0 && numbering.nums.length === 0)) {
-    return;
+    return true;
   }
 
   const conventionalLowerPath = "word/numbering.xml";
@@ -283,17 +286,23 @@ async function patchNumberingPart(
     }
   }
   if (!file) {
-    return;
+    return false;
   }
 
   const originalXml = await file.async("text");
   const baselineXml = serializeNumberingXml(parseNumbering(originalXml).definitions);
   const currentXml = serializeNumberingXml(numbering);
-  const patched = patchNumberingDefinitions({ originalXml, baselineXml, currentXml });
-  if (patched === null || patched === originalXml) {
-    return;
+  if (currentXml === baselineXml) {
+    return true;
   }
-  updates.set(file.name, patched);
+  const patched = patchNumberingDefinitions({ originalXml, baselineXml, currentXml });
+  if (patched === null) {
+    return false;
+  }
+  if (patched !== originalXml) {
+    updates.set(file.name, patched);
+  }
+  return true;
 }
 
 export type SelectiveSaveOptions = {
@@ -563,7 +572,9 @@ export async function attemptSelectiveSave(
     // Splice edited numbering definitions into word/numbering.xml. Numbering
     // carries no paraId, so this always runs and self-detects changes (like the
     // comments/header updates above); a no-op when numbering is unchanged.
-    await patchNumberingPart(zip, doc, updates);
+    if (!(await patchNumberingPart(zip, doc, updates))) {
+      return null;
+    }
 
     // Serialize modified headers/footers
     for (const [path, xml] of await collectHeaderFooterUpdates(doc, zip)) {

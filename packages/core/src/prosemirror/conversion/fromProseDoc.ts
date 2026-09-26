@@ -224,6 +224,7 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import { completeNumberingForDoc } from "../listInstanceReferences";
 import { listRenderingFromAttrs as listRenderingFieldsFromAttrs } from "../listRenderingAttrs";
 import { resolveNumberedRefFields } from "../numberedRefFields";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
@@ -725,6 +726,10 @@ export function fromProseDoc(
     documentBody.comments = baseDocument.package.document.comments;
   }
 
+  // A list command that found no instance of its kind defined one on the
+  // paragraphs it numbered; the package's numbering part has to hold it.
+  const numbering = completeNumberingForDoc(baseDocument?.package.numbering, pmDoc);
+
   // If we have a base document, preserve its package structure
   if (baseDocument) {
     const updatedDocument: Document = {
@@ -732,6 +737,7 @@ export function fromProseDoc(
       package: {
         ...baseDocument.package,
         document: documentBody,
+        ...(numbering ? { numbering } : {}),
       },
     };
     copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
@@ -742,6 +748,7 @@ export function fromProseDoc(
   return {
     package: {
       document: documentBody,
+      ...(numbering ? { numbering } : {}),
     },
   };
 }
