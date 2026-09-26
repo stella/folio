@@ -38,6 +38,11 @@ export type KnownConformanceGap = {
 
 const LIST_TOGGLES = ["command:toggleBulletList", "command:toggleNumberedList"] as const;
 const LIST_MARKERS = ["type:bullet-marker", "type:star-marker", "type:number-marker"] as const;
+const LIST_NUMBERING = [
+  "command:restartNumbering",
+  "command:continueNumbering",
+  "command:setNumberingValue(3)",
+] as const;
 /** Operations that type, insert or delete at the selection, replacing a range when there is one. */
 const REPLACING_OPERATIONS = [
   "type:text",
@@ -78,11 +83,10 @@ const LIST_SHAPES = [
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   // ---------------------------------------------------------------- lists --
   {
-    issue: 1091,
     reason:
-      "A list toggle or list autoformat references a numbering instance the package does not define",
-    operations: [...LIST_TOGGLES, ...LIST_MARKERS],
-    kinds: ["invalid-model"],
+      "A paragraph a list command numbers shows its level's raw template (%1.) as its label and states no indentation, while the reopened paragraph reads the level's indentation as its own w:ind",
+    operations: [...LIST_TOGGLES, ...LIST_MARKERS, ...LIST_NUMBERING],
+    kinds: ["readback-blocks", "readback-painted"],
   },
   {
     issue: 1092,
@@ -98,26 +102,12 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     kinds: ["readback-blocks", "readback-painted", "readback-markdown"],
   },
   {
-    issue: 1095,
     reason:
-      "A list toggle on a paragraph with a pending property change is refused silently in suggesting mode",
-    operations: LIST_TOGGLES,
-    shapes: ["pending-property-change", "tracked-changes"],
-    modes: ["suggesting"],
-    kinds: ["silent-refusal"],
-  },
-  {
-    issue: 1095,
-    reason: "List autoformat is off in suggesting mode",
-    operations: LIST_MARKERS,
-    modes: ["suggesting"],
-    kinds: ["accept-mismatch"],
-  },
-  {
-    reason:
-      "List operations in suggesting mode: rejecting a tracked toggle writes resolved spacing and indentation back as direct formatting; level changes and list removal apply untracked",
+      "List operations in suggesting mode: rejecting a tracked toggle or autoformat writes resolved spacing and indentation back as direct formatting; level changes and list removal apply untracked",
     operations: [
       ...LIST_TOGGLES,
+      ...LIST_MARKERS,
+      ...LIST_NUMBERING,
       "command:increaseListLevel",
       "command:decreaseListLevel",
       "command:removeList",

@@ -208,6 +208,9 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   increaseListLevel: [registryCommand("increaseListLevel")],
   decreaseListLevel: [registryCommand("decreaseListLevel")],
   removeList: [registryCommand("removeList")],
+  restartNumbering: [registryCommand("restartNumbering")],
+  continueNumbering: [registryCommand("continueNumbering")],
+  setNumberingValue: [registryCommand("setNumberingValue", [3], { variant: "3" })],
 
   // Tables
   insertTable: [registryCommand("insertTable", [2, 3])],
