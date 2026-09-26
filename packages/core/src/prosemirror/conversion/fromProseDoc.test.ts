@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, NodeSelection, type Transaction } from "prosemirror-state";
+import { Step } from "prosemirror-transform";
 
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
@@ -23,8 +24,10 @@ import { directParagraphSpacing } from "../paragraphSpacing";
 import { schema } from "../schema";
 import {
   acceptChange,
+  acceptAllChanges,
   rejectAIEditRevision,
   rejectChange,
+  rejectAllChanges,
   resolveAllChangesInHeadlessState,
 } from "../commands/comments";
 import { toggleBold } from "../commands/formatting";
@@ -727,6 +730,22 @@ describe("fromProseDoc", () => {
         headlessParagraph?.type === "paragraph" ? headlessParagraph.content.at(0) : undefined;
       if (headlessField?.type !== "simpleField") throw new Error("Expected simple field");
       expect(headlessField.content).toEqual(field.content);
+
+      let bulk = state.tr;
+      const resolveAll = mode === "accept" ? acceptAllChanges() : rejectAllChanges();
+      expect(
+        resolveAll(state, (dispatched) => {
+          bulk = dispatched;
+        }),
+      ).toBe(true);
+      expect(bulk.doc.eq(headless.doc)).toBe(true);
+      expect(bulk.steps).toHaveLength(1);
+      const step = bulk.steps[0];
+      if (!step) throw new Error("Expected a bulk resolution step");
+      const replay = Step.fromJSON(schema, step.toJSON()).apply(doc);
+      expect(replay.doc?.eq(bulk.doc)).toBe(true);
+      const undo = Step.fromJSON(schema, step.invert(doc).toJSON()).apply(bulk.doc);
+      expect(undo.doc?.eq(doc)).toBe(true);
     },
   );
 
