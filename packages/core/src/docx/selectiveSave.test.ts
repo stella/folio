@@ -1218,17 +1218,17 @@ describe("Selective save edge cases", () => {
     }
   });
 
-  test("selective save disabled falls back to full repack", async () => {
+  test("structural validation preserves an untouched image paragraph", async () => {
     const buffer = await loadFixture("example-with-image.docx");
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
-    // When structuralChange=true (simulating selective=false at higher level), we get null
+    // An untouched image stays in its original paragraph on the structural path.
     const result = await attemptSelectiveSave(doc, buffer, {
       changedParaIds: new Set(),
       structuralChange: true,
       hasUntrackedChanges: false,
     });
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
   });
 
   test("multiple paragraphs edited selectively", async () => {

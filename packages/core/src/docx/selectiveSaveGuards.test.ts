@@ -147,7 +147,7 @@ describe("memory threshold guard", () => {
 });
 
 describe("fallback contract", () => {
-  test("structural change → null", async () => {
+  test("structural flag alone does not reject a safely anchored body", async () => {
     const buffer = await makeFixture();
     const doc = await parseDocx(buffer, { preloadFonts: false });
 
@@ -157,7 +157,7 @@ describe("fallback contract", () => {
       hasUntrackedChanges: false,
     });
 
-    expect(result).toBeNull();
+    expect(result).not.toBeNull();
   });
 
   test("untracked changes → null", async () => {
@@ -368,8 +368,8 @@ describe("flag resolution at the call boundary", () => {
     const selective = flags.selectiveSave
       ? await attemptSelectiveSave(doc, buffer, {
           changedParaIds: new Set(["60000001"]),
-          structuralChange: true, // forces the patch-safety refusal
-          hasUntrackedChanges: false,
+          structuralChange: true,
+          hasUntrackedChanges: true, // unresolved identity forces the patch-safety refusal
           maxBytes: flags.selectiveSaveMaxBytes,
         })
       : null;

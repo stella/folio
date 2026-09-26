@@ -40,6 +40,7 @@ import {
   buildPatchedDocumentXml,
   buildPatchedNoteXml,
   collectParaIds,
+  collectAddedNumberingDefs,
   patchNumberingDefinitions,
 } from "./selectiveXmlPatch";
 import {
@@ -48,6 +49,7 @@ import {
   serializeComments,
   serializeCommentsExtended,
 } from "./serializer/commentSerializer";
+import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
 import { serializeDocument } from "./serializer/documentSerializer";
 import { serializeEndnotes, serializeFootnotes } from "./serializer/noteSerializer";
 import { serializeNumberingXml } from "./serializer/numberingSerializer";
@@ -297,7 +299,7 @@ async function patchNumberingPart(
 export type SelectiveSaveOptions = {
   /** Changed paragraph IDs to selectively patch */
   changedParaIds: Set<string>;
-  /** Whether structural changes occurred (paragraph add/delete) */
+  /** Whether paragraph membership, order, or block structure changed. */
   structuralChange: boolean;
   /** Whether any changes affected paragraphs without paraId */
   hasUntrackedChanges: boolean;
@@ -350,10 +352,7 @@ export async function attemptSelectiveSave(
   const { changedParaIds, structuralChange, hasUntrackedChanges } = options;
   const maxBytes = options.maxBytes ?? DEFAULT_SELECTIVE_SAVE_MAX_BYTES;
 
-  // Bail out conditions — fall back to full repack
-  if (structuralChange) {
-    return null;
-  }
+  // Unresolved paragraph identities cannot be anchored in the source package.
   if (hasUntrackedChanges) {
     return null;
   }
@@ -437,7 +436,7 @@ export async function attemptSelectiveSave(
     // own paraIds: body ids patch document.xml, the rest are routed to the note
     // parts. A plain body edit has no note candidates, so the note parts are
     // never read or rewritten and stay verbatim.
-    if (changedParaIds.size > 0) {
+    if (changedParaIds.size > 0 || structuralChange) {
       const docXmlFile = zip.file("word/document.xml");
       if (!docXmlFile) {
         return null;
@@ -451,11 +450,26 @@ export async function attemptSelectiveSave(
       // the body serializes it.
       const serializedDocXml = serializeDocument(doc, readRootNamespaceBindings(originalDocXml));
       const bodyParaIds = collectParaIds(serializedDocXml);
+      const originalBodyParaIds = structuralChange ? collectParaIds(originalDocXml) : undefined;
+
+      // Adding numbering definitions requires packaging and relationship work.
+      // Keep that outside the structural paragraph splice contract.
+      if (structuralChange && doc.package.numbering) {
+        const numberingFile = findZipEntryCaseInsensitive(zip, "word/numbering.xml");
+        const baselineNumbering = numberingFile
+          ? serializeNumberingXml(parseNumbering(await numberingFile.async("text")).definitions)
+          : "";
+        const added = collectAddedNumberingDefs(
+          baselineNumbering,
+          serializeNumberingXml(doc.package.numbering),
+        );
+        if (added.abstractNums.size > 0 || added.nums.size > 0) return null;
+      }
 
       const bodyChangedIds = new Set<string>();
       const noteCandidateIds = new Set<string>();
       for (const id of changedParaIds) {
-        if (bodyParaIds.has(id)) {
+        if (bodyParaIds.has(id) || originalBodyParaIds?.has(id)) {
           bodyChangedIds.add(id);
         } else {
           noteCandidateIds.add(id);
@@ -472,12 +486,14 @@ export async function attemptSelectiveSave(
         }
       }
 
-      if (bodyChangedIds.size > 0) {
-        const patchedDocXml = buildPatchedDocumentXml(
-          originalDocXml,
-          serializedDocXml,
-          bodyChangedIds,
-        );
+      if (bodyChangedIds.size > 0 || structuralChange) {
+        const patchedDocXml = structuralChange
+          ? buildStructuralDocumentPatch({
+              originalXml: originalDocXml,
+              serializedXml: serializedDocXml,
+              changedIds: bodyChangedIds,
+            })
+          : buildPatchedDocumentXml(originalDocXml, serializedDocXml, bodyChangedIds);
         if (!patchedDocXml) {
           return null;
         }
