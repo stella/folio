@@ -1218,6 +1218,197 @@ const orderDeletionsFirst = (runs: readonly DiffRun[]): DiffRun[] => {
   return ordered;
 };
 
+const WORD_CHARACTER = /^[\p{L}\p{N}\p{M}]$/u;
+const LINE_BREAK = /^[\n\r\p{Zl}\p{Zp}]$/u;
+
+/**
+ * How well a change edge between two code points reads, after
+ * diff-match-patch's semantic score: the string's edge (an empty side), then
+ * a line break, then the gap after a sentence or clause mark, then any space,
+ * then any other mark; inside a word is worst.
+ */
+const boundaryScore = (previous: string, next: string): number => {
+  if (previous.length === 0 || next.length === 0) {
+    return 6;
+  }
+  if (LINE_BREAK.test(previous) || LINE_BREAK.test(next)) {
+    return 4;
+  }
+  const previousIsSpace = WHITESPACE.test(previous);
+  const nextIsSpace = WHITESPACE.test(next);
+  if (!previousIsSpace && !WORD_CHARACTER.test(previous) && nextIsSpace) {
+    return 3;
+  }
+  if (previousIsSpace || nextIsSpace) {
+    return 2;
+  }
+  return WORD_CHARACTER.test(previous) && WORD_CHARACTER.test(next) ? 0 : 1;
+};
+
+/** True when `position` falls between the two halves of a surrogate pair. */
+const splitsSurrogatePair = (text: string, position: number): boolean => {
+  const low = text.charCodeAt(position);
+  const high = text.charCodeAt(position - 1);
+  return low >= 0xdc_00 && low <= 0xdf_ff && high >= 0xd8_00 && high <= 0xdb_ff;
+};
+
+type SlideWindow = {
+  /** The equal text before the change, the change, and the equal text after it. */
+  text: string;
+  start: number;
+  length: number;
+  /** How far the change may slide without emptying an equality it must keep. */
+  minimumStart: number;
+  maximumEnd: number;
+  /** The code points just outside the window on the change's side; empty at the string's edge. */
+  outsideBefore: string;
+  outsideAfter: string;
+};
+
+/**
+ * Where, among the lossless positions of one change, it reads best. The
+ * change may slide by one character whenever the character it gives up
+ * equals the one it takes on, which keeps both strings intact. Only the
+ * window decides the result, so an insertion and the deletion that undoes it
+ * land on the same text; the leftmost of equally good positions wins.
+ */
+const bestSlideStart = (window: SlideWindow): number => {
+  const { text, start, length, minimumStart, maximumEnd } = window;
+  const scoreAt = (position: number): number =>
+    boundaryScore(
+      position === 0 ? window.outsideBefore : codePointBefore(text, position),
+      position === text.length ? window.outsideAfter : codePointAt(text, position),
+    );
+  let leftmost = start;
+  while (leftmost > minimumStart && text[leftmost - 1] === text[leftmost + length - 1]) {
+    leftmost--;
+  }
+  let best = start;
+  let bestScore = -1;
+  for (let candidate = leftmost; candidate + length <= maximumEnd; candidate++) {
+    const end = candidate + length;
+    if (!splitsSurrogatePair(text, candidate) && !splitsSurrogatePair(text, end)) {
+      const startScore = scoreAt(candidate);
+      const endScore = scoreAt(end);
+      // A string edge must not outweigh cutting a word the change never touched.
+      const splitsWord = candidate !== start && (startScore === 0 || endScore === 0);
+      if (!splitsWord && startScore + endScore > bestScore) {
+        best = candidate;
+        bestScore = startScore + endScore;
+      }
+    }
+    if (end === text.length || text[candidate] !== text[end]) {
+      break;
+    }
+  }
+  return best;
+};
+
+type SegmentType = WordDiffSegment["type"];
+
+/**
+ * Whether a change may end up directly beside `neighbour` once the equality
+ * between them empties: always beside nothing, an equality or its own kind,
+ * and a deletion may precede an insertion; an insertion before a deletion
+ * would break deletion-first order.
+ */
+const mayAbut = (first: SegmentType | undefined, second: SegmentType | undefined): boolean =>
+  first === undefined ||
+  second === undefined ||
+  first === "equal" ||
+  second === "equal" ||
+  first === second ||
+  (first === "del" && second === "ins");
+
+/** The code point nearest `index`, walking by `step`, on the side `type` belongs to. */
+const sideCodePoint = (
+  segments: readonly WordDiffSegment[],
+  { from, step }: ChangeRegionCursor,
+  type: SegmentType,
+): string => {
+  for (let index = from; index >= 0 && index < segments.length; index += step) {
+    const segment = segments[index];
+    if (segment === undefined || segment.text.length === 0) {
+      continue;
+    }
+    if (segment.type === "equal" || segment.type === type) {
+      return step === 1
+        ? codePointAt(segment.text, 0)
+        : codePointBefore(segment.text, segment.text.length);
+    }
+  }
+  return "";
+};
+
+const mergeAdjacentSegments = (segments: readonly WordDiffSegment[]): WordDiffSegment[] => {
+  const merged: WordDiffSegment[] = [];
+  for (const segment of segments) {
+    const last = merged.at(-1);
+    if (segment.text.length === 0) {
+      continue;
+    }
+    if (last?.type === segment.type) {
+      last.text += segment.text;
+      continue;
+    }
+    merged.push(segment);
+  }
+  return merged;
+};
+
+/**
+ * Slide every insertion or deletion that sits between equalities to the
+ * position that reads best.
+ *
+ * An LCS places a change arbitrarily among equally long alignments: an
+ * appended sentence can be marked as `". New sentence"` before the old
+ * sentence's full stop, not `" New sentence."` after it. The redline then
+ * marks a stop the author never touched and leaves the new sentence's own
+ * unmarked. Sliding moves only where a change's edges fall, so both strings
+ * still reconstruct.
+ */
+const slideChangesToReadableBoundaries = (
+  segments: readonly WordDiffSegment[],
+): WordDiffSegment[] => {
+  // Empty equalities at both ends give a change at either edge somewhere to
+  // hand the text it slides past.
+  const slid: WordDiffSegment[] = [
+    { type: "equal", text: "" },
+    ...segments.map((segment) => ({ ...segment })),
+    { type: "equal", text: "" },
+  ];
+  for (let index = 1; index < slid.length - 1; index++) {
+    const change = slid[index];
+    const previous = slid[index - 1];
+    const next = slid[index + 1];
+    if (
+      change === undefined ||
+      previous === undefined ||
+      next === undefined ||
+      change.type === "equal" ||
+      previous.type !== "equal" ||
+      next.type !== "equal"
+    ) {
+      continue;
+    }
+    const text = previous.text + change.text + next.text;
+    const start = bestSlideStart({
+      text,
+      start: previous.text.length,
+      length: change.text.length,
+      minimumStart: mayAbut(slid[index - 2]?.type, change.type) ? 0 : 1,
+      maximumEnd: mayAbut(change.type, slid[index + 2]?.type) ? text.length : text.length - 1,
+      outsideBefore: sideCodePoint(slid, { from: index - 2, step: -1 }, change.type),
+      outsideAfter: sideCodePoint(slid, { from: index + 2, step: 1 }, change.type),
+    });
+    const end = start + change.text.length;
+    previous.text = text.slice(0, start);
+    change.text = text.slice(start, end);
+    next.text = text.slice(end);
+  }
+  return mergeAdjacentSegments(slid);
+};
+
 const wholeStringReplacement = (before: string, after: string): WordDiffSegment[] => {
   const segments: WordDiffSegment[] = [];
   if (before.length > 0) {
@@ -1330,7 +1521,14 @@ const diffWordSegmentsWithBudget = (
     );
     marked = whitespaceIsSignificant ? separateWhitespaceChanges(monotoneRuns) : monotoneRuns;
   }
-  return toSegments(orderDeletionsFirst(marked));
+  const segments = toSegments(orderDeletionsFirst(marked));
+  // A normalized equal run carries only the before text, so sliding across
+  // it would corrupt the after side.
+  const equalRunsAreExact =
+    requestedNormalization.case !== true && requestedNormalization.whitespace !== true;
+  return granularity === "word" && equalRunsAreExact
+    ? slideChangesToReadableBoundaries(segments)
+    : segments;
 };
 
 /**
