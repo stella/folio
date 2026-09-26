@@ -17,6 +17,7 @@ import {
   RemoveNodeMarkStep,
 } from "prosemirror-transform";
 
+import { indexedPositionMap } from "../../../internal/indexedPositionMap";
 import type {
   RemovedSectionReference,
   TrackedSectionEndpointRemoval,

@@ -2,7 +2,7 @@ import { panic } from "better-result";
 import type { Node as PMNode, Schema } from "prosemirror-model";
 import { Step, StepMap, StepResult, type Mappable } from "prosemirror-transform";
 
-import { indexedPositionMap } from "./revisionResolutionTracking";
+import { indexedPositionMap } from "./indexedPositionMap";
 
 type DeferredInverse = {
   doc: PMNode;
