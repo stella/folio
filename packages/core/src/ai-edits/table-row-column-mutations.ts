@@ -3,7 +3,6 @@ import type { Transaction } from "prosemirror-state";
 import {
   columnIsHeader,
   removeColumn,
-  removeRow,
   rowIsHeader,
   TableMap,
   tableNodeTypes,
@@ -11,8 +10,10 @@ import {
 
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import {
+  reconcileTableGridAfterColumnInsertion,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCells,
+  removeTableRow,
 } from "../prosemirror/tableGridMutation";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
@@ -238,7 +239,7 @@ export type MarkTableRowContentOptions = {
  * Two kinds of run stay unmarked. A run that already carries a revision keeps
  * it, because OOXML nests `w:ins`/`w:del` but the editable model holds one
  * wrapper per run and overwriting would drop the earlier revision. A cell that
- * spans into the row below survives the deletion — `removeRow` moves it down
+ * spans into the row below survives the deletion — `removeTableRow` moves it down
  * and shortens its span — so marking its text would delete content the
  * accepted document must still hold.
  */
@@ -359,6 +360,12 @@ export const applyTableColumnInsertion = ({
       : action.cell;
     tr.insert(position, cell);
   }
+  reconcileTableGridAfterColumnInsertion({
+    tr,
+    tablePosition,
+    previousTable: table,
+    insertedColumn: insertion.columnIndex,
+  });
   return applied(tr, revision);
 };
 
@@ -466,18 +473,9 @@ export const applyTableRowDeletion = ({
     return transaction ? applied(transaction, null) : { type: "unsupported" };
   }
 
-  const map = TableMap.get(table);
-  removeRow(
+  removeTableRow(
     tr,
-    {
-      map,
-      table,
-      tableStart: deletion.tableStart,
-      left: 0,
-      top: deletion.rowIndex,
-      right: map.width,
-      bottom: deletion.rowIndex + 1,
-    },
+    { map: TableMap.get(table), table, tableStart: deletion.tableStart },
     deletion.rowIndex,
   );
   return applied(tr, null);

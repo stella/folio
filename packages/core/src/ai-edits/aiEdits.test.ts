@@ -4308,11 +4308,14 @@ describe("Folio AI edit operations", () => {
       applied: [{ id: "merge-cells" }],
       skipped: [],
     });
+    // Merging whole rows leaves the lower row no cell of its own, so it goes
+    // and the merged cell spans the one row left: a row of nothing but
+    // continuations reopens as a different table.
     const table = view.state.doc.child(0);
-    expect(TableMap.get(table)).toMatchObject({ width: 2, height: 2 });
+    expect(TableMap.get(table)).toMatchObject({ width: 2, height: 1 });
+    expect(table.childCount).toBe(1);
     expect(table.child(0).childCount).toBe(1);
-    expect(table.child(1).childCount).toBe(0);
-    expect(table.child(0).child(0).attrs).toMatchObject({ colspan: 2, rowspan: 2 });
+    expect(table.child(0).child(0).attrs).toMatchObject({ colspan: 2, rowspan: 1 });
     expect(table.child(0).child(0).textContent).toBe("ABCD");
     expect(table.child(0).child(0).childCount).toBe(4);
   });
@@ -4351,8 +4354,10 @@ describe("Folio AI edit operations", () => {
     });
 
     expect(result.skipped).toEqual([]);
+    // Both rows are wholly merged, so one row is left for the merged cell.
+    expect(view.state.doc.child(0).childCount).toBe(1);
     const merged = view.state.doc.child(0).child(0).child(0);
-    expect(merged.attrs).toMatchObject({ colspan: 2, rowspan: 2 });
+    expect(merged.attrs).toMatchObject({ colspan: 2, rowspan: 1 });
     expect(merged.textContent).toBe("ABC");
   });
 

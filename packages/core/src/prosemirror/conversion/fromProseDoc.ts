@@ -5836,7 +5836,11 @@ function convertPMTableRow(
     let activeMerge = activeVerticalMerges.get(gridColumn);
     while (activeMerge) {
       const preservedCell = activeMerge.continuationCells?.shift();
-      cells.push(preservedCell ?? createVerticalMergeContinuationCell(activeMerge.colspan));
+      cells.push(
+        preservedCell
+          ? continuationCellSpanning(preservedCell, activeMerge.colspan)
+          : createVerticalMergeContinuationCell(activeMerge.colspan),
+      );
       activeMerge.remainingRows -= 1;
       if (activeMerge.remainingRows <= 0) {
         activeVerticalMerges.delete(gridColumn);
@@ -5943,6 +5947,29 @@ function convertPMTableRow(
     };
   }
   return row;
+}
+
+/**
+ * A continuation cell the package arrived with, spanning the columns its merge
+ * spans NOW. The cell is carried whole for its `w:tcPr` and content, but a
+ * column deleted or inserted through the merge changes the merge's width, and
+ * a continuation still stating the old one leaves the row wider or narrower
+ * than the grid and no longer under the cell it continues.
+ */
+function continuationCellSpanning(cell: TableCell, colspan: number): TableCell {
+  const gridSpan = cell.formatting?.gridSpan ?? 1;
+  if (gridSpan === colspan) {
+    return cell;
+  }
+  const { gridSpan: _staleSpan, ...formatting } = cell.formatting ?? {};
+  return {
+    ...cell,
+    formatting: {
+      ...formatting,
+      vMerge: "continue",
+      ...(colspan > 1 && { gridSpan: colspan }),
+    },
+  };
 }
 
 function createVerticalMergeContinuationCell(colspan: number): TableCell {

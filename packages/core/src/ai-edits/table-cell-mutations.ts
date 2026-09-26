@@ -12,6 +12,7 @@ import { expectTableCellAttrs } from "../prosemirror/attrs";
 import { standaloneTableCellFromProseMirror } from "../prosemirror/conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../prosemirror/conversion/toProseDoc";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { removeRowsWithoutCells } from "../prosemirror/tableGridMutation";
 import type { TableCell, TableCellFormatting } from "../types/document";
 import { tableRectanglesEqual, type TableRectangle } from "./table-mutation-plan";
 import { tableRectangleCutsMergedCell } from "./table-targets";
@@ -123,6 +124,9 @@ export const mergeTableRectangle = ({
     const contentStart = isEmptyTableCell(merged.cell) ? absoluteMergedPosition + 1 : contentEnd;
     tr = tr.replaceWith(contentStart, contentEnd, appendedContent);
   }
+  // Merging every cell of a row into the cell above leaves the row nothing of
+  // its own; the merge then closes over the rows that still have a cell.
+  removeRowsWithoutCells(tr, tablePosition);
   return tr;
 };
 
@@ -235,8 +239,16 @@ export const mergeTrackedVerticalTableCells = ({
   }
 
   const origin = cells.at(0);
+  // A row whose only cell of its own is the one merged away would be left
+  // with nothing but merges from above. The direct merge removes such a row;
+  // a tracked merge has no way to record a row going with it, and a package
+  // row of nothing but continuations reopens as a different table.
+  const leavesRowWithoutCells = cells
+    .slice(1)
+    .some(({ position }) => table.child(map.findCell(position).top).childCount === 1);
   if (
     !origin ||
+    leavesRowWithoutCells ||
     cells.length !== rectangle.bottom - rectangle.top ||
     cells.some(({ cell }) => cell.type !== origin.cell.type) ||
     cells.slice(1).some(({ cell }) => !isEmptyTableCell(cell))

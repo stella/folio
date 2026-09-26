@@ -1437,6 +1437,15 @@ describe("headless docx review round-trip", () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    // A second column, so the merged rows keep a cell of their own: a row of
+    // nothing but continuations is removed with the merge.
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id }],
+      }).status,
+    ).toBe("committed");
     const insertion = reviewer.applyDocumentOperations({
       version: 1,
       mode: "direct",
@@ -1603,6 +1612,15 @@ describe("headless docx review round-trip", () => {
     const baseline = await buildTextBoxTableDocument();
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline);
     const initialTarget = findBlock(reviewer.snapshot().blocks, "Cell value");
+    // A second column, so the merged rows keep a cell of their own: a row of
+    // nothing but continuations is removed with the merge.
+    expect(
+      reviewer.applyDocumentOperations({
+        version: 1,
+        mode: "direct",
+        operations: [{ id: "insert-column", type: "insertTableColumn", blockId: initialTarget.id }],
+      }).status,
+    ).toBe("committed");
     expect(
       reviewer.applyDocumentOperations({
         version: 1,

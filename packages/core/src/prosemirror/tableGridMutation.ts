@@ -131,6 +131,71 @@ export const reconcileTableGridAfterColumnRemoval = ({
     previousWidths?.length === previousColumnCount
       ? previousWidths.toSpliced(removedColumn, removedColumnCount)
       : undefined;
+  setTableGrid({ tr, tablePosition, table, columnWidths, columnCount });
+};
+
+type ReconcileTableGridAfterColumnInsertionOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  previousTable: PMNode;
+  insertedColumn: number;
+};
+
+/**
+ * The same for a physical column insertion: the new grid column takes the
+ * width of the column beside it, and the table grows by it.
+ *
+ * Without it the table keeps the grid it had, so every row spans one column
+ * more than `w:tblGrid` declares.
+ */
+export const reconcileTableGridAfterColumnInsertion = ({
+  tr,
+  tablePosition,
+  previousTable,
+  insertedColumn,
+}: ReconcileTableGridAfterColumnInsertionOptions): void => {
+  const previousColumnCount = TableMap.get(previousTable).width;
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") {
+    return;
+  }
+
+  const columnCount = TableMap.get(table).width;
+  if (columnCount <= previousColumnCount) {
+    return;
+  }
+
+  const insertedColumnCount = columnCount - previousColumnCount;
+  const previousWidths = expectTableAttrs(previousTable).columnWidths;
+  const neighbourWidth =
+    previousWidths?.[Math.max(0, Math.min(insertedColumn, previousColumnCount) - 1)] ??
+    previousWidths?.[0];
+  const columnWidths =
+    previousWidths?.length === previousColumnCount && neighbourWidth !== undefined
+      ? previousWidths.toSpliced(
+          insertedColumn,
+          0,
+          ...Array.from({ length: insertedColumnCount }, () => neighbourWidth),
+        )
+      : undefined;
+  setTableGrid({ tr, tablePosition, table, columnWidths, columnCount });
+};
+
+type SetTableGridOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  table: PMNode;
+  columnWidths: number[] | undefined;
+  columnCount: number;
+};
+
+const setTableGrid = ({
+  tr,
+  tablePosition,
+  table,
+  columnWidths,
+  columnCount,
+}: SetTableGridOptions): void => {
   const formatting = expectTableAttrs(table)._originalFormatting;
   const originalFormatting = formatting ? { ...formatting } : undefined;
   if (originalFormatting) {
