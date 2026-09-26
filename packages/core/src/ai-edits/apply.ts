@@ -2936,6 +2936,11 @@ const applyFolioAIEditOperationsInternal = ({
           clearedBackground = tracked.backgroundRevisionIds.length > 0;
           backgroundRevisionIds = tracked.backgroundRevisionIds;
         } else if (changesText) {
+          // The whole-span fallback would discard a field if atomic planning failed.
+          if (buildCleanBlockText(item.blockNode, item.blockFrom).structuralBoundaries.length > 0) {
+            skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+            continue;
+          }
           const stepsBeforeBackgroundClear = tr.steps.length;
           const backgroundResult = clearReplacementBackground({
             tr,
@@ -5150,7 +5155,12 @@ const resolveOperation = ({
       operation.type === "replaceBlock" &&
       operation.styleId !== undefined &&
       operation.styleId !== (expectParagraphAttrs(blockNode).styleId ?? null);
-    if (replaceChangesText && cleanBlock.structuralBoundaries.length > 0) {
+    // Field results have atomic text spans that the replacement planner can
+    // preserve or replace whole. Other structural boundaries need their own edit.
+    if (
+      replaceChangesText &&
+      cleanBlock.structuralBoundaries.some((boundary) => boundary.type !== "field")
+    ) {
       return { type: "skip", reason: "unsupportedBlock" };
     }
     const range = getTextRangeFromCleanBlock(cleanBlock);

@@ -1529,8 +1529,15 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     contents.push(parseBookmarkEnd(child));
   },
 
-  fldSimple: (child, { contents, styles, theme, rels, media, previews, inScopeXmlns }) => {
-    contents.push(parseSimpleField(child, styles, theme, rels, media, inScopeXmlns, previews));
+  fldSimple: (
+    child,
+    { contents, styles, theme, rels, media, previews, inScopeXmlns, trackedContext },
+  ) => {
+    const fieldElement =
+      trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
+    contents.push(
+      parseSimpleField(fieldElement, styles, theme, rels, media, inScopeXmlns, previews),
+    );
   },
 
   pPr: PARAGRAPH_PROPERTIES_OWNER,

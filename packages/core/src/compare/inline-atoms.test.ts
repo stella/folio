@@ -120,6 +120,52 @@ describe("matchInlineAtoms", () => {
 
     if (compared.isErr()) throw compared.error;
     expect(compared.value.verification).toEqual({ status: "verified" });
+    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    rejecting.rejectAll();
+    expect(rejecting.snapshot().blocks.at(0)?.text).toBe("Count: 12");
+    const rejected = await compareDocx(base, await rejecting.toBuffer(), {
+      author: "Compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    });
+    if (rejected.isErr()) throw rejected.error;
+    expect(rejected.value.changes).toHaveLength(0);
+  });
+
+  test("edits text around a complex field and its materialized result", async () => {
+    const originalField: ParagraphContent = {
+      type: "complexField",
+      instruction: " REF _Ref1 \\h ",
+      fieldCode: [],
+      fieldResult: [{ type: "run", content: [{ type: "text", text: "clause 1" }] }],
+    };
+    const targetField: ParagraphContent = { ...originalField, fieldResult: [] };
+    const base = await docxWith([
+      { type: "run", content: [{ type: "text", text: "Agreement applies to " }] },
+      originalField,
+      { type: "run", content: [{ type: "text", text: " today." }] },
+    ]);
+    const target = await docxWith([
+      {
+        type: "run",
+        content: [{ type: "text", text: "Agreement materially applies to clause 1 today." }],
+      },
+      targetField,
+    ]);
+
+    const compared = await compareDocx(base, target, {
+      author: "Compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    });
+    if (compared.isErr()) throw compared.error;
+    expect(compared.value.verification).toEqual({ status: "verified" });
+    const rejecting = await FolioDocxReviewer.fromBuffer(compared.value.buffer);
+    rejecting.rejectAll();
+    const rejected = await compareDocx(base, await rejecting.toBuffer(), {
+      author: "Compare",
+      timestamp: "2026-09-13T00:00:00.000Z",
+    });
+    if (rejected.isErr()) throw rejected.error;
+    expect(rejected.value.changes).toHaveLength(0);
   });
 
   test("restores a field carrier after comparison inserts its result text", async () => {
