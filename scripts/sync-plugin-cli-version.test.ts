@@ -30,13 +30,17 @@ describe("plugin CLI versions", () => {
   test("the version PR policy allows every synced file", async () => {
     const repoRoot = path.resolve(import.meta.dir, "..");
     const ci = await readFile(path.join(repoRoot, ".github", "workflows", "ci.yml"), "utf8");
-    const allowed = new Set(
-      (ci.split("generated-paths: |")[1] ?? "")
-        .split("\n")
-        .slice(1)
-        .map((line) => line.trim())
-        .filter((line, index, lines) => line !== "" && !lines.slice(0, index).includes("")),
-    );
+    // The block scalar's entries are the lines indented past its key.
+    const lines = ci.split("\n");
+    const key = lines.findIndex((line) => line.trimStart() === "generated-paths: |");
+    const keyIndent = (lines[key] ?? "").search(/\S/u);
+    const allowed = new Set<string>();
+    for (const line of lines.slice(key + 1)) {
+      if (line.trim() !== "" && line.search(/\S/u) <= keyIndent) break;
+      allowed.add(line.trim());
+    }
+
+    expect(key).toBeGreaterThan(-1);
     for (const { file } of PLUGIN_VERSION_FILES) {
       const relative = path.relative(repoRoot, file);
       expect([relative, allowed.has(relative)]).toEqual([relative, true]);
