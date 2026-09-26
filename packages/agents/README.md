@@ -18,24 +18,24 @@ bun add @stll/folio-agents
 
 ## Tools
 
-| Tool                   | What it does                                                           |
-| ---------------------- | ---------------------------------------------------------------------- |
+| Tool                   | What it does                                                              |
+| ---------------------- | ------------------------------------------------------------------------- |
 | `read_document`        | Read the document body as `{ blockId, kind, text, displayLabel? }` blocks |
-| `get_document_outline` | Read heading hierarchy and stable section handles                      |
-| `read_section`         | Read a bounded logical section, with block cursor pagination           |
-| `list_stories`         | List main, header, footer, footnote, and endnote story handles         |
-| `read_story`           | Read one story by its typed handle                                     |
-| `find_text`            | Search by document, section, real page, or story scope                 |
-| `read_comments`        | Read comment threads (author, text, resolved, anchored block, replies) |
-| `read_changes`         | Read pending tracked changes (insertions/deletions) awaiting review    |
-| `add_comment`          | Attach a comment to a block, optionally quoting specific text          |
-| `suggest_changes`      | Propose block or stable-range edits as tracked changes                 |
-| `reply_comment`        | Reply to a comment thread                                              |
-| `resolve_comment`      | Resolve or reopen a comment thread                                     |
-| `read_page`            | Read a page's plain text (live editor only)                            |
-| `read_selection`       | Read the current text selection (live editor only)                     |
-| `scroll_to_block`      | Scroll the live editor to a block (live editor only)                   |
-| `show_in_document`     | Reveal a stable block or exact text range (live editor only)           |
+| `get_document_outline` | Read heading hierarchy and stable section handles                         |
+| `read_section`         | Read a bounded logical section, with block cursor pagination              |
+| `list_stories`         | List main, header, footer, footnote, and endnote story handles            |
+| `read_story`           | Read one story by its typed handle                                        |
+| `find_text`            | Search by document, section, real page, or story scope                    |
+| `read_comments`        | Read comment threads (author, text, resolved, anchored block, replies)    |
+| `read_changes`         | Read pending tracked changes (insertions/deletions) awaiting review       |
+| `add_comment`          | Attach a comment to a block, optionally quoting specific text             |
+| `suggest_changes`      | Propose block or stable-range edits as tracked changes                    |
+| `reply_comment`        | Reply to a comment thread                                                 |
+| `resolve_comment`      | Resolve or reopen a comment thread                                        |
+| `read_page`            | Read a page's plain text (live editor only)                               |
+| `read_selection`       | Read the current text selection (live editor only)                        |
+| `scroll_to_block`      | Scroll the live editor to a block (live editor only)                      |
+| `show_in_document`     | Reveal a stable block or exact text range (live editor only)              |
 
 A `read_document` / `read_section` block also carries, when present, the
 number or bullet the document shows beside it (`displayLabel`: `2.1.`, `a)`,
