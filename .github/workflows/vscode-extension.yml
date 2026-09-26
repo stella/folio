@@ -28,6 +28,10 @@ jobs:
   package:
     name: Build and package the .vsix
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # The VS Code the smoke test runs; bump it to test a newer release.
+      FOLIO_SMOKE_VSCODE_VERSION: "1.139.1"
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -77,6 +81,18 @@ jobs:
           grep -q 'extension/dist/editor/editor\.js$' "$RUNNER_TEMP/vsix.txt"
           grep -q 'extension/dist/editor/editor\.css$' "$RUNNER_TEMP/vsix.txt"
           grep -q 'extension/dist/editor/fonts/.*\.woff2$' "$RUNNER_TEMP/vsix.txt"
+
+      - name: Cache VS Code for the smoke test
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: plugins/vscode/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ env.FOLIO_SMOKE_VSCODE_VERSION }}
+
+      # Opens a .docx in a real VS Code with the built extension, types, saves,
+      # and reverts (test/smoke).
+      - name: Smoke test in VS Code
+        working-directory: plugins/vscode
+        run: xvfb-run -a bun run test:smoke
 
       - name: Upload the .vsix
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

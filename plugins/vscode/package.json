@@ -6,7 +6,7 @@
   "description": "Open .docx files in VS Code and edit them on laid-out pages: type, track changes, comment, and save back to the same file. Also gives agent mode folio's .docx tools over MCP.",
   "categories": [
     "AI",
-    "Visualization"
+    "Other"
   ],
   "keywords": [
     "docx",
@@ -36,11 +36,13 @@
     "publish": "vsce publish --no-dependencies --azure-credential",
     "publish:open-vsx": "ovsx publish folio.vsix",
     "test": "bun test src",
-    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.json"
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.json",
+    "test:smoke": "bun test/smoke/run.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.4",
     "@types/vscode": "1.101.0",
+    "@vscode/test-electron": "3.1.0",
     "@vscode/vsce": "4.0.0",
     "bun-types": "1.4.1",
     "esbuild": "0.28.1",
@@ -49,16 +51,10 @@
   "contributes": {
     "commands": [
       {
-        "command": "folio.openEditor",
-        "title": "Edit",
+        "command": "folio.openReadOnly",
+        "title": "Open Read-Only",
         "category": "Folio",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "folio.openPreview",
-        "title": "Reopen with Folio Preview",
-        "category": "Folio",
-        "icon": "$(open-preview)"
+        "icon": "$(lock)"
       }
     ],
     "configuration": {
@@ -99,16 +95,6 @@
           }
         ],
         "priority": "default"
-      },
-      {
-        "viewType": "folio.docxPreview",
-        "displayName": "Folio DOCX Preview",
-        "selector": [
-          {
-            "filenamePattern": "*.docx"
-          }
-        ],
-        "priority": "option"
       }
     ],
     "mcpServerDefinitionProviders": [
@@ -120,23 +106,14 @@
     "menus": {
       "commandPalette": [
         {
-          "command": "folio.openEditor",
-          "when": "resourceExtname == .docx"
-        },
-        {
-          "command": "folio.openPreview",
+          "command": "folio.openReadOnly",
           "when": "resourceExtname == .docx"
         }
       ],
-      "editor/title": [
+      "explorer/context": [
         {
-          "command": "folio.openPreview",
-          "when": "activeCustomEditorId == folio.docxEditor",
-          "group": "navigation"
-        },
-        {
-          "command": "folio.openEditor",
-          "when": "activeCustomEditorId == folio.docxPreview",
+          "command": "folio.openReadOnly",
+          "when": "resourceExtname == .docx",
           "group": "navigation"
         }
       ]
@@ -144,7 +121,6 @@
   },
   "activationEvents": [
     "onCustomEditor:folio.docxEditor",
-    "onCustomEditor:folio.docxPreview",
     "onMcpCollection:folio.mcp"
   ],
   "icon": "icon.png",
@@ -154,11 +130,11 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "The editor and the preview work in untrusted workspaces. The MCP server, which can change files, is offered only once the workspace is trusted."
+      "description": "The editor works in untrusted workspaces. The MCP server, which can change files, is offered only once the workspace is trusted."
     },
     "virtualWorkspaces": {
       "supported": "limited",
-      "description": "The editor opens files on a virtual file system read-only (Save As still works), and the preview reads them through the editor's file system. The MCP server needs workspace folders on disk."
+      "description": "The editor opens files on a virtual file system read-only (Save As still works). The MCP server needs workspace folders on disk."
     }
   }
 }
