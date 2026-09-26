@@ -637,7 +637,16 @@ export type FolioAIEditSkipReason =
    * has. Nothing was applied; `message` names the values that do not fit.
    * Supply fewer values, or anchor the operation where the table has room.
    */
-  | "payloadDoesNotFit";
+  | "payloadDoesNotFit"
+  /**
+   * An earlier operation of the same batch already claims this operation's
+   * target: it deletes, rewrites, splits or merges the block this one edits,
+   * or edits an overlapping stretch of its text. Operations of one batch all
+   * address the document as it was read, so this one would have landed on
+   * positions the other had moved. Nothing of it was applied; re-read the
+   * document after the batch and send it again, on its own.
+   */
+  | "overlappingOperation";
 
 export type FolioAIEditAppliedOperation = {
   id: string;
@@ -674,7 +683,8 @@ export type FolioAIEditSkippedOperation = {
   reason: FolioAIEditSkipReason;
   /**
    * What exactly was wrong when the reason alone does not say: the values a
-   * `payloadDoesNotFit` skip could not place.
+   * `payloadDoesNotFit` skip could not place, or the earlier operation an
+   * `overlappingOperation` skip conflicts with.
    */
   message?: string;
 };

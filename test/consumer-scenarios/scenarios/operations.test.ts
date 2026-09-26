@@ -9,7 +9,9 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { FIXTURE_NAMES, FIXTURES, openReviewer } from "../support/documents.ts";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+
+import { FIXTURE_NAMES, FIXTURES, openReviewer, plainDocument } from "../support/documents.ts";
 import { assertHealthy, visibleState } from "../support/invariants.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
@@ -93,4 +95,35 @@ describe("applyDocumentOperations", () => {
       });
     }
   }
+});
+
+describe("a batch that splits a block and deletes it", () => {
+  test("refuses the deletion, whose block the split already claims, and loses no word", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const text = "The Buyer pays each invoice within thirty days.";
+    const target = reviewer.getContent().find((block) => block.text === text);
+    assert.ok(target);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        { id: "split", type: "splitBlock", blockId: target.id, offset: 20 },
+        { id: "delete", type: "deleteBlock", blockId: target.id },
+      ],
+    });
+    assert.deepEqual(
+      result.applied.map(({ id }) => id),
+      ["split"],
+    );
+    assert.deepEqual(
+      result.issues.map(({ operationId, code }) => ({ operationId, code })),
+      [{ operationId: "delete", code: "overlappingOperation" }],
+    );
+    reviewer.acceptAll();
+    const texts = reviewer.getContent().map((block) => block.text);
+    assert.ok(
+      texts.includes(text.slice(0, 20)) && texts.includes(text.slice(20)),
+      `the split block's two halves: ${JSON.stringify(texts)}`,
+    );
+  });
 });

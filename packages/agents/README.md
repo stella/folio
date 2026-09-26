@@ -46,8 +46,9 @@ number in `displayLabel`; absent fields are omitted.
 Block ids and comment ids always come from a prior tool call
 (`read_document`, `find_text`, `read_comments`) within the same conversation —
 never guess them. `suggest_changes` reports a plain-language reason when an
-operation is skipped (e.g. the block changed since it was last read), so the
-model can re-read and retry. Successful mutation results include `receipts`
+operation is skipped (e.g. the block changed since it was last read, or an
+earlier operation of the same call already deletes, rewrites, splits or merges
+its target), so the model can re-read and retry. Successful mutation results include `receipts`
 that identify affected blocks, ranges, insertions, and created comments.
 
 For document questions, start with `get_document_outline`, then call

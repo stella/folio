@@ -1708,6 +1708,7 @@ const recoveryByReason = {
   documentVersionMismatch: "refreshDocument",
   documentNotEditable: "retryLater",
   payloadDoesNotFit: "changeTarget",
+  overlappingOperation: "refreshDocument",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (

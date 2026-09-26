@@ -71,6 +71,7 @@ import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
+import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   hasInlineEmphasis,
@@ -346,6 +347,13 @@ const SUGGESTED_SUPPORTED_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["typ
   "deleteTableRow",
   "insertTableColumn",
   "deleteTableColumn",
+]);
+
+/** Operations that only add marks: they move no position of the document. */
+const ANNOTATION_OPERATION_TYPES: ReadonlySet<FolioAIEditOperation["type"]> = new Set([
+  "formatRange",
+  "commentOnRange",
+  "commentOnBlock",
 ]);
 
 type ResolvedOperationFields = {
@@ -1545,7 +1553,7 @@ type TableCellMerge = {
 
 type TableCellSplit = TableCellMerge;
 
-const getTableMutationPlanTarget = (item: ResolvedOperation): TableMutationPlanTarget => {
+const getTableMutationPlanTarget = (item: ResolvedBase): TableMutationPlanTarget => {
   if (item.tableCellMerge) {
     return { type: "mergeCells", ...item.tableCellMerge };
   }
@@ -1563,6 +1571,148 @@ const getTableMutationPlanTarget = (item: ResolvedOperation): TableMutationPlanT
     return { type: "tableStructure", tablePosition };
   }
   return { type: "none" };
+};
+
+/**
+ * `insertion`, resolved against the document as it was read, placed through
+ * what `tr` has already changed. The batch runs from the end backwards, so
+ * nothing it has applied yet sits before the new row; mapped all the same, so
+ * that stays true of the positions the row is written at and not only of the
+ * order they are visited in. A row another operation of the batch inserted
+ * at the same boundary is the later one in input order, so the new row goes
+ * before it.
+ */
+const mapTableRowInsertion = (tr: Transaction, insertion: TableRowInsertion): TableRowInsertion => {
+  const tableStart = tr.mapping.map(insertion.tableStart, -1);
+  return {
+    ...insertion,
+    tableStart,
+    rowPosition: tr.mapping.map(insertion.rowPosition, -1),
+    rowspanUpdates: insertion.rowspanUpdates.map(
+      (update) => tr.mapping.map(insertion.tableStart + update, 1) - tableStart,
+    ),
+  };
+};
+
+type BatchClaimOptions = {
+  item: ResolvedBase;
+  doc: PMNode;
+  producesTrackedChanges: boolean;
+};
+
+/** The cells a column deletion removes: every cell standing in that column alone. */
+const deletedColumnCellRanges = (
+  doc: PMNode,
+  { tablePosition, columnIndex }: TableColumnDeletion,
+): { from: number; to: number }[] => {
+  const table = doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") {
+    return [];
+  }
+  const map = TableMap.get(table);
+  const tableStart = tablePosition + 1;
+  const ranges: { from: number; to: number }[] = [];
+  const seen = new Set<number>();
+  for (let row = 0; row < map.height; row++) {
+    const relative = map.map[row * map.width + columnIndex];
+    if (relative === undefined || seen.has(relative)) {
+      continue;
+    }
+    seen.add(relative);
+    const rectangle = map.findCell(relative);
+    const cell = table.nodeAt(relative);
+    if (!cell || rectangle.left !== columnIndex || rectangle.right !== columnIndex + 1) {
+      continue;
+    }
+    ranges.push({ from: tableStart + relative, to: tableStart + relative + cell.nodeSize });
+  }
+  return ranges;
+};
+
+/** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
+const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions): BatchClaim => {
+  const block = item.blockFrom;
+  switch (item.operation.type) {
+    case "replaceInBlock":
+    case "replaceRange":
+      return { type: "text", block, from: item.from, to: item.to };
+    case "formatRange":
+    case "commentOnRange":
+    case "commentOnBlock":
+      return { type: "annotation", block, from: item.from, to: item.to };
+    case "splitBlock":
+      return { type: "split", block, from: item.from, to: item.to };
+    case "replaceBlock":
+      return item.replaceBlockImpact === "style"
+        ? { type: "paragraphProperties", block }
+        : { type: "rewriteBlock", block };
+    case "setBlockParagraphProperties":
+      return { type: "paragraphProperties", block };
+    case "mergeBlockWithNext":
+      return { type: "merge", block, next: item.blockTo, joinsNow: !producesTrackedChanges };
+    case "deleteBlock": {
+      // The same test the deletion itself makes: see its case in the applier.
+      const at = doc.resolve(block);
+      const endsItsContainer = paragraphEndsItsContainer(at, item.blockNode.type.name);
+      const keepsParagraph = producesTrackedChanges
+        ? endsItsContainer
+        : endsItsContainer && at.nodeBefore?.type.name !== item.blockNode.type.name;
+      return {
+        type: "deleteBlock",
+        block,
+        keepsParagraph,
+        removesNode: !producesTrackedChanges && !keepsParagraph,
+      };
+    }
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+    case "insertSignatureTable":
+    case "insertTable":
+      return { type: "insertion", at: item.from };
+    case "deleteTable": {
+      const deleted = item.deletedTable;
+      return deleted
+        ? {
+            type: "tableRemoval",
+            table: deleted.position,
+            wholeTable: true,
+            ranges: [{ from: deleted.position, to: deleted.position + deleted.node.nodeSize }],
+          }
+        : { type: "unclaimed" };
+    }
+    case "deleteTableRow": {
+      const deletion = item.tableRowDeletion;
+      const row = deletion ? doc.nodeAt(deletion.rowPosition) : null;
+      return deletion && row
+        ? {
+            type: "tableRemoval",
+            table: deletion.tablePosition,
+            wholeTable: false,
+            ranges: [{ from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize }],
+          }
+        : { type: "unclaimed" };
+    }
+    case "deleteTableColumn": {
+      const deletion = item.tableColumnDeletion;
+      return deletion
+        ? {
+            type: "tableRemoval",
+            table: deletion.tablePosition,
+            wholeTable: false,
+            ranges: deletedColumnCellRanges(doc, deletion),
+          }
+        : { type: "unclaimed" };
+    }
+    case "insertTableRow":
+    case "insertTableColumn":
+    case "mergeTableCells":
+    case "splitTableCell": {
+      const target = getTableMutationPlanTarget(item);
+      return target.type === "none"
+        ? { type: "unclaimed" }
+        : { type: "tableStructure", table: target.tablePosition };
+    }
+  }
 };
 
 /**
@@ -2347,6 +2497,7 @@ const applyFolioAIEditOperationsInternal = ({
   };
   const claimedTableRows = new Set<string>();
   const claimedTableColumns = new Set<string>();
+  const batchClaims = new BatchClaims();
   const diffText: ReturnType<typeof createWordDiffSession>["diff"] =
     wordDiffMode === "coarse" ? coarseWordDiff : wordDiffSessionFromOptions(wordDiff).diff;
 
@@ -2408,7 +2559,6 @@ const applyFolioAIEditOperationsInternal = ({
         skipped.push({ id: operation.id, reason: "noopOperation" });
         continue;
       }
-      claimedTableRows.add(rowKey);
     }
 
     const columnDeletion = resolution.operation.tableColumnDeletion;
@@ -2418,7 +2568,32 @@ const applyFolioAIEditOperationsInternal = ({
         skipped.push({ id: operation.id, reason: "noopOperation" });
         continue;
       }
-      claimedTableColumns.add(columnKey);
+    }
+
+    // Every operation resolved against the document as it was read; one whose
+    // target an earlier operation of the batch deletes, rewrites, splits,
+    // merges or overlaps would be applied to positions that operation already
+    // moved. See `batch-claims.ts`.
+    const claim = batchClaimOf({
+      item: resolution.operation,
+      doc: view.state.doc,
+      producesTrackedChanges,
+    });
+    const claimedBy = batchClaims.conflictOf(claim);
+    if (claimedBy !== null) {
+      skipped.push({
+        id: operation.id,
+        reason: "overlappingOperation",
+        message: `operation ${JSON.stringify(claimedBy)}, earlier in this batch, already claims its target.`,
+      });
+      continue;
+    }
+    batchClaims.add(operation.id, claim);
+    if (deletion) {
+      claimedTableRows.add(`${deletion.tablePosition}:${deletion.rowIndex}`);
+    }
+    if (columnDeletion) {
+      claimedTableColumns.add(getTableColumnCoordinateKey(columnDeletion));
     }
 
     if (
@@ -2528,7 +2703,17 @@ const applyFolioAIEditOperationsInternal = ({
   // inserted columns so it still removes the original target. Other
   // ties use reverse input order so repeated insertions retain their
   // requested sequence.
+  //
+  // Annotations — comments and formatting, which add marks and move no
+  // position — go first, onto the text as it was read. An edit inside one then
+  // carries it like any mark around it, rather than the annotation landing on
+  // positions the edit already moved (see `batch-claims.ts`).
   const executionOrder = executableResolved.toSorted((left, right) => {
+    const leftAnnotates = ANNOTATION_OPERATION_TYPES.has(left.operation.type);
+    const rightAnnotates = ANNOTATION_OPERATION_TYPES.has(right.operation.type);
+    if (leftAnnotates !== rightAnnotates) {
+      return leftAnnotates ? -1 : 1;
+    }
     const leftCellShape = left.tableCellMerge ?? left.tableCellSplit;
     const rightCellShape = right.tableCellMerge ?? right.tableCellSplit;
     if (!leftCellShape && rightCellShape) {
@@ -3104,7 +3289,7 @@ const applyFolioAIEditOperationsInternal = ({
         const template = tableTemplates?.get(item.operation.id);
         const result = applyTableRowInsertion({
           tr,
-          insertion,
+          insertion: mapTableRowInsertion(tr, insertion),
           cellTexts: item.operation.cellTexts,
           revision,
           ...(template !== undefined && { template }),
@@ -3499,13 +3684,20 @@ const applyFolioAIEditOperationsInternal = ({
         // the stale attributes dropped that mark without a trace: the
         // properties applied, the merge silently did not.
         //
-        // An earlier operation of the batch may also have removed the
-        // paragraph (a direct `deleteBlock`, or a merge that joined it away):
-        // its position then maps onto whatever follows, which is not the
-        // block this operation names.
+        // The batch refuses an operation on a paragraph another of its
+        // operations removes before it gets here (see `batch-claims.ts`); a
+        // position that maps into removed content, or onto a paragraph that is
+        // not this one, still never receives its properties. `deletedAfter`
+        // cannot say so: a paragraph inserted right before this one sets it
+        // as well, though this one is still there.
         const mapped = tr.mapping.mapResult(item.blockFrom);
-        const liveBlock = mapped.deletedAfter ? null : tr.doc.nodeAt(mapped.pos);
-        if (!liveBlock || liveBlock.type !== item.blockNode.type) {
+        const liveBlock = mapped.deletedAcross ? null : tr.doc.nodeAt(mapped.pos);
+        const paraId: unknown = item.blockNode.attrs["paraId"];
+        if (
+          !liveBlock ||
+          liveBlock.type !== item.blockNode.type ||
+          (typeof paraId === "string" && liveBlock.attrs["paraId"] !== paraId)
+        ) {
           skipped.push({ id: item.operation.id, reason: "missingBlock" });
           continue;
         }
@@ -4496,7 +4688,6 @@ const applyMinimalTrackedReplacement = ({
   if (plan === null) {
     return null;
   }
-
   let nextTr = tr;
   let backgroundRevisionIds: readonly number[] = [];
   let nextRevisionId = revisionIdBackgroundSeed;

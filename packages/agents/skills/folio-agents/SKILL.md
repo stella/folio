@@ -134,6 +134,11 @@ stay exported for validation-only paths.
   since your snapshot; re-read the document and retry with fresh ids"). Treat
   a skip as a retry signal: re-read (`read_document` or `find_text`) and
   reissue with fresh ids, not a dead end.
+- Every operation of one `suggest_changes` call addresses the document as it
+  was read. Give each block or stretch of text at most one operation that
+  deletes, rewrites, splits or merges it: a later operation on a target an
+  earlier one of the same call already claims is skipped
+  (`overlappingOperation`). Send it again, on its own, after re-reading.
 - Successful mutations return input-ordered `receipts`. Use their typed
   `affected` targets to identify updated blocks, stable ranges, insertions,
   and created comments without inferring effects from document text.

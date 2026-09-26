@@ -561,6 +561,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "payloadDoesNotFit") {
     return "the operation supplies more values than its target has cells for; nothing was applied. Supply fewer cellTexts, or anchor the row or column where no merged cell takes a slot.";
   }
+  if (reason === "overlappingOperation") {
+    return "an earlier operation in this batch already deletes, rewrites, splits or merges this block, or edits an overlapping stretch of its text; nothing of this operation was applied. Re-read the document after this batch and send it again on its own.";
+  }
   return reason;
 };
 

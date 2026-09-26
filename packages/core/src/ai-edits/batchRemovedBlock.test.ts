@@ -1,7 +1,7 @@
 /**
  * An operation whose block an earlier operation of the same batch removed is
- * skipped with a reason, not applied to whatever took the block's place and
- * not thrown out of the batch.
+ * refused with a reason (`overlappingOperation`), not applied to whatever took
+ * the block's place and not thrown out of the batch.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -27,7 +27,7 @@ const buildReviewer = async (): Promise<FolioDocxReviewer> => {
 };
 
 describe("a batch that removes a block and then formats it", () => {
-  test("skips the formatting as missingBlock and leaves the next paragraph alone", async () => {
+  test("refuses the formatting and leaves the next paragraph alone", async () => {
     const reviewer = await buildReviewer();
     const second = reviewer.getContent().find(({ text }) => text === "Second clause.");
     if (!second) {
@@ -48,7 +48,13 @@ describe("a batch that removes a block and then formats it", () => {
     });
 
     expect(result.applied.map(({ id }) => id)).toEqual(["delete"]);
-    expect(result.skipped).toEqual([{ id: "center", reason: "missingBlock" }]);
+    expect(result.skipped).toEqual([
+      {
+        id: "center",
+        reason: "overlappingOperation",
+        message: 'operation "delete", earlier in this batch, already claims its target.',
+      },
+    ]);
     expect(reviewer.getContent().map(({ text }) => text)).toEqual([
       "First clause.",
       "Third clause.",

@@ -261,33 +261,6 @@ describe("findings not yet filed", () => {
   );
 
   expectedFailure(
-    "BATCH_SPLIT_THEN_DELETE",
-    "a batch that splits a block and deletes it removes all of its text (or refuses)",
-    /survives/u,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const text = "The Buyer pays each invoice within thirty days.";
-      const target = reviewer.getContent().find((block) => block.text === text);
-      assert.ok(target);
-      const result = reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "split", type: "splitBlock", blockId: target.id, offset: 20 },
-          { id: "delete", type: "deleteBlock", blockId: target.id },
-        ],
-      });
-      if (result.applied.length < 2) return;
-      reviewer.acceptAll();
-      const left = reviewer
-        .getContent()
-        .map((block) => block.text)
-        .filter((blockText) => blockText.length === 0 || text.includes(blockText));
-      assert.deepEqual(left, [], "text of the deleted block survives");
-    },
-  );
-
-  expectedFailure(
     "NOTE_REFERENCE_TEXT",
     "a note reference reads as the number the page shows, not its w:id",
     /note reference/u,

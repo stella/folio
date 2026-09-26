@@ -27,8 +27,6 @@ export const FINDINGS = {
     "generateRedlineDocx inserts a paragraph the revised version has as a list item as a plain paragraph (the insertion carries only its style), so accepting the redline loses the bullet or number",
   REJECT_SPLIT_AROUND_INSERTED_TABLE:
     "rejecting every change leaves a tracked split in place when a tracked table was inserted after the split's first half (the join is attempted while the table still stands between the halves)",
-  BATCH_SPLIT_THEN_DELETE:
-    "a tracked batch that splits a block and deletes the same block deletes the wrong span: part of the text survives, and accepting leaves an empty paragraph",
   SUGGESTED_ACCEPT_ALL_LOSES_INSERTS:
     "after a run of suggested edits that includes a table column and list inserts, acceptAll keeps the inserted paragraphs in the reviewer but the save drops them (found by fuzz; no smaller repro yet)",
   REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH:
