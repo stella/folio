@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { EditorState, type Command, type Transaction } from "prosemirror-state";
+import { Step } from "prosemirror-transform";
 
 import { schema } from "../schema";
-import { acceptChange } from "./comments";
+import { acceptAllChanges, acceptChange } from "./comments";
 
 const boundary = (type: "start" | "end", id: number) =>
   schema.node("blockBookmarkBoundary", {
@@ -56,4 +57,66 @@ test("a deleted paragraph break carries interstitial bookmarks into the joined p
 
   const finalSecondText = single.doc.child(0).nodeSize + 1 + first.content.size + 2;
   expect(single.doc.nodeAt(finalSecondText)?.text).toBe("after");
+});
+
+test("whole-story resolution preserves positions through a bookmark-spanning join", () => {
+  const { first, source, state } = bookmarkedParagraphBreak();
+  const bulk = resolve(state, acceptAllChanges());
+  const single = resolve(state, acceptChange(0, source.content.size));
+  expect(bulk.doc.eq(single.doc)).toBe(true);
+
+  const sourceBoundary = source.child(0).nodeSize + first.nodeSize;
+  const finalBoundary = bulk.doc.child(0).nodeSize + 1 + first.content.size;
+  const sourceSecondText = sourceBoundary + 2 + 1;
+  expect(bulk.mapping.map(sourceBoundary)).toBe(finalBoundary);
+  expect(bulk.mapping.map(sourceSecondText)).toBe(finalBoundary + 2);
+
+  let transaction: Transaction | null = null;
+  acceptAllChanges()(state, (dispatched) => {
+    transaction = dispatched;
+  });
+  if (!transaction) throw new Error("Expected a whole-story resolution transaction");
+  const step = transaction.steps.at(0);
+  if (!step) throw new Error("Expected a whole-story resolution step");
+  const replayed = Step.fromJSON(schema, step.toJSON()).apply(source);
+  expect(replayed.failed).toBeNull();
+  expect(replayed.doc?.eq(bulk.doc)).toBe(true);
+});
+
+test("whole-story resolution joins a chain across two bookmark pairs", () => {
+  const marked = (text: string, id: number) =>
+    schema.node(
+      "paragraph",
+      { pPrMark: { kind: "del", info: { id, author: "Reviewer", date: "2026-09-09" } } },
+      schema.text(text),
+    );
+  const source = schema.node("doc", null, [
+    boundary("start", 1),
+    marked("A", 1),
+    boundary("end", 1),
+    boundary("start", 2),
+    marked("B", 2),
+    boundary("end", 2),
+    boundary("start", 3),
+    schema.node("paragraph", null, schema.text("C")),
+    boundary("end", 3),
+  ]);
+  const { doc, mapping } = resolve(EditorState.create({ schema, doc: source }), acceptAllChanges());
+  expect(() => doc.check()).not.toThrow();
+  expect(doc.childCount).toBe(3);
+  expect(doc.child(1).textContent).toBe("ABC");
+  let sourceThirdText = 1;
+  for (let index = 0; index < 7; index++) sourceThirdText += source.child(index).nodeSize;
+  expect(mapping.map(sourceThirdText)).toBe(doc.child(0).nodeSize + doc.child(1).nodeSize - 2);
+  expect(
+    doc
+      .child(1)
+      .content.content.filter((node) => node.type.name === "bookmarkBoundary")
+      .map((node) => [node.attrs["type"], node.attrs["id"]]),
+  ).toEqual([
+    ["end", 1],
+    ["start", 2],
+    ["end", 2],
+    ["start", 3],
+  ]);
 });

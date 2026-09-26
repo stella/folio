@@ -12,6 +12,7 @@ import { recordNodeResolution } from "./revisionResolutionEdits";
 import { resolveAllTableChanges } from "../prosemirror/commands/resolveAllTableChanges";
 import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
+import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import {
@@ -137,6 +138,7 @@ type StructuralContext = {
     ranges: readonly { from: number; to: number }[];
     paragraphOffsets: readonly { source: number; final: number }[];
   }[];
+  bookmarkJoins: { from: number; to: number; positionMap: StepMap }[];
   structural: boolean;
   failed: boolean;
   removedEndpointCount: number;
@@ -149,14 +151,17 @@ type StructuralReplacement = { from: number; to: number; slice: Slice };
 type StructuralReplacementMapOptions = {
   replacements: readonly StructuralReplacement[];
   tables: readonly StructuralContext["tableRanges"][number][];
+  bookmarkJoins: readonly StructuralContext["bookmarkJoins"][number][];
   origin: number;
 };
 const structuralReplacementMap = ({
   replacements,
   tables,
+  bookmarkJoins,
   origin,
 }: StructuralReplacementMapOptions): StepMap => {
   const tablesByPosition = new Map(tables.map((table) => [table.position, table]));
+  const bookmarkJoinsByPosition = new Map(bookmarkJoins.map((join) => [join.from, join]));
   const ranges: number[] = [];
   const mapFor = ({ from, to, slice }: StructuralReplacement): StepMap => {
     const table = tablesByPosition.get(from);
@@ -166,6 +171,14 @@ const structuralReplacementMap = ({
         tableRanges.push(from - origin + oldStart, oldEnd - oldStart, newEnd - newStart);
       });
       return new StepMap(tableRanges);
+    }
+    const bookmarkJoin = bookmarkJoinsByPosition.get(from);
+    if (bookmarkJoin?.to === to) {
+      const joinRanges: number[] = [];
+      bookmarkJoin.positionMap.forEach((oldStart, oldEnd, newStart, newEnd) => {
+        joinRanges.push(from - origin + oldStart, oldEnd - oldStart, newEnd - newStart);
+      });
+      return new StepMap(joinRanges);
     }
     return new StepMap([from - origin, to - from, slice.size]);
   };
@@ -232,7 +245,36 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
     context.removedReferences.push({ part: "footer", type, relationshipId: rId });
 };
 
-type ParagraphChain = { node: PMNode; chunks: Fragment[]; position: number; before: PMNode };
+type ParagraphChain = {
+  node: PMNode;
+  chunks: Fragment[];
+  position: number;
+  sourceEnd: number;
+  before: PMNode;
+  joinBoundaries: { closing: number; opening: number }[];
+  crossesBookmarks: boolean;
+};
+const paragraphJoinMap = (
+  joins: readonly { closing: number; opening: number }[],
+  origin: number,
+): StepMap => {
+  const ranges: number[] = [];
+  let active: { from: number; to: number } | null = null;
+  const append = (deletion: { from: number; to: number }): void => {
+    if (active && deletion.from <= active.to) {
+      active.to = Math.max(active.to, deletion.to);
+      return;
+    }
+    if (active) ranges.push(active.from - origin, active.to - active.from, 0);
+    active = { ...deletion };
+  };
+  for (const join of joins.toReversed()) {
+    append({ from: join.closing, to: join.closing + 1 });
+    append({ from: join.opening, to: join.opening + 1 });
+  }
+  if (active) ranges.push(active.from - origin, active.to - active.from, 0);
+  return new StepMap(ranges);
+};
 type ResolveStructureOptions = { node: PMNode; position: number; context: StructuralContext };
 const resolveStructure = ({ node, position, context }: ResolveStructureOptions): PMNode | null => {
   if (node.isLeaf) return node;
@@ -241,6 +283,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     deleted: context.deleted.length,
     replacements: context.replacements.length,
     tableRanges: context.tableRanges.length,
+    bookmarkJoins: context.bookmarkJoins.length,
   };
   const entries: { node: PMNode | null; original: PMNode; position: number }[] = [];
   node.forEach((child, offset) =>
@@ -252,6 +295,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
   );
   const reversed: PMNode[] = [];
   let chain: ParagraphChain | null = null;
+  let pendingBookmarks: PMNode[] = [];
   let followingContainerChild = false;
   const flush = (): void => {
     if (!chain) return;
@@ -270,8 +314,29 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       position: chain.position,
       steps: context.steps,
     });
+    if (chain.crossesBookmarks) {
+      context.replacements.push({
+        from: chain.position,
+        to: chain.sourceEnd,
+        slice: new Slice(Fragment.from(final), 0, 0),
+      });
+      context.bookmarkJoins.push({
+        from: chain.position,
+        to: chain.sourceEnd,
+        positionMap: paragraphJoinMap(chain.joinBoundaries, chain.position),
+      });
+    } else {
+      for (const { closing, opening } of chain.joinBoundaries) {
+        context.deleted.push({ from: closing, to: opening + 1 });
+      }
+    }
     reversed.push(chain.chunks.length === 1 && final.eq(chain.before) ? chain.before : final);
     chain = null;
+  };
+  const flushBookmarks = (): void => {
+    flush();
+    for (const bookmark of pendingBookmarks) reversed.push(bookmark);
+    pendingBookmarks = [];
   };
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index];
@@ -279,7 +344,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     let paragraph = entry.node;
     if (paragraph === null) {
       // Break the loop's inference cycle through filler, paragraph, and chain.
-      const hasSibling: boolean = index + reversed.length + (chain ? 1 : 0) > 0;
+      const hasSibling: boolean =
+        index + reversed.length + pendingBookmarks.length + (chain ? 1 : 0) > 0;
       const filler: PMNode | null | undefined = hasSibling
         ? null
         : node.type.schema.nodes["paragraph"]?.createAndFill();
@@ -292,7 +358,11 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       paragraph = filler;
     }
     if (paragraph.type.name !== "paragraph") {
-      flush();
+      if (paragraph.type.name === "blockBookmarkBoundary") {
+        pendingBookmarks.push(paragraph);
+        continue;
+      }
+      flushBookmarks();
       reversed.push(paragraph);
       followingContainerChild ||= paragraph.type.spec["tableRole"] === "table";
       continue;
@@ -301,6 +371,17 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     const markWasAdded = marker?.kind === "ins" || marker?.kind === "moveTo";
     const joins = marker && markWasAdded !== (context.mode === "accept");
     if (joins && chain) {
+      const boundaries = pendingBookmarks.toReversed();
+      if (boundaries.length > 0) {
+        const inline = inlineBookmarksOf(boundaries);
+        if (!inline) {
+          context.failed = true;
+          return null;
+        }
+        chain.chunks.push(Fragment.fromArray(inline));
+        chain.crossesBookmarks = true;
+        pendingBookmarks = [];
+      }
       const empty = holdsNoContent(paragraph);
       const owner = empty ? chain.node : paragraph;
       const next = chain.node;
@@ -326,16 +407,17 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
         },
       });
       chain.chunks.push(paragraph.content);
+      const nextStart = chain.position;
       chain.position = entry.position;
       chain.before = paragraph;
-      context.deleted.push({
-        from: entry.position + paragraph.nodeSize - 1,
-        to: entry.position + paragraph.nodeSize + 1,
+      chain.joinBoundaries.push({
+        closing: entry.position + paragraph.nodeSize - 1,
+        opening: nextStart,
       });
       removedEndpoint(paragraph, context);
       continue;
     }
-    flush();
+    flushBookmarks();
     if (
       joins &&
       holdsNoContent(paragraph) &&
@@ -353,11 +435,14 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       node: resolved,
       chunks: [resolved.content],
       position: entry.position,
+      sourceEnd: entry.position + entry.original.nodeSize,
       before: paragraph,
+      joinBoundaries: [],
+      crossesBookmarks: false,
     };
     followingContainerChild = true;
   }
-  flush();
+  flushBookmarks();
   reversed.reverse();
   if (node.type.name === "doc") {
     const carrier = reversed.at(-1);
@@ -426,6 +511,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     const inputMap = structuralReplacementMap({
       replacements: inside,
       tables: context.tableRanges.slice(structuralStart.tableRanges),
+      bookmarkJoins: context.bookmarkJoins.slice(structuralStart.bookmarkJoins),
       origin: position,
     });
     const positionMap = composeRevisionResolutionMaps(inputMap, tableResult.positionMap);
@@ -443,6 +529,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
   context.steps.length = structuralStart.steps;
   context.deleted.length = structuralStart.deleted;
   context.replacements.length = structuralStart.replacements;
+  context.bookmarkJoins.length = structuralStart.bookmarkJoins;
   if (final && !node.eq(final))
     context.replacements.push({
       from: position,
@@ -484,6 +571,7 @@ export const resolveWholeStory = ({ doc, mode, styleResolver }: ResolveWholeStor
     replacements: [],
     transfers: [],
     tableRanges: [],
+    bookmarkJoins: [],
     structural: propertyResult.structural,
     failed: false,
     removedEndpointCount: 0,
@@ -500,6 +588,7 @@ export const resolveWholeStory = ({ doc, mode, styleResolver }: ResolveWholeStor
   const structuralMap = structuralReplacementMap({
     replacements,
     tables: context.tableRanges,
+    bookmarkJoins: context.bookmarkJoins,
     origin: 0,
   });
   for (const { from, to, slice } of replacements.toReversed())
