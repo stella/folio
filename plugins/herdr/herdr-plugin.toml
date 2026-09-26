@@ -1,6 +1,6 @@
 id = "stll.folio"
 name = "folio"
-version = "0.1.0"
+version = "0.1.1"
 min_herdr_version = "0.8.2"
 description = "Ctrl-click a .docx link to preview it in a split: a live folio preview in terminal-browser, or a rendered page through kitty graphics."
 platforms = ["linux", "macos"]
