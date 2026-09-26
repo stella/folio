@@ -7,20 +7,28 @@
  * everywhere else), because no test read one document through more than one
  * of them.
  *
+ * Agreement on a freshly opened document is not enough: the readers also
+ * agreed on every opened document while their labels stayed at the numbers
+ * read at open through every later insert or delete. The same comparison
+ * therefore runs on the live reviewer after each step of seeded random
+ * sequences of list edits, and against the package each step saves.
+ *
  * A reader added later (or a field a reader starts to expose) belongs in
- * `readAll` below; a numbering shape a reader got wrong belongs in
- * `buildNumberedDocument`.
+ * `readReviewer` below; a numbering shape a reader got wrong belongs in
+ * `buildNumberedDocument`; a list edit, in `LIST_EDITS`.
  */
 
 import { describe, expect, test } from "bun:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
-import { fromMarkdown } from "@stll/folio-core/markdown";
+import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
 import {
   createDocx,
   docxToMarkdown,
   ensureParaIds,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioDocxReviewer,
+  type FolioDocumentOperation,
   isFolioAIContentBlock,
 } from "@stll/folio-core/server";
 
@@ -63,6 +71,8 @@ const HIDDEN = 7;
  *   (`w:vanish`), and a `Heading 2` and a body paragraph that cancel
  *   numbering with the reserved `w:numId="0"`: numbered in the package, no
  *   number on the page;
+ * - a body paragraph numbered at a level its instance does not define, which
+ *   Word paints no marker for;
  * - an ordinary bulleted and an ordinary numbered list.
  */
 const buildNumberedDocument = async (): Promise<Uint8Array> => {
@@ -81,6 +91,7 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
       "Under a hidden number",
       "Unnumbered clause",
       "Cancelled item",
+      "Undefined level",
       "- a bullet\n- another bullet",
       "1. first step\n2. second step",
       "## Payment",
@@ -182,6 +193,7 @@ const buildNumberedDocument = async (): Promise<Uint8Array> => {
     numPr: paragraphNumberingFromSlots({ numId: 0 }),
   });
   format("Cancelled item", { numPr: paragraphNumberingFromSlots({ numId: 0 }) });
+  format("Undefined level", { numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 5 }) });
 
   return (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
 };
@@ -336,8 +348,25 @@ const rowFields = (row: FolioAgentBlock) => ({
   listLevel: row.listLevel,
 });
 
-const readAll = async (bytes: Uint8Array) => {
-  const reviewer = await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes));
+const MARKDOWN_OPTIONS = {
+  annotations: "strip",
+  trackedChanges: "clean",
+  comments: "strip",
+  footnotes: "keep",
+} as const;
+
+/** Every reader of the package `bytes` holds, opened afresh. */
+const readAll = async (bytes: Uint8Array) =>
+  readReviewer(
+    await FolioDocxReviewer.fromBuffer(toArrayBuffer(bytes)),
+    await docxToMarkdown(toArrayBuffer(bytes), MARKDOWN_OPTIONS),
+  );
+
+/** Every reader of a reviewer as it stands, Markdown from its current document. */
+const readLive = (reviewer: FolioDocxReviewer) =>
+  readReviewer(reviewer, toMarkdown(reviewer.toDocument(), MARKDOWN_OPTIONS));
+
+const readReviewer = (reviewer: FolioDocxReviewer, markdown: string) => {
   const bridge = createReviewerBridge(reviewer);
   const content = reviewer.getContent().filter(isFolioAIContentBlock);
   const snapshot = bridge.snapshot().blocks.filter(isFolioAIContentBlock);
@@ -345,12 +374,6 @@ const readAll = async (bytes: Uint8Array) => {
   if (!read.ok) {
     throw new Error(read.error);
   }
-  const markdown = await docxToMarkdown(toArrayBuffer(bytes), {
-    annotations: "strip",
-    trackedChanges: "clean",
-    comments: "strip",
-    footnotes: "keep",
-  });
   const texts = content.map(({ text }) => text);
   const styleIds = new Map(content.map((block) => [block.id, block.styleId]));
   return {
@@ -367,6 +390,207 @@ const readAll = async (bytes: Uint8Array) => {
     },
   };
 };
+
+type Block = ReturnType<FolioDocxReviewer["getContent"]>[number];
+type Mode = "direct" | "tracked-changes";
+
+/** A small seeded generator (mulberry32), so a failing sequence replays from its seed. */
+const seeded = (seed: number) => {
+  let state = seed >>> 0;
+  const next = (): number => {
+    state = (state + 0x6d_2b_79_f5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296;
+  };
+  const pick = <T>(items: readonly T[]): T | undefined => items[Math.floor(next() * items.length)];
+  return { next, pick };
+};
+
+type Random = ReturnType<typeof seeded>;
+
+/** One list edit: the operations of one batch, or `null` when the document offers no target. */
+type ListEdit = (
+  blocks: readonly Block[],
+  random: Random,
+  step: number,
+) => FolioDocumentOperation[] | null;
+
+const listed = (blocks: readonly Block[]): Block[] =>
+  blocks.filter((block) => block.listReference !== undefined);
+
+/** The edits that change which items a list has, their levels, or where it restarts. */
+const LIST_EDITS: Record<string, ListEdit> = {
+  insertAfterItem: (blocks, random, step) => {
+    const anchor = random.pick(listed(blocks)) ?? random.pick(blocks);
+    return anchor
+      ? [{ id: "e", type: "insertAfterBlock", blockId: anchor.id, text: `Inserted ${step}` }]
+      : null;
+  },
+  insertIntoList: (blocks, random, step) => {
+    const anchor = random.pick(blocks);
+    const member = random.pick(listed(blocks))?.listReference;
+    return anchor && member
+      ? [
+          {
+            id: "e",
+            type: "insertBeforeBlock",
+            blockId: anchor.id,
+            text: `Joined ${step}`,
+            numbering: { numId: member.numId, level: member.level },
+          },
+        ]
+      : null;
+  },
+  deleteItem: (blocks, random) => {
+    const target = random.pick(listed(blocks)) ?? random.pick(blocks);
+    return target && blocks.length > 6
+      ? [{ id: "e", type: "deleteBlock", blockId: target.id }]
+      : null;
+  },
+  moveItem: (blocks, random) => {
+    const item = random.pick(listed(blocks));
+    const to = random.pick(blocks.filter((block) => block.id !== item?.id));
+    const reference = item?.listReference;
+    return item && to && reference
+      ? [
+          {
+            id: "copy",
+            type: "insertAfterBlock",
+            blockId: to.id,
+            text: item.text,
+            numbering: { numId: reference.numId, level: reference.level },
+          },
+          { id: "remove", type: "deleteBlock", blockId: item.id },
+        ]
+      : null;
+  },
+  // Up or down a level, sometimes to one the list does not define.
+  changeLevel: (blocks, random) => {
+    const item = random.pick(listed(blocks));
+    const reference = item?.listReference;
+    if (!item || !reference) return null;
+    const nextLevel = Math.max(0, Math.min(8, reference.level + (random.next() < 0.5 ? -1 : 1)));
+    return [
+      {
+        id: "e",
+        type: "setBlockParagraphProperties",
+        blockId: item.id,
+        properties: { numbering: { numId: reference.numId, level: nextLevel } },
+      },
+    ];
+  },
+  restartNumbering: (blocks, random) => {
+    const target = random.pick(blocks);
+    return target
+      ? [
+          {
+            id: "e",
+            type: "setBlockParagraphProperties",
+            blockId: target.id,
+            properties: { numbering: { start: "new", kind: "numbered" } },
+          },
+        ]
+      : null;
+  },
+  removeFromList: (blocks, random) => {
+    const item = random.pick(listed(blocks));
+    return item
+      ? [
+          {
+            id: "e",
+            type: "setBlockParagraphProperties",
+            blockId: item.id,
+            properties: { numbering: null },
+          },
+        ]
+      : null;
+  },
+};
+
+type Views = Awaited<ReturnType<typeof readAll>>["views"];
+
+/**
+ * Every reader agrees with `getContent()`. Clean Markdown shows a pending
+ * change resolved, so it is left out while changes are pending.
+ */
+const expectReadersAgree = (views: Views, withMarkdown: boolean): void => {
+  for (const [reader, view] of Object.entries(views)) {
+    if (reader === "markdown" && !withMarkdown) continue;
+    expect({ reader, view }).toEqual({ reader, view: views.getContent });
+  }
+};
+
+/**
+ * The live reviewer's readers agree with each other, its rows restate its
+ * labels, and the package it saves reads the same through every reader.
+ */
+const expectLiveAndSavedAgree = async (reviewer: FolioDocxReviewer): Promise<void> => {
+  const withMarkdown = reviewer.getChanges().length === 0;
+  const live = readLive(reviewer);
+  expectReadersAgree(live.views, withMarkdown);
+  expect(live.rows.map(rowFields)).toEqual(
+    live.content.map((block) => ({
+      blockId: block.id,
+      kind: block.kind,
+      displayLabel: block.displayLabel,
+      headingLevel: block.headingLevel,
+      listLevel: block.listLevel,
+    })),
+  );
+
+  const saved = await readAll(new Uint8Array(await reviewer.toBuffer()));
+  expect({ saved: saved.views.getContent }).toEqual({ saved: live.views.getContent });
+  expectReadersAgree(saved.views, withMarkdown);
+};
+
+/**
+ * Apply `steps` random list edits and, after each, compare every reader of the
+ * live reviewer with each other, with the package the step saves, and that
+ * package's readers with each other.
+ */
+const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<void> => {
+  const random = seeded(seed);
+  const reviewer = await FolioDocxReviewer.fromBuffer(
+    toArrayBuffer(await buildNumberedDocument()),
+    { author: "Agent" },
+  );
+  const log: string[] = [];
+  for (let step = 0; step < steps; step += 1) {
+    const name = random.pick(Object.keys(LIST_EDITS)) ?? "insertAfterItem";
+    const blocks = reviewer.getContent().filter(isFolioAIContentBlock);
+    const operations = LIST_EDITS[name]?.(blocks, random, step);
+    if (!operations) continue;
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations,
+    });
+    log.push(`${name}:${result.status}`);
+    try {
+      await expectLiveAndSavedAgree(reviewer);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`seed ${seed} (${mode}) after ${log.join(" → ")}\n${detail}`, {
+        cause: error,
+      });
+    }
+  }
+};
+
+describe("readers agree after list edits", () => {
+  for (const seed of [1, 2, 3, 5, 8, 13]) {
+    test(`seed ${seed}: direct edits`, async () => {
+      await runListEdits(seed, "direct", 8);
+    });
+  }
+  for (const seed of [21, 34, 55]) {
+    test(`seed ${seed}: tracked edits`, async () => {
+      await runListEdits(seed, "tracked-changes", 8);
+    });
+  }
+});
 
 describe("readers agree on numbered headings and lists", () => {
   test("every reader shows each block's kind, heading level and number alike", async () => {
@@ -389,6 +613,8 @@ describe("readers agree on numbered headings and lists", () => {
       { text: "Under a hidden number", kind: "listItem", number: "2.1." },
       { text: "Unnumbered clause", kind: "heading", headingLevel: 2 },
       { text: "Cancelled item", kind: "paragraph" },
+      // A level the instance does not define shows no marker: prose.
+      { text: "Undefined level", kind: "paragraph" },
       { text: "a bullet", kind: "listItem", number: BULLET },
       { text: "another bullet", kind: "listItem", number: BULLET },
       { text: "first step", kind: "listItem", number: "1." },
