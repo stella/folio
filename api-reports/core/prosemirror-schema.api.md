@@ -92,6 +92,7 @@ export type FieldAttrs = {
     fldLock?: boolean;
     dirty?: boolean;
     fieldResultIsFallback?: boolean;
+    _docxEmptyResultRuns?: import__stll_docx_core_model.Run[];
 };
 
 // @public
