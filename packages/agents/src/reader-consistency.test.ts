@@ -428,6 +428,21 @@ const LIST_EDITS: Record<string, ListEdit> = {
       ? [{ id: "e", type: "insertAfterBlock", blockId: anchor.id, text: `Inserted ${step}` }]
       : null;
   },
+  // A style of its own: the item keeps the anchor's numbering reference.
+  insertStyledItem: (blocks, random, step) => {
+    const anchor = random.pick(listed(blocks)) ?? random.pick(blocks);
+    return anchor
+      ? [
+          {
+            id: "e",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: `Styled ${step}`,
+            styleId: "Normal",
+          },
+        ]
+      : null;
+  },
   insertIntoList: (blocks, random, step) => {
     const anchor = random.pick(blocks);
     const member = random.pick(listed(blocks))?.listReference;

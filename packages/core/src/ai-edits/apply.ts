@@ -54,7 +54,11 @@ import {
   type SelectedRunFormattingCarrierRepresentation,
 } from "../prosemirror/runFormattingInlineCarriers";
 import type { ParagraphPropertyChangeAttrs } from "../prosemirror/schema/nodes";
-import { listLevelAttrPatch } from "../prosemirror/styles/resolvedStyleAttrs";
+import {
+  listAttrsFromNumbering,
+  listLevelAttrPatch,
+} from "../prosemirror/styles/resolvedStyleAttrs";
+import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
@@ -2262,6 +2266,35 @@ const withRotatedAddedFinalBreaks = ({
   return { transaction: next, nextRevisionId, synthesizedRevisions };
 };
 
+/**
+ * The list attrs of a paragraph inserted with a style of its own, from the
+ * anchor attrs it copied. Numbering the anchor's style supplied leaves with
+ * that style and the new style's numbering, if any, takes its place; numbering
+ * the anchor stated itself stays. Either way the attrs render what the save
+ * writes, so the paragraph reads the same before and after a reopen.
+ */
+const restyledListAttrs = (
+  attrs: Record<string, unknown>,
+  styleNumbering: ParagraphFormatting["numPr"],
+  numbering: NumberingMap | null,
+): Record<string, unknown> => {
+  const stated = readParagraphNumberingAttr(attrs["numPr"]);
+  const statedByOldStyle = isStyleSourcedParagraphNumbering(
+    stated,
+    readParagraphNumberingAttr(attrs["numPrFromStyle"]),
+  );
+  const fromStyle = styleNumbering === undefined ? null : paragraphNumberingAttr(styleNumbering);
+  const numPr = stated !== null && !statedByOldStyle ? stated : fromStyle;
+  return {
+    ...CLEARED_LIST_RENDERING_ATTRS,
+    ...(numPr?.kind === "reference" &&
+      listAttrsFromNumbering({ numId: numPr.numId, ilvl: numPr.ilvl ?? 0 }, numbering)),
+    // As stated: an absent `w:ilvl` stays absent.
+    numPr,
+    numPrFromStyle: fromStyle,
+  };
+};
+
 const buildInsertedParagraphs = ({
   item,
   schema,
@@ -2397,7 +2430,7 @@ const buildInsertedParagraphs = ({
     if (formatsParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
-        Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+        Object.assign(attrs, restyledListAttrs(attrs, formattingFromStyle?.numPr, numbering));
       }
     }
     if (

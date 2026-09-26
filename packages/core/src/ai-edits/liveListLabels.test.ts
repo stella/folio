@@ -189,6 +189,28 @@ describe("list labels after an operation", () => {
     const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
     expect(contentLabels(reopened)).toEqual(expected);
   });
+
+  test("an item inserted with its own style keeps the list's number, as the save does", async () => {
+    const reviewer = await reviewerOf(LIST);
+    apply(reviewer, "direct", [
+      {
+        id: "1",
+        type: "insertAfterBlock",
+        blockId: blockId(reviewer, "Deposit on signature"),
+        text: "Interim payment",
+        styleId: "Quote",
+      },
+    ]);
+
+    await expectLabels(reviewer, [
+      "Payment happens in stages.",
+      "1. Deposit on signature",
+      "2. Interim payment",
+      "3. Balance on delivery",
+      "4. Retention after inspection",
+      "Closing remarks.",
+    ]);
+  });
 });
 
 describe("a paragraph numbered at a level its list does not define", () => {

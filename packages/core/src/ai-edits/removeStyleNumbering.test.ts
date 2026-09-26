@@ -127,3 +127,54 @@ describe("removing numbering a paragraph style supplies", () => {
     expect(reopened.getContent()[1]).toMatchObject({ kind: "heading", styleId: "Heading2" });
   });
 });
+
+describe("a paragraph inserted with a style of its own", () => {
+  const insertStyled = async (styleId: string): Promise<FolioDocxReviewer> => {
+    const reviewer = await styleNumberedReviewer();
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Body."),
+          text: "Inserted",
+          styleId,
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+    return reviewer;
+  };
+
+  test("after a style-numbered heading, takes the numbering its new style gives", async () => {
+    const reviewer = await insertStyled("Heading2");
+    const expected = ["1. Scope", "Body.", "2. Inserted", "3. Payment", "Closing."];
+    expect(labels(reviewer)).toEqual(expected);
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(labels(reopened)).toEqual(expected);
+  });
+
+  test("anchored on a style-numbered heading, leaves that style's numbering behind", async () => {
+    const reviewer = await styleNumberedReviewer();
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Scope"),
+          text: "Inserted",
+          styleId: "Normal",
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+    const expected = ["1. Scope", "Inserted", "Body.", "2. Payment", "Closing."];
+    expect(labels(reviewer)).toEqual(expected);
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(labels(reopened)).toEqual(expected);
+  });
+});
