@@ -89,7 +89,7 @@
     "typecheck:tooling": "bun scripts/tsc-native.ts -p scripts/tsconfig.budgets.json",
     "typecheck:budget": "bun scripts/typecheck-budget.ts --check",
     "typecheck:budget:write": "bun scripts/typecheck-budget.ts --write",
-    "test": "bun --filter '*' test && bun test scripts",
+    "test": "bun --filter '*' test && bun test scripts && bun test benchmarks/compare",
     "test:property": "bun --filter '*' test:property",
     "typegen": "bun scripts/i18n-typegen.ts packages/core/src/i18n/messages",
     "i18n:sync": "bun scripts/i18n-check.ts packages/core/src/i18n/messages --sync && bun scripts/i18n-typegen.ts packages/core/src/i18n/messages && bun scripts/i18n-catalogs-gen.ts",
