@@ -618,40 +618,20 @@ already-built document.
 Tree construction uses fixed linear passes; indexed mapping and table-width
 removal add logarithmic factors. The per-change fragment copies are gone.
 
-Paired runs against main `169fdad18`, Bun 1.4.2, eight logical CPUs. The final
-implementation measured at `af36a73ba` / `889630bd6`; the latter adds only types
-and report formatting, with identical emitted JavaScript. Each configuration ran
-before then after, with one warm-up and three measured iterations (`--quick`).
-Stage medians are sampled independently of wall time.
+Timing measurements are pending a serialized run. Earlier samples overlapped
+other benchmark processes under extreme host load and are discarded; they do
+not support performance claims. The microbenchmark remains available at
+`packages/core/scripts/benchmark-resolve-all.ts` and measures the editor command
+plus transaction application with history and paragraph tracking enabled.
 
-| Configuration        | Revision | Wall      | parse   | align  | apply     | serialize |
-| -------------------- | -------- | --------- | ------- | ------ | --------- | --------- |
-| `prose/l/structural` | before   | 7036.6ms  | 621.0ms | 34.5ms | 6526.0ms  | 464.9ms   |
-| `prose/l/structural` | after    | 5665.1ms  | 710.5ms | 45.1ms | 3070.6ms  | 314.9ms   |
-| `prose/l/heavy`      | before   | 12533.8ms | 358.0ms | 31.5ms | 12640.1ms | 915.3ms   |
-| `prose/l/heavy`      | after    | 13345.7ms | 994.1ms | 89.6ms | 15209.3ms | 1771.6ms  |
+The focused suite passes 169 tests. Its equivalence test exercises all 69
+applicable small-corpus configurations, including body, headers, footers,
+footnotes, and endnotes. It compares resolved documents and serialized-step
+replay with the retained range commands. Focused properties cover tracker state,
+selection, undo, paragraph joins, table topology, required-content fitting, and
+nested revisions.
 
-Structural apply fell by 53%. Heavy apply rose by 20%, and its wall time also
-rose; this pair does not establish a heavy-case improvement. Host load remained
-extreme: structural before 172.9 → 161.3, after 164.3 → 161.6; heavy before
-158.8 → 132.5, after 130.1 → 116.7. Both pairs retained identical digests and
-passed every available invariant (the .NET schema validator was unavailable).
-
-`bun packages/core/scripts/benchmark-resolve-all.ts` measures the editor command
-plus `state.apply`, with history and paragraph tracking enabled. Every paragraph
-has one insertion and one deletion. One warm-up, four measured samples; the
-reported value is the upper median. The old and new commands ran back to back:
-load 220.7 → 176.5 before, 172.6 → 173.1 after.
-
-| Paragraphs | Changes | Accept before → after | Reject before → after | Steps before → after |
-| ---------- | ------- | --------------------- | --------------------- | -------------------- |
-| 250        | 500     | 26.3 → 12.3ms         | 23.0 → 12.6ms         | 500 → 1              |
-| 1000       | 2000    | 419.5 → 44.9ms        | 264.1 → 49.9ms        | 2000 → 1             |
-| 2200       | 4400    | 2921.6 → 102.5ms      | 2162.7 → 149.6ms      | 4400 → 1             |
-| 4400       | 8800    | 11031.4 → 130.7ms     | 10533.6 → 130.0ms     | 8800 → 1             |
-
-The equivalence test exercises all 69 applicable small-corpus configurations,
-including body, headers, footers, footnotes, and endnotes. It compares resolved
-documents and serialized-step replay with the retained range commands. Focused
-properties cover tracker state, selection, undo, paragraph joins, table topology,
-required-content fitting, and nested revisions.
+Paired structural and heavy cases retain identical before/after digests and pass
+the available invariants. The full corrected-baseline digest comparison remains
+incomplete; note, graphic, field, and bookmark defects are isolated in separate
+fixes. The local .NET schema validator was unavailable.
