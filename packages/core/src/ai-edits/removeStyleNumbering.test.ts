@@ -1,0 +1,129 @@
+/**
+ * An operation that takes a paragraph out of a list its style numbers states
+ * the cancellation (`w:numId="0"`): clearing the paragraph's own numbering
+ * would uncover the style's, and the save would number it again.
+ */
+
+import { describe, expect, test } from "bun:test";
+
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+
+import type { FolioDocumentOperation } from "../document-operations";
+import { ensureParaIds } from "../docx/ensureParaIds";
+import { createDocx } from "../docx/rezip";
+import { fromMarkdown } from "../markdown/fromMarkdown";
+import { FolioDocxReviewer } from "./headless";
+
+const CLAUSES = 5;
+
+/** `Heading 2` numbered `1.`, `2.` through its style's `w:numPr`. */
+const styleNumberedReviewer = async (): Promise<FolioDocxReviewer> => {
+  const document = fromMarkdown(["## Scope", "Body.", "## Payment", "Closing."].join("\n\n"));
+  const pkg = document.package;
+  pkg.numbering = {
+    abstractNums: [
+      {
+        abstractNumId: CLAUSES,
+        multiLevelType: "multilevel",
+        levels: [
+          {
+            ilvl: 0,
+            start: 1,
+            numFmt: "decimal",
+            lvlText: "%1.",
+            suffix: "space",
+            pPr: { indentLeft: 0, indentFirstLine: 0 },
+          },
+        ],
+      },
+    ],
+    nums: [{ numId: CLAUSES, abstractNumId: CLAUSES }],
+  };
+  const heading2 = pkg.styles?.styles.find(({ styleId }) => styleId === "Heading2");
+  if (!heading2) {
+    throw new Error("fixture style Heading2 is missing");
+  }
+  heading2.pPr = {
+    ...heading2.pPr,
+    numPr: paragraphNumberingFromSlots({ numId: CLAUSES, ilvl: 0 }),
+  };
+  const { docx } = await ensureParaIds(await createDocx(document));
+  return FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
+};
+
+const labels = (reviewer: FolioDocxReviewer): string[] =>
+  reviewer.getContent().map(({ displayLabel, styleId, text }) =>
+    // An unnumbered heading's label is its style id.
+    `${displayLabel === styleId ? "" : (displayLabel ?? "")} ${text}`.trim(),
+  );
+
+const blockId = (reviewer: FolioDocxReviewer, text: string): string => {
+  const block = reviewer.getContent().find((candidate) => candidate.text === text);
+  if (!block) {
+    throw new Error(`no block reads "${text}"`);
+  }
+  return block.id;
+};
+
+const removals: Record<string, (reviewer: FolioDocxReviewer) => FolioDocumentOperation> = {
+  "numbering: null": (reviewer) => ({
+    id: "1",
+    type: "setBlockParagraphProperties",
+    blockId: blockId(reviewer, "Scope"),
+    properties: { numbering: null },
+  }),
+  "listLevel: null": (reviewer) => ({
+    id: "1",
+    type: "setBlockParagraphProperties",
+    blockId: blockId(reviewer, "Scope"),
+    properties: { listLevel: null },
+  }),
+};
+
+describe("removing numbering a paragraph style supplies", () => {
+  for (const [name, removal] of Object.entries(removals)) {
+    for (const mode of ["direct", "tracked-changes"] as const) {
+      test(`${name} (${mode}) stays removed across a save`, async () => {
+        const reviewer = await styleNumberedReviewer();
+        expect(labels(reviewer)).toEqual(["1. Scope", "Body.", "2. Payment", "Closing."]);
+
+        const result = reviewer.applyDocumentOperations({
+          version: 1,
+          mode,
+          operations: [removal(reviewer)],
+        });
+        expect(result.issues).toEqual([]);
+        expect(result.status).toBe("committed");
+
+        const expected = ["Scope", "Body.", "1. Payment", "Closing."];
+        expect(labels(reviewer)).toEqual(expected);
+        const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+        expect(labels(reopened)).toEqual(expected);
+      });
+    }
+  }
+
+  test("an inserted paragraph that keeps the anchor's style but not its numbering stays unnumbered", async () => {
+    const reviewer = await styleNumberedReviewer();
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Scope"),
+          text: "Scope continued",
+          numbering: null,
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+
+    const expected = ["1. Scope", "Scope continued", "Body.", "2. Payment", "Closing."];
+    expect(labels(reviewer)).toEqual(expected);
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(labels(reopened)).toEqual(expected);
+    expect(reopened.getContent()[1]).toMatchObject({ kind: "heading", styleId: "Heading2" });
+  });
+});

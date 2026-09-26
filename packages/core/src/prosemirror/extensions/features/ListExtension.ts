@@ -12,7 +12,6 @@ import { Plugin, type Command, type EditorState, type Transaction } from "prosem
 
 import { expectParagraphAttrs } from "../../attrs";
 import {
-  NO_PARAGRAPH_NUMBERING,
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
 } from "../../../docx/numberingReference";
@@ -28,7 +27,7 @@ import {
   setNumberingValue,
 } from "../../listNumbering";
 import { resolveListState, type ListType } from "../../listState";
-import { paragraphNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
+import { removedNumberingAttr, type ParagraphNumberingAttr } from "../../numberingAttr";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   makeRevisionInfo,
@@ -58,18 +57,9 @@ function chainCommands(...commands: Command[]): Command {
 }
 
 function clearListAttrs(attrs: ParagraphAttrs): Record<string, unknown> {
-  // A style supplies the numbering this paragraph is leaving, so the paragraph
-  // has to state the cancellation itself — deleting the attr would uncover the
-  // style tier and hand the numbering straight back. A cancellation states no
-  // level (17.9.18: there is no id left for a level to belong to).
-  const numPr =
-    paragraphNumberingReferenceId(attrs.numPrFromStyle) === undefined
-      ? null
-      : paragraphNumberingAttr(NO_PARAGRAPH_NUMBERING);
-
   return {
     ...attrs,
-    numPr,
+    numPr: removedNumberingAttr(attrs.numPrFromStyle),
     ...CLEARED_LIST_RENDERING_ATTRS,
   };
 }

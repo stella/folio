@@ -55,6 +55,18 @@ export const paragraphNumberingAttr = (
   }
 };
 
+/**
+ * The `numPr` that takes a paragraph out of its list. When its style supplies
+ * the numbering, the paragraph has to state the cancellation (`w:numId="0"`):
+ * clearing the attr would uncover the style tier, and the next save hands the
+ * numbering straight back. A cancellation states no level (17.9.18: there is
+ * no id left for a level to belong to).
+ */
+export const removedNumberingAttr = (
+  numPrFromStyle: ParagraphNumberingOverride | null | undefined,
+): ParagraphNumberingAttr | null =>
+  numPrFromStyle?.kind === "reference" ? paragraphNumberingAttr(NO_PARAGRAPH_NUMBERING) : null;
+
 /** A `<w:numPr>` slot value: an ordinal, so a non-integer or a negative is not one. */
 const isNumberingSlot = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;

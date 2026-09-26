@@ -16,7 +16,11 @@ import {
   paragraphNumberingReference,
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
-import { paragraphNumberingAttr, readParagraphNumberingAttr } from "../prosemirror/numberingAttr";
+import {
+  paragraphNumberingAttr,
+  readParagraphNumberingAttr,
+  removedNumberingAttr,
+} from "../prosemirror/numberingAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import {
   directParagraphIndentation,
@@ -581,7 +585,7 @@ const paragraphPropertiesPatch = ({
   }
   if (properties.numbering !== undefined) {
     if (properties.numbering === null) {
-      patch["numPr"] = null;
+      patch["numPr"] = removedNumberingAttr(attrs.numPrFromStyle);
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
       const listReference = concreteListReference(properties.numbering);
@@ -604,7 +608,7 @@ const paragraphPropertiesPatch = ({
     }
   } else if (properties.listLevel !== undefined) {
     if (properties.listLevel === null) {
-      patch["numPr"] = null;
+      patch["numPr"] = removedNumberingAttr(attrs.numPrFromStyle);
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
       const numId = paragraphNumberingReferenceId(
@@ -2348,7 +2352,7 @@ const buildInsertedParagraphs = ({
     const listLevel = operation.listLevel;
     if (formatsParagraph) {
       if (explicitNumbering === null) {
-        attrs["numPr"] = null;
+        attrs["numPr"] = removedNumberingAttr(readParagraphNumberingAttr(attrs["numPrFromStyle"]));
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       } else if (explicitNumbering !== undefined) {
         Object.assign(
@@ -2369,7 +2373,7 @@ const buildInsertedParagraphs = ({
           attrs["numPrFromStyle"] = null;
         }
       } else if (listLevel === null) {
-        attrs["numPr"] = null;
+        attrs["numPr"] = removedNumberingAttr(readParagraphNumberingAttr(attrs["numPrFromStyle"]));
         Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
       } else if (typeof listLevel === "number") {
         const numId = paragraphNumberingReferenceId(
