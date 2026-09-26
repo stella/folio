@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // Keep the plugins on the @stll/folio-cli version they run: each plugin's
 // manifest `version` and every `@stll/folio-cli@<version>` spec in its files
-// carry the CLI package's version. `--write` updates them (run by
+// carry the CLI package's version. The VS Code extension bundles the CLI, so
+// only its manifest version is synced. `--write` updates them (run by
 // `changeset:version`); without it the script reports drift.
 
 import { panic } from "better-result";
@@ -31,6 +32,11 @@ export const PLUGIN_VERSION_FILES: readonly VersionedFile[] = [
     manifestVersion: /^(version = ")([^"]*)(")/mu,
   },
   { file: path.join(repoRoot, "plugins", "herdr", "bin", "folio-command.sh") },
+  {
+    file: path.join(repoRoot, "plugins", "vscode", "package.json"),
+    // The manifest's first "version" is its own; the extension names no other.
+    manifestVersion: /("version":\s*")([^"]*)(")/u,
+  },
 ];
 
 export const cliVersion = async (): Promise<string> => {

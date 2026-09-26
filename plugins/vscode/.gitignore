@@ -1,0 +1,4 @@
+dist/
+*.vsix
+# Copied from the repository root by scripts/build.ts for packaging.
+LICENSE

@@ -1,0 +1,118 @@
+{
+  "name": "folio",
+  "displayName": "Folio DOCX",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Preview .docx files with folio's page layout, and give agent mode folio's .docx tools over MCP: reading, comments, and tracked-change redlines.",
+  "categories": [
+    "AI",
+    "Visualization"
+  ],
+  "keywords": [
+    "docx",
+    "mcp",
+    "ooxml",
+    "preview",
+    "redline",
+    "tracked changes"
+  ],
+  "homepage": "https://github.com/stella/folio/tree/main/plugins/vscode",
+  "bugs": {
+    "url": "https://github.com/stella/folio/issues"
+  },
+  "license": "Apache-2.0",
+  "author": "STLL",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stella/folio.git",
+    "directory": "plugins/vscode"
+  },
+  "publisher": "stll",
+  "main": "./dist/extension.js",
+  "scripts": {
+    "build": "bun scripts/build.ts",
+    "vscode:prepublish": "bun scripts/build.ts",
+    "package": "vsce package --no-dependencies --out folio.vsix",
+    "publish": "vsce publish --no-dependencies --azure-credential",
+    "publish:open-vsx": "ovsx publish folio.vsix",
+    "test": "bun test src",
+    "typecheck": "bun ../../scripts/tsc-native.ts --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "@types/vscode": "1.101.0",
+    "@vscode/vsce": "4.0.0",
+    "bun-types": "1.4.1",
+    "esbuild": "0.28.1",
+    "ovsx": "1.2.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "folio.openPreview",
+        "title": "Open with Folio DOCX Preview",
+        "category": "Folio"
+      }
+    ],
+    "configuration": {
+      "title": "Folio",
+      "properties": {
+        "folio.author": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Name the folio MCP server records on every tracked change, comment, and reply. When empty, the server falls back to `FOLIO_AUTHOR`, then `git config user.name`, and refuses changes if neither is set."
+        }
+      }
+    },
+    "customEditors": [
+      {
+        "viewType": "folio.docxPreview",
+        "displayName": "Folio DOCX Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.docx"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "folio.mcp",
+        "label": "Folio"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "folio.openPreview",
+          "when": "resourceExtname == .docx"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "folio.openPreview",
+          "when": "resourceExtname == .docx",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "activationEvents": [
+    "onCustomEditor:folio.docxPreview",
+    "onMcpCollection:folio.mcp"
+  ],
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "The preview works in untrusted workspaces. The MCP server, which can change files, is offered only once the workspace is trusted."
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "The preview reads files through the editor's file system. The MCP server needs workspace folders on disk."
+    }
+  }
+}

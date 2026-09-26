@@ -1,0 +1,6 @@
+# Package only the built extension: sources, tests, and build tooling stay out.
+**
+!dist/**
+!package.json
+!README.md
+!LICENSE

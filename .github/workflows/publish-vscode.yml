@@ -1,0 +1,246 @@
+name: Publish VS Code extension
+
+# Manual only. Builds plugins/vscode into one .vsix and publishes that exact
+# file to the VS Code Marketplace and Open VSX. Leave `publish` unchecked for
+# a dry run: it builds and packages, and signs in to the Marketplace to print
+# the publishing identity's user id, but publishes nothing.
+#
+# Setup, once:
+# - VS Code Marketplace: an Entra ID app registration with a federated
+#   credential for this repository's `vscode-marketplace` environment
+#   (subject `repo:stella/folio:environment:vscode-marketplace`), and the
+#   variables VSCE_AZURE_CLIENT_ID and VSCE_AZURE_TENANT_ID on that
+#   environment. A dry run prints the identity's Marketplace user id; add it
+#   as a Contributor on the `stll` publisher. No personal access token is
+#   stored.
+# - Open VSX: create the `stll` namespace, then store a token as the
+#   OVSX_PAT secret of the `open-vsx` environment.
+# A registry that is not set up is skipped with a notice.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish (unchecked, a dry run that builds, packages, and prints the Marketplace user id)
+        type: boolean
+        default: false
+      marketplace:
+        description: VS Code Marketplace (sign in and print the user id; publish when Publish is checked)
+        type: boolean
+        default: true
+      open-vsx:
+        description: Publish to Open VSX
+        type: boolean
+        default: true
+
+concurrency:
+  group: publish-vscode
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  package:
+    name: Build and package the .vsix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # No id-token while dependency and build scripts run.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun install --frozen-lockfile
+        working-directory: plugins/vscode
+
+      - name: Plugin versions match the CLI
+        run: bun scripts/sync-plugin-cli-version.ts
+
+      - name: Test
+        run: bun run test
+        working-directory: plugins/vscode
+
+      - name: Package
+        run: bun run package
+        working-directory: plugins/vscode
+
+      - name: Read the version
+        id: version
+        working-directory: plugins/vscode
+        run: echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: folio-vscode-vsix
+          path: plugins/vscode/folio.vsix
+          if-no-files-found: error
+
+  marketplace:
+    name: VS Code Marketplace
+    needs: package
+    # Runs on a dry run too: it signs in and prints the publishing identity's
+    # Marketplace user id, which the `stll` publisher needs before the first
+    # publish. Only the publish steps wait for the `publish` input.
+    if: inputs.marketplace
+    runs-on: ubuntu-latest
+    environment: vscode-marketplace
+    permissions:
+      contents: read
+      id-token: write # Entra ID federated login; no stored token.
+    steps:
+      - name: Check the setup
+        id: setup
+        env:
+          CLIENT_ID: ${{ vars.VSCE_AZURE_CLIENT_ID }}
+          TENANT_ID: ${{ vars.VSCE_AZURE_TENANT_ID }}
+          VERSION: ${{ needs.package.outputs.version }}
+          PUBLISH: ${{ inputs.publish }}
+        run: |
+          if [ -z "$CLIENT_ID" ] || [ -z "$TENANT_ID" ]; then
+            echo "::notice title=VS Code Marketplace skipped::Set the VSCE_AZURE_CLIENT_ID and VSCE_AZURE_TENANT_ID variables on the vscode-marketplace environment. See the header of publish-vscode.yml."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          if [ "$PUBLISH" != "true" ]; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif [ "$VERSION" = "0.0.0" ]; then
+            echo "::notice title=VS Code Marketplace skipped::The extension is at 0.0.0; release @stll/folio-cli first, which sets its version."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.setup.outputs.publish == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            package.json
+            plugins/vscode
+
+      - if: steps.setup.outputs.publish == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - if: steps.setup.outputs.publish == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - if: steps.setup.outputs.publish == 'true'
+        run: bun install --frozen-lockfile --ignore-scripts
+        working-directory: plugins/vscode
+
+      - if: steps.setup.outputs.publish == 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: folio-vscode-vsix
+          path: plugins/vscode
+
+      # Signed in last, right before publishing: the federated credential is
+      # short-lived.
+      - if: steps.setup.outputs.configured == 'true'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.VSCE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.VSCE_AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      # 499b84ac-1321-427f-aa17-267ca6975798 is the Azure DevOps resource the
+      # Marketplace profile API belongs to.
+      - if: steps.setup.outputs.configured == 'true'
+        name: Print the Marketplace user id
+        run: |
+          id=$(az rest --method get \
+            --url "https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1-preview.3" \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query id -o tsv)
+          echo "Marketplace user id: $id"
+          echo "Add this User Id as Contributor on publisher stll: $id"
+          {
+            echo "### VS Code Marketplace identity"
+            echo ""
+            echo "Marketplace user id: \`$id\`"
+            echo ""
+            echo "Add this User Id as Contributor on publisher stll."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - if: steps.setup.outputs.publish == 'true'
+        name: Publish
+        working-directory: plugins/vscode
+        run: node_modules/.bin/vsce publish --packagePath folio.vsix --azure-credential
+
+  open-vsx:
+    name: Publish to Open VSX
+    needs: package
+    if: inputs.publish && inputs.open-vsx
+    runs-on: ubuntu-latest
+    environment: open-vsx
+    permissions:
+      contents: read
+    steps:
+      - name: Check the setup
+        id: setup
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::notice title=Open VSX skipped::Store an Open VSX token as the OVSX_PAT secret of the open-vsx environment to publish. See the header of publish-vscode.yml."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          elif [ "$VERSION" = "0.0.0" ]; then
+            echo "::notice title=Open VSX skipped::The extension is at 0.0.0; release @stll/folio-cli first, which sets its version."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.setup.outputs.configured == 'true'
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            package.json
+            plugins/vscode
+
+      - if: steps.setup.outputs.configured == 'true'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - if: steps.setup.outputs.configured == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - if: steps.setup.outputs.configured == 'true'
+        run: bun install --frozen-lockfile --ignore-scripts
+        working-directory: plugins/vscode
+
+      - if: steps.setup.outputs.configured == 'true'
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: folio-vscode-vsix
+          path: plugins/vscode
+
+      - if: steps.setup.outputs.configured == 'true'
+        name: Publish
+        working-directory: plugins/vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: node_modules/.bin/ovsx publish folio.vsix
