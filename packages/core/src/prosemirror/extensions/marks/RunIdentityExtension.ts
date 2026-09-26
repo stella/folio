@@ -20,6 +20,7 @@
  * supplies the session the format itself says such a run belongs to.
  */
 
+import { isHistoryTransaction, undoDepth } from "prosemirror-history";
 import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 
 import { expectRunIdentityMarkAttrs } from "../../attrs";
@@ -50,9 +51,17 @@ type InsertedRange = { from: number; to: number };
  * positions in the document this hook is looking at rather than in an
  * intermediate one.
  *
+ * An undo is not an insertion: it puts back what an edit took away, identity
+ * included, and stripping that would leave the restored text claiming no run
+ * it came from. `skip` names the transactions to pass over; they still carry
+ * the ranges of the others forward.
+ *
  * @internal Exported for the per-step equivalence test.
  */
-export const insertedRanges = (transactions: readonly Transaction[]): InsertedRange[] => {
+export const insertedRanges = (
+  transactions: readonly Transaction[],
+  skip: (transaction: Transaction) => boolean = () => false,
+): InsertedRange[] => {
   // The ranges are carried together, each entering after the step that made
   // it: slicing the mapping per step would walk the rest of the batch once
   // per step.
@@ -60,6 +69,10 @@ export const insertedRanges = (transactions: readonly Transaction[]): InsertedRa
   let stepOffset = 0;
   for (const transaction of transactions) {
     const offset = stepOffset;
+    stepOffset += transaction.mapping.maps.length;
+    if (skip(transaction)) {
+      continue;
+    }
     transaction.mapping.maps.forEach((stepMap, stepIndex) => {
       const from = offset + stepIndex + 1;
       stepMap.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
@@ -69,7 +82,6 @@ export const insertedRanges = (transactions: readonly Transaction[]): InsertedRa
         queries.push({ pos: newStart, assoc: -1, from }, { pos: newEnd, assoc: 1, from });
       });
     });
-    stepOffset += transaction.mapping.maps.length;
   }
   const mapped = sweepPositions(
     transactions.map((transaction) => transaction.mapping),
@@ -94,7 +106,7 @@ export const insertedRanges = (transactions: readonly Transaction[]): InsertedRa
 const createRunIdentityStripPlugin = (): Plugin =>
   new Plugin({
     key: runIdentityStripKey,
-    appendTransaction(transactions, _oldState, newState) {
+    appendTransaction(transactions, oldState, newState) {
       if (!transactions.some((transaction) => transaction.docChanged)) {
         return null;
       }
@@ -102,7 +114,13 @@ const createRunIdentityStripPlugin = (): Plugin =>
       if (markType === undefined) {
         return null;
       }
-      const ranges = insertedRanges(transactions);
+      // A redo re-applies the step that typed or pasted the text, marks and
+      // all, so it is stripped again; only an undo restores authored content.
+      const undoing = undoDepth(newState) < undoDepth(oldState);
+      const ranges = insertedRanges(
+        transactions,
+        (transaction) => undoing && isHistoryTransaction(transaction),
+      );
       if (ranges.length === 0) {
         return null;
       }
