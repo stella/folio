@@ -6,7 +6,7 @@ import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { prepareTargetInlineAtom } from "./inline-atom-resources";
-import { matchInlineAtoms } from "./inline-atoms";
+import { matchInlineAtoms, sameInlineAtoms } from "./inline-atoms";
 
 const BASE_IMAGE =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
@@ -22,6 +22,31 @@ const image = ({ src, rId }: { src: string; rId: string }) =>
     wrapType: "inline",
     displayMode: "inline",
   });
+
+const rawDrawing = ({ id, rId, name }: { id: string; rId: string; name: string }) =>
+  `<w:drawing><wp:inline><wp:docPr id="${id}" name="${name}"/>` +
+  `<a:graphic><a:graphicData><pic:pic><pic:nvPicPr><pic:cNvPr id="${id}" name="image.png"/>` +
+  `</pic:nvPicPr><pic:blipFill><a:blip r:embed="${rId}"/></pic:blipFill>` +
+  "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
+
+const imageWithDrawing = ({
+  id,
+  rId,
+  name,
+  src = BASE_IMAGE,
+}: {
+  id: string;
+  rId: string;
+  name: string;
+  src?: string;
+}) => {
+  const node = image({ src, rId });
+  return node.type.create({
+    ...node.attrs,
+    docPrId: id,
+    _docxRawXml: rawDrawing({ id, rId, name }),
+  });
+};
 
 const field = () =>
   schema.nodes["field"]!.create({
@@ -70,6 +95,24 @@ const inlineNames = (document: PMNode): string[] => {
 };
 
 describe("matchInlineAtoms image resources", () => {
+  test("compares image content across regenerated drawing and relationship ids", () => {
+    const source = documentWith([
+      imageWithDrawing({ id: "1", rId: "rIdOriginal", name: "Picture" }),
+    ]);
+    const renumbered = documentWith([
+      imageWithDrawing({ id: "100000", rId: "rIdRepacked", name: "Picture" }),
+    ]);
+    const renamed = documentWith([
+      imageWithDrawing({ id: "100000", rId: "rIdRepacked", name: "Other picture" }),
+    ]);
+    const differentMedia = documentWith([
+      imageWithDrawing({ id: "100000", rId: "rIdRepacked", name: "Picture", src: TARGET_IMAGE }),
+    ]);
+
+    expect(sameInlineAtoms(source, renumbered)).toBe(true);
+    expect(sameInlineAtoms(source, renamed)).toBe(false);
+    expect(sameInlineAtoms(source, differentMedia)).toBe(false);
+  });
   test("does not track an unchanged image", () => {
     const unchanged = image({ src: BASE_IMAGE, rId: "rIdBase" });
     const target = documentWith([unchanged]);

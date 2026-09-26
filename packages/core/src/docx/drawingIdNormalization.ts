@@ -60,6 +60,10 @@ const reassignRawDrawingId = ({ xml, id }: { xml: string; id: string }): string 
   return foundDocPr ? (root.elements ?? []).map(captureVerbatimXml).join("") : null;
 };
 
+/** Drawing IDs are package-local identifiers, not image content. */
+export const drawingXmlWithoutIdentity = (xml: string): string =>
+  reassignRawDrawingId({ xml, id: "0" }) ?? xml;
+
 const needsGeneratedId = ({ id }: DrawingWithId): boolean =>
   id === undefined || id === "" || id === "0";
 
