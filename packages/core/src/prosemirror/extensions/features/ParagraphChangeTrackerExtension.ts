@@ -336,20 +336,20 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           // Rebuild from owners: a pasted duplicate's pre-allocation ID must
           // not mark its untouched source paragraph as edited.
           const changedParaIds = new Set<string>();
-          let hasUntrackedChanges = prevState.hasUntrackedSourceChanges;
+          let unresolvedChanges = prevState.hasUntrackedSourceChanges;
           for (const position of affectedParagraphPositions) {
             const paraId = tr.doc.nodeAt(position)?.attrs["paraId"];
             if (isUsableParaId(paraId)) {
               changedParaIds.add(paraId);
             } else {
-              hasUntrackedChanges = true;
+              unresolvedChanges = true;
             }
           }
           return {
             ...prevState,
             affectedParagraphPositions,
             changedParaIds,
-            hasUntrackedChanges,
+            hasUntrackedChanges: unresolvedChanges,
             blockStructureFingerprint: counts.blockStructureFingerprint,
             paragraphCount: counts.paragraphs,
             sectionEndpointCount: counts.sectionEndpoints,

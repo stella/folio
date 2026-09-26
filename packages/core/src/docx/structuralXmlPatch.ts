@@ -181,32 +181,32 @@ export const buildStructuralDocumentPatch = ({
   });
   if (canonicalJson(barriers(sourceBody)) !== canonicalJson(barriers(currentBody))) return null;
 
-  const keyBlocks = (blocks: BodyBlock[]) => {
+  const indexBlocks = (blocks: readonly BodyBlock[]) => {
     let barrier = 0;
-    return blocks.map((block) => ({
-      ...block,
-      key: isWordElement(block.element, "p")
+    const indexed = new Map<string, BodyBlock>();
+    for (const block of blocks) {
+      const key = isWordElement(block.element, "p")
         ? `p:${paraIdAttribute(block.element)?.toUpperCase()}`
-        : `barrier:${barrier++}`,
-    }));
+        : `barrier:${barrier++}`;
+      indexed.set(key, block);
+    }
+    return indexed;
   };
-  const before = keyBlocks(source.blocks);
-  const after = keyBlocks(current.blocks);
-  const byKey = new Map(before.map((block) => [block.key, block]));
-  const currentKeys = new Set(after.map(({ key }) => key));
-  const survivingBefore = before.filter(({ key }) => currentKeys.has(key)).map(({ key }) => key);
-  const survivingAfter = after.filter(({ key }) => byKey.has(key)).map(({ key }) => key);
+  const before = indexBlocks(source.blocks);
+  const after = indexBlocks(current.blocks);
+  const survivingBefore = [...before.keys()].filter((key) => after.has(key));
+  const survivingAfter = [...after.keys()].filter((key) => before.has(key));
   if (canonicalJson(survivingBefore) !== canonicalJson(survivingAfter)) return null;
 
   const bindings = readRootNamespaceBindings(serializedXml);
   const fragmentFor = (block: BodyBlock) => paragraphFragment({ xml: serializedXml, block, bindings });
   const splices: XmlSplice[] = [];
-  for (const block of before) {
-    if (!currentKeys.has(block.key)) splices.push({ start: block.start, end: block.end, newXml: "" });
+  for (const [key, block] of before) {
+    if (!after.has(key)) splices.push({ start: block.start, end: block.end, newXml: "" });
   }
   let pending: string[] = [];
-  for (const block of after) {
-    const original = byKey.get(block.key);
+  for (const [key, block] of after) {
+    const original = before.get(key);
     if (!original) {
       const id = paraIdAttribute(block.element)?.toUpperCase();
       if (!id || allSourceIds.has(id)) return null;

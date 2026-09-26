@@ -158,7 +158,7 @@ const CASES = [
       if (!target) panic("Expected paragraph to delete");
       return state.apply(state.tr.delete(target.position, target.position + target.node.nodeSize));
     },
-    expectedTexts: PARAGRAPH_TEXTS.filter((_, index) => index !== deletedIndex),
+    expectedTexts: PARAGRAPH_TEXTS.filter((_text, index) => index !== deletedIndex),
   })),
   {
     name: "delete all paragraphs to an empty document",
