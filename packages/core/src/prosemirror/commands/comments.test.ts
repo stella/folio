@@ -248,7 +248,7 @@ describe("bulk revision resolution cost", () => {
     if (!transaction) {
       return;
     }
-    expect(transaction.steps).toHaveLength(paragraphCount);
+    expect(transaction.steps).toHaveLength(1);
     expect(state.apply(transaction).doc.textContent).toBe("");
   });
 });

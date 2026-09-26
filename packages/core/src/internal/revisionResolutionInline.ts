@@ -1,7 +1,9 @@
 import { panic } from "better-result";
 import { Fragment, Slice, type Mark, type MarkType, type Node as PMNode } from "prosemirror-model";
-import type { Transaction } from "prosemirror-state";
-import { ReplaceStep, StepMap, type Mappable } from "prosemirror-transform";
+import { ReplaceStep, StepMap, type Step } from "prosemirror-transform";
+
+import { recordNodeResolution } from "./revisionResolutionEdits";
+import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
 import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
@@ -19,29 +21,26 @@ import {
   type RunStyleResolver,
 } from "../prosemirror/runStyleFormatting";
 
-export type HeadlessRevisionResolutionMode = "accept" | "reject";
+export type RevisionResolutionMode = "accept" | "reject";
 
-type HeadlessRange = {
+type RevisionRange = {
   from: number;
   to: number;
 };
 
-type HeadlessReplacementRange = HeadlessRange & {
+type RevisionReplacementRange = RevisionRange & {
   newSize: number;
+  slice?: Slice;
 };
 
-type HeadlessInlineContext = {
-  mode: HeadlessRevisionResolutionMode;
+type RevisionInlineContext = {
+  mode: RevisionResolutionMode;
   keepType: MarkType | undefined;
   removeType: MarkType | undefined;
-  replacementRanges: HeadlessReplacementRange[];
-  changedParagraphRanges: HeadlessRange[];
+  replacementRanges: RevisionReplacementRange[];
+  steps: Step[];
+  changedParagraphRanges: RevisionRange[];
   styleResolver: RunStyleResolver | null;
-};
-
-export type HeadlessInlineChangeTracking = {
-  ranges: readonly HeadlessRange[];
-  mappingFrom: number;
 };
 
 const EMPTY_PARAGRAPH_RUN_STYLE_CONTEXT: ParagraphRunStyleContext = {
@@ -67,41 +66,6 @@ const resolveParagraphRunStyleScope = (
   return scope.resolved;
 };
 
-/**
- * A synchronous headless replacement with the granular position map of the
- * inline deletions it applies. It must never enter history or collaboration;
- * map and serialization fail loudly if that invariant is broken.
- */
-class HeadlessInlineResolutionStep extends ReplaceStep {
-  private readonly positionMap: StepMap;
-
-  constructor(from: number, to: number, slice: Slice, positionMap: StepMap) {
-    super(from, to, slice);
-    this.positionMap = positionMap;
-  }
-
-  override getMap(): StepMap {
-    return this.positionMap;
-  }
-
-  override invert(doc: PMNode): ReplaceStep {
-    return new HeadlessInlineResolutionStep(
-      this.from,
-      this.from + this.slice.size,
-      doc.slice(this.from, this.to),
-      this.positionMap.invert(),
-    );
-  }
-
-  override map(_mapping: Mappable): never {
-    return panic("A headless revision-resolution step cannot be mapped");
-  }
-
-  override toJSON(): never {
-    return panic("A headless revision-resolution step cannot be serialized");
-  }
-}
-
 const marksEqual = (left: readonly Mark[], right: readonly Mark[]): boolean =>
   left.length === right.length &&
   left.every((mark, index) => {
@@ -123,7 +87,7 @@ const rebuildNode = (
 
 type ResolveInlineNodeOptions = {
   node: PMNode;
-  context: HeadlessInlineContext;
+  context: RevisionInlineContext;
   paragraphScope: ParagraphRunStyleScope | undefined;
 };
 
@@ -153,7 +117,19 @@ const resolveInlineNode = ({
     }
   }
 
-  if (context.removeType && node.marks.some((mark) => mark.type === context.removeType)) {
+  const nestedRemoval = node.marks.some(
+    (mark) =>
+      (mark.type.name === "insertion" || mark.type.name === "deletion") &&
+      expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors?.some((layer) =>
+        context.mode === "accept"
+          ? layer.type === "deletion" || layer.type === "moveFrom"
+          : layer.type === "insertion" || layer.type === "moveTo",
+      ),
+  );
+  if (
+    nestedRemoval ||
+    (context.removeType && node.marks.some((mark) => mark.type === context.removeType))
+  ) {
     return null;
   }
   if (context.keepType) {
@@ -164,22 +140,24 @@ const resolveInlineNode = ({
 
 type RejoinResolvedRunsOptions = {
   children: PMNode[];
+  positions: number[];
   resolvedBoundaries: ReadonlySet<number>;
   paragraphScope: ParagraphRunStyleScope | undefined;
-  context: HeadlessInlineContext;
+  context: RevisionInlineContext;
 };
 
 /**
- * The pieces a revision split off its run, one run again: the headless half of
+ * The pieces a revision split off its run, one run again: the tree-walk counterpart of
  * `rejoinRunsAt`, over the children of one inline container.
  */
 const rejoinResolvedRuns = ({
   children,
+  positions,
   resolvedBoundaries,
   paragraphScope,
   context,
 }: RejoinResolvedRunsOptions): void => {
-  for (const index of [...resolvedBoundaries].toSorted((left, right) => left - right)) {
+  for (const index of resolvedBoundaries) {
     const left = children[index - 1];
     const right = children[index];
     if (!left || !right) {
@@ -192,7 +170,14 @@ const rejoinResolvedRuns = ({
       styleResolver: context.styleResolver,
     });
     if (marks !== null) {
-      children[index] = right.mark(marks);
+      const joined = right.mark(marks);
+      recordNodeResolution({
+        before: right,
+        after: joined,
+        position: positions[index] ?? 0,
+        steps: context.steps,
+      });
+      children[index] = joined;
     }
   }
 };
@@ -200,7 +185,7 @@ const rejoinResolvedRuns = ({
 type ResolveInlineContentOptions = {
   node: PMNode;
   position: number;
-  context: HeadlessInlineContext;
+  context: RevisionInlineContext;
   inheritedParagraphScope?: ParagraphRunStyleScope;
 };
 
@@ -229,6 +214,7 @@ const resolveInlineContent = ({
       return null;
     }
     resolvedNode = resolved;
+    recordNodeResolution({ before: node, after: resolvedNode, position, steps: context.steps });
     if (resolvedNode.isLeaf) {
       return resolvedNode;
     }
@@ -249,6 +235,7 @@ const resolveInlineContent = ({
   }
 
   const children: PMNode[] = [];
+  const positions: number[] = [];
   /** Indices into `children` where resolved content began or ended. */
   const resolvedBoundaries = new Set<number>();
   const contentStart = resolvedNode.type.name === "doc" ? 0 : position + 1;
@@ -266,6 +253,7 @@ const resolveInlineContent = ({
     }
     if (resolved) {
       children.push(resolved);
+      positions.push(contentStart + offset);
       if (resolved !== child) {
         resolvedBoundaries.add(children.length);
       }
@@ -277,11 +265,18 @@ const resolveInlineContent = ({
     resolvedNode.type.name === INLINE_CONTENT_CONTROL_NODE_NAME
       ? (withoutResolvedEnclosures(resolvedNode, () => true) ?? resolvedNode.attrs)
       : resolvedNode.attrs;
+  if (resolvedAttrs !== resolvedNode.attrs)
+    recordNodeResolution({
+      before: resolvedNode,
+      after: rebuildNode(resolvedNode, resolvedAttrs, resolvedNode.content),
+      position,
+      steps: context.steps,
+    });
   if (!contentChanged && resolvedAttrs === resolvedNode.attrs) {
     return resolvedNode;
   }
   if (contentChanged && resolvedNode.inlineContent) {
-    rejoinResolvedRuns({ children, resolvedBoundaries, paragraphScope, context });
+    rejoinResolvedRuns({ children, positions, resolvedBoundaries, paragraphScope, context });
   }
   let resolvedContent = Fragment.fromArray(children);
   if (!resolvedNode.type.validContent(resolvedContent)) {
@@ -295,7 +290,7 @@ const resolveInlineContent = ({
     );
     if (!fitted || !resolvedNode.type.validContent(fitted.content)) {
       if (!resolvedNode.isInline) {
-        return panic(`Headless inline resolution invalidated ${resolvedNode.type.name} content`);
+        return panic(`Revision inline resolution invalidated ${resolvedNode.type.name} content`);
       }
       context.replacementRanges.splice(
         replacementRangeStart,
@@ -314,6 +309,7 @@ const resolveInlineContent = ({
         from: contentStart,
         to: contentStart + node.content.size,
         newSize: fitted.content.size,
+        slice: new Slice(fitted.content, 0, 0),
       },
     );
     resolvedContent = fitted.content;
@@ -327,9 +323,9 @@ const resolveInlineContent = ({
 };
 
 const coalesceReplacementRanges = (
-  replacementRanges: readonly HeadlessReplacementRange[],
-): HeadlessReplacementRange[] => {
-  const coalesced: HeadlessReplacementRange[] = [];
+  replacementRanges: readonly RevisionReplacementRange[],
+): RevisionReplacementRange[] => {
+  const coalesced: RevisionReplacementRange[] = [];
   for (const range of replacementRanges) {
     const previous = coalesced.at(-1);
     if (previous && previous.newSize === 0 && range.newSize === 0 && range.from <= previous.to) {
@@ -341,45 +337,40 @@ const coalesceReplacementRanges = (
   return coalesced;
 };
 
-type AppendHeadlessInlineResolutionOptions = {
-  tr: Transaction;
-  mode: HeadlessRevisionResolutionMode;
+type ResolveInlineRevisionsOptions = {
+  doc: PMNode;
+  mode: RevisionResolutionMode;
   keepType: MarkType | undefined;
   removeType: MarkType | undefined;
   styleResolver: RunStyleResolver | null;
 };
 
-export const appendHeadlessInlineResolution = ({
-  tr,
+export const resolveInlineRevisions = ({
+  doc,
   mode,
   keepType,
   removeType,
   styleResolver,
-}: AppendHeadlessInlineResolutionOptions): HeadlessInlineChangeTracking | null => {
-  const context: HeadlessInlineContext = {
+}: ResolveInlineRevisionsOptions) => {
+  const context: RevisionInlineContext = {
     mode,
     keepType,
     removeType,
     replacementRanges: [],
+    steps: [],
     changedParagraphRanges: [],
     styleResolver,
   };
-  const resolved = resolveInlineContent({ node: tr.doc, position: -1, context });
-  if (!resolved || resolved.eq(tr.doc)) {
+  const resolved = resolveInlineContent({ node: doc, position: -1, context });
+  if (!resolved || resolved.eq(doc)) {
     return null;
   }
   const replacementRanges = coalesceReplacementRanges(context.replacementRanges);
   const positionMap = new StepMap(
     replacementRanges.flatMap(({ from, to, newSize }) => [from, to - from, newSize]),
   );
-  const mappingFrom = tr.steps.length;
-  tr.step(
-    new HeadlessInlineResolutionStep(
-      0,
-      tr.doc.content.size,
-      new Slice(resolved.content, 0, 0),
-      positionMap,
-    ),
-  );
-  return { ranges: context.changedParagraphRanges, mappingFrom };
+  for (const { from, to, slice } of replacementRanges.toReversed()) {
+    context.steps.push(new ReplaceStep(from, to, slice ?? Slice.empty));
+  }
+  return { resolved, positionMap, ranges: context.changedParagraphRanges, steps: context.steps };
 };

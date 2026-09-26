@@ -13,6 +13,7 @@ import {
   hasUntrackedChanges,
   clearTrackedChanges,
   ignoreTrackedChanges,
+  markChangedParagraphRanges,
   ParagraphChangeTrackerExtension,
 } from "./ParagraphChangeTrackerExtension";
 
@@ -339,6 +340,25 @@ describe("ParagraphChangeTrackerExtension", () => {
   });
 
   describe("attribute-only edits", () => {
+    test("tracks a paragraph attribute step mapped through a later join", () => {
+      const state = createState([
+        { text: "before", paraId: "P1" },
+        { text: "middle", paraId: "P2" },
+        { text: "after", paraId: "P3" },
+      ]);
+      const secondPos = state.doc.child(0).nodeSize;
+      const thirdPos = secondPos + state.doc.child(1).nodeSize;
+      const tr = state.tr;
+      tr.setNodeAttribute(thirdPos, "pPrMark", null);
+      tr.setNodeAttribute(secondPos, "pPrMark", null);
+      tr.join(thirdPos);
+
+      const next = state.apply(tr);
+      expect(next.doc.childCount).toBe(2);
+      expect(getChangedParagraphIds(next).has("P2")).toBe(true);
+      expect(hasStructuralChanges(next)).toBe(true);
+    });
+
     // A blank paragraph has no text to mark, so its paragraph mark, its list
     // level and its style are the only things about it that CAN change. Those
     // arrive as `AttrStep`s, whose step map is empty: read the position off
@@ -375,6 +395,31 @@ describe("ParagraphChangeTrackerExtension", () => {
 
       expect(hasUntrackedChanges(next)).toBe(true);
     });
+  });
+
+  test("precise paragraph ranges replace a whole-document step map", () => {
+    const state = createState([
+      { text: "first", paraId: "P1" },
+      { text: "old", paraId: "P2" },
+      { text: "last", paraId: "P3" },
+    ]);
+    const replacement = createDoc(
+      { text: "first", paraId: "P1" },
+      { text: "new", paraId: "P2" },
+      { text: "last", paraId: "P3" },
+    );
+    const tr = state.tr.replaceWith(0, state.doc.content.size, replacement.content);
+    const secondFrom = replacement.child(0).nodeSize;
+    markChangedParagraphRanges(tr, {
+      ranges: [{ from: secondFrom, to: secondFrom + replacement.child(1).nodeSize }],
+      mappingFrom: tr.steps.length,
+      replacesStepMapAt: 0,
+    });
+
+    const next = state.apply(tr);
+    expect([...getChangedParagraphIds(next)]).toEqual(["P2"]);
+    expect(hasStructuralChanges(next)).toBe(false);
+    expect(hasUntrackedChanges(next)).toBe(false);
   });
 
   describe("accumulation across multiple transactions", () => {

@@ -109,8 +109,8 @@ above roughly a thousand blocks, and that is the first thing to profile.
    the total and is paid in full on both sides even when three paragraphs
    differ. The alignment needs block text and container coordinates, not a
    ProseMirror document.
-4. **Accepting all changes is O(changes x blocks).** Now the largest single
-   cost on a large structural comparison, and measured rather than guessed:
+4. ~~**Accepting all changes is O(changes x blocks).**~~ Done; see "Whole-story
+   resolution" below. Previously the largest single cost on a large structural comparison:
    of `prose/l/structural`'s 8.9s, the apply stage is 8.3s, and 3.3s of that
    is one `readReviewedStory({ view: "final" })` on the redlined base — of
    which 3.28s is `acceptAllChanges` and 0.05s is everything else. The same
@@ -604,3 +604,34 @@ All three are now closed.
 Everything else passes every invariant: the round-trip algebra in both
 directions, self-comparison, and byte determinism, across all nine classes at
 both sizes.
+
+## Whole-story resolution
+
+Accept-all and reject-all now rebuild the story in fixed tree passes and apply
+one serializable step. Paragraph, run, row, and cell revisions share that path
+in the editor and headless readers. Position maps and dirty-paragraph lookups
+are indexed; applying the transaction no longer scans the document per change.
+Individual, ID, and range commands retain their granular steps. Transported or
+rebased steps replay those granular edits; local application and undo reuse the
+already-built document.
+
+Tree construction uses fixed linear passes; indexed mapping and table-width
+removal add logarithmic factors. The per-change fragment copies are gone.
+
+Timing measurements are pending a serialized run. Earlier samples overlapped
+other benchmark processes under extreme host load and are discarded; they do
+not support performance claims. The microbenchmark remains available at
+`packages/core/scripts/benchmark-resolve-all.ts` and measures the editor command
+plus transaction application with history and paragraph tracking enabled.
+
+The focused suite passes 169 tests. Its equivalence test exercises all 69
+applicable small-corpus configurations, including body, headers, footers,
+footnotes, and endnotes. It compares resolved documents and serialized-step
+replay with the retained range commands. Focused properties cover tracker state,
+selection, undo, paragraph joins, table topology, required-content fitting, and
+nested revisions.
+
+Paired structural and heavy cases retain identical before/after digests and pass
+the available invariants. The full corrected-baseline digest comparison remains
+incomplete; note, graphic, field, and bookmark defects are isolated in separate
+fixes. The local .NET schema validator was unavailable.

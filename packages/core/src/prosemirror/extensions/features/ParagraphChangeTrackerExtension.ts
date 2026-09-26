@@ -18,6 +18,7 @@ import {
 } from "prosemirror-transform";
 import type { Mapping } from "prosemirror-transform";
 
+import { indexedPositionMap } from "../../../internal/indexedPositionMap";
 import type {
   RemovedSectionReference,
   TrackedSectionEndpointRemoval,
@@ -40,6 +41,7 @@ const SECTION_ENDPOINT_REMOVAL_META = "folioSectionEndpointRemoval";
 type ChangedParagraphRangeBatch = {
   ranges: readonly { from: number; to: number }[];
   mappingFrom: number;
+  replacesStepMapAt?: number;
 };
 
 type ChangedParagraphRangesMeta = {
@@ -187,91 +189,184 @@ type AffectedParagraphs = {
   hasUntracked: boolean;
 };
 
-/**
- * Collect paraIds of all paragraphs that overlap with the given range
- */
-function collectAffectedParaIds(
+type AffectedParagraphRange = {
+  from: number;
+  to: number;
+  kind: "ordinary" | "mark-like";
+};
+
+/** Collect all affected paragraphs with one walk, including mark-step point fallbacks. */
+const collectAffectedParaIds = (
   doc: EditorState["doc"],
-  from: number,
-  to: number,
-): AffectedParagraphs {
+  ranges: readonly AffectedParagraphRange[],
+): AffectedParagraphs => {
   const ids = new Set<string>();
   const positions = new Set<number>();
   let hasUntracked = false;
-
-  doc.nodesBetween(from, to, (node, pos) => {
-    if (node.type.name === "paragraph") {
-      positions.add(pos);
-      const paraId = node.attrs["paraId"];
-      if (isUsableParaId(paraId)) {
-        ids.add(paraId);
-      } else {
-        hasUntracked = true;
-      }
+  const record = (node: PMNode, position: number): void => {
+    positions.add(position);
+    const paraId = node.attrs["paraId"];
+    if (isUsableParaId(paraId)) {
+      ids.add(paraId);
+    } else {
+      hasUntracked = true;
     }
+  };
+  const intervals = ranges
+    .map(({ from, to, kind }) => ({
+      from: Math.max(0, Math.min(from, doc.content.size)),
+      to: Math.max(
+        0,
+        Math.min(kind === "mark-like" && to === from ? to + 1 : to, doc.content.size),
+      ),
+    }))
+    .filter(({ from, to }) => to > from)
+    .sort((left, right) => left.from - right.from || left.to - right.to);
+  const merged: { from: number; to: number }[] = [];
+  for (const interval of intervals) {
+    const previous = merged.at(-1);
+    if (previous && interval.from <= previous.to) {
+      previous.to = Math.max(previous.to, interval.to);
+    } else {
+      merged.push({ ...interval });
+    }
+  }
+
+  const paragraphs: { from: number; to: number; node: PMNode }[] = [];
+  let intervalIndex = 0;
+  doc.descendants((node, from) => {
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+    const to = from + node.nodeSize;
+    paragraphs.push({ from, to, node });
+    while (merged.at(intervalIndex) && merged.at(intervalIndex)!.to <= from) {
+      intervalIndex++;
+    }
+    const interval = merged.at(intervalIndex);
+    if (interval && interval.from < to && interval.to > from) {
+      record(node, from);
+    }
+    return false;
   });
 
+  const paragraphAfter = (position: number) => {
+    let low = 0;
+    let high = paragraphs.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      const candidate = paragraphs.at(middle);
+      if (candidate && candidate.to <= position) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return paragraphs.at(low);
+  };
+
+  for (const range of ranges) {
+    if (range.kind === "ordinary") {
+      if (range.from === range.to) {
+        const paragraph = paragraphAfter(range.from);
+        if (paragraph && paragraph.from < range.from && paragraph.to > range.from) {
+          record(paragraph.node, paragraph.from);
+        }
+      }
+      continue;
+    }
+    const from = Math.min(range.from, range.to);
+    const to = Math.max(range.from, range.to, from + 1);
+    const overlapping = paragraphAfter(from);
+    if (overlapping && overlapping.from < to) {
+      continue;
+    }
+    if (from < 0 || from > doc.content.size) {
+      continue;
+    }
+    const $pos = doc.resolve(from);
+    for (let depth = $pos.depth; depth >= 0; depth--) {
+      const paragraph = $pos.node(depth);
+      if (paragraph.type.name !== "paragraph") {
+        continue;
+      }
+      record(paragraph, $pos.before(depth));
+      break;
+    }
+  }
+
   return { ids, positions, hasUntracked };
-}
-
-/**
- * AddMarkStep / RemoveMarkStep inherit Step.getMap() → StepMap.empty, so we use
- * their from/to to find affected paragraphs.
- * Node mark steps use a single position before the target node.
- */
-function collectAffectedParaIdsFromMarkLikeStep(
-  doc: EditorState["doc"],
-  from: number,
-  to: number,
-): AffectedParagraphs {
-  const lo = Math.min(from, to);
-  const hi = Math.max(from, to);
-  const end = hi > lo ? hi : lo + 1;
-  const primary = collectAffectedParaIds(doc, lo, end);
-  if (primary.ids.size > 0 || primary.hasUntracked) {
-    return primary;
-  }
-  // Collapsed range (e.g. empty paragraph): walk up to enclosing paragraph.
-  const $p = doc.resolve(lo);
-  for (let depth = $p.depth; depth > 0; depth--) {
-    const node = $p.node(depth);
-    if (node.type.name === "paragraph") {
-      const paraId = node.attrs["paraId"];
-      return {
-        ids: new Set(isUsableParaId(paraId) ? [paraId] : []),
-        positions: new Set([$p.before(depth)]),
-        hasUntracked: !isUsableParaId(paraId),
-      };
-    }
-  }
-  return { ids: new Set(), positions: new Set(), hasUntracked: false };
-}
-
-/** Map an edited paragraph's interior so markup replacement retains its ownership. */
-const mapParagraphPosition = (tr: Transaction, position: number): number | null => {
-  const mapped = tr.mapping.mapResult(position + 1, 1);
-  if (mapped.deletedAcross) {
-    return null;
-  }
-  const $position = tr.doc.resolve(mapped.pos);
-  for (let depth = $position.depth; depth > 0; depth--) {
-    if ($position.node(depth).type.name === "paragraph") {
-      return $position.before(depth);
-    }
-  }
-  return null;
 };
 
-const mapAffectedParagraphPositions = (
-  tr: Transaction,
-  positions: ReadonlySet<number>,
-): Set<number> => {
+type PositionMap = (position: number, assoc: 1 | -1) => { pos: number; deletedAcross: boolean };
+
+const positionMapFor = (tr: Transaction): PositionMap => {
+  const map = tr.mapping.maps.at(0);
+  if (tr.mapping.maps.length === 1 && map) {
+    return indexedPositionMap(map).mapResult;
+  }
+  return (position, assoc) => tr.mapping.mapResult(position, assoc);
+};
+
+type ParagraphLookup = (position: number) => { node: PMNode; from: number; to: number } | undefined;
+
+/** Build lazily: previous dirty owners and unidentified sources share one index. */
+const paragraphLookup = (doc: PMNode): ParagraphLookup => {
+  let paragraphs: { node: PMNode; from: number; to: number }[] | null = null;
+  return (position) => {
+    if (paragraphs === null) {
+      const indexed: { node: PMNode; from: number; to: number }[] = [];
+      doc.descendants((node, from) => {
+        if (node.type.name !== "paragraph") return true;
+        indexed.push({ node, from, to: from + node.nodeSize });
+        return false;
+      });
+      paragraphs = indexed;
+    }
+    let low = 0;
+    let high = paragraphs.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      const candidate = paragraphs.at(middle);
+      if (candidate && candidate.to <= position) low = middle + 1;
+      else high = middle;
+    }
+    const paragraph = paragraphs.at(low);
+    return paragraph && paragraph.from <= position ? paragraph : undefined;
+  };
+};
+
+type MapParagraphPositionOptions = {
+  position: number;
+  mapPosition: PositionMap;
+  findParagraph: ParagraphLookup;
+};
+/** Map an edited paragraph's interior so markup replacement retains its ownership. */
+const mapParagraphPosition = ({
+  position,
+  mapPosition,
+  findParagraph,
+}: MapParagraphPositionOptions): number | null => {
+  const mapped = mapPosition(position + 1, 1);
+  if (mapped.deletedAcross) return null;
+  const paragraph = findParagraph(mapped.pos);
+  return paragraph && paragraph.from < mapped.pos ? paragraph.from : null;
+};
+
+type MapAffectedParagraphPositionsOptions = {
+  positions: ReadonlySet<number>;
+  mapPosition: PositionMap;
+  findParagraph: ParagraphLookup;
+};
+const mapAffectedParagraphPositions = ({
+  positions,
+  mapPosition,
+  findParagraph,
+}: MapAffectedParagraphPositionsOptions): Set<number> => {
   const mappedPositions = new Set<number>();
   for (const position of positions) {
-    const mapped = mapParagraphPosition(tr, position);
-    if (mapped !== null) {
-      mappedPositions.add(mapped);
-    }
+    const mapped = mapParagraphPosition({ position, mapPosition, findParagraph });
+    if (mapped !== null) mappedPositions.add(mapped);
   }
   return mappedPositions;
 };
@@ -324,21 +419,23 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           };
         }
 
+        const findParagraph = paragraphLookup(tr.doc);
         if (meta === IGNORE_META) {
           if (!tr.docChanged) {
             return prevState;
           }
           const counts = countDocumentStructure(tr.doc);
-          const affectedParagraphPositions = mapAffectedParagraphPositions(
-            tr,
-            prevState.affectedParagraphPositions,
-          );
+          const affectedParagraphPositions = mapAffectedParagraphPositions({
+            positions: prevState.affectedParagraphPositions,
+            mapPosition: positionMapFor(tr),
+            findParagraph,
+          });
           // Rebuild from owners: a pasted duplicate's pre-allocation ID must
           // not mark its untouched source paragraph as edited.
           const changedParaIds = new Set<string>();
           let unresolvedChanges = prevState.hasUntrackedSourceChanges;
           for (const position of affectedParagraphPositions) {
-            const paraId = tr.doc.nodeAt(position)?.attrs["paraId"];
+            const paraId = findParagraph(position)?.node.attrs["paraId"];
             if (isUsableParaId(paraId)) {
               changedParaIds.add(paraId);
             } else {
@@ -411,12 +508,15 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           }
         }
 
+        const positionMap = positionMapFor(tr);
+
         // Clone previous state
         const newState: InternalParagraphChangeTrackerState = {
-          affectedParagraphPositions: mapAffectedParagraphPositions(
-            tr,
-            prevState.affectedParagraphPositions,
-          ),
+          affectedParagraphPositions: mapAffectedParagraphPositions({
+            positions: prevState.affectedParagraphPositions,
+            mapPosition: positionMap,
+            findParagraph,
+          }),
           hasUntrackedSourceChanges: prevState.hasUntrackedSourceChanges,
           blockStructureFingerprint: counts.blockStructureFingerprint,
           changedParaIds: new Set(prevState.changedParaIds),
@@ -428,8 +528,13 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           sectionEndpointRemoval,
         };
 
+        const affectedRanges: AffectedParagraphRange[] = [];
+        const replacedStepMaps = new Set<number>();
         if (isChangedParagraphRangesMeta(changedParagraphRangesMeta)) {
           for (const batch of changedParagraphRangesMeta.batches) {
+            if (batch.replacesStepMapAt !== undefined) {
+              replacedStepMaps.add(batch.replacesStepMapAt);
+            }
             const remap = tr.mapping.slice(batch.mappingFrom);
             for (const range of batch.ranges) {
               const from = mapStepPosition(remap, range.from, 1);
@@ -437,20 +542,7 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
               if (to <= from) {
                 continue;
               }
-              const { ids, positions, hasUntracked } = collectAffectedParaIdsFromMarkLikeStep(
-                tr.doc,
-                from,
-                to,
-              );
-              for (const position of positions) {
-                newState.affectedParagraphPositions.add(position);
-              }
-              for (const id of ids) {
-                newState.changedParaIds.add(id);
-              }
-              if (hasUntracked) {
-                newState.hasUntrackedChanges = true;
-              }
+              affectedRanges.push({ from, to, kind: "mark-like" });
             }
           }
         }
@@ -465,6 +557,9 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
         // valid in the document state where that step ran, so remap them through
         // subsequent steps before reading from the final transaction document.
         for (let stepIndex = 0; stepIndex < tr.steps.length; stepIndex++) {
+          if (replacedStepMaps.has(stepIndex)) {
+            continue;
+          }
           // SAFETY: loop condition keeps stepIndex within tr.steps bounds.
           const step = tr.steps[stepIndex]!;
           const remap = tr.mapping.slice(stepIndex + 1);
@@ -475,28 +570,10 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
             if (to <= from) {
               continue;
             }
-            const { ids, positions, hasUntracked } = collectAffectedParaIdsFromMarkLikeStep(
-              tr.doc,
-              from,
-              to,
-            );
-            for (const position of positions) {
-              newState.affectedParagraphPositions.add(position);
-            }
-            for (const id of ids) {
-              newState.changedParaIds.add(id);
-            }
-            if (hasUntracked) {
-              newState.hasUntrackedChanges = true;
-            }
+            affectedRanges.push({ from, to, kind: "mark-like" });
             continue;
           }
 
-          // `AttrStep` and the node-mark steps carry a position and an EMPTY
-          // step map, so the generic `stepMap.forEach` below never visits
-          // them. Reading their position directly is what keeps an
-          // attribute-only edit — a paragraph mark on a blank paragraph, a
-          // list level, a style id — from saving as the original XML.
           if (
             step instanceof AddNodeMarkStep ||
             step instanceof RemoveNodeMarkStep ||
@@ -507,17 +584,7 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
             if (!node) {
               continue;
             }
-            const end = pos + node.nodeSize;
-            const { ids, positions, hasUntracked } = collectAffectedParaIds(tr.doc, pos, end);
-            for (const position of positions) {
-              newState.affectedParagraphPositions.add(position);
-            }
-            for (const id of ids) {
-              newState.changedParaIds.add(id);
-            }
-            if (hasUntracked) {
-              newState.hasUntrackedChanges = true;
-            }
+            affectedRanges.push({ from: pos, to: pos + node.nodeSize, kind: "ordinary" });
             continue;
           }
 
@@ -529,17 +596,19 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
             if (to < from) {
               return;
             }
-            const { ids, positions, hasUntracked } = collectAffectedParaIds(tr.doc, from, to);
-            for (const position of positions) {
-              newState.affectedParagraphPositions.add(position);
-            }
-            for (const id of ids) {
-              newState.changedParaIds.add(id);
-            }
-            if (hasUntracked) {
-              newState.hasUntrackedChanges = true;
-            }
+            affectedRanges.push({ from, to, kind: "ordinary" });
           });
+        }
+
+        const { ids, positions, hasUntracked } = collectAffectedParaIds(tr.doc, affectedRanges);
+        for (const position of positions) {
+          newState.affectedParagraphPositions.add(position);
+        }
+        for (const id of ids) {
+          newState.changedParaIds.add(id);
+        }
+        if (hasUntracked) {
+          newState.hasUntrackedChanges = true;
         }
 
         // A missing ID introduced by this transaction can be repaired by the
@@ -554,7 +623,11 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
               return true;
             }
             if (!isUsableParaId(node.attrs["paraId"])) {
-              const mapped = mapParagraphPosition(tr, position);
+              const mapped = mapParagraphPosition({
+                position,
+                mapPosition: positionMap,
+                findParagraph,
+              });
               if (mapped === null || newState.affectedParagraphPositions.has(mapped)) {
                 newState.hasUntrackedSourceChanges = true;
                 newState.hasUntrackedChanges = true;
@@ -656,6 +729,7 @@ export function markStructuralChange(tr: Transaction): Transaction {
 type MarkChangedParagraphRangesOptions = {
   ranges: readonly { from: number; to: number }[];
   mappingFrom: number;
+  replacesStepMapAt?: number;
 };
 
 /** Record mark-only paragraph changes whose replacement step has a granular map. */
