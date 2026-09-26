@@ -193,7 +193,10 @@ const sectionBlocks = (
 
 const originOf = (block: FolioContentBlock): string => block.id.slice(block.id.indexOf("|") + 1);
 
-/** Every pairing a comparison made, as sorted `base -> revised` origins; `-` marks no partner. */
+/**
+ * Every pairing a comparison made, as sorted `base -> revised` origins, or
+ * `base => revised` for a move; `-` marks no partner.
+ */
 const pairingsOf = (list: readonly FolioContentComparisonEvent[]): string[] => {
   const movedFrom = new Map<string, FolioContentBlock>();
   for (const event of list) {
@@ -223,7 +226,7 @@ const pairingsOf = (list: readonly FolioContentComparisonEvent[]): string[] => {
         case "movedTo": {
           const from = movedFrom.get(event.baseBlockId);
           return event.revisedBlocks.map(
-            (block) => `${from ? originOf(from) : "-"} -> ${originOf(block)}`,
+            (block) => `${from ? originOf(from) : "-"} => ${originOf(block)}`,
           );
         }
         default: {
@@ -430,5 +433,31 @@ describe("content comparison pairing inside any gap", () => {
         "displayLabel",
       ),
     ).toEqual(["1|1 -> -", "1|2 -> 1|2", "1|a -> 1|a", "1|heading -> 1|heading"]);
+  });
+
+  test("wording unique within its section anchors there even when another section repeats it", () => {
+    // Labels follow the items, so the unchanged item's text stays exact in every mode.
+    const labelled = (tag: string, suffix = ""): Item => ({
+      origin: tag,
+      text: `${itemText(tag)}${suffix}`,
+      label: `${tag})`,
+    });
+    const [a, b, c] = [labelled("a"), labelled("b"), labelled("c")];
+    const reworded = [labelled("a", REWORDED), labelled("b", REWORDED)];
+    for (const mode of LABEL_MODES) {
+      const alone = compareSections(
+        [section("1", [c, a, b])],
+        [section("1", [...reworded, c])],
+        mode,
+      );
+      expect(alone).toContain("1|c -> 1|c");
+      expect(
+        compareSections(
+          [section("1", [c, a, b]), section("2", [c])],
+          [section("1", [...reworded, c]), section("2", [c])],
+          mode,
+        ).filter((pairing) => !pairing.includes("2|")),
+      ).toEqual(alone);
+    }
   });
 });

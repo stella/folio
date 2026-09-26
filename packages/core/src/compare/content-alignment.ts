@@ -549,6 +549,59 @@ const pairByUniqueExactText = <Block extends FolioContentBlock>({
   return pairs.toReversed();
 };
 
+type PairByNestedUniqueExactTextOptions<Block extends FolioContentBlock> =
+  PairByUniqueExactTextOptions<Block> & { workSession: FolioContentAlignmentWorkSession };
+
+/**
+ * Unique exact text anchors, then again inside every sub-gap they leave:
+ * wording repeated elsewhere in a document is still identity evidence within
+ * the one gap where it is unique, so a section's pairing does not depend on
+ * whether a neighbouring section happens to repeat it. Each nested pass is
+ * charged to the structural allowance; a refused pass leaves its sub-gap to
+ * the similarity pairing.
+ */
+const pairByNestedUniqueExactText = <Block extends FolioContentBlock>({
+  workSession,
+  ...gap
+}: PairByNestedUniqueExactTextOptions<Block>): FolioContentBlockPair[] => {
+  const anchors: FolioContentBlockPair[] = [];
+  const pending = [gap];
+  for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+    const found = pairByUniqueExactText(current);
+    if (found.length === 0) {
+      continue;
+    }
+    anchors.push(...found);
+    let baseFrom = current.baseFrom;
+    let revisedFrom = current.revisedFrom;
+    for (const anchor of [
+      ...found,
+      { baseIndex: current.baseTo, revisedIndex: current.revisedTo },
+    ]) {
+      const size = anchor.baseIndex - baseFrom + (anchor.revisedIndex - revisedFrom);
+      if (
+        anchor.baseIndex > baseFrom &&
+        anchor.revisedIndex > revisedFrom &&
+        size <= workSession.remainingStructuralTokenLookups
+      ) {
+        workSession.remainingStructuralTokenLookups -= size;
+        pending.push({
+          ...current,
+          baseFrom,
+          baseTo: anchor.baseIndex,
+          revisedFrom,
+          revisedTo: anchor.revisedIndex,
+        });
+      }
+      baseFrom = anchor.baseIndex + 1;
+      revisedFrom = anchor.revisedIndex + 1;
+    }
+  }
+  return anchors.toSorted(
+    (left, right) => left.baseIndex - right.baseIndex || left.revisedIndex - right.revisedIndex,
+  );
+};
+
 type PairsInAnchorGapsOptions = {
   baseLength: number;
   revisedLength: number;
@@ -860,7 +913,7 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
     revisedLength: prepared.revised.length,
     anchors: stableIdAnchors,
     pairGap: (baseFrom, baseTo, revisedFrom, revisedTo) =>
-      pairByUniqueExactText({
+      pairByNestedUniqueExactText({
         base: prepared.base,
         revised: prepared.revised,
         baseFrom,
@@ -868,6 +921,7 @@ const alignFolioContentBlocksInScope = <Block extends FolioContentBlock>(
         revisedFrom,
         revisedTo,
         canPair,
+        workSession,
       }),
   });
   const exactAndStableAnchors = [...stableIdAnchors, ...exactTextAnchors].toSorted(
