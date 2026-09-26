@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Command line and stdio MCP server for reading, reviewing, and redlining .docx files with folio: tracked-change edits, comments, and comparisons written atomically with version preconditions.",
   "keywords": [
     "cli",

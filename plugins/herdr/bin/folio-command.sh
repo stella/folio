@@ -10,5 +10,5 @@ if [[ -n "${FOLIO_BIN:-}" ]]; then
 elif command -v folio >/dev/null 2>&1; then
   FOLIO=(folio)
 else
-  FOLIO=(npx -y @stll/folio-cli@0.0.0)
+  FOLIO=(npx -y @stll/folio-cli@0.1.0)
 fi
