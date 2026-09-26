@@ -5,6 +5,7 @@ import type { FolioRevisionStamp } from "../ai-edits/apply";
 import { buildCleanBlockText, type BuildCleanBlockTextOptions } from "../ai-edits/clean-text";
 import { sourceDocumentOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
+import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
 import { runFormattingInlineAtomResultText } from "../prosemirror/runFormattingInlineCarriers";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -155,6 +156,18 @@ const CONVERSION_LOCAL_ATTRS: Readonly<Record<string, readonly string[]>> = {
 };
 
 const documentFactAttrs = (node: PMNode): Record<string, unknown> => {
+  if (node.type.name === "image") {
+    return Object.fromEntries(
+      Object.entries(node.attrs)
+        .filter(([name]) => name !== "docPrId")
+        .map(([name, value]) => [
+          name,
+          name === "_docxRawXml" && typeof value === "string"
+            ? drawingXmlWithoutIdentity(value)
+            : value,
+        ]),
+    );
+  }
   const local = CONVERSION_LOCAL_ATTRS[node.type.name];
   if (!local) return node.attrs;
   return Object.fromEntries(Object.entries(node.attrs).filter(([name]) => !local.includes(name)));
