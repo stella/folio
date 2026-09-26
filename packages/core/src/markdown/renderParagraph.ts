@@ -5,12 +5,15 @@
  * `IntenseQuote` styles become blockquotes. Ported from eigenpal/docx-editor
  * PR #595.
  *
+ * A numbered heading keeps its number after the hashes (`## 1. Scope`).
+ *
  * Which paragraphs those are is `builtInStyles`' decision, not this file's: the
  * id `Nadpis1` and the id `Heading1` are the same heading, and `ClauseHeading1`
  * is not one at all.
  */
 
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
+import { bulletMarkerFontName, convertBulletToUnicode } from "../docx/bulletMarkers";
 import { resolveListTemplate } from "../prosemirror/listMarker";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { renderParagraphInline } from "./renderRuns";
@@ -31,16 +34,17 @@ export function renderParagraph(
   const inline = renderParagraphInline(ctx, pkg, para.content, para.paraId);
   const styleId = para.formatting?.styleId;
 
-  const headingLevel = resolveHeadingLevel(
-    { outlineLevel: para.formatting?.outlineLevel, styleId },
-    ctx.builtInStyles,
-  );
+  const headingLevel = markdownHeadingLevel(ctx, para);
   if (headingLevel !== undefined) {
+    // A numbered heading (`1. Scope`, through its style's `w:numPr` or its
+    // own) keeps its number, and advances the counters the list items after
+    // it continue from, so the reader sees the number the document shows.
+    const number = visibleListMarker(ctx, para.listRendering);
     if (!inline) {
       return ""; // Drop empty headings — `#` alone is just literal text.
     }
     const hashes = "#".repeat(Math.min(MAX_MARKDOWN_HEADING_LEVEL, headingLevel + 1));
-    return `${hashes} ${inline}`;
+    return number ? `${hashes} ${number} ${inline}` : `${hashes} ${inline}`;
   }
 
   // A numbering level with `w:vanish` keeps `listRendering` but hides the
@@ -57,6 +61,44 @@ export function renderParagraph(
   }
 
   return escapeLeadingBlockMarker(inline);
+}
+
+/**
+ * Whether the paragraph renders as a Markdown list item. A numbered heading
+ * renders as a heading, and a hidden-marker (`w:vanish`) level as prose.
+ */
+export function isMarkdownListItem(ctx: RenderContext, para: Paragraph): boolean {
+  return (
+    !!para.listRendering &&
+    !para.listRendering.markerHidden &&
+    markdownHeadingLevel(ctx, para) === undefined
+  );
+}
+
+/** The paragraph's 0-based heading level, as `builtInStyles` classifies it. */
+function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | undefined {
+  return resolveHeadingLevel(
+    { outlineLevel: para.formatting?.outlineLevel, styleId: para.formatting?.styleId },
+    ctx.builtInStyles,
+  );
+}
+
+/**
+ * The marker a numbered heading shows, or `undefined` when it shows none (not
+ * numbered, or its level hides the marker with `w:vanish`). A bullet renders
+ * as its Unicode glyph: a heading has no Markdown bullet syntax to borrow.
+ */
+function visibleListMarker(
+  ctx: RenderContext,
+  list: ListRendering | undefined,
+): string | undefined {
+  if (!list || list.markerHidden) {
+    return undefined;
+  }
+  const marker = list.isBullet
+    ? convertBulletToUnicode(list.marker, bulletMarkerFontName(list.markerFormatting)).trim()
+    : resolveMarker(ctx, list);
+  return marker || undefined;
 }
 
 /**
@@ -84,10 +126,15 @@ function renderListItem(ctx: RenderContext, list: ListRendering, inline: string)
   if (list.isBullet) {
     return `${indent}- ${inline}`.trimEnd();
   }
-  // Preserve Word's exact marker (e.g. "1.", "a)", "i."). Strip trailing
-  // whitespace from the marker but keep its punctuation intact.
-  const marker = list.marker.includes("%") ? resolveTemplateMarker(ctx, list) : list.marker.trim();
-  return `${indent}${marker} ${inline}`.trimEnd();
+  return `${indent}${resolveMarker(ctx, list)} ${inline}`.trimEnd();
+}
+
+/**
+ * Preserve the document's exact marker (e.g. "1.", "a)", "i."). Strip trailing
+ * whitespace from the marker but keep its punctuation intact.
+ */
+function resolveMarker(ctx: RenderContext, list: ListRendering): string {
+  return list.marker.includes("%") ? resolveTemplateMarker(ctx, list) : list.marker.trim();
 }
 
 /**

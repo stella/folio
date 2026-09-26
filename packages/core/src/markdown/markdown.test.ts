@@ -195,6 +195,40 @@ describe("toMarkdown — block structure", () => {
     const hidden: ListRendering = { ...list(0, true, "•"), markerHidden: true };
     expect(md([para([run("text")], { listRendering: hidden })])).toBe("text");
   });
+
+  // A numbered heading is how most numbered contracts number their clauses;
+  // the heading used to return before its list rendering was looked at.
+  test("a numbered heading keeps its number, counted with the list items around it", () => {
+    const numbered = (level: number, template: string): ListRendering => ({
+      ...list(level, false, template),
+      levelNumFmts: Array.from({ length: level + 1 }, () => "decimal" as const),
+    });
+    const out = md([
+      para([run("Scope")], { styleId: "Heading2", listRendering: numbered(0, "%1.") }),
+      para([run("Definitions")], { styleId: "Heading3", listRendering: numbered(1, "%1.%2.") }),
+      para([run("an item")], { listRendering: numbered(1, "%1.%2.") }),
+      para([run("another")], { listRendering: numbered(1, "%1.%2.") }),
+      para([run("Payment")], { styleId: "Heading2", listRendering: numbered(0, "%1.") }),
+    ]);
+    // The heading is its own block: it neither joins nor swallows the blank
+    // line around the list that follows it.
+    expect(out).toBe(
+      "## 1. Scope\n\n### 1.1. Definitions\n\n  1.2. an item\n  1.3. another\n\n## 2. Payment",
+    );
+  });
+
+  test("a numbered heading whose level hides its marker (w:vanish) stays unnumbered", () => {
+    const hidden: ListRendering = { ...list(0, false, "%1."), markerHidden: true };
+    expect(md([para([run("Scope")], { styleId: "Heading2", listRendering: hidden })])).toBe(
+      "## Scope",
+    );
+  });
+
+  test("a bulleted heading shows its glyph", () => {
+    expect(
+      md([para([run("Note")], { styleId: "Heading2", listRendering: list(0, true, "•") })]),
+    ).toBe("## • Note");
+  });
 });
 
 describe("toMarkdown — inline marks", () => {

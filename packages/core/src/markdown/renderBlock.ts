@@ -8,7 +8,7 @@ import { panic } from "better-result";
 
 import type { BlockContent, DocxPackage } from "../types/document";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
-import { renderParagraph } from "./renderParagraph";
+import { isMarkdownListItem, renderParagraph } from "./renderParagraph";
 import { renderTable } from "./renderTable";
 import type { RenderContext } from "./types";
 
@@ -60,10 +60,10 @@ export function renderBlocks(
   for (const block of ordered) {
     switch (block.type) {
       case "paragraph": {
-        // A hidden-marker (`w:vanish`) list paragraph renders as plain prose, so
-        // treat it as prose here too (it must not suppress the blank line after a
-        // real list item).
-        const isListItem = !!block.listRendering && !block.listRendering.markerHidden;
+        // A hidden-marker (`w:vanish`) list paragraph renders as plain prose,
+        // and a numbered heading as a heading, so neither joins a run of list
+        // items (neither may suppress the blank line around one).
+        const isListItem = isMarkdownListItem(ctx, block);
         const md = renderParagraph(ctx, pkg, block);
         if (!md) {
           prevWasListItem = false;
