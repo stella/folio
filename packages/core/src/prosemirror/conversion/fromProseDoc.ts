@@ -846,12 +846,47 @@ function stripSuggestedInlineMarks(
   return next;
 }
 
+/** A paragraph's attrs without its suggested property changes, or `null` when it has none. */
+function stripSuggestedParagraphPropertyChanges(node: PMNode): Record<string, unknown> | null {
+  const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
+  if (!Array.isArray(propertyChanges)) {
+    return null;
+  }
+  if (!propertyChanges.some(({ info }) => info.provenance === "suggested")) {
+    return null;
+  }
+  const removal = removeParagraphPropertyChanges(
+    propertyChanges,
+    ({ info }) => info.provenance === "suggested",
+  );
+  if (removal.type === "unchanged") {
+    return null;
+  }
+  const nextAttrs: Record<string, unknown> = {
+    ...node.attrs,
+    _propertyChanges: removal.remaining.length > 0 ? removal.remaining : null,
+  };
+  // Only a trailing run of suggestions determines the live pPr. Suggested
+  // changes before a retained tracked entry instead rewrite that entry's
+  // previous snapshot above, so removing the proposal cannot overwrite the
+  // later authored state.
+  if (removal.type === "restore-previous") {
+    Object.assign(nextAttrs, paragraphRejectAttrPatch(removal.previousFormatting));
+    nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
+      removal.previousFormatting,
+      nextAttrs["_originalFormatting"],
+    );
+  }
+  return nextAttrs;
+}
+
 /**
  * Compute the node attrs a block/structural node keeps once its suggested
  * revision markers are neutralized. Returns `null` when nothing changes.
  *
- * - a suggested `trDel` / `cellMarker` (insertion or deletion) is cleared so
- *   the row/cell serializes as though the proposed change never happened;
+ * - a suggested `trDel` / `cellMarker` (insertion or deletion) or paragraph
+ *   mark revision (`pPrMark`) is cleared so the node serializes as though the
+ *   proposed change never happened;
  *   merge markers never carry suggestion provenance (structurally excluded);
  * - suggested INSERT markers are handled by the caller, which drops the whole
  *   node instead of clearing an attr.
@@ -861,37 +896,14 @@ function stripSuggestedInlineMarks(
 function stripSuggestedNodeAttrs(node: PMNode): Record<string, unknown> | null {
   const name = node.type.name;
   if (name === "paragraph") {
-    const attrs = expectParagraphAttrs(node);
-    const propertyChanges = attrs._propertyChanges;
-    if (!Array.isArray(propertyChanges)) {
-      return null;
+    const stripped = stripSuggestedParagraphPropertyChanges(node);
+    // A suggested paragraph-mark revision (the join a suggested block
+    // deletion proposes) is a proposal like any other: the paragraph keeps
+    // its break until the suggestion is accepted.
+    if (expectParagraphAttrs(node).pPrMark?.info.provenance !== "suggested") {
+      return stripped;
     }
-    if (!propertyChanges.some(({ info }) => info.provenance === "suggested")) {
-      return null;
-    }
-    const removal = removeParagraphPropertyChanges(
-      propertyChanges,
-      ({ info }) => info.provenance === "suggested",
-    );
-    if (removal.type === "unchanged") {
-      return null;
-    }
-    const nextAttrs: Record<string, unknown> = {
-      ...node.attrs,
-      _propertyChanges: removal.remaining.length > 0 ? removal.remaining : null,
-    };
-    // Only a trailing run of suggestions determines the live pPr. Suggested
-    // changes before a retained tracked entry instead rewrite that entry's
-    // previous snapshot above, so removing the proposal cannot overwrite the
-    // later authored state.
-    if (removal.type === "restore-previous") {
-      Object.assign(nextAttrs, paragraphRejectAttrPatch(removal.previousFormatting));
-      nextAttrs["_originalFormatting"] = paragraphRejectOriginalFormatting(
-        removal.previousFormatting,
-        nextAttrs["_originalFormatting"],
-      );
-    }
-    return nextAttrs;
+    return { ...(stripped ?? node.attrs), pPrMark: null };
   }
   if (name === "tableRow") {
     const rowAttrs = expectTableRowAttrs(node);

@@ -51,6 +51,26 @@ describe("resolving every suggestion headlessly", () => {
     expect(await savedTexts(await suggest())).toEqual(["First clause.", "Signed in two copies."]);
   });
 
+  test("a suggested block deletion leaves no tracked change in the saved package", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
+    const target = reviewer.getContent().find(({ text }) => text === "First clause.");
+    if (!target) {
+      throw new Error("the fixture paragraph is missing");
+    }
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "suggested",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: target.id }],
+    });
+    expect(result.applied).toHaveLength(1);
+    const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(saved.getChanges()).toEqual([]);
+    expect(saved.getContent().map(({ text }) => text)).toEqual([
+      "First clause.",
+      "Signed in two copies.",
+    ]);
+  });
+
   test("acceptAll keeps an inserted paragraph through the save", async () => {
     const reviewer = await suggest();
     reviewer.acceptAll();
