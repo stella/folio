@@ -17,8 +17,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
+  assertProperty,
   propertyConfig,
-  propertyTestSeed,
   propertyTestTimeout,
 } from "../../../../test/property-testing";
 
@@ -592,7 +592,6 @@ const changePayload = (change: CompareChange): Record<string, unknown> =>
 
 type BudgetOverrunOptions = {
   fixture: string;
-  seed: number;
   script: EditScript;
   applied: readonly EditScriptStep[];
   budget: number;
@@ -604,14 +603,14 @@ type BudgetOverrunOptions = {
  *
  * A budget overrun is a pairing the comparison lost, and the failure is often
  * rare enough that reproducing it costs a seed sweep. So the report carries
- * the seed that produced it, the script as a literal that pastes straight into
- * a pinned example, and every change with the block ids it named: the pair
- * that failed to pair is the one appearing as an unrelated deletion and
- * insertion instead of a single entry.
+ * the script as a literal that pastes straight into a pinned example, and
+ * every change with the block ids it named: the pair that failed to pair is
+ * the one appearing as an unrelated deletion and insertion instead of a
+ * single entry. The seed that replays it is on the replay line propertyConfig
+ * appends to the failure.
  */
 const budgetOverrunReport = ({
   fixture,
-  seed,
   script,
   applied,
   budget,
@@ -619,7 +618,6 @@ const budgetOverrunReport = ({
 }: BudgetOverrunOptions): string =>
   [
     `${fixture}: the comparison reported ${String(changes.length)} changes for a script whose steps touch ${String(budget)}.`,
-    `Replay: PROPERTY_TEST_SEED=${String(seed)} bun test packages/core/src/compare/compare.property.test.ts`,
     "Pin it as an example with:",
     `const script: EditScript = ${JSON.stringify(script, null, 2)};`,
     ...(applied.length === script.length
@@ -743,11 +741,8 @@ describe("compareDocx", () => {
     test(
       `the change count never exceeds the blocks the script touched (${name})`,
       async () => {
-        // Pinned rather than left to fast-check so an overrun report can name
-        // the seed that replays it: this property has caught pairings that a
-        // later run did not reproduce.
-        const seed = propertyTestSeed() ?? Date.now();
-        await fc.assert(
+        // Seeds this property once failed on replay first (test/property-seeds.json).
+        await assertProperty(
           fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
             if (scripted.isErr()) {
@@ -763,7 +758,6 @@ describe("compareDocx", () => {
               throw new Error(
                 budgetOverrunReport({
                   fixture: name,
-                  seed,
                   script,
                   applied: scripted.value.applied,
                   budget,
@@ -772,7 +766,7 @@ describe("compareDocx", () => {
               );
             }
           }),
-          propertyConfig({ numRuns: 12, seed }),
+          { numRuns: 12 },
         );
       },
       propertyTestTimeout(120_000),

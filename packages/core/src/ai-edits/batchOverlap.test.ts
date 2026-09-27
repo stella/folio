@@ -16,7 +16,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { EditorState } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   blockTexts,
@@ -672,7 +672,7 @@ describe("two paragraph-property operations on one block", () => {
 
 describe("a random batch with overlapping, nested and duplicate targets", () => {
   test("refuses each conflict and applies the rest as one at a time would", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(
         fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
         fc.constantFrom(...MODES),
@@ -680,7 +680,7 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
           expect(await batchAgainstOneAtATime(generated, mode)).toEqual([]);
         },
       ),
-      propertyConfig({ numRuns: 150 }),
+      { numRuns: 150 },
     );
   }, 300_000);
 });

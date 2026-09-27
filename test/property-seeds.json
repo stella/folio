@@ -1,3 +1,74 @@
 {
-  "$comment": "Seeds that once failed, replayed first by assertProperty (test/property-testing.ts) in every environment. Key: <repo-relative test file>::<test title as written>. A nightly failure issue carries the entry to add."
+  "$comment": "Seeds that once failed, replayed first by assertProperty (test/property-testing.ts) in every environment. Key: <repo-relative test file>::<test title as written>. A nightly failure issue carries the entry to add.",
+  "packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts::over generated paragraphs and edits": [
+    {
+      "seed": 11,
+      "note": "seed sweep before #1117; which of the two properties failed was not recorded, so both replay it",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -479275576,
+      "note": "#1160: direct replacement seed covering live block fields",
+      "date": "2026-09-28"
+    }
+  ],
+  "packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts::over generated paragraphs and edits, accepted and rejected": [
+    {
+      "seed": 873192623,
+      "path": "248:3:5:5:3:3:3:3:0:3",
+      "note": "#1117: a rewritten word running into a kept field redlined unchanged text (path at factor 10)",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -449189980,
+      "path": "350:1:1:1:1:1:11:10:10:10:11:1:1:1:1:1:1:1:1:5:6:6:4:5:5",
+      "note": "#1117: nightly run 36297187033, ` and` inserted before a kept `3.6` field",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 11,
+      "note": "seed sweep before #1117; which of the two properties failed was not recorded, so both replay it",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 47,
+      "path": "7:3:2:2:1:1:1:1:1:1:1:2:2:2:3:3:3",
+      "note": "#1117: seed sweep",
+      "date": "2026-09-27"
+    }
+  ],
+  "packages/core/src/ai-edits/batchOverlap.test.ts::refuses each conflict and applies the rest as one at a time would": [
+    {
+      "seed": -440111207,
+      "path": "136:9:8:8",
+      "note": "#1128: formatting a last paragraph the batch deletes and inserts after",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 19,
+      "path": "35",
+      "note": "#1128: oracle for a tracked merge into a run of deleted blocks",
+      "date": "2026-09-27"
+    }
+  ],
+  "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (${name})": [
+    {
+      "seed": -508007194,
+      "path": "4:3:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "#1127: upstream-complex-styles.docx, a moved paragraph's undefined Heading2 style",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -507695470,
+      "path": "10:3:2:2",
+      "note": "#1127: upstream-complex-styles.docx, found as PROPERTY_TEST_SEED=1790493666962 (fast-check reads it as this 32-bit seed)",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": -507912694,
+      "path": "1:0:1",
+      "note": "#1127: upstream-complex-styles.docx",
+      "date": "2026-09-27"
+    }
+  ]
 }

@@ -35,7 +35,7 @@ import JSZip from "jszip";
 import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { RELATIONSHIP_TYPES } from "../docx/relsParser";
 import { serializeParagraph } from "../docx/serializer/paragraphSerializer";
@@ -542,8 +542,7 @@ describe("a direct replacement changes only the characters it changes", () => {
         expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(beforeReferences.length);
       },
     );
-    await fc.assert(directReplacementProperty, propertyConfig({ numRuns: 60, seed: -479275576 }));
-    await fc.assert(directReplacementProperty, propertyConfig({ numRuns: 60 }));
+    await assertProperty(directReplacementProperty, { numRuns: 60 });
   }, 240_000);
 });
 
@@ -718,7 +717,7 @@ const PINNED_TRACKED_REPLACEMENTS: TrackedReplacementCase[] = (
 
 describe("a tracked or suggested replacement redlines only the characters it changes", () => {
   test("over generated paragraphs and edits, accepted and rejected", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(
         fc.array(itemOf(highlightedRunProperties), { minLength: 1, maxLength: 8 }),
         editArbitrary,
@@ -913,7 +912,7 @@ describe("a tracked or suggested replacement redlines only the characters it cha
           }
         },
       ),
-      propertyConfig({ numRuns: 60, examples: PINNED_TRACKED_REPLACEMENTS }),
+      { numRuns: 60, examples: PINNED_TRACKED_REPLACEMENTS },
     );
   }, 240_000);
 });
