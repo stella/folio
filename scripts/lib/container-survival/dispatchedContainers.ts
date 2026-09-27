@@ -59,12 +59,7 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     ],
   },
   {
-    // A table and a row-level content control share one walk: folio unwraps
-    // the control and splices its rows into the table. A `w:customXml` row
-    // wrapper is kept whole rather than unwrapped, so this walk never descends
-    // into `CT_CustomXmlRow`; it is a member anyway, because the union is the
-    // safe direction and its one extra name — `w:customXmlPr` — then carries a
-    // decision instead of falling to a default.
+    // A table, row-level content control, and row custom XML share one walk.
     key: "table-content",
     members: [
       ["tbl", "CT_Tbl"],
@@ -73,13 +68,12 @@ export const DISPATCHED_CONTAINERS: readonly DispatchedContainer[] = [
     ],
   },
   {
-    // A row and a row-level content control share one walk: folio unwraps the
-    // control and splices its rows' content into the row, so one map has to be
-    // total over everything either may hold.
+    // A row, row-level content control, and cell custom XML share one walk.
     key: "row-content",
     members: [
       ["tr", "CT_Row"],
       ["sdtContent", "CT_SdtContentRow"],
+      ["customXml", "CT_CustomXmlCell"],
     ],
   },
   // The font table is a declaration part, so its two containers are its own:

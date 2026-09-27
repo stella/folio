@@ -464,17 +464,12 @@ each of them is a decision and not a consequence:
   `serializeTable` writes them from the model ahead of the sink, and the grid
   travels as a capture of its own on the table's formatting. An index that
   counted them would push every capture one place to the right.
-- **Three types, one map.** `w:sdt`'s rows are the table's own, so the
-  recursion walks `CT_SdtContentRow` with the same handler map; what the
-  control itself says is recorded on those rows, which the content-control
-  section below sets out. `w:customXml` is not unwrapped: it is captured
-  whole, exactly as the row captures a `w:customXml` cell wrapper, which keeps
-  `CT_CustomXmlRow`'s 29 pairs at the price of the wrapper's content being
-  opaque — and with it the `w:sdt` inside, which is why
-  `customXml|CT_CustomXmlRow/sdt` stays `dropped (editorProjection)` while its
-  `w:tbl` twin does not. `CT_CustomXmlRow` is a member of the generated set
-  anyway, so its one extra name — `w:customXmlPr` — carries a decision rather
-  than falling to a default.
+- **Three types, one map.** `w:sdt` and `w:customXml` both recurse through the
+  table's row handler map. Their wrappers are recorded on the rows and
+  preserved children they contain, so nested controls and custom XML remain
+  readable and keep their authored order on save. The row handler map does the
+  same for cell-level wrappers. `CT_CustomXmlRow` and `CT_CustomXmlCell` are
+  members of those maps, so new declared children require explicit decisions.
 - **A `w:tbl` under a `w:tbl` is captured whole.** The Transitional content
   model does not declare it, so the sink's default already keeps it; that is
   the branch a hand-written `default` gets wrong, and flattening it would move
@@ -673,15 +668,15 @@ Three decisions complete the rule:
 An empty property set stays explicit: `<w:sdtPr/>` is a valid rich-text
 control, while omitting `w:sdtPr` produces a different, invalid `w:sdt`.
 
-Both are transparent: their children are ordinary inline or block content and
-the wrapper adds a name, a URI and some properties. folio splices a
-`w:smartTag`'s children into the paragraph and keeps no wrapper, which costs
-`w:smartTag` its own 29 pairs and the two attributes that identify it.
-`w:customXml` is now captured whole instead, which keeps its 35 pairs at the
-price of its content being opaque in the editor — the right trade only because
-that content was previously dropped outright.
+Both are transparent: their children are ordinary content and the wrapper
+adds a name, a URI and some properties. folio splices a `w:smartTag`'s
+children into the paragraph and keeps no wrapper. Block, table and row
+`w:customXml` wrappers now keep their metadata around modelled children; the
+contract records those children as modelled.
 
-Neither is the end state. The end state is a **`preservedWrapper`**: a range
+The following range design remains a proposal for wrappers such as
+`w:smartTag`, not the current table and row custom XML implementation. A
+**`preservedWrapper`** would be a range
 over the container's child indices, recorded beside the children rather than
 instead of them.
 

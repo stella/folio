@@ -440,12 +440,9 @@ const SEED_CHILDREN: Readonly<Record<string, readonly SeedCandidate[]>> = {
   // the wrapper being lost rather than as the fixture holding nothing.
   bdo: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
   dir: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
-  // The same for the wrappers that name an element. `w:r` alone, not the
-  // candidate list `w:sdtContent` needs: `w:customXml` is also a block, a row
-  // and a cell wrapper, none of which declares a run, so naming only the run
-  // leaves those three measured exactly as they were.
+  // These wrappers need a child of the kind their declared content model holds.
   smartTag: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
-  customXml: [{ child: "r", xml: "<w:r><w:t>folio</w:t></w:r>" }],
+  customXml: SDT_CONTENT_SEEDS,
   // A revision is a mark on content, not a thing of its own: the editor spells
   // `w:ins` as an insertion mark over the inline nodes it holds, so an empty
   // one has no leaf to carry it and the projection drops it. Measuring the

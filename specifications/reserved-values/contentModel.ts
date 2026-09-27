@@ -776,6 +776,7 @@ export const TABLE_CELL_RESERVED = {
   // The control's own properties, replayed or rebuilt as written. A reserved
   // value is a spelling the model interprets; this slot interprets nothing.
   contentControls: NO_RESERVED_VALUE,
+  carrierStack: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableCell, ReservedValueDisposition>;
 
 export type ExhaustiveTableCellReserved = ExhaustiveFields<
@@ -801,6 +802,7 @@ export const TABLE_ROW_RESERVED = {
   // BOOKMARK_START_RESERVED and BOOKMARK_END_RESERVED.
   bookmarks: NO_RESERVED_VALUE,
   contentControls: NO_RESERVED_VALUE,
+  carrierStack: NO_RESERVED_VALUE,
 } satisfies Record<keyof TableRow, ReservedValueDisposition>;
 
 export type ExhaustiveTableRowReserved = ExhaustiveFields<
@@ -820,6 +822,7 @@ export const TABLE_RESERVED = {
   // A position and a marker: the marker's own spellings are decided by
   // BOOKMARK_START_RESERVED and BOOKMARK_END_RESERVED.
   bookmarks: NO_RESERVED_VALUE,
+  carrierStack: NO_RESERVED_VALUE,
 } satisfies Record<keyof Table, ReservedValueDisposition>;
 
 export type ExhaustiveTableReserved = ExhaustiveFields<Table, keyof typeof TABLE_RESERVED>;
