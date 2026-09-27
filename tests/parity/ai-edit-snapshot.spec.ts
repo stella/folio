@@ -14,3 +14,10 @@ forEachAdapter("ai-edit: createAIEditSnapshot yields blocks", async (adapter, { 
 
   expect(blockCount).toBeGreaterThan(0);
 });
+
+forEachAdapter("ai-edit: pending suggestions export and reload", async (adapter, { page }) => {
+  await openEditor(page, adapter, "tracked-insertion-boundary.docx");
+  await ensureLiveView(page);
+  const result = await page.evaluate(() => window.__folioParity?.pendingSuggestionPersistence());
+  expect(result).toEqual({ exported: 1, restaged: 1, stale: 0, active: 1, version: 1 });
+});

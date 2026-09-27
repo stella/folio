@@ -31,6 +31,13 @@ export {
 } from "./snapshot";
 export { getFolioDocumentOutline, readFolioDocumentSection } from "./scoped-reading";
 export { getFolioParaIdFromBlockId } from "../types/block-id";
+export {
+  FOLIO_PENDING_SUGGESTION_VERSION,
+  FolioPendingSuggestionRegistry,
+  type FolioPendingSuggestionLoadResult,
+  type FolioPendingSuggestionRecord,
+  type FolioPendingSuggestionStaleReason,
+} from "./pending-suggestions";
 export { diffWordSegments, WORD_DIFF_GRANULARITIES } from "./word-diff";
 export {
   FOLIO_RESOLVED_REVIEWED_VIEWS,

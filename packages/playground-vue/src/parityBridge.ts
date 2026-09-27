@@ -54,6 +54,13 @@ export type FolioParityBridge = {
   countCommentAnchors: () => number;
   /** Block count of the AI-edit snapshot over the live doc (0 with no live view). */
   aiSnapshotBlockCount: () => number;
+  pendingSuggestionPersistence: () => {
+    exported: number;
+    restaged: number;
+    stale: number;
+    active: number;
+    version: number | null;
+  };
   /** Painted geometry exposed through the public ref contract. */
   readBlockGeometry: () => {
     rects: {
@@ -300,6 +307,45 @@ export function buildParityBridge(
     countCommentAnchors: () =>
       document.querySelectorAll(".paged-editor__pages [data-comment-id]").length,
     aiSnapshotBlockCount: () => getRef()?.createAIEditSnapshot()?.blocks.length ?? 0,
+    pendingSuggestionPersistence: () => {
+      const ref = getRef();
+      const snapshot = ref?.createAIEditSnapshot();
+      const block = snapshot?.blocks.at(0);
+      if (!ref || !snapshot || !block) {
+        return { exported: 0, restaged: 0, stale: 0, active: 0, version: null };
+      }
+      const result = ref.applyAIEditOperations({
+        snapshot,
+        mode: "suggested",
+        operations: [
+          {
+            id: "parity-pending",
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "Pending proposal.",
+          },
+        ],
+      });
+      const id = result.applied.at(0)?.suggestionId;
+      const parsed: unknown = JSON.parse(JSON.stringify(ref.exportPendingSuggestions()));
+      const records = Array.isArray(parsed) ? parsed : [];
+      if (id) ref.rejectSuggestion(id);
+      const loaded = ref.loadPendingSuggestions(records);
+      const version = records.at(0);
+      return {
+        exported: records.length,
+        restaged: loaded.filter((entry) => entry.status === "restaged").length,
+        stale: loaded.filter((entry) => entry.status === "stale").length,
+        active: ref.getSuggestions().length,
+        version:
+          typeof version === "object" &&
+          version !== null &&
+          "version" in version &&
+          typeof version.version === "number"
+            ? version.version
+            : null,
+      };
+    },
     readBlockGeometry: () => {
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();

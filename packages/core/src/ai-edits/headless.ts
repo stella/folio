@@ -68,6 +68,7 @@ import {
 import {
   acceptAIEditRevision,
   acceptSuggestion,
+  getSuggestions,
   rejectAIEditRevision,
   rejectAllSuggestions,
   rejectSuggestion,
@@ -142,6 +143,11 @@ import {
   withoutLostCommentThreads,
 } from "./comment-lifecycle";
 import {
+  FolioPendingSuggestionRegistry,
+  type FolioPendingSuggestionLoadResult,
+  type FolioPendingSuggestionRecord,
+} from "./pending-suggestions";
+import {
   getCommentAnchorsFromDoc,
   getTrackedChangeStatsFromDoc,
   getTrackedChangesFromDoc,
@@ -163,6 +169,7 @@ import { matchTableGeometry, type TableGeometryPairing } from "./table-geometry"
 import { tableTemplateCanCrossPackageLosslessly, type FolioTableTemplates } from "./table-template";
 import type {
   FolioAIBlock,
+  FolioAIEditAppliedOperation,
   FolioAIEditApplyMode,
   FolioAIEditApplyResult,
   FolioAIEditOperation,
@@ -598,6 +605,7 @@ type FolioSaveSnapshot = {
 type ApplyDocumentOperationsInternalOptions = {
   story: FolioEditableDocumentStoryHandle;
   batch: FolioDocumentOperationBatch;
+  author?: string;
   snapshot?: FolioAIEditSnapshot;
   revisionStamp?: FolioRevisionStamp;
   wordDiff?: FolioWordDiffOptions;
@@ -852,29 +860,11 @@ const resolveReviewedState = (state: EditorState, view: FolioReviewedView): Edit
 };
 
 /**
- * Prepare `"suggested"` edits for a bulk resolve. The bulk resolver reads
- * revision marks and row/cell markers, whatever their provenance; a suggested
- * whole-paragraph or table insert is flagged on the node instead, and a save
- * drops a node still flagged.
- *
- * Accepting everything needs nothing else: once the flags are gone every
- * suggestion is an ordinary revision the resolver accepts. Converting them
- * into tracked changes first (`acceptAllSuggestions`) had to rotate each
- * inserted break into place, and one that could not rotate aborted the whole
- * conversion: every flag stayed, and the save dropped every accepted
- * paragraph. Rejecting removes the suggestions outright.
+ * Reject suggestions before resolving all ordinary revisions. A suggested
+ * whole-paragraph or table insert is flagged on the node; its flag must stay
+ * intact until that suggestion is explicitly accepted or rejected.
  */
-const settleSuggestions = (state: EditorState, mode: "accept" | "reject"): EditorState => {
-  if (mode === "accept") {
-    const tr = state.tr;
-    state.doc.descendants((node, position) => {
-      if (node.attrs["_suggestedInsert"] != null) {
-        tr.setNodeAttribute(position, "_suggestedInsert", null);
-      }
-      return !node.isTextblock;
-    });
-    return tr.docChanged ? state.apply(tr) : state;
-  }
+const rejectSuggestions = (state: EditorState): EditorState => {
   let settled = state;
   rejectAllSuggestions()(state, (transaction) => {
     settled = state.apply(transaction);
@@ -1086,6 +1076,7 @@ export class FolioDocxReviewer {
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
+  private readonly pendingSuggestions = new FolioPendingSuggestionRegistry();
   /**
    * Resolved-state overrides recorded by {@link resolveComment}, keyed by
    * comment id. Applied on read ({@link getComments}) and on write
@@ -1431,6 +1422,44 @@ export class FolioDocxReviewer {
     return createStateSnapshot(this.state);
   }
 
+  /** Export staged AI operations for storage by the host, outside the DOCX. */
+  exportPendingSuggestions(): FolioPendingSuggestionRecord[] {
+    const active = new Set(getSuggestions(this.state).map(({ suggestionId }) => suggestionId));
+    for (const entry of this.secondaryStoryStates.values()) {
+      for (const { suggestionId } of getSuggestions(entry.state)) active.add(suggestionId);
+    }
+    return this.pendingSuggestions.exportPendingSuggestions(active);
+  }
+
+  /** Validate saved proposals against this document before restaging them. */
+  loadPendingSuggestions(records: readonly unknown[]): FolioPendingSuggestionLoadResult[] {
+    return this.pendingSuggestions.loadPendingSuggestions({
+      records,
+      snapshotForStory: (story) => this.snapshotStory(story),
+      apply: (record, snapshot) => {
+        const result = this.applyDocumentOperationsInternal({
+          story: record.story,
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            operations: [record.operation],
+            mode: "suggested",
+          },
+          snapshot,
+          author: record.author,
+          createUndoEntry: false,
+        });
+        return { applied: result.applied, skipped: result.skipped };
+      },
+      activeSuggestionIds: () => {
+        const active = new Set(getSuggestions(this.state).map(({ suggestionId }) => suggestionId));
+        for (const entry of this.secondaryStoryStates.values()) {
+          for (const { suggestionId } of getSuggestions(entry.state)) active.add(suggestionId);
+        }
+        return active;
+      },
+    });
+  }
+
   /**
    * The package's numbering, flattened to what a reader sees: one entry per
    * numbering instance and level, with the format and level text that produce
@@ -1704,6 +1733,7 @@ export class FolioDocxReviewer {
   private applyDocumentOperationsInternal({
     story,
     batch,
+    author,
     snapshot,
     revisionStamp,
     wordDiff,
@@ -1713,6 +1743,8 @@ export class FolioDocxReviewer {
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
+    const operationAuthor = author ?? this.author;
+    const sourceSnapshot = snapshot ?? createStateSnapshot(beforeState);
     const createdCommentsLengthBefore = this.createdComments.length;
     const view = {
       state: beforeState,
@@ -1723,10 +1755,10 @@ export class FolioDocxReviewer {
 
     const result = applyFolioDocumentOperations({
       view,
-      snapshot: snapshot ?? createStateSnapshot(beforeState),
+      snapshot: sourceSnapshot,
       batch,
       story: story.type === "main" ? "main" : story,
-      author: this.author,
+      author: operationAuthor,
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
@@ -1736,7 +1768,7 @@ export class FolioDocxReviewer {
         const comment = createReviewerComment({
           id: this.nextCommentId(),
           text,
-          author: this.author,
+          author: operationAuthor,
           date: revisionStamp?.date,
         });
         this.createdComments.push(comment);
@@ -1760,6 +1792,26 @@ export class FolioDocxReviewer {
       ...createdByBatch.filter((comment) => appliedCommentIds.has(comment.id)),
     );
     this.setEditableStoryState(story, view.state);
+    if (batch.mode === "suggested") {
+      const activeSuggestionIds = new Set(
+        getSuggestions(beforeState).map(({ suggestionId }) => suggestionId),
+      );
+      for (const { suggestionId } of getSuggestions(this.state))
+        activeSuggestionIds.add(suggestionId);
+      for (const entry of this.secondaryStoryStates.values()) {
+        for (const { suggestionId } of getSuggestions(entry.state)) {
+          activeSuggestionIds.add(suggestionId);
+        }
+      }
+      this.pendingSuggestions.recordApplied({
+        snapshot: sourceSnapshot,
+        story,
+        operations: batch.operations,
+        applied: result.applied,
+        author: operationAuthor,
+        activeSuggestionIds,
+      });
+    }
     if (result.undoHandle !== null) {
       this.documentOperationUndoEntries.push({
         undoHandle: result.undoHandle,
@@ -2338,9 +2390,44 @@ export class FolioDocxReviewer {
     return bodyChanged || sectionChanged;
   }
 
+  /** Convert one pending suggestion into an ordinary tracked change. */
+  acceptSuggestion(suggestionId: string, options?: { author?: string }): boolean {
+    return this.resolveWithSectionReferenceHistory(() => {
+      let accepted = false;
+      for (const { handle } of this.listStories()) {
+        const state = this.getEditableStoryState(handle);
+        if (!state || !getSuggestions(state).some((entry) => entry.suggestionId === suggestionId)) {
+          continue;
+        }
+        accepted =
+          this.runStoryCommand(
+            acceptSuggestion(suggestionId, { author: options?.author ?? this.author }),
+            handle,
+          ) || accepted;
+      }
+      return accepted;
+    });
+  }
+
+  /** Remove one pending suggestion without applying it. */
+  rejectSuggestion(suggestionId: string): boolean {
+    return this.resolveWithSectionReferenceHistory(() => {
+      let rejected = false;
+      for (const { handle } of this.listStories()) {
+        const state = this.getEditableStoryState(handle);
+        if (!state || !getSuggestions(state).some((entry) => entry.suggestionId === suggestionId)) {
+          continue;
+        }
+        rejected = this.runStoryCommand(rejectSuggestion(suggestionId), handle) || rejected;
+      }
+      return rejected;
+    });
+  }
+
   /**
-   * Accept every tracked change in the package. Returns the number of changes
-   * present before the sweep.
+   * Accept every ordinary tracked change in the package. Pending suggestions
+   * remain staged until {@link acceptSuggestion} is called. Returns the number
+   * of ordinary changes present before the sweep.
    *
    * Every story, not just the body: a revision in a header or a footnote is
    * one a reviewer meant to resolve, and leaving it behind means an accepted
@@ -2407,18 +2494,105 @@ export class FolioDocxReviewer {
 
   private resolveEveryStory(mode: "accept" | "reject"): number {
     let count = 0;
+    const resolvedStories: { handle: FolioEditableDocumentStoryHandle; state: EditorState }[] = [];
+    const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] = [];
     for (const { handle } of this.listStories()) {
       const state = this.getEditableStoryState(handle);
       if (!state) {
         continue;
       }
-      count += getTrackedChangesFromDoc(state.doc).length;
-      this.setEditableStoryState(
-        handle,
-        resolveAllChangesInHeadlessState(settleSuggestions(state, mode), mode),
+      const ordinaryCount = getTrackedChangesFromDoc(state.doc).filter(
+        ({ id }) => mode === "reject" || suggestionIdOfRevision(state, id) === null,
+      ).length;
+      count += ordinaryCount;
+      const withSuggestions =
+        mode === "accept" && ordinaryCount > 0 && getSuggestions(state).length > 0
+          ? this.acceptOrdinaryChangesWithSuggestions(state, handle)
+          : null;
+      if (withSuggestions) refreshes.push(withSuggestions.refresh);
+      let resolvedState = state;
+      if (mode === "reject") {
+        resolvedState = resolveAllChangesInHeadlessState(rejectSuggestions(state), mode);
+      } else if (ordinaryCount > 0) {
+        resolvedState = withSuggestions?.state ?? resolveAllChangesInHeadlessState(state, mode);
+      }
+      resolvedStories.push({ handle, state: resolvedState });
+    }
+    for (const { handle, state } of resolvedStories) this.setEditableStoryState(handle, state);
+    if (refreshes.length > 0) {
+      const activeSuggestionIds = new Set(
+        getSuggestions(this.state).map(({ suggestionId }) => suggestionId),
       );
+      for (const entry of this.secondaryStoryStates.values()) {
+        for (const { suggestionId } of getSuggestions(entry.state))
+          activeSuggestionIds.add(suggestionId);
+      }
+      for (const refresh of refreshes) refresh(activeSuggestionIds);
     }
     return count;
+  }
+
+  private acceptOrdinaryChangesWithSuggestions(
+    state: EditorState,
+    story: FolioEditableDocumentStoryHandle,
+  ): { state: EditorState; refresh: (activeSuggestionIds: ReadonlySet<string>) => void } {
+    const originalSuggestions = getSuggestions(state);
+    const records = this.exportPendingSuggestions().filter(
+      (record) => editableStoryKey(record.story) === editableStoryKey(story),
+    );
+    const recordedIds = new Set(records.map(({ suggestionId }) => suggestionId));
+    if (originalSuggestions.some(({ suggestionId }) => !recordedIds.has(suggestionId))) {
+      panic("A pending suggestion has no operation to restage after bulk acceptance");
+    }
+
+    // The ordinary resolver must see the complete story in one pass: resolving
+    // revision ids separately can change paragraph joins and list ownership.
+    const clean = rejectSuggestions(state);
+    let resolved = resolveAllChangesInHeadlessState(clean, "accept");
+    const restaged: {
+      snapshot: FolioAIEditSnapshot;
+      operation: FolioAIEditOperation;
+      applied: FolioAIEditAppliedOperation;
+      author: string;
+    }[] = [];
+    for (const record of records) {
+      const snapshot = createStateSnapshot(resolved);
+      const view = {
+        state: resolved,
+        dispatch: (transaction: Transaction) => {
+          view.state = view.state.apply(transaction);
+        },
+      };
+      const result = applyFolioDocumentOperations({
+        view,
+        snapshot,
+        batch: {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode: "suggested",
+          operations: [record.operation],
+        },
+        story: story.type === "main" ? "main" : story,
+        author: record.author,
+        createCommentId: () => panic("A staged suggestion cannot create a comment"),
+      });
+      const applied = result.applied.find(({ id }) => id === record.operation.id);
+      if (!applied) {
+        panic("A pending suggestion could not be restaged after bulk acceptance", {
+          suggestionId: record.suggestionId,
+        });
+      }
+      restaged.push({ snapshot, operation: record.operation, applied, author: record.author });
+      resolved = view.state;
+    }
+    const restagedIds = new Set(getSuggestions(resolved).map(({ suggestionId }) => suggestionId));
+    if (originalSuggestions.some(({ suggestionId }) => !restagedIds.has(suggestionId))) {
+      panic("Bulk acceptance lost a pending suggestion");
+    }
+    return {
+      state: resolved,
+      refresh: (activeSuggestionIds) =>
+        this.pendingSuggestions.replaceRestagedStory({ story, restaged, activeSuggestionIds }),
+    };
   }
 
   /** The current document model with edits merged back in. */

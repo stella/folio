@@ -36,6 +36,7 @@ import {
   createFolioAIEditSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FolioPendingSuggestionRegistry,
   getCommentAnchorsFromDoc,
   getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
@@ -228,6 +229,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   exposed: DocxEditorRef;
 } {
   const documentOperationUndoEntries: LiveDocumentOperationUndoEntry[] = [];
+  const pendingSuggestionRegistry = new FolioPendingSuggestionRegistry();
   function print(): void {
     opts.onPrint?.();
     window.print();
@@ -433,8 +435,14 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     print,
     openFind: () => opts.openFindReplace(),
     openReplace: () => opts.openFindReplace(),
-    loadDocument: (document) => opts.editor.loadDocument(document),
-    loadDocumentBuffer: (buffer) => opts.editor.loadDocx(buffer),
+    loadDocument: (document) => {
+      pendingSuggestionRegistry.clear();
+      opts.editor.loadDocument(document);
+    },
+    loadDocumentBuffer: (buffer) => {
+      pendingSuggestionRegistry.clear();
+      return opts.editor.loadDocx(buffer);
+    },
     // The fork's controller ensureView() takes no focus argument yet; the
     // { focus } option is accepted for React parity but ignored (PORT-BLOCKED).
     ensureEditorView: () => opts.editor.ensureView(),
@@ -490,6 +498,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           operationView.state = view.state;
         },
       };
+      const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
       const result = applyWithStagedOperationComments({
         createComment: (text) => opts.createAIEditComment(text, operationAuthor),
         publishComments: opts.publishAIEditComments,
@@ -506,6 +515,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
             }),
           }),
       });
+      if (batch.mode === "suggested" && result.status === "committed") {
+        pendingSuggestionRegistry.recordApplied({
+          snapshot,
+          story: { type: "main" },
+          operations: batch.operations,
+          applied: result.applied,
+          author: operationAuthor,
+          activeSuggestionIds,
+        });
+      }
       if (result.undoHandle !== null) {
         documentOperationUndoEntries.push({
           undoHandle: result.undoHandle,
@@ -560,6 +579,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           })),
         };
       }
+      const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
       // Through the document-operation applier, like the batch path, so a
       // result the save-time check refuses never reaches the editor.
       const { applied, skipped } = applyWithStagedOperationComments({
@@ -574,6 +594,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
             createCommentId,
           }),
       });
+      if (mode === "suggested") {
+        pendingSuggestionRegistry.recordApplied({
+          snapshot,
+          story: { type: "main" },
+          operations,
+          applied,
+          author: operationAuthor,
+          activeSuggestionIds,
+        });
+      }
       return { applied, skipped };
     },
     acceptAIEditOperation: (revisionIds) => {
@@ -698,6 +728,30 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       const view = opts.editorView.value;
       return view ? getSuggestions(view.state) : [];
     },
+    exportPendingSuggestions: () => {
+      const view = opts.editorView.value;
+      const activeIds = new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
+      return pendingSuggestionRegistry.exportPendingSuggestions(activeIds);
+    },
+    loadPendingSuggestions: (records) =>
+      pendingSuggestionRegistry.loadPendingSuggestions({
+        records,
+        snapshotForStory: (story) => {
+          const view = opts.editorView.value;
+          return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
+        },
+        apply: (record, snapshot) =>
+          exposed.applyAIEditOperations({
+            snapshot,
+            operations: [record.operation],
+            mode: "suggested",
+            author: record.author,
+          }),
+        activeSuggestionIds: () => {
+          const view = opts.editorView.value;
+          return new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
+        },
+      }),
     acceptSuggestion: (suggestionId, options) => {
       const view = opts.editorView.value;
       if (!view) {

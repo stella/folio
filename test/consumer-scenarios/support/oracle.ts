@@ -1307,18 +1307,19 @@ export const applyChecked = async (
 };
 
 /**
- * What resolving every change must leave: the accepted (or rejected) view
- * of the saved package. A pending paragraph-mark deletion can join two live
- * blocks on acceptance, so a suggested live view may not predict boundaries.
+ * What bulk resolution must leave: the accepted (or rejected) view of the
+ * saved package. The package excludes pending suggestions, which remain
+ * staged in memory. A paragraph-mark deletion can join blocks on acceptance,
+ * so the suggested live view may not predict their boundaries.
  */
 export const captureResolution = async (
   reviewer: Reviewer,
-  mode: Mode,
+  _mode: Mode,
   resolution: "accept" | "reject",
-): Promise<Resolution> =>
-  mode === "suggested" && resolution === "accept"
-    ? { rows: rowsOf(reviewer), boundaries: false }
-    : { rows: (await resolvedState(await save(reviewer), resolution)).rows, boundaries: true };
+): Promise<Resolution> => ({
+  rows: (await resolvedState(await save(reviewer), resolution)).rows,
+  boundaries: true,
+});
 
 /** After `acceptAll()` / `rejectAll()`: the saved package reads `expected`. */
 export const assertResolvedTo = async (

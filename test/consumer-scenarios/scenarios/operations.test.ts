@@ -90,8 +90,10 @@ describe("applyDocumentOperations", () => {
         );
 
         if (mode === "suggested") {
-          // Accepted, the suggestions are ordinary content and save as such.
-          reviewer.acceptAll();
+          // Each proposal needs explicit acceptance before it reaches the package.
+          for (const { suggestionId } of reviewer.exportPendingSuggestions()) {
+            assert.equal(reviewer.acceptSuggestion(suggestionId), true);
+          }
         }
         const { bytes: after } = await assertHealthy(reviewer, `${name} / ${mode} final`);
         // Rejecting gives the document back, block for block. Accepting lands

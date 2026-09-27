@@ -134,6 +134,35 @@ const paragraphMark = (kind: "ins" | "del" | "moveTo" | "moveFrom", id: number) 
   info: { id, author: AUTHOR, date: DATE },
 });
 
+describe("generic bulk acceptance with suggestions", () => {
+  test("refuses a mixed story without changing either revision", () => {
+    const suggested = schema.marks.insertion.create({
+      revisionId: 2,
+      author: "AI",
+      date: DATE,
+      provenance: "suggested",
+      suggestionId: "pending",
+    });
+    const doc = schema.node("doc", null, [
+      schema.node("paragraph", null, schema.text("ordinary", [revisionMark("insertion", 1)])),
+      schema.node("paragraph", null, schema.text("proposed", [suggested])),
+    ]);
+    const state = EditorState.create({ schema, doc });
+    let dispatched = false;
+
+    expect(
+      acceptAllChanges()(state, () => {
+        dispatched = true;
+      }),
+    ).toBe(false);
+    expect(dispatched).toBe(false);
+    expect(state.doc.toJSON()).toEqual(doc.toJSON());
+    const serialized = JSON.stringify(fromProseDoc(state.doc).package.document.content);
+    expect(serialized).toContain("ordinary");
+    expect(serialized).not.toContain("proposed");
+  });
+});
+
 const paragraph = (
   seed: number,
   index: number,

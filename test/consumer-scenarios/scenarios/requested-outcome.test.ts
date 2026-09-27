@@ -19,7 +19,7 @@ import {
   packDocument,
   plainDocument,
 } from "../support/documents.ts";
-import { assertHealthy, saveAndReopen } from "../support/invariants.ts";
+import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
 import {
   expectedFailure,
   KNOWN_FAILING_COLLISIONS,
@@ -407,6 +407,12 @@ function location(cellIndex: number) {
  */
 const READERS_COMPARABLE = (fixture: string) => fixture !== "mergedTable";
 
+const persistedAfterBulkAcceptance = async (reviewer: Reviewer) => {
+  const saved = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  saved.acceptAll();
+  return visibleState(saved);
+};
+
 /** Run one collision on a fresh reviewer; what applied, or null when none fits. */
 const runCollision = async (
   fixture: string,
@@ -416,12 +422,14 @@ const runCollision = async (
 ): Promise<string | null> => {
   const context = `${fixture} / ${mode}: ${name}`;
   const reviewer = await openReviewer(bytes);
+  const persisted =
+    mode === "suggested" ? { persisted: await persistedAfterBulkAcceptance(reviewer) } : {};
   const operations = COLLISIONS[name]?.(blocksOf(reviewer));
   if (!operations) return null;
   const { applied, issues } = await applyChecked(reviewer, operations, mode, context);
   if (mode === "suggested") reviewer.acceptAll();
-  if (READERS_COMPARABLE(fixture)) await assertHealthy(reviewer, context);
-  else await saveAndReopen(reviewer, context);
+  if (READERS_COMPARABLE(fixture)) await assertHealthy(reviewer, context, persisted);
+  else await saveAndReopen(reviewer, context, persisted);
   return `${name}: applied ${applied.length}${issues.length > 0 ? `, refused ${issues.join(", ")}` : ""}`;
 };
 
@@ -597,6 +605,8 @@ const runFollowUp = async (name: string, mode: Mode): Promise<void> => {
   );
   assert.ok(first.applied.length > 0, `${context}: the first edit was refused: ${first.issues}`);
   const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+  const persisted =
+    mode === "suggested" ? { persisted: await persistedAfterBulkAcceptance(reopened) } : {};
   const operations = followUp.second(blocksOf(reopened));
   assert.ok(operations, `${context}: the second edit found nothing to name`);
   const second = await applyChecked(reopened, operations, mode, context);
@@ -608,7 +618,7 @@ const runFollowUp = async (name: string, mode: Mode): Promise<void> => {
     );
   }
   if (mode === "suggested") reopened.acceptAll();
-  await assertHealthy(reopened, context);
+  await assertHealthy(reopened, context, persisted);
 };
 
 describe("edits of what a saved tracked edit left pending", () => {

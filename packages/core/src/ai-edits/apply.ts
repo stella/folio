@@ -4177,6 +4177,21 @@ const applyFolioAIEditOperationsInternal = ({
       }
       case "insertAfterBlock":
       case "insertBeforeBlock": {
+        if (
+          isSuggested &&
+          isPendingDeletion(
+            tr.doc,
+            item.blockFrom,
+            item.blockNode,
+            buildCleanBlockText(item.blockNode, item.blockFrom, {
+              fieldResults: "text",
+              noteReferences,
+            }).text,
+          )
+        ) {
+          skipped.push({ id: item.operation.id, reason: "pendingDeletion" });
+          continue;
+        }
         const built = buildInsertedParagraphs({
           item,
           schema: view.state.schema,
@@ -4486,6 +4501,12 @@ const applyFolioAIEditOperationsInternal = ({
           ? null
           : pendingParagraphRetraction(tr.doc, item.blockFrom);
         if (retraction) {
+          if (isSuggested && !isSuggestedParagraphInsert(item.blockNode)) {
+            // Retracting another author's tracked insertion would remove it
+            // from the saved package before this suggestion is accepted.
+            skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
+            continue;
+          }
           // Deleting a paragraph that is itself a pending insertion retracts
           // it, as deleting inserted text does: accepting and rejecting both
           // leave it out, so it goes now. Marked deleted instead, its break

@@ -9,9 +9,10 @@
  *
  * - nothing throws: applying, `rejectAll`, `acceptAll`, saving;
  * - `rejectAll` gives back the original document;
- * - `acceptAll` gives what the same operations give in `direct` mode, when
- *   each of them has a direct counterpart (its target exists there too);
- * - the resolved document survives a save: reopened, it reads the same;
+ * - `acceptAll` leaves suggested operations pending and out of a save;
+ * - tracked `acceptAll` gives what the same operations give in `direct` mode,
+ *   when each has a direct counterpart (its target exists there too);
+ * - the resolved tracked document survives a save;
  * - a pending (tracked) document saved and reopened resolves to the same
  *   result both ways as the live one;
  * - a comment's anchored text reads the same before and after a save.
@@ -360,6 +361,13 @@ describe("resolving random tracked work", () => {
         expect(read(rejecting)).toEqual(original);
       }
 
+      if (mode === "suggested") {
+        expect(reviewer.acceptAll()).toBe(0);
+        expect(read(reviewer)).toEqual(pending);
+        expect(read(await reopen(reviewer))).toEqual(original);
+        return;
+      }
+
       // Accepting: equal to the direct run, and the same after a save.
       const direct = await runDirectly(steps);
       reviewer.acceptAll();
@@ -381,6 +389,7 @@ describe("resolving random tracked work", () => {
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 2055257210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -1401551044 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -304239210 }));
+    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 115449810 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100 }));
     // The direct comparison must not pass vacuously.
     expect(comparedWithDirect).toBeGreaterThan(0);

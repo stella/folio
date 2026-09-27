@@ -1346,10 +1346,17 @@ const resolveAllChanges =
   };
 
 /**
- * Accept all tracked changes in the document.
+ * Accept all tracked changes in the document. Returns `false` while pending
+ * suggestions are present because this command cannot restage them.
  */
 export function acceptAllChanges(): Command {
-  return resolveAllChanges("accept");
+  const resolve = resolveAllChanges("accept");
+  return (state, dispatch) => {
+    // This generic command has no host operation queue to replay. A mixed
+    // story must use the headless reviewer's acceptAll path instead.
+    if (getSuggestions(state).length > 0) return false;
+    return resolve(state, dispatch);
+  };
 }
 
 /**
@@ -1619,6 +1626,28 @@ const readSuggestedParagraphPropertyChange = (
   return { suggestionId: change.info.suggestionId, revisionId: change.info.id };
 };
 
+const readSuggestedParagraphMark = (
+  node: PMNode,
+): { suggestionId: string; revisionId: number; kind: SuggestionKind } | null => {
+  if (node.type.name !== "paragraph") return null;
+  const mark = node.attrs["pPrMark"];
+  if (!isPPrMarkAttr(mark)) return null;
+  const { info } = mark;
+  if (
+    !("provenance" in info) ||
+    info.provenance !== "suggested" ||
+    !("suggestionId" in info) ||
+    typeof info.suggestionId !== "string"
+  ) {
+    return null;
+  }
+  return {
+    suggestionId: info.suggestionId,
+    revisionId: info.id,
+    kind: paragraphMarkWasAdded(mark.kind) ? "insertion" : "deletion",
+  };
+};
+
 const readStructuralSuggestion = (node: PMNode): StructuralSuggestion | null => {
   const attrs = node.attrs;
   // `_suggestedInsert` only carries whole-node semantics for paragraphs
@@ -1705,6 +1734,13 @@ const collectSuggestions = (state: EditorState): Map<string, SuggestionAccumulat
       entry.revisionIds.add(structural.revisionId);
     }
     if (node.type.name === "paragraph") {
+      const paragraphMark = readSuggestedParagraphMark(node);
+      if (paragraphMark) {
+        const entry = entryFor(paragraphMark.suggestionId);
+        entry.segments.push({ from: pos, to: pos + node.nodeSize });
+        entry.kinds.add(paragraphMark.kind);
+        entry.revisionIds.add(paragraphMark.revisionId);
+      }
       const propertyChanges = expectParagraphAttrs(node)._propertyChanges;
       if (Array.isArray(propertyChanges)) {
         for (const change of propertyChanges) {
@@ -2524,6 +2560,25 @@ const acceptSuggestions = (
       });
       if (propertyChanges) {
         nextAttrs = { ...(nextAttrs ?? node.attrs), _propertyChanges: propertyChanges };
+      }
+      const paragraphMark = readSuggestedParagraphMark(node);
+      if (paragraphMark && matchesSuggestion(paragraphMark.suggestionId)) {
+        const mark = node.attrs["pPrMark"];
+        if (isPPrMarkAttr(mark)) {
+          nextAttrs = {
+            ...(nextAttrs ?? node.attrs),
+            pPrMark: {
+              ...mark,
+              info: {
+                ...mark.info,
+                author: options.author,
+                date,
+                provenance: "user",
+                suggestionId: null,
+              },
+            },
+          };
+        }
       }
       if (nextAttrs) {
         tr.setNodeMarkup(pos, undefined, nextAttrs);

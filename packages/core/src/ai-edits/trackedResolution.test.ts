@@ -453,9 +453,16 @@ describe("accepting every suggestion", () => {
     // deletion: the insertion's break can no longer rotate onto it.
     apply({ type: "insertAfterBlock", blockId: idOf(reviewer, "Signed"), text: "Last." });
     apply({ type: "deleteBlock", blockId: idOf(reviewer, "Signed") });
-    reviewer.acceptAll();
-    const accepted = [...ORIGINAL.slice(0, 2), "Kept.", ...ORIGINAL.slice(2, -1), "Last."];
-    expect(texts(reviewer)).toEqual(accepted);
-    expect(texts(await reopen(reviewer))).toEqual(accepted);
+    const staged = texts(reviewer);
+    expect(staged).toEqual([
+      ...ORIGINAL.slice(0, 2),
+      "Kept.",
+      ...ORIGINAL.slice(2, -1),
+      "",
+      "Last.",
+    ]);
+    expect(reviewer.acceptAll()).toBe(0);
+    expect(texts(reviewer)).toEqual(staged);
+    expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
   });
 });

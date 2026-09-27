@@ -168,6 +168,28 @@ can be enumerated, accepted, or rejected before saving. `getChanges()` includes
 inline edits, formatting, paragraph marks, and paragraph, section, table, row,
 and cell property changes.
 
+### Pending suggestions
+
+Apply operations in `"suggested"` mode to show proposed edits without writing
+them into the DOCX. Persist `reviewer.exportPendingSuggestions()` in a host store
+as JSON alongside the document. After reopening the saved DOCX, call
+`reopened.loadPendingSuggestions(records)` to revalidate and restage them:
+
+```ts
+import { FolioDocxReviewer } from "@stll/folio-core/server";
+import type { FolioPendingSuggestionRecord } from "@stll/folio-core/ai-edits";
+
+const records: FolioPendingSuggestionRecord[] = reviewer.exportPendingSuggestions();
+await saveRecords(records);
+const reopened = await FolioDocxReviewer.fromBuffer(savedDocx, { author: "Reviewer" });
+const results = reopened.loadPendingSuggestions(await loadRecords());
+```
+
+Each result is `restaged` or `stale` with a reason. A stale record leaves the
+document untouched; the host should keep it for review. `acceptAll()` resolves
+ordinary tracked changes and leaves suggestions pending. Use
+`acceptSuggestion(suggestionId)` to commit one explicitly.
+
 ## License
 
 [Apache-2.0](./LICENSE)

@@ -18,6 +18,7 @@ import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import {
+  acceptAllChanges,
   acceptSuggestion,
   getSuggestions,
   rejectSuggestion,
@@ -430,6 +431,19 @@ describe("suggested apply mode", () => {
 });
 
 describe("suggestion commands", () => {
+  test("generic bulk acceptance leaves a suggestion pending", () => {
+    const view = makeView("the quick brown fox");
+    applySuggestedReplace(view, "quick", "swift");
+    const before = view.state.doc.toJSON();
+
+    expect(acceptAllChanges()(view.state, view.dispatch)).toBe(false);
+    expect(view.state.doc.toJSON()).toEqual(before);
+    expect(getSuggestions(view.state).map(({ suggestionId }) => suggestionId)).toEqual(["op-1"]);
+    const xml = serializeParagraph(firstParagraph(fromProseDoc(view.state.doc)));
+    expect(xml).not.toContain("swift");
+    expect(xml).not.toContain("<w:ins");
+  });
+
   test("getSuggestions lists the pending suggestion with its kinds", () => {
     const view = makeView("the quick brown fox");
     applySuggestedReplace(view, "quick", "swift");

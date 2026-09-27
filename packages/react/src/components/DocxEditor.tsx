@@ -43,6 +43,7 @@ import {
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  FolioPendingSuggestionRegistry,
   getCommentAnchorsFromDoc,
   getFolioDocumentOperationIssues,
   getTrackedChangesFromDoc,
@@ -1010,6 +1011,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onCommentsChange,
   });
   const documentOperationUndoEntriesRef = useRef<LiveDocumentOperationUndoEntry[]>([]);
+  const pendingSuggestionRegistryRef = useRef(new FolioPendingSuggestionRegistry());
   // Cache style resolver to avoid recreating on every selection change
   const styleResolverCacheRef = useRef<{
     styles: unknown;
@@ -3028,6 +3030,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         findReplace.openReplace(readFindSelectionSeed());
       },
       loadDocument: (document) => {
+        pendingSuggestionRegistryRef.current.clear();
         const editor = pagedEditorRef.current?.getEditor();
         if (editor) {
           editor.loadDocument(document);
@@ -3035,8 +3038,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
         loadParsedDocument(document);
       },
-      loadDocumentBuffer: (buffer) =>
-        pagedEditorRef.current?.getEditor().loadDocx(buffer) ?? loadBuffer(buffer),
+      loadDocumentBuffer: (buffer) => {
+        pendingSuggestionRegistryRef.current.clear();
+        return pagedEditorRef.current?.getEditor().loadDocx(buffer) ?? loadBuffer(buffer);
+      },
       ensureEditorView: (options?: { focus?: boolean }) => {
         pagedEditorRef.current?.ensureView(options);
       },
@@ -3086,6 +3091,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             operationView.state = view.state;
           },
         };
+        const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
         const result = applyFolioDocumentOperations({
           view: operationView,
           snapshot,
@@ -3101,6 +3107,17 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             id: `react-${String(documentOperationUndoHandleCursor++)}`,
           }),
         });
+
+        if (batch.mode === "suggested" && result.status === "committed") {
+          pendingSuggestionRegistryRef.current.recordApplied({
+            snapshot,
+            story: { type: "main" },
+            operations: batch.operations,
+            applied: result.applied,
+            author: operationAuthor,
+            activeSuggestionIds,
+          });
+        }
 
         const batchComments = appliedOperationComments(createdComments, result.applied);
         if (batchComments.length > 0) {
@@ -3175,6 +3192,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         const createdComments: Comment[] = [];
+        const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
         const { applied, skipped } = applyFolioDocumentOperations({
           view,
           snapshot,
@@ -3194,6 +3212,17 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const batchComments = appliedOperationComments(createdComments, applied);
         if (batchComments.length > 0) {
           updateComments((currentComments) => [...currentComments, ...batchComments]);
+        }
+
+        if (mode === "suggested") {
+          pendingSuggestionRegistryRef.current.recordApplied({
+            snapshot,
+            story: { type: "main" },
+            operations,
+            applied,
+            author: operationAuthor,
+            activeSuggestionIds,
+          });
         }
 
         return { applied, skipped };
@@ -3367,6 +3396,49 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const view = pagedEditorRef.current?.getView();
         return view ? getSuggestions(view.state) : [];
       },
+      exportPendingSuggestions: () => {
+        const view = pagedEditorRef.current?.getView();
+        const activeIds = new Set(
+          view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
+        );
+        return pendingSuggestionRegistryRef.current.exportPendingSuggestions(activeIds);
+      },
+      loadPendingSuggestions: (records) =>
+        pendingSuggestionRegistryRef.current.loadPendingSuggestions({
+          records,
+          snapshotForStory: (story) => {
+            const view = pagedEditorRef.current?.getView();
+            return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
+          },
+          apply: (record, snapshot) => {
+            const view = pagedEditorRef.current?.getView();
+            if (!view) return { applied: [], skipped: [] };
+            const createdComments: Comment[] = [];
+            const result = applyFolioDocumentOperations({
+              view,
+              snapshot,
+              batch: {
+                version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+                operations: [record.operation],
+                mode: "suggested",
+              },
+              author: record.author,
+              createCommentId: (commentText) => {
+                const comment = createComment(commentText, record.author);
+                createdComments.push(comment);
+                return comment.id;
+              },
+            });
+            if (createdComments.length > 0) {
+              updateComments((currentComments) => [...currentComments, ...createdComments]);
+            }
+            return { applied: result.applied, skipped: result.skipped };
+          },
+          activeSuggestionIds: () => {
+            const view = pagedEditorRef.current?.getView();
+            return new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
+          },
+        }),
       acceptSuggestion: (suggestionId, options) => {
         const view = pagedEditorRef.current?.getView();
         if (!view) {

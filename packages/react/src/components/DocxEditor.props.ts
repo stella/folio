@@ -11,6 +11,8 @@ import type {
   FolioAIEditSnapshot,
   FolioCommentAnchor,
   FolioDocumentNavigationTarget,
+  FolioPendingSuggestionLoadResult,
+  FolioPendingSuggestionRecord,
   FolioReviewChange,
 } from "@stll/folio-core/ai-edits";
 import type {
@@ -571,6 +573,10 @@ export type DocxEditorRef = {
    * identifies each one.
    */
   getSuggestions: () => FolioSuggestion[];
+  /** Export active pending suggestions for storage outside the DOCX. */
+  exportPendingSuggestions: () => FolioPendingSuggestionRecord[];
+  /** Revalidate and restage saved suggestions against the current document. */
+  loadPendingSuggestions: (records: readonly unknown[]) => FolioPendingSuggestionLoadResult[];
   /**
    * Accept a suggestion: convert it into a normal tracked change authored by
    * `options.author` (defaults to the editor's configured author). Whole
