@@ -25,7 +25,11 @@ import {
   type ListLevelFormat,
 } from "../docx/listNumberingInstances";
 import { createNumberingMap, isBulletLevel, type NumberingMap } from "../docx/numberingParser";
-import { paragraphNumberingLevel, paragraphNumberingReferenceId } from "../docx/numberingReference";
+import {
+  paragraphNumberingLevel,
+  paragraphNumberingReferenceId,
+  sameStatedParagraphNumbering,
+} from "../docx/numberingReference";
 import type { ListLevel } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "./commands/propertyChangeScope";
@@ -92,22 +96,61 @@ const originalListFormatting = (
   numbering: NumberingMap | null,
 ): Record<string, unknown> => {
   const original: Record<string, unknown> = { ...record };
-  if (LIST_RENDERING_ATTR_KEYS.some((key) => Object.hasOwn(record, key))) {
+  if (recordsListRendering(record)) {
     return original;
   }
-  const numId = paragraphNumberingReferenceId(record.numPr ?? undefined);
+  Object.assign(original, listRenderingFor(record.numPr, numbering));
+  original["numPr"] = record.numPr ?? null;
+  return original;
+};
+
+/** Whether a `w:pPrChange` record states the list rendering it had (a list command's does). */
+const recordsListRendering = (record: PreviousFormatting): boolean =>
+  LIST_RENDERING_ATTR_KEYS.some((key) => Object.hasOwn(record, key));
+
+/** Every list-rendering attr for `numPr`: its level's, or all cleared when it numbers nothing. */
+const listRenderingFor = (
+  numPr: PreviousFormatting["numPr"],
+  numbering: NumberingMap | null,
+): Record<string, unknown> => {
+  const numId = paragraphNumberingReferenceId(numPr ?? undefined);
   const rendering =
     numId === undefined
       ? CLEARED_LIST_RENDERING_ATTRS
       : listAttrsFromNumbering(
-          { numId, ilvl: paragraphNumberingLevel(record.numPr ?? undefined) ?? 0 },
+          { numId, ilvl: paragraphNumberingLevel(numPr ?? undefined) ?? 0 },
           numbering,
         );
+  const attrs: Record<string, unknown> = {};
   for (const key of LIST_RENDERING_ATTR_KEYS) {
-    original[key] = rendering[key] ?? null;
+    attrs[key] = rendering[key] ?? null;
   }
-  original["numPr"] = record.numPr ?? null;
-  return original;
+  return attrs;
+};
+
+/**
+ * The list rendering a paragraph takes when a `w:pPrChange` is rejected. A
+ * reject restores the recorded numbering, but the rendering attrs sit outside
+ * the scope it restores wholesale, so a record that does not state them (one
+ * written by an operation, or read from a file) would leave the rendering of
+ * the numbering it undoes: a paragraph restored to no numbering still showed
+ * the marker it was given. When the reject changes the numbering, the
+ * rendering is recomputed from the restored numbering; otherwise it stays.
+ */
+export const rejectedListRenderingPatch = (
+  current: Pick<ParagraphAttrs, "numPr">,
+  previousFormatting: PreviousFormatting | null | undefined,
+  numbering: NumberingMap | null,
+): Record<string, unknown> => {
+  const record = previousFormatting ?? {};
+  if (recordsListRendering(record)) {
+    return {};
+  }
+  const restored = record.numPr ?? undefined;
+  if (sameStatedParagraphNumbering(restored, current.numPr ?? undefined)) {
+    return {};
+  }
+  return listRenderingFor(restored, numbering);
 };
 
 const canonicalJson = (value: unknown): string =>

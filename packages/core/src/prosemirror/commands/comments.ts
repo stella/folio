@@ -57,7 +57,9 @@ import {
   resolutionRemovesControl,
   withoutResolvedEnclosures,
 } from "../contentControlRevisions";
+import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { rejectedListRenderingPatch } from "../listNumbering";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
@@ -221,6 +223,7 @@ function resolveChange(
     const insertionType = state.schema.marks["insertion"];
     const deletionType = state.schema.marks["deletion"];
     const styleResolver = getDocumentStyleResolver(state);
+    const numbering = getDocumentNumbering(state);
 
     const keepType = mode === "accept" ? insertionType : deletionType;
     const removeType = mode === "accept" ? deletionType : insertionType;
@@ -305,6 +308,11 @@ function resolveChange(
                   paragraphRejectAttrPatch(
                     rejection.previousFormatting,
                     previousFormattingFromStyle,
+                  ),
+                  rejectedListRenderingPatch(
+                    expectParagraphAttrs(node),
+                    rejection.previousFormatting,
+                    numbering,
                   ),
                 );
                 const restoredFormatting = paragraphRejectOriginalFormatting(
