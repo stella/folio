@@ -39,6 +39,7 @@ export const EDIT_VARIANTS = Object.freeze([
   "tablecount",
   "numbering",
   "notes",
+  "references",
   "headers",
   "everywhere",
   "rewrite",
@@ -243,6 +244,43 @@ const tablecount: BodyRewrite = (children) => {
   return rewritten;
 };
 
+const NOTE_REFERENCE_RUN =
+  /<w:r><w:rPr><w:rStyle w:val="(?:Footnote|Endnote)Reference"\/><\/w:rPr><w:(?:footnote|endnote)Reference w:id="\d+"\/><\/w:r>/gu;
+
+/**
+ * Note references added to and removed from paragraphs that otherwise stay:
+ * one paragraph loses its last reference, the next swaps its first for one the
+ * paragraph before it cites, the next gains that paragraph's first reference.
+ * A kept paragraph's references are structure its text edit has to reach, the
+ * shape `churn` and `reorder` never produce (they move references whole).
+ * Only a class with note references applies.
+ */
+const references: BodyRewrite = (children) => {
+  let previous: readonly string[] = [];
+  return mapParagraphs(children, (paragraphXml, ordinal) => {
+    const own = paragraphXml.match(NOTE_REFERENCE_RUN) ?? [];
+    const borrowed = previous;
+    previous = own;
+    const [first] = own;
+    const last = own.at(-1);
+    const [borrowedFirst] = borrowed;
+    const borrowedLast = borrowed.at(-1);
+    if (!first || !last || !borrowedFirst || !borrowedLast) {
+      return paragraphXml;
+    }
+    switch (ordinal % 4) {
+      case 1:
+        return paragraphXml.replace(last, "");
+      case 2:
+        return paragraphXml.replace(first, borrowedLast);
+      case 3:
+        return paragraphXml.replace(first, `${borrowedFirst}${first}`);
+      default:
+        return paragraphXml;
+    }
+  });
+};
+
 const rewrite: BodyRewrite = (children) =>
   mapParagraphs(children, (paragraph) => {
     const text = blockText(paragraph);
@@ -261,6 +299,7 @@ const BODY_REWRITES = {
   tablecount,
   numbering: identical,
   notes: identical,
+  references,
   headers: identical,
   everywhere: light,
   rewrite,

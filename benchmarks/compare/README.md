@@ -56,7 +56,8 @@ paragraph in fifteen, the shape a review pass leaves), `heavy`, `churn`
 `structural` (splits, merges, a deleted row, a changed list level),
 `tablecount` (a table removed and another appended), `numbering` (every list
 level's format, body byte-identical), `notes` (the note stories only, main
-story byte-identical), `headers` (the header and footer stories only),
+story byte-identical), `references` (note references added to and removed
+from paragraphs that otherwise stay), `headers` (the header and footer stories only),
 `everywhere` (the body AND both sets of secondary stories, the only shape in
 which two stories can collide on a revision id), `rewrite` (every paragraph).
 A variant that would leave a class unchanged is skipped rather than reported
