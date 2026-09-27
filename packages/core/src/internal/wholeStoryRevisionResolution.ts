@@ -462,7 +462,12 @@ type ResolveWholeStoryOptions = {
   styleResolver: RunStyleResolver | null;
   numbering: NumberingMap | null;
 };
-export const resolveWholeStory = ({ doc, mode, styleResolver, numbering }: ResolveWholeStoryOptions) => {
+export const resolveWholeStory = ({
+  doc,
+  mode,
+  styleResolver,
+  numbering,
+}: ResolveWholeStoryOptions) => {
   const steps: Step[] = [];
   const propertyRanges: { from: number; to: number }[] = [];
   const propertyResult = resolveProperties({
