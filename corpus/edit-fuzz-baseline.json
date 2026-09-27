@@ -1,5 +1,20 @@
 {
   "schemaVersion": 1,
   "lockDigest": "t1-a5f16e4d50f7fb02a6166966466dfac10a22e07360f28f252c75e8662eadfd70",
-  "signatures": ["locality:splitBlock:parts"]
+  "signatures": [
+    "locality:splitBlock:parts",
+    "oracle-gap:commentOnRange:result",
+    "oracle-gap:deleteBlock:result",
+    "oracle-gap:deleteTableRow:result",
+    "oracle-gap:formatRange:result",
+    "oracle-gap:mergeBlockWithNext:result",
+    "oracle-gap:replaceInBlock:result",
+    "oracle-gap:splitBlock:result",
+    "outcome:deleteBlock:other",
+    "outcome:insertTableRow:text",
+    "outcome:splitBlock:other",
+    "outcome:splitBlock:text",
+    "throw:mergeBlockWithNext:result",
+    "timeout:document"
+  ]
 }
