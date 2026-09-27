@@ -11,7 +11,7 @@
  * blank paragraphs, and fails every comparison here.
  */
 
-import type { Page } from "@playwright/test";
+import { test, type Page } from "@playwright/test";
 
 import { expect, forEachAdapter, openEditor } from "../parity/parity-fixture";
 import type { AdapterFixture } from "../parity/parity-fixture";
@@ -51,9 +51,24 @@ const chooseView = async (page: Page, adapter: AdapterFixture, label: string): P
     return;
   }
   await page.locator(".review-controls__display").click();
-  // Playwright's actionability wait sees this option detached and re-created
-  // for as long as the test runs; the click handler is all a choice runs.
-  await page.locator(".review-controls__option", { hasText: label }).dispatchEvent("click");
+  const option = page.locator(".review-controls__option", { hasText: label });
+  // The toolbar scrolls horizontally when a menu option is brought into view.
+  // Keep the same option node attached across that scroll and two paint frames.
+  const scrollResult = await option.evaluate(async (element) => {
+    const toolbar = element.closest(".basic-toolbar");
+    if (!(toolbar instanceof HTMLElement)) return null;
+    const before = toolbar.scrollLeft;
+    toolbar.scrollLeft += before > 0 ? -1 : 1;
+    const after = toolbar.scrollLeft;
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    return { before, after, connected: element.isConnected };
+  });
+  expect(scrollResult).not.toBeNull();
+  expect(scrollResult?.after).not.toBe(scrollResult?.before);
+  expect(scrollResult).toMatchObject({ connected: true });
+  await option.click();
 };
 
 for (const { label, companion } of VIEWS) {
@@ -69,3 +84,15 @@ for (const { label, companion } of VIEWS) {
     await expect.poll(() => paintedBody(page)).toEqual(expected);
   });
 }
+
+test("document scroll closes the Vue markup menu", async ({ page }) => {
+  const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+  await openEditor(page, { name: "vue", baseUrl: `http://localhost:${vuePort}` }, TRACKED_FIXTURE);
+
+  await page.locator(".review-controls__display").click();
+  await expect(page.locator(".review-controls__panel")).toBeVisible();
+
+  await page.evaluate(() => document.dispatchEvent(new Event("scroll")));
+
+  await expect(page.locator(".review-controls__panel")).toHaveCount(0);
+});

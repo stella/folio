@@ -93,6 +93,17 @@ function onScroll(e: Event) {
   // *inside* the panel (e.g. an overflow-y:auto menu) must not dismiss it.
   if (!props.closeOnScroll || !props.open) return;
   if (e.target instanceof Node && panelRef.value?.contains(e.target)) return;
+  // A click on a panel option may scroll the toolbar that contains its trigger
+  // into view. Keep the option mounted and follow the trigger as it moves.
+  if (
+    e.target instanceof Node &&
+    e.target !== document &&
+    rootRef.value &&
+    e.target.contains(rootRef.value)
+  ) {
+    computePosition();
+    return;
+  }
   close();
 }
 function onResize() {
