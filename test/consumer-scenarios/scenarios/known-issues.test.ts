@@ -294,29 +294,24 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     await assertFieldKept(reviewer, "Inserted.", "directIndentation");
   });
 
-  expectedFailure(
-    "LIVE_REPLY_RANGES",
-    "a reply reads the same in toMarkdown before and after a save",
-    /toMarkdown/u,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      apply(reviewer, "direct", [
-        {
-          type: "commentOnBlock",
-          blockId: blockId(reviewer, "The Buyer pays each invoice within thirty days."),
-          comment: { text: "Why thirty?" },
-        },
-      ]);
-      const [comment] = reviewer.getComments();
-      assert.ok(comment);
-      reviewer.replyTo(comment, { text: "Market standard." });
-      assert.equal(
-        toMarkdown((await reopen(reviewer)).toDocument()),
-        toMarkdown(reviewer.toDocument()),
-        "toMarkdown reads otherwise after the save",
-      );
-    },
-  );
+  test("a reply reads the same in toMarkdown before and after a save", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    apply(reviewer, "direct", [
+      {
+        type: "commentOnBlock",
+        blockId: blockId(reviewer, "The Buyer pays each invoice within thirty days."),
+        comment: { text: "Why thirty?" },
+      },
+    ]);
+    const [comment] = reviewer.getComments();
+    assert.ok(comment);
+    reviewer.replyTo(comment, { text: "Market standard." });
+    assert.equal(
+      toMarkdown((await reopen(reviewer)).toDocument()),
+      toMarkdown(reviewer.toDocument()),
+      "toMarkdown reads otherwise after the save",
+    );
+  });
 
   test("deleting the last paragraph tracked and accepting it leaves what deleting it directly does", async () => {
     const texts: Record<string, string[]> = {};

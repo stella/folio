@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
+import { toMarkdown } from "../markdown";
 import { FolioDocxReviewer } from "./headless";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -47,6 +48,41 @@ const firstBlockId = (reviewer: FolioDocxReviewer): string => {
 };
 
 describe("FolioDocxReviewer.save", () => {
+  test("a new reply has the same live and saved range", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Clause."]));
+    reviewer.applyOperations([
+      {
+        id: "note",
+        type: "commentOnBlock",
+        blockId: firstBlockId(reviewer),
+        comment: { text: "Check." },
+      },
+    ]);
+    const parent = reviewer.getComments().at(0);
+    if (!parent) throw new Error("comment was not created");
+    const reply = reviewer.replyTo(parent, { text: "Agreed." });
+    if (!reply) throw new Error("reply was not created");
+    const secondReply = reviewer.replyTo(reply.id, { text: "Confirmed." });
+    if (!secondReply) throw new Error("second reply was not created");
+
+    const live = reviewer.toDocument();
+    const ranges = live.package.document.content.flatMap((block) =>
+      block.type === "paragraph"
+        ? block.content.filter(
+            (item) =>
+              item.type === "commentRangeStart" &&
+              (item.id === reply.id || item.id === secondReply.id),
+          )
+        : [],
+    );
+    expect(ranges).toHaveLength(2);
+    expect(toMarkdown(live)).toEqual(toMarkdown(reviewer.toDocument()));
+
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(toMarkdown(live)).toEqual(toMarkdown(reopened.toDocument()));
+    expect(reviewer.snapshot().anchors).toEqual(reopened.snapshot().anchors);
+  });
+
   test("reports a selective save for an in-paragraph edit", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocx(["Pay $50 now."]), {
       author: "Reviewer",

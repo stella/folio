@@ -49,6 +49,7 @@ import type { Plugin } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
 import { createReply } from "../docx/replyToComment";
+import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
 import { getHeaderFooterText } from "../docx/headerFooterParser";
 import {
@@ -2044,7 +2045,8 @@ export class FolioDocxReviewer {
    * {@link getComments} or its id; the reply threads under that comment's root
    * (Word threads are flat). On {@link toBuffer} the reply is written as a real
    * Word reply — linked via `commentsExtended.xml` and given its own
-   * `commentRange` markers + reference anchored on the parent's range. Returns
+   * `commentRange` markers + reference anchored on the parent's range. The
+   * live document carries the same anchor. Returns
    * the created reply, or `null` when the target comment is absent.
    */
   replyTo(
@@ -2067,7 +2069,43 @@ export class FolioDocxReviewer {
     }
     this.createdComments.push(reply);
     this.usedCommentIds.add(reply.id);
+    this.anchorReplyInEditor({ parentId: reply.parentId ?? parentId, replyId: reply.id });
     return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
+  }
+
+  private anchorReplyInEditor({ parentId, replyId }: { parentId: number; replyId: number }): void {
+    for (const story of this.listStoryHandlesInternal()) {
+      const state = this.getEditableStoryState(story);
+      if (!state) continue;
+      const commentMark = state.schema.marks["comment"];
+      const referenceNode = state.schema.nodes["commentReference"];
+      if (!commentMark || !referenceNode) continue;
+
+      let from: number | null = null;
+      let to = 0;
+      let referenceAt: number | null = null;
+      state.doc.descendants((node, pos) => {
+        if (node.type === referenceNode && node.attrs["commentId"] === parentId) {
+          referenceAt ??= pos + node.nodeSize;
+        }
+        if (
+          node.isInline &&
+          node.marks.some(
+            (mark) => mark.type === commentMark && mark.attrs["commentId"] === parentId,
+          )
+        ) {
+          from ??= pos;
+          to = pos + node.nodeSize;
+        }
+      });
+      if (referenceAt === null || from === null || from >= to) continue;
+
+      let transaction = state.tr;
+      transaction = transaction.addMark(from, to, commentMark.create({ commentId: replyId }));
+      transaction = transaction.insert(referenceAt, referenceNode.create({ commentId: replyId }));
+      this.setEditableStoryState(story, state.apply(transaction));
+      return;
+    }
   }
 
   /**
@@ -2385,7 +2423,9 @@ export class FolioDocxReviewer {
 
   /** The current document model with edits merged back in. */
   toDocument(): Document {
-    return this.documentFromStateSnapshot(this.captureReviewerState());
+    const document = this.documentFromStateSnapshot(this.captureReviewerState());
+    applyReplyThreadMarkers(document);
+    return document;
   }
 
   private captureReviewerState(): FolioReviewerStateSnapshot {

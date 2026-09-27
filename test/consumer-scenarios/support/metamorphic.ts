@@ -232,17 +232,6 @@ const assertSame = (actual: unknown, expected: unknown, message: string): void =
   if (found.length > 0) throw new Error(`${message}:\n    ${found.join("\n    ")}`);
 };
 
-/** `value` with every property named in `keys` left out, at any depth. */
-const withoutKeys = (value: unknown, keys: readonly string[]): unknown => {
-  if (Array.isArray(value)) return value.map((item) => withoutKeys(item, keys));
-  if (typeof value !== "object" || value === null) return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => !keys.includes(key))
-      .map(([key, item]) => [key, withoutKeys(item, keys)]),
-  );
-};
-
 // ---------------------------------------------------------------------------
 // Tolerances
 // ---------------------------------------------------------------------------
@@ -292,20 +281,6 @@ const tolerantDifferences = <T>(a: T, b: T, tolerances: readonly Tolerance<T>[])
   }
   return found;
 };
-
-/** A reply's range is written only on save, which shifts the editor positions after it. */
-const REPLY_POSITIONS = tolerate<unknown>(
-  "LIVE_REPLY_RANGES",
-  "snapshot from/to positions left out",
-  (value) => withoutKeys(value, ["from", "to"]),
-);
-
-/** Comment anchors are compared through getComments. */
-const REPLY_COMMENT_TAGS = tolerate<unknown>(
-  "LIVE_REPLY_RANGES",
-  "comment tags stripped from toMarkdown",
-  (value) => String(value).replace(/<\/?comment\b[^>]*>/gu, ""),
-);
 
 type BlocksView = { blocks: readonly { text: string; table?: unknown }[] };
 
@@ -944,8 +919,8 @@ export const startRelations = async ({
     });
     const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
       getContent: [],
-      snapshot: [REPLY_POSITIONS],
-      toMarkdown: [REPLY_COMMENT_TAGS],
+      snapshot: [],
+      toMarkdown: [],
       getChanges: [],
       getComments: [],
     };

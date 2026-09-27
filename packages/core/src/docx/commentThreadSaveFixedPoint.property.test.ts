@@ -21,6 +21,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { Comment, Document } from "../types/document";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -66,16 +67,26 @@ const commentId = (index: number): number => index + 1;
 const paraId = (index: number): string =>
   (0x0000_1000 + index).toString(16).toUpperCase().padStart(8, "0");
 
-const buildDocx = async (forest: readonly GeneratedComment[]): Promise<ArrayBuffer> => {
+const buildDocx = async (
+  forest: readonly GeneratedComment[],
+  options: { anchorLayout: "separate" | "shared"; replyRanges: "anchored" | "missing" },
+): Promise<ArrayBuffer> => {
   const zip = await JSZip.loadAsync(await createEmptyDocx());
-  const anchors = forest
-    .map(
-      (_, index) =>
-        `<w:p><w:commentRangeStart w:id="${commentId(index)}"/><w:r><w:t>anchor</w:t></w:r>` +
-        `<w:commentRangeEnd w:id="${commentId(index)}"/>` +
-        `<w:r><w:commentReference w:id="${commentId(index)}"/></w:r></w:p>`,
-    )
-    .join("");
+  const anchored = forest.flatMap(({ parent }, index) =>
+    options.replyRanges === "missing" && parent !== null && forest[parent]?.parent === null
+      ? []
+      : [index],
+  );
+  const start = (index: number): string => `<w:commentRangeStart w:id="${commentId(index)}"/>`;
+  const end = (index: number): string =>
+    `<w:commentRangeEnd w:id="${commentId(index)}"/>` +
+    `<w:r><w:commentReference w:id="${commentId(index)}"/></w:r>`;
+  const anchors =
+    options.anchorLayout === "shared"
+      ? `<w:p>${anchored.map(start).join("")}<w:r><w:t>anchor</w:t></w:r>${anchored.map(end).join("")}</w:p>`
+      : anchored
+          .map((index) => `<w:p>${start(index)}<w:r><w:t>anchor</w:t></w:r>${end(index)}</w:p>`)
+          .join("");
   zip.file(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}"><w:body>${anchors}<w:sectPr/></w:body></w:document>`,
@@ -168,28 +179,68 @@ const threading = ({ package: { document } }: Document): Record<number, number |
   );
 
 describe("saving threaded comments is a fixed point after the first save", () => {
+  test("co-located reply ranges retain their order through the reviewer", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 1, max: 4 }), async (replyCount) => {
+        const forest: GeneratedComment[] = [
+          { parent: null, done: false, text: "first", keepsParaId: true },
+          { parent: null, done: false, text: "second", keepsParaId: true },
+          ...Array.from({ length: replyCount }, (_, index) => ({
+            parent: 0,
+            done: index % 2 === 0,
+            text: `reply${index}`,
+            keepsParaId: index % 2 === 1,
+          })),
+        ];
+        const parsed = await parseDocx(
+          await buildDocx(forest, { anchorLayout: "shared", replyRanges: "missing" }),
+          {
+            preloadFonts: false,
+          },
+        );
+        stripParaIds(parsed.package.document.comments ?? [], forest);
+        const first = await repackDocx(parsed, { updateModifiedDate: false });
+        const reviewer = await FolioDocxReviewer.fromBuffer(first);
+        const second = await repackDocx(reviewer.toDocument(), { updateModifiedDate: false });
+        const documentXml = async (buffer: ArrayBuffer): Promise<string | undefined> =>
+          (await JSZip.loadAsync(buffer)).file("word/document.xml")?.async("text");
+        const markers = (xml: string | undefined): string[] =>
+          xml?.match(/<w:comment(?:RangeStart|RangeEnd|Reference)\b[^>]*\/>/gu) ?? [];
+        expect(markers(await documentXml(second))).toEqual(markers(await documentXml(first)));
+      }),
+      propertyConfig({ numRuns: 12 }),
+    );
+  });
+
   test("every part is byte-stable from the second save on", async () => {
     await fc.assert(
-      fc.asyncProperty(commentForest, async (forest) => {
-        const parsed = await parseDocx(await buildDocx(forest), { preloadFonts: false });
-        stripParaIds(parsed.package.document.comments ?? [], forest);
-        const expectedThreading = threading(parsed);
+      fc.asyncProperty(
+        commentForest,
+        fc.constantFrom("separate", "shared"),
+        fc.constantFrom("anchored", "missing"),
+        async (forest, anchorLayout, replyRanges) => {
+          const parsed = await parseDocx(await buildDocx(forest, { anchorLayout, replyRanges }), {
+            preloadFonts: false,
+          });
+          stripParaIds(parsed.package.document.comments ?? [], forest);
+          const expectedThreading = threading(parsed);
 
-        const first = await repackDocx(parsed, { updateModifiedDate: false });
-        const reparsed = await parseDocx(first, { preloadFonts: false });
-        const second = await repackDocx(reparsed, { updateModifiedDate: false });
+          const first = await repackDocx(parsed, { updateModifiedDate: false });
+          const reparsed = await parseDocx(first, { preloadFonts: false });
+          const second = await repackDocx(reparsed, { updateModifiedDate: false });
 
-        const firstParts = await packageParts(first);
-        const secondParts = await packageParts(second);
-        expect([...secondParts.keys()].sort()).toEqual([...firstParts.keys()].sort());
-        for (const [path, content] of firstParts) {
-          expect({ path, content }).toEqual({ path, content: secondParts.get(path) });
-        }
+          const firstParts = await packageParts(first);
+          const secondParts = await packageParts(second);
+          expect([...secondParts.keys()].sort()).toEqual([...firstParts.keys()].sort());
+          for (const [path, content] of firstParts) {
+            expect({ path, content }).toEqual({ path, content: secondParts.get(path) });
+          }
 
-        // A stable byte sequence that lost the threading would be a fixed point
-        // and a data loss, so the reply links are asserted separately.
-        expect(threading(reparsed)).toEqual(expectedThreading);
-      }),
+          // A stable byte sequence that lost the threading would be a fixed point
+          // and a data loss, so the reply links are asserted separately.
+          expect(threading(reparsed)).toEqual(expectedThreading);
+        },
+      ),
       propertyConfig({ numRuns: 40 }),
     );
   });

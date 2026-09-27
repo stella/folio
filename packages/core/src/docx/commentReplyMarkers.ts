@@ -112,6 +112,30 @@ const commentParentedReplies = (comments: readonly Comment[]): Comment[] => {
   );
 };
 
+/** Match the order fromProseDoc uses when several ranges share a boundary. */
+const orderCoLocatedRanges = (content: Paragraph["content"]): void => {
+  for (let start = 0; start < content.length;) {
+    const type = content[start]?.type;
+    if (type !== "commentRangeStart" && type !== "commentRangeEnd") {
+      start += 1;
+      continue;
+    }
+    let end = start + 1;
+    while (content[end]?.type === type) end += 1;
+    const ordered = content.slice(start, end).toSorted((left, right) => {
+      if (
+        (left.type === "commentRangeStart" || left.type === "commentRangeEnd") &&
+        (right.type === "commentRangeStart" || right.type === "commentRangeEnd")
+      ) {
+        return left.id - right.id;
+      }
+      return 0;
+    });
+    content.splice(start, end - start, ...ordered);
+    start = end;
+  }
+};
+
 const injectIntoParagraph = (
   paragraph: Paragraph,
   replyIdsByParent: Map<number, number[]>,
@@ -151,6 +175,7 @@ const injectIntoParagraph = (
       }
     }
   }
+  orderCoLocatedRanges(next);
   paragraph.content = next;
   return injected;
 };

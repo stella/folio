@@ -30,8 +30,6 @@ export const FINDINGS = {
   // flows they run in. A relation tolerates the frequent ones through
   // `tolerate(<entry>, …)`, so deleting a fixed entry here makes its
   // tolerance fail to compile until it is deleted too.
-  LIVE_REPLY_RANGES:
-    "a reply added with replyTo has no comment range in the live document, while the saved package anchors it on its parent's range, so toMarkdown(toDocument()) reads otherwise across a save",
   TRACKED_TABLE_AFTER_SPLIT_DELETE:
     "a tracked split followed by deleting the new block and inserting a table differs from the equivalent direct edits after accepting changes",
 } as const;
@@ -83,7 +81,6 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TRACKED_MERGE_INTO_DELETED_BLOCK: /applied a merge into a block the batch deletes/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   TEXT_BOX_RESOLVE_MALFORMED_XML: /malformed markup/u,
-  LIVE_REPLY_RANGES: /\[readerStability\] toMarkdown/u,
   TRACKED_TABLE_AFTER_SPLIT_DELETE: /\[directTracked\]/u,
 };
 
