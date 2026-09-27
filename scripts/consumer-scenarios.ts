@@ -21,14 +21,14 @@
 // stories, modes, target features and sessions (support/coverage.ts). The
 // runner merges them, prints the table, writes the summary, and, when every
 // scenario ran, fails if a cell test/consumer-scenarios/coverage-expectations.json
-// requires was never applied.
+// requires was never applied or an unreachable cell was attempted.
 //
 // Environment: FOLIO_SCENARIO_SEED (fuzz seed; fixed by default, `random` to
 // explore; always printed), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS
 // (fuzz size; 12 runs of 10 steps by default), FOLIO_SCENARIO_COLLISION_RUNS
 // (collision flows; 8 by default), FOLIO_ORACLE_GAPS=1 (print the operations
 // the requested-outcome oracle could not model).
-// Exits non-zero on any failure, a required coverage cell with no hits included. Run via `bun run test:consumer-scenarios`.
+// Exits non-zero on any failure, including missing required or hit unreachable coverage cells. Run via `bun run test:consumer-scenarios`.
 
 import { panic } from "better-result";
 import { $ } from "bun";
@@ -39,7 +39,9 @@ import path from "node:path";
 
 import {
   type Expectations,
+  describePattern,
   formatLedger,
+  hitUnreachableCells,
   mergeLedgers,
   missingCells,
   summarize,
@@ -302,8 +304,8 @@ const stageConsumer = async (
 
 /**
  * Merge the scenario processes' ledgers, print the table, write the summary,
- * and, when `enforce` (every scenario ran), name each required cell nothing
- * applied. Returns the failure message, or null.
+ * and, when `enforce` (every scenario ran), check required and unreachable
+ * cells. Returns the failure message, or null.
  */
 const reportCoverage = async (
   coverageDir: string,
@@ -319,16 +321,38 @@ const reportCoverage = async (
   await writeFile(out, `${JSON.stringify(summarize(merged, expectations), null, 2)}\n`);
   console.log(`\n→ coverage ledger written to ${path.relative(repoRoot, out)}`);
   if (!enforce) {
-    console.log("→ a subset ran; required coverage cells are not enforced");
+    console.log("→ a subset ran; coverage expectations are not enforced");
     return null;
   }
   const missing = missingCells(merged, expectations);
+  const unexpected = hitUnreachableCells(merged, expectations);
+  const failures: string[] = [];
   if (missing.length === 0) {
     console.log(`✓ every required coverage cell was applied (${expectations.required.length})`);
-    return null;
+  } else {
+    console.error(missing.map((cell) => `  no hits: ${cell}`).join("\n"));
+    failures.push(
+      `✗ consumer-scenarios: ${missing.length} required coverage cell(s) had no applied operation (coverage-expectations.json).`,
+    );
   }
-  console.error(missing.map((cell) => `  no hits: ${cell}`).join("\n"));
-  return `✗ consumer-scenarios: ${missing.length} required coverage cell(s) had no applied operation (coverage-expectations.json).`;
+  if (unexpected.length === 0) {
+    console.log(
+      `✓ every declared unreachable coverage cell had zero hits (${expectations.unreachable.length})`,
+    );
+  } else {
+    console.error(
+      unexpected
+        .map(
+          ({ cell, reason, applied, refused }) =>
+            `  unexpected hits: ${describePattern(cell)} (${applied} applied, ${refused} refused; ${reason})`,
+        )
+        .join("\n"),
+    );
+    failures.push(
+      `✗ consumer-scenarios: ${unexpected.length} declared unreachable coverage cell(s) had hits (coverage-expectations.json).`,
+    );
+  }
+  return failures.length === 0 ? null : failures.join("\n");
 };
 
 const args = parseArgs(process.argv.slice(2));

@@ -118,6 +118,12 @@ export const missingCells = (merged: Ledger, expectations: Expectations): string
     .filter(({ cell }) => countOf(merged, cell).applied === 0)
     .map(({ cell, why }) => `${describePattern(cell)}${why ? ` (${why})` : ""}`);
 
+/** Declared unreachable patterns with any attempted operation, applied or refused. */
+export const hitUnreachableCells = (merged: Ledger, expectations: Expectations) =>
+  expectations.unreachable
+    .map(({ cell, reason }) => ({ cell, reason, ...countOf(merged, cell) }))
+    .filter(({ applied, refused }) => applied + refused > 0);
+
 /** Applied counts summed over every dimension but `rows` and `columns`. */
 const pivot = (merged: Ledger, rows: Dimension, columns: Dimension) => {
   const table = new Map<string, Map<string, number>>();
