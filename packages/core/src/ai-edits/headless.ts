@@ -98,6 +98,7 @@ import {
   withDocumentNumbering,
 } from "../prosemirror/plugins/documentNumbering";
 import { schema, singletonManager } from "../prosemirror/schema";
+import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { MAX_LIST_LEVEL } from "../prosemirror/listMarker";
 import type { Comment } from "../types/content";
@@ -107,6 +108,7 @@ import type {
   Endnote,
   Footnote,
   HeaderFooter,
+  HeaderFooterType,
   MediaFile,
   NumberingDefinitions,
   SectionProperties,
@@ -797,6 +799,30 @@ const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHa
   `${type}:${relationshipId}`;
 
 const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+
+/** One place a header or footer part is shown: its role in one section. */
+type HeaderFooterPlacement = { type: HeaderFooterType; section: number };
+
+/**
+ * A part's roles as a reader label: `first`, or, in a document with several
+ * sections, `first (sections 1, 3), default (section 2)`.
+ */
+const describePlacements = (
+  placements: readonly HeaderFooterPlacement[],
+  sectionCount: number,
+): string => {
+  const sectionsByRole = new Map<HeaderFooterType, number[]>();
+  for (const { type, section } of placements) {
+    sectionsByRole.set(type, [...(sectionsByRole.get(type) ?? []), section]);
+  }
+  return [...sectionsByRole]
+    .map(([type, sections]) =>
+      sectionCount > 1
+        ? `${type} (${sections.length > 1 ? "sections" : "section"} ${sections.join(", ")})`
+        : type,
+    )
+    .join(", ");
+};
 
 const secondaryStoryKey = (story: FolioSecondaryStoryHandle): string =>
   story.type === "header" || story.type === "footer"
@@ -1798,10 +1824,15 @@ export class FolioDocxReviewer {
    * one per non-empty part: `[header default] …`, `[footer default] …`,
    * `[footnote #N] …`, `[endnote #N] …`. Lines reflect in-memory edits. Empty
    * parts and separator notes are omitted.
+   *
+   * A header or footer is labelled with the role its section references give
+   * it (`default`, `first`, `even`); in a document with several sections, also
+   * with the sections that show it: `[header first (sections 1, 3)] …`.
    */
   getNotesAsText(): string {
     const pkg = this.baseDocument.package;
     const lines: string[] = [];
+    const placements = this.headerFooterPlacements();
 
     const pushHeaderFooter = (
       map: Map<string, HeaderFooter> | undefined,
@@ -1814,7 +1845,10 @@ export class FolioDocxReviewer {
         const handle = { type: label, relationshipId } as const;
         const text = this.getHeaderFooterStoryText(handle, hf);
         if (text.length > 0) {
-          lines.push(`[${label} ${hf.hdrFtrType}] ${text}`);
+          const roles = placements.byPart.get(`${label}:${relationshipId}`);
+          lines.push(
+            `[${label} ${roles ? describePlacements(roles, placements.sectionCount) : hf.hdrFtrType}] ${text}`,
+          );
         }
       }
     };
@@ -2049,6 +2083,37 @@ export class FolioDocxReviewer {
     }
     this.resolvedOverrides.set(target.id, resolved);
     return true;
+  }
+
+  /**
+   * Where each header and footer part is shown, as the live section
+   * references state it: its role (`w:type`) and the 1-based section, in
+   * section order. A part's own `hdrFtrType` holds one role, and one part can
+   * serve several sections, in different roles.
+   */
+  private headerFooterPlacements(): {
+    byPart: Map<string, HeaderFooterPlacement[]>;
+    sectionCount: number;
+  } {
+    const records: SectionProperties[] = [];
+    this.state.doc.descendants((node) => {
+      if (node.type.name !== "paragraph") return true;
+      const record = sectionPropertiesOf(node);
+      if (record && !records.includes(record)) records.push(record);
+      return false;
+    });
+    const final = this.currentFinalSectionProperties();
+    if (final) records.push(final);
+    const byPart = new Map<string, HeaderFooterPlacement[]>();
+    for (const [index, record] of records.entries()) {
+      const place = (part: "header" | "footer", type: HeaderFooterType, rId: string): void => {
+        const key = `${part}:${rId}`;
+        byPart.set(key, [...(byPart.get(key) ?? []), { type, section: index + 1 }]);
+      };
+      for (const { type, rId } of record.headerReferences ?? []) place("header", type, rId);
+      for (const { type, rId } of record.footerReferences ?? []) place("footer", type, rId);
+    }
+    return { byPart, sectionCount: records.length };
   }
 
   private currentFinalSectionProperties(): SectionProperties | undefined {
