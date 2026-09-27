@@ -585,8 +585,6 @@ function resolveChange(
         }
       }
 
-
-
       if (removedSectionEndpointCount > 0) {
         markTrackedSectionEndpointRemoval(tr, {
           sourceDoc: state.doc,
