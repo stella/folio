@@ -9,6 +9,8 @@ on:
       - "test/consumer-scenarios/**"
       - "test/property-testing.ts"
       - "scripts/oracle-mutation-check.ts"
+      - "scripts/consumer-scenarios.ts"
+      - "scripts/packaged-consumer-lib.ts"
       - ".github/workflows/oracle-mutation-check.yml"
 
 permissions: {}

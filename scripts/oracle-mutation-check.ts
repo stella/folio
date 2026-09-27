@@ -30,7 +30,11 @@ const MUTATIONS: Mutation[] = [
     after: 'const text = index === 1 ? "" : cellTexts[index] ?? "";',
     check: "the requested-outcome oracle and table operation scenarios",
     scenarios: ["requested-outcome.test.ts", "operations.test.ts"],
-    only: "tables / (direct|tracked-changes): every collision does what its applied operations asked",
+    only: [
+      "notices a payload the engine dropped or put on the wrong block",
+      "tables / (direct|tracked-changes): every operation type applies or refuses, and the result saves",
+      "tables / (direct|tracked-changes): every collision does what its applied operations asked",
+    ].join("|"),
     pr: true,
   },
   {
