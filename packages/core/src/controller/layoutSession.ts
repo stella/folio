@@ -7,6 +7,7 @@ import type {
   TemplatePreviewValues,
 } from "../prosemirror/plugins/templatePreviewValues";
 import type { StyleDefinitions, Theme } from "../types/document";
+import type { FontAlternates } from "../fonts/fontAlternates";
 
 export type LayoutArtifacts = {
   blocks: FlowBlock[];
@@ -25,7 +26,7 @@ export type LayoutTemplatePreview = {
  * measure depends on. An incremental pass keeps committed measures only when
  * these are the ones they were computed with. The `Document` model itself is
  * not among them: adapters hand back a new one after every edit, while a load
- * that changes how text measures brings new styles.
+ * that changes how text measures brings new styles or font alternates.
  */
 export type LayoutMeasureInputs = {
   styles: StyleDefinitions | null | undefined;
@@ -33,6 +34,7 @@ export type LayoutMeasureInputs = {
   defaultTabStop: number | undefined;
   pageContentHeight: number;
   fontsLoaded: boolean;
+  fontAlternates: FontAlternates;
 };
 
 // Controller-owned memory for the incremental layout loop: the previous run's

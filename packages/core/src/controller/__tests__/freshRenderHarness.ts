@@ -279,7 +279,7 @@ export type FreshRenderRig<TExt> = {
   /** Dispatch a transaction the way the adapters' `handleTransaction` does. */
   edit: (build: (state: EditorState) => Transaction | null) => void;
   /** `ref.loadDocument`: replace the state wholesale; lay it out now or on the next render. */
-  loadDocument: (doc: PMNode, layout: LoadLayout) => void;
+  loadDocument: (doc: PMNode, options: { layout: LoadLayout; document?: Document }) => void;
   /** Change layout inputs (a prop change); the adapter re-renders at once. */
   setInputs: (patch: Partial<FreshRenderInputs>) => void;
   /** Change extension state that is a layout input (a markup view); re-renders at once. */
@@ -478,9 +478,9 @@ export const createFreshRenderRig = <TExt>(
         rerender();
       }, DOCUMENT_CHANGE_NOTIFY_DELAY_MS);
     },
-    loadDocument: (doc, layout) => {
+    loadDocument: (doc, { layout, document }) => {
       state = createState(doc);
-      inputs = { ...inputs, document: createEmptyDocument() };
+      inputs = { ...inputs, document: document ?? createEmptyDocument() };
       pendingRender = true;
       if (layout === LOAD_LAYOUT.immediate) {
         rerender();
@@ -677,7 +677,9 @@ export const loadDocumentEventKind = <TExt>() =>
       for (const { paragraph, text } of event.rewrite) {
         paragraphs[paragraph % paragraphs.length] = text;
       }
-      rig.loadDocument(docFromParagraphs(event.replacement ?? paragraphs), event.layout);
+      rig.loadDocument(docFromParagraphs(event.replacement ?? paragraphs), {
+        layout: event.layout,
+      });
     },
   });
 

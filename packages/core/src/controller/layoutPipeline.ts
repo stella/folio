@@ -128,7 +128,11 @@ const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs
   left.theme === right.theme &&
   left.defaultTabStop === right.defaultTabStop &&
   left.pageContentHeight === right.pageContentHeight &&
-  left.fontsLoaded === right.fontsLoaded;
+  left.fontsLoaded === right.fontsLoaded &&
+  left.fontAlternates.size === right.fontAlternates.size &&
+  [...left.fontAlternates].every(
+    ([name, alternate]) => right.fontAlternates.get(name) === alternate,
+  );
 
 type IncrementalDirtyRangeOptions = {
   session: LayoutSession;
@@ -463,14 +467,15 @@ function runLayoutPipelineMeasured<THfPMs>(
     // Step 1: Convert PM doc to flow blocks
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
+    const fontAlternates = buildFontAlternates(document?.package.fontTable);
     const measureInputs: LayoutMeasureInputs = {
       styles,
       theme: _theme,
       defaultTabStop,
       pageContentHeight,
       fontsLoaded: documentFontsAreLoaded(),
+      fontAlternates,
     };
-    const fontAlternates = buildFontAlternates(document?.package.fontTable);
     const flowOpts: ToFlowBlocksOptions = {
       pageContentHeight,
       fontAlternates,

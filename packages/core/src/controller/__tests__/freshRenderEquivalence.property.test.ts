@@ -15,9 +15,12 @@ import fc from "fast-check";
 import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { withFakeTextMeasure } from "../../layout-engine/measure/__tests__/fakeTextMeasure";
+import { schema } from "../../prosemirror/schema";
+import { createEmptyDocument } from "../../utils/createDocument";
 import {
   baseFreshRenderEventKinds,
   FRESH_RENDER_MUTANT,
+  createFreshRenderRig,
   freshRenderScenarioArbitrary,
   runFreshRenderScenario,
   type FreshRenderVerdict,
@@ -33,6 +36,66 @@ const committedIsFresh = (verdict: FreshRenderVerdict): boolean =>
   JSON.stringify(verdict.committed) === JSON.stringify(verdict.fresh);
 
 describe("fresh-render equivalence", () => {
+  test("a load changing font alternates and one paragraph matches a cold measure", () => {
+    const fontFamily = schema.marks["fontFamily"]?.create({
+      ascii: "Brand Face",
+      hAnsi: "Brand Face",
+    });
+    if (!fontFamily) {
+      throw new Error("Expected fontFamily mark in schema");
+    }
+    const paragraphs = [
+      "First paragraph has enough words to wrap across several lines repeatedly",
+      "Middle paragraph is edited after the replacement document loads",
+      "Last paragraph also has enough words to wrap across several lines repeatedly",
+    ];
+    const makeDoc = () =>
+      schema.node(
+        "doc",
+        null,
+        paragraphs.map((text) => schema.node("paragraph", null, [schema.text(text, [fontFamily])])),
+      );
+    const makeDocument = (altName: string) => {
+      const document = createEmptyDocument();
+      document.package.fontTable = { fonts: [{ name: "Brand Face", altName }] };
+      return document;
+    };
+
+    withFakeTextMeasure(
+      () => {
+        fc.assert(
+          fc.property(fc.constantFrom("Cambria", "Calibri"), (newAlternate) => {
+            const rig = createFreshRenderRig({
+              initialDoc: makeDoc(),
+              leadingFrame: false,
+              ext: null,
+            });
+            rig.setInputs({ document: makeDocument("Arial") });
+            rig.loadDocument(makeDoc(), {
+              layout: "next-render",
+              document: makeDocument(newAlternate),
+            });
+            rig.edit((state) =>
+              state.tr.insertText(" revised", state.doc.child(0).nodeSize + 1 + 6),
+            );
+            rig.tick(100);
+            expect(rig.staleCommits).toEqual([]);
+            expect(rig.committed()).toEqual(rig.fresh());
+          }),
+          propertyConfig({ numRuns: 20, seed: 1148 }),
+        );
+      },
+      {
+        charWidth: (_char, font) => {
+          if (font.includes("Cambria")) {
+            return 18;
+          }
+          return font.includes("Calibri") ? 12 : 6;
+        },
+      },
+    );
+  });
+
   test("no pass lays out a replaced state, and the settled layout equals a fresh one", () => {
     withFakeTextMeasure(() => {
       fc.assert(

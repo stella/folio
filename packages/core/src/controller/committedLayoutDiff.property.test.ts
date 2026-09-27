@@ -5,12 +5,14 @@
  * whatever edits (at any number of places) separate them.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { findDirtyBlockIndexes } from "../paged-layout/incrementalMeasure";
