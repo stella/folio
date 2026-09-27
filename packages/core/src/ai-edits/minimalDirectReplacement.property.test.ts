@@ -439,111 +439,110 @@ const firstParagraph = (reviewer: FolioDocxReviewer): { node: PMNode; from: numb
 
 describe("a direct replacement changes only the characters it changes", () => {
   test("over generated paragraphs and edits", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(item, { minLength: 1, maxLength: 8 }),
-        editArbitrary,
-        operationType,
-        async (items, edit, type) => {
-          const reviewer = await FolioDocxReviewer.fromBuffer(
-            await createDocx(items.map(itemXml).join("")),
-          );
-          const block = reviewer.snapshot().blocks.at(0);
-          const picked = block === undefined ? null : pickEdit(block.text, edit);
-          if (!block || picked === null) {
-            return;
+    const directReplacementProperty = fc.asyncProperty(
+      fc.array(item, { minLength: 1, maxLength: 8 }),
+      editArbitrary,
+      operationType,
+      async (items, edit, type) => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          await createDocx(items.map(itemXml).join("")),
+        );
+        const block = reviewer.snapshot().blocks.at(0);
+        const picked = block === undefined ? null : pickEdit(block.text, edit);
+        if (!block || picked === null) {
+          return;
+        }
+        const { start, end, find, replace } = picked;
+
+        const before = firstParagraph(reviewer);
+        const beforeCharacters = cleanCharacters(before.node);
+        const beforeReferences = noteReferenceIds(before.node);
+        const cleanBefore = buildCleanBlockText(before.node, before.from);
+        const fields = cleanBefore.structuralBoundaries.flatMap((boundary) =>
+          boundary.type === "field"
+            ? [{ offset: boundary.offset - start, length: boundary.length }]
+            : [],
+        );
+        const contract = editContract(cleanBefore, picked);
+
+        const result = reviewer.applyOperations([editOperation(type, block, picked)], {
+          mode: "direct",
+        });
+        if (contract.refusal !== null) {
+          // A match that begins or ends inside a field result or a note
+          // reference names text no run holds, and a reference is not text
+          // a replacement may drop or write: the operation contract refuses
+          // it before any change.
+          expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
+          expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
+          return;
+        }
+        const changes = widenChangesToAtomicSpans(
+          find,
+          planChangesAroundNoteReferences(find, replace, contract.spans, planTextChanges) ?? [],
+          fields,
+        );
+        expect(result.skipped).toEqual([]);
+
+        const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
+        expect(reviewer.snapshot().blocks.at(0)?.text).toBe(expectedText);
+        expect(reviewer.snapshot().blocks.at(1)?.text).toBe("Untouched paragraph.");
+
+        const after = firstParagraph(reviewer);
+        const afterCharacters = cleanCharacters(after.node);
+        expect(afterCharacters.map((entry) => entry.character).join("")).toBe(expectedText);
+
+        // Characters outside every change keep their marks and their control.
+        for (const [index, was] of beforeCharacters.entries()) {
+          const local = index - start;
+          if (changes.some((change) => local >= change.start && local < change.end)) {
+            continue;
           }
-          const { start, end, find, replace } = picked;
+          const shift = changes
+            .filter((change) => change.end <= local)
+            .reduce((sum, change) => sum + change.text.length - (change.end - change.start), 0);
+          const now = afterCharacters[index + shift];
+          expect({
+            index,
+            character: now?.character,
+            sameMarks: now !== undefined && Mark.sameSet(was.marks, now.marks),
+            control: now?.control,
+          }).toEqual({ index, character: was.character, sameMarks: true, control: was.control });
+        }
 
-          const before = firstParagraph(reviewer);
-          const beforeCharacters = cleanCharacters(before.node);
-          const beforeReferences = noteReferenceIds(before.node);
-          const cleanBefore = buildCleanBlockText(before.node, before.from);
-          const fields = cleanBefore.structuralBoundaries.flatMap((boundary) =>
-            boundary.type === "field"
-              ? [{ offset: boundary.offset - start, length: boundary.length }]
-              : [],
-          );
-          const contract = editContract(cleanBefore, picked);
+        expect(countNodes(after.node, "sdt")).toBe(countNodes(before.node, "sdt"));
+        expect(countNodes(after.node, "bookmarkBoundary")).toBe(
+          countNodes(before.node, "bookmarkBoundary"),
+        );
+        const touchedFields = fields.filter(({ offset, length }) =>
+          changes.some((change) => change.start < offset + length && change.end > offset),
+        ).length;
+        expect(countNodes(after.node, "field")).toBe(
+          countNodes(before.node, "field") - touchedFields,
+        );
 
-          const result = reviewer.applyOperations([editOperation(type, block, picked)], {
-            mode: "direct",
-          });
-          if (contract.refusal !== null) {
-            // A match that begins or ends inside a field result or a note
-            // reference names text no run holds, and a reference is not text
-            // a replacement may drop or write: the operation contract refuses
-            // it before any change.
-            expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
-            expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
-            return;
-          }
-          const changes = widenChangesToAtomicSpans(
-            find,
-            planChangesAroundNoteReferences(find, replace, contract.spans, planTextChanges) ?? [],
-            fields,
-          );
-          expect(result.skipped).toEqual([]);
-
-          const expectedText = block.text.slice(0, start) + replace + block.text.slice(end);
-          expect(reviewer.snapshot().blocks.at(0)?.text).toBe(expectedText);
-          expect(reviewer.snapshot().blocks.at(1)?.text).toBe("Untouched paragraph.");
-
-          const after = firstParagraph(reviewer);
-          const afterCharacters = cleanCharacters(after.node);
-          expect(afterCharacters.map((entry) => entry.character).join("")).toBe(expectedText);
-
-          // Characters outside every change keep their marks and their control.
-          for (const [index, was] of beforeCharacters.entries()) {
-            const local = index - start;
-            if (changes.some((change) => local >= change.start && local < change.end)) {
-              continue;
-            }
-            const shift = changes
-              .filter((change) => change.end <= local)
-              .reduce((sum, change) => sum + change.text.length - (change.end - change.start), 0);
-            const now = afterCharacters[index + shift];
-            expect({
-              index,
-              character: now?.character,
-              sameMarks: now !== undefined && Mark.sameSet(was.marks, now.marks),
-              control: now?.control,
-            }).toEqual({ index, character: was.character, sameMarks: true, control: was.control });
-          }
-
-          expect(countNodes(after.node, "sdt")).toBe(countNodes(before.node, "sdt"));
-          expect(countNodes(after.node, "bookmarkBoundary")).toBe(
-            countNodes(before.node, "bookmarkBoundary"),
-          );
-          const touchedFields = fields.filter(({ offset, length }) =>
-            changes.some((change) => change.start < offset + length && change.end > offset),
-          ).length;
-          expect(countNodes(after.node, "field")).toBe(
-            countNodes(before.node, "field") - touchedFields,
-          );
-
-          // The package still says the same after a save and a reopen.
-          const saved = await reviewer.toBuffer();
-          const reopened = await FolioDocxReviewer.fromBuffer(saved);
-          const reopenedText = reopened.snapshot().blocks.at(0)?.text ?? "";
-          if (items.some((entry) => entry.kind === "link")) {
-            // Where a saved `w:hyperlink` lands among its sibling runs is the
-            // serializer's contract, tested with it; the edit is checked above.
-            expect([...reopenedText].toSorted()).toEqual([...expectedText].toSorted());
-          } else {
-            expect(reopenedText).toBe(expectedText);
-          }
-          const xml =
-            (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
-          expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(countNodes(before.node, "sdt"));
-          // No reference is removed, rewritten or reordered.
-          expect(noteReferenceIds(after.node)).toEqual(beforeReferences);
-          expect(noteReferenceIds(firstParagraph(reopened).node)).toEqual(beforeReferences);
-          expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(beforeReferences.length);
-        },
-      ),
-      propertyConfig({ numRuns: 60 }),
+        // The package still says the same after a save and a reopen.
+        const saved = await reviewer.toBuffer();
+        const reopened = await FolioDocxReviewer.fromBuffer(saved);
+        const reopenedText = reopened.snapshot().blocks.at(0)?.text ?? "";
+        if (items.some((entry) => entry.kind === "link")) {
+          // Where a saved `w:hyperlink` lands among its sibling runs is the
+          // serializer's contract, tested with it; the edit is checked above.
+          expect([...reopenedText].toSorted()).toEqual([...expectedText].toSorted());
+        } else {
+          expect(reopenedText).toBe(expectedText);
+        }
+        const xml =
+          (await (await JSZip.loadAsync(saved)).file("word/document.xml")?.async("text")) ?? "";
+        expect((xml.match(/<w:sdt>/gu) ?? []).length).toBe(countNodes(before.node, "sdt"));
+        // No reference is removed, rewritten or reordered.
+        expect(noteReferenceIds(after.node)).toEqual(beforeReferences);
+        expect(noteReferenceIds(firstParagraph(reopened).node)).toEqual(beforeReferences);
+        expect((xml.match(/<w:footnoteReference /gu) ?? []).length).toBe(beforeReferences.length);
+      },
     );
+    await fc.assert(directReplacementProperty, propertyConfig({ numRuns: 60, seed: -479275576 }));
+    await fc.assert(directReplacementProperty, propertyConfig({ numRuns: 60 }));
   }, 240_000);
 });
 

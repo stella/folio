@@ -227,6 +227,13 @@ export const segmentsAroundNoteReferences = (
       return null;
     }
   }
+  // Text on opposite sides of a preserved reference can combine into another
+  // marker once that reference is removed from the prose comparison.
+  const sourceProse = segments.source.map(({ text }) => text).join("");
+  const replacementProse = segments.replacement.join("");
+  if (markerCount(replacementProse) > markerCount(sourceProse)) {
+    return null;
+  }
   return segments;
 };
 
