@@ -56,6 +56,7 @@ import { fileVersionOf } from "./file-system";
 import {
   acquireLease,
   DEFAULT_LEASE_OWNER,
+  publicLockHolder,
   readLease,
   type AcquiredLease,
   type LockHolder,
@@ -88,6 +89,27 @@ export type FlushRequest = {
   /** After this the writer has stopped waiting; the request is void. */
   deadline: string;
 };
+
+/** Request metadata safe to include in a refused editor lease response. */
+export type PublicFlushRequest = Omit<FlushRequest, "leaseToken"> & { leaseToken?: never };
+
+const publicFlushRequest = ({
+  id,
+  owner,
+  pid,
+  host,
+  txId,
+  requestedAt,
+  deadline,
+}: FlushRequest): PublicFlushRequest => ({
+  id,
+  owner,
+  pid,
+  host,
+  txId,
+  requestedAt,
+  deadline,
+});
 
 const flushPrefixFor = (documentPath: string): string =>
   `.${path.basename(documentPath)}.folio-flush-`;
@@ -271,7 +293,7 @@ export const acquireLeaseForWrite = async ({
         code: FOLIO_CLI_ERROR_CODES.locked,
         message: `${documentPath} is held by ${holder.owner} (pid ${holder.pid} on ${holder.host}), which did not save and release it within ${String(flushWaitMs)} ms.`,
         hint: "Save or close the document in the editor and retry, or pass --force to take the lease over.",
-        details: { holder, flush: "timedOut", flushWaitMs },
+        details: { holder: publicLockHolder(holder), flush: "timedOut", flushWaitMs },
       }),
     );
   } finally {
@@ -308,7 +330,7 @@ export const acquireEditorLease = async ({
         code: FOLIO_CLI_ERROR_CODES.locked,
         message: `A write to ${documentPath} is waiting to take the lease.`,
         hint: "Retry after it commits, then reload the document.",
-        details: { pending },
+        details: { pending: pending.map(publicFlushRequest) },
       }),
     );
   }
