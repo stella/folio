@@ -159,6 +159,7 @@ import {
   expectRunFormattingOverrideMarkAttrs,
   expectRunPropertyChangeMarkAttrs,
   expectBlockSdtAttrs,
+  expectBlockCustomXmlAttrs,
   expectSdtAttrs,
   expectShapeAttrs,
   expectPreservedBlockAttrs,
@@ -1384,10 +1385,7 @@ function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): Blo
 }
 
 function convertPMBlockCustomXml(node: PMNode, styleResolver: StyleEngine | null): BlockCustomXml {
-  const { openingXml, closingXml, _originallyEmpty } = node.attrs;
-  if (typeof openingXml !== "string" || typeof closingXml !== "string") {
-    panic("Invalid block custom XML wrapper attributes");
-  }
+  const { openingXml, closingXml, _originallyEmpty } = expectBlockCustomXmlAttrs(node);
   const innerDoc = node.type.schema.node("doc", null, node.content);
   const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
   const content = _originallyEmpty === true && isStillSyntheticFiller(extracted) ? [] : extracted;

@@ -29,6 +29,7 @@ export type {
   MathAttrs,
   SdtAttrs,
   BlockSdtAttrs,
+  BlockCustomXmlAttrs,
   ShapeAttrs,
   TableAttrs,
   TableRowAttrs,

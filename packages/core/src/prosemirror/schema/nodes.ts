@@ -801,6 +801,13 @@ export type BlockSdtAttrs = {
   rawSdtChildrenAfterContent?: string;
 };
 
+/** Verbatim shell retained around editable block custom XML content. */
+export type BlockCustomXmlAttrs = {
+  openingXml: string;
+  closingXml: string;
+  _originallyEmpty: boolean;
+};
+
 /**
  * The `mc:AlternateContent` a shape or text box was read from, with a
  * fingerprint of the node it was attached to. `fromProseDoc` hands the element

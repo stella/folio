@@ -369,6 +369,7 @@ const anchoredTextBoxAround = (inner: string): string =>
 
 const CONTAINER_FIXTURES: Record<string, (inner: string) => string> = {
   doc: (inner) => inner,
+  blockCustomXml: (inner) => `<w:customXml w:element="container">${inner}</w:customXml>`,
   blockSdt: (inner) =>
     `<w:sdt><w:sdtPr><w:tag w:val="container"/></w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`,
   tableCell: (inner) => tableAround(inner, ""),

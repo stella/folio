@@ -48,6 +48,7 @@ import { isParagraphDirection } from "../paragraphDirection";
 import { PRESERVED_XML_LEVELS, TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
 import type {
   BlockSdtAttrs,
+  BlockCustomXmlAttrs,
   CharacterSpacingAttrs,
   CharacterStyleAttrs,
   CommentAttrs,
@@ -1058,6 +1059,28 @@ export const expectSdtAttrs = (node: PMNode): SdtAttrs =>
   expectCachedNodeAttrs(node, sdtAttrsCache, readSdtAttrs, "sdt attrs");
 
 const blockSdtAttrsCache = new WeakMap<PMNode, BlockSdtAttrs>();
+
+const blockCustomXmlAttrsCache = new WeakMap<PMNode, BlockCustomXmlAttrs>();
+
+export const readBlockCustomXmlAttrs = (
+  node: PMNode,
+): ReadProseMirrorAttrsResult<BlockCustomXmlAttrs> => {
+  const attrs = attrsRecord(node.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectNodeType(node, "blockCustomXml", issues);
+  requiredString(attrs, "openingXml", "blockCustomXml.attrs.openingXml", issues);
+  requiredString(attrs, "closingXml", "blockCustomXml.attrs.closingXml", issues);
+  optionalBoolean(attrs, "_originallyEmpty", "blockCustomXml.attrs._originallyEmpty", issues);
+  return attrsResult(attrs, issues);
+};
+
+export const expectBlockCustomXmlAttrs = (node: PMNode): BlockCustomXmlAttrs =>
+  expectCachedNodeAttrs(
+    node,
+    blockCustomXmlAttrsCache,
+    readBlockCustomXmlAttrs,
+    "blockCustomXml attrs",
+  );
 
 export const readBlockSdtAttrs = (node: PMNode): ReadProseMirrorAttrsResult<BlockSdtAttrs> => {
   const attrs = attrsRecord(node.attrs);
