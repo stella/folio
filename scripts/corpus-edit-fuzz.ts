@@ -9,12 +9,7 @@ import {
   writeJsonFile,
 } from "./lib/corpus-manifest.ts";
 import { selectTiers, tierScopedLockDigest } from "./lib/corpus-tiers.ts";
-import {
-  type EditFailure,
-  type EditWorkerResult,
-  replayEditCase,
-  runEditWorker,
-} from "./lib/corpus-edit-fuzz-worker.ts";
+import type { EditFailure, EditWorkerResult } from "../test/corpus-edit-fuzz-contract.ts";
 
 type Case = EditFailure & { document: string; sha256: string; seed: number };
 type Incomplete = {
@@ -39,7 +34,7 @@ type Report = {
 type Baseline = { schemaVersion: 1; lockDigest: string; signatures: string[] };
 
 const BASELINE = path.join(REPOSITORY_ROOT, "corpus", "edit-fuzz-baseline.json");
-const WORKER = path.join(REPOSITORY_ROOT, "scripts", "corpus-edit-fuzz.ts");
+const WORKER = path.join(REPOSITORY_ROOT, "test", "corpus-edit-fuzz-worker.ts");
 const DEFAULT_TIMEOUT = 120_000;
 
 const option = (name: string): string | undefined => {
@@ -92,14 +87,6 @@ const check = async (reports: readonly Report[]): Promise<void> => {
 };
 
 const main = async (): Promise<void> => {
-  if (process.argv[2] === "worker") {
-    const file = process.argv[3];
-    const seed = process.argv[4];
-    if (!file || !seed) throw new Error("worker requires document path and seed");
-    const result = await runEditWorker(file, Number(seed), process.argv.includes("--skip-sdk"));
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-    return;
-  }
   if (process.argv[2] === "replay") {
     const reportPath = option("--report");
     if (!reportPath) throw new Error("replay requires --report FILE");
@@ -117,11 +104,20 @@ const main = async (): Promise<void> => {
     if (!source || !file || file.sha256 !== selected.sha256)
       throw new Error("replay case does not match the pinned corpus lock");
     const location = path.join(corpusCacheRoot(), "sources", source.id, file.path);
-    const observed = await replayEditCase(
-      location,
-      selected.operations,
-      process.argv.includes("--skip-sdk"),
+    const child = Bun.spawnSync(
+      [
+        "bun",
+        WORKER,
+        "replay",
+        location,
+        JSON.stringify(selected.operations),
+        ...(process.argv.includes("--skip-sdk") ? ["--skip-sdk"] : []),
+      ],
+      { cwd: REPOSITORY_ROOT, stdout: "pipe", stderr: "pipe", timeout: DEFAULT_TIMEOUT },
     );
+    if (child.exitCode !== 0)
+      throw new Error(`replay worker failed: ${new TextDecoder().decode(child.stderr)}`);
+    const observed = JSON.parse(new TextDecoder().decode(child.stdout)) as EditFailure | null;
     process.stdout.write(`${JSON.stringify(observed, null, 2)}\n`);
     if (observed?.signature !== selected.signature) process.exitCode = 1;
     return;

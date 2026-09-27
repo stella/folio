@@ -6,20 +6,21 @@ import path from "node:path";
 
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
 
-import { openReviewer, toArrayBuffer } from "../../test/consumer-scenarios/support/documents.ts";
+import { openReviewer, toArrayBuffer } from "./consumer-scenarios/support/documents.ts";
 import {
   assertRequestedOutcome,
   capture,
   resolvedState,
   rowsOf,
-} from "../../test/consumer-scenarios/support/oracle.ts";
+} from "./consumer-scenarios/support/oracle.ts";
 import {
   coreBatch,
-  type Mode,
   type Operation,
   randomOperation,
-} from "../../test/consumer-scenarios/support/operations.ts";
-import { createRandom } from "../../test/consumer-scenarios/support/random.ts";
+} from "./consumer-scenarios/support/operations.ts";
+import { createRandom } from "./consumer-scenarios/support/random.ts";
+
+import type { EditFailure, EditStep, EditWorkerResult } from "./corpus-edit-fuzz-contract.ts";
 
 const TYPES = [
   "replaceInBlock",
@@ -33,25 +34,11 @@ const TYPES = [
   "deleteTableRow",
 ] as const;
 
-export type EditStep = { mode: Mode; operation: Operation };
-export type EditFailure = {
-  class: string;
-  signature: string;
-  expected: string;
-  observed: string;
-  operations: EditStep[];
-};
-export type EditWorkerResult = {
-  status: "parsed" | "unparsed";
-  attempts: number;
-  failures: EditFailure[];
-};
-
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 const sdkDll = path.resolve(
   import.meta.dir,
-  "../../packages/core/scripts/differential/dotnet/bin/Release/net8.0/OpenXmlProjector.dll",
+  "../packages/core/scripts/differential/dotnet/bin/Release/net8.0/OpenXmlProjector.dll",
 );
 
 const sdkErrors = (bytes: Uint8Array): string[] => {
@@ -397,3 +384,26 @@ export const replayEditCase = async (
   }
   return runSteps(original, steps, originalSdk);
 };
+
+if (import.meta.main) {
+  const command = process.argv[2];
+  const document = process.argv[3];
+  if (!document) throw new Error("edit worker requires a document path");
+  if (command === "worker") {
+    const seed = Number(process.argv[4]);
+    if (!Number.isSafeInteger(seed)) throw new Error("edit worker requires a numeric seed");
+    const result = await runEditWorker(document, seed, process.argv.includes("--skip-sdk"));
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  } else if (command === "replay") {
+    const operations = process.argv[4];
+    if (!operations) throw new Error("edit worker replay requires operations JSON");
+    const result = await replayEditCase(
+      document,
+      JSON.parse(operations) as EditStep[],
+      process.argv.includes("--skip-sdk"),
+    );
+    process.stdout.write(`${JSON.stringify(result)}\n`);
+  } else {
+    throw new Error(`unknown edit worker command ${command}`);
+  }
+}

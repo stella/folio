@@ -1,0 +1,7 @@
+{
+  "extends": "./consumer-scenarios/tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "bun-types"]
+  },
+  "include": ["corpus-edit-fuzz-worker.ts", "corpus-edit-fuzz-contract.ts"]
+}
