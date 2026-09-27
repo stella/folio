@@ -125,8 +125,24 @@ const paste = async (page: Page, action: Extract<BrowserInputAction, { html: str
     const parts: Record<string, Blob> = { "text/plain": new Blob([plain], { type: "text/plain" }) };
     if (html) parts["text/html"] = new Blob([html], { type: "text/html" });
     await navigator.clipboard.write([new ClipboardItem(parts)]);
+    document.documentElement.dataset["fuzzPasteReceived"] = "unseen";
+    document.addEventListener(
+      "paste",
+      (event) => {
+        document.documentElement.dataset["fuzzPasteReceived"] = "seen";
+        document.documentElement.dataset["fuzzPasteHtml"] =
+          event.clipboardData?.getData("text/html") ?? "";
+      },
+      { capture: true, once: true },
+    );
   }, action);
   await page.keyboard.press(`${MODIFIER}+v`);
+  await expect
+    .poll(() => page.locator("html").getAttribute("data-fuzz-paste-received"))
+    .toBe("seen");
+  await expect
+    .poll(() => page.locator("html").getAttribute("data-fuzz-paste-html"))
+    .toContain(action.html);
 };
 
 const drive = async (page: Page, action: BrowserInputAction) => {
