@@ -23,7 +23,6 @@ import {
   prefetchMeasurement,
 } from "@stll/folio-core/layout-engine/measure/measureWorker";
 import { getCachedTextWidth } from "@stll/folio-core/layout-engine/measure/cache";
-import { WORKER_FONT_FINGERPRINT_TEXT } from "@stll/folio-core/layout-engine/measure/measureWorkerProtocol";
 import { projectCompressedDocx, type DocxProjectionWire } from "@stll/docx-core/projection";
 
 import "@stll/folio-react/editor.css";
@@ -66,7 +65,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     return { width: -1, alive: canPrefetchMeasurement() };
   }
   ctx.font = font;
-  const fontFingerprintWidth = ctx.measureText(WORKER_FONT_FINGERPRINT_TEXT).width;
+  const fontFingerprintWidth = ctx.measureText(text).width;
 
   prefetchMeasurement({
     text,
@@ -74,6 +73,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     letterSpacing,
     horizontalScale: 1,
     fontCacheKey,
+    fontFingerprintText: text,
     fontFingerprintWidth,
     fontKerning: "none",
   });

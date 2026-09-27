@@ -60,12 +60,17 @@ export default defineConfig({
   plugins: [vue(), serveFixtures()],
   root: playgroundRoot,
   resolve: {
-    alias: {
-      // The published `@stll/folio-vue` `.` export points at `dist`, which is a
-      // build artifact. Serve the workspace source directly so the playground
-      // (and the parity e2e loop) never measures a stale build.
-      "@stll/folio-vue": path.resolve(repoRoot, "packages/vue/src/index.ts"),
-    },
+    // Serve workspace source, including the font entry, without a stale dist build.
+    alias: [
+      {
+        find: "@stll/folio-vue/editor.css",
+        replacement: path.resolve(repoRoot, "packages/vue/src/styles/playground.css"),
+      },
+      {
+        find: /^@stll\/folio-vue$/u,
+        replacement: path.resolve(repoRoot, "packages/vue/src/index.ts"),
+      },
+    ],
   },
   // Mirror the React playground: when launched by the parity harness, serve
   // workspace packages as live source instead of a cached pre-bundle.
