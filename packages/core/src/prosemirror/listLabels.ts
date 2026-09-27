@@ -55,6 +55,15 @@ const staticMarker = (attrs: Readonly<ParagraphAttrs>): string | undefined => {
   return text || undefined;
 };
 
+/** Most paragraphs: nothing to count and no marker to show. */
+const isPlainParagraph = (attrs: Readonly<ParagraphAttrs>): boolean =>
+  attrs.numPr == null &&
+  attrs.listMarker == null &&
+  attrs.listMarkerTemplate == null &&
+  (attrs._propertyChanges == null || attrs._propertyChanges.length === 0);
+
+const NO_PREVIOUS_LIST = { abstractNumId: null, fromStyle: false, numId: null };
+
 /**
  * Advances past one paragraph and answers the label it shows, or `undefined`
  * when it shows none.
@@ -72,6 +81,12 @@ export const createListLabelCounter = (): ListLabelCounter => {
     original: createListCounterState(),
   };
   return (attrs) => {
+    if (isPlainParagraph(attrs)) {
+      // All the counter does for a paragraph with no numbering, now or in a
+      // tracked change, is end the run of list items before it.
+      streams.final.previousList = NO_PREVIOUS_LIST;
+      return undefined;
+    }
     // A paragraph numbered at a level its list does not define carries no
     // rendering (see `hasListRendering`): Word paints no marker for it and it
     // counts as unnumbered, as the parser counts it.

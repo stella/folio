@@ -97,6 +97,8 @@ function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | und
   );
 }
 
+const UNNUMBERED: ParagraphAttrs = Object.freeze({});
+
 /**
  * The attrs the page's list counter reads, projected from the paragraph the
  * way the editor projects them (`toProseDoc`). A paragraph without a list
@@ -105,7 +107,7 @@ function markdownHeadingLevel(ctx: RenderContext, para: Paragraph): number | und
 function listLabelAttrs(para: Paragraph): ParagraphAttrs {
   const list = para.listRendering;
   if (!list) {
-    return {};
+    return UNNUMBERED;
   }
   const fromStyle = para.formatting?.numPrFromStyle;
   return {
