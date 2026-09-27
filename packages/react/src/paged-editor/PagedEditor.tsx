@@ -55,6 +55,7 @@ import {
   createLayoutScheduler,
   type LayoutScheduler,
 } from "@stll/folio-core/controller/layoutScheduler";
+import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import {
@@ -113,7 +114,6 @@ import { setEmbeddedFontFamilyMap } from "@stll/folio-core/utils/fontResolver";
 // Layout engine
 import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
 import { recordLayoutPhase } from "@stll/folio-core/layout-engine/layoutInstrumentation";
-import type { LayoutRunReason } from "@stll/folio-core/layout-engine/layoutInstrumentation";
 import type {
   Layout,
   FlowBlock,
@@ -134,7 +134,6 @@ import type {
   HeaderFooterContent,
   FootnoteRenderItem,
 } from "@stll/folio-core/layout-painter/renderPage";
-import type { DirtyRange } from "@stll/folio-core/paged-layout/incrementalMeasure";
 import {
   onPaintedLayoutChange,
   readBlockRects,
@@ -170,7 +169,6 @@ import {
 } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
-import { getTransactionsDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 // Table commands (for quick-action insert buttons)
 import { addRowBelow, addColumnRight } from "@stll/folio-core/prosemirror";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -1861,14 +1859,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useEffect(() => hyphenationReadiness.cancel, [hyphenationReadiness]);
 
     const runLayoutPipeline = useCallback(
-      (
-        state: EditorState,
-        options: {
-          dirtyRange?: DirtyRange;
-          forceFull?: boolean;
-          reason?: LayoutRunReason;
-        } = {},
-      ) => {
+      (state: EditorState, options: LayoutRunOptions = {}) => {
         const outcome = runLayoutPipelineCompute(
           {
             contentWidth,
@@ -2018,9 +2009,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // The "when to lay out" policy (coalesce a typing burst into one pass, with a
     // latency cap) lives in the framework-agnostic layout scheduler; this adapter
     // just feeds it transactions and points it at runLayoutPipeline.
-    const layoutSchedulerRef = useRef<LayoutScheduler<EditorState> | null>(null);
+    const layoutSchedulerRef = useRef<LayoutScheduler | null>(null);
     if (layoutSchedulerRef.current === null) {
-      layoutSchedulerRef.current = createLayoutScheduler<EditorState>({
+      layoutSchedulerRef.current = createLayoutScheduler({
+        // The pass lays out the state the editor holds when it runs, never the
+        // one a transaction produced before a document load replaced it.
+        readState: () => hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
         runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
         debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
         leadingFrame: true,
@@ -2055,9 +2049,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     }, [flushDocumentChangeNotification]);
 
     // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
-    // coalescing window merge dirty ranges and paint once for the burst.
-    const scheduleLayout = useCallback((state: EditorState, dirtyRange: DirtyRange | null) => {
-      layoutSchedulerRef.current?.schedule(state, dirtyRange);
+    // coalescing window paint once for the burst.
+    const scheduleLayout = useCallback(() => {
+      layoutSchedulerRef.current?.schedule();
     }, []);
 
     // Clean up the pending layout pass and the doc-change timer on unmount.
@@ -2771,7 +2765,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      ({ transactions, newState, docChanged }: HiddenEditorTransactionUpdate) => {
+      ({ newState, docChanged }: HiddenEditorTransactionUpdate) => {
         // Keep the anonymization match list mirrored in a ref so the
         // overlay recompute reads the latest set without depending on
         // a state setter inside its useCallback closure. We pull off
@@ -2833,18 +2827,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             hidden: nextPreviewHidden,
             mode: nextPreviewMode,
           };
-          if (!docChanged) {
-            if (nextPreviewMode !== previousPreview.mode) {
-              scheduleLayout(newState, null);
-            } else {
-              const previewDirty = templatePreviewDirtyRange(
-                previousPreview,
-                templatePreviewRef.current,
-              );
-              if (previewDirty) {
-                scheduleLayout(newState, previewDirty);
-              }
-            }
+          if (
+            !docChanged &&
+            (nextPreviewMode !== previousPreview.mode ||
+              templatePreviewDirtyRange(previousPreview, templatePreviewRef.current) !== null)
+          ) {
+            scheduleLayout();
           }
         }
 
@@ -2882,7 +2870,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           hideSelectionOverlayDuringInput(newState);
 
           // Content changed - schedule layout (coalesced via rAF)
-          scheduleLayout(newState, getTransactionsDirtyRange(transactions));
+          scheduleLayout();
 
           // Convert back to the Folio document model off the keypress path.
           scheduleDocumentChangeNotification();
@@ -2955,23 +2943,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // user enters HF editing first (a doc opened without
           // collaboration that hasn't been clicked into yet). The HF PMs
           // are mounted unconditionally so an HF transaction can fire
-          // before any body view exists; without a bodyState
-          // `scheduleLayout` was a no-op and the painter never repainted
-          // the in-flight HF edit (Codex #487 P1: 21:59 review). Use the
-          // precomputed initial state when present, otherwise force-create
-          // the view via `ensureHiddenEditorView` so the next read returns
-          // a state.
-          let bodyState = hiddenPMRef.current?.getState();
-          if (!bodyState && precomputedInitialStateRef.current) {
-            bodyState = precomputedInitialStateRef.current;
-          }
-          if (!bodyState) {
+          // before any body view exists; without a body state the scheduled
+          // pass has nothing to lay out and the painter never repainted
+          // the in-flight HF edit (Codex #487 P1: 21:59 review). The pass
+          // reads the precomputed initial state when present; otherwise
+          // force-create the view via `ensureHiddenEditorView` so it reads
+          // the view's state.
+          if (!hiddenPMRef.current?.getState() && !precomputedInitialStateRef.current) {
             ensureHiddenEditorView({ sync: true });
-            bodyState = hiddenPMRef.current?.getState();
           }
-          if (bodyState) {
-            scheduleLayout(bodyState, null);
-          }
+          scheduleLayout();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;
@@ -2999,8 +2980,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleNoteStoryTransaction = useCallback(
       (view: EditorView, docChanged: boolean, selectionChanged: boolean) => {
         if (docChanged) {
-          const bodyState = hiddenPMRef.current?.getState();
-          if (bodyState) scheduleLayout(bodyState, null);
+          scheduleLayout();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;

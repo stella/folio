@@ -1448,6 +1448,7 @@ describe("runLayoutPipeline", () => {
     expect(session.artifacts).toBeNull();
     expect(session.lastEditorState).toBeNull();
     expect(session.lastPmDoc).toBeNull();
+    expect(session.lastMeasureInputs).toBeNull();
     expect(session.usedLoadedFonts).toBe(false);
     expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
@@ -1463,6 +1464,7 @@ describe("createLayoutSession", () => {
       artifacts: null,
       lastEditorState: null,
       lastPmDoc: null,
+      lastMeasureInputs: null,
       usedLoadedFonts: false,
       lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
     });

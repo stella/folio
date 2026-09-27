@@ -63,10 +63,10 @@ import type {
   HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
-import type { LayoutOutcome, LayoutRunOptions } from "@stll/folio-core/controller/layoutPipeline";
+import type { LayoutOutcome } from "@stll/folio-core/controller/layoutPipeline";
+import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
-import type { LayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
@@ -96,7 +96,6 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
-import { getTransactionsDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
@@ -617,10 +616,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
       if (docChanged) {
         isDirty.value = true;
-        const bodyView = editorView.value;
-        if (bodyView) {
-          scheduler.schedule(bodyView.state, null);
-        }
+        scheduler.schedule();
       }
       if (docChanged || selectionChanged) {
         const { from, to } = view.state.selection;
@@ -648,8 +644,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           onChange?.(updated);
           emitter.emit("docChange", updated);
         }
-        const bodyView = editorView.value;
-        if (bodyView) scheduler.schedule(bodyView.state, null);
+        scheduler.schedule();
       }
       if (docChanged || selectionChanged) {
         onSelectionUpdate?.(view.state);
@@ -764,7 +759,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // rAF-coalescing scheduler (shared with React via core). A burst of
   // keystrokes lays out once per frame instead of synchronously per keystroke.
-  const scheduler: LayoutScheduler<EditorState> = createLayoutScheduler<EditorState>({
+  const scheduler = createLayoutScheduler({
+    // The pass lays out the state the view holds when it runs, never the one a
+    // transaction produced before a document load replaced it.
+    readState: () => editorView.value?.state ?? null,
     runLayout: (state, runOptions) => runLayoutPipeline(state, runOptions),
     debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
     maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
@@ -920,16 +918,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     { flush: "post" },
   );
 
-  function handleTransaction({
-    transactions,
-    newState,
-    docChanged,
-  }: HiddenEditorTransactionUpdate): void {
+  function handleTransaction({ newState, docChanged }: HiddenEditorTransactionUpdate): void {
     editorState.value = newState;
     if (docChanged) {
       isDirty.value = true;
       syncCoordinator.incrementStateSeq();
-      scheduler.schedule(newState, getTransactionsDirtyRange(transactions));
+      scheduler.schedule();
       scheduleDocumentChangeNotification();
     }
     syncCoordinator.requestRender();

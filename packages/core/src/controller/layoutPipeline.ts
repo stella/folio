@@ -49,7 +49,7 @@ import {
   recordLayoutPhase,
   recordLayoutStart,
 } from "../layout-engine/layoutInstrumentation";
-import type { LayoutPhase, LayoutRunReason } from "../layout-engine/layoutInstrumentation";
+import type { LayoutPhase } from "../layout-engine/layoutInstrumentation";
 import {
   measureBlocks,
   measureSingleBlockWithoutFloatingZones,
@@ -102,8 +102,15 @@ import type {
   Watermark,
 } from "../types/document";
 import { getDocumentWatermark } from "../watermark";
+import { diffAgainstCommittedLayout } from "./committedLayoutDiff";
 import type { HyphenationReadiness } from "./hyphenationReadiness";
-import type { LayoutArtifacts, LayoutSession, LayoutTemplatePreview } from "./layoutSession";
+import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
+import type {
+  LayoutArtifacts,
+  LayoutMeasureInputs,
+  LayoutSession,
+  LayoutTemplatePreview,
+} from "./layoutSession";
 
 const formatEndnoteTexts = (
   numbers: ReadonlyMap<number, number>,
@@ -116,10 +123,49 @@ const formatEndnoteTexts = (
   return texts;
 };
 
-export type LayoutRunOptions = {
-  dirtyRange?: DirtyRange;
-  forceFull?: boolean;
-  reason?: LayoutRunReason;
+const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs): boolean =>
+  left.styles === right.styles &&
+  left.theme === right.theme &&
+  left.defaultTabStop === right.defaultTabStop &&
+  left.pageContentHeight === right.pageContentHeight &&
+  left.fontsLoaded === right.fontsLoaded;
+
+type IncrementalDirtyRangeOptions = {
+  session: LayoutSession;
+  state: EditorState;
+  preview: LayoutTemplatePreview;
+  measureInputs: LayoutMeasureInputs;
+};
+
+/**
+ * The range an incremental pass re-measures, or `null` for a full measure: the
+ * committed measures must come from the same measure inputs, and the range is
+ * where the current document and preview differ from the committed ones.
+ */
+const incrementalDirtyRange = ({
+  session,
+  state,
+  preview,
+  measureInputs,
+}: IncrementalDirtyRangeOptions): DirtyRange | null => {
+  const { lastPmDoc, lastMeasureInputs } = session;
+  if (!lastPmDoc || !lastMeasureInputs || !sameMeasureInputs(lastMeasureInputs, measureInputs)) {
+    return null;
+  }
+  const diff = diffAgainstCommittedLayout(
+    { doc: lastPmDoc, preview: session.lastTemplatePreview },
+    { doc: state.doc, preview },
+  );
+  switch (diff.type) {
+    case "full":
+      return null;
+    case "range":
+      return diff.range;
+    default: {
+      const unreachable: never = diff;
+      return unreachable;
+    }
+  }
 };
 
 // Different exit paths populate different subsets; the adapter applies whatever
@@ -417,6 +463,13 @@ function runLayoutPipelineMeasured<THfPMs>(
     // Step 1: Convert PM doc to flow blocks
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
+    const measureInputs: LayoutMeasureInputs = {
+      styles,
+      theme: _theme,
+      defaultTabStop,
+      pageContentHeight,
+      fontsLoaded: documentFontsAreLoaded(),
+    };
     const fontAlternates = buildFontAlternates(document?.package.fontTable);
     const flowOpts: ToFlowBlocksOptions = {
       pageContentHeight,
@@ -756,15 +809,24 @@ function runLayoutPipelineMeasured<THfPMs>(
     });
     const blockWidths = blockMeasureInputs.widths;
     const previousArtifacts = session.artifacts;
+    const dirtyRange =
+      options.measure === LAYOUT_MEASURE.incremental
+        ? incrementalDirtyRange({
+            session,
+            state,
+            preview: pendingTemplatePreview,
+            measureInputs,
+          })
+        : null;
     const incrementalResult =
-      options.dirtyRange && !options.forceFull && previousArtifacts
+      dirtyRange && previousArtifacts
         ? tryBuildIncrementalMeasures({
             previousBlocks: previousArtifacts.blocks,
             previousMeasures: previousArtifacts.measures,
             previousBlockWidths: previousArtifacts.blockWidths,
             nextBlocks: newBlocks,
             nextBlockWidths: blockWidths,
-            dirtyRange: options.dirtyRange,
+            dirtyRange,
             measureBlock: measureSingleBlockWithoutFloatingZones,
           })
         : null;
@@ -1333,7 +1395,8 @@ function runLayoutPipelineMeasured<THfPMs>(
     session.lastTemplatePreview = pendingTemplatePreview;
     session.lastEditorState = state;
     session.lastPmDoc = state.doc;
-    session.usedLoadedFonts = documentFontsAreLoaded();
+    session.lastMeasureInputs = measureInputs;
+    session.usedLoadedFonts = measureInputs.fontsLoaded;
     recordLayoutComplete(reason);
   } catch (error) {
     const invalidHighlights = describeInvalidHighlightMarks(state.doc);

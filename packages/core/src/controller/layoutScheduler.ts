@@ -1,18 +1,15 @@
 // Framework-agnostic layout scheduler — the first piece of the headless editor
 // controller (seam-architecture P4). It owns the "when to lay out" policy:
 // coalesce a burst of edits into a single layout pass after a short debounce,
-// while enforcing a hard latency cap from the first edit. It carries the editor
+// while enforcing a hard latency cap from the first edit. It handles the editor
 // state opaquely (generic `TState`), so it has no ProseMirror or React
-// dependency; the React adapter wires it to its `runLayoutPipeline`.
+// dependency; the adapters wire it to their `runLayoutPipeline`.
+//
+// A request carries no state. The pass reads the editor's state when it runs,
+// so a state replaced in the meantime (a document load, a remount) can never
+// be laid out over the current one.
 
-import type { LayoutRunReason } from "../layout-engine/layoutInstrumentation";
-import { mergeDirtyRanges, type DirtyRange } from "../paged-layout/incrementalMeasure";
-
-export type LayoutRunOptions = {
-  dirtyRange?: DirtyRange;
-  forceFull?: boolean;
-  reason: LayoutRunReason;
-};
+import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
 
 export type RunLayout<TState> = (state: TState, options: LayoutRunOptions) => void;
 
@@ -40,6 +37,11 @@ export const browserClock: SchedulerClock = {
 };
 
 export type LayoutSchedulerConfig<TState> = {
+  /**
+   * The editor's current state, read when a pass runs; `null` (no editor)
+   * skips the pass.
+   */
+  readState: () => TState | null;
   runLayout: RunLayout<TState>;
   /** Quiet-window debounce before an interactive layout pass. */
   debounceMs: number;
@@ -55,31 +57,29 @@ export type LayoutSchedulerConfig<TState> = {
   clock: SchedulerClock;
 };
 
-export type LayoutScheduler<TState> = {
+export type LayoutScheduler = {
   /**
-   * Schedule a layout pass after a short coalescing window. Repeated calls in
-   * the window replace the pending state and merge dirty ranges, so a typing
-   * burst paints once while still honoring the max-latency cap.
+   * Request an incremental layout pass after a short coalescing window.
+   * Repeated calls in the window join the pending request, so a typing burst
+   * paints once while still honoring the max-latency cap.
    */
-  schedule: (state: TState, dirtyRange: DirtyRange | null) => void;
+  schedule: () => void;
   /** Cancel any pending timer/frame. Call on teardown. */
   dispose: () => void;
 };
 
-type PendingLayoutRequest<TState> = {
-  dirtyRange: DirtyRange | null;
+type PendingLayoutRequest = {
   firstScheduledAt: number;
   rafId: number | null;
-  state: TState;
   timerId: number | null;
 };
 
 export const createLayoutScheduler = <TState>(
   config: LayoutSchedulerConfig<TState>,
-): LayoutScheduler<TState> => {
+): LayoutScheduler => {
   const clock = config.clock;
   let lastRunAt: number | null = null;
-  let pending: PendingLayoutRequest<TState> | null = null;
+  let pending: PendingLayoutRequest | null = null;
 
   const flushPending = (): void => {
     if (!pending || pending.rafId !== null) {
@@ -87,21 +87,17 @@ export const createLayoutScheduler = <TState>(
     }
     pending.timerId = null;
     pending.rafId = clock.requestFrame(() => {
-      const latest = pending;
       pending = null;
-      if (!latest) {
+      lastRunAt = clock.now();
+      const state = config.readState();
+      if (state === null) {
         return;
       }
-      lastRunAt = clock.now();
-      const options: LayoutRunOptions = { reason: "transaction" };
-      if (latest.dirtyRange) {
-        options.dirtyRange = latest.dirtyRange;
-      }
-      config.runLayout(latest.state, options);
+      config.runLayout(state, { reason: "transaction", measure: LAYOUT_MEASURE.incremental });
     });
   };
 
-  const armTimer = (request: PendingLayoutRequest<TState>): void => {
+  const armTimer = (request: PendingLayoutRequest): void => {
     if (request.rafId !== null) {
       return;
     }
@@ -117,18 +113,14 @@ export const createLayoutScheduler = <TState>(
   };
 
   return {
-    schedule(state, dirtyRange) {
+    schedule() {
       if (pending) {
-        pending.state = state;
-        pending.dirtyRange = mergeDirtyRanges(pending.dirtyRange, dirtyRange);
         armTimer(pending);
         return;
       }
-      const next: PendingLayoutRequest<TState> = {
-        dirtyRange,
+      const next: PendingLayoutRequest = {
         firstScheduledAt: clock.now(),
         rafId: null,
-        state,
         timerId: null,
       };
       pending = next;
