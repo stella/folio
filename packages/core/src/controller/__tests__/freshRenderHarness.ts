@@ -331,6 +331,7 @@ export const createFreshRenderRig = <TExt>(
   const session = createLayoutSession();
   let committed: LayoutArtifactsView | null = null;
   let pendingRender = false;
+  let documentRevision = 0;
   let lastSignature: string | null = null;
   const staleCommits: StaleCommit[] = [];
   const syncCoordinator = new LayoutSelectionGate();
@@ -434,7 +435,8 @@ export const createFreshRenderRig = <TExt>(
 
   let notifyTimer: number | null = null;
 
-  const signature = (): string => `${inputs.contentWidth}|${options.extraSignature?.(rig) ?? ""}`;
+  const signature = (): string =>
+    `${inputs.contentWidth}|${documentRevision}|${options.extraSignature?.(rig) ?? ""}`;
 
   const rerender = (): void => {
     pendingRender = false;
@@ -481,12 +483,16 @@ export const createFreshRenderRig = <TExt>(
     loadDocument: (doc, { layout, document }) => {
       state = createState(doc);
       inputs = { ...inputs, document: document ?? createEmptyDocument() };
+      documentRevision += 1;
       pendingRender = true;
       if (layout === LOAD_LAYOUT.immediate) {
         rerender();
       }
     },
     setInputs: (patch) => {
+      if (patch.document && patch.document !== inputs.document) {
+        documentRevision += 1;
+      }
       inputs = { ...inputs, ...patch };
       rerender();
     },

@@ -11,6 +11,8 @@ const MARKER = "QZXJQ";
 
 type StaleLayoutProbe = {
   markerPainted: boolean;
+  frameRequests: number;
+  completedFrames: number;
   resumeFrames: () => void;
 };
 
@@ -40,6 +42,8 @@ const installProbe = (page: Page, frames: Frames) =>
       const requestFrame = window.requestAnimationFrame.bind(window);
       const probe: StaleLayoutProbe = {
         markerPainted: false,
+        frameRequests: 0,
+        completedFrames: 0,
         resumeFrames: () => {
           window.requestAnimationFrame = requestFrame;
           for (const callback of queued.splice(0)) {
@@ -47,9 +51,14 @@ const installProbe = (page: Page, frames: Frames) =>
           }
         },
       };
-      if (pauseFrames) {
-        window.requestAnimationFrame = (callback) => queued.push(callback);
-      }
+      window.requestAnimationFrame = (callback) => {
+        probe.frameRequests += 1;
+        const run = (time: number) => {
+          callback(time);
+          probe.completedFrames += 1;
+        };
+        return pauseFrames ? queued.push(run) : requestFrame(run);
+      };
       new MutationObserver(() => {
         const painted = [...pages.querySelectorAll(".layout-page-content")]
           .map((content) => content.textContent)
@@ -70,11 +79,17 @@ const typeThenReload = async (page: Page, frames: Frames): Promise<void> => {
     MARKER,
   );
   expect(typed).toBe(true);
-  // Past every adapter timer (the 250 ms document-change notification
-  // included), so a hidden page's timers have all run before it is shown.
-  await page.waitForTimeout(600);
+  // The edit's scheduler must request its frame before a paused tab resumes.
+  await page.waitForFunction(() => (window.__staleLayoutProbe?.frameRequests ?? 0) > 0);
   await page.evaluate(() => window.__staleLayoutProbe?.resumeFrames());
-  await page.waitForTimeout(300);
+  await page.waitForFunction(() => (window.__staleLayoutProbe?.completedFrames ?? 0) > 0);
+  // Let the painted DOM and MutationObserver run after the scheduler callback.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      ),
+  );
 };
 
 for (const frames of [FRAMES.running, FRAMES.paused]) {

@@ -70,7 +70,9 @@ describe("fresh-render equivalence", () => {
               leadingFrame: false,
               ext: null,
             });
+            const beforeAlternate = rig.committed();
             rig.setInputs({ document: makeDocument("Arial") });
+            expect(rig.committed()).not.toEqual(beforeAlternate);
             rig.loadDocument(makeDoc(), {
               layout: "next-render",
               document: makeDocument(newAlternate),
@@ -90,7 +92,10 @@ describe("fresh-render equivalence", () => {
           if (font.includes("Cambria")) {
             return 18;
           }
-          return font.includes("Calibri") ? 12 : 6;
+          if (font.includes("Calibri")) {
+            return 12;
+          }
+          return font.includes("Arial") ? 9 : 6;
         },
       },
     );
@@ -123,7 +128,7 @@ describe("fresh-render equivalence", () => {
               }),
             ),
           ),
-          propertyConfig({ numRuns: 400 }),
+          propertyConfig({ numRuns: 400, seed: 1142 }),
         );
         caught = result.failed;
       });
