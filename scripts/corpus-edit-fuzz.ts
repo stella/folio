@@ -9,29 +9,12 @@ import {
   writeJsonFile,
 } from "./lib/corpus-manifest.ts";
 import { selectTiers, tierScopedLockDigest } from "./lib/corpus-tiers.ts";
+import {
+  compareBaseline,
+  type EditBaseline,
+  type EditReport,
+} from "./lib/corpus-edit-fuzz-ratchet.ts";
 import type { EditFailure, EditWorkerResult } from "../test/corpus-edit-fuzz-contract.ts";
-
-type Case = EditFailure & { document: string; sha256: string; seed: number };
-type Incomplete = {
-  document: string;
-  sha256: string;
-  seed: number;
-  reason: "timeout" | "worker";
-  detail: string;
-};
-type Report = {
-  schemaVersion: 1;
-  lockDigest: string;
-  shard: string | null;
-  sample: number | null;
-  documents: number;
-  parsed: number;
-  attempts: number;
-  counts: Record<string, number>;
-  cases: Case[];
-  incomplete: Incomplete[];
-};
-type Baseline = { schemaVersion: 1; lockDigest: string; signatures: Record<string, number> };
 
 const BASELINE = path.join(REPOSITORY_ROOT, "corpus", "edit-fuzz-baseline.json");
 const WORKER = path.join(REPOSITORY_ROOT, "test", "corpus-edit-fuzz-worker.ts");
@@ -54,45 +37,28 @@ const seedOf = (hash: string): number => Number.parseInt(hash.slice(0, 8), 16);
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const check = async (reports: readonly Report[]): Promise<void> => {
-  const baseline = JSON.parse(await Bun.file(BASELINE).text()) as Baseline;
-  if (reports.some(({ lockDigest }) => lockDigest !== baseline.lockDigest))
-    throw new Error("edit fuzz report and baseline lock digests differ");
-  const observed = new Map<string, number>();
-  for (const { signature } of reports.flatMap(({ cases }) => cases)) {
-    observed.set(signature, (observed.get(signature) ?? 0) + 1);
-  }
-  const introduced = [...observed.keys()].filter(
-    (signature) => !Object.hasOwn(baseline.signatures, signature),
-  );
-  const grown = [...observed].filter(
-    ([signature, count]) =>
-      Object.hasOwn(baseline.signatures, signature) &&
-      count > (baseline.signatures[signature] ?? 0),
-  );
-  const fullRun = reports.length === 1 && reports[0]?.shard === null && reports[0]?.sample === null;
-  const allShards =
-    reports.length > 1 &&
-    reports.every(({ sample }) => sample === null) &&
-    Array.from({ length: reports.length }, (_, index) => `${index + 1}/${reports.length}`).every(
-      (shard) => reports.some((report) => report.shard === shard),
-    );
-  const complete = fullRun || allShards;
-  if (!complete && reports.length > 1)
-    throw new Error("edit fuzz check needs every shard exactly once");
-  const shrunk = complete
-    ? Object.entries(baseline.signatures).filter(
-        ([signature, count]) => (observed.get(signature) ?? 0) < count,
-      )
-    : [];
-  if (introduced.length || grown.length || shrunk.length) {
+const check = async (reports: readonly EditReport[]): Promise<void> => {
+  const baseline = JSON.parse(await Bun.file(BASELINE).text()) as EditBaseline;
+  const { introduced, missing, duplicates, unexpectedIncomplete, recoveredIncomplete } =
+    compareBaseline(reports, baseline);
+  if (
+    introduced.length ||
+    missing.length ||
+    duplicates.length ||
+    unexpectedIncomplete.length ||
+    recoveredIncomplete.length
+  ) {
+    const describe = (name: string, values: readonly unknown[]): string =>
+      `${name} ${values.length}: ${JSON.stringify(values.slice(0, 5))}`;
     process.stderr.write(
-      `edit fuzz baseline mismatch: new ${JSON.stringify(introduced)}, grown ${JSON.stringify(grown)}, shrunk ${JSON.stringify(shrunk)}\n`,
+      `edit fuzz baseline mismatch: ${[
+        describe("introduced", introduced),
+        describe("missing", missing),
+        describe("duplicates", duplicates),
+        describe("unexpected incomplete", unexpectedIncomplete),
+        describe("recovered incomplete", recoveredIncomplete),
+      ].join("; ")}\n`,
     );
-    process.exitCode = 1;
-  }
-  if (reports.some(({ incomplete }) => incomplete.some(({ reason }) => reason === "worker"))) {
-    process.stderr.write("edit fuzz: one or more workers exited without a verdict\n");
     process.exitCode = 1;
   }
 };
@@ -102,7 +68,7 @@ const main = async (): Promise<void> => {
     const reportPath = option("--report");
     if (!reportPath) throw new Error("replay requires --report FILE");
     const index = Number(option("--case") ?? "0");
-    const report = JSON.parse(await Bun.file(reportPath).text()) as Report;
+    const report = JSON.parse(await Bun.file(reportPath).text()) as EditReport;
     const selected = report.cases[index];
     if (!selected) throw new Error(`case ${index} does not exist`);
     const lock = selectTiers(await loadCorpusLock(), [1]);
@@ -137,7 +103,7 @@ const main = async (): Promise<void> => {
     const files = process.argv.slice(3);
     if (files.length === 0) throw new Error("check requires report files");
     const reports = await Promise.all(
-      files.map(async (file) => JSON.parse(await Bun.file(file).text()) as Report),
+      files.map(async (file) => JSON.parse(await Bun.file(file).text()) as EditReport),
     );
     const cases = reports.flatMap(({ cases: reportCases }) => reportCases);
     const counts = new Map<string, number>();
@@ -152,7 +118,7 @@ const main = async (): Promise<void> => {
       ...[...counts]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([kind, count]) => `- ${kind}: ${count}`),
-      `Baseline signatures: ${Object.keys((JSON.parse(await Bun.file(BASELINE).text()) as Baseline).signatures).length}`,
+      `Baseline failure identities: ${(JSON.parse(await Bun.file(BASELINE).text()) as EditBaseline).identities.length}`,
       "### Minimal replay cases",
       ...cases
         .slice(0, 3)
@@ -222,7 +188,7 @@ const main = async (): Promise<void> => {
       (_, index) => index % Number(shardParts[2]) === Number(shardParts[1]) - 1,
     );
   }
-  const report: Report = {
+  const report: EditReport = {
     schemaVersion: 1,
     lockDigest: tierScopedLockDigest(fullLock, [1]),
     shard,

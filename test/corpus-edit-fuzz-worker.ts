@@ -12,6 +12,7 @@ import {
   capture,
   resolvedState,
   rowsOf,
+  type Pre,
 } from "./consumer-scenarios/support/oracle.ts";
 import {
   coreBatch,
@@ -136,7 +137,7 @@ const compareSdk = (original: readonly string[], saved: readonly string[]): stri
 
 const saveAndReopen = async (
   reviewer: Awaited<ReturnType<typeof openReviewer>>,
-): Promise<Uint8Array> => {
+): Promise<{ saved: Uint8Array; reopened: Awaited<ReturnType<typeof openReviewer>> }> => {
   const before = reviewer.getContent().map(({ text, kind }) => ({ text, kind }));
   const saved = new Uint8Array(await reviewer.toBuffer());
   const reopened = await openReviewer(saved);
@@ -144,8 +145,26 @@ const saveAndReopen = async (
   if (JSON.stringify(before) !== JSON.stringify(after)) {
     throw new Error("saved package reopens to different blocks");
   }
-  return saved;
+  return { saved, reopened };
 };
+
+/** Check the package a reader will open, including changes invisible to block text. */
+type SavedOutcomeArgs = {
+  reopened: Awaited<ReturnType<typeof openReviewer>>;
+  pre: Pre;
+  operation: Operation;
+  applied: boolean;
+  context: string;
+};
+
+export const assertSavedOutcome = ({
+  reopened,
+  pre,
+  operation,
+  applied,
+  context,
+}: SavedOutcomeArgs): Promise<string[]> =>
+  assertRequestedOutcome(reopened, pre, { applied: applied ? [operation] : [] }, context);
 
 const runSteps = async (
   original: Uint8Array,
@@ -171,13 +190,27 @@ const runSteps = async (
         );
       }
       const applied = result.applied.length > 0;
+      let saved: Uint8Array;
+      let reopened: Awaited<ReturnType<typeof openReviewer>>;
       try {
-        const gaps = await assertRequestedOutcome(
-          reviewer,
-          pre,
-          { applied: applied ? [operation] : [] },
-          `edit ${index}`,
+        ({ saved, reopened } = await saveAndReopen(reviewer));
+      } catch (error) {
+        return failure(
+          "reopen",
+          operation.type,
+          "saved package reopens to the edited view",
+          messageOf(error),
+          steps.slice(0, index + 1),
         );
+      }
+      try {
+        const gaps = await assertSavedOutcome({
+          reopened,
+          pre,
+          operation,
+          applied,
+          context: `edit ${index}`,
+        });
         if (applied && gaps.length > 0) {
           return failure(
             "oracle-gap",
@@ -192,18 +225,6 @@ const runSteps = async (
           "outcome",
           operation.type,
           "requested outcome after save and reopen",
-          messageOf(error),
-          steps.slice(0, index + 1),
-        );
-      }
-      let saved: Uint8Array;
-      try {
-        saved = await saveAndReopen(reviewer);
-      } catch (error) {
-        return failure(
-          "reopen",
-          operation.type,
-          "saved package reopens to the edited view",
           messageOf(error),
           steps.slice(0, index + 1),
         );
