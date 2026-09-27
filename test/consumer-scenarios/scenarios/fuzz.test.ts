@@ -8,12 +8,16 @@
  * (support/fuzz.ts); seeds pinned before it existed replay on the legacy one.
  * A flow that reproduces a known finding runs in known-issues.test.ts
  * instead, as an expected failure.
+ * FOLIO_SCENARIO_RELATIONS / FOLIO_SCENARIO_RELATIONS_DEPTH pick the
+ * metamorphic relations checked after every step (support/metamorphic.ts);
+ * the run ends by printing which ran.
  */
 
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
 import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
+import { relationSummary } from "../support/metamorphic.ts";
 
 const integer = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -54,6 +58,10 @@ const flowTest = (kind: FlowKind, run: number, seed: number) => {
     },
   );
 };
+
+after(() => {
+  console.log(relationSummary());
+});
 
 for (let run = 0; run < RUNS; run += 1) flowTest("random", run, SEED + run);
 for (let run = 0; run < COLLISION_RUNS; run += 1) flowTest("collisions", run, SEED + run);
