@@ -15,6 +15,7 @@ import {
   FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA,
   FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
   FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
+  FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
   FOLIO_CLEARABLE_PARAGRAPH_SPACING_JSON_SCHEMA,
   FOLIO_HARD_PAGE_BREAK_JSON_SCHEMA,
@@ -148,6 +149,7 @@ const OPERATION_PROPERTY_SCHEMAS = {
       "For `commentOnBlock`: optional exact text within the block the comment is about, up to 100,000 characters.",
   },
   styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+  outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
   pageBreakBefore: {
     type: "boolean",
     description: "For inserts: start the inserted paragraph on a new page.",

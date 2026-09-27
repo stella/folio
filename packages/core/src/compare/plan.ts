@@ -375,6 +375,11 @@ const toFolioAIBlockParagraphProperties = (
   ...(properties.indentation !== undefined && { indentation: properties.indentation }),
 });
 
+type InsertOperation = Extract<
+  FolioAIEditOperation,
+  { type: "insertAfterBlock" | "insertBeforeBlock" }
+>;
+
 /**
  * For each step, the id of the next base block at or after it — the anchor a
  * target-only insertion is placed before. `null` once no base block follows.
@@ -956,10 +961,22 @@ export const planStoryCompare = ({
       structuralBoundary.offset === 0
         ? { ...(structuralBoundary.clear !== undefined && { clear: structuralBoundary.clear }) }
         : undefined;
-    // All four always explicit, `null` included: an inserted paragraph that
-    // says nothing takes the anchor's paragraph properties, and the anchor is
-    // whichever block happened to follow it. A new ordinary paragraph beside
-    // a styled, aligned list item is not implicitly the same kind of paragraph.
+    // Every paragraph property always explicit, `null` included: an inserted
+    // paragraph that says nothing takes the anchor's paragraph properties, and
+    // the anchor is whichever block happened to follow it. A new ordinary
+    // paragraph beside a heading that states its outline level, or beside a
+    // styled, aligned list item, is not implicitly the same kind of paragraph.
+    // Total over the properties an operation can set, so one added to the
+    // contract cannot be left to inheritance here.
+    const paragraphProperties = {
+      styleId: block.styleId ?? null,
+      outlineLevel: block.directOutlineLevel ?? null,
+      listLevel: block.listLevel ?? null,
+      numbering: block.listReference ?? null,
+      alignment: block.directAlignment ?? null,
+      spacing: block.directSpacing ?? null,
+      indentation: block.directIndentation ?? null,
+    } satisfies Required<Pick<InsertOperation, keyof FolioAIBlockParagraphProperties>>;
     const shared = {
       text: block.text,
       ...((block.text.includes("\t") || block.text.includes("\n")) && {
@@ -967,12 +984,7 @@ export const planStoryCompare = ({
       }),
       ...(moveSourceId !== undefined && { moveId: moveIdOf(moveSourceId) }),
       ...(hardPageBreak !== undefined && { hardPageBreak }),
-      styleId: block.styleId ?? null,
-      listLevel: block.listLevel ?? null,
-      numbering: block.listReference ?? null,
-      alignment: block.directAlignment ?? null,
-      spacing: block.directSpacing ?? null,
-      indentation: block.directIndentation ?? null,
+      ...paragraphProperties,
     };
     if (anchorId !== null) {
       operations.push({

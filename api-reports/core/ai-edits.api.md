@@ -263,6 +263,7 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         clear?: import__stll_docx_core_model.BreakContent["clear"];
     };
     styleId?: string | null;
+    outlineLevel?: import__stll_docx_core_model.OutlineLevel | null;
     listLevel?: number | null;
     numbering?: FolioAIListNumbering | null;
     alignment?: import__stll_docx_core_model.ParagraphAlignment | null;

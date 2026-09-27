@@ -2602,9 +2602,13 @@ const buildInsertedParagraphs = ({
         attrs["outlineLevel"] = original?.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
       }
     }
+    if (formatsParagraph && operation.outlineLevel !== undefined) {
+      attrs["outlineLevel"] = operation.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
+    }
     if (
       formatsParagraph &&
       (operation.styleId !== undefined ||
+        operation.outlineLevel !== undefined ||
         operation.alignment !== undefined ||
         operation.spacing !== undefined ||
         operation.indentation !== undefined)
@@ -2644,6 +2648,14 @@ const buildInsertedParagraphs = ({
           Reflect.deleteProperty(originalFormatting, "styleId");
         } else {
           originalFormatting.styleId = operation.styleId;
+        }
+      }
+      if (operation.outlineLevel !== undefined) {
+        originalFormatting ??= {};
+        if (operation.outlineLevel === null) {
+          Reflect.deleteProperty(originalFormatting, "outlineLevel");
+        } else {
+          originalFormatting.outlineLevel = operation.outlineLevel;
         }
       }
       if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {

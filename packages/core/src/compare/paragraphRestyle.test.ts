@@ -89,3 +89,62 @@ describe("comparison paragraph restyles", () => {
     );
   });
 });
+
+describe("comparison insertions beside a heading that states its outline level", () => {
+  // Markdown headings carry a direct `w:outlineLvl`. An inserted paragraph
+  // that did not state its own took the anchor's, so an ordinary paragraph
+  // placed before such a heading became a heading once accepted.
+  test.each([
+    {
+      label: "an inserted paragraph before a heading",
+      base: "# Scope\n\nBody.",
+      target: "Preamble.\n\n# Scope\n\nBody.",
+      kinds: ["insert"],
+    },
+    {
+      label: "an inserted paragraph between body text and a heading",
+      base: "Intro.\n\n# Scope\n\nBody.",
+      target: "Intro.\n\nPreamble.\n\n# Scope\n\nBody.",
+      kinds: ["insert"],
+    },
+    {
+      label: "sections swapped before a trailing paragraph",
+      base: "Intro.\n\n## Fees\n\nPay.\n\n## Term\n\nEither.\n\nTail.",
+      target: "Intro.\n\n## Term\n\nEither.\n\n## Fees\n\nPay.\n\nTail.",
+      kinds: ["delete", "delete", "insert", "insert"],
+    },
+  ])("keeps $label ordinary once accepted", async ({ base, target, kinds }) => {
+    await expectVerifiedRestyle(await markdownDocx(base), await markdownDocx(target), kinds);
+  });
+
+  test("keeps a relocated paragraph ordinary beside edited table rows", async () => {
+    const table = (rows: string) => `| Item | Price |\n|---|---|\n${rows}`;
+    await expectVerifiedRestyle(
+      await markdownDocx(
+        [
+          "# Scope",
+          "The supplier provides services.",
+          "## Fees",
+          "Payment term is 30 days.",
+          table("| Service A | 100 |\n| Service B | 200 |"),
+          "## Term",
+          "Either party may terminate on notice.",
+          "The parties will maintain confidentiality.",
+        ].join("\n\n"),
+      ),
+      await markdownDocx(
+        [
+          "# Scope",
+          "The supplier provides services.",
+          "## Term",
+          "Either party may terminate on notice.",
+          "## Fees",
+          "Payment term is 45 days.",
+          table("| Service A | 150 |\n| Service C | 300 |"),
+          "The parties will maintain confidentiality.",
+        ].join("\n\n"),
+      ),
+      ["insert", "move", "replace", "replace", "table-row-delete", "table-row-insert", "delete"],
+    );
+  });
+});

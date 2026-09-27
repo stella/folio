@@ -8,6 +8,11 @@
  * which part of the pipeline lost the difference — and that is worth reporting
  * as a typed cause rather than as one opaque "did not reproduce".
  *
+ * It also carries what a reader sees those properties add up to: the block's
+ * kind and heading level. The stated properties are what an operation writes,
+ * so a projection of them alone checks the applier against its own vocabulary;
+ * the resolved classification is checked independently of how it was reached.
+ *
  * Every `detail` string here is structural: counts, offsets, container kinds.
  * Never a phrase of either document, because a caller may log it, put it in a
  * report, or quote it in a review.
@@ -91,6 +96,8 @@ export type CompareVerification =
 
 type ProjectedBlock = Pick<
   FolioAIBlock,
+  | "kind"
+  | "headingLevel"
   | "text"
   | "table"
   | "styleId"
@@ -160,8 +167,12 @@ const sameStructuralBoundaries = (
   return true;
 };
 
+const sameClassification = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
+  left.kind === right.kind && left.headingLevel === right.headingLevel;
+
 const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolean =>
   sameContainer(left.table, right.table) &&
+  sameClassification(left, right) &&
   sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
   left.styleId === right.styleId &&
   sameFolioContentOutlineLevel(left.directOutlineLevel, right.directOutlineLevel) &&
@@ -375,6 +386,11 @@ export const classifyProjectionMismatch = ({
       left.listReference?.level !== right.listReference?.level)
   ) {
     return failure("list-level", `the numbering reference did not move ${at} (${counts})`);
+  }
+  if (left.text === right.text && !sameClassification(left, right)) {
+    return left.kind === "heading" || right.kind === "heading"
+      ? failure("style", `the heading classification did not move ${at} (${counts})`)
+      : failure("list-level", `the list membership did not move ${at} (${counts})`);
   }
   if (left.text === right.text && left.directAlignment !== right.directAlignment) {
     return failure("alignment", `the direct paragraph alignment did not move ${at} (${counts})`);

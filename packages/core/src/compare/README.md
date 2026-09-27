@@ -222,6 +222,11 @@ the comparison: an inherited value is not projected as direct `w:jc`, even
 when the two values are equal. The self-check's projection carries style, list
 level and direct alignment alongside the text, so a redline that reproduces
 every word and leaves one of those properties wrong fails instead of passing.
+It also carries the block's resolved kind and heading level, so a paragraph that
+reads as a heading through a property the projection does not name fails too.
+An inserted or relocated paragraph states every paragraph property the
+operation vocabulary has, its direct outline level included, rather than
+taking the anchor's.
 
 ## Verification
 
