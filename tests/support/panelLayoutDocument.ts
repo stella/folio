@@ -1,8 +1,7 @@
 /**
  * A short NDA-shaped document for the side-panel layout specs: four headings
  * over three pages (so the outline has a rail and a column to fill), and,
- * when asked, one comment plus a tracked insertion and deletion (so the
- * comments open on load).
+ * when asked, a tracked insertion and deletion, with an optional comment.
  *
  * Built from hand-written OOXML at test time rather than committed as a
  * binary, so what the document holds stays reviewable.
@@ -10,7 +9,7 @@
 
 import JSZip from "jszip";
 
-export type PanelLayoutReview = "none" | "comment-and-changes";
+export type PanelLayoutReview = "none" | "changes-only" | "comment-and-changes";
 export type PanelLayoutSections = "portrait" | "landscape-then-portrait";
 
 /** Fixed so the bytes are the same on every run. */
@@ -49,10 +48,11 @@ const reviewedParagraph = (review: PanelLayoutReview) => {
   }
   return paragraph(
     [
-      '<w:commentRangeStart w:id="1"/>',
+      ...(review === "comment-and-changes" ? ['<w:commentRangeStart w:id="1"/>'] : []),
       run("Each party discloses information to the other"),
-      '<w:commentRangeEnd w:id="1"/>',
-      '<w:r><w:commentReference w:id="1"/></w:r>',
+      ...(review === "comment-and-changes"
+        ? ['<w:commentRangeEnd w:id="1"/>', '<w:r><w:commentReference w:id="1"/></w:r>']
+        : []),
       `<w:ins w:id="10" w:author="Counsel" w:date="${REVIEW_DATE}">${run(" in writing")}</w:ins>`,
       run(" under this Agreement"),
       `<w:del w:id="11" w:author="Counsel" w:date="${REVIEW_DATE}"><w:r><w:delText xml:space="preserve"> and its schedules</w:delText></w:r></w:del>`,
@@ -102,7 +102,7 @@ const contentTypes = (
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
   <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>${
-    review === "none"
+    review !== "comment-and-changes"
       ? ""
       : `
   <Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>`
@@ -119,7 +119,7 @@ const documentRels = (
 ) => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${
-    review === "none"
+    review !== "comment-and-changes"
       ? ""
       : `
   <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>`
@@ -138,7 +138,7 @@ export const buildPanelLayoutDocument = (
   zip.file("word/document.xml", documentXml(review, sections), options);
   zip.file("word/_rels/document.xml.rels", documentRels(review), options);
   zip.file("word/styles.xml", STYLES_XML, options);
-  if (review !== "none") {
+  if (review === "comment-and-changes") {
     zip.file("word/comments.xml", COMMENTS_XML, options);
   }
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });

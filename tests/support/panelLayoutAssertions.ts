@@ -115,7 +115,7 @@ export const waitForPanels = async (page: Page, review: PanelLayoutReview): Prom
     .poll(async () => {
       const state = await readPanelState(page);
       if (!state || state.outline === "none") return false;
-      return review === "none" || state.comments !== "hidden";
+      return review !== "comment-and-changes" || state.comments !== "hidden";
     })
     .toBe(true);
 };
