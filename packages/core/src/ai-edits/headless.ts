@@ -2738,10 +2738,16 @@ export class FolioDocxReviewer {
     return {
       document: this.documentFromStateSnapshot({
         ...snapshot,
-        mainState: withoutPendingSuggestionCommentMarks(snapshot.mainState, pendingCommentIds),
+        mainState: withoutPendingSuggestionCommentMarks(
+          rejectSuggestions(snapshot.mainState),
+          pendingCommentIds,
+        ),
         secondaryStoryStates: snapshot.secondaryStoryStates.map((entry) => ({
           ...entry,
-          state: withoutPendingSuggestionCommentMarks(entry.state, pendingCommentIds),
+          state: withoutPendingSuggestionCommentMarks(
+            rejectSuggestions(entry.state),
+            pendingCommentIds,
+          ),
         })),
         createdComments: snapshot.createdComments.filter(({ id }) => !pendingCommentIds.has(id)),
       }),

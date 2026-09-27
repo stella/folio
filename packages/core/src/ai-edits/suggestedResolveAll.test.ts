@@ -147,6 +147,50 @@ describe("resolving every suggestion headlessly", () => {
     expect(await savedTexts(reviewer)).toEqual(["Opening clause.", "Signed in three copies."]);
   });
 
+  test("a suggested deletion cannot overwrite a tracked paragraph revision", async () => {
+    const document = fromMarkdown("# Delivery Terms\n\nThe following apply to every order.");
+    const { docx } = await ensureParaIds(new Uint8Array(await createDocx(document)));
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "AI" });
+    const [first, last] = reviewer.getContent();
+    if (!first || !last) throw new Error("fixture paragraphs missing");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "tracked",
+            type: "replaceInBlock",
+            blockId: last.id,
+            find: "every",
+            replace: "each",
+          },
+        ],
+      }).applied,
+    ).toHaveLength(1);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "suggested",
+      operations: [
+        {
+          id: "pending",
+          type: "replaceInBlock",
+          blockId: first.id,
+          find: "Delivery",
+          replace: "revised",
+        },
+        { id: "delete", type: "deleteBlock", blockId: last.id },
+      ],
+    });
+    expect(result.applied.map(({ id }) => id)).toEqual(["pending"]);
+    expect(result.skipped).toEqual([{ id: "delete", reason: "unsupportedMode" }]);
+    reviewer.acceptAll();
+    expect(await savedTexts(reviewer)).toEqual([
+      "Delivery Terms",
+      "The following apply to each order.",
+    ]);
+  });
+
   test("acceptAll fails without changing the document when a suggestion cannot be restaged", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
     const [first, last] = reviewer.getContent();

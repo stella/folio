@@ -771,6 +771,23 @@ const paragraphPropertiesPatch = ({
 
 const REVISION_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion"]);
 
+const hasOrdinaryTextRevision = (block: PMNode): boolean => {
+  let found = false;
+  block.descendants((node) => {
+    if (
+      node.marks.some(
+        (mark) =>
+          REVISION_MARK_NAMES.has(mark.type.name) && mark.attrs["provenance"] !== "suggested",
+      )
+    ) {
+      found = true;
+      return false;
+    }
+    return true;
+  });
+  return found;
+};
+
 /**
  * Strip insertion and deletion marks from the zero-width anchors the batch
  * touched.
@@ -4478,6 +4495,13 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "deleteBlock": {
+        if (isSuggested && hasOrdinaryTextRevision(item.blockNode)) {
+          // A whole-block deletion uses the same mark types as its existing
+          // revisions. Staging it would replace their marks and lose the
+          // original text when the proposal is rejected or saved.
+          skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
+          continue;
+        }
         if (mode === "direct") {
           // A container has to END with a paragraph: a body, a cell, a header,
           // a note and a text box each do, and one left ending in a table is a

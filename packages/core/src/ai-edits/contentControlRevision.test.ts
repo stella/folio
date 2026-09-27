@@ -116,6 +116,7 @@ describe("deleting all of a content control's text", () => {
     for (const mode of MODES) {
       test(`accepting leaves the ${fixture.kind} control, emptied (${mode})`, async () => {
         const { reviewer, blockId } = await deleteControlText(fixture, mode);
+        if (mode === "suggested") expect(reviewer.acceptSuggestion("empty")).toBe(true);
         reviewer.acceptAll();
         const accepted = await bodyOf(await reviewer.toBuffer());
         expect(controlCount(accepted)).toBe(1);

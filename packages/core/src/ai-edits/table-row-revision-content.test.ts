@@ -258,6 +258,7 @@ describe("folio writes both halves of a row revision", () => {
       expect(reading.getContentAsText()).not.toContain("Gamma");
 
       const accepting = await edited();
+      if (mode === "suggested") expect(accepting.acceptSuggestion("row")).toBe(true);
       accepting.acceptAll();
       expect(rowTexts(await tableRows(await accepting.toBuffer()))).toEqual([["Alpha"]]);
       const rejecting = await edited();

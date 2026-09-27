@@ -241,6 +241,7 @@ describe("a defined paragraph style still applies", () => {
     expect(result.skipped).toEqual([]);
     expect(result.applied.map(({ id }) => id)).toEqual(["op"]);
     if (mode === "suggested") {
+      expect(reviewer.acceptSuggestion("op")).toBe(true);
       reviewer.acceptAll();
     }
     const saved = await reviewer.toBuffer();
