@@ -14,13 +14,16 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
 import JSZip from "jszip";
 
+import { propertyConfig } from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 
 const COMMENT_IDS = [0, 1, 2, 3, 4] as const;
+const EDIT_MODES = ["direct", "tracked-changes"] as const;
 /** Paragraph each comment's range ends in; every range starts in paragraph 0. */
 const RANGE_END_PARAGRAPH = [1, 1, 2, 3, 3] as const;
 const FIRST_PARAGRAPH_TEXT = "First paragraph text.";
@@ -108,6 +111,66 @@ describe("replaceInBlock over a block that opens comment ranges", () => {
       }
       expect(xml).toContain("Wholly different wording.");
     },
+  );
+});
+
+test("tracked replacement keeps every disjoint comment anchor after acceptance", async () => {
+  await fc.assert(
+    fc.asyncProperty(
+      fc.array(fc.integer({ min: 1, max: 8 }), { minLength: 2, maxLength: 5 }),
+      async (lengths) => {
+        const content: ParagraphContent[] = [];
+        for (const [id, length] of lengths.entries()) {
+          content.push(
+            { type: "commentRangeStart", id },
+            run(String(id).repeat(length)),
+            { type: "commentRangeEnd", id },
+            { type: "commentReference", id },
+            run(" between "),
+          );
+        }
+        const source = await createDocx({
+          package: {
+            document: {
+              comments: lengths.map((_, id) => comment(id)),
+              content: [{ type: "paragraph", paraId: "40000001", content }],
+            },
+          },
+        });
+        const anchors: Record<(typeof EDIT_MODES)[number], (string | undefined)[]> = {
+          direct: [],
+          "tracked-changes": [],
+        };
+        for (const mode of EDIT_MODES) {
+          const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Editor" });
+          const target = reviewer.snapshot().blocks.at(0);
+          expect(target).toBeDefined();
+          reviewer.applyOperations(
+            [
+              {
+                id: "replace",
+                type: "replaceBlock",
+                blockId: target?.id ?? "",
+                text: "New clause text.",
+              },
+            ],
+            { mode },
+          );
+          const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+            author: "Editor",
+          });
+          saved.acceptAll();
+          const reopened = await FolioDocxReviewer.fromBuffer(await saved.toBuffer(), {
+            author: "Editor",
+          });
+          anchors[mode] = reopened.getComments().map(({ anchoredText }) => anchoredText);
+        }
+        expect(anchors.direct).toHaveLength(lengths.length);
+        expect(anchors.direct.every((anchor) => anchor === "New clause text.")).toBe(true);
+        expect(anchors["tracked-changes"]).toEqual(anchors.direct);
+      },
+    ),
+    propertyConfig({ numRuns: 12 }),
   );
 });
 
