@@ -508,6 +508,10 @@ const noteReferenceLabelsByStory = new WeakMap<PMNode, NoteReferenceLabels>();
  * reading order over the blocks {@link createFolioAIEditSnapshot} reads (a
  * hidden row's references are as absent as its text), so the applier, the
  * range resolvers and the snapshot all read the same text.
+ *
+ * The story is numbered on the first label asked for, not here: a reader
+ * whose walk meets no reference (most documents, and every revision-stats
+ * read) never pays for a second walk of the story.
  */
 export const collectNoteReferenceLabels = (doc: PMNode): NoteReferenceLabels => {
   // A document node is immutable, so its numbering is too.
@@ -515,19 +519,26 @@ export const collectNoteReferenceLabels = (doc: PMNode): NoteReferenceLabels => 
   if (cached !== undefined) {
     return cached;
   }
-  const labeler = createNoteReferenceLabeler();
-  doc.descendants((node) => {
-    if (isHiddenTableRow(node)) {
-      return false;
-    }
-    if (node.isTextblock) {
-      labeler.numberBlock(node);
-      return false;
-    }
-    return true;
-  });
-  noteReferenceLabelsByStory.set(doc, labeler);
-  return labeler;
+  let numbered: NoteReferenceLabels | undefined;
+  const numberStory = (): NoteReferenceLabels => {
+    const labeler = createNoteReferenceLabeler();
+    doc.descendants((node) => {
+      if (isHiddenTableRow(node)) {
+        return false;
+      }
+      if (node.isTextblock) {
+        labeler.numberBlock(node);
+        return false;
+      }
+      return true;
+    });
+    return labeler;
+  };
+  const labels: NoteReferenceLabels = {
+    labelOf: (reference) => (numbered ??= numberStory()).labelOf(reference),
+  };
+  noteReferenceLabelsByStory.set(doc, labels);
+  return labels;
 };
 
 /** One table of a story, numbered the way {@link createFolioAIEditSnapshot} numbers it. */
