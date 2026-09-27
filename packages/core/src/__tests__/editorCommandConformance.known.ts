@@ -71,35 +71,13 @@ const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
   "document",
 ];
 
-const LIST_SHAPES = [
-  "single-decimal-list",
-  "single-bullet-list",
-  "mixed-lists",
-  "outline-level-numbered",
-  "style-numbered-headings",
-  "host-unused-instances",
-] as const;
-
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   // ---------------------------------------------------------------- lists --
   {
     reason:
-      "A paragraph a list command numbers shows its level's raw template (%1.) as its label and states no indentation, while the reopened paragraph reads the level's indentation as its own w:ind",
+      "A paragraph a list command numbers states no indentation, while the reopened paragraph reads the level's indentation as its own w:ind",
     operations: [...LIST_TOGGLES, ...LIST_MARKERS, ...LIST_NUMBERING],
     kinds: ["readback-blocks", "readback-painted"],
-  },
-  {
-    issue: 1092,
-    reason:
-      "A list toggle joins the first instance of its kind (or the headings' style numbering), and the joined list's labels are not renumbered in the editor",
-    operations: [...LIST_TOGGLES, ...LIST_MARKERS],
-    shapes: [
-      "single-decimal-list",
-      "mixed-lists",
-      "style-numbered-headings",
-      "host-unused-instances",
-    ],
-    kinds: ["readback-blocks", "readback-painted", "readback-markdown"],
   },
   {
     reason:
@@ -125,22 +103,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     placements: ["caret-end", "caret-start"],
     modes: ["suggesting"],
     kinds: ["accept-mismatch"],
-  },
-  {
-    reason:
-      "List labels in the editor state are computed at load and not renumbered after an edit that moves items (split, paste, level change, style numbering); a raw level template such as %2. can show",
-    operations: [
-      "key:Enter",
-      "key:Shift-Enter",
-      "key:Mod-Enter",
-      "key:Tab",
-      "paste:copied-blocks",
-      "command:increaseListLevel",
-      "command:applyStyle(Heading2)",
-      "command:generateTOC",
-    ],
-    shapes: LIST_SHAPES,
-    kinds: ["readback-blocks", "readback-markdown"],
   },
   {
     reason:
