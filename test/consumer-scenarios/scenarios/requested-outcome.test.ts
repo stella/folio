@@ -133,6 +133,7 @@ describe("the requested-outcome oracle", () => {
               replace: "",
             });
             const comment = {
+              id: 1,
               text: "review",
               anchor: text.slice(anchorStart, anchorEnd),
               blockId: "b",
@@ -156,7 +157,7 @@ describe("the requested-outcome oracle", () => {
   });
 
   test("preserves a comment when a split or a different block changes its quoted text", () => {
-    const comment = { text: "review", anchor: "bcd", blockId: "b" };
+    const comment = { id: 1, text: "review", anchor: "bcd", blockId: "b" };
     const split = modelOf([row("b", "abcdef")]);
     expectOperation(split, { type: "splitBlock", blockId: "b", offset: 3 });
     assert.equal(compareComments(split, [comment], []).length, 1);
@@ -167,6 +168,33 @@ describe("the requested-outcome oracle", () => {
       replace: "",
     });
     assert.equal(compareComments(elsewhere, [comment], []).length, 1);
+  });
+
+  test("a nonempty replacement carries a comment, while an empty one removes it", () => {
+    const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
+    const replaced = modelOf([row("b", "Signed")]);
+    expectOperation(replaced, { type: "replaceBlock", blockId: "b", text: "Written" });
+    assert.deepEqual(compareComments(replaced, [comment], [{ ...comment, anchor: "Written" }]), []);
+    assert.equal(compareComments(replaced, [comment], []).length, 1);
+
+    const emptied = modelOf([row("b", "Signed")]);
+    expectOperation(emptied, { type: "replaceBlock", blockId: "b", text: "" });
+    assert.deepEqual(compareComments(emptied, [comment], []), []);
+    assert.equal(compareComments(emptied, [comment], [comment]).length, 1);
+  });
+
+  test("uses live anchors and ids when an accepted pending join moves one of three equal comments", () => {
+    const a = { id: 1, text: "same note", anchor: "First", blockId: "a" };
+    const moved = { id: 2, text: "same note", anchor: "Signed", blockId: "c" };
+    const c = { id: 3, text: "same note", anchor: "Last", blockId: "c" };
+    const model = modelOf([row("a", "First"), row("b", "Signed"), row("c", "Signed Last")]);
+    expectOperation(model, { type: "deleteBlock", blockId: "b" });
+    const live = [a, { ...moved, blockId: "b" }, c];
+    assert.deepEqual(compareComments(model, [a, moved, c], [a, c], live), []);
+    assert.match(
+      compareComments(model, [a, moved, c], [a, moved, c], live).join("\n"),
+      /outlived the block it anchored/u,
+    );
   });
 });
 

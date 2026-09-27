@@ -123,9 +123,10 @@ export const resolvedState = async (
   };
 };
 
-type Comment = { text: string; anchor: string; blockId: string | null };
+type Comment = { id: number; text: string; anchor: string; blockId: string | null };
 const commentsOf = (reviewer: Reviewer): Comment[] =>
   reviewer.getComments().map((comment) => ({
+    id: comment.id,
     text: comment.text,
     anchor: comment.anchoredText ?? "",
     blockId: comment.blockId ?? null,
@@ -906,7 +907,9 @@ const removedAnchor = (model: Model, entry: Comment): boolean => {
   if (starts.length === 0) return false;
   if (row.removed) return true;
   const removed = [
-    ...row.edits.map(({ start, end }) => ({ start, end })),
+    ...row.edits
+      .filter(({ replace }) => replace.length === 0)
+      .map(({ start, end }) => ({ start, end })),
     ...row.splits.map(({ offset, consumed }) => ({ start: offset, end: offset + consumed })),
   ];
   return starts.every((start) =>
@@ -920,34 +923,42 @@ export const compareComments = (
   model: Model,
   before: readonly Comment[],
   after: readonly Comment[],
+  liveBefore: readonly Comment[] = before,
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
   const kept: Comment[] = [];
   const gone: Comment[] = [];
   for (const entry of before) {
-    if (removedAnchor(model, entry)) gone.push(entry);
+    const live = liveBefore.find(({ id }) => id === entry.id);
+    if (removedAnchor(model, live ?? entry)) gone.push(entry);
     else kept.push(entry);
   }
-  const expected = [
-    ...kept.map((entry) => ({ text: entry.text, anchor: undefined })),
-    ...model.comments.map((comment) => ({ text: comment.text, anchor: comment.anchor?.() })),
-  ];
-  for (const comment of expected) {
-    const index = remaining.findIndex(
-      (candidate) =>
-        candidate.text === comment.text &&
-        (comment.anchor === undefined || candidate.anchor === comment.anchor),
-    );
+  for (const comment of kept) {
+    const index = remaining.findIndex(({ id, text }) => id === comment.id && text === comment.text);
     if (index === -1) {
       problems.push(`no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`);
     } else {
       remaining.splice(index, 1);
     }
   }
+  for (const comment of model.comments) {
+    const anchor = comment.anchor?.();
+    const index = remaining.findIndex(
+      (candidate) =>
+        candidate.text === comment.text && (anchor === undefined || candidate.anchor === anchor),
+    );
+    if (index === -1) {
+      problems.push(
+        `no comment ${JSON.stringify({ text: comment.text, anchor })} among ${JSON.stringify(after)}`,
+      );
+    } else {
+      remaining.splice(index, 1);
+    }
+  }
   // Only what no expectation claimed can be the removed comment itself.
   for (const entry of gone) {
-    if (remaining.some((candidate) => candidate.text === entry.text)) {
+    if (remaining.some(({ id }) => id === entry.id)) {
       problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }
@@ -983,6 +994,7 @@ export type Pre = {
   liveRows: Row[];
   comments: Comment[];
   links: LinkSnapshot;
+  liveComments: Comment[];
   rejected?: Row[];
   /** The story the operations target; the body by default. */
   story: Story;
@@ -1068,6 +1080,7 @@ export const capture = async (
   { story = MAIN, step = "fresh" }: CaptureOptions = {},
 ): Promise<Pre> => {
   const live = liveState(reviewer, story);
+  const liveComments = commentsOf(reviewer);
   const context = { story, step, targets: featureIndex(reviewer, story) };
   if (mode === "suggested") {
     const rows = rowsOf(reviewer, story);
@@ -1076,7 +1089,8 @@ export const capture = async (
       live,
       rows,
       liveRows: rows,
-      comments: commentsOf(reviewer),
+      comments: liveComments,
+      liveComments,
       links: captureLinks(reviewer),
       ...context,
     };
@@ -1090,6 +1104,7 @@ export const capture = async (
     liveRows: rowsOf(reviewer, story),
     comments: accepted.comments,
     links: accepted.links,
+    liveComments,
     ...(mode === "tracked-changes"
       ? { rejected: (await resolvedState(bytes, "reject", story)).rows }
       : {}),
@@ -1205,7 +1220,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments),
+    ...compareComments(model, pre.comments, comments, pre.liveComments),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
