@@ -330,9 +330,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const getReplies = (commentId: number) => repliesByParent.get(commentId) ?? [];
 
   // Find Y positions for comment/change anchors.
-  // Uses pre-computed layout positions (anchorPositions) as primary source —
-  // these work even for virtualized pages that haven't rendered to DOM.
-  // Falls back to DOM queries for rendered elements (e.g., when anchorPositions unavailable).
+  // Prefer rendered anchors; layout positions cover virtualized pages.
   const updateCardPositions = useCallback(() => {
     const container = editorContainerRef?.current;
     if (!container) {
@@ -613,7 +611,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   // opening one scrolls the document to the text it is about.
   const revealAnchor = (cardId: string) => {
     const scrollEl = editorContainerRef?.current;
-    const anchorY = anchorPositions?.get(cardId) ?? lastKnownCardPositionsRef.current.get(cardId);
+    const anchorY = lastKnownCardPositionsRef.current.get(cardId) ?? anchorPositions?.get(cardId);
     if (!scrollEl || anchorY === undefined) {
       return;
     }

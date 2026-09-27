@@ -921,9 +921,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollAppliedRef = useRef(false);
   const [widestLaidOutPageWidth, setWidestLaidOutPageWidth] = useState<number | null>(null);
+  const hasDocument = history.state !== null;
   useEffect(() => {
     const pagedEditor = pagedEditorRef.current;
     if (!pagedEditor) {
+      setWidestLaidOutPageWidth(null);
       return;
     }
     const updatePageWidth = () => {
@@ -939,8 +941,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       setWidestLaidOutPageWidth(width);
     };
     updatePageWidth();
-    return pagedEditor.onLayoutChange(updatePageWidth);
-  }, []);
+    // Painter notifications precede publication of the new layout. Read only
+    // after the controller commits it, including later document replacements.
+    return pagedEditor.getEditor().on("layoutComplete", updatePageWidth);
+  }, [state.documentLoad.status, hasDocument, preserveDocumentWhileLoading]);
 
   // Format painter: "armed" paints the next selection once then disarms;
   // "sticky" keeps painting until Esc or the button is toggled off. The ref

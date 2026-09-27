@@ -36,6 +36,8 @@ export function DefaultOutlineRail({
   const listRef = useRef<HTMLOListElement>(null);
   const activeIndex = items.findIndex((item) => item.id === activeId);
   const [focusIndex, setFocusIndex] = useState(Math.max(0, activeIndex));
+  const lastIndex = items.length - 1;
+  const clampedFocusIndex = Math.max(0, Math.min(lastIndex, focusIndex));
   let minLevel = Infinity;
   for (const item of items) {
     minLevel = Math.min(minLevel, item.level);
@@ -81,17 +83,16 @@ export function DefaultOutlineRail({
 
   const handleKeyDown = useCallback(
     (event: KeyboardEvent<HTMLOListElement>) => {
-      const last = items.length - 1;
       const next = (() => {
         switch (event.key) {
           case "ArrowDown":
-            return Math.min(last, focusIndex + 1);
+            return Math.min(lastIndex, clampedFocusIndex + 1);
           case "ArrowUp":
-            return Math.max(0, focusIndex - 1);
+            return Math.max(0, clampedFocusIndex - 1);
           case "Home":
             return 0;
           case "End":
-            return last;
+            return lastIndex;
           default:
             return null;
         }
@@ -106,7 +107,7 @@ export function DefaultOutlineRail({
         [...buttons].at(next)?.focus();
       }
     },
-    [focusIndex, items.length],
+    [clampedFocusIndex, lastIndex],
   );
 
   const tickTops = useRailTickTops({
@@ -157,7 +158,7 @@ export function DefaultOutlineRail({
               data-depth={depth}
               onClick={() => jump(item)}
               onFocus={() => setFocusIndex(index)}
-              tabIndex={index === focusIndex ? 0 : -1}
+              tabIndex={index === clampedFocusIndex ? 0 : -1}
               title={rail ? undefined : item.label}
               type="button"
             >

@@ -26,6 +26,7 @@ import {
 } from "../support/panelLayoutAssertions";
 import {
   buildPanelLayoutDocument,
+  PANEL_LAYOUT_HEADINGS,
   type PanelLayoutReview,
   type PanelLayoutSections,
 } from "../support/panelLayoutDocument";
@@ -36,17 +37,35 @@ declare global {
 
 const VIEWPORT_HEIGHT = 900;
 
+type LoadDocumentOptions = {
+  review: PanelLayoutReview;
+  sections?: PanelLayoutSections;
+  source?: "imperative" | "buffer-prop";
+};
+
 const loadDocument = async (
   page: Page,
-  review: PanelLayoutReview,
-  sections: PanelLayoutSections = "portrait",
+  { review, sections = "portrait", source = "imperative" }: LoadDocumentOptions,
 ) => {
-  const bytes = [...(await buildPanelLayoutDocument(review, sections))];
-  await page.goto("/");
-  await page.waitForFunction(() => globalThis.__folioPlayground?.getEditorRef() != null);
-  await page.evaluate(async (array) => {
-    await globalThis.__folioPlayground?.getEditorRef()?.loadDocumentBuffer(new Uint8Array(array));
-  }, bytes);
+  const bytes = await buildPanelLayoutDocument(review, sections);
+  if (source === "buffer-prop") {
+    await page.route("**/fixtures/panel-layout.docx", (route) =>
+      route.fulfill({ body: Buffer.from(bytes) }),
+    );
+    // The fixture path starts with no document and loads through documentBuffer.
+    await page.goto("/?file=panel-layout.docx");
+  } else {
+    await page.goto("/");
+    await page.waitForFunction(() => globalThis.__folioPlayground?.getEditorRef() != null);
+    await page.evaluate(
+      async (array) => {
+        await globalThis.__folioPlayground
+          ?.getEditorRef()
+          ?.loadDocumentBuffer(new Uint8Array(array));
+      },
+      [...bytes],
+    );
+  }
   await page.waitForFunction(() => document.querySelectorAll(".layout-page").length >= 1);
   await page.evaluate(() => document.fonts.ready);
   // The outline reads headings from the body view, created lazily; a host
@@ -61,7 +80,7 @@ test.describe("side panel layout", () => {
   for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
     test(`${String(width)}px, review ${review}: ${expected.tier} tier`, async ({ page }) => {
       await page.setViewportSize({ width, height: VIEWPORT_HEIGHT });
-      await loadDocument(page, review);
+      await loadDocument(page, { review });
 
       expect(await readPanelState(page)).toEqual(expected);
       await expectPanelsDoNotOverlap(page, expected);
@@ -75,27 +94,37 @@ test.describe("side panel layout", () => {
     });
   }
 
-  test("the widest page in mixed sections controls panel room", async ({ page }) => {
-    await page.setViewportSize({ width: 1400, height: VIEWPORT_HEIGHT });
-    await loadDocument(page, "comment-and-changes", "landscape-then-portrait");
+  // Previously only an already-mounted editor was exercised. Both loading paths
+  // must measure mixed sections instead of using the final section's page width.
+  for (const source of ["imperative", "buffer-prop"] as const) {
+    test(`the widest page in mixed sections controls panel room via ${source}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 1400, height: VIEWPORT_HEIGHT });
+      await loadDocument(page, {
+        review: "comment-and-changes",
+        sections: "landscape-then-portrait",
+        source,
+      });
 
-    await expect
-      .poll(() =>
-        page
-          .locator(".layout-page")
-          .evaluateAll((pages) =>
-            Math.max(...pages.map((element) => element.getBoundingClientRect().width)),
-          ),
-      )
-      .toBeGreaterThan(1000);
-    const expected = { tier: "narrow", outline: "column", comments: "drawer" } as const;
-    await expect.poll(() => readPanelState(page)).toEqual(expected);
-    await expectPanelsDoNotOverlap(page, expected);
-  });
+      await expect
+        .poll(() =>
+          page
+            .locator(".layout-page")
+            .evaluateAll((pages) =>
+              Math.max(...pages.map((element) => element.getBoundingClientRect().width)),
+            ),
+        )
+        .toBeGreaterThan(1000);
+      const expected = { tier: "narrow", outline: "column", comments: "drawer" } as const;
+      await expect.poll(() => readPanelState(page)).toEqual(expected);
+      await expectPanelsDoNotOverlap(page, expected);
+    });
+  }
 
   test("a dismissed comments drawer stays closed after the editor widens", async ({ page }) => {
     await page.setViewportSize({ width: 800, height: VIEWPORT_HEIGHT });
-    await loadDocument(page, "comment-and-changes");
+    await loadDocument(page, { review: "comment-and-changes" });
     const toggle = page.getByTestId("toolbar-comments-toggle");
     await toggle.click();
     await expect(page.locator('[data-folio-comments-surface="drawer"]')).toBeVisible();
@@ -109,7 +138,7 @@ test.describe("side panel layout", () => {
 
   test("the outline column is keyboard navigable", async ({ page }) => {
     await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
-    await loadDocument(page, "none");
+    await loadDocument(page, { review: "none" });
     const items = page.locator('[data-folio-outline-surface="column"] .folio-outline-item');
     await expect(items).toHaveCount(4);
     // One tab stop for the whole list.
@@ -128,9 +157,52 @@ test.describe("side panel layout", () => {
       .toBeGreaterThan(0);
   });
 
+  test("Tab reaches the outline after focused headings are removed", async ({ page }) => {
+    await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
+    await loadDocument(page, { review: "none" });
+    const outline = page.locator('[data-folio-outline-surface="column"]');
+    const items = outline.locator(".folio-outline-item");
+    await expect(items).toHaveCount(4);
+    await items.last().focus();
+
+    // Keep focus in the outline while a document edit removes its last entries.
+    await page.evaluate(
+      (removedHeadings) => {
+        const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+        if (!view) throw new Error("Missing editor view");
+        const transaction = view.state.tr;
+        view.state.doc.descendants((node, pos) => {
+          if (node.isTextblock && removedHeadings.some((heading) => heading === node.textContent)) {
+            transaction.delete(
+              transaction.mapping.map(pos),
+              transaction.mapping.map(pos + node.nodeSize),
+            );
+            return false;
+          }
+          return true;
+        });
+        view.dispatch(transaction);
+      },
+      PANEL_LAYOUT_HEADINGS.slice(2).map(({ text }) => text),
+    );
+
+    await expect(items).toHaveCount(2);
+    await expect(items.and(page.locator('[tabindex="0"]'))).toHaveCount(1);
+    await outline.evaluate((element) => {
+      const before = document.createElement("button");
+      before.textContent = "Before outline";
+      element.before(before);
+      before.focus();
+    });
+    await page.keyboard.press("Tab");
+    await expect(items.last()).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(items.first()).toBeFocused();
+  });
+
   test("toggling the comments column re-centres the page", async ({ page }) => {
     await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
-    await loadDocument(page, "comment-and-changes");
+    await loadDocument(page, { review: "comment-and-changes" });
     const toggle = page.getByTestId("toolbar-comments-toggle");
     await expect(toggle).toHaveAttribute("aria-pressed", "true");
 
