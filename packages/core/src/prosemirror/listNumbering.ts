@@ -32,7 +32,7 @@ import {
 } from "../docx/numberingReference";
 import type { ListLevel } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
-import { PPR_CHANGE_SCOPED_ATTR_KEYS } from "./commands/propertyChangeScope";
+import { paragraphPropertiesSnapshot } from "./commands/propertyChangeScope";
 import { CLEARED_LIST_RENDERING_ATTRS, LIST_RENDERING_ATTR_KEYS } from "./listMarker";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
@@ -68,14 +68,13 @@ type PreviousFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousForm
  * list-rendering bookkeeping with explicit nulls (those sit outside the
  * wholesale scope, so only recorded keys restore).
  */
-const listChangeSnapshot = (attrs: Record<string, unknown>): Record<string, unknown> => {
-  const previousFormatting: Record<string, unknown> = {};
-  for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    const value = attrs[key];
-    if (value != null) {
-      previousFormatting[key] = value;
-    }
-  }
+const listChangeSnapshot = (
+  node: PMNode,
+  attrs: Record<string, unknown>,
+): Record<string, unknown> => {
+  const previousFormatting: Record<string, unknown> = paragraphPropertiesSnapshot(
+    node.type.create(attrs, node.content, node.marks),
+  );
   previousFormatting["numPr"] = attrs["numPr"] ?? null;
   for (const key of LIST_RENDERING_ATTR_KEYS) {
     previousFormatting[key] = attrs[key] ?? null;
@@ -173,7 +172,7 @@ const canonicalJson = (value: unknown): string =>
   );
 
 type TrackListChangeOptions = {
-  current: ParagraphAttrs;
+  current: PMNode;
   next: Record<string, unknown>;
   rev: RevisionInfo;
   numbering: NumberingMap | null;
@@ -199,15 +198,19 @@ const trackListChange = ({
   rev,
   numbering,
 }: TrackListChangeOptions): Record<string, unknown> => {
-  const existing = current._propertyChanges ?? [];
+  const currentAttrs = expectParagraphAttrs(current);
+  const existing = currentAttrs._propertyChanges ?? [];
   const pending = existing.find(({ info }) => info.provenance !== "suggested");
   const retained = existing.filter((change) => change !== pending);
   const previousFormatting = pending?.previousFormatting
     ? originalListFormatting(pending.previousFormatting, numbering)
-    : listChangeSnapshot(current);
+    : listChangeSnapshot(current, currentAttrs);
   const ownPending = pending !== undefined && pending.info.author === rev.author;
 
-  if (ownPending && canonicalJson(previousFormatting) === canonicalJson(listChangeSnapshot(next))) {
+  if (
+    ownPending &&
+    canonicalJson(previousFormatting) === canonicalJson(listChangeSnapshot(current, next))
+  ) {
     return { ...next, _propertyChanges: retained.length > 0 ? retained : null };
   }
   const record: ParagraphPropertyChangeAttrs =
@@ -421,9 +424,7 @@ export const applyParagraphUpdates = ({
   const rev = makeRevisionInfo(state);
   const numbering = getDocumentNumbering(state);
   for (const { pos, node, next } of updates) {
-    const attrs = rev
-      ? trackListChange({ current: expectParagraphAttrs(node), next, rev, numbering })
-      : next;
+    const attrs = rev ? trackListChange({ current: node, next, rev, numbering }) : next;
     tr.setNodeMarkup(pos, undefined, attrs);
   }
   if (rev) {

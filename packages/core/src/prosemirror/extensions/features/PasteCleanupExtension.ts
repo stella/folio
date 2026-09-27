@@ -28,6 +28,7 @@ import {
   removeUnpairedMoveRangeBoundaries,
 } from "./pasteCleanup";
 import { retargetPastedHeadingStyles } from "./pastedHeadingStyles";
+import { flattenPastedHtmlLists, numberPastedHtmlLists } from "./pastedHtmlLists";
 
 type PasteCleanupOptions = {
   getInternalClipboardToken?: () => string;
@@ -41,13 +42,18 @@ export const PasteCleanupExtension = createExtension<PasteCleanupOptions>({
       props: {
         transformPastedHTML(html: string): string {
           const internalClipboardToken = options.getInternalClipboardToken?.();
-          return cleanPastedHtml(html, {
-            ...(internalClipboardToken ? { internalClipboardToken } : {}),
-          });
+          return flattenPastedHtmlLists(
+            cleanPastedHtml(html, {
+              ...(internalClipboardToken ? { internalClipboardToken } : {}),
+            }),
+          );
         },
         transformPasted: (slice, view) =>
-          retargetPastedHeadingStyles(
-            removeUnpairedMoveRangeBoundaries(removeUnpairedBookmarkBoundaries(slice)),
+          numberPastedHtmlLists(
+            retargetPastedHeadingStyles(
+              removeUnpairedMoveRangeBoundaries(removeUnpairedBookmarkBoundaries(slice)),
+              view,
+            ),
             view,
           ),
       },

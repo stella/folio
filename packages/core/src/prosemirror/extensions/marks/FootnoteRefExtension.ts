@@ -8,8 +8,10 @@ import { panic } from "better-result";
 import type { Command } from "prosemirror-state";
 
 import { expectFootnoteRefMarkAttrs } from "../../attrs";
+import { suggestionModeKey } from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
+import { expandNoteReferenceDeletionRange } from "./noteReferenceDeletion";
 
 const noteRefAttrsFromDom = (
   dom: HTMLElement,
@@ -71,6 +73,25 @@ export const FootnoteRefExtension = createMarkExtension({
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
     const { schema } = ctx;
 
+    const deleteWholeNoteReference =
+      (direction: "backward" | "forward"): Command =>
+      (state, dispatch) => {
+        if (suggestionModeKey.getState(state)?.active) {
+          return false;
+        }
+        const { from, to, empty } = state.selection;
+        const range = expandNoteReferenceDeletionRange(
+          state.doc,
+          empty && direction === "backward" ? Math.max(0, from - 1) : from,
+          empty && direction === "forward" ? Math.min(state.doc.content.size, to + 1) : to,
+        );
+        if (!range) {
+          return false;
+        }
+        dispatch?.(state.tr.delete(range.from, range.to).scrollIntoView());
+        return true;
+      };
+
     function makeInsertNote(noteType: "footnote" | "endnote"): (id: number) => Command {
       return (id: number): Command =>
         (state, dispatch) => {
@@ -110,6 +131,10 @@ export const FootnoteRefExtension = createMarkExtension({
     };
 
     return {
+      keyboardShortcuts: {
+        Backspace: deleteWholeNoteReference("backward"),
+        Delete: deleteWholeNoteReference("forward"),
+      },
       commands: {
         insertFootnote: makeInsertNote("footnote"),
         insertEndnote: makeInsertNote("endnote"),

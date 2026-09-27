@@ -20,8 +20,10 @@ import { Mapping } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
+import { expectParagraphAttrs } from "../attrs";
 import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
 import { encloseWholeControls } from "../contentControlRevisions";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
@@ -125,7 +127,8 @@ function findAdjacentRevisionForRange(
 }
 
 /**
- * Walk a text range and either mark as deletion or retract own insertions.
+ * Walk a selected range and track its text, paragraph breaks, and table rows.
+ * Retract the current author's own inserted text.
  * Processes in reverse order to maintain position validity.
  */
 function markRangeAsDeleted(
@@ -161,20 +164,42 @@ function markRangeAsDeleted(
     ranges.push({ from: start, to: end, isOwnInsert });
   });
 
-  if (ranges.length === 0) {
-    return;
-  }
-
   const delAttrs =
     findAdjacentRevisionForRange(doc, from, to, "deletion", pluginState.author) ||
     makeMarkAttrs(pluginState);
+
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (
+      node.type.name === "tableRow" &&
+      pos >= from &&
+      pos + node.nodeSize <= to &&
+      node.attrs["trIns"] == null &&
+      node.attrs["trDel"] == null
+    ) {
+      tr.setNodeAttribute(pos, "trDel", delAttrs);
+    }
+    if (node.type.name !== "paragraph") {
+      return;
+    }
+    const boundary = pos + node.nodeSize;
+    if (boundary > from && boundary <= to && node.attrs["pPrMark"] == null) {
+      tr.setNodeAttribute(pos, "pPrMark", {
+        kind: "del",
+        info: { id: delAttrs.revisionId, author: delAttrs.author, date: delAttrs.date },
+      });
+    }
+  });
+
+  if (ranges.length === 0) {
+    return;
+  }
 
   // A control the range spans whole is deleted with its text; one the range
   // only empties stays. Recorded before the loop below moves any position.
   encloseWholeControls({
     tr,
-    from: tr.mapping.map(from),
-    to: tr.mapping.map(to, -1),
+    from,
+    to,
     revisionId: delAttrs.revisionId,
   });
 
@@ -190,9 +215,8 @@ function markRangeAsDeleted(
 }
 
 /**
- * Add the insertion mark to every run carrier in `[from, to)` that does not
- * already carry a tracked-change mark. Content already carrying a revision is
- * left untouched so another author's attribution is not overwritten.
+ * Track every inserted run, paragraph break, and table row in `[from, to)`.
+ * Content already carrying a revision keeps its attribution.
  */
 function markRangeAsInserted(
   tr: Transaction,
@@ -216,6 +240,29 @@ function markRangeAsInserted(
       return;
     }
     tr.addMark(start, end, insertionType.create(attrs));
+  });
+  // A block paste can add paragraph boundaries and whole table rows without
+  // adding a markable run at those positions. Track the same structural range
+  // as its inline content so rejecting the paste restores the original shape.
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name === "paragraph") {
+      const boundary = pos + node.nodeSize;
+      if (boundary > from && boundary < to && node.attrs["pPrMark"] == null) {
+        tr.setNodeAttribute(pos, "pPrMark", {
+          kind: "ins",
+          info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+        });
+      }
+    }
+    if (
+      node.type.name === "tableRow" &&
+      pos >= from &&
+      pos + node.nodeSize <= to &&
+      node.attrs["trIns"] == null &&
+      node.attrs["trDel"] == null
+    ) {
+      tr.setNodeAttribute(pos, "trIns", attrs);
+    }
   });
   encloseWholeControls({ tr, from, to, revisionId: attrs.revisionId });
 }
@@ -542,7 +589,18 @@ function handleSuggestionDelete(
 
   // --- Selection delete ---
   if (!empty) {
-    markRangeAsDeleted(tr, state.doc, $from.pos, $to.pos, insertionType, deletionType, pluginState);
+    const ranges = state.selection.ranges
+      .map(
+        ({ $from: rangeFrom, $to: rangeTo }) =>
+          expandNoteReferenceDeletionRange(state.doc, rangeFrom.pos, rangeTo.pos) ?? {
+            from: rangeFrom.pos,
+            to: rangeTo.pos,
+          },
+      )
+      .sort((a, b) => b.from - a.from);
+    for (const { from, to } of ranges) {
+      markRangeAsDeleted(tr, state.doc, from, to, insertionType, deletionType, pluginState);
+    }
     // Collapse cursor to after the marked/retracted content
     const cursorPos = tr.mapping.map($to.pos);
     tr.setSelection(TextSelection.near(tr.doc.resolve(cursorPos)));
@@ -550,7 +608,7 @@ function handleSuggestionDelete(
     return true;
   }
 
-  // --- Single character delete ---
+  // --- Caret delete (one character or a whole note reference) ---
   const isBackward = direction === "backward";
   const deletePos = isBackward ? $from.pos - 1 : $from.pos;
   const deleteEnd = isBackward ? $from.pos : $from.pos + 1;
@@ -559,7 +617,10 @@ function handleSuggestionDelete(
     return true;
   }
 
-  const $deletePos = state.doc.resolve(deletePos);
+  const noteRange = expandNoteReferenceDeletionRange(state.doc, deletePos, deleteEnd);
+  const rangeFrom = noteRange?.from ?? deletePos;
+  const rangeTo = noteRange?.to ?? deleteEnd;
+  const $deletePos = state.doc.resolve(rangeFrom);
   const nodeAfter = $deletePos.nodeAfter;
 
   // At a block boundary — let default behavior handle (e.g. join paragraphs).
@@ -576,30 +637,31 @@ function handleSuggestionDelete(
 
   if (hasDeletion) {
     // Already deleted — skip cursor past it
-    const newPos = isBackward ? deletePos : deleteEnd;
+    const newPos = isBackward ? rangeFrom : rangeTo;
     tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
   } else if (hasOwnInsertion) {
     // Retract own insertion — actually delete the character
-    tr.delete(deletePos, deleteEnd);
+    tr.delete(rangeFrom, rangeTo);
   } else {
     // Mark as deletion instead of removing
     const delAttrs =
-      findAdjacentRevisionForRange(
-        state.doc,
-        deletePos,
-        deleteEnd,
-        "deletion",
-        pluginState.author,
-      ) || makeMarkAttrs(pluginState);
-    tr.addMark(deletePos, deleteEnd, deletionType.create(delAttrs));
+      findAdjacentRevisionForRange(state.doc, rangeFrom, rangeTo, "deletion", pluginState.author) ||
+      makeMarkAttrs(pluginState);
+    tr.addMark(rangeFrom, rangeTo, deletionType.create(delAttrs));
     // Move cursor past the deletion mark
-    const newPos = isBackward ? deletePos : deleteEnd;
+    const newPos = isBackward ? rangeFrom : rangeTo;
     tr.setSelection(TextSelection.near(tr.doc.resolve(newPos)));
   }
 
   dispatch(tr.scrollIntoView());
   return true;
 }
+
+/** Apply the editor's selected-content deletion path for a host cut action. */
+export const deleteSelectionAsSuggestion = (
+  state: EditorState,
+  dispatch: (tr: Transaction) => void,
+): boolean => (state.selection.empty ? false : handleSuggestionDelete(state, dispatch, "forward"));
 
 /**
  * Mark the text committed by an IME composition as a tracked insertion.
@@ -617,6 +679,7 @@ function markComposedAsInsertion(
   view: EditorView,
   from: number,
   pluginState: SuggestionModeState,
+  replaced: Slice | null,
 ): void {
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
@@ -625,16 +688,53 @@ function markComposedAsInsertion(
   }
   // PM leaves the cursor at the end of the committed composition.
   const to = view.state.selection.to;
-  if (to <= from) {
+  if (to <= from && !replaced) {
     return;
   }
 
   const tr = view.state.tr;
   tr.setMeta(SUGGESTION_META, true);
+  if (replaced) {
+    // ProseMirror lets the browser own the composing DOM. Reinsert the original
+    // selection only after that DOM has settled; changing it at compositionstart
+    // makes a subsequent IME update reconcile against stale nodes and lose the
+    // deletion revision.
+    tr.insert(from, replaced.content);
+    markRangeAsDeleted(
+      tr,
+      tr.doc,
+      from,
+      from + replaced.content.size,
+      insertionType,
+      deletionType,
+      pluginState,
+    );
+  }
+  const insertionFrom = tr.mapping.map(from, 1);
+  const insertionTo = tr.mapping.map(to, 1);
+  if (insertionTo <= insertionFrom) {
+    if (tr.steps.length > 0) {
+      view.dispatch(tr);
+    }
+    return;
+  }
   const markAttrs =
-    findAdjacentRevisionForRange(view.state.doc, from, to, "insertion", pluginState.author) ||
-    makeMarkAttrs(pluginState);
-  markRangeAsInserted(tr, view.state.doc, from, to, insertionType, deletionType, markAttrs);
+    findAdjacentRevisionForRange(
+      tr.doc,
+      insertionFrom,
+      insertionTo,
+      "insertion",
+      pluginState.author,
+    ) || makeMarkAttrs(pluginState);
+  markRangeAsInserted(
+    tr,
+    tr.doc,
+    insertionFrom,
+    insertionTo,
+    insertionType,
+    deletionType,
+    markAttrs,
+  );
   if (tr.steps.length === 0) {
     return;
   }
@@ -643,7 +743,7 @@ function markComposedAsInsertion(
   // applySuggestionInsert. Re-rendering the now-marked run can otherwise leave
   // the painted caret before the range; positions are stable across add-mark
   // steps but map anyway to stay correct if that changes.
-  const caret = tr.mapping.map(to);
+  const caret = tr.mapping.map(to, 1);
   tr.setSelection(TextSelection.create(tr.doc, caret));
   view.dispatch(tr);
 }
@@ -661,10 +761,11 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
   //     so the catch-all also skips PM's own composition-commit transaction:
   //     `view.composing` flips false slightly before that final flush, hence the
   //     manual flag. eigenpal/docx-editor#938.
-  //   - `compositionFrom` records where the composition began so
-  //     `compositionend` can mark exactly the committed range as an insertion.
+  //   - `compositionFrom` and `compositionReplaced` preserve the native
+  //     replacement until compositionend can record both revisions.
   let composing = false;
   let compositionFrom: number | null = null;
+  let compositionReplaced: Slice | null = null;
 
   return new Plugin({
     key: suggestionModeKey,
@@ -688,6 +789,21 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
 
     props: {
       handleDOMEvents: {
+        cut(view: EditorView, event: ClipboardEvent) {
+          if (!suggestionModeKey.getState(view.state)?.active || view.state.selection.empty) {
+            return false;
+          }
+          const data = event.clipboardData;
+          if (!data) {
+            return false;
+          }
+          const { dom, text } = view.serializeForClipboard(view.state.selection.content());
+          data.clearData();
+          data.setData("text/html", dom.innerHTML);
+          data.setData("text/plain", text);
+          event.preventDefault();
+          return handleSuggestionDelete(view.state, view.dispatch, "forward");
+        },
         // Remember where the composition starts and suppress the catch-all
         // while it runs. Composed text is marked as an insertion later, on
         // compositionend — never mid-composition. eigenpal/docx-editor#938.
@@ -696,36 +812,13 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           if (!pluginState?.active) {
             return false;
           }
+          if (composing) {
+            return false;
+          }
           composing = true;
           const { from, to } = view.state.selection;
-          // Composing over a non-empty selection: record the replaced range as a
-          // tracked deletion up front (mirrors applySuggestionInsert) and
-          // collapse the caret after it, so the composed text commits as an
-          // insertion on compositionend instead of the selected text being
-          // dropped natively with no redline. eigenpal/docx-editor#938.
-          if (from !== to) {
-            const insertionType = view.state.schema.marks["insertion"];
-            const deletionType = view.state.schema.marks["deletion"];
-            if (insertionType && deletionType) {
-              const tr = view.state.tr;
-              tr.setMeta(SUGGESTION_META, true);
-              markRangeAsDeleted(
-                tr,
-                view.state.doc,
-                from,
-                to,
-                insertionType,
-                deletionType,
-                pluginState,
-              );
-              const caret = tr.mapping.map(to);
-              tr.setSelection(TextSelection.create(tr.doc, caret));
-              view.dispatch(tr);
-              compositionFrom = caret;
-              return false;
-            }
-          }
           compositionFrom = from;
+          compositionReplaced = from === to ? null : view.state.doc.slice(from, to);
           return false;
         },
         // Mark the committed text as a tracked insertion AFTER the composition
@@ -736,7 +829,9 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
+          const replaced = compositionReplaced;
           compositionFrom = null;
+          compositionReplaced = null;
           if (!pluginState?.active || from == null) {
             composing = false;
             return false;
@@ -747,7 +842,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
               // author changed) between scheduling and running this callback.
               const current = suggestionModeKey.getState(view.state);
               if (current?.active) {
-                markComposedAsInsertion(view, from, current);
+                markComposedAsInsertion(view, from, current, replaced);
               }
             } finally {
               composing = false;
@@ -772,6 +867,14 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         }
 
         if (event.key === "Enter") {
+          const { $from, empty } = view.state.selection;
+          if (
+            empty &&
+            $from.parent.type.name === "paragraph" &&
+            expectParagraphAttrs($from.parent).numPr?.kind === "reference"
+          ) {
+            return false;
+          }
           return handleSuggestionEnter(view, pluginState);
         }
         // Backspace right after an autoformat puts the typed text back, as it
@@ -780,6 +883,16 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           return true;
         }
         if (event.key === "Backspace" || event.key === "Delete") {
+          const { $from, empty } = view.state.selection;
+          if (
+            event.key === "Backspace" &&
+            empty &&
+            $from.parentOffset === 0 &&
+            $from.parent.type.name === "paragraph" &&
+            expectParagraphAttrs($from.parent).numPr?.kind === "reference"
+          ) {
+            return false;
+          }
           const boundaryTarget = paragraphBoundaryTarget(
             view.state,
             event.key === "Backspace" ? "backward" : "forward",
@@ -874,27 +987,17 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
           const newTo = following.map(stepTo, 1);
           if (newTo > newFrom) {
-            // Mark each run carrier separately. Marking the entire range
-            // would overwrite other authors' revisions.
-            newState.doc.nodesBetween(newFrom, newTo, (node, pos) => {
-              if (!canCarryTrackedRunMark(node)) {
-                return;
-              }
-              const hasTrackedMark = node.marks.some(
-                (m) => m.type === insertionType || (deletionType && m.type === deletionType),
+            if (deletionType) {
+              markRangeAsInserted(
+                tr,
+                newState.doc,
+                newFrom,
+                newTo,
+                insertionType,
+                deletionType,
+                markAttrs,
               );
-              if (!hasTrackedMark) {
-                const nodeStart = Math.max(pos, newFrom);
-                const nodeEnd = Math.min(pos + node.nodeSize, newTo);
-                tr.addMark(nodeStart, nodeEnd, insertionType.create(markAttrs));
-              }
-            });
-            encloseWholeControls({
-              tr,
-              from: newFrom,
-              to: newTo,
-              revisionId: markAttrs.revisionId,
-            });
+            }
           }
         });
       }

@@ -374,6 +374,7 @@ const paragraphNodeSpec: NodeSpec = {
     indentFirstLine: { default: null },
     hangingIndent: { default: false },
     numPr: { default: null },
+    _pastedHtmlList: { default: null },
     numPrFromStyle: { default: null },
     listNumFmt: { default: null },
     listIsBullet: { default: null },
@@ -450,11 +451,32 @@ const paragraphNodeSpec: NodeSpec = {
         // two records and so end two sections, which is what two `w:sectPr`
         // elements in the copied range meant.
         const sectionBreakType = parseSectionBreakType(element.dataset["sectionBreak"]);
+        const pastedListGroup = Number(element.dataset["folioListGroup"]);
+        const pastedListLevel = Number(element.dataset["folioListLevel"]);
+        const pastedListKind = element.dataset["folioListKind"];
+        const pastedListStart = Number(element.dataset["folioListStart"]);
+        const pastedHtmlList =
+          Number.isSafeInteger(pastedListGroup) &&
+          pastedListGroup > 0 &&
+          Number.isSafeInteger(pastedListLevel) &&
+          pastedListLevel >= 0 &&
+          pastedListLevel <= 8 &&
+          (pastedListKind === "bullet" || pastedListKind === "numbered")
+            ? {
+                group: pastedListGroup,
+                level: pastedListLevel,
+                kind: pastedListKind,
+                ...(Number.isSafeInteger(pastedListStart) && pastedListStart > 0
+                  ? { start: pastedListStart }
+                  : {}),
+              }
+            : undefined;
         const attrs: ParagraphAttrs = {
           ...(paraId ? { paraId } : {}),
           ...(alignment ? { alignment } : {}),
           ...(alignmentFromStyle ? { alignmentFromStyle } : {}),
           ...(styleId ? { styleId } : {}),
+          ...(pastedHtmlList ? { _pastedHtmlList: pastedHtmlList } : {}),
           ...(Number.isSafeInteger(tableOfContentsLevel) && tableOfContentsLevel > 0
             ? { _tableOfContentsLevel: tableOfContentsLevel }
             : {}),

@@ -31,6 +31,7 @@ import { removedNumberingAttr, type ParagraphNumberingAttr } from "../../numberi
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import {
   makeRevisionInfo,
+  SUGGESTION_META,
   SUGGESTED_TEXT_INPUT_META,
   suggestRangeDeletion,
 } from "../../plugins/suggestionMode";
@@ -361,7 +362,12 @@ function exitListOnEmptyEnter(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup($from.before(), undefined, clearListAttrs(attrs));
+      const tr = state.tr;
+      applyParagraphUpdates({
+        tr,
+        state,
+        updates: [{ pos: $from.before(), node: paragraph, next: clearListAttrs(attrs) }],
+      });
       dispatch(tr);
     }
     return true;
@@ -388,6 +394,8 @@ function splitListItem(): Command {
     if (dispatch) {
       const { tr } = state;
       const pos = $from.pos;
+      const paragraphPos = $from.before();
+      const revision = makeRevisionInfo(state);
 
       tr.split(pos, 1, [
         {
@@ -395,6 +403,10 @@ function splitListItem(): Command {
           attrs: { ...paragraph.attrs },
         },
       ]);
+      if (revision && paragraph.attrs["pPrMark"] == null) {
+        tr.setNodeAttribute(paragraphPos, "pPrMark", { kind: "ins", info: revision });
+        tr.setMeta(SUGGESTION_META, true);
+      }
 
       dispatch(tr.scrollIntoView());
     }
@@ -424,7 +436,12 @@ function backspaceExitList(): Command {
     }
 
     if (dispatch) {
-      const tr = state.tr.setNodeMarkup($from.before(), undefined, clearListAttrs(attrs));
+      const tr = state.tr;
+      applyParagraphUpdates({
+        tr,
+        state,
+        updates: [{ pos: $from.before(), node: paragraph, next: clearListAttrs(attrs) }],
+      });
       dispatch(tr);
     }
     return true;

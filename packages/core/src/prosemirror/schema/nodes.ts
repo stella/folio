@@ -202,6 +202,8 @@ export type ParagraphAttrs = {
    * `paragraphNumberingAttr`, so a model value cannot land here unconverted.
    */
   numPr?: ParagraphNumberingAttr;
+  /** Clipboard-only hint, replaced with a numbered paragraph before insertion. */
+  _pastedHtmlList?: { group: number; level: number; kind: "bullet" | "numbered"; start?: number };
   /**
    * The style-sourced numPr value when `numPr` came from the paragraph
    * style rather than direct formatting. While `numPr` still equals this,
