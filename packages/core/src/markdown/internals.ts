@@ -48,6 +48,7 @@ export function newContext(
     hyperlinkRefs: [],
     imageCounter: 0,
     nextListLabel: createListLabelCounter(),
+    listIndentWidths: [],
   };
 }
 

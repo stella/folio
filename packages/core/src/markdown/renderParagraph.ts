@@ -71,7 +71,7 @@ export function renderParagraphBlock(
   }
 
   if (para.listRendering && label !== undefined) {
-    return { markdown: renderListItem(para.listRendering, label, inline), isListItem: true };
+    return { markdown: renderListItem(ctx, para.listRendering, label, inline), isListItem: true };
   }
 
   if (isQuoteStyle(styleId, ctx.builtInStyles)) {
@@ -128,14 +128,47 @@ function escapeLeadingBlockMarker(text: string): string {
 }
 
 /**
+ * A markdown list marker's width when no ancestor at that level has rendered
+ * yet (e.g. a DOCX paragraph numbered at a level its list skipped over). Two
+ * spaces is the old fixed-indent behaviour, kept as a fallback rather than a
+ * guess of zero.
+ */
+const DEFAULT_LIST_INDENT_WIDTH = 2;
+
+/**
+ * The indent a level's item needs: the combined marker width of every
+ * shallower level's most recently rendered item (see
+ * `RenderContext.listIndentWidths`), so a child sits inside its parent's
+ * content column per CommonMark's list-nesting rule, not a fixed guess.
+ */
+function listIndentWidth(ctx: RenderContext, level: number): number {
+  let width = 0;
+  for (let ancestor = 0; ancestor < level; ancestor++) {
+    width += ctx.listIndentWidths[ancestor] ?? DEFAULT_LIST_INDENT_WIDTH;
+  }
+  return width;
+}
+
+/**
  * A list item line with the label the page shows (`1.`, `a)`, `i.`), counted
  * in document order across the whole render, list items inside tables and
  * block SDTs included. A bullet is Markdown's `-`.
+ *
+ * The indent before the marker is not a fixed two spaces: CommonMark keeps a
+ * child nested under its parent only when it starts at or past the column
+ * where the parent item's content begins, which is the width of the parent's
+ * marker plus its one trailing space (`1. ` is 3 columns, `10. ` is 4, `- ` is
+ * 2). `ctx.listIndentWidths` is updated with this item's own marker width so
+ * a following, deeper item can indent correctly under it.
  */
-function renderListItem(list: ListRendering, label: string, inline: string): string {
-  const indent = "  ".repeat(list.level);
-  if (list.isBullet) {
-    return `${indent}- ${inline}`.trimEnd();
-  }
-  return `${indent}${label} ${inline}`.trimEnd();
+function renderListItem(
+  ctx: RenderContext,
+  list: ListRendering,
+  label: string,
+  inline: string,
+): string {
+  const indent = " ".repeat(listIndentWidth(ctx, list.level));
+  const marker = list.isBullet ? "- " : `${label} `;
+  ctx.listIndentWidths[list.level] = marker.length;
+  return `${indent}${marker}${inline}`.trimEnd();
 }

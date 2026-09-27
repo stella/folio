@@ -147,4 +147,16 @@ export type RenderContext = {
   nextListLabel: ListLabelCounter;
   /** The document's styles indexed by the built-in they are; classifies headings and quotes. */
   builtInStyles: BuiltInStyleIndex;
+  /**
+   * The rendered width (marker text + one trailing space) of the most
+   * recently emitted list item at each level, indexed by `ListRendering.level`.
+   * A nested item's indent is the sum of every shallower level's width here,
+   * not a fixed two spaces: CommonMark only keeps a child nested under its
+   * parent when the child starts at or past the column where the parent's
+   * content begins, and a marker like `10. ` or `1. ` is wider than `- `.
+   * Document order visits a parent before its children, so by the time a
+   * level-N item renders, levels `0..N-1` already hold the current ancestor
+   * chain's widths.
+   */
+  listIndentWidths: number[];
 };

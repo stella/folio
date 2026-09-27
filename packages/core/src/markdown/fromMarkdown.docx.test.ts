@@ -51,3 +51,68 @@ describe("fromMarkdown synthesizes self-consistent numbering", () => {
     expect(markdown).toBe(source);
   });
 });
+
+// A nested list's indent must be wide enough for the parent's own marker
+// (CommonMark: the child needs to start at or past the column where the
+// parent item's content begins), not a fixed two spaces: "1. " is 3 columns,
+// "10. " is 4, and only a bullet parent's "- " happens to be 2. Getting this
+// wrong doesn't fail to parse — it reimports as a *flatter* document (the
+// child silently promotes to the parent's own level), so every case here
+// round-trips through actual DOCX bytes twice, the way a save/reopen/save
+// would, and checks the second cycle still matches the first.
+describe("nested lists under an ordered parent keep CommonMark's indentation", () => {
+  const roundTrip = async (markdown: string): Promise<string> => {
+    const bytes = await createDocx(fromMarkdown(markdown));
+    const result = await docxToMarkdown(bytes, CLEAN);
+    return typeof result === "string" ? result : result.markdown;
+  };
+
+  test("a 1-digit ordered parent indents its child by 3 spaces", async () => {
+    const source = "1. Parent\n   - Child\n2. Next";
+    const first = await roundTrip(source);
+    expect(first).toBe(source);
+    expect(await roundTrip(first)).toBe(source);
+  });
+
+  test("a 2-digit ordered parent indents its child by 4 spaces", async () => {
+    const source = "10. Parent\n    - Child\n11. Next";
+    const first = await roundTrip(source);
+    expect(first).toBe(source);
+    expect(await roundTrip(first)).toBe(source);
+  });
+
+  test("an ordered parent nesting an ordered child keeps its own numbering", async () => {
+    const source = "1. Parent\n   1. Child\n   2. Sibling\n2. Next";
+    const first = await roundTrip(source);
+    expect(first).toBe(source);
+    expect(await roundTrip(first)).toBe(source);
+  });
+
+  test("three levels of mixed ordered/bullet nesting round-trip", async () => {
+    const source = "1. A\n   1. B\n      - C\n2. D";
+    const first = await roundTrip(source);
+    expect(first).toBe(source);
+    expect(await roundTrip(first)).toBe(source);
+  });
+
+  test("three levels: bullet, then ordered, then bullet, round-trip", async () => {
+    const source = "- A\n  1. B\n     - C\n- D";
+    const first = await roundTrip(source);
+    expect(first).toBe(source);
+    expect(await roundTrip(first)).toBe(source);
+  });
+
+  test("a loose ordered item's continuation is idempotent, keeps both texts", async () => {
+    // A continuation paragraph folds into the item's own paragraph as a soft
+    // break (see fromMarkdown.test.ts's equivalent bullet-parent case), so
+    // this isn't byte-identical to the source; it must still be a stable,
+    // lossless normal form — the pre-existing behaviour this fix must not
+    // regress.
+    const source = "1. Parent\n\n   continuation text\n2. Next";
+    const first = await roundTrip(source);
+    expect(first).toContain("Parent");
+    expect(first).toContain("continuation text");
+    expect(first).toContain("2. Next");
+    expect(await roundTrip(first)).toBe(first);
+  });
+});
