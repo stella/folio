@@ -34,6 +34,11 @@ export type LayoutInstrumentation = {
   onLayoutComplete?: (event: { reason: LayoutRunReason }) => void;
   onLayoutError?: (event: { message: string; reason: LayoutRunReason }) => void;
   onLayoutStart?: (event: { reason: LayoutRunReason }) => void;
+  /**
+   * A review view (the editor's `DisplayMode`) laid out part of the story as
+   * authored: a revision there has no resolution.
+   */
+  onMarkupViewIncomplete?: (event: { view: string }) => void;
   onLayoutPhase?: (event: {
     durationMs: number;
     phase: LayoutPhase;
@@ -86,6 +91,10 @@ export function recordLayoutError(reason: LayoutRunReason, error: unknown): void
     message,
     reason,
   });
+}
+
+export function recordMarkupViewIncomplete(view: string): void {
+  globalThis.__folioLayoutInstrumentation?.onMarkupViewIncomplete?.({ view });
 }
 
 /** A dictionary failed to load; layout continues without hyphenating that language. */

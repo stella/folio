@@ -12,7 +12,7 @@ import type { Document } from "../types/document";
 import type { DocxInput } from "../utils/docxInput";
 import type { FolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
-import type { LayoutRunOptions } from "./layoutScheduler";
+import type { LayoutRunOptions } from "./layoutRunOptions";
 
 export type FolioEditorDeps = {
   // The live hidden-editor API; null until the view exists (the adapter holds

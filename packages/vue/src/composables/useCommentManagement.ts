@@ -66,6 +66,8 @@ export type UseCommentManagementReturn = {
   createComment: (text: string, parentId?: number, authorOverride?: string) => Comment;
   /** Append a comment and emit the change. */
   pushComment: (comment: Comment) => void;
+  /** Append a batch of committed comments and emit one change. */
+  appendComments: (additions: Comment[]) => void;
   /** Replace the whole list and emit the change (uncontrolled also stores it). */
   setComments: (next: Comment[]) => void;
   /** Seed internal comments + the id allocator from the loaded document. */
@@ -110,9 +112,14 @@ export function useCommentManagement(
     options.onCommentsChange(next);
   }
 
-  function pushComment(comment: Comment): void {
+  function appendComments(additions: Comment[]): void {
+    if (additions.length === 0) return;
     markCommentsDirty();
-    setComments([...comments.value, comment]);
+    setComments([...comments.value, ...additions]);
+  }
+
+  function pushComment(comment: Comment): void {
+    appendComments([comment]);
   }
 
   function createComment(text: string, parentId?: number, authorOverride?: string): Comment {
@@ -203,6 +210,7 @@ export function useCommentManagement(
     clearCommentsDirty,
     createComment,
     pushComment,
+    appendComments,
     setComments,
     seedFromDocument,
     handleReply,

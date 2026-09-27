@@ -8,12 +8,7 @@
 import assert from "node:assert/strict";
 import { describe } from "node:test";
 
-import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
-import {
-  createFolioAITextRangeHandle,
-  docxToMarkdown,
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-} from "@stll/folio-core/server";
+import { createFolioAITextRangeHandle, docxToMarkdown } from "@stll/folio-core/server";
 
 import {
   notesDocument,
@@ -22,102 +17,13 @@ import {
   storiesDocument,
   TEXT_BOX_TEXT,
   toArrayBuffer,
-  unusedNumberingDocument,
 } from "../support/documents.ts";
 import { saveAndReopen } from "../support/invariants.ts";
 import { runFlow } from "../support/fuzz.ts";
 import { expectedFailure, FINDING_SYMPTOMS, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
-import { coreBatch, MODES, type Mode, type Operation } from "../support/operations.ts";
+import { coreBatch, type Mode, type Operation } from "../support/operations.ts";
 import { rowsOf } from "../support/oracle.ts";
 import { MARKDOWN_READ_OPTIONS } from "../support/readers.ts";
-
-const MISSING_NUMBERING = /Numbering definition \d+ is missing/u;
-
-describe("#1103: operations that name a numbering instance the package does not define", () => {
-  for (const mode of MODES) {
-    expectedFailure(
-      1103,
-      `insertAfterBlock with an undefined numId (${mode}) is refused or saves`,
-      MISSING_NUMBERING,
-      async () => {
-        const reviewer = await openReviewer(await unusedNumberingDocument());
-        const anchor = reviewer
-          .getContent()
-          .find((block) => block.text === "Signed in two copies.");
-        assert.ok(anchor);
-        reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode,
-          operations: [
-            {
-              id: "1",
-              type: "insertAfterBlock",
-              blockId: anchor.id,
-              text: "An inserted clause.",
-              numbering: { numId: 1, level: 0 },
-            },
-          ],
-        });
-        if (mode === "suggested") {
-          // A suggestion reaches the package once accepted.
-          reviewer.acceptAll();
-        }
-        await saveAndReopen(reviewer, `#1103 ${mode}`);
-      },
-    );
-  }
-
-  expectedFailure(
-    1103,
-    "setBlockParagraphProperties with an undefined numId is refused or saves",
-    MISSING_NUMBERING,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
-      assert.ok(target);
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "1",
-            type: "setBlockParagraphProperties",
-            blockId: target.id,
-            properties: { numbering: { numId: 3, level: 0 } },
-          },
-        ],
-      });
-      await saveAndReopen(reviewer, "#1103 setBlockParagraphProperties");
-    },
-  );
-
-  expectedFailure(
-    1103,
-    "suggest_changes with an undefined numId answers with an issue, and the document saves",
-    MISSING_NUMBERING,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const anchor = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
-      assert.ok(anchor);
-      executeFolioToolCallUntyped(
-        "suggest_changes",
-        {
-          operations: [
-            {
-              type: "insertAfterBlock",
-              blockId: anchor.id,
-              text: "An inserted clause.",
-              numbering: { numId: 1, level: 0 },
-            },
-          ],
-        },
-        createReviewerBridge(reviewer, { mode: "tracked-changes" }),
-        {},
-      );
-      await saveAndReopen(reviewer, "#1103 suggest_changes");
-    },
-  );
-});
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type Story = Parameters<Reviewer["snapshotStory"]>[0];

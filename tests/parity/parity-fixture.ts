@@ -58,6 +58,7 @@ type FolioParityBridge = {
   hasPendingChanges: () => boolean;
   insertTextViaPagedEditorRef: (text: string) => boolean;
   getPageNumberForSelection: () => number;
+  typeThenReloadDocument: (marker: string) => boolean;
 };
 
 declare global {
@@ -75,9 +76,13 @@ export type AdapterFixture = {
   baseUrl: string;
 };
 
+// The same ports playwright.config.ts starts the playgrounds on.
+const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
+const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+
 const ADAPTERS: AdapterFixture[] = [
-  { name: "react", baseUrl: "http://localhost:4200" },
-  { name: "vue", baseUrl: "http://localhost:4201" },
+  { name: "react", baseUrl: `http://localhost:${reactPort}` },
+  { name: "vue", baseUrl: `http://localhost:${vuePort}` },
 ];
 
 /** The pages container both adapters paint into (React + Vue share the class). */

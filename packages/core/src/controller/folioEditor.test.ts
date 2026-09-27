@@ -7,7 +7,7 @@ import type { Document } from "../types/document";
 import { createFolioEditor, type FolioEditorDocumentIO } from "./folioEditor";
 import { createFolioEditorEmitter } from "./folioEditorEvents";
 import type { HiddenEditorApi } from "./hiddenEditorApi";
-import type { LayoutRunOptions } from "./layoutScheduler";
+import type { LayoutRunOptions } from "./layoutRunOptions";
 
 // Sentinels: opaque stand-ins for the heavy PM/layout objects. The controller
 // only forwards these through; it never inspects them, so a tagged object stands

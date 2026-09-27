@@ -477,11 +477,12 @@ const makeDeps = (
   session,
   renderHfFromContentOrPm: () => undefined,
   renderHeaderFooterContentByRId: () => undefined,
-  documentFontsAreLoaded: () => true,
+  readFontSetSignature: () => "test-fonts",
   buildFootnoteRenderItems: () => new Map(),
   describeInvalidHighlightMarks: () => "",
   emptyTemplatePreviewEntries: [],
   emptyTemplatePreviewHidden: [],
+  markupView: "all-markup",
   hyphenationReadiness: { track: () => undefined, cancel: () => undefined },
   ...overrides,
 });
@@ -545,7 +546,7 @@ describe("runLayoutPipeline", () => {
     expect(session.artifacts?.measures.length ?? 0).toBeGreaterThan(0);
     expect(session.lastEditorState).toBe(state);
     expect(session.lastPmDoc).toBe(state.doc);
-    expect(session.usedLoadedFonts).toBe(true);
+    expect(session.lastMeasureInputs?.fontSet).toBe("test-fonts");
     expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
     expect(layoutCompletes).toHaveLength(1);
@@ -1448,7 +1449,7 @@ describe("runLayoutPipeline", () => {
     expect(session.artifacts).toBeNull();
     expect(session.lastEditorState).toBeNull();
     expect(session.lastPmDoc).toBeNull();
-    expect(session.usedLoadedFonts).toBe(false);
+    expect(session.lastMeasureInputs).toBeNull();
     expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
     // The error recorder ran; no completion was recorded.
@@ -1463,7 +1464,7 @@ describe("createLayoutSession", () => {
       artifacts: null,
       lastEditorState: null,
       lastPmDoc: null,
-      usedLoadedFonts: false,
+      lastMeasureInputs: null,
       lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
     });
   });

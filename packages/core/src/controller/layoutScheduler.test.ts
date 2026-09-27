@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  createLayoutScheduler,
-  type LayoutRunOptions,
-  type SchedulerClock,
-} from "./layoutScheduler";
+import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
+import { createLayoutScheduler, type SchedulerClock } from "./layoutScheduler";
 
 type TestState = { id: number };
 
@@ -54,153 +51,145 @@ const makeFakeClock = () => {
   };
 };
 
-describe("layoutScheduler", () => {
-  test("coalesces a burst into one layout run with the latest state", () => {
-    const fc = makeFakeClock();
-    const runs: TestState[] = [];
-    const scheduler = createLayoutScheduler<TestState>({
-      runLayout: (state) => {
-        runs.push(state);
-      },
-      debounceMs: 32,
-      maxDelayMs: 96,
-      clock: fc.clock,
-    });
+type SchedulerRigOptions = {
+  leadingFrame?: boolean;
+};
 
-    scheduler.schedule({ id: 1 }, null);
-    scheduler.schedule({ id: 2 }, null);
-    scheduler.schedule({ id: 3 }, null);
+/** A scheduler over a mutable "view" state, recording every run. */
+const makeRig = ({ leadingFrame = false }: SchedulerRigOptions = {}) => {
+  const fake = makeFakeClock();
+  const view: { state: TestState | null } = { state: { id: 0 } };
+  const runs: { state: TestState; options: LayoutRunOptions }[] = [];
+  const scheduler = createLayoutScheduler({
+    readState: () => view.state,
+    runLayout: (state, options) => {
+      runs.push({ state, options });
+    },
+    debounceMs: 32,
+    leadingFrame,
+    maxDelayMs: 96,
+    clock: fake.clock,
+  });
+  const edit = (id: number): void => {
+    view.state = { id };
+    scheduler.schedule();
+  };
+  return { fake, view, runs, scheduler, edit, ids: () => runs.map((run) => run.state.id) };
+};
+
+describe("layoutScheduler", () => {
+  test("coalesces a burst into one layout run of the state current at the frame", () => {
+    const rig = makeRig();
+
+    rig.edit(1);
+    rig.edit(2);
+    rig.edit(3);
 
     // One armed debounce timer, nothing run yet.
-    expect(fc.pendingTimers()).toBe(1);
-    expect(runs).toHaveLength(0);
+    expect(rig.fake.pendingTimers()).toBe(1);
+    expect(rig.runs).toHaveLength(0);
 
-    fc.fireTimers(); // debounce elapses -> schedules a frame
-    fc.fireFrames(); // frame runs layout once, with the latest state
+    rig.fake.fireTimers(); // debounce elapses -> schedules a frame
+    rig.fake.fireFrames(); // frame runs layout once
 
-    expect(runs).toEqual([{ id: 3 }]);
+    expect(rig.ids()).toEqual([3]);
   });
 
-  test("passes the merged dirty range through to runLayout", () => {
-    const fc = makeFakeClock();
-    const optionsSeen: LayoutRunOptions[] = [];
-    const scheduler = createLayoutScheduler<TestState>({
-      runLayout: (_state, options) => {
-        optionsSeen.push(options);
-      },
-      debounceMs: 32,
-      maxDelayMs: 96,
-      clock: fc.clock,
-    });
+  test("runs an incremental transaction pass", () => {
+    const rig = makeRig();
 
-    scheduler.schedule({ id: 1 }, { from: 10, to: 20 });
-    scheduler.schedule({ id: 2 }, { from: 30, to: 40 });
-    fc.fireTimers();
-    fc.fireFrames();
+    rig.edit(1);
+    rig.fake.fireTimers();
+    rig.fake.fireFrames();
 
-    expect(optionsSeen).toHaveLength(1);
-    expect(optionsSeen[0]?.reason).toBe("transaction");
-    // mergeDirtyRanges widens to cover both edits.
-    expect(optionsSeen[0]?.dirtyRange).toEqual({ from: 10, to: 40 });
+    expect(rig.runs.map((run) => run.options)).toEqual([
+      { reason: "transaction", measure: LAYOUT_MEASURE.incremental },
+    ]);
+  });
+
+  // #1142: an edit schedules a pass, the host replaces the state wholesale
+  // (ref.loadDocument), and the frame only comes afterwards (a hidden page).
+  test("lays out the state that replaced the edited one, never the edited one", () => {
+    const rig = makeRig({ leadingFrame: true });
+
+    rig.edit(1);
+    rig.view.state = { id: 2 };
+    rig.fake.advance(16_000);
+    rig.fake.fireTimers();
+    rig.fake.fireFrames();
+
+    expect(rig.ids()).toEqual([2]);
+  });
+
+  test("skips the pass when there is no editor state", () => {
+    const rig = makeRig({ leadingFrame: true });
+
+    rig.edit(1);
+    rig.view.state = null;
+    rig.fake.fireFrames();
+
+    expect(rig.runs).toHaveLength(0);
   });
 
   test("leading-frame mode paints the first edit immediately and debounces the rest", () => {
-    const fc = makeFakeClock();
-    const runs: TestState[] = [];
-    const scheduler = createLayoutScheduler<TestState>({
-      runLayout: (state) => {
-        runs.push(state);
-      },
-      debounceMs: 32,
-      leadingFrame: true,
-      maxDelayMs: 96,
-      clock: fc.clock,
-    });
+    const rig = makeRig({ leadingFrame: true });
 
-    scheduler.schedule({ id: 1 }, { from: 10, to: 20 });
-    scheduler.schedule({ id: 2 }, { from: 30, to: 40 });
+    rig.edit(1);
+    rig.edit(2);
 
-    expect(fc.pendingTimers()).toBe(0);
-    expect(fc.pendingFrames()).toBe(1);
-    expect(runs).toHaveLength(0);
+    expect(rig.fake.pendingTimers()).toBe(0);
+    expect(rig.fake.pendingFrames()).toBe(1);
+    expect(rig.runs).toHaveLength(0);
 
-    fc.fireFrames();
+    rig.fake.fireFrames();
 
-    expect(runs).toEqual([{ id: 2 }]);
+    expect(rig.ids()).toEqual([2]);
 
-    scheduler.schedule({ id: 3 }, { from: 50, to: 60 });
-    scheduler.schedule({ id: 4 }, { from: 70, to: 80 });
+    rig.edit(3);
+    rig.edit(4);
 
-    expect(fc.pendingTimers()).toBe(1);
-    expect(fc.pendingFrames()).toBe(0);
+    expect(rig.fake.pendingTimers()).toBe(1);
+    expect(rig.fake.pendingFrames()).toBe(0);
 
-    fc.fireTimers();
-    fc.fireFrames();
+    rig.fake.fireTimers();
+    rig.fake.fireFrames();
 
-    expect(runs).toEqual([{ id: 2 }, { id: 4 }]);
+    expect(rig.ids()).toEqual([2, 4]);
   });
 
   test("exceeding maxDelay flushes with zero debounce", () => {
-    const fc = makeFakeClock();
-    const runs: TestState[] = [];
-    const scheduler = createLayoutScheduler<TestState>({
-      runLayout: (state) => {
-        runs.push(state);
-      },
-      debounceMs: 32,
-      maxDelayMs: 96,
-      clock: fc.clock,
-    });
+    const rig = makeRig();
 
-    scheduler.schedule({ id: 1 }, null);
-    fc.advance(100); // past maxDelay since the first edit
-    scheduler.schedule({ id: 2 }, null); // re-arms with delay 0
-    fc.fireTimers();
-    fc.fireFrames();
+    rig.edit(1);
+    rig.fake.advance(100); // past maxDelay since the first edit
+    rig.edit(2); // re-arms with delay 0
+    rig.fake.fireTimers();
+    rig.fake.fireFrames();
 
-    expect(runs).toEqual([{ id: 2 }]);
+    expect(rig.ids()).toEqual([2]);
   });
 
   test("dispose cancels a pending run", () => {
-    const fc = makeFakeClock();
-    const runs: TestState[] = [];
-    const scheduler = createLayoutScheduler<TestState>({
-      runLayout: (state) => {
-        runs.push(state);
-      },
-      debounceMs: 32,
-      maxDelayMs: 96,
-      clock: fc.clock,
-    });
+    const rig = makeRig();
 
-    scheduler.schedule({ id: 1 }, null);
-    scheduler.dispose();
-    fc.fireTimers();
-    fc.fireFrames();
+    rig.edit(1);
+    rig.scheduler.dispose();
+    rig.fake.fireTimers();
+    rig.fake.fireFrames();
 
-    expect(runs).toHaveLength(0);
-    expect(fc.pendingTimers()).toBe(0);
-    expect(fc.pendingFrames()).toBe(0);
+    expect(rig.runs).toHaveLength(0);
+    expect(rig.fake.pendingTimers()).toBe(0);
+    expect(rig.fake.pendingFrames()).toBe(0);
   });
 
   test("dispose cancels a pending leading frame", () => {
-    const fc = makeFakeClock();
-    const runs: TestState[] = [];
-    const scheduler = createLayoutScheduler<TestState>({
-      runLayout: (state) => {
-        runs.push(state);
-      },
-      debounceMs: 32,
-      leadingFrame: true,
-      maxDelayMs: 96,
-      clock: fc.clock,
-    });
+    const rig = makeRig({ leadingFrame: true });
 
-    scheduler.schedule({ id: 1 }, null);
-    scheduler.dispose();
-    fc.fireFrames();
+    rig.edit(1);
+    rig.scheduler.dispose();
+    rig.fake.fireFrames();
 
-    expect(runs).toHaveLength(0);
-    expect(fc.pendingFrames()).toBe(0);
+    expect(rig.runs).toHaveLength(0);
+    expect(rig.fake.pendingFrames()).toBe(0);
   });
 });

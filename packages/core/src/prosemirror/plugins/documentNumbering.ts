@@ -133,6 +133,33 @@ export const getPackageNumberingDefinitions = (state: EditorState): NumberingDef
 export const hasDocumentNumbering = (state: EditorState): boolean =>
   documentNumberingKey.get(state) !== undefined;
 
+/**
+ * The document's numbering definitions: `null` for a document without a
+ * numbering part, `undefined` when the state carries no numbering plugin and
+ * so cannot say what the document defines.
+ */
+export const getStatedDocumentNumbering = (
+  state: EditorState,
+): NumberingDefinitions | null | undefined => {
+  if (documentNumberingKey.get(state) === undefined) {
+    return undefined;
+  }
+  return getDocumentNumbering(state)?.definitions ?? null;
+};
+
+/**
+ * The numbering instances (`w:num` ids) the document defines, or `null` when
+ * the state carries no numbering plugin and so cannot say. A document without
+ * a numbering part defines none.
+ */
+export const getDocumentNumberingInstanceIds = (state: EditorState): ReadonlySet<number> | null => {
+  const numbering = getStatedDocumentNumbering(state);
+  if (numbering === undefined) {
+    return null;
+  }
+  return new Set(numbering?.nums.map(({ numId }) => numId) ?? []);
+};
+
 /** Replace numbering state while retaining every unrelated plugin state. */
 export const withDocumentNumbering = (
   state: EditorState,

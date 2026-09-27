@@ -118,7 +118,7 @@ const XML_DECL = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
  * Serialize a package the way a word processor writes it. Timestamps are
  * fixed and JSZip is given a fixed date so the bytes are reproducible.
  */
-const buildRawPackage = async ({
+export const buildRawPackage = async ({
   body,
   styles,
   parts = [],
@@ -192,7 +192,7 @@ const DRAWING_NAMESPACES = [
   'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"',
 ].join(" ");
 
-const SECTION = (extra = "") =>
+export const SECTION = (extra = "") =>
   `<w:sectPr>${extra}<w:pgSz w:w="12240" w:h="15840"/>` +
   '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>' +
   "</w:sectPr>";
@@ -209,7 +209,7 @@ const paragraph = (inner: string, pPr = ""): string =>
 const textParagraph = (text: string, pPr = ""): string => paragraph(run(text), pPr);
 
 /** A styles part with the styles a word-processor document typically carries. */
-const WORD_STYLES = `${XML_DECL}<w:styles xmlns:w="${W_NS}">
+export const WORD_STYLES = `${XML_DECL}<w:styles xmlns:w="${W_NS}">
 <w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="MS Mincho" w:cs="Arial"/><w:sz w:val="22"/><w:lang w:val="en-US" w:eastAsia="ja-JP" w:bidi="ar-SA"/></w:rPr></w:rPrDefault>
 <w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>
 <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>

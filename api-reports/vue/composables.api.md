@@ -13,6 +13,7 @@ import { ComputedRef } from 'vue';
 import { createSelectionFromDOM } from '@stll/folio-core/managers/ClipboardManager';
 import { createVisualLineState } from '@stll/folio-core/prosemirror/utils/visualLineNavigation';
 import { CSSProperties } from 'vue';
+import { DisplayMode } from '@stll/folio-core/managers/EditorModeManager';
 import { Document as Document_2 } from '@stll/folio-core/types/document';
 import { DocxInput } from '@stll/folio-core/utils/docxInput';
 import { EditorState } from 'prosemirror-state';
@@ -129,6 +130,7 @@ export type UseDocxEditorOptions = {
     readOnly?: MaybeRefOrGetter<boolean>;
     pageGap?: number;
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
+    markupView?: MaybeRefOrGetter<DisplayMode>;
     showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
     marginGuideColor?: MaybeRefOrGetter<string | undefined>;
     password?: MaybeRefOrGetter<string | undefined>;

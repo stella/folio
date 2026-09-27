@@ -725,6 +725,7 @@ export type ParagraphBlock = {
     pmStart?: number;
     pmEnd?: number;
     sdtGroups?: SdtGroup[];
+    reviewIndicator?: "change-bar";
 };
 
 // @public

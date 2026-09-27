@@ -743,6 +743,7 @@ const {
   author: () => props.author,
   password: () => props.password,
   pageRenderer: () => props.pageRenderer,
+  markupView: displayMode,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,
@@ -866,6 +867,7 @@ const selectionSync = useSelectionSync({
   hiddenContainer: hiddenPmRef,
   pagesRef,
   zoom,
+  markupView: displayMode,
   selectedImage,
   syncCoordinator,
   imageInteracting,
@@ -1479,18 +1481,9 @@ const { exposed } = useDocxEditorRefApi({
     passageHighlightRange.value = range;
   },
   author: () => props.author,
-  // Mirror React's applyAIEditOperations comment closure: mint the comment,
-  // append it to the thread list, and hand back its id for the tracked-change
-  // mark that references it. `author` is the resolved per-call operation
-  // author (useDocxEditorRefApi's `operationAuthor`, defaulting to
-  // `props.author`) — without threading it through, every AI-edit comment
-  // would always be attributed to `props.author`, ignoring a caller-supplied
-  // override.
-  createAIEditComment: (text, author) => {
-    const comment = commentManagement.createComment(text, undefined, author);
-    commentManagement.pushComment(comment);
-    return comment.id;
-  },
+  // Mint during the held operation, then publish applied comments after commit.
+  createAIEditComment: (text, author) => commentManagement.createComment(text, undefined, author),
+  publishAIEditComments: commentManagement.appendComments,
   getComments: () => commentManagement.comments.value,
   setComments: commentManagement.setComments,
   focus: () => activeEditorView.value?.focus(),
@@ -1693,6 +1686,11 @@ defineExpose(exposed);
   No Markup: hide change styling, show final result
   Original: hide insertions, show deletions as normal text
   Simple Markup: hide inline marks, show clean text
+
+  The body's pages are laid out from the text each view shows (the layout
+  pipeline's `markupView`), so its painted runs carry no change classes in
+  these views. The rules still apply to the hidden editor's change spans and
+  to the header, footer and note stories, painted from their authored text.
 -->
 <style>
 .docx-editor-vue .layout-paragraph[data-tracked-changes="true"] {

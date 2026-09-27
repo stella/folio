@@ -20,22 +20,6 @@ export type IncrementalMeasureResult = {
   measuredBlockIndexes: number[];
 };
 
-export function mergeDirtyRanges(
-  first: DirtyRange | null,
-  second: DirtyRange | null,
-): DirtyRange | null {
-  if (!first) {
-    return second;
-  }
-  if (!second) {
-    return first;
-  }
-  return {
-    from: Math.min(first.from, second.from),
-    to: Math.max(first.to, second.to),
-  };
-}
-
 export function findDirtyBlockIndexes(blocks: FlowBlock[], dirtyRange: DirtyRange): number[] {
   const indexes: number[] = [];
   const dirtyFrom = Math.min(dirtyRange.from, dirtyRange.to);

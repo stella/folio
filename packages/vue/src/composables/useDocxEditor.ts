@@ -38,6 +38,7 @@ import {
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
@@ -63,10 +64,14 @@ import type {
   HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
 import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/controller/layoutPipeline";
-import type { LayoutOutcome, LayoutRunOptions } from "@stll/folio-core/controller/layoutPipeline";
+import type { LayoutOutcome } from "@stll/folio-core/controller/layoutPipeline";
+import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
+import {
+  readFontSetSignature,
+  watchLayoutFontLoads,
+} from "@stll/folio-core/controller/fontReadiness";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
-import type { LayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
@@ -96,7 +101,6 @@ import {
   getPageSize,
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
-import { getTransactionsDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
@@ -306,14 +310,6 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
   return invalidHighlights.join("; ");
 }
 
-/** Whether the browser's document FontFaceSet has settled. */
-function documentFontsAreLoaded(): boolean {
-  if (typeof document === "undefined" || !("fonts" in document)) {
-    return true;
-  }
-  return document.fonts.status === "loaded";
-}
-
 // ============================================================================
 // COMPOSABLE
 // ============================================================================
@@ -333,6 +329,11 @@ export type UseDocxEditorOptions = {
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */
   pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
+  /**
+   * The review view the body is laid out for (`all-markup` by default). A view
+   * other than All Markup lays out the text it shows. Reactive.
+   */
+  markupView?: MaybeRefOrGetter<DisplayMode>;
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
@@ -484,6 +485,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
+    markupView = "all-markup",
     showMarginGuides,
     marginGuideColor,
     password,
@@ -608,6 +610,20 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onError: (error) => onError?.(error),
   });
   onScopeDispose(hyphenationReadiness.cancel);
+  // Re-layout when a face loads that the committed layout measured without,
+  // such as a `unicode-range` subset fetched once painted text first needed
+  // it. Mirrors React's PagedEditor.
+  onScopeDispose(
+    watchLayoutFontLoads({
+      measuredFontSet: () => session.lastMeasureInputs?.fontSet ?? null,
+      relayout: () => {
+        const state = editorView.value?.state ?? session.lastEditorState;
+        if (state) {
+          runLayoutPipeline(state, { reason: "font-ready" });
+        }
+      },
+    }),
+  );
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
@@ -617,10 +633,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
       if (docChanged) {
         isDirty.value = true;
-        const bodyView = editorView.value;
-        if (bodyView) {
-          scheduler.schedule(bodyView.state, null);
-        }
+        scheduler.schedule();
       }
       if (docChanged || selectionChanged) {
         const { from, to } = view.state.selection;
@@ -648,8 +661,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           onChange?.(updated);
           emitter.emit("docChange", updated);
         }
-        const bodyView = editorView.value;
-        if (bodyView) scheduler.schedule(bodyView.state, null);
+        scheduler.schedule();
       }
       if (docChanged || selectionChanged) {
         onSelectionUpdate?.(view.state);
@@ -745,12 +757,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           session,
           renderHfFromContentOrPm,
           renderHeaderFooterContentByRId,
-          documentFontsAreLoaded,
+          readFontSetSignature,
           buildFootnoteRenderItems,
           describeInvalidHighlightMarks,
           emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
           emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
           hyphenationReadiness,
+          markupView: toValue(markupView),
         },
         state,
         runOptions,
@@ -764,7 +777,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
 
   // rAF-coalescing scheduler (shared with React via core). A burst of
   // keystrokes lays out once per frame instead of synchronously per keystroke.
-  const scheduler: LayoutScheduler<EditorState> = createLayoutScheduler<EditorState>({
+  const scheduler = createLayoutScheduler({
+    // The pass lays out the state the view holds when it runs, never the one a
+    // transaction produced before a document load replaced it.
+    readState: () => editorView.value?.state ?? null,
     runLayout: (state, runOptions) => runLayoutPipeline(state, runOptions),
     debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
     maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
@@ -920,16 +936,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     { flush: "post" },
   );
 
-  function handleTransaction({
-    transactions,
-    newState,
-    docChanged,
-  }: HiddenEditorTransactionUpdate): void {
+  function handleTransaction({ newState, docChanged }: HiddenEditorTransactionUpdate): void {
     editorState.value = newState;
     if (docChanged) {
       isDirty.value = true;
       syncCoordinator.incrementStateSeq();
-      scheduler.schedule(newState, getTransactionsDirtyRange(transactions));
+      scheduler.schedule();
       scheduleDocumentChangeNotification();
     }
     syncCoordinator.requestRender();
@@ -1302,7 +1314,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   watch(
-    [() => toValue(showMarginGuides), () => toValue(marginGuideColor), () => toValue(pageRenderer)],
+    [
+      () => toValue(showMarginGuides),
+      () => toValue(marginGuideColor),
+      () => toValue(pageRenderer),
+      () => toValue(markupView),
+    ],
     () => reLayout(),
   );
 

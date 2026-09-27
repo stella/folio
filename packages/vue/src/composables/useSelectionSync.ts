@@ -7,7 +7,12 @@ import {
   resetImeCaretAnchor,
   syncImeCaretAnchor,
 } from "@stll/folio-core/layout-bridge/dom/imeCaretAnchor";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import type { LayoutSelectionGate } from "@stll/folio-core/paged-layout/LayoutSelectionGate";
+import {
+  projectMarkupView,
+  visibleCaretPosition,
+} from "@stll/folio-core/prosemirror/markupViewProjection";
 
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 import { Z_INDEX } from "../styles/zIndex";
@@ -17,6 +22,8 @@ export type UseSelectionSyncOptions = {
   hiddenContainer: Ref<HTMLElement | null>;
   pagesRef: Ref<HTMLElement | null>;
   zoom: Ref<number>;
+  /** The review view the pages are laid out for. */
+  markupView: Ref<DisplayMode>;
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
   syncCoordinator: LayoutSelectionGate;
   imageInteracting?: Ref<boolean>;
@@ -60,6 +67,7 @@ export const useSelectionSync = (opts: UseSelectionSyncOptions): UseSelectionSyn
       const result = overlay.sync({
         pagesContainer,
         state: view.state,
+        markupView: opts.markupView.value,
         zoom: opts.zoom.value,
         zIndex: Z_INDEX.selectionOverlay,
       });
@@ -67,7 +75,14 @@ export const useSelectionSync = (opts: UseSelectionSyncOptions): UseSelectionSyn
       const { selection } = view.state;
       const pagesRect = pagesContainer.getBoundingClientRect();
       const caret = selection.empty
-        ? getCaretPositionFromDom(pagesContainer, selection.head, pagesRect)
+        ? getCaretPositionFromDom(
+            pagesContainer,
+            visibleCaretPosition(
+              projectMarkupView(view.state, opts.markupView.value),
+              selection.head,
+            ),
+            pagesRect,
+          )
         : null;
       syncImeCaretAnchor({
         hiddenHost: opts.hiddenContainer.value,

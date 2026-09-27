@@ -34,6 +34,7 @@ import type {
   ConvertHeaderFooterOptions,
   HeaderFooterMetrics,
 } from "../layout-bridge/convert/headerFooterLayout";
+import { remapMarkupViewBlocks } from "../layout-bridge/convert/markupViewFlow";
 import { applyTemplatePreviewToBlocks } from "../layout-bridge/convert/templatePreviewFlow";
 import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "../layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks";
@@ -48,14 +49,22 @@ import {
   recordLayoutError,
   recordLayoutPhase,
   recordLayoutStart,
+  recordMarkupViewIncomplete,
 } from "../layout-engine/layoutInstrumentation";
-import type { LayoutPhase, LayoutRunReason } from "../layout-engine/layoutInstrumentation";
+import type { LayoutPhase } from "../layout-engine/layoutInstrumentation";
 import {
   measureBlocks,
   measureSingleBlockWithoutFloatingZones,
 } from "../layout-engine/measure/measureBlocks";
 import { collectRequestedHyphenationDictionaries } from "../layout-engine/measure/hyphenationDictionaries";
-import { installCanvasMeasureProvider } from "../layout-engine/measure/measureContainer";
+import {
+  labelMeasureCachesFontSet,
+  syncMeasureCachesToFontSet,
+} from "../layout-engine/measure/cache";
+import {
+  installCanvasMeasureProvider,
+  resetCanvasContext,
+} from "../layout-engine/measure/measureContainer";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
 import type {
   FlowBlock,
@@ -88,6 +97,8 @@ import {
   getPageSize,
   twipsToPixels,
 } from "../paged-layout/sectionGeometry";
+import type { DisplayMode } from "../managers/EditorModeManager";
+import { projectMarkupView } from "../prosemirror/markupViewProjection";
 import { templatePreviewValuesKey } from "../prosemirror/plugins/templatePreviewValues";
 import type {
   TemplatePreviewEntry,
@@ -102,8 +113,15 @@ import type {
   Watermark,
 } from "../types/document";
 import { getDocumentWatermark } from "../watermark";
+import { diffAgainstCommittedLayout } from "./committedLayoutDiff";
 import type { HyphenationReadiness } from "./hyphenationReadiness";
-import type { LayoutArtifacts, LayoutSession, LayoutTemplatePreview } from "./layoutSession";
+import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
+import type {
+  LayoutArtifacts,
+  LayoutMeasureInputs,
+  LayoutSession,
+  LayoutTemplatePreview,
+} from "./layoutSession";
 
 const formatEndnoteTexts = (
   numbers: ReadonlyMap<number, number>,
@@ -116,10 +134,54 @@ const formatEndnoteTexts = (
   return texts;
 };
 
-export type LayoutRunOptions = {
-  dirtyRange?: DirtyRange;
-  forceFull?: boolean;
-  reason?: LayoutRunReason;
+const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs): boolean =>
+  left.styles === right.styles &&
+  left.theme === right.theme &&
+  left.defaultTabStop === right.defaultTabStop &&
+  left.pageContentHeight === right.pageContentHeight &&
+  left.fontSet === right.fontSet &&
+  left.fontAlternates.size === right.fontAlternates.size &&
+  [...left.fontAlternates].every(
+    ([name, alternate]) => right.fontAlternates.get(name) === alternate,
+  ) &&
+  left.markupView === right.markupView;
+
+type IncrementalDirtyRangeOptions = {
+  session: LayoutSession;
+  state: EditorState;
+  preview: LayoutTemplatePreview;
+  measureInputs: LayoutMeasureInputs;
+};
+
+/**
+ * The range an incremental pass re-measures, or `null` for a full measure: the
+ * committed measures must come from the same measure inputs, and the range is
+ * where the current document and preview differ from the committed ones.
+ */
+const incrementalDirtyRange = ({
+  session,
+  state,
+  preview,
+  measureInputs,
+}: IncrementalDirtyRangeOptions): DirtyRange | null => {
+  const { lastPmDoc, lastMeasureInputs } = session;
+  if (!lastPmDoc || !lastMeasureInputs || !sameMeasureInputs(lastMeasureInputs, measureInputs)) {
+    return null;
+  }
+  const diff = diffAgainstCommittedLayout(
+    { doc: lastPmDoc, preview: session.lastTemplatePreview },
+    { doc: state.doc, preview },
+  );
+  switch (diff.type) {
+    case "full":
+      return null;
+    case "range":
+      return diff.range;
+    default: {
+      const unreachable: never = diff;
+      return unreachable;
+    }
+  }
 };
 
 // Different exit paths populate different subsets; the adapter applies whatever
@@ -196,7 +258,8 @@ export type LayoutPipelineDeps<THfPMs> = {
     metrics: HeaderFooterMetrics,
     options: ConvertHeaderFooterOptions,
   ) => Map<string, HeaderFooterContent> | undefined;
-  documentFontsAreLoaded: () => boolean;
+  /** Names the faces measurement can use now (`fontReadiness.readFontSetSignature`). */
+  readFontSetSignature: () => string;
   buildFootnoteRenderItems: (
     pageFootnoteMap: Map<number, number[]>,
     footnoteContentMap: Map<number, FootnoteContent>,
@@ -219,6 +282,12 @@ export type LayoutPipelineDeps<THfPMs> = {
   emptyTemplatePreviewHidden: readonly TemplatePreviewHiddenRange[];
   /** Follows up on the hyphenation dictionaries a run lacked (relayout or error). */
   hyphenationReadiness: HyphenationReadiness;
+  /**
+   * The review view the body is laid out for. A view other than All Markup
+   * lays out the text it shows (every revision accepted or rejected), not the
+   * authored text with runs hidden afterwards.
+   */
+  markupView: DisplayMode;
 };
 
 type BodyMarginClearanceOptions = {
@@ -384,12 +453,13 @@ function runLayoutPipelineMeasured<THfPMs>(
     session,
     renderHfFromContentOrPm,
     renderHeaderFooterContentByRId,
-    documentFontsAreLoaded,
+    readFontSetSignature,
     buildFootnoteRenderItems,
     describeInvalidHighlightMarks,
     pageRenderer = PAGE_RENDERER.legacy,
     emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
     emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
+    markupView,
   } = deps;
   // Reassigned to {} in the catch so a failed run returns no outcome (the
   // adapter then keeps the previously painted layout instead of advancing React
@@ -401,6 +471,13 @@ function runLayoutPipelineMeasured<THfPMs>(
   // before any layout/measure runs. Idempotent; the engine measures
   // through the pure provider seam, which throws until a backend is set.
   installCanvasMeasureProvider();
+  // The font set this run measures in. Cached widths and the previous run's
+  // measures taken in another one (a subset has loaded since) are unusable:
+  // they hold fallback advances for glyphs the loaded face now draws.
+  const fontSet = readFontSetSignature();
+  if (syncMeasureCachesToFontSet(fontSet)) {
+    resetCanvasContext();
+  }
   const reason = options.reason ?? "manual";
   const recordPhaseDuration = (phase: LayoutPhase, startedAt: number): void => {
     recordLayoutPhase(reason, phase, performance.now() - startedAt);
@@ -418,6 +495,15 @@ function runLayoutPipelineMeasured<THfPMs>(
     let phaseStartedAt = performance.now();
     const pageContentHeight = pageSize.h - margins.top - margins.bottom;
     const fontAlternates = buildFontAlternates(document?.package.fontTable);
+    const measureInputs: LayoutMeasureInputs = {
+      styles,
+      theme: _theme,
+      defaultTabStop,
+      pageContentHeight,
+      fontSet,
+      fontAlternates,
+      markupView,
+    };
     const flowOpts: ToFlowBlocksOptions = {
       pageContentHeight,
       fontAlternates,
@@ -484,18 +570,30 @@ function runLayoutPipelineMeasured<THfPMs>(
     if (bodyTrailingEndnoteIds.size > 0) {
       flowOpts.trailingEndnoteIds = bodyTrailingEndnoteIds;
     }
+    // The view reads the document with its revisions resolved; the editor
+    // state keeps the authored document, so the blocks are re-addressed in
+    // its positions before anything downstream (template preview ranges,
+    // dirty ranges, caret and selection) reads them.
+    const projection = projectMarkupView(state, markupView);
+    if (projection.type === "resolved" && projection.completeness === "partial") {
+      recordMarkupViewIncomplete(markupView);
+    }
+    const viewDoc = projection.type === "resolved" ? projection.doc : state.doc;
     const flowDoc =
       document === null
-        ? state.doc.type.create(
+        ? viewDoc.type.create(
             {
-              ...state.doc.attrs,
+              ...viewDoc.attrs,
               _finalSectionStart: sectionProperties?.sectionStart ?? null,
             },
-            state.doc.content,
-            state.doc.marks,
+            viewDoc.content,
+            viewDoc.marks,
           )
-        : state.doc;
+        : viewDoc;
     let newBlocks = toFlowBlocks(flowDoc, flowOpts);
+    if (projection.type === "resolved") {
+      newBlocks = remapMarkupViewBlocks(newBlocks, projection);
+    }
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out
     // (wrap, paginate) as if the value were the document text, and drop the
@@ -756,15 +854,24 @@ function runLayoutPipelineMeasured<THfPMs>(
     });
     const blockWidths = blockMeasureInputs.widths;
     const previousArtifacts = session.artifacts;
+    const dirtyRange =
+      options.measure === LAYOUT_MEASURE.incremental
+        ? incrementalDirtyRange({
+            session,
+            state,
+            preview: pendingTemplatePreview,
+            measureInputs,
+          })
+        : null;
     const incrementalResult =
-      options.dirtyRange && !options.forceFull && previousArtifacts
+      dirtyRange && previousArtifacts
         ? tryBuildIncrementalMeasures({
             previousBlocks: previousArtifacts.blocks,
             previousMeasures: previousArtifacts.measures,
             previousBlockWidths: previousArtifacts.blockWidths,
             nextBlocks: newBlocks,
             nextBlockWidths: blockWidths,
-            dirtyRange: options.dirtyRange,
+            dirtyRange,
             measureBlock: measureSingleBlockWithoutFloatingZones,
           })
         : null;
@@ -1329,11 +1436,15 @@ function runLayoutPipelineMeasured<THfPMs>(
     // paint throw is caught below and keeps the previous visible layout; marking
     // the doc as laid out here would make the next run skip a needed rerun and
     // leave stale pages.
+    // Read the font set after measuring: a family this run measured first
+    // joins the signature now, with the faces it measured in.
+    const measuredFontSet = readFontSetSignature();
+    labelMeasureCachesFontSet(measuredFontSet);
     session.artifacts = pendingArtifacts;
     session.lastTemplatePreview = pendingTemplatePreview;
     session.lastEditorState = state;
     session.lastPmDoc = state.doc;
-    session.usedLoadedFonts = documentFontsAreLoaded();
+    session.lastMeasureInputs = { ...measureInputs, fontSet: measuredFontSet };
     recordLayoutComplete(reason);
   } catch (error) {
     const invalidHighlights = describeInvalidHighlightMarks(state.doc);
