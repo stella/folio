@@ -176,6 +176,7 @@ import {
   hasStructuralChanges,
   hasUntrackedChanges,
   clearTrackedChanges,
+  repackWithEditorSectionRemovals,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 // Extension system
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
@@ -2878,15 +2879,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
         let fullBuffer: ArrayBuffer | null = null;
         const repackSourceDoc = baselineBuffer ? { ...doc, originalBuffer: baselineBuffer } : doc;
+        // A section the editor removed on purpose (its ending paragraph
+        // deleted, or that deletion accepted) is one the repack must be told
+        // about, or it refuses the smaller package.
+        const repackFull = async (): Promise<ArrayBuffer> => {
+          const repackDocx = await loadRepackDocx();
+          const repack = () => repackDocx(repackSourceDoc);
+          return view
+            ? repackWithEditorSectionRemovals({
+                state: view.state,
+                document: repackSourceDoc,
+                repack,
+              })
+            : repack();
+        };
 
         if (!buffer) {
-          const repackDocx = await loadRepackDocx();
-          fullBuffer = await repackDocx(repackSourceDoc);
+          fullBuffer = await repackFull();
           buffer = fullBuffer;
         } else if (flags.selectiveSaveTripwire) {
           try {
-            const repackDocx = await loadRepackDocx();
-            fullBuffer = await repackDocx(repackSourceDoc);
+            fullBuffer = await repackFull();
           } catch {
             // Tripwire-only full repack failures must never poison a
             // successful selective save.

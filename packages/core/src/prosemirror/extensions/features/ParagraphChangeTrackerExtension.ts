@@ -17,11 +17,12 @@ import {
   RemoveNodeMarkStep,
 } from "prosemirror-transform";
 
-import type {
-  RemovedSectionReference,
-  TrackedSectionEndpointRemoval,
+import {
+  type RemovedSectionReference,
+  type TrackedSectionEndpointRemoval,
+  withTrackedSectionEndpointRemoval,
 } from "../../../internal/sectionEndpointResolution";
-import type { SectionProperties } from "../../../types/document";
+import type { Document, SectionProperties } from "../../../types/document";
 import { canonicalJson } from "../../../utils/canonicalJson";
 import {
   enclosingParagraphIndexed,
@@ -646,6 +647,35 @@ export function getTrackedSectionEndpointRemoval(
 ): TrackedSectionEndpointRemoval | null {
   return getChangeTrackerState(state)?.sectionEndpointRemoval ?? null;
 }
+
+type RepackWithEditorSectionRemovalsOptions<T> = {
+  /** The editor state the document was built from. */
+  state: EditorState;
+  /** The exact document object `repack` hands to `repackDocx`. */
+  document: Document;
+  repack: () => Promise<T>;
+};
+
+/**
+ * Run an editor save's full repack with the section removals the editor's own
+ * edits made.
+ *
+ * A save refuses a package with fewer sections than its source unless it is
+ * told which removals were meant: deleting the paragraph that ends a section,
+ * or accepting its tracked deletion, removes that section on purpose. The
+ * tracker records exactly those removals; without them the repack throws and
+ * the edit cannot be saved.
+ */
+export const repackWithEditorSectionRemovals = <T>({
+  state,
+  document,
+  repack,
+}: RepackWithEditorSectionRemovalsOptions<T>): Promise<T> => {
+  const resolution = getTrackedSectionEndpointRemoval(state);
+  return resolution === null
+    ? repack()
+    : withTrackedSectionEndpointRemoval({ document, resolution, repack });
+};
 
 type MarkTrackedSectionEndpointRemovalOptions = {
   sourceDoc: PMNode;

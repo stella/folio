@@ -107,6 +107,7 @@ import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
+  repackWithEditorSectionRemovals,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
@@ -1201,13 +1202,23 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
     let fullBuffer: ArrayBuffer | null = null;
 
+    // A section the editor removed on purpose (its ending paragraph deleted,
+    // or that deletion accepted) is one the repack must be told about, or it
+    // refuses the smaller package.
+    const repackFull = () =>
+      repackWithEditorSectionRemovals({
+        state,
+        document: updatedDoc,
+        repack: () => repackDocx(updatedDoc),
+      });
+
     if (!buffer) {
       // No original buffer means a from-scratch document — build one via createDocx.
-      fullBuffer = baselineBuffer ? await repackDocx(updatedDoc) : await createDocx(updatedDoc);
+      fullBuffer = baselineBuffer ? await repackFull() : await createDocx(updatedDoc);
       buffer = fullBuffer;
     } else if (flags.selectiveSaveTripwire) {
       try {
-        fullBuffer = await repackDocx(updatedDoc);
+        fullBuffer = await repackFull();
       } catch {
         // Tripwire-only full repack failures must never poison a successful
         // selective save.
