@@ -108,6 +108,19 @@ describe("typeScriptDocumentFacts", () => {
     expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph("Controlled")]);
   });
 
+  test("counts paragraphs inside block custom XML", () => {
+    const blocks = [
+      {
+        type: "blockCustomXml",
+        openingXml: '<w:customXml w:element="clause">',
+        closingXml: "</w:customXml>",
+        content: [{ type: "paragraph", content: [], formatting: { styleId: "Wrapped" } }],
+      },
+    ] satisfies BlockContent[];
+
+    expect(typeScriptDocumentFacts(blocks).paragraphs).toEqual([typeScriptParagraph("Wrapped")]);
+  });
+
   test("numbers a nested table after its parent, matching the kernel's w:tbl counter", () => {
     const inner = {
       type: "table",

@@ -146,7 +146,8 @@ const collectBlocks = (blocks: readonly BlockContent[], into: FactAccumulator): 
         }
         break;
       }
-      case "blockSdt": {
+      case "blockSdt":
+      case "blockCustomXml": {
         collectBlocks(block.content, into);
         break;
       }

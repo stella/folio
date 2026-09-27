@@ -80,6 +80,7 @@ export const MODEL_TYPE_DISCRIMINATORS: ReadonlySet<string> = new Set([
   "band2Horz",
   "band2Vert",
   "blockSdt",
+  "blockCustomXml",
   "bookmarkEnd",
   "bookmarkStart",
   "break",
