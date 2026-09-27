@@ -224,6 +224,21 @@ describe("the requested-outcome oracle", () => {
       /outlived the block it anchored/u,
     );
   });
+
+  test("deleting the first block of a spanning comment keeps its surviving anchor", () => {
+    const comment = { id: 1, text: "review", anchor: "FirstSecond", blockId: "b" };
+    const model = modelOf([row("b", "First"), row("c", "Second")]);
+    expectOperation(model, { type: "deleteBlock", blockId: "b" });
+    assert.deepEqual(compareComments(model, [comment], [comment]), []);
+    assert.equal(compareComments(model, [comment], []).length, 1);
+  });
+
+  test("a suggested block deletion leaves the live comment in place", () => {
+    const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
+    const model = modelOf([row("b", "Signed")]);
+    expectOperation(model, { type: "deleteBlock", blockId: "b" });
+    assert.deepEqual(compareComments(model, [comment], [comment], [comment], "suggested"), []);
+  });
 });
 
 test("a style edit preserves the target of an unchanged link", async () => {

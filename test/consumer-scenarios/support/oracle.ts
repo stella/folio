@@ -177,6 +177,8 @@ export type Model = {
   tableGaps: string[];
   /** Existing paragraphs reveal style-derived kind, levels and effective run formatting. */
   styleExamples: Map<string, Row>;
+  /** Text of the live blocks an operation can name, before the batch. */
+  liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
   deletedBlockIds: Set<string>;
   /** Paragraph style ids the saved package must define. */
@@ -225,6 +227,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
         row.styleId !== undefined && row.text.length > 0 ? [[row.styleId, row] as const] : [],
       ),
     ),
+    liveTextById: new Map(live.map(({ id, text }) => [id, text])),
     deletedBlockIds: new Set(),
     styles: new Set(),
     comments: [],
@@ -903,12 +906,16 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
 
 /** Prove that every possible placement of an anchor in its original block was removed. */
 const removedAnchor = (model: Model, entry: Comment): boolean => {
-  if (entry.blockId !== null && model.deletedBlockIds.has(entry.blockId)) return true;
+  if (entry.blockId === null) return false;
   const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
-  if (!row?.pre) return false;
+  const explicitlyDeleted = model.deletedBlockIds.has(entry.blockId);
+  if (explicitlyDeleted || (row?.removed && !row.pendingJoin)) {
+    const liveText = model.liveTextById.get(entry.blockId);
+    return entry.anchor === "" || (liveText !== undefined && liveText.includes(entry.anchor));
+  }
   // A pending join is already absent from the accepted pre-state; its live
   // block has not been removed by this batch.
-  if (row.removed) return !row.pendingJoin;
+  if (!row?.pre || row.removed) return false;
   if (entry.anchor === "") return false;
   const starts: number[] = [];
   for (let start = 0; start <= row.pre.text.length - entry.anchor.length; start += 1) {
@@ -933,6 +940,7 @@ export const compareComments = (
   before: readonly Comment[],
   after: readonly Comment[],
   liveBefore: readonly Comment[] = before,
+  mode: Mode = "direct",
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
@@ -940,7 +948,7 @@ export const compareComments = (
   const gone: Comment[] = [];
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
-    if (removedAnchor(model, live ?? entry)) gone.push(entry);
+    if (mode !== "suggested" && removedAnchor(model, live ?? entry)) gone.push(entry);
     else kept.push(entry);
   }
   for (const comment of kept) {
@@ -1229,7 +1237,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments, pre.liveComments),
+    ...compareComments(model, pre.comments, comments, pre.liveComments, pre.mode),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {

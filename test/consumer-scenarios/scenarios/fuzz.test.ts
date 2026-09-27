@@ -98,3 +98,12 @@ for (const seed of [1088, 1185]) {
     () => runFlow(seed, 10, "collisions", { generation: "legacy" }),
   );
 }
+
+// Deleting a block does not remove a suggested comment or a comment whose
+// anchor continues into a surviving block.
+for (const { seed, kind } of [
+  { seed: 20_260_933, kind: "collisions" },
+  { seed: 20_260_937, kind: "random" },
+] as const) {
+  test(`${kind} flow with seed ${seed} keeps surviving comments`, () => runFlow(seed, 10, kind));
+}
