@@ -63,6 +63,7 @@ import {
   storyTablesOf,
 } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditSkipReason, FolioAIEditSnapshot } from "../ai-edits/types";
+import { withComparisonNoteReferenceEdits } from "../ai-edits/note-references";
 import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edits/word-diff";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
@@ -843,10 +844,18 @@ export const applyComparison = (
     finalSectionComparison,
     styleImportFailure,
     pairs,
+    unsupported,
   }: ParsedComparison,
   planned: readonly PlannedStoryComparison[],
 ): Result<AppliedComparison, CompareDocxApplyError | CompareDocxOperationLimitError> => {
   const relationshipIds = sectionRelationshipMap(pairs);
+  // Every note the base package defines: the paired ones and those only it has.
+  const baseNotes = new Set<string>();
+  for (const { baseStory } of [...pairs, ...unsupported]) {
+    if (baseStory?.type === "footnote" || baseStory?.type === "endnote") {
+      baseNotes.add(`${baseStory.type}:${String(baseStory.noteId)}`);
+    }
+  }
   const plannedOperationCount = planned.reduce(
     (count, { plan }) => count + plan.operations.length,
     0,
@@ -949,28 +958,33 @@ export const applyComparison = (
     idSeed = afterGeometry;
 
     if (plan.operations.length > 0) {
-      const { skipped, nextRevisionId } = reviewer.applyDocumentOperationsToStory({
-        story: pair.baseStory,
-        snapshot: pair.baseSnapshot,
-        revisionStamp: { date: revisionStamp.date, idSeed },
-        wordDiff,
-        batch: {
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: plan.operations,
-        },
-        tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
-        // The comparison states every run's properties itself, from the target
-        // document, so a replacement must not clear the background first: the
-        // clear writes a run-property change that the provenance pass takes
-        // straight back, and the reader is left with a revision whose before
-        // and after are the same.
-        replacementBackground: "keep",
-        // The revised document's own references, carried as it holds them:
-        // one it never defines (a dangling `w:pStyle` is common in generated
-        // packages) is reproduced, not refused, or the paragraph would be lost.
-        undefinedStyles: "keep",
-      });
+      // The revised document adds and removes note references, which the
+      // applier otherwise refuses to let a text edit do.
+      const operationRevisionStamp = { date: revisionStamp.date, idSeed };
+      const { skipped, nextRevisionId } = withComparisonNoteReferenceEdits(() =>
+        reviewer.applyDocumentOperationsToStory({
+          story: pair.baseStory,
+          snapshot: pair.baseSnapshot,
+          revisionStamp: operationRevisionStamp,
+          wordDiff,
+          batch: {
+            version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+            mode: "tracked-changes",
+            operations: plan.operations,
+          },
+          tableTemplates: resolveTableTemplates(targetTables, plan.tableTemplates),
+          // The comparison states every run's properties itself, from the target
+          // document, so a replacement must not clear the background first: the
+          // clear writes a run-property change that the provenance pass takes
+          // straight back, and the reader is left with a revision whose before
+          // and after are the same.
+          replacementBackground: "keep",
+          // The revised document's own references, carried as it holds them:
+          // one it never defines (a dangling `w:pStyle` is common in generated
+          // packages) is reproduced, not refused, or the paragraph would be lost.
+          undefinedStyles: "keep",
+        }),
+      );
       if (nextRevisionId === undefined) {
         // Only a host bridge that does not allocate ids itself omits this, and
         // the comparison drives the in-process applier.
@@ -1028,6 +1042,7 @@ export const applyComparison = (
       story: pair.baseStory,
       targetSnapshot: pair.targetSnapshot,
       noteReferenceLabels: noteReferenceLabelsOf(pair),
+      baseNotes,
       revisionStamp: { date: revisionStamp.date, idSeed },
       originalRevisionIdSeed: revisionStamp.idSeed,
       maxRanges: remainingProvenanceRanges,
@@ -1054,7 +1069,8 @@ export const applyComparison = (
           invariant: "accept-reproduces-target",
           cause: "inline-structure",
           story: pair.baseStory,
-          detail: "supported inline atoms could not be aligned to the revised content",
+          detail:
+            atoms.detail ?? "supported inline atoms could not be aligned to the revised content",
         });
         break;
       case "budget-exceeded":

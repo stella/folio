@@ -17,6 +17,7 @@ import { fromMarkdown } from "../markdown";
 import { createDocx, ensureParaIds } from "../server";
 import type { Endnote, Footnote, Paragraph, RunContent } from "../types/document";
 import { compareDocx } from "./compare";
+import { MISSING_NOTE_DETAIL } from "./inline-atoms";
 
 type Piece = string | { footnote: number } | { endnote: number };
 
@@ -35,15 +36,22 @@ const runContentOf = (piece: Piece): RunContent => {
   return { type: "endnoteRef", id: piece.endnote };
 };
 
-/** Paragraphs of text and references; both sides carry the same notes. */
-const buildDocx = async (paragraphs: readonly (readonly Piece[])[]): Promise<ArrayBuffer> => {
+type Notes = { footnotes: readonly number[]; endnotes: readonly number[] };
+
+const NOTES: Notes = { footnotes: FOOTNOTE_IDS, endnotes: ENDNOTE_IDS };
+
+/** Paragraphs of text and references, over the notes `notes` names. */
+const buildDocx = async (
+  paragraphs: readonly (readonly Piece[])[],
+  notes: Notes = NOTES,
+): Promise<ArrayBuffer> => {
   const model = fromMarkdown(paragraphs.map((_, index) => `Paragraph ${index}.`).join("\n\n"));
   for (const [index, pieces] of paragraphs.entries()) {
     const paragraph = model.package.document.content[index];
     if (paragraph?.type !== "paragraph") throw new Error("fixture paragraph is missing");
     paragraph.content = [{ type: "run", formatting: {}, content: pieces.map(runContentOf) }];
   }
-  model.package.footnotes = FOOTNOTE_IDS.map(
+  model.package.footnotes = notes.footnotes.map(
     (id): Footnote => ({
       type: "footnote",
       id,
@@ -51,7 +59,7 @@ const buildDocx = async (paragraphs: readonly (readonly Piece[])[]): Promise<Arr
       content: [noteBody(`Footnote ${id}.`)],
     }),
   );
-  model.package.endnotes = ENDNOTE_IDS.map(
+  model.package.endnotes = notes.endnotes.map(
     (id): Endnote => ({
       type: "endnote",
       id,
@@ -91,9 +99,12 @@ const BASE: readonly (readonly Piece[])[] = [
   ["Either party may terminate", { footnote: 40 }, " on notice."],
 ];
 
-const expectExactRedline = async (target: readonly (readonly Piece[])[]) => {
+const expectExactRedline = async (
+  target: readonly (readonly Piece[])[],
+  targetNotes: Notes = NOTES,
+) => {
   const base = await buildDocx(BASE);
-  const revised = await buildDocx(target);
+  const revised = await buildDocx(target, targetNotes);
   const compared = await compareDocx(base, revised, OPTIONS);
   if (compared.isErr()) throw compared.error;
   const { buffer, changes } = compared.value;
@@ -146,5 +157,72 @@ describe("comparing documents whose note references move", () => {
       BASE[2]!,
       BASE[3]!,
     ]);
+  });
+});
+
+describe("comparing documents whose kept paragraphs gain or lose note references", () => {
+  test("a kept paragraph gains a footnote reference", async () => {
+    await expectExactRedline([
+      BASE[0]!,
+      BASE[1]!,
+      ["Payment falls due", { footnote: 20 }, " within thirty days", { footnote: 30 }, "."],
+      BASE[3]!,
+    ]);
+  });
+
+  test("a kept paragraph loses an endnote reference", async () => {
+    await expectExactRedline([
+      BASE[0]!,
+      ["The seller delivers", { footnote: 10 }, " the goods."],
+      BASE[2]!,
+      BASE[3]!,
+    ]);
+  });
+
+  test("one kept paragraph loses a reference and gains another", async () => {
+    await expectExactRedline([
+      BASE[0]!,
+      ["The seller delivers the goods", { endnote: 7 }, " and", { footnote: 40 }, "."],
+      BASE[2]!,
+      BASE[3]!,
+    ]);
+  });
+
+  test("a kept paragraph loses a reference and its words together", async () => {
+    await expectExactRedline([
+      ["Opening terms apply."],
+      BASE[1]!,
+      ["Payment falls due."],
+      BASE[3]!,
+    ]);
+  });
+
+  // The note part cannot yet take a note the base does not have (the save
+  // patches existing notes only), so the reference is refused by name rather
+  // than written as a reference to nothing.
+  test("a reference to a note only the revised document has is refused by name", async () => {
+    const base = await buildDocx(BASE);
+    const revised = await buildDocx(
+      [
+        BASE[0]!,
+        BASE[1]!,
+        ["Payment falls due", { footnote: 20 }, " within thirty days", { footnote: 50 }, "."],
+        BASE[3]!,
+      ],
+      { footnotes: [...FOOTNOTE_IDS, 50], endnotes: ENDNOTE_IDS },
+    );
+    const compared = await compareDocx(base, revised, OPTIONS);
+    if (compared.isOk()) throw new Error("the comparison wrote a reference to a missing note");
+    expect(compared.error._tag).toBe("CompareDocxRoundTripError");
+    const failures = "failures" in compared.error ? compared.error.failures : [];
+    expect(failures.map(({ detail }) => detail)).toContain(MISSING_NOTE_DETAIL);
+
+    const emitted = await compareDocx(base, revised, { ...OPTIONS, onUnverified: "emit" });
+    if (emitted.isErr()) throw emitted.error;
+    expect(emitted.value.unsupported).toContainEqual({
+      reason: "story-missing-in-base",
+      baseStory: null,
+      targetStory: { type: "footnote", noteId: 50 },
+    });
   });
 });

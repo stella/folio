@@ -105,6 +105,7 @@ import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./char
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
 import {
   cutsIntoNoteReference,
+  noteReferenceEditsAllowed,
   noteReferenceOf,
   noteReferenceSpansWithin,
   planChangesAroundNoteReferences,
@@ -4833,26 +4834,32 @@ const planDocumentReplacement = ({
   }
   const spanStart = span.start;
   const spanEnd = span.start + span.text.length;
+  const noteReferenceSpans = noteReferenceSpansWithin(cleanBlock, spanStart, spanEnd);
+  // The changes are planned between the markers the replacement keeps, so none
+  // reaches a reference. A comparison may also remove references and write
+  // new markers: when the replacement does not keep them, its markers are
+  // atomic like a field result instead, and a change touching one takes the
+  // whole reference.
+  const keepsReferences =
+    segmentsAroundNoteReferences(span.text, replacement, noteReferenceSpans) !== null;
+  const editsReferences = !keepsReferences && noteReferenceEditsAllowed();
   const atomicSpans = cleanBlock.structuralBoundaries.flatMap((boundary) =>
-    boundary.type === "field"
+    boundary.type === "field" || (editsReferences && boundary.type === "noteReference")
       ? [{ offset: boundary.offset - spanStart, length: boundary.length }]
       : [],
   );
-  const noteReferenceSpans = noteReferenceSpansWithin(cleanBlock, spanStart, spanEnd);
-  const pieceChanges = planChangesAroundNoteReferences(
-    span.text,
-    replacement,
-    noteReferenceSpans,
-    planChanges,
-  );
+  const planPieces = (
+    plan: (source: string, replacement: string) => readonly TextChange[],
+  ): TextChange[] | null =>
+    editsReferences
+      ? [...plan(span.text, replacement)]
+      : planChangesAroundNoteReferences(span.text, replacement, noteReferenceSpans, plan);
+  const pieceChanges = planPieces(planChanges);
   if (pieceChanges === null) {
     return null;
   }
   const widened = widenChangesToAtomicSpans(span.text, pieceChanges, atomicSpans);
-  const keptPieces =
-    keepFieldsOf === undefined
-      ? null
-      : planChangesAroundNoteReferences(span.text, replacement, noteReferenceSpans, keepFieldsOf);
+  const keptPieces = keepFieldsOf === undefined ? null : planPieces(keepFieldsOf);
   const changes =
     keptPieces === null
       ? widened
@@ -5696,7 +5703,9 @@ const resolveOperation = (
   if (resolution.type === "skip") {
     return resolution;
   }
-  const protectedReference = refuseNoteReferenceEdit(resolution.operation, args.noteReferences);
+  const protectedReference = noteReferenceEditsAllowed()
+    ? null
+    : refuseNoteReferenceEdit(resolution.operation, args.noteReferences);
   return protectedReference ?? resolution;
 };
 

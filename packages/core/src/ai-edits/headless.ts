@@ -641,7 +641,7 @@ type StoryInlineAtomsResult =
       rangeCount: number;
       documentChanged: boolean;
     }
-  | { status: "unalignable" }
+  | { status: "unalignable"; detail?: string }
   | { status: "budget-exceeded" };
 
 type StageTargetNumberingResult = "unchanged" | "staged" | "conflict";

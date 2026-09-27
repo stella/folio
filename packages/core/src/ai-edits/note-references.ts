@@ -153,6 +153,32 @@ export const cutsIntoNoteReference = (
       ),
   );
 
+let comparisonEditsNoteReferences = false;
+
+/**
+ * @internal Run `apply` with its text operations free to remove note
+ * references and to write marker text in place of new ones.
+ *
+ * Only a document comparison does this. Its operations come from a revised
+ * document that adds and removes references, so refusing them would drop the
+ * edit; each marker it writes is turned back into the reference the revised
+ * document holds once the operations land (`compare/inline-atoms.ts`), and a
+ * removed reference is a tracked deletion of the reference itself. Every other
+ * caller keeps the protection. The scope is synchronous, like the applier.
+ */
+export const withComparisonNoteReferenceEdits = <T>(apply: () => T): T => {
+  const previous = comparisonEditsNoteReferences;
+  comparisonEditsNoteReferences = true;
+  try {
+    return apply();
+  } finally {
+    comparisonEditsNoteReferences = previous;
+  }
+};
+
+/** @internal Whether the running apply belongs to a comparison (see above). */
+export const noteReferenceEditsAllowed = (): boolean => comparisonEditsNoteReferences;
+
 const NOTE_MARKER_PATTERN = /\[\^e?[1-9]\d*\]/gu;
 const markerCount = (text: string): number => text.match(NOTE_MARKER_PATTERN)?.length ?? 0;
 

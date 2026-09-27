@@ -29,6 +29,12 @@ export type MatchInlineAtomsOptions = {
    * Defaults to the target story's own numbering.
    */
   noteReferenceLabels?: NoteReferenceLabels;
+  /**
+   * The notes the base package defines, as `footnote:<id>` / `endnote:<id>`.
+   * A reference the comparison writes may only name one of them. Defaults to
+   * the notes the story already references.
+   */
+  baseNotes?: ReadonlySet<string>;
 };
 
 export type MatchInlineAtomsResult =
@@ -39,8 +45,16 @@ export type MatchInlineAtomsResult =
       changedTargetBlockIds: readonly string[];
       rangeCount: number;
     }
-  | { status: "unalignable" }
+  | {
+      status: "unalignable";
+      /** Why, when the cause is more specific than an alignment failure. */
+      detail?: string;
+    }
   | { status: "budget-exceeded" };
+
+/** A revised reference names a note the redline's package does not have. */
+export const MISSING_NOTE_DETAIL =
+  "a note reference names a footnote or endnote the base document does not have";
 
 type TextBlock = { node: PMNode; from: number };
 
@@ -684,6 +698,7 @@ export const matchInlineAtoms = ({
   author,
   maxRanges,
   noteReferenceLabels,
+  baseNotes,
 }: MatchInlineAtomsOptions): MatchInlineAtomsResult => {
   if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) return { status: "budget-exceeded" };
   const targetDocument = sourceDocumentOf(targetSnapshot);
@@ -754,10 +769,12 @@ export const matchInlineAtoms = ({
           continue;
         }
         // The marker is text this comparison wrote. It may only stand for a
-        // note the story already references: a reference to a note the base
-        // does not have would point at nothing in the redline.
-        referencedNotes ??= referencedNotesOf(state.doc);
-        if (!referencedNotes.has(noteReferenceKey(reference))) return { status: "unalignable" };
+        // note the base package defines: a reference to one it does not have
+        // would point at nothing in the redline.
+        referencedNotes ??= baseNotes ?? referencedNotesOf(state.doc);
+        if (!referencedNotes.has(noteReferenceKey(reference))) {
+          return { status: "unalignable", detail: MISSING_NOTE_DETAIL };
+        }
         const node = targetDocument.nodeAt(reference.from);
         const reviewedFrom = fullLive.offsets[reference.offset];
         const reviewedLast = fullLive.offsets[reference.offset + reference.length - 1];
