@@ -309,11 +309,11 @@ function resolveChange(
                     rejection.previousFormatting,
                     previousFormattingFromStyle,
                   ),
-                  rejectedListRenderingPatch(
-                    expectParagraphAttrs(node),
-                    rejection.previousFormatting,
+                  rejectedListRenderingPatch({
+                    current: expectParagraphAttrs(node),
+                    previousFormatting: rejection.previousFormatting,
                     numbering,
-                  ),
+                  }),
                 );
                 const restoredFormatting = paragraphRejectOriginalFormatting(
                   rejection.previousFormatting,

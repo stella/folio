@@ -234,6 +234,26 @@ describe("restyling a paragraph", () => {
     ]);
   });
 
+  test("into a numbered style at a list level numbers it at that level of the style's list", async () => {
+    const reviewer = await styleNumberedReviewer();
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "setBlockParagraphProperties",
+          blockId: blockId(reviewer, "Body."),
+          properties: { styleId: "Heading2", listLevel: 0 },
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+    const expected = ["1. Scope", "2. Body.", "3. Payment", "Closing."];
+    expect(labels(reviewer)).toEqual(expected);
+    expect(labels(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()))).toEqual(expected);
+  });
+
   test("out of a numbered heading style leaves its numbering and its heading level", async () => {
     expect(await restyle("Scope", null)).toEqual(["Scope", "Body.", "1. Payment", "Closing."]);
   });

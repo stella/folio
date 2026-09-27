@@ -636,7 +636,8 @@ const paragraphPropertiesPatch = ({
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
       const numId = paragraphNumberingReferenceId(
-        readParagraphNumberingAttr(node.attrs["numPr"]) ?? undefined,
+        readParagraphNumberingAttr(styleChanged ? patch["numPr"] : node.attrs["numPr"]) ??
+          undefined,
       );
       if (numId === undefined) {
         patch["numPr"] = paragraphNumberingAttr({ kind: "levelOnly", ilvl: properties.listLevel });

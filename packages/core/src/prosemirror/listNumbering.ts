@@ -137,11 +137,19 @@ const listRenderingFor = (
  * the marker it was given. When the reject changes the numbering, the
  * rendering is recomputed from the restored numbering; otherwise it stays.
  */
-export const rejectedListRenderingPatch = (
-  current: Pick<ParagraphAttrs, "numPr">,
-  previousFormatting: PreviousFormatting | null | undefined,
-  numbering: NumberingMap | null,
-): Record<string, unknown> => {
+export type RejectedListRenderingOptions = {
+  /** The paragraph's attrs before the reject. */
+  current: Pick<ParagraphAttrs, "numPr">;
+  /** The previous state the rejected record restores. */
+  previousFormatting: PreviousFormatting | null | undefined;
+  numbering: NumberingMap | null;
+};
+
+export const rejectedListRenderingPatch = ({
+  current,
+  previousFormatting,
+  numbering,
+}: RejectedListRenderingOptions): Record<string, unknown> => {
   const record = previousFormatting ?? {};
   if (recordsListRendering(record)) {
     return {};
