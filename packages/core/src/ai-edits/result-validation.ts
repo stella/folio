@@ -162,12 +162,21 @@ export const findIntroducedModelErrors = (
     return afterErrors;
   }
   // The story before the batch held none of the batch's comments.
-  const known = new Set(
-    windowErrors(before, window.from, window.beforeTo, { ...context, createdCommentIds: [] }).map(
-      ({ message }) => message,
-    ),
-  );
-  return afterErrors.filter(({ message }) => !known.has(message));
+  const known = new Map<string, number>();
+  for (const { message } of windowErrors(before, window.from, window.beforeTo, {
+    ...context,
+    createdCommentIds: [],
+  })) {
+    known.set(message, (known.get(message) ?? 0) + 1);
+  }
+  return afterErrors.filter(({ message }) => {
+    const remaining = known.get(message) ?? 0;
+    if (remaining === 0) {
+      return true;
+    }
+    known.set(message, remaining - 1);
+    return false;
+  });
 };
 
 export const describeModelError = ({ path, message }: ValidateDocumentModelIssue): string =>

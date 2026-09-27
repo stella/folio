@@ -13,6 +13,7 @@ import { createFolioAITextRangeHandle, docxToMarkdown } from "@stll/folio-core/s
 import {
   notesDocument,
   openReviewer,
+  plainDocument,
   storiesDocument,
   TEXT_BOX_TEXT,
   toArrayBuffer,

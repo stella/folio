@@ -432,6 +432,24 @@ describe("findIntroducedModelErrors", () => {
     ).toEqual([]);
   });
 
+  test("reports an additional error with the same message as an existing error", () => {
+    const { state, setNumbering } = numbered(5);
+    const broken = setNumbering(1, 5)(state.tr).doc;
+    const after = setNumbering(
+      2,
+      5,
+    )(EditorState.create({ schema, doc: broken }).tr.insertText("x", 2)).doc;
+    expect(
+      findIntroducedModelErrors(broken, after, { numbering: UNUSED_901, createdCommentIds: [] }),
+    ).toEqual([
+      {
+        path: "package.document.content[2].formatting.numPr.numId",
+        message: "Numbering definition 5 is missing.",
+        severity: "error",
+      },
+    ]);
+  });
+
   test("defined instances and untouched stories report nothing", () => {
     const { state, setNumbering } = numbered(901);
     const after = setNumbering(0, 901)(state.tr).doc;
