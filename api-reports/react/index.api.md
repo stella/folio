@@ -660,6 +660,7 @@ export function FormattingBar(props: FormattingBarProps): React_2.JSX.Element;
 export type FormattingBarProps = {
     children?: ReactNode;
     priorityExtra?: ReactNode;
+    panelToggles?: ReactNode;
     inlineExtra?: ReactNode;
     stylePickerLabel?: string | undefined;
     stylePickerLabelStyle?: CSSProperties | undefined;
