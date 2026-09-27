@@ -65,7 +65,11 @@ import {
   listLevelAttrPatch,
 } from "../prosemirror/styles/resolvedStyleAttrs";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
-import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
+import {
+  markRemovedSectionEndpoints,
+  markStructuralChange,
+} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
   addedBreakCarrierBefore,
@@ -4238,6 +4242,17 @@ const applyFolioAIEditOperationsInternal = ({
             tr = withSeparator(tr);
           }
           tr = tr.join(item.blockTo + separator.length);
+          // The merge removes the first paragraph's mark, and the joined
+          // paragraph ends with the second one's. A section break lives on
+          // the mark (ECMA-376 Part 1 §17.6.18), so the joined paragraph ends
+          // the section the second one ended, and a break the first one held
+          // goes: its section runs on into the next, as accepting the same
+          // merge tracked leaves it. `join` keeps the first node's attrs.
+          const secondSection = second ? sectionPropertiesOf(second) : null;
+          const joined = tr.doc.nodeAt(item.blockFrom);
+          if (joined && sectionPropertiesOf(joined) !== secondSection) {
+            tr = tr.setNodeAttribute(item.blockFrom, "_sectionProperties", secondSection);
+          }
         } else {
           const revisionIdMark = operationRevisionSeed++;
           appliedRevisionIds = [revisionIdMark];
@@ -4444,6 +4459,10 @@ const applyFolioAIEditOperationsInternal = ({
       // derived from the stamp too.
       requestDeterministicParaIds(tr, `${revisionStamp.date}:${String(revisionStamp.idSeed)}`);
     }
+    // A paragraph removed with its section break took the break with it, and
+    // its section now runs on into the next one: the save is told the section
+    // count fell on purpose.
+    tr = markRemovedSectionEndpoints(tr, view.state.doc);
     view.dispatch(tr);
   }
 

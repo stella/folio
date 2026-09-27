@@ -663,6 +663,50 @@ describe("pPrMark accept / reject — paragraph-mark resolution", () => {
       expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
     });
 
+    test("keeps an authorization while edits only move the surviving section records", () => {
+      const surviving = { columns: 3 };
+      const state = trackedState(
+        schema.node("doc", null, [
+          schema.node(
+            "paragraph",
+            {
+              pPrMark: delMark({ id: 2 }),
+              _sectionProperties: { columns: 2 },
+            },
+            schema.text("removed endpoint"),
+          ),
+          schema.node(
+            "paragraph",
+            { _sectionProperties: surviving },
+            schema.text("surviving endpoint"),
+          ),
+          schema.node("paragraph", null, schema.text("ordinary paragraph")),
+        ]),
+      );
+      const view = dispatcher(state);
+      acceptAllChanges()(view.state, view.dispatch);
+      const authorization = getTrackedSectionEndpointRemoval(view.state);
+      expect(authorization).not.toBeNull();
+
+      // A paragraph inserted before the surviving break moves it, and a split
+      // of it leaves two halves over the one record until save: the package
+      // still states exactly the sections the authorization counted.
+      view.dispatch(
+        view.state.tr.insert(0, schema.node("paragraph", null, schema.text("inserted"))),
+      );
+      expect(getTrackedSectionEndpointRemoval(view.state)).toEqual(authorization);
+      view.dispatch(view.state.tr.split(view.state.doc.child(0).nodeSize + 4));
+      expect(getTrackedSectionEndpointRemoval(view.state)).toEqual(authorization);
+
+      // A record that changes is a transition the authorization never saw.
+      view.dispatch(
+        view.state.tr.setNodeAttribute(view.state.doc.child(0).nodeSize, "_sectionProperties", {
+          columns: 4,
+        }),
+      );
+      expect(getTrackedSectionEndpointRemoval(view.state)).toBeNull();
+    });
+
     test("accumulates exact endpoint removals across scoped resolutions", () => {
       const state = trackedState(
         schema.node("doc", null, [
