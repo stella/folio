@@ -282,37 +282,6 @@ describe("findings not yet filed", () => {
   );
 
   expectedFailure(
-    "REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH",
-    "rejectAll undoes a merge of a split's second half into an inserted paragraph",
-    /out of range|nodeSize/u,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const apply = (operation: Record<string, unknown>) =>
-        reviewer.applyDocumentOperations({
-          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-          mode: "tracked-changes",
-          operations: [{ id: "1", ...operation }],
-        } as never);
-      const last = () => {
-        const block = reviewer.getContent().find(({ text }) => text.startsWith("Signed"));
-        assert.ok(block);
-        return block;
-      };
-      apply({ type: "insertAfterBlock", blockId: last().id, text: "Inserted clause." });
-      apply({ type: "splitBlock", blockId: last().id, offset: "Signed in ".length });
-      const blocks = reviewer.getContent();
-      const secondHalf = blocks[blocks.findIndex(({ id }) => id === last().id) + 1];
-      assert.ok(secondHalf);
-      apply({ type: "mergeBlockWithNext", blockId: secondHalf.id, separator: " " });
-      reviewer.rejectAll();
-      assert.deepEqual(
-        reviewer.getContent().map(({ text }) => text),
-        (await openReviewer(await plainDocument())).getContent().map(({ text }) => text),
-      );
-    },
-  );
-
-  expectedFailure(
     "UNMARKED_LIST_ITEM_KIND",
     "a paragraph numbered at a level its instance does not define reads alike everywhere",
     /docxToMarkdown vs getContent/u,

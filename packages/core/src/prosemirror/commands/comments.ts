@@ -11,7 +11,6 @@ import { Mapping } from "prosemirror-transform";
 import { panic } from "better-result";
 
 import { sameStatedParagraphNumbering } from "../../docx/numberingReference";
-import { joinProseParagraphsWithRightPropertySource } from "../../docx/paragraphPropertySource";
 
 import {
   appendHeadlessInlineResolution,
@@ -62,6 +61,7 @@ import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
+import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import {
   getFolioNodeRevisionCarriers,
@@ -654,30 +654,15 @@ function resolveChange(
         // paragraph's properties live on its mark. PM's `join` keeps the
         // first node's attrs, so they are restored explicitly; otherwise a
         // deleted heading would hand its style to the paragraph below it.
-        const emptyFirstParagraph = holdsNoContent(paragraph);
+        //
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
         //
         // Section properties live on the paragraph mark. Resolving that mark
         // away removes its section endpoint, so the joined paragraph keeps
         // only a section endpoint already owned by the following paragraph.
-        const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
-        const joinedAttrs = {
-          ...formattingOwner.attrs,
-          pPrMark: nextNode.attrs["pPrMark"],
-          _sectionProperties: nextNode.attrs["_sectionProperties"],
-        };
         try {
-          if (emptyFirstParagraph) {
-            joinProseParagraphsWithRightPropertySource({
-              attrs: joinedAttrs,
-              pos: joinPos,
-              transaction: tr,
-            });
-          } else {
-            tr.join(joinPos);
-            tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
-          }
+          joinAtParagraphMark({ tr, paragraphPos: mappedPos, paragraph, next: nextNode });
           if (ownsSectionEndpoint(paragraph)) {
             removedSectionEndpointCount++;
             removedSectionReferences.push(...sectionReferencesOf(paragraph));

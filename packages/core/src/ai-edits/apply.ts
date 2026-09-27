@@ -67,6 +67,7 @@ import {
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
+import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
@@ -2015,6 +2016,28 @@ type RotatedAddedFinalBreaks = {
   }[];
 };
 
+/** A paragraph mark that is a pending insertion (not a relocation's end). */
+const isInsertedPPrMark = (value: unknown): boolean =>
+  typeof value === "object" && value !== null && "kind" in value && value.kind === "ins";
+
+/** Whether every piece of the paragraph's content is pending inserted text. */
+const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
+  let whollyInserted = true;
+  paragraph.descendants((node) => {
+    if (!whollyInserted) {
+      return false;
+    }
+    if (!node.isInline || isZeroWidthAnchor(node)) {
+      return true;
+    }
+    whollyInserted = node.marks.some(
+      (mark) => mark.type.name === "insertion" && mark.attrs["moveKind"] !== "moveTo",
+    );
+    return false;
+  });
+  return whollyInserted;
+};
+
 const addedBreakRevisionId = (value: unknown): number | null => {
   if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
     return null;
@@ -3838,10 +3861,48 @@ const applyFolioAIEditOperationsInternal = ({
             );
             appliedRevisionIds.push(revisionIdSeparator);
           }
-          tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
-            kind: "del",
-            info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
-          });
+          const paragraph = tr.doc.nodeAt(item.blockFrom);
+          const joinPos = item.blockTo + separator.length;
+          const next = tr.doc.nodeAt(joinPos);
+          if (!paragraph || !next) {
+            panic("A resolved merge lost its paragraphs");
+          }
+          if (isInsertedPPrMark(paragraph.attrs["pPrMark"])) {
+            // The break is itself a pending insertion: removing it retracts
+            // that insertion, as deleting inserted text does. Marking it
+            // deleted instead would overwrite the insertion, and rejecting
+            // both would then keep a break that was never there. Accepting
+            // or rejecting either way joins, so it joins now, exactly as the
+            // resolver joins a removed mark.
+            joinAtParagraphMark({ tr, paragraphPos: item.blockFrom, paragraph, next });
+            const previousFormatting = paragraphPropertiesSnapshot(next);
+            const existing = expectParagraphAttrs(paragraph)._propertyChanges;
+            if (
+              holdsOnlyInsertedContent(paragraph) &&
+              !hasSerializableParagraphPropertyChange(existing) &&
+              JSON.stringify(paragraphPropertiesSnapshot(paragraph)) !==
+                JSON.stringify(previousFormatting)
+            ) {
+              // The joined paragraph keeps the inserted one's properties, as
+              // a direct merge does; rejecting takes the inserted words
+              // away, and with them those properties.
+              tr = tr.setNodeAttribute(item.blockFrom, "_propertyChanges", [
+                ...(Array.isArray(existing) ? existing : []),
+                {
+                  type: "paragraphPropertyChange",
+                  info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+                  previousFormatting,
+                } satisfies ParagraphPropertyChangeAttrs,
+              ]);
+            } else {
+              appliedRevisionIds = appliedRevisionIds.filter((id) => id !== revisionIdMark);
+            }
+          } else {
+            tr = tr.setNodeAttribute(item.blockFrom, "pPrMark", {
+              kind: "del",
+              info: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
+            });
+          }
         }
 
         if (item.operation.mergedParagraphProperties) {

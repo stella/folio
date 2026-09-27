@@ -368,6 +368,24 @@ describe("ParagraphChangeTrackerExtension", () => {
       expect(hasStructuralChanges(next)).toBe(false);
     });
 
+    // Resolving every revision clears one paragraph's mark and then joins the
+    // paragraph before it into it: the attribute step's node is gone, and its
+    // position lands inside the joined paragraph's text.
+    test("drops an attribute step whose paragraph a later join removed", () => {
+      const state = createState([
+        { text: "AAAA", paraId: "P1" },
+        { text: "BBBB", paraId: "P2" },
+      ]);
+      const tr = state.tr.setNodeAttribute(6, "pPrMark", null);
+      tr.join(6);
+
+      let next = state;
+      expect(() => {
+        next = state.apply(tr);
+      }).not.toThrow();
+      expect(getChangedParagraphIds(next).has("P1")).toBe(true);
+    });
+
     test("reports an attribute step on a paragraph with no paraId as untracked", () => {
       const state = createState([{ text: "" }]);
 

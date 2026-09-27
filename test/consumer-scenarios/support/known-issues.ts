@@ -29,8 +29,6 @@ export const FINDINGS = {
     "rejecting every change leaves a tracked split in place when a tracked table was inserted after the split's first half (the join is attempted while the table still stands between the halves)",
   SUGGESTED_ACCEPT_ALL_LOSES_INSERTS:
     "after a run of suggested edits that includes a table column and list inserts, acceptAll keeps the inserted paragraphs in the reviewer but the save drops them (found by fuzz; no smaller repro yet)",
-  REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH:
-    "rejectAll throws (`Index 6 out of range`) when a tracked merge joined a tracked split's second half into a tracked inserted paragraph: the bulk resolution works with positions past the end of the resolved document",
   UNMARKED_LIST_ITEM_KIND:
     "a paragraph whose numbering names a level its instance does not define shows no marker, but getContent(), the snapshot and read_document call it a listItem while docxToMarkdown renders plain text",
 } as const;
@@ -49,13 +47,7 @@ export const KNOWN_FAILING_OPERATION_RUNS: readonly {
   fixture: string;
   mode: string;
   finding: Finding;
-}[] = [
-  {
-    fixture: "comments",
-    mode: "tracked-changes",
-    finding: "REJECT_ALL_JOIN_INTO_INSERTED_PARAGRAPH",
-  },
-];
+}[] = [];
 
 /**
  * Seeded flows (support/fuzz.ts) that reproduce a finding. The default fuzz

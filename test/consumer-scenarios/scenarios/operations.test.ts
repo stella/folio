@@ -127,3 +127,35 @@ describe("a batch that splits a block and deletes it", () => {
     );
   });
 });
+
+describe("resolving tracked edits that build on pending ones", () => {
+  const tracked = async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const apply = (operation: Record<string, unknown>) =>
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "1", ...operation }],
+      } as never);
+    const block = (prefix: string) => {
+      const found = reviewer.getContent().find(({ text }) => text.startsWith(prefix));
+      assert.ok(found, `no block starts with "${prefix}"`);
+      return found;
+    };
+    return { reviewer, apply, block };
+  };
+  const originalText = async () =>
+    (await openReviewer(await plainDocument())).getContent().map(({ text }) => text);
+
+  test("rejectAll undoes a merge of a split's second half into an inserted paragraph", async () => {
+    const { reviewer, apply, block } = await tracked();
+    apply({ type: "insertAfterBlock", blockId: block("Signed").id, text: "Inserted clause." });
+    apply({ type: "splitBlock", blockId: block("Signed").id, offset: "Signed in ".length });
+    apply({ type: "mergeBlockWithNext", blockId: block("two copies").id, separator: " " });
+    reviewer.rejectAll();
+    assert.deepEqual(
+      reviewer.getContent().map(({ text }) => text),
+      await originalText(),
+    );
+  });
+});

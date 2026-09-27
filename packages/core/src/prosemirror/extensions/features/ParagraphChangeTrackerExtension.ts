@@ -513,6 +513,12 @@ function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTra
           // SAFETY: every touch indexes the positions it queued in the sweep.
           const from = mapped[touch.query]!.pos;
           if (touch.kind === "node") {
+            // A later step removed the node's start (a join into the node
+            // before it): the position now lands inside another node, and
+            // the step that removed it recorded that node's range already.
+            if (mapped[touch.query]!.deletedAcross) {
+              continue;
+            }
             const node = nodeAtIndexed(tr.doc, from);
             if (node) {
               recordAffected(collectAffectedParaIds(tr.doc, from, from + node.nodeSize));

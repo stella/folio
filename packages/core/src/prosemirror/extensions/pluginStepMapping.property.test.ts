@@ -211,7 +211,12 @@ const referenceTrackerApply = (
       step instanceof RemoveNodeMarkStep ||
       step instanceof AttrStep
     ) {
-      const pos = mapThrough(remap, step.pos, 1);
+      const mapped = remap.mapResult(step.pos, 1);
+      if (mapped.deletedAcross) {
+        // A later step joined the node away; its position lands mid-text.
+        continue;
+      }
+      const pos = mapped.pos;
       const node = tr.doc.nodeAt(pos);
       if (node) {
         record(referenceCollect(tr.doc, pos, pos + node.nodeSize));
@@ -382,10 +387,9 @@ describe("multi-step transactions map as the per-step walk did", () => {
             try {
               applied = before.applyTransaction(tr);
             } catch {
-              // An attribute step whose position a later step moves into text
-              // reads a text node's size from mid-node and walks past the end
-              // of the document. The per-step walk threw there too; the
-              // property is that nothing that threw before stops throwing.
+              // Whatever throws here must throw in the per-step walk too. (An
+              // attribute step whose node a later join removed used to: its
+              // position lands mid-text, and both now skip it.)
               const previous = trackerFields(before);
               const structureChanged =
                 blockStructureFingerprint(tr.before) !== blockStructureFingerprint(tr.doc);
