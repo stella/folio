@@ -1,0 +1,44 @@
+name: Nightly Browser Input Fuzzer
+
+on:
+  schedule:
+    # Offset from the existing property, parity, and corpus jobs.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  browser-input-fuzzer:
+    name: Browser input fuzzer (nightly seeds)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: |
+          sudo rm -f \
+            /etc/apt/sources.list.d/azure-cli.list \
+            /etc/apt/sources.list.d/azure-cli.sources \
+            /etc/apt/sources.list.d/microsoft-prod.list \
+            /etc/apt/sources.list.d/microsoft-prod.sources
+          bunx playwright install --with-deps chromium
+
+      - name: Run nightly browser fuzzer
+        run: bunx playwright test --project=interactions tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1
+        env:
+          CI: "true"
+          FOLIO_FUZZ_SEEDS: "11,29,47,83,131,197,263,347,431,557"
+          FOLIO_FUZZ_RUNS: "20"
