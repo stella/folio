@@ -16,6 +16,7 @@ for (const host of EDITOR_HOSTS) {
     const failedRequests: string[] = [];
     const pageErrors: string[] = [];
     const consoleErrors: string[] = [];
+    const loadStages: string[] = [];
     page.on("response", (response) => {
       if (response.status() >= 400) {
         const path = new URL(response.url()).pathname;
@@ -34,8 +35,12 @@ for (const host of EDITOR_HOSTS) {
       if (message.type() === "error") {
         consoleErrors.push(message.text().slice(0, 300));
       }
+      if (message.type() === "info" && message.text().startsWith("[vue-load-stage] ")) {
+        loadStages.push(message.text().slice(0, 120));
+      }
     });
-    await page.goto(`${host.url}/?file=${FIXTURE}`);
+    const diagnostics = host.name === "Vue" ? "&__vueLoadDiagnostics=1" : "";
+    await page.goto(`${host.url}/?file=${FIXTURE}${diagnostics}`);
     try {
       await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
     } catch (error) {
@@ -66,6 +71,7 @@ for (const host of EDITOR_HOSTS) {
           failedRequests: failedRequests.slice(-8),
           pageErrors: pageErrors.slice(-8),
           consoleErrors: consoleErrors.slice(-8),
+          loadStages: loadStages.slice(-20),
         })}`,
         { cause: error },
       );
