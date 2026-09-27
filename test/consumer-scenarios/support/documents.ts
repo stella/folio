@@ -289,6 +289,42 @@ export const trackedChangesDocument = async (): Promise<Uint8Array> => {
   return new Uint8Array(await reviewer.toBuffer());
 };
 
+/** Emoji outside the Basic Multilingual Plane, a modifier and a ZWJ sequence, next to words. */
+export const EMOJI_TEXTS = [
+  "Approved 👍🏽 by the family 👨‍👩‍👧 today.",
+  "Launch 🚀",
+  "🎉 opens the party.",
+] as const;
+
+/** Paragraphs whose words sit next to surrogate pairs. */
+export const emojiDocument = (): Promise<Uint8Array> =>
+  packDocument(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
+
+/** A table whose first column merges vertically through its last two rows. */
+export const mergedTableDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown("# Merged cells\n\nThe table below merges a column.");
+  document.package.document.content.push(
+    table({
+      header: ["Party", "Role", "Share"],
+      rows: [
+        [{ content: [paragraph("Supplier")], vMerge: "restart" }, "Delivers", "60"],
+        [{ content: [paragraph([])], vMerge: "continue" }, "Installs", "40"],
+      ],
+    }),
+    paragraph("After the table."),
+  );
+  return packDocument(document);
+};
+
+/**
+ * The fixtures the collision scenarios add to `FIXTURES`. Kept apart so the
+ * seeded fuzz flows, which pick from `FIXTURES`, replay as before.
+ */
+export const COLLISION_FIXTURES = {
+  emoji: emojiDocument,
+  mergedTable: mergedTableDocument,
+} as const satisfies Record<string, () => Promise<Uint8Array>>;
+
 /** Every fixture, by name; scenarios iterate this. */
 export const FIXTURES = {
   plain: plainDocument,

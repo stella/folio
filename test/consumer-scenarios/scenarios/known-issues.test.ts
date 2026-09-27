@@ -14,7 +14,7 @@ import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/serv
 import { openReviewer, plainDocument, unusedNumberingDocument } from "../support/documents.ts";
 import { saveAndReopen } from "../support/invariants.ts";
 import { runFlow } from "../support/fuzz.ts";
-import { expectedFailure, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
+import { expectedFailure, FINDING_SYMPTOMS, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
 import { MODES } from "../support/operations.ts";
 
 const MISSING_NUMBERING = /Numbering definition \d+ is missing/u;
@@ -106,12 +106,12 @@ describe("#1103: operations that name a numbering instance the package does not 
 });
 
 describe("findings not yet filed", () => {
-  for (const { seed, steps, finding } of KNOWN_FAILING_FLOWS) {
+  for (const { seed, steps, finding, kind = "random" } of KNOWN_FAILING_FLOWS) {
     expectedFailure(
       finding,
-      `the fuzz flow with seed ${seed} (${steps} steps) saves what the reviewer shows`,
-      /reopened package shows something else/u,
-      () => runFlow(seed, steps),
+      `the ${kind} flow with seed ${seed} (${steps} steps) does what it asked and saves it`,
+      FINDING_SYMPTOMS[finding],
+      () => runFlow(seed, steps, kind),
     );
   }
 });

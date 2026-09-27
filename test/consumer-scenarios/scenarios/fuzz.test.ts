@@ -3,13 +3,14 @@
  *
  * FOLIO_SCENARIO_SEED fixes the flows (the runner prints it; run `i` uses
  * seed + i), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS size the
- * search. A flow that reproduces a known finding runs in known-issues.test.ts
- * instead, as an expected failure.
+ * search, and FOLIO_SCENARIO_COLLISION_RUNS the collision flows (support/fuzz.ts)
+ * that follow them, seeded from the same base. A flow that reproduces a known
+ * finding runs in known-issues.test.ts instead, as an expected failure.
  */
 
 import { test } from "node:test";
 
-import { describeFlow, runFlow } from "../support/fuzz.ts";
+import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
 import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
 
 const integer = (value: string | undefined, fallback: number): number => {
@@ -20,27 +21,36 @@ const integer = (value: string | undefined, fallback: number): number => {
 const SEED = integer(process.env["FOLIO_SCENARIO_SEED"], 20_260_926);
 const RUNS = integer(process.env["FOLIO_SCENARIO_FUZZ_RUNS"], 12);
 const STEPS = integer(process.env["FOLIO_SCENARIO_FUZZ_STEPS"], 10);
+const COLLISION_RUNS = integer(process.env["FOLIO_SCENARIO_COLLISION_RUNS"], 8);
 
-for (let run = 0; run < RUNS; run += 1) {
-  const seed = SEED + run;
-  const { fixture, mode } = describeFlow(seed);
-  const known = KNOWN_FAILING_FLOWS.find((flow) => flow.seed === seed && flow.steps === STEPS);
+const flowTest = (kind: FlowKind, run: number, seed: number) => {
+  const { fixture, mode } = describeFlow(seed, kind);
+  const known = KNOWN_FAILING_FLOWS.find(
+    (flow) => flow.seed === seed && flow.steps === STEPS && (flow.kind ?? "random") === kind,
+  );
+  const runs =
+    kind === "random"
+      ? `FOLIO_SCENARIO_FUZZ_RUNS=${run + 1}`
+      : `FOLIO_SCENARIO_FUZZ_RUNS=0 FOLIO_SCENARIO_COLLISION_RUNS=${run + 1}`;
   test(
-    `fuzz run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
+    `${kind === "random" ? "fuzz" : "collision"} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
     known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
     async () => {
       try {
-        await runFlow(seed, STEPS);
+        await runFlow(seed, STEPS, kind);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(
-          `Replay: FOLIO_SCENARIO_SEED=${SEED} FOLIO_SCENARIO_FUZZ_RUNS=${run + 1} bun run test:consumer-scenarios -- fuzz.test.ts\n${message}`,
+          `Replay: FOLIO_SCENARIO_SEED=${SEED} ${runs} bun run test:consumer-scenarios -- fuzz.test.ts\n${message}`,
           { cause: error },
         );
       }
     },
   );
-}
+};
+
+for (let run = 0; run < RUNS; run += 1) flowTest("random", run, SEED + run);
+for (let run = 0; run < COLLISION_RUNS; run += 1) flowTest("collisions", run, SEED + run);
 
 // Flows that once lost accepted suggestions on save (a suggested paragraph
 // deleted again, then every suggestion accepted); kept as fixed seeds.

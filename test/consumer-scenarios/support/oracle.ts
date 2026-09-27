@@ -1,0 +1,970 @@
+/**
+ * The requested-outcome oracle: what an applied operation must have done,
+ * worked out from the document before it and the request alone, never from
+ * folio's apply code. A receipt that says `applied` is checked against it
+ * after a save and a reopen: in `direct` mode as saved, in `tracked-changes`
+ * mode with every change accepted (and rejecting every change must give the
+ * document before back). A refused operation must leave the document as it
+ * was.
+ *
+ * The model is deliberately small: block texts in reading order, and for the
+ * blocks an operation touched, the few properties it asked for. A batch
+ * resolves every operation against the document as it was read (see the
+ * batch-claims contract), so a batch's expectations compose in order over
+ * the same pre-state, and an operation the engine refused contributes
+ * nothing. An operation the model cannot predict (a type marked `null` in
+ * `EXPECTATIONS`, or a target it cannot place) leaves that batch's text
+ * uncompared; FOLIO_ORACLE_GAPS=1 prints each such gap.
+ */
+
+import assert from "node:assert/strict";
+
+import {
+  FOLIO_DOCUMENT_OPERATION_TYPES,
+  type FolioDocumentOperationType,
+  inspectDocumentStylesFromDocx,
+} from "@stll/folio-core/server";
+
+import { openReviewer, toArrayBuffer } from "./documents.ts";
+import { coreBatch, type Mode, type Operation } from "./operations.ts";
+
+type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
+
+type TableLocation = {
+  outerTableIndex: number;
+  tableIndex: number;
+  rowIndex: number;
+  cellIndex: number;
+  gridColumnIndex: number;
+  columnSpan: number;
+  rowSpan: number;
+};
+
+type Run = { text: string; bold?: boolean; italic?: boolean; underline?: boolean };
+
+/** One block as a reader sees it, with the fields the oracle compares. */
+export type Row = {
+  id: string;
+  text: string;
+  kind: string;
+  styleId?: string;
+  headingLevel?: number;
+  listLevel?: number;
+  listReference?: { numId: number; level: number };
+  displayLabel?: string;
+  directAlignment?: string;
+  directSpacing?: Record<string, unknown>;
+  table?: TableLocation;
+  previewRuns?: readonly Run[];
+};
+
+/** The fields every block keeps unless an operation asked to change them. */
+const KEPT_FIELDS = ["kind", "styleId", "headingLevel", "listLevel"] as const;
+
+/** A field the request leaves to the document (a style's own outline or numbering). */
+const ANY = Symbol("any");
+type Fields = { [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?: Row[Key] | typeof ANY };
+
+export const rowsOf = (reviewer: Reviewer): Row[] => reviewer.getContent() as unknown as Row[];
+
+const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
+  new Uint8Array(await reviewer.toBuffer());
+
+/**
+ * `bytes` opened, every change resolved one way, saved and reopened: the
+ * blocks a reader is left with, and the saved package.
+ */
+export const resolvedState = async (
+  bytes: Uint8Array,
+  resolution: "accept" | "reject",
+): Promise<{ rows: Row[]; bytes: Uint8Array; comments: Comment[] }> => {
+  const reviewer = await openReviewer(bytes);
+  if (resolution === "accept") reviewer.acceptAll();
+  else reviewer.rejectAll();
+  const saved = await save(reviewer);
+  const reopened = await openReviewer(saved);
+  return { rows: rowsOf(reopened), bytes: saved, comments: commentsOf(reopened) };
+};
+
+type Comment = { text: string; anchor: string };
+const commentsOf = (reviewer: Reviewer): Comment[] =>
+  reviewer
+    .getComments()
+    .map((comment) => ({ text: comment.text, anchor: comment.anchoredText ?? "" }));
+
+// ---------------------------------------------------------------------------
+// The model
+// ---------------------------------------------------------------------------
+
+type TextEdit = { start: number; end: number; replace: string };
+
+/** A block of the pre-state, or one an operation adds, with what the batch did to it. */
+type ModelRow = {
+  /** The pre-state block; absent for a block an operation adds. */
+  pre?: Row;
+  text: string;
+  fields: Fields;
+  /** Extra checks on the result's block: a message when it fails. */
+  checks: ((row: Row) => string | null)[];
+  /** Text edits in the pre-state text's coordinates. */
+  edits: TextEdit[];
+  /** Split points in the pre-state text's coordinates, with what the break consumes. */
+  splits: { offset: number; consumed: number; second?: Fields }[];
+  mergeSeparator?: string;
+  removed: boolean;
+  /**
+   * The block ends in a paragraph mark pending deletion: a reader lists it
+   * and the block after it apart, accepting joins them. What an operation
+   * on either does after the join is not modelled yet.
+   */
+  pendingJoin?: boolean;
+  /**
+   * A whole paragraph pending deletion, which a reader lists as a blank
+   * block: accepting removes it, mark and all, unless an operation wrote
+   * into it.
+   */
+  pendingDeletion?: boolean;
+  before: ModelRow[];
+  after: ModelRow[];
+  /** Formatting that must hold over `[start, end)` of the result's text. */
+  formats: { start: number; end: number; property: "bold" | "italic" | "underline" }[];
+};
+
+export type Model = {
+  rows: ModelRow[];
+  /** Paragraph style ids the saved package must define. */
+  styles: Set<string>;
+  /** Comments that must exist, with their anchored text when it is known. */
+  comments: { text: string; anchor?: () => string | undefined }[];
+  /** Operations the oracle has no expectation for; the check notes them. */
+  unmodelled: string[];
+};
+
+const fieldsOf = (row: Row): Fields => {
+  const fields: Fields = {};
+  for (const key of KEPT_FIELDS) (fields as Record<string, unknown>)[key] = row[key];
+  return fields;
+};
+
+const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
+  ...(pre ? { pre } : {}),
+  text,
+  fields,
+  checks: [],
+  edits: [],
+  splits: [],
+  removed: false,
+  before: [],
+  after: [],
+  formats: [],
+});
+
+/**
+ * The model of `rows`. `live`, the reviewer's own blocks, adds the blocks a
+ * reader still lists but accepting removes (a whole paragraph pending
+ * deletion reads as a blank block): an operation may name one, and what it
+ * asks for is then placed where the reader saw that block.
+ */
+export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Model => {
+  const model: Model = {
+    rows: rows.map((row) => modelRow(row.text, fieldsOf(row), row)),
+    styles: new Set(),
+    comments: [],
+    unmodelled: [],
+  };
+  const known = new Set(rows.map((row) => row.id));
+  const indexOf = (id: string | undefined): number =>
+    id === undefined ? -1 : model.rows.findIndex((candidate) => candidate.pre?.id === id);
+  let previous: string | undefined;
+  for (const row of live) {
+    if (known.has(row.id)) {
+      previous = row.id;
+      continue;
+    }
+    known.add(row.id);
+    const ghost = modelRow("", {}, row);
+    if (row.text.length > 0) {
+      // Joined into the block before it once accepted.
+      const head = model.rows[indexOf(previous)];
+      if (head) head.pendingJoin = true;
+      ghost.pendingJoin = true;
+      ghost.removed = true;
+      model.rows.push(ghost);
+      continue;
+    }
+    ghost.pendingDeletion = true;
+    model.rows.splice(indexOf(previous) + 1, 0, ghost);
+    previous = row.id;
+  }
+  return model;
+};
+
+/** Why an operation could not be modelled; the check reports it as an oracle gap. */
+class Unmodelled extends Error {}
+
+const target = (model: Model, blockId: unknown, { adjacent = false } = {}): ModelRow => {
+  const row = model.rows.find((candidate) => candidate.pre?.id === blockId);
+  if (!row) throw new Unmodelled(`block ${String(blockId)} is not in the resolved pre-state`);
+  if (row.pendingJoin) throw new Unmodelled(`block ${String(blockId)} has a pending join`);
+  // An insertion only places a block beside its anchor, which may go.
+  if (row.removed && !adjacent) {
+    throw new Error(
+      `applied an operation on block ${String(blockId)}, which an earlier one of the batch removed`,
+    );
+  }
+  return row;
+};
+
+const tableOf = (row: ModelRow): TableLocation => {
+  const table = row.pre?.table;
+  if (!table) throw new Unmodelled("the anchor is not in a table");
+  return table;
+};
+
+const tableRows = (model: Model, tableIndex: number): ModelRow[] =>
+  model.rows.filter((row) => row.pre?.table?.tableIndex === tableIndex);
+
+const hasMergedCells = (model: Model, tableIndex: number): boolean =>
+  tableRows(model, tableIndex).some(
+    (row) => (row.pre?.table?.rowSpan ?? 1) > 1 || (row.pre?.table?.columnSpan ?? 1) > 1,
+  );
+
+const paragraphsOf = (text: string): string[] =>
+  text.split(/\r\n|\r|\n/u).filter((line) => line.length > 0);
+
+/**
+ * The fields a style id asks for on `pre` (absent: a new block). A style may
+ * number its paragraphs, and a direct outline level outlives a restyle, so
+ * the kind and levels are the request's only for a plain paragraph made a
+ * `HeadingN`.
+ */
+const styleFields = (model: Model, styleId: string | null, pre: Row | undefined): Fields => {
+  if (styleId !== null) model.styles.add(styleId);
+  const heading =
+    styleId === null ? undefined : /^Heading(?<level>[1-9])$/u.exec(styleId)?.groups?.["level"];
+  const plain = pre !== undefined && pre.kind !== "heading";
+  return {
+    styleId: styleId ?? undefined,
+    kind: heading ? "heading" : ANY,
+    headingLevel: heading && plain ? Number(heading) : ANY,
+    listLevel: ANY,
+  };
+};
+
+const isBullet = (label: string | undefined): boolean =>
+  label !== undefined && label.length > 0 && !/[\p{L}\p{N}]/u.test(label);
+
+type ParagraphRequest = Record<string, unknown>;
+
+/** Fields and checks for the paragraph properties an operation sets on `pre` (absent: a new block). */
+const paragraphRequest = (
+  model: Model,
+  request: ParagraphRequest,
+  pre: Row | undefined,
+): { fields: Fields; checks: ModelRow["checks"] } => {
+  const fields: Fields = {};
+  const checks: ModelRow["checks"] = [];
+  if ("styleId" in request) {
+    Object.assign(fields, styleFields(model, request["styleId"] as string | null, pre));
+  }
+  if ("alignment" in request) {
+    fields.directAlignment = (request["alignment"] as string | null) ?? undefined;
+  }
+  if ("spacing" in request) {
+    const spacing = request["spacing"] as Record<string, unknown> | null;
+    checks.push((row) => {
+      if (spacing === null) {
+        return row.directSpacing === undefined
+          ? null
+          : `direct spacing ${JSON.stringify(row.directSpacing)} was not cleared`;
+      }
+      const missing = Object.entries(spacing).filter(
+        ([key, value]) => row.directSpacing?.[key] !== value,
+      );
+      return missing.length === 0
+        ? null
+        : `direct spacing ${JSON.stringify(row.directSpacing)} lacks ${JSON.stringify(spacing)}`;
+    });
+  }
+  if ("numbering" in request) {
+    const numbering = request["numbering"] as Record<string, unknown> | null;
+    const preKind = pre?.kind;
+    if (numbering === null) {
+      fields.listLevel = undefined;
+      checks.push((row) =>
+        row.listReference === undefined
+          ? null
+          : `still numbered ${JSON.stringify(row.listReference)}`,
+      );
+      if (preKind === "listItem") fields.kind = "paragraph";
+    } else if (numbering["start"] === "new") {
+      const kind = numbering["kind"];
+      fields.listLevel = typeof numbering["level"] === "number" ? numbering["level"] : 0;
+      if (pre && preKind !== "heading") fields.kind = "listItem";
+      const used = new Set(
+        model.rows.flatMap((row) => (row.pre?.listReference ? [row.pre.listReference.numId] : [])),
+      );
+      checks.push((row) => {
+        if (!row.listReference) return "not numbered";
+        if (used.has(row.listReference.numId))
+          return `joined list ${row.listReference.numId} instead of starting one`;
+        if (kind === "bullet" && !isBullet(row.displayLabel))
+          return `a new bullet list reads "${row.displayLabel}"`;
+        if (kind === "numbered" && isBullet(row.displayLabel))
+          return `a new numbered list reads "${row.displayLabel}"`;
+        return null;
+      });
+    } else {
+      const reference = { numId: numbering["numId"], level: numbering["level"] };
+      fields.listLevel = reference.level as number;
+      if (pre && preKind !== "heading") fields.kind = "listItem";
+      checks.push((row) =>
+        row.listReference?.numId === reference.numId && row.listReference?.level === reference.level
+          ? null
+          : `numbered ${JSON.stringify(row.listReference)}, not ${JSON.stringify(reference)}`,
+      );
+    }
+  }
+  if (typeof request["listLevel"] === "number" && !("numbering" in request)) {
+    fields.listLevel = request["listLevel"];
+  }
+  return { fields, checks };
+};
+
+/**
+ * A comment the operation adds. `anchor` reads its anchored text once the
+ * whole batch is modelled, or nothing when the batch changed that text.
+ */
+const addComment = (
+  model: Model,
+  operation: Operation,
+  anchor?: () => string | undefined,
+): void => {
+  const comment = operation["comment"] as { text?: string } | undefined;
+  if (typeof comment?.text === "string") {
+    model.comments.push({ text: comment.text, ...(anchor === undefined ? {} : { anchor }) });
+  }
+};
+
+/** Whether the row's text is still the pre-state's, so offsets into it hold. */
+const untouchedText = (row: ModelRow): boolean =>
+  row.edits.length === 0 && row.splits.length === 0 && row.mergeSeparator === undefined;
+
+type Expect = (model: Model, operation: Operation) => void;
+
+/**
+ * Where a block inserted next to `row` goes: next to the row itself, or, for
+ * a row inside a table, next to the outermost table (the documented rule:
+ * an insertion anchored in a cell lands beside the table, not in the cell).
+ */
+const insertionAnchor = (model: Model, row: ModelRow, position: "before" | "after"): ModelRow => {
+  const table = row.pre?.table;
+  if (!table) return row;
+  const rows = model.rows.filter(
+    (candidate) => candidate.pre?.table?.outerTableIndex === table.outerTableIndex,
+  );
+  return (position === "before" ? rows[0] : rows.at(-1)) ?? row;
+};
+
+const insertBlock =
+  (position: "before" | "after"): Expect =>
+  (model, operation) => {
+    const anchor = insertionAnchor(
+      model,
+      target(model, operation["blockId"], { adjacent: true }),
+      position,
+    );
+    const { fields, checks } = paragraphRequest(model, operation, undefined);
+    const scope = operation["formattingScope"] ?? "firstParagraph";
+    const texts =
+      operation["lineBreakMode"] === "inline"
+        ? [String(operation["text"])]
+        : paragraphsOf(String(operation["text"]));
+    // `""` inserts a blank paragraph, which no reader lists.
+    const rows = texts.map((text, index) => {
+      const row = modelRow(text);
+      if (index === 0 || scope === "allParagraphs") {
+        row.fields = fields;
+        row.checks = checks;
+      }
+      return row;
+    });
+    gapOf(model, anchor, position).push(...rows);
+    addComment(model, operation);
+  };
+
+/**
+ * The blocks inserted between `row` and its neighbour on `position`'s side.
+ * An insertion after one block and one before the next land in one gap, in
+ * batch order.
+ */
+const gapOf = (model: Model, row: ModelRow, position: "before" | "after"): ModelRow[] => {
+  if (position === "after") return row.after;
+  const previous = model.rows[model.rows.indexOf(row) - 1];
+  return previous && !previous.pendingJoin ? previous.after : row.before;
+};
+
+const rangeOf = (operation: Operation): { blockId: string; start: number; end: number } => {
+  const range = operation["range"] as { blockId: string; startOffset: number; endOffset: number };
+  return { blockId: range.blockId, start: range.startOffset, end: range.endOffset };
+};
+
+/**
+ * One expectation per public operation type. `null` names a type the oracle
+ * does not model yet: its receipts are still checked for a saved, healthy
+ * document, not for what it did. A new operation type fails the completeness
+ * scenario until someone decides which it is.
+ */
+export const EXPECTATIONS = {
+  replaceInBlock: (model, operation) => {
+    const row = target(model, operation["blockId"]);
+    const find = String(operation["find"]);
+    const text = row.pre?.text ?? row.text;
+    const start = text.indexOf(find);
+    if (start === -1) throw new Error(`applied, but "${find}" is not in "${text}"`);
+    row.edits.push({ start, end: start + find.length, replace: String(operation["replace"]) });
+    addComment(model, operation);
+  },
+  replaceRange: (model, operation) => {
+    const { blockId, start, end } = rangeOf(operation);
+    target(model, blockId).edits.push({ start, end, replace: String(operation["replace"]) });
+    addComment(model, operation);
+  },
+  formatRange: (model, operation) => {
+    const { blockId, start, end } = rangeOf(operation);
+    const row = target(model, blockId);
+    const formatting = operation["formatting"] as Record<string, unknown>;
+    for (const property of ["bold", "italic", "underline"] as const) {
+      if (formatting[property] === true) row.formats.push({ start, end, property });
+    }
+  },
+  commentOnRange: (model, operation) => {
+    const { blockId, start, end } = rangeOf(operation);
+    const row = target(model, blockId);
+    addComment(model, operation, () =>
+      untouchedText(row) && !row.removed ? row.text.slice(start, end) : undefined,
+    );
+  },
+  commentOnBlock: (model, operation) => {
+    const row = target(model, operation["blockId"]);
+    const quote = operation["quote"];
+    const anchored = typeof quote === "string" ? quote : undefined;
+    addComment(model, operation, () =>
+      untouchedText(row) && !row.removed ? (anchored ?? row.text) : undefined,
+    );
+  },
+  insertAfterBlock: insertBlock("after"),
+  insertBeforeBlock: insertBlock("before"),
+  replaceBlock: (model, operation) => {
+    const row = target(model, operation["blockId"]);
+    row.edits.push({ start: 0, end: row.text.length, replace: String(operation["text"]) });
+    if ("styleId" in operation) {
+      const { fields, checks } = paragraphRequest(
+        model,
+        { styleId: operation["styleId"] },
+        row.pre,
+      );
+      Object.assign(row.fields, fields);
+      row.checks.push(...checks);
+    }
+    addComment(model, operation);
+  },
+  deleteBlock: (model, operation) => {
+    target(model, operation["blockId"]).removed = true;
+  },
+  splitBlock: (model, operation) => {
+    const row = target(model, operation["blockId"]);
+    const offset = Number(operation["offset"]);
+    const separator = typeof operation["separator"] === "string" ? operation["separator"] : "";
+    const first = operation["firstParagraphProperties"] as ParagraphRequest | undefined;
+    const second = operation["secondParagraphProperties"] as ParagraphRequest | undefined;
+    if (first) Object.assign(row.fields, paragraphRequest(model, first, row.pre).fields);
+    row.splits.push({
+      offset,
+      consumed: separator.length,
+      ...(second
+        ? { second: { ...row.fields, ...paragraphRequest(model, second, row.pre).fields } }
+        : {}),
+    });
+  },
+  mergeBlockWithNext: (model, operation) => {
+    const row = target(model, operation["blockId"]);
+    const next = model.rows[model.rows.indexOf(row) + 1];
+    if (row.pendingDeletion || next?.pendingDeletion) {
+      // Whether the join keeps that paragraph's pending deletion is not modelled yet.
+      throw new Unmodelled("a join with a paragraph pending deletion");
+    }
+    row.mergeSeparator = typeof operation["separator"] === "string" ? operation["separator"] : "";
+    const merged = operation["mergedParagraphProperties"] as ParagraphRequest | undefined;
+    if (merged) Object.assign(row.fields, paragraphRequest(model, merged, row.pre).fields);
+  },
+  setBlockParagraphProperties: (model, operation) => {
+    const row = target(model, operation["blockId"]);
+    const { fields, checks } = paragraphRequest(
+      model,
+      operation["properties"] as ParagraphRequest,
+      row.pre,
+    );
+    Object.assign(row.fields, fields);
+    row.checks.push(...checks);
+  },
+  insertTable: (model, operation) => {
+    const anchor = target(model, operation["blockId"], { adjacent: true });
+    const rows = operation["rows"] as string[][];
+    // A cell's line break starts a paragraph there; a blank one stays blank.
+    const texts = rows.flatMap((cells) => cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)));
+    gapOf(model, anchor, operation["position"] === "before" ? "before" : "after").push(
+      ...texts.map((text) => modelRow(text)),
+    );
+  },
+  deleteTable: (model, operation) => {
+    const { tableIndex } = tableOf(target(model, operation["blockId"]));
+    for (const row of tableRows(model, tableIndex)) row.removed = true;
+  },
+  insertTableRow: (model, operation) => {
+    // A row may go in beside one the batch deletes.
+    const anchor = tableOf(target(model, operation["blockId"], { adjacent: true }));
+    const inRow = tableRows(model, anchor.tableIndex).filter(
+      (row) => row.pre?.table?.rowIndex === anchor.rowIndex,
+    );
+    const texts = ((operation["cellTexts"] as string[] | undefined) ?? []).flatMap((text) =>
+      text.split(/\r\n|\r|\n/u),
+    );
+    const added = texts.map((text) => modelRow(text));
+    // Every supplied text lands in one new row, one cell after another.
+    const cells: ModelRow[] = added.filter((row) => row.text.length > 0);
+    for (const cell of cells) {
+      cell.checks.push((row) => (row.table ? null : "is not in a table"));
+    }
+    const position = operation["position"] === "before" ? "before" : "after";
+    const edge = position === "before" ? inRow[0] : inRow.at(-1);
+    if (!edge) throw new Unmodelled("the anchor row has no blocks");
+    edge[position].push(...added);
+  },
+  deleteTableRow: (model, operation) => {
+    const anchor = tableOf(target(model, operation["blockId"]));
+    if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
+    for (const row of tableRows(model, anchor.tableIndex)) {
+      if (row.pre?.table?.rowIndex === anchor.rowIndex) row.removed = true;
+    }
+  },
+  insertTableColumn: (model, operation) => {
+    const anchor = tableOf(target(model, operation["blockId"]));
+    if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
+    const texts = (operation["cellTexts"] as string[] | undefined) ?? [];
+    const after = operation["position"] !== "before";
+    const rows = tableRows(model, anchor.tableIndex);
+    const rowIndexes = [...new Set(rows.map((row) => row.pre?.table?.rowIndex ?? 0))].sort(
+      (left, right) => left - right,
+    );
+    texts.forEach((text, index) => {
+      const rowIndex = rowIndexes[index];
+      if (rowIndex === undefined) throw new Error("more cell texts than rows were applied");
+      const inRow = rows.filter((row) => row.pre?.table?.rowIndex === rowIndex);
+      // The new cell follows the anchor's column (or precedes it) in each row.
+      const column = anchor.gridColumnIndex;
+      const cell = modelRow(text);
+      const lastBefore = inRow.findLast((row) =>
+        after
+          ? (row.pre?.table?.gridColumnIndex ?? 0) <= column
+          : (row.pre?.table?.gridColumnIndex ?? 0) < column,
+      );
+      if (lastBefore) lastBefore.after.push(cell);
+      else inRow[0]?.before.push(cell);
+    });
+  },
+  deleteTableColumn: (model, operation) => {
+    const anchor = tableOf(target(model, operation["blockId"]));
+    if (hasMergedCells(model, anchor.tableIndex)) throw new Unmodelled("merged cells");
+    for (const row of tableRows(model, anchor.tableIndex)) {
+      if (row.pre?.table?.gridColumnIndex === anchor.gridColumnIndex) row.removed = true;
+    }
+  },
+  insertSignatureTable: null,
+  mergeTableCells: null,
+  splitTableCell: null,
+} as const satisfies Record<FolioDocumentOperationType, Expect | null>;
+
+/** The public operation types, for the completeness scenario. */
+export const OPERATION_TYPES: readonly string[] = FOLIO_DOCUMENT_OPERATION_TYPES;
+
+/** Apply one applied operation's expectation to `model`. */
+export const expectOperation = (model: Model, operation: Operation): void => {
+  const expectation = (EXPECTATIONS as Record<string, Expect | null | undefined>)[operation.type];
+  if (expectation === undefined) {
+    throw new Error(`the oracle has no entry for operation type ${operation.type}`);
+  }
+  if (expectation === null) {
+    model.unmodelled.push(`${operation.type}: no expectation yet`);
+    return;
+  }
+  try {
+    expectation(model, operation);
+  } catch (error) {
+    if (error instanceof Unmodelled) {
+      model.unmodelled.push(`${operation.type}: ${error.message}`);
+      return;
+    }
+    throw error;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Materializing and comparing
+// ---------------------------------------------------------------------------
+
+type Expected = {
+  text: string;
+  fields: Fields;
+  checks: ModelRow["checks"];
+  formats: ModelRow["formats"];
+  /** The pre-state block, while its text is unchanged: formatting outside a range keeps. */
+  pre?: Row;
+};
+
+const applyEdits = (text: string, edits: readonly TextEdit[], splits: ModelRow["splits"]) => {
+  // Everything in pre-state coordinates, applied from the end backwards.
+  type Cut = { start: number; end: number; replace: string; split?: ModelRow["splits"][number] };
+  const cuts: Cut[] = [
+    ...edits.map((edit) => ({ ...edit })),
+    ...splits.map((split) => ({
+      start: split.offset,
+      end: split.offset + split.consumed,
+      replace: "",
+      split,
+    })),
+  ].sort((left, right) => right.start - left.start || right.end - left.end);
+  const segments: { text: string; split?: ModelRow["splits"][number] }[] = [];
+  const tail = text;
+  let current = "";
+  let cursor = text.length;
+  for (const cut of cuts) {
+    if (cut.end > cursor) throw new Error(`two applied edits overlap in "${text}"`);
+    current = cut.replace + tail.slice(cut.end, cursor) + current;
+    cursor = cut.start;
+    if (cut.split) {
+      segments.unshift({ text: current, split: cut.split });
+      current = "";
+    }
+  }
+  current = tail.slice(0, cursor) + current;
+  segments.unshift({ text: current });
+  return segments;
+};
+
+const materialize = (model: Model): Expected[] => {
+  const out: Expected[] = [];
+  let joinNext: string | undefined;
+  const push = (entry: Expected) => {
+    if (joinNext !== undefined) {
+      const previous = out.at(-1);
+      if (previous) {
+        previous.text = `${previous.text}${joinNext}${entry.text}`;
+        // A join keeps the first paragraph's properties; formatting offsets no longer hold.
+        previous.formats = [];
+        joinNext = undefined;
+        return;
+      }
+      joinNext = undefined;
+    }
+    out.push(entry);
+  };
+  const emit = (row: ModelRow) => {
+    for (const inserted of row.before) emit(inserted);
+    const gone = row.removed || (row.pendingDeletion === true && row.edits.length === 0);
+    if (!gone) {
+      const segments = applyEdits(row.text, row.edits, row.splits);
+      const whole = untouchedText(row);
+      segments.forEach((segment, index) =>
+        push({
+          text: segment.text,
+          fields: index === 0 ? row.fields : (segment.split?.second ?? row.fields),
+          checks: row.checks,
+          formats: whole ? row.formats : [],
+          ...(whole && row.pre ? { pre: row.pre } : {}),
+        }),
+      );
+      if (row.mergeSeparator !== undefined) joinNext = row.mergeSeparator;
+    }
+    for (const inserted of row.after) emit(inserted);
+  };
+  for (const row of model.rows) emit(row);
+  return out;
+};
+
+/** A reader lists no blank block; neither side is compared on one. */
+const visible = <T extends { text: string }>(rows: readonly T[]): T[] =>
+  rows.filter((row) => row.text.length > 0);
+
+const formattingAt = (row: Row, property: "bold" | "italic" | "underline"): boolean[] | null => {
+  const runs = row.previewRuns;
+  if (!runs || runs.map((run) => run.text).join("") !== row.text) return null;
+  return runs.flatMap((run) =>
+    Array.from({ length: run.text.length }, () => run[property] === true),
+  );
+};
+
+/** Compare `actual` with what `model` expects; every mismatch, as text. */
+export const compareWithModel = (model: Model, actual: readonly Row[]): string[] => {
+  const expected = visible(materialize(model));
+  const got = visible(actual);
+  const problems: string[] = [];
+  const expectedTexts = expected.map((row) => row.text);
+  const gotTexts = got.map((row) => row.text);
+  if (JSON.stringify(expectedTexts) !== JSON.stringify(gotTexts)) {
+    problems.push(
+      `block texts differ:\n    expected ${JSON.stringify(expectedTexts)}\n    got      ${JSON.stringify(gotTexts)}`,
+    );
+    return problems;
+  }
+  expected.forEach((entry, index) => {
+    const row = got[index] as Row;
+    for (const [key, value] of Object.entries(entry.fields)) {
+      if (value === ANY) continue;
+      const actualValue = row[key as keyof Row];
+      if (JSON.stringify(actualValue) !== JSON.stringify(value)) {
+        problems.push(
+          `"${row.text}": ${key} is ${JSON.stringify(actualValue)}, expected ${JSON.stringify(value)}`,
+        );
+      }
+    }
+    for (const check of entry.checks) {
+      const problem = check(row);
+      if (problem !== null) problems.push(`"${row.text}": ${problem}`);
+    }
+    for (const format of entry.formats) {
+      const flags = formattingAt(row, format.property);
+      if (flags === null) continue;
+      const missing = flags.slice(format.start, format.end).some((flag) => !flag);
+      if (missing) {
+        problems.push(
+          `"${row.text}": [${format.start}, ${format.end}) is not all ${format.property}`,
+        );
+      }
+      // Outside the range, every character keeps what it had.
+      const before = entry.pre && formattingAt(entry.pre, format.property);
+      const inside = (offset: number) =>
+        entry.formats.some(
+          (other) =>
+            other.property === format.property && offset >= other.start && offset < other.end,
+        );
+      const changed = before
+        ? flags.findIndex((flag, offset) => !inside(offset) && flag !== before[offset])
+        : -1;
+      if (changed !== -1) {
+        problems.push(
+          `"${row.text}": ${format.property} changed at ${changed}, outside what was asked`,
+        );
+      }
+    }
+  });
+  return problems;
+};
+
+const compareComments = (
+  model: Model,
+  before: readonly Comment[],
+  after: readonly Comment[],
+): string[] => {
+  const problems: string[] = [];
+  const remaining = [...after];
+  const expected = [
+    ...before.map((entry) => ({ text: entry.text, anchor: undefined })),
+    ...model.comments.map((comment) => ({ text: comment.text, anchor: comment.anchor?.() })),
+  ];
+  for (const comment of expected) {
+    const index = remaining.findIndex(
+      (candidate) =>
+        candidate.text === comment.text &&
+        (comment.anchor === undefined || candidate.anchor === comment.anchor),
+    );
+    if (index === -1) {
+      problems.push(`no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`);
+    } else {
+      remaining.splice(index, 1);
+    }
+  }
+  return problems;
+};
+
+const compareStyles = async (model: Model, bytes: Uint8Array): Promise<string[]> => {
+  if (model.styles.size === 0) return [];
+  const catalog = await inspectDocumentStylesFromDocx(toArrayBuffer(bytes));
+  const paragraphStyles = new Set(
+    catalog.styles.filter((style) => style.type === "paragraph").map((style) => style.styleId),
+  );
+  return [...model.styles]
+    .filter((styleId) => !paragraphStyles.has(styleId))
+    .map((styleId) => `the saved package defines no paragraph style "${styleId}"`);
+};
+
+// ---------------------------------------------------------------------------
+// The check around one apply
+// ---------------------------------------------------------------------------
+
+/**
+ * The state an apply is checked against. `direct` and `tracked-changes`:
+ * saved, reopened and every change accepted, so pending changes from before
+ * resolve the same way on both sides. `suggested`: the live reviewer, whose
+ * suggestions stay out of the package until accepted.
+ */
+export type Pre = {
+  mode: Mode;
+  live: string;
+  rows: Row[];
+  /** The reviewer's own blocks, when `rows` are another view of them. */
+  liveRows: Row[];
+  comments: Comment[];
+  rejected?: Row[];
+};
+
+const liveState = (reviewer: Reviewer): string =>
+  JSON.stringify({ blocks: reviewer.getContent(), comments: reviewer.getComments().length });
+
+const project = (rows: readonly Row[]) =>
+  visible(rows).map(({ text, kind, styleId, listLevel }) => ({ text, kind, styleId, listLevel }));
+
+/** Capture what the oracle needs before an apply. */
+export const capture = async (reviewer: Reviewer, mode: Mode): Promise<Pre> => {
+  const live = liveState(reviewer);
+  if (mode === "suggested") {
+    const rows = rowsOf(reviewer);
+    return { mode, live, rows, liveRows: rows, comments: commentsOf(reviewer) };
+  }
+  const bytes = await save(reviewer);
+  const accepted = await resolvedState(bytes, "accept");
+  return {
+    mode,
+    live,
+    rows: accepted.rows,
+    liveRows: rowsOf(reviewer),
+    comments: accepted.comments,
+    ...(mode === "tracked-changes"
+      ? { rejected: (await resolvedState(bytes, "reject")).rows }
+      : {}),
+  };
+};
+
+export type Outcome = {
+  /** The operations the receipt says applied, in request order. */
+  applied: readonly Operation[];
+};
+
+/**
+ * Check an apply's outcome against what was asked. Throws with every
+ * mismatch; returns the gaps the oracle could not model.
+ */
+export const assertRequestedOutcome = async (
+  reviewer: Reviewer,
+  pre: Pre,
+  outcome: Outcome,
+  context: string,
+): Promise<string[]> => {
+  if (outcome.applied.length === 0) {
+    assert.equal(
+      liveState(reviewer),
+      pre.live,
+      `${context}: nothing applied, but the document changed`,
+    );
+    return [];
+  }
+  const model = modelOf(pre.rows, pre.liveRows);
+  for (const operation of outcome.applied) expectOperation(model, operation);
+  // An operation the oracle cannot model changes the document in a way it
+  // cannot predict; the rest of the batch is not compared either.
+  const predictable = model.unmodelled.length === 0;
+
+  let rows: Row[];
+  let comments: Comment[];
+  let bytes: Uint8Array | null = null;
+  if (pre.mode === "suggested") {
+    rows = rowsOf(reviewer);
+    comments = commentsOf(reviewer);
+  } else {
+    const saved = await save(reviewer);
+    const accepted = await resolvedState(saved, "accept");
+    ({ rows, comments, bytes } = accepted);
+    if (pre.rejected) {
+      assert.deepEqual(
+        project((await resolvedState(saved, "reject")).rows),
+        project(pre.rejected),
+        `${context}: rejecting every change does not give the document before back`,
+      );
+    }
+  }
+  const problems = [
+    ...(predictable ? compareWithModel(model, rows) : []),
+    ...compareComments(model, pre.comments, comments),
+    ...(bytes ? await compareStyles(model, bytes) : []),
+  ];
+  if (process.env["FOLIO_ORACLE_GAPS"] && !predictable) {
+    console.log(`oracle gap: ${context}: ${model.unmodelled.join("; ")}`);
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `${context}: the result is not what was asked (${outcome.applied
+        .map((operation) => operation.type)
+        .join(", ")}):\n  ${problems.join("\n  ")}`,
+    );
+  }
+  return model.unmodelled;
+};
+
+/** What resolving every change must leave, and whether block boundaries are known. */
+export type Resolution = { rows: Row[]; boundaries: boolean };
+
+/** Apply `operations` as one core batch in `mode`, and check the result is what they asked. */
+export const applyChecked = async (
+  reviewer: Reviewer,
+  operations: readonly Operation[],
+  mode: Mode,
+  context: string,
+): Promise<{ applied: string[]; issues: string[] }> => {
+  const pre = await capture(reviewer, mode);
+  const batch = coreBatch(operations, mode);
+  const result = reviewer.applyDocumentOperations(batch as never);
+  const applied = new Set(result.applied.map(({ id }) => id));
+  const issues = result.issues.map((issue) => `${issue.operationId}: ${issue.code}`);
+  await assertRequestedOutcome(
+    reviewer,
+    pre,
+    { applied: batch.operations.filter((operation) => applied.has(operation.id)) },
+    `${context} ${JSON.stringify(operations)} (refused: ${issues.join(", ") || "none"})`,
+  );
+  return { applied: [...applied], issues };
+};
+
+/**
+ * What resolving every change must leave: the accepted (or rejected) view
+ * of the saved package. Accepting `"suggested"` edits, which the package
+ * does not hold yet, must leave the words the reviewer shows; its blocks
+ * are not a prediction, as a reader shows a paragraph whose mark is pending
+ * deletion as the block it still is.
+ */
+export const captureResolution = async (
+  reviewer: Reviewer,
+  mode: Mode,
+  resolution: "accept" | "reject",
+): Promise<Resolution> =>
+  mode === "suggested" && resolution === "accept"
+    ? { rows: rowsOf(reviewer), boundaries: false }
+    : { rows: (await resolvedState(await save(reviewer), resolution)).rows, boundaries: true };
+
+/** After `acceptAll()` / `rejectAll()`: the saved package reads `expected`. */
+export const assertResolvedTo = async (
+  reviewer: Reviewer,
+  expected: Resolution,
+  context: string,
+): Promise<void> => {
+  const rows = rowsOf(await openReviewer(await save(reviewer)));
+  const message = `${context}: resolving every change does not leave what the reviewer showed`;
+  if (expected.boundaries) {
+    assert.deepEqual(project(rows), project(expected.rows), message);
+  } else {
+    const words = (from: readonly Row[]) =>
+      visible(from)
+        .map((row) => row.text)
+        .join("");
+    assert.equal(words(rows), words(expected.rows), message);
+  }
+};

@@ -3,16 +3,20 @@
  * operations (tool calls, core batches, model mistakes, comments,
  * accept/reject, save and reopen) over the synthetic documents, checking
  * after every step that the document saves, reopens to what the reviewer
- * showed, and reads alike everywhere. A flow is fully determined by its seed
- * and step count.
+ * showed, and reads alike everywhere, and that every applied operation did
+ * what it asked (support/oracle.ts). A flow is fully determined by its seed,
+ * step count and kind: a `"collisions"` flow draws half its batches from
+ * `COLLISIONS` and may run on the emoji fixture too.
  */
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
 
-import { FIXTURE_NAMES, FIXTURES, openReviewer } from "./documents.ts";
+import { COLLISION_FIXTURES, FIXTURES, openReviewer } from "./documents.ts";
 import { assertReadersAgree, saveAndReopen } from "./invariants.ts";
+import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } from "./oracle.ts";
 import {
   type Block,
+  COLLISIONS,
   coreBatch,
   MISTAKES,
   MODES,
@@ -32,11 +36,19 @@ type Flow = {
   seenIds: Set<string>;
   /** What each step did, written before it runs so a throw still names it. */
   log: string[];
+  kind: FlowKind;
 };
+
+export type FlowKind = "random" | "collisions";
 
 const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent() as Block[];
 
 const randomOperations = (flow: Flow): Operation[] => {
+  if (flow.kind === "collisions" && flow.random.chance(0.5)) {
+    const names = Object.keys(COLLISIONS);
+    const collision = COLLISIONS[flow.random.pick(names)]?.(blocksOf(flow));
+    if (collision) return collision;
+  }
   const count = 1 + flow.random.int(3);
   const operations: Operation[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -53,6 +65,36 @@ const tool = (flow: Flow, name: string, args: unknown) =>
     createReviewerBridge(flow.reviewer, { mode: flow.mode }),
     {},
   );
+
+type Receipt = { applied: readonly { id: string }[] };
+
+/** The operations a receipt says applied, in request order. */
+const appliedOf = (operations: readonly Operation[], receipt: Receipt | null) => {
+  const ids = new Set(receipt?.applied.map(({ id }) => id));
+  return { applied: operations.filter((operation) => ids.has(String(operation["id"]))) };
+};
+
+/** `suggest_changes` with ids on its operations, checked against what they asked. */
+const suggestChecked = async (flow: Flow, args: { operations: unknown }, entry: string) => {
+  const operations = Array.isArray(args.operations)
+    ? (args.operations as unknown[]).map((operation, index) =>
+        typeof operation === "object" && operation !== null && !("id" in operation)
+          ? Object.assign({ id: `s-${index + 1}` }, operation)
+          : operation,
+      )
+    : args.operations;
+  const done = record(flow, `${entry} ${JSON.stringify({ ...args, operations })}`);
+  const pre = await capture(flow.reviewer, flow.mode);
+  const result = tool(flow, "suggest_changes", { ...args, operations });
+  const receipt = result.ok ? (result.result as Receipt) : null;
+  done(receipt ? `applied ${receipt.applied.length}` : `refused: ${result.ok ? "" : result.error}`);
+  await assertRequestedOutcome(
+    flow.reviewer,
+    pre,
+    appliedOf(Array.isArray(operations) ? (operations as Operation[]) : [], receipt),
+    `step ${flow.log.length - 1}`,
+  );
+};
 
 /** Record what a step is about to do; `outcome` completes the entry. */
 const record = (flow: Flow, entry: string) => {
@@ -81,10 +123,7 @@ const step = async (flow: Flow): Promise<void> => {
   ] as const);
   switch (action) {
     case "suggest_changes": {
-      const operations = randomOperations(flow);
-      const done = record(flow, `${action} ${JSON.stringify(operations)}`);
-      const result = tool(flow, "suggest_changes", { operations });
-      done(result.ok ? "ok" : result.error);
+      await suggestChecked(flow, { operations: randomOperations(flow) }, action);
       return;
     }
     case "core batch": {
@@ -94,13 +133,24 @@ const step = async (flow: Flow): Promise<void> => {
         flow,
         `${action} (atomic: ${batch.atomic}) ${JSON.stringify(operations)}`,
       );
+      const pre = await capture(flow.reviewer, flow.mode);
       const result = flow.reviewer.applyDocumentOperations(batch as never);
       done(`applied ${result.applied.length}, skipped ${result.skipped.length}`);
+      await assertRequestedOutcome(
+        flow.reviewer,
+        pre,
+        appliedOf(batch.operations, result),
+        `step ${flow.log.length - 1}`,
+      );
       return;
     }
     case "mistake": {
       const [name, build] = random.pick(Object.entries(MISTAKES));
       const args = build(blocksOf(flow), random, [...flow.seenIds]);
+      if (typeof args === "object" && args !== null && "operations" in args) {
+        await suggestChecked(flow, args, `${action} ${name}`);
+        return;
+      }
       const done = record(flow, `${action} ${name} ${JSON.stringify(args)}`);
       const result = tool(flow, "suggest_changes", args);
       done(result.ok ? "ok" : "refused");
@@ -149,7 +199,14 @@ const step = async (flow: Flow): Promise<void> => {
     case "accept all":
     case "reject all": {
       const done = record(flow, action);
-      done(String(action === "accept all" ? flow.reviewer.acceptAll() : flow.reviewer.rejectAll()));
+      const accept = action === "accept all";
+      const expected = await captureResolution(
+        flow.reviewer,
+        flow.mode,
+        accept ? "accept" : "reject",
+      );
+      done(String(accept ? flow.reviewer.acceptAll() : flow.reviewer.rejectAll()));
+      await assertResolvedTo(flow.reviewer, expected, `step ${flow.log.length - 1}`);
       return;
     }
     case "save and reopen": {
@@ -169,26 +226,42 @@ const step = async (flow: Flow): Promise<void> => {
 const saveOptions = (flow: Flow) =>
   flow.mode === "suggested" && flow.reviewer.getChanges().length > 0 ? { compare: false } : {};
 
+/** The fixtures a flow of `kind` picks from. */
+const FLOW_FIXTURES = {
+  random: FIXTURES,
+  // Readers write a merged-cell table as HTML, which the reader comparison
+  // does not parse; the collision scenarios cover that fixture.
+  collisions: { ...FIXTURES, emoji: COLLISION_FIXTURES.emoji },
+} as const;
+
 /** The fixture and mode a seed's flow runs on. */
 export const describeFlow = (
   seed: number,
-): { fixture: (typeof FIXTURE_NAMES)[number]; mode: Mode } => {
+  kind: FlowKind = "random",
+): { fixture: string; mode: Mode } => {
   const random = createRandom(seed);
-  const fixture = random.pick(FIXTURE_NAMES);
+  const fixture = random.pick(Object.keys(FLOW_FIXTURES[kind]));
   return { fixture, mode: random.pick(MODES) };
 };
 
 /** Run one seeded flow of `steps` steps; a failure names the step and its log. */
-export const runFlow = async (seed: number, steps: number): Promise<void> => {
+export const runFlow = async (
+  seed: number,
+  steps: number,
+  kind: FlowKind = "random",
+): Promise<void> => {
   const random = createRandom(seed);
-  const fixture = random.pick(FIXTURE_NAMES);
+  const fixtures: Record<string, () => Promise<Uint8Array>> = FLOW_FIXTURES[kind];
+  const fixture = random.pick(Object.keys(fixtures));
   const mode = random.pick(MODES);
+  const build = fixtures[fixture] as () => Promise<Uint8Array>;
   const flow: Flow = {
-    reviewer: await openReviewer(await FIXTURES[fixture]()),
+    reviewer: await openReviewer(await build()),
     mode,
     random,
     seenIds: new Set(),
     log: [],
+    kind,
   };
   const { log } = flow;
   try {
@@ -201,7 +274,7 @@ export const runFlow = async (seed: number, steps: number): Promise<void> => {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       [
-        `flow with seed ${seed} (${fixture} / ${mode}) failed at step ${log.length - 1}:`,
+        `${kind} flow with seed ${seed} (${fixture} / ${mode}) failed at step ${log.length - 1}:`,
         ...log.map((entry, index) => `  ${index}. ${entry}`),
         message,
       ].join("\n"),

@@ -377,3 +377,359 @@ export const coreBatch = (operations: readonly Operation[], mode: Mode) => ({
   mode,
   operations: operations.map((operation, index) => ({ id: `op-${index + 1}`, ...operation })),
 });
+
+// ---------------------------------------------------------------------------
+// Collisions
+// ---------------------------------------------------------------------------
+
+type Collision = (blocks: readonly Block[]) => Operation[] | null;
+
+const prose = (blocks: readonly Block[]) =>
+  blocks.filter((block) => !inTable(block) && wordsOf(block.text).length > 1);
+
+/** The first prose block with words whose next block is prose with words too. */
+const withNext = (blocks: readonly Block[]): [Block, Block] | null => {
+  for (let index = 0; index + 1 < blocks.length; index += 1) {
+    const block = blocks[index] as Block;
+    const next = blocks[index + 1] as Block;
+    if (
+      !inTable(block) &&
+      !inTable(next) &&
+      wordsOf(block.text).length > 1 &&
+      wordsOf(next.text).length > 0
+    ) {
+      return [block, next];
+    }
+  }
+  return null;
+};
+
+const handleOf = (block: Block, start: number, end: number) =>
+  createFolioAITextRangeHandle({
+    blockId: block.id,
+    text: block.text,
+    startOffset: start,
+    endOffset: end,
+  });
+
+const wordRange = (block: Block, which: number) => {
+  const word = wordsOf(block.text).at(which);
+  return word ? handleOf(block, word.start, word.start + word.word.length) : null;
+};
+
+const replaceWord = (block: Block, which = 0): Operation => ({
+  type: "replaceInBlock",
+  blockId: block.id,
+  find: wordsOf(block.text).at(which)?.word ?? "",
+  replace: "revised",
+});
+
+const ZWJ = String.fromCodePoint(0x200d);
+const ASTRAL = /[\u{10000}-\u{10FFFF}]/u;
+
+/** The user-perceived characters of `text` that hold an astral code point, as UTF-16 ranges. */
+const emojiOf = (text: string): { start: number; end: number }[] =>
+  [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text)]
+    .filter(({ segment }) => ASTRAL.test(segment))
+    .map(({ segment, index }) => ({ start: index, end: index + segment.length }));
+
+const emojiBlocks = (blocks: readonly Block[]) =>
+  blocks.filter(
+    (block) => !inTable(block) && emojiOf(block.text).length > 0 && wordsOf(block.text).length > 0,
+  );
+
+type Location = { tableIndex: number; rowIndex: number; cellIndex: number; rowSpan: number };
+const locationOf = (block: Block): Location | undefined => block.table as Location | undefined;
+
+/** The paragraphs of the anchor's table row. */
+const rowCells = (blocks: readonly Block[], anchor: Block) =>
+  blocks.filter(
+    (block) =>
+      locationOf(block)?.tableIndex === locationOf(anchor)?.tableIndex &&
+      locationOf(block)?.rowIndex === locationOf(anchor)?.rowIndex,
+  );
+
+const cellCount = (blocks: readonly Block[]) =>
+  new Set(blocks.map((block) => locationOf(block)?.cellIndex)).size;
+
+const rowCount = (blocks: readonly Block[], anchor: Block) =>
+  new Set(
+    blocks
+      .filter((block) => locationOf(block)?.tableIndex === locationOf(anchor)?.tableIndex)
+      .map((block) => locationOf(block)?.rowIndex),
+  ).size;
+
+/** The last table cell of the document: a new row or column there follows the others. */
+const lastCell = (blocks: readonly Block[]) => blocks.findLast(inTable);
+
+const cellTexts = (count: number, label: string) =>
+  Array.from({ length: count }, (_, index) => `${label} ${index + 1}`);
+
+/**
+ * Batches aimed where batch claims, offsets and payloads meet: two
+ * operations on one block, an edit inside a block another operation deletes,
+ * ranges next to surrogate pairs and inside a ZWJ sequence, and table
+ * payloads that must all land. Deterministic: each takes the first block
+ * that fits, or returns null.
+ */
+export const COLLISIONS: Record<string, Collision> = {
+  replaceThenDeleteSameBlock: (blocks) => {
+    const block = prose(blocks)[0];
+    return block ? [replaceWord(block), { type: "deleteBlock", blockId: block.id }] : null;
+  },
+  deleteThenReplaceSameBlock: (blocks) => {
+    const block = prose(blocks)[0];
+    return block ? [{ type: "deleteBlock", blockId: block.id }, replaceWord(block)] : null;
+  },
+  replaceThenDeleteNext: (blocks) => {
+    const pair = withNext(blocks);
+    return pair ? [replaceWord(pair[0]), { type: "deleteBlock", blockId: pair[1].id }] : null;
+  },
+  deleteThenReplaceNext: (blocks) => {
+    const pair = withNext(blocks);
+    return pair ? [{ type: "deleteBlock", blockId: pair[0].id }, replaceWord(pair[1])] : null;
+  },
+  twoRangesInOneBlock: (blocks) => {
+    const block = prose(blocks)[0];
+    const first = block && wordRange(block, 0);
+    const last = block && wordRange(block, -1);
+    return first && last
+      ? [
+          { type: "replaceRange", range: last, replace: "second" },
+          { type: "replaceRange", range: first, replace: "first" },
+        ]
+      : null;
+  },
+  formatThenReplaceSameRange: (blocks) => {
+    const block = prose(blocks)[0];
+    const handle = block && wordRange(block, 0);
+    return handle
+      ? [
+          { type: "formatRange", range: handle, formatting: { bold: true } },
+          { type: "replaceRange", range: handle, replace: "changed" },
+        ]
+      : null;
+  },
+  commentAndFormatSameRange: (blocks) => {
+    const block = prose(blocks)[0];
+    const handle = block && wordRange(block, -1);
+    return handle
+      ? [
+          { type: "commentOnRange", range: handle, comment: { text: "Check this word." } },
+          { type: "formatRange", range: handle, formatting: { italic: true } },
+        ]
+      : null;
+  },
+  splitThenEditSecondHalf: (blocks) => {
+    const block = prose(blocks).find((candidate) => wordsOf(candidate.text).length > 2);
+    const second = block && wordsOf(block.text)[1];
+    const last = block && wordRange(block, -1);
+    return block && second && last
+      ? [
+          { type: "splitBlock", blockId: block.id, offset: second.start },
+          { type: "replaceRange", range: last, replace: "tail" },
+        ]
+      : null;
+  },
+  mergeThenEditNext: (blocks) => {
+    const pair = withNext(blocks);
+    return pair
+      ? [{ type: "mergeBlockWithNext", blockId: pair[0].id, separator: " " }, replaceWord(pair[1])]
+      : null;
+  },
+  replaceBlockThenInsertAfter: (blocks) => {
+    const block = prose(blocks)[0];
+    return block
+      ? [
+          { type: "replaceBlock", blockId: block.id, text: "A rewritten clause." },
+          { type: "insertAfterBlock", blockId: block.id, text: "An added clause." },
+        ]
+      : null;
+  },
+  twoInsertsAfterOneBlock: (blocks) => {
+    const block = prose(blocks)[0];
+    return block
+      ? [
+          { type: "insertAfterBlock", blockId: block.id, text: "First added clause." },
+          { type: "insertAfterBlock", blockId: block.id, text: "Second added clause." },
+        ]
+      : null;
+  },
+  insertAroundOneBlock: (blocks) => {
+    const block = prose(blocks).at(-1);
+    return block
+      ? [
+          { type: "insertAfterBlock", blockId: block.id, text: "Clause after." },
+          { type: "insertBeforeBlock", blockId: block.id, text: "Clause before." },
+        ]
+      : null;
+  },
+  restyleThenEdit: (blocks) => {
+    const block = prose(blocks).find((candidate) => candidate.kind === "paragraph");
+    return block
+      ? [
+          {
+            type: "setBlockParagraphProperties",
+            blockId: block.id,
+            properties: { styleId: "Heading2" },
+          },
+          replaceWord(block, -1),
+        ]
+      : null;
+  },
+  deleteTwoNeighbours: (blocks) => {
+    const pair = withNext(blocks);
+    return pair
+      ? [
+          { type: "deleteBlock", blockId: pair[1].id },
+          { type: "deleteBlock", blockId: pair[0].id },
+        ]
+      : null;
+  },
+  insertStyledAndNumbered: (blocks) => {
+    const block = prose(blocks)[0];
+    return block
+      ? [
+          {
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "A second-level heading.",
+            styleId: "Heading2",
+          },
+          {
+            type: "insertAfterBlock",
+            blockId: block.id,
+            text: "A new bullet.",
+            numbering: { start: "new", kind: "bullet" },
+          },
+        ]
+      : null;
+  },
+  tableRowWithTexts: (blocks) => {
+    const anchor = lastCell(blocks);
+    return anchor
+      ? [
+          {
+            type: "insertTableRow",
+            blockId: anchor.id,
+            position: "after",
+            cellTexts: cellTexts(cellCount(rowCells(blocks, anchor)), "Row cell"),
+          },
+        ]
+      : null;
+  },
+  tableRowBeforeWithTexts: (blocks) => {
+    const anchor = lastCell(blocks);
+    return anchor
+      ? [
+          {
+            type: "insertTableRow",
+            blockId: anchor.id,
+            position: "before",
+            cellTexts: cellTexts(cellCount(rowCells(blocks, anchor)), "Earlier cell"),
+          },
+        ]
+      : null;
+  },
+  tableColumnWithTexts: (blocks) => {
+    const anchor = lastCell(blocks);
+    return anchor
+      ? [
+          {
+            type: "insertTableColumn",
+            blockId: anchor.id,
+            position: "after",
+            cellTexts: cellTexts(rowCount(blocks, anchor), "Column cell"),
+          },
+        ]
+      : null;
+  },
+  tableRowThroughVerticalMerge: (blocks) => {
+    // A row after one where a vertical merge starts: the merge grows through
+    // the new row, which has one cell fewer; every text must still land.
+    const anchor = blocks.find((block) => (locationOf(block)?.rowSpan ?? 1) > 1);
+    if (!anchor) return null;
+    const cells = rowCells(blocks, anchor);
+    const merged = cells.filter((block) => (locationOf(block)?.rowSpan ?? 1) > 1).length;
+    return [
+      {
+        type: "insertTableRow",
+        blockId: anchor.id,
+        position: "after",
+        cellTexts: cellTexts(cellCount(cells) - merged, "Merged row cell"),
+      },
+    ];
+  },
+  deleteRowThenEditAnotherRow: (blocks) => {
+    const cells = blocks.filter((block) => inTable(block) && wordsOf(block.text).length > 0);
+    const first = cells[0];
+    const inFirstRow = new Set(first ? rowCells(blocks, first).map(({ id }) => id) : []);
+    const other = cells.find((cell) => !inFirstRow.has(cell.id));
+    return first && other
+      ? [{ type: "deleteTableRow", blockId: other.id }, replaceWord(first)]
+      : null;
+  },
+  replaceBesideEmoji: (blocks) => {
+    // In every block with an emoji: the word right before the first one, up
+    // to it, and the word right after the last one, from it.
+    const operations: Operation[] = [];
+    for (const block of emojiBlocks(blocks)) {
+      const emoji = emojiOf(block.text);
+      const first = emoji[0] as { start: number };
+      const last = emoji.at(-1) as { end: number };
+      const before = wordsOf(block.text).findLast(
+        (word) => word.start + word.word.length <= first.start,
+      );
+      const after = wordsOf(block.text).find((word) => word.start >= last.end);
+      const left = before && handleOf(block, before.start, first.start);
+      if (left) operations.push({ type: "replaceRange", range: left, replace: "Signed " });
+      const right = after && handleOf(block, last.end, after.start + after.word.length);
+      if (right) operations.push({ type: "replaceRange", range: right, replace: " endorsed" });
+    }
+    return operations.length > 0 ? operations : null;
+  },
+  replaceEmoji: (blocks) => {
+    const operations: Operation[] = [];
+    for (const block of emojiBlocks(blocks)) {
+      const { start, end } = emojiOf(block.text)[0] as { start: number; end: number };
+      const handle = handleOf(block, start, end);
+      if (handle) operations.push({ type: "replaceRange", range: handle, replace: "(ok)" });
+    }
+    return operations.length > 0 ? operations : null;
+  },
+  formatAndCommentOverEmoji: (blocks) => {
+    const operations: Operation[] = [];
+    for (const block of emojiBlocks(blocks)) {
+      const handle = handleOf(block, 0, block.text.length);
+      if (!handle) continue;
+      operations.push(
+        { type: "formatRange", range: handle, formatting: { bold: true } },
+        { type: "commentOnRange", range: handle, comment: { text: "Around the emoji." } },
+      );
+    }
+    return operations.length > 0 ? operations : null;
+  },
+  rangeInsideSurrogatePair: (blocks) => {
+    const block = emojiBlocks(blocks)[0];
+    const at = block && emojiOf(block.text)[0]?.start;
+    if (!block || at === undefined) return null;
+    // Half an emoji: `createFolioAITextRangeHandle` will not build it; a model may.
+    const end = Math.min(block.text.length, at + 4);
+    const handle = {
+      type: "textRange",
+      story: "main",
+      blockId: block.id,
+      startOffset: at + 1,
+      endOffset: end,
+      selectedTextHash: hashFolioAIBlockText(block.text.slice(at + 1, end)),
+    };
+    return [{ type: "replaceRange", range: handle, replace: "x" }];
+  },
+  rangeInsideZwjSequence: (blocks) => {
+    const block = blocks.find((candidate) => candidate.text.includes(ZWJ));
+    const join = block ? block.text.indexOf(ZWJ) : -1;
+    // The first person of a family: a whole code point, half a character.
+    const handle = block && join >= 2 ? handleOf(block, join - 2, join) : null;
+    return handle ? [{ type: "replaceRange", range: handle, replace: "\u{1F469}" }] : null;
+  },
+};

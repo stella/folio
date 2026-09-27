@@ -17,7 +17,9 @@
 //
 // Environment: FOLIO_SCENARIO_SEED (fuzz seed; fixed by default, `random` to
 // explore; always printed), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS
-// (fuzz size; 12 runs of 10 steps by default).
+// (fuzz size; 12 runs of 10 steps by default), FOLIO_SCENARIO_COLLISION_RUNS
+// (collision flows; 8 by default), FOLIO_ORACLE_GAPS=1 (print the operations
+// the requested-outcome oracle could not model).
 // Exits non-zero on any failure. Run via `bun run test:consumer-scenarios`.
 
 import { panic } from "better-result";

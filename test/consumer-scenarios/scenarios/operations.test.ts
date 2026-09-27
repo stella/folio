@@ -1,7 +1,8 @@
 /**
  * `FolioDocxReviewer.applyDocumentOperations` over every fixture, in every
  * mode, one operation type at a time: each batch applies or refuses with an
- * issue, the result saves and reopens, every reader agrees, and resolving the
+ * issue, an applied one did what it asked (support/oracle.ts), the result
+ * saves and reopens, every reader agrees, and resolving the
  * changes lands where it should (reject-all: the document before; accept-all:
  * the document a reader saw).
  */
@@ -23,9 +24,14 @@ import {
   plainDocument,
 } from "../support/documents.ts";
 import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
+import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
-import { expectedFailure, KNOWN_FAILING_OPERATION_RUNS } from "../support/known-issues.ts";
+import {
+  expectedFailure,
+  FINDING_SYMPTOMS,
+  KNOWN_FAILING_OPERATION_RUNS,
+} from "../support/known-issues.ts";
 import { resolvedText, settledText } from "../support/review.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -41,7 +47,7 @@ describe("applyDocumentOperations", () => {
       const title = `${name} / ${mode}: every operation type applies or refuses, and the result saves`;
       const register = (body: () => Promise<void>) =>
         known
-          ? expectedFailure(known.finding, title, /out of range|nodeSize/u, body)
+          ? expectedFailure(known.finding, title, FINDING_SYMPTOMS[known.finding], body)
           : test(title, body);
       register(async () => {
         const before = await FIXTURES[name]();
@@ -54,12 +60,20 @@ describe("applyDocumentOperations", () => {
           if (!supports(type, mode)) continue;
           const operation = GENERATORS[type]?.(blocksOf(reviewer), random);
           if (!operation) continue;
+          const pre = await capture(reviewer, mode);
           const result = reviewer.applyDocumentOperations(coreBatch([operation], mode) as never);
           const outcome =
             result.applied.length > 0
               ? "applied"
               : `refused ${result.issues.map((issue) => issue.code).join(",")}`;
           log.push(`${type}: ${outcome}`);
+          // What was asked, after a save and a reopen (accepted, when tracked).
+          await assertRequestedOutcome(
+            reviewer,
+            pre,
+            { applied: result.applied.length > 0 ? [operation] : [] },
+            `${name} / ${mode}: ${JSON.stringify(operation)}`,
+          );
           assert.ok(
             result.applied.length + result.skipped.length === 1,
             `${type} neither applied nor refused: ${JSON.stringify(result)}`,
