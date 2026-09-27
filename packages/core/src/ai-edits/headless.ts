@@ -66,7 +66,6 @@ import {
 } from "../internal/sectionEndpointResolution";
 import {
   acceptAIEditRevision,
-  acceptAllSuggestions,
   acceptSuggestion,
   rejectAIEditRevision,
   rejectAllSuggestions,
@@ -807,20 +806,31 @@ const resolveReviewedState = (state: EditorState, view: FolioReviewedView): Edit
 };
 
 /**
- * Turn `"suggested"` edits into ordinary tracked changes (accept) or remove
- * them (reject) before a bulk resolve. The bulk resolver reads revision marks;
- * a suggested whole-paragraph or table insert is flagged on the node instead,
- * and a save drops a node still flagged, so accepting without this step lost
- * the accepted paragraph.
+ * Prepare `"suggested"` edits for a bulk resolve. The bulk resolver reads
+ * revision marks and row/cell markers, whatever their provenance; a suggested
+ * whole-paragraph or table insert is flagged on the node instead, and a save
+ * drops a node still flagged.
+ *
+ * Accepting everything needs nothing else: once the flags are gone every
+ * suggestion is an ordinary revision the resolver accepts. Converting them
+ * into tracked changes first (`acceptAllSuggestions`) had to rotate each
+ * inserted break into place, and one that could not rotate aborted the whole
+ * conversion: every flag stayed, and the save dropped every accepted
+ * paragraph. Rejecting removes the suggestions outright.
  */
-const settleSuggestions = (
-  state: EditorState,
-  mode: "accept" | "reject",
-  author: string,
-): EditorState => {
+const settleSuggestions = (state: EditorState, mode: "accept" | "reject"): EditorState => {
+  if (mode === "accept") {
+    const tr = state.tr;
+    state.doc.descendants((node, position) => {
+      if (node.attrs["_suggestedInsert"] != null) {
+        tr.setNodeAttribute(position, "_suggestedInsert", null);
+      }
+      return !node.isTextblock;
+    });
+    return tr.docChanged ? state.apply(tr) : state;
+  }
   let settled = state;
-  const command = mode === "accept" ? acceptAllSuggestions({ author }) : rejectAllSuggestions();
-  command(state, (transaction) => {
+  rejectAllSuggestions()(state, (transaction) => {
     settled = state.apply(transaction);
   });
   return settled;
@@ -2244,7 +2254,7 @@ export class FolioDocxReviewer {
       count += getTrackedChangesFromDoc(state.doc).length;
       this.setEditableStoryState(
         handle,
-        resolveAllChangesInHeadlessState(settleSuggestions(state, mode, this.author), mode),
+        resolveAllChangesInHeadlessState(settleSuggestions(state, mode), mode),
       );
     }
     return count;

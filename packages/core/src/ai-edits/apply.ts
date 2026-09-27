@@ -2045,6 +2045,10 @@ const insertBlocksInsideComments = (
 const isInsertedPPrMark = (value: unknown): boolean =>
   typeof value === "object" && value !== null && "kind" in value && value.kind === "ins";
 
+const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
+  typeof paragraph.attrs["_suggestedInsert"] === "object" &&
+  paragraph.attrs["_suggestedInsert"] !== null;
+
 /** Whether every piece of the paragraph's content is pending inserted text. */
 const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
   let whollyInserted = true;
@@ -2061,6 +2065,43 @@ const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
     return false;
   });
   return whollyInserted;
+};
+
+/**
+ * How to take back the paragraph at `position` when it is wholly a pending
+ * insertion (the break that introduced it inserted, and everything in it
+ * inserted text), or `null` when it is not. Such a paragraph goes outright:
+ * accepting and rejecting both leave it out.
+ *
+ * The inserted break is the paragraph's own (an `ins` mark, or a suggested
+ * whole-paragraph insert), except on the paragraph that ends its container:
+ * that one keeps the container's original mark and the inserted break was
+ * rotated onto the paragraph before it, whose `ins` mark then goes too.
+ */
+const pendingParagraphRetraction = (
+  doc: PMNode,
+  position: number,
+): { clearBreakAt: number | null } | null => {
+  const paragraph = doc.nodeAt(position);
+  if (paragraph?.type.name !== "paragraph" || !holdsOnlyInsertedContent(paragraph)) {
+    return null;
+  }
+  const at = doc.resolve(position);
+  const before = at.nodeBefore;
+  const endsItsContainer = paragraphEndsItsContainer(at, paragraph.type.name);
+  if (at.parent.childCount < 2 || (endsItsContainer && before?.type.name !== paragraph.type.name)) {
+    // The container must keep a paragraph, and end with one.
+    return null;
+  }
+  if (isInsertedPPrMark(paragraph.attrs["pPrMark"]) || isSuggestedParagraphInsert(paragraph)) {
+    return { clearBreakAt: null };
+  }
+  if (endsItsContainer && before && paragraph.attrs["pPrMark"] == null) {
+    return isInsertedPPrMark(before.attrs["pPrMark"])
+      ? { clearBreakAt: position - before.nodeSize }
+      : null;
+  }
+  return null;
 };
 
 const addedBreakRevisionId = (value: unknown): number | null => {
@@ -3567,6 +3608,23 @@ const applyFolioAIEditOperationsInternal = ({
           break;
         }
 
+        const retraction = isPairedMove(item.operation.moveId)
+          ? null
+          : pendingParagraphRetraction(tr.doc, item.blockFrom);
+        if (retraction) {
+          // Deleting a paragraph that is itself a pending insertion retracts
+          // it, as deleting inserted text does: accepting and rejecting both
+          // leave it out, so it goes now. Marked deleted instead, its break
+          // would have to be inserted and deleted at once, which one
+          // paragraph mark cannot say: accepting kept a blank paragraph, and
+          // a suggested one failed to accept at all.
+          tr = tr.delete(item.blockFrom, item.blockTo);
+          if (retraction.clearBreakAt !== null) {
+            tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
+          }
+          break;
+        }
+
         if (deletionType) {
           const revisionId = operationRevisionSeed++;
           const deletionMark = deletionType.create({
@@ -3618,7 +3676,26 @@ const applyFolioAIEditOperationsInternal = ({
           const markPosition = tr.mapping.map(item.blockFrom);
           const markPlace = tr.doc.resolve(markPosition);
           const endsItsContainer = paragraphEndsItsContainer(markPlace, item.blockNode.type.name);
-          if (!endsItsContainer && tr.doc.nodeAt(markPosition)?.attrs["pPrMark"] == null) {
+          const deleted = tr.doc.nodeAt(markPosition);
+          const following = deleted && tr.doc.nodeAt(markPosition + deleted.nodeSize);
+          if (
+            deleted &&
+            following?.type === deleted.type &&
+            !isPairedMove(item.operation.moveId) &&
+            isInsertedPPrMark(deleted.attrs["pPrMark"])
+          ) {
+            // Its break is a pending insertion (a split, or a break rotated
+            // off the story's end), and deleting it retracts that insertion,
+            // as deleting a merged break does: the words stay, marked
+            // deleted, in the paragraph that follows.
+            joinAtParagraphMark({
+              tr,
+              paragraphPos: markPosition,
+              paragraph: deleted,
+              next: following,
+              firstIsGoing: true,
+            });
+          } else if (!endsItsContainer && deleted?.attrs["pPrMark"] == null) {
             const markRevisionId = operationRevisionSeed++;
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {
               kind: isPairedMove(item.operation.moveId) ? "moveFrom" : "del",

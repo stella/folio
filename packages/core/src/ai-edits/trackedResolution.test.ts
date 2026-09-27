@@ -117,6 +117,38 @@ describe("a tracked merge of a break that is itself a pending insertion", () => 
   });
 });
 
+describe("a tracked deletion of a paragraph that is a pending insertion", () => {
+  for (const mode of ["tracked-changes", "suggested"] as const) {
+    for (const [where, anchor] of [
+      ["inside the story", "The Buyer"],
+      ["at its end", "Signed"],
+    ] as const) {
+      test(`retracts it ${where} (${mode})`, async () => {
+        const reviewer = await open();
+        const apply = applier(reviewer, mode);
+        apply({ type: "insertAfterBlock", blockId: idOf(reviewer, anchor), text: "Inserted." });
+        apply({ type: "deleteBlock", blockId: idOf(reviewer, "Inserted.") });
+        expect(texts(reviewer)).toEqual(ORIGINAL);
+        expect(reviewer.getChanges()).toEqual([]);
+        reviewer.acceptAll();
+        expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
+      });
+    }
+  }
+
+  test("deleting the paragraph a split added a break to keeps its words deleted", async () => {
+    const reviewer = await open();
+    const apply = applier(reviewer);
+    apply({ type: "splitBlock", blockId: idOf(reviewer, "Signed"), offset: "Signed in ".length });
+    apply({ type: "deleteBlock", blockId: idOf(reviewer, "Signed in") });
+    const rejecting = await reopen(reviewer);
+    rejecting.rejectAll();
+    expect(texts(rejecting)).toEqual(ORIGINAL);
+    reviewer.acceptAll();
+    expect(texts(reviewer)).toEqual([...ORIGINAL.slice(0, -1), "two copies."]);
+  });
+});
+
 describe("rejecting a split with an inserted table after its first half", () => {
   test("joins the halves again once the table is gone", async () => {
     const reviewer = await open();
@@ -199,5 +231,21 @@ describe("a comment on words a tracked replacement removes", () => {
     expect((await reopen(reviewer)).getComments().map(({ anchoredText }) => anchoredText)).toEqual(
       anchored,
     );
+  });
+});
+
+describe("accepting every suggestion", () => {
+  test("keeps each suggested paragraph when one of them cannot become a tracked change", async () => {
+    const reviewer = await open();
+    const apply = applier(reviewer, "suggested");
+    apply({ type: "insertAfterBlock", blockId: idOf(reviewer, "This agreement"), text: "Kept." });
+    // An insertion after the story's last paragraph, then that paragraph's
+    // deletion: the insertion's break can no longer rotate onto it.
+    apply({ type: "insertAfterBlock", blockId: idOf(reviewer, "Signed"), text: "Last." });
+    apply({ type: "deleteBlock", blockId: idOf(reviewer, "Signed") });
+    reviewer.acceptAll();
+    const accepted = [...ORIGINAL.slice(0, 2), "Kept.", ...ORIGINAL.slice(2, -1), "Last."];
+    expect(texts(reviewer)).toEqual(accepted);
+    expect(texts(await reopen(reviewer))).toEqual(accepted);
   });
 });

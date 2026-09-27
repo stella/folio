@@ -23,8 +23,6 @@ export const FINDINGS = {
     'getContent(), the snapshot and read_document render a footnote/endnote reference as its w:id ("7"), while the page shows its number ("1", or "i" for an endnote)',
   COMPARE_INSERTED_LIST_ITEMS:
     "generateRedlineDocx inserts a paragraph the revised version has as a list item as a plain paragraph (the insertion carries only its style), so accepting the redline loses the bullet or number",
-  SUGGESTED_ACCEPT_ALL_LOSES_INSERTS:
-    "after a run of suggested edits that includes a table column and list inserts, acceptAll keeps the inserted paragraphs in the reviewer but the save drops them (found by fuzz; no smaller repro yet)",
   UNMARKED_LIST_ITEM_KIND:
     "a paragraph whose numbering names a level its instance does not define shows no marker, but getContent(), the snapshot and read_document call it a listItem while docxToMarkdown renders plain text",
 } as const;
@@ -49,11 +47,7 @@ export const KNOWN_FAILING_OPERATION_RUNS: readonly {
  * Seeded flows (support/fuzz.ts) that reproduce a finding. The default fuzz
  * run skips them and known-issues.test.ts runs them as expected failures.
  */
-export const KNOWN_FAILING_FLOWS: readonly { seed: number; steps: number; finding: Finding }[] = [
-  { seed: 20_260_933, steps: 10, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
-  { seed: 99, steps: 15, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
-  { seed: 101, steps: 15, finding: "SUGGESTED_ACCEPT_ALL_LOSES_INSERTS" },
-];
+export const KNOWN_FAILING_FLOWS: readonly { seed: number; steps: number; finding: Finding }[] = [];
 
 export const expectedFailure = (
   issue: OpenIssue | Finding,

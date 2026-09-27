@@ -41,3 +41,14 @@ for (let run = 0; run < RUNS; run += 1) {
     },
   );
 }
+
+// Flows that once lost accepted suggestions on save (a suggested paragraph
+// deleted again, then every suggestion accepted); kept as fixed seeds.
+for (const [seed, steps] of [
+  [20_260_933, 10],
+  [99, 15],
+  [101, 15],
+] as const) {
+  test(`suggested flow with seed ${seed} (${steps} steps) saves what the reviewer shows`, () =>
+    runFlow(seed, steps));
+}
