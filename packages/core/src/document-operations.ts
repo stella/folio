@@ -19,6 +19,7 @@ import {
   previewFolioAIEditOperationsWithResult,
 } from "./ai-edits/apply";
 import { describeModelError, findIntroducedModelErrors } from "./ai-edits/result-validation";
+import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
 import { getStatedDocumentNumbering } from "./prosemirror/plugins/documentNumbering";
 import type {
   FolioAIBlockParagraphProperties,
@@ -2053,7 +2054,11 @@ export const applyFolioDocumentOperations = ({
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const isAtomic = parsedBatch.atomic === true;
   const beforeDoc = view.state.doc;
-  const numbering = getStatedDocumentNumbering(view.state);
+  // The package's own definitions, before the batch. A run's result can carry
+  // a reference to an instance only its own paragraphs define (a "start new
+  // list" request mints one), so the check completes this against each run's
+  // own doc rather than holding one map for every run.
+  const packageNumbering = getStatedDocumentNumbering(view.state);
 
   const attempt = (
     operations: readonly FolioDocumentOperation[],
@@ -2110,14 +2115,23 @@ export const applyFolioDocumentOperations = ({
     };
   };
 
-  const introducedErrors = (run: BatchAttempt) =>
-    run.doc === null || run.outcome.applied.length === 0
-      ? []
-      : findIntroducedModelErrors(beforeDoc, run.doc, {
-          numbering,
-          createdCommentIds: run.commentIds,
-          ...(author !== undefined && { commentAuthor: author }),
-        });
+  const introducedErrors = (run: BatchAttempt) => {
+    if (run.doc === null || run.outcome.applied.length === 0) {
+      return [];
+    }
+    // `undefined` still means the state cannot say (no numbering plugin);
+    // otherwise complete the package's definitions against this run's own
+    // doc, so an instance a "start new list" request just minted validates.
+    const numbering =
+      packageNumbering === undefined
+        ? undefined
+        : (completeNumberingForDoc(packageNumbering ?? undefined, run.doc) ?? null);
+    return findIntroducedModelErrors(beforeDoc, run.doc, {
+      numbering,
+      createdCommentIds: run.commentIds,
+      ...(author !== undefined && { commentAuthor: author }),
+    });
+  };
 
   /**
    * An attempt on the refusal path, where the applier runs on subsets of the

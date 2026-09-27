@@ -210,7 +210,7 @@ describe("an undefined numbering instance is skipped before anything is applied"
       );
       expect(result.applied).toEqual([expect.objectContaining({ id: "op" })]);
       expect(result.issues).toEqual([]);
-      expect(outline(reviewer)).toContain("%1. 1.3. Inserted clause.");
+      expect(outline(reviewer)).toContain("1. 1.3. Inserted clause.");
       await reviewer.toBuffer();
     },
   );
