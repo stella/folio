@@ -519,17 +519,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
   let loadSequence = 0;
-  let loadBufferCallCount = 0;
-  const loadDiagnosticsEnabled =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).has("__vueLoadDiagnostics");
-  const reportLoadStage = (stage: string, callCount?: number): void => {
-    if (!loadDiagnosticsEnabled) {
-      return;
-    }
-    // oxlint-disable-next-line no-console -- Temporary bounded CI load-stage diagnostics.
-    console.info(`[vue-load-stage] ${stage}${callCount === undefined ? "" : ` #${callCount}`}`);
-  };
   let destroyed = false;
   let initialFontWaitId = 0;
   let initialFontWaitPending = false;
@@ -969,7 +958,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function handleEditorViewReady(view: EditorView): void {
-    reportLoadStage("editor-view-ready");
     editorView.value = view;
     editorState.value = view.state;
     isReady.value = true;
@@ -982,7 +970,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       if (initialFontWaitId !== waitId) {
         return;
       }
-      reportLoadStage("initial-font-wait-resolved");
       initialFontWaitPending = false;
       if (destroyed || loadSequence !== sequence || manager.getView() !== view) {
         return;
@@ -990,7 +977,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       runLayoutPipeline(view.state, { reason: "initial" });
       syncCoordinator.requestRender();
     };
-    reportLoadStage("initial-font-wait-started");
     void waitForInitialLayoutFonts(model, view.state.doc).then(runInitialLayout, runInitialLayout);
 
     // Apply the current editor mode to the mounted suggestion plugin.
@@ -1093,9 +1079,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   function mountView(): void {
     // Fresh boot: request creation once the host is present. The manager gates
     // creation on the host, so this is safe to call before the ref resolves.
-    reportLoadStage("mount-view-ensure-start");
     manager.ensureView();
-    reportLoadStage("mount-view-ensure-finished");
   }
 
   function remountForNewDocument(): void {
@@ -1104,7 +1088,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // identity the hidden-editor manager compares on its next sync. The freshly
     // loaded document has no unsaved edits yet (mirrors React clearing its dirty
     // signals on document reset).
-    reportLoadStage("remount-start");
     loadSequence += 1;
     isDirty.value = false;
     headerFooterSelection.value = null;
@@ -1120,7 +1103,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       // before first interaction, then let mountView create the real view.
       paintFromPrecomputedState();
     }
-    reportLoadStage("remount-finished");
   }
 
   /**
@@ -1191,20 +1173,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // ---- Public loading API -------------------------------------------------
 
   async function loadBuffer(buffer: DocxInput): Promise<void> {
-    const callCount = ++loadBufferCallCount;
-    reportLoadStage("load-buffer-start", callCount);
     parseError.value = null;
     isReady.value = false;
     try {
-      reportLoadStage("parse-docx-start", callCount);
       const doc = await parseDocx(buffer, { password: toValue(password) });
-      reportLoadStage("parse-docx-finished", callCount);
       docModel.value = doc;
-      reportLoadStage("remount-requested", callCount);
       remountForNewDocument();
-      reportLoadStage("load-buffer-finished", callCount);
     } catch (err) {
-      reportLoadStage("parse-docx-failed", callCount);
       const error = err instanceof Error ? err : new Error(String(err));
       parseError.value = error.message;
       onError?.(error);
