@@ -29,7 +29,14 @@ import { resetCanvasContext } from "../layout-engine/measure/measureContainer";
 import { buildFontString } from "../layout-engine/measure/measureHelpers";
 import { LayoutSelectionGate } from "../paged-layout/LayoutSelectionGate";
 import { schema } from "../prosemirror/schema";
-import { HOST_UI_FAMILY, ScriptedFontSet, scriptedDocument } from "./__tests__/scriptedFontSet";
+import {
+  HOST_UI_FAMILY,
+  SCRIPT_TEXT,
+  SCRIPTS,
+  type Script,
+  ScriptedFontSet,
+  scriptedDocument,
+} from "./__tests__/scriptedFontSet";
 import {
   readFontSetSignature,
   waitForInitialLayoutFonts,
@@ -40,18 +47,6 @@ import { LAYOUT_MEASURE, type LayoutRunOptions } from "./layoutRunOptions";
 import { createLayoutSession, type LayoutSession } from "./layoutSession";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
-
-// Synthetic text, one entry per script a bundled subset covers; the Greek and
-// Cyrillic entries reach into the `-ext` subsets too.
-const SCRIPTS = ["english", "czech", "polish", "greek", "cyrillic"] as const;
-type Script = (typeof SCRIPTS)[number];
-const SCRIPT_TEXT = {
-  english: "The Supplier shall deliver the goods within ten business days of the order",
-  czech: "Dodavatel se zavazuje dodat zboží do provozovny kupujícího, přechází ůčinností",
-  polish: "Dostawca zobowiązuje się dostarczyć towar w ciągu dziesięciu dni, łódź",
-  greek: "Ο Προμηθευτής υποχρεούται να παραδώσει τα ἀγαθά εντός δέκα ημερών",
-  cyrillic: "Поставщик обязуется доставить товары в течение десяти дней, Ґрунт ѣ",
-} as const satisfies Record<Script, string>;
 
 // Documents name proprietary faces; folio's stacks resolve them to the bundled
 // substitutes (Calibri → Carlito, Aptos → Lato, the default → Tinos).

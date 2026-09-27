@@ -20,6 +20,18 @@
 import type { LayoutFontSet, LayoutFontSetFace } from "../fontReadiness";
 import { parseFontFamilyList } from "../../utils/fontResolver";
 
+// Synthetic text, one entry per script a bundled subset covers; the Greek and
+// Cyrillic entries reach into the `-ext` subsets too.
+export const SCRIPTS = ["english", "czech", "polish", "greek", "cyrillic"] as const;
+export type Script = (typeof SCRIPTS)[number];
+export const SCRIPT_TEXT = {
+  english: "The Supplier shall deliver the goods within ten business days of the order",
+  czech: "Dodavatel se zavazuje dodat zboží do provozovny kupujícího, přechází ůčinností",
+  polish: "Dostawca zobowiązuje się dostarczyć towar w ciągu dziesięciu dni, łódź",
+  greek: "Ο Προμηθευτής υποχρεούται να παραδώσει τα ἀγαθά εντός δέκα ημερών",
+  cyrillic: "Поставщик обязуется доставить товары в течение десяти дней, Ґрунт ѣ",
+} as const satisfies Record<Script, string>;
+
 type CodePointRange = readonly [number, number];
 
 const LATIN: readonly CodePointRange[] = [
