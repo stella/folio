@@ -30,8 +30,6 @@ export const FINDINGS = {
   // flows they run in. A relation tolerates the frequent ones through
   // `tolerate(<entry>, …)`, so deleting a fixed entry here makes its
   // tolerance fail to compile until it is deleted too.
-  LIVE_STALE_BLOCK_FIELDS:
-    "the live reviewer does not re-resolve what a paragraph's style gives it after an edit: a restyled paragraph keeps its old style's previewRuns, a paragraph inserted after a bold heading previews bold despite its direct bold off, and a paragraph inserted with a numbered heading style has no directIndentation; the saved package reopens with other values",
   LIVE_REPLY_RANGES:
     "a reply added with replyTo has no comment range in the live document, while the saved package anchors it on its parent's range, so toMarkdown(toDocument()) reads otherwise across a save",
   TRACKED_TABLE_AFTER_SPLIT_DELETE:
@@ -85,7 +83,6 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TRACKED_MERGE_INTO_DELETED_BLOCK: /applied a merge into a block the batch deletes/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   TEXT_BOX_RESOLVE_MALFORMED_XML: /malformed markup/u,
-  LIVE_STALE_BLOCK_FIELDS: /previewRuns|directIndentation/u,
   LIVE_REPLY_RANGES: /\[readerStability\] toMarkdown/u,
   TRACKED_TABLE_AFTER_SPLIT_DELETE: /\[directTracked\]/u,
 };

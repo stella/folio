@@ -259,54 +259,40 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     );
   };
 
-  expectedFailure(
-    "LIVE_STALE_BLOCK_FIELDS",
-    "a restyled paragraph previews its new style before a save",
-    /previewRuns/u,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const text = "The Buyer pays each invoice within thirty days.";
-      apply(reviewer, "direct", [
-        {
-          type: "setBlockParagraphProperties",
-          blockId: blockId(reviewer, text),
-          properties: { styleId: "Heading2" },
-        },
-      ]);
-      await assertFieldKept(reviewer, text, "previewRuns");
-    },
-  );
+  test("a restyled paragraph previews its new style before a save", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const text = "The Buyer pays each invoice within thirty days.";
+    apply(reviewer, "direct", [
+      {
+        type: "setBlockParagraphProperties",
+        blockId: blockId(reviewer, text),
+        properties: { styleId: "Heading2" },
+      },
+    ]);
+    await assertFieldKept(reviewer, text, "previewRuns");
+  });
 
-  expectedFailure(
-    "LIVE_STALE_BLOCK_FIELDS",
-    "a paragraph inserted after a bold heading previews its own direct bold off before a save",
-    /previewRuns/u,
-    async () => {
-      const reviewer = await openReviewer(await styleNumberedDocument());
-      apply(reviewer, "direct", [
-        { type: "insertAfterBlock", blockId: blockId(reviewer, "Definitions"), text: "Inserted." },
-      ]);
-      await assertFieldKept(reviewer, "Inserted.", "previewRuns");
-    },
-  );
+  test("a paragraph inserted after a bold heading previews its own direct bold off before a save", async () => {
+    const reviewer = await openReviewer(await styleNumberedDocument());
+    apply(reviewer, "direct", [
+      { type: "insertAfterBlock", blockId: blockId(reviewer, "Definitions"), text: "Inserted." },
+    ]);
+    await assertFieldKept(reviewer, "Inserted.", "previewRuns");
+  });
 
-  expectedFailure(
-    "LIVE_STALE_BLOCK_FIELDS",
-    "a paragraph inserted with a numbered heading style reads its indentation before a save",
-    /directIndentation/u,
-    async () => {
-      const reviewer = await openReviewer(await styleNumberedDocument());
-      apply(reviewer, "direct", [
-        {
-          type: "insertAfterBlock",
-          blockId: blockId(reviewer, "The Buyer pays on delivery."),
-          text: "Inserted.",
-          styleId: "Heading2",
-        },
-      ]);
-      await assertFieldKept(reviewer, "Inserted.", "directIndentation");
-    },
-  );
+  test("a paragraph inserted with a numbered heading style reads its indentation before a save", async () => {
+    const reviewer = await openReviewer(await styleNumberedDocument());
+    apply(reviewer, "direct", [
+      {
+        type: "insertAfterBlock",
+        blockId: blockId(reviewer, "The Buyer pays on delivery."),
+        text: "Inserted.",
+        styleId: "Heading2",
+      },
+    ]);
+    await assertFieldKept(reviewer, "Inserted.", "previewRuns");
+    await assertFieldKept(reviewer, "Inserted.", "directIndentation");
+  });
 
   expectedFailure(
     "LIVE_REPLY_RANGES",

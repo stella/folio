@@ -59,7 +59,9 @@ import {
 import {
   paragraphRunStyleContext,
   paragraphRunStyleContextAt,
+  resolveParagraphBodyRunFormatting,
 } from "../prosemirror/runStyleFormatting";
+import { styleResolvedParagraphFormatting } from "../prosemirror/paragraphFormattingProvenance";
 import {
   applyMarksToRunFormattingRepresentation,
   runFormattingInlineControlNodeName,
@@ -607,6 +609,7 @@ const paragraphPropertiesPatch = ({
   const styleChanged = nextStyleId !== undefined && (attrs.styleId ?? null) !== nextStyleId;
   if (styleChanged) {
     patch["styleId"] = nextStyleId;
+    patch["_resolvedFormatting"] = styleResolvedParagraphFormatting(resolvedFormattingFromStyle);
     patch["alignmentFromStyle"] = resolvedFormattingFromStyle?.alignment;
     if (properties.alignment === undefined) {
       patch["alignment"] = currentDirectAlignment ?? resolvedFormattingFromStyle?.alignment ?? null;
@@ -1009,6 +1012,15 @@ const applyBlockParagraphProperties = ({
   if (patch === null) {
     return { tr, changed: false, revisionId: null, revisionIds: [] };
   }
+  const nextStyleId = properties.styleId === undefined ? attrs.styleId : properties.styleId;
+  if ((attrs.styleId ?? null) !== (nextStyleId ?? null)) {
+    patch["defaultTextFormatting"] =
+      resolveParagraphBodyRunFormatting({
+        styleId: properties.styleId ?? undefined,
+        tableRunFormatting: attrs._tableRunFormatting,
+        styleResolver,
+      }).defaultFormatting ?? null;
+  }
   const changeInfo = revisionInfo?.();
   const change: ParagraphPropertyChangeAttrs | null = changeInfo
     ? {
@@ -1037,12 +1049,61 @@ const applyBlockParagraphProperties = ({
           tr,
         })
       : { tr, revisionIds: [] };
+  const styled = bridgeResult.tr.setNodeMarkup(position, undefined, nextAttrs);
   return {
-    tr: bridgeResult.tr.setNodeMarkup(position, undefined, nextAttrs),
+    tr:
+      (attrs.styleId ?? null) === (nextAttrs.styleId ?? null)
+        ? styled
+        : rebaseParagraphRuns({
+            tr: styled,
+            position,
+            previous: node,
+            styleResolver,
+          }),
     changed: true,
     revisionId: change?.info.id ?? null,
     revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
   };
+};
+
+type RebaseParagraphRunsOptions = {
+  tr: Transaction;
+  position: number;
+  previous: PMNode;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
+};
+
+/** Rebuild rendered marks after the paragraph's style cascade changes. */
+const rebaseParagraphRuns = ({
+  tr,
+  position,
+  previous,
+  styleResolver,
+}: RebaseParagraphRunsOptions): Transaction => {
+  const paragraph = tr.doc.nodeAt(position);
+  if (!paragraph) return tr;
+  const sourceContext = paragraphRunStyleContext(previous, styleResolver);
+  const targetContext = paragraphRunStyleContext(paragraph, styleResolver);
+  const representations = selectRunFormattingCarrierRepresentations({
+    doc: tr.doc,
+    from: position + 1,
+    to: position + paragraph.nodeSize - 1,
+  });
+  for (const representation of representations) {
+    const authoredFormatting = readAuthoredRunFormatting({
+      context: sourceContext,
+      marks: representation.node.marks,
+      styleResolver,
+    });
+    const marks = reconcileRunFormattingMarks({
+      authoredFormatting,
+      context: targetContext,
+      node: representation.node,
+      styleResolver,
+    });
+    applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  }
+  return tr;
 };
 
 type ApplyReplaceBlockStyleIdResult = {
@@ -1088,6 +1149,14 @@ const applyReplaceBlockStyleId = ({
   if (patch === null) {
     return { tr, revisionId: null, revisionIds: [] };
   }
+  if ((attrs.styleId ?? null) !== item.operation.styleId) {
+    patch["defaultTextFormatting"] =
+      resolveParagraphBodyRunFormatting({
+        styleId: item.operation.styleId ?? undefined,
+        tableRunFormatting: attrs._tableRunFormatting,
+        styleResolver,
+      }).defaultFormatting ?? null;
+  }
 
   const existing = attrs._propertyChanges;
   const changeInfo = revisionInfo?.();
@@ -1115,8 +1184,17 @@ const applyReplaceBlockStyleId = ({
           tr,
         })
       : { tr, revisionIds: [] };
+  const styled = bridgeResult.tr.setNodeMarkup(blockPosition, undefined, nextAttrs);
   return {
-    tr: bridgeResult.tr.setNodeMarkup(blockPosition, undefined, nextAttrs),
+    tr:
+      (attrs.styleId ?? null) === item.operation.styleId
+        ? styled
+        : rebaseParagraphRuns({
+            tr: styled,
+            position: blockPosition,
+            previous: block,
+            styleResolver,
+          }),
     revisionId: change?.info.id ?? null,
     revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
   };
@@ -2120,6 +2198,7 @@ type BuildInsertedParagraphsOptions = {
   revisionSeed: number;
   isPairedMove: (moveId: string | undefined) => moveId is string;
   numbering: NumberingMap | null;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
 };
 
 type BuiltInsertedParagraphs = {
@@ -2862,6 +2941,7 @@ const buildInsertedParagraphs = ({
   revisionSeed,
   isPairedMove,
   numbering,
+  styleResolver,
 }: BuildInsertedParagraphsOptions): BuiltInsertedParagraphs => {
   const operation = item.operation;
   if (operation.type !== "insertAfterBlock" && operation.type !== "insertBeforeBlock") {
@@ -2983,6 +3063,13 @@ const buildInsertedParagraphs = ({
     }
     if (formatsParagraph && operation.styleId !== undefined) {
       attrs["styleId"] = operation.styleId;
+      attrs["_resolvedFormatting"] = styleResolvedParagraphFormatting(formattingFromStyle);
+      attrs["defaultTextFormatting"] =
+        resolveParagraphBodyRunFormatting({
+          styleId: operation.styleId ?? undefined,
+          tableRunFormatting: expectParagraphAttrs(item.blockNode)._tableRunFormatting,
+          styleResolver,
+        }).defaultFormatting ?? null;
       if (operation.inheritFormatting !== false && operation.styleId !== null) {
         Object.assign(
           attrs,
@@ -3097,6 +3184,36 @@ const buildInsertedParagraphs = ({
           ? originalFormatting
           : null;
     }
+    if (
+      formatsParagraph &&
+      operation.styleId !== undefined &&
+      formattingFromStyle?.numPr?.kind === "reference" &&
+      operation.numbering === undefined &&
+      operation.listLevel === undefined
+    ) {
+      const { numId, ilvl = 0 } = formattingFromStyle.numPr;
+      const levelIndentation = numbering?.getLevel(numId, ilvl)?.pPr;
+      if (levelIndentation && operation.indentation === undefined) {
+        const direct = attrs["_originalFormatting"];
+        const directIndentLeft =
+          typeof direct === "object" && direct !== null && "indentLeft" in direct
+            ? direct.indentLeft
+            : undefined;
+        const directIndentFirstLine =
+          typeof direct === "object" && direct !== null && "indentFirstLine" in direct
+            ? direct.indentFirstLine
+            : undefined;
+        if (directIndentLeft === undefined && formattingFromStyle.indentLeft === undefined) {
+          attrs["indentLeft"] = levelIndentation.indentLeft ?? attrs["indentLeft"];
+        }
+        if (
+          directIndentFirstLine === undefined &&
+          formattingFromStyle.indentFirstLine === undefined
+        ) {
+          attrs["indentFirstLine"] = levelIndentation.indentFirstLine ?? attrs["indentFirstLine"];
+        }
+      }
+    }
     if (isSuggested && suggestionId !== null && paragraphRevisionId !== null) {
       attrs["_suggestedInsert"] = {
         suggestionId,
@@ -3106,7 +3223,31 @@ const buildInsertedParagraphs = ({
         ...(initials ? { initials } : {}),
       };
     }
-    nodes.push(item.blockNode.type.create(attrs, content));
+    const paragraph = item.blockNode.type.create(attrs, content);
+    const sourceParagraph =
+      operation.inheritFormatting === false ? item.blockNode.type.create({}) : item.blockNode;
+    const sourceContext = paragraphRunStyleContext(sourceParagraph, styleResolver);
+    const targetContext = paragraphRunStyleContext(paragraph, styleResolver);
+    const reconciled: PMNode[] = [];
+    paragraph.forEach((child) => {
+      if (!child.isInline) {
+        reconciled.push(child);
+        return;
+      }
+      const authoredFormatting = readAuthoredRunFormatting({
+        context: sourceContext,
+        marks: child.marks,
+        styleResolver,
+      });
+      const reconciledMarks = reconcileRunFormattingMarks({
+        authoredFormatting,
+        context: targetContext,
+        node: child,
+        styleResolver,
+      });
+      reconciled.push(child.mark(reconciledMarks));
+    });
+    nodes.push(paragraph.copy(Fragment.fromArray(reconciled)));
   }
 
   if (producesTrackedChanges && !isSuggested) {
@@ -3565,6 +3706,7 @@ const applyFolioAIEditOperationsInternal = ({
             revisionSeed,
             isPairedMove,
             numbering,
+            styleResolver,
           });
           revisionSeed = built.nextRevisionId;
           claimSharedRevisionIds(revisionSeed);
@@ -3994,6 +4136,7 @@ const applyFolioAIEditOperationsInternal = ({
           revisionSeed: operationRevisionSeed,
           isPairedMove,
           numbering,
+          styleResolver,
         });
         operationRevisionSeed = built.nextRevisionId;
         if (built.revisionIds.length > 0) {

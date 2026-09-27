@@ -293,12 +293,6 @@ const tolerantDifferences = <T>(a: T, b: T, tolerances: readonly Tolerance<T>[])
   return found;
 };
 
-const STALE_LIVE_FIELDS = tolerate<unknown>(
-  "LIVE_STALE_BLOCK_FIELDS",
-  "previewRuns and directIndentation left out of getContent and the snapshot",
-  (value) => withoutKeys(value, ["previewRuns", "directIndentation"]),
-);
-
 /** A reply's range is written only on save, which shifts the editor positions after it. */
 const REPLY_POSITIONS = tolerate<unknown>(
   "LIVE_REPLY_RANGES",
@@ -949,8 +943,8 @@ export const startRelations = async ({
       getComments: target.getComments() as unknown,
     });
     const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
-      getContent: [STALE_LIVE_FIELDS],
-      snapshot: [STALE_LIVE_FIELDS, REPLY_POSITIONS],
+      getContent: [],
+      snapshot: [REPLY_POSITIONS],
       toMarkdown: [REPLY_COMMENT_TAGS],
       getChanges: [],
       getComments: [],
