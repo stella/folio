@@ -54,6 +54,7 @@ import {
 import { clearFormatting } from "../prosemirror/commands/formatting";
 import { insertPageBreak } from "../prosemirror/commands/pageBreak";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
+import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import type { Comment, Document } from "../types/document";
@@ -273,6 +274,39 @@ const PASTED_PARAGRAPHS = (schemaDoc: PMNode) => {
   );
 };
 
+const PASTED_TABLE = (schemaDoc: PMNode) => {
+  const { schema } = schemaDoc.type;
+  const cell = (text: string) =>
+    schema.node("tableCell", null, [schema.node("paragraph", null, schema.text(text))]);
+  const row = (left: string, right: string) =>
+    schema.node("tableRow", null, [cell(left), cell(right)]);
+  return new Slice(
+    Fragment.from(
+      schema.node("table", null, [
+        row("First cell", "Second cell"),
+        row("Third cell", "Fourth cell"),
+      ]),
+    ),
+    0,
+    0,
+  );
+};
+
+const PASTED_LIST = (schemaDoc: PMNode) => {
+  const { schema } = schemaDoc.type;
+  const item = (text: string, level: number) =>
+    schema.node(
+      "paragraph",
+      { _pastedHtmlList: { group: 1, kind: "bullet", level } },
+      schema.text(text),
+    );
+  return new Slice(
+    Fragment.from([item("First bullet", 0), item("Second bullet", 0), item("Nested bullet", 1)]),
+    1,
+    1,
+  );
+};
+
 const keyOperation = (
   binding: string,
   placements: readonly SelectionPlacement[] = CARET,
@@ -363,10 +397,34 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
   typing("* ", "star-marker"),
   typing("1. ", "number-marker"),
   {
+    id: "paste:plain",
+    placements: ["caret-middle", "word"],
+    run: ({ view }) => {
+      view.paste(new Slice(Fragment.from(view.state.schema.text("Inline paste")), 0, 0));
+      return undefined;
+    },
+  },
+  {
     id: "paste:paragraphs",
     placements: ["caret-middle", "word"],
     run: ({ view }) => {
       view.paste(PASTED_PARAGRAPHS(view.state.doc));
+      return undefined;
+    },
+  },
+  {
+    id: "paste:table",
+    placements: ["caret-middle"],
+    run: ({ view }) => {
+      view.paste(PASTED_TABLE(view.state.doc));
+      return undefined;
+    },
+  },
+  {
+    id: "paste:list",
+    placements: ["caret-middle"],
+    run: ({ view }) => {
+      view.paste(PASTED_LIST(view.state.doc));
       return undefined;
     },
   },
@@ -385,6 +443,19 @@ export const EXTRA_OPERATIONS: readonly ConformanceOperation[] = [
       }
       view.paste(view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size));
       return undefined;
+    },
+  },
+  {
+    id: "host:cut",
+    placements: ["word", "paragraph", "cross-paragraph"],
+    run: ({ view }) => {
+      if (view.state.selection.empty) {
+        return false;
+      }
+      if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
+        view.dispatch(view.state.tr.deleteSelection());
+      }
+      return true;
     },
   },
   {
@@ -678,6 +749,12 @@ const observe = (state: EditorState, base: Document): Observation => ({
   markdown: modelMarkdown(fromProseDoc(state.doc, base)),
 });
 
+const observeReopened = async (state: EditorState, base: Document): Promise<Observation> => {
+  const { bytes } = await saveHarnessState(state, base);
+  const reopened = await readBack(bytes);
+  return { summary: reopened.summary, markdown: reopened.markdown };
+};
+
 const compareObservations = (expected: Observation, actual: Observation): string | null =>
   compareSummaries(expected.summary, actual.summary) ??
   compareText(expected.markdown, actual.markdown);
@@ -841,6 +918,42 @@ export const runConformanceCase = async (
             mode: "suggesting",
             detail: acceptDifference,
           });
+        }
+      }
+      if (operation.suggesting !== "direct") {
+        const reopenedOriginal = await observeReopened(
+          resolveAllChanges(suggesting.before, "reject"),
+          suggesting.base,
+        );
+        const reopenedRejected = await observeReopened(
+          resolveAllChanges(suggesting.after, "reject"),
+          suggesting.base,
+        );
+        const reopenedRejectDifference = compareObservations(reopenedOriginal, reopenedRejected);
+        if (reopenedRejectDifference && !rejectDifference) {
+          violations.push({
+            kind: "reject-mismatch",
+            mode: "suggesting",
+            detail: `after reopen: ${reopenedRejectDifference}`,
+          });
+        }
+        if (editing.status === "changed") {
+          const reopenedEditing = await observeReopened(
+            resolveAllChanges(editing.after, "accept"),
+            editing.base,
+          );
+          const reopenedAccepted = await observeReopened(
+            resolveAllChanges(suggesting.after, "accept"),
+            suggesting.base,
+          );
+          const reopenedAcceptDifference = compareObservations(reopenedEditing, reopenedAccepted);
+          if (reopenedAcceptDifference) {
+            violations.push({
+              kind: "accept-mismatch",
+              mode: "suggesting",
+              detail: `after reopen: ${reopenedAcceptDifference}`,
+            });
+          }
         }
       }
     } catch (error) {

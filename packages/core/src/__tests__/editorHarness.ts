@@ -15,6 +15,7 @@
 import type { Node as PMNode, Slice } from "prosemirror-model";
 import { AllSelection, EditorState as PMEditorState, TextSelection } from "prosemirror-state";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAIEditSnapshotWithStyleResolver } from "../ai-edits/snapshot";
@@ -353,6 +354,22 @@ export const placeSelection = (
         return null;
       }
       const nextMiddle = next.pos + 1 + Math.floor(next.node.content.size / 2);
+      const cellAt = (pos: number): number | null => {
+        const resolved = state.doc.resolve(pos);
+        for (let depth = resolved.depth; depth > 0; depth--) {
+          if (resolved.node(depth).type.spec["tableRole"] === "cell") {
+            return resolved.before(depth);
+          }
+        }
+        return null;
+      };
+      const firstCell = cellAt(middle);
+      const nextCell = cellAt(nextMiddle);
+      if (firstCell !== null && nextCell !== null && firstCell !== nextCell) {
+        return state.apply(
+          state.tr.setSelection(CellSelection.create(state.doc, firstCell, nextCell)),
+        );
+      }
       return create(middle, nextMiddle);
     }
     case "document": {

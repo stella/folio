@@ -191,10 +191,13 @@ describe("SuggestionMode IME composition", () => {
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 7, 12)));
 
     domEvents.compositionstart(view);
-    // compositionstart struck the selection and collapsed the caret after it;
-    // PM then commits the composed text at the caret.
-    const caret = view.state.selection.from;
-    view.dispatch(view.state.tr.insertText("世界", caret, caret));
+    // The editor must leave the composing DOM alone. Chromium can emit another
+    // compositionstart during the same IME update; the original range remains
+    // the replacement source until compositionend.
+    expect(view.state.selection.from).toBe(7);
+    expect(view.state.selection.to).toBe(12);
+    domEvents.compositionstart(view);
+    view.dispatch(view.state.tr.insertText("世界", 7, 12));
     domEvents.compositionend(view);
     await Promise.resolve();
     await Promise.resolve();

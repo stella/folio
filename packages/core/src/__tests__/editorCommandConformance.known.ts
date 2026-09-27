@@ -72,11 +72,28 @@ const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
 ];
 
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
+  {
+    reason:
+      "Pasting a table into the merged table shape throws in prosemirror-tables before either editor mode can apply the input",
+    operations: ["paste:table"],
+    shapes: ["tables"],
+    placements: ["caret-middle"],
+    kinds: ["threw"],
+  },
+  {
+    reason:
+      "Clearing a selected table cell leaves an empty editor paragraph whose inherited spacing appears only after reopen",
+    operations: ["host:cut"],
+    shapes: ["tables"],
+    placements: ["cross-paragraph"],
+    modes: ["editing"],
+    kinds: ["readback-painted"],
+  },
   // ---------------------------------------------------------------- lists --
   {
     reason:
       "A paragraph a list command numbers states no indentation, while the reopened paragraph reads the level's indentation as its own w:ind",
-    operations: [...LIST_TOGGLES, ...LIST_MARKERS, ...LIST_NUMBERING],
+    operations: [...LIST_TOGGLES, ...LIST_MARKERS, ...LIST_NUMBERING, "paste:list"],
     kinds: ["readback-blocks", "readback-painted"],
   },
   {
@@ -94,15 +111,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
-  },
-  {
-    reason:
-      "Enter at the end of a list item and Backspace at its start take the suggestion-mode paragraph path, not the list path, so suggesting and editing mode produce different lists",
-    operations: ["key:Enter", "key:Backspace"],
-    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
-    placements: ["caret-end", "caret-start"],
-    modes: ["suggesting"],
-    kinds: ["accept-mismatch"],
   },
   {
     reason:
@@ -227,6 +235,8 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     operations: [
       "paste:paragraphs",
       "paste:copied-blocks",
+      "paste:table",
+      "paste:list",
       "key:Delete",
       "command:deleteColumn",
       "command:addRowAbove",

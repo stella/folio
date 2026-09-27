@@ -22,6 +22,7 @@ import {
   REGISTRY_COMMAND_OPERATIONS,
   runConformanceCase,
 } from "./editorCommandConformance";
+import { SUGGESTION_INPUT_DRIVERS, SUGGESTION_INPUT_KINDS } from "./suggestionInputKinds";
 import type { Violation } from "./editorCommandConformance";
 import { gapApplies, gapCovers, KNOWN_CONFORMANCE_GAPS } from "./editorCommandConformance.known";
 import type { ConformanceCaseKey, KnownConformanceGap } from "./editorCommandConformance.known";
@@ -54,6 +55,7 @@ const gapUsage = new Map<KnownConformanceGap, { applied: number; covered: number
 );
 
 let executedCases = 0;
+const exercisedInputKinds = new Set<string>();
 
 const describeViolation = (violation: Violation): string =>
   `[${violation.mode}] ${violation.kind}: ${violation.detail}`;
@@ -90,6 +92,19 @@ describe("editor command conformance: coverage", () => {
     const ids = CONFORMANCE_OPERATIONS.map((operation) => operation.id);
     expect(ids.filter((id, index) => ids.indexOf(id) !== index)).toEqual([]);
   });
+
+  test("every declared suggestion input has a driver, and every headless driver has an operation", () => {
+    expect(Object.keys(SUGGESTION_INPUT_DRIVERS).toSorted()).toEqual(
+      [...SUGGESTION_INPUT_KINDS].toSorted(),
+    );
+    const operationIds = new Set(CONFORMANCE_OPERATIONS.map(({ id }) => id));
+    for (const driver of Object.values(SUGGESTION_INPUT_DRIVERS)) {
+      if (driver.type !== "conformance") continue;
+      for (const id of driver.operations) {
+        expect(operationIds.has(id)).toBe(true);
+      }
+    }
+  });
 });
 
 describe("editor command conformance", () => {
@@ -111,6 +126,12 @@ describe("editor command conformance", () => {
         return;
       }
       executedCases += EDITOR_MODES.length;
+      for (const kind of SUGGESTION_INPUT_KINDS) {
+        const driver = SUGGESTION_INPUT_DRIVERS[kind];
+        if (driver.type === "conformance" && driver.operations.some((id) => id === key.operation)) {
+          exercisedInputKinds.add(kind);
+        }
+      }
 
       for (const gap of KNOWN_CONFORMANCE_GAPS) {
         if (gapApplies(gap, key)) {
@@ -152,6 +173,14 @@ describe("editor command conformance", () => {
   });
 
   afterAll(() => {
+    const declaredInThisRun = SUGGESTION_INPUT_KINDS.filter((kind) => {
+      const driver = SUGGESTION_INPUT_DRIVERS[kind];
+      return (
+        driver.type === "conformance" &&
+        CASES.some(({ operation }) => driver.operations.some((id) => id === operation))
+      );
+    });
+    expect([...exercisedInputKinds].toSorted()).toEqual([...declaredInThisRun].toSorted());
     // One line for the CI log: how much of the matrix ran.
     console.info(
       `editor command conformance: ${executedCases} cases (${CONFORMANCE_OPERATIONS.length} operations × ${DOCUMENT_SHAPES.length} shapes × ${EDITOR_MODES.length} modes, ${FULL_TIER ? "full" : "default"} tier)`,
