@@ -443,6 +443,20 @@ const LIST_EDITS: Record<string, ListEdit> = {
         ]
       : null;
   },
+  // Into or out of a style that numbers and outlines its paragraphs.
+  restyle: (blocks, random) => {
+    const target = random.pick(blocks);
+    return target
+      ? [
+          {
+            id: "e",
+            type: "setBlockParagraphProperties",
+            blockId: target.id,
+            properties: { styleId: random.pick(["Heading2", "Heading3", null]) ?? null },
+          },
+        ]
+      : null;
+  },
   insertIntoList: (blocks, random, step) => {
     const anchor = random.pick(blocks);
     const member = random.pick(listed(blocks))?.listReference;
