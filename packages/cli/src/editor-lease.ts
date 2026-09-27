@@ -60,6 +60,7 @@ import {
   readLease,
   type AcquiredLease,
   type LockHolder,
+  type PublicLockHolder,
 } from "./lock";
 import { readSidecarFile, writeNewSidecarFile } from "./sidecar";
 
@@ -201,9 +202,9 @@ export type FlushOutcome =
   /** The lease was free, stale, or held by a holder that does not flush; no one was asked. */
   | { type: "notAsked" }
   /** The holder released within the wait; `versionBefore` is the file's version when asked. */
-  | { type: "flushed"; holder: LockHolder; versionBefore: string | null }
+  | { type: "flushed"; holder: PublicLockHolder; versionBefore: string | null }
   /** The holder never released; the lease was taken by the ordinary rules (stale, or `force`). */
-  | { type: "timedOut"; holder: LockHolder };
+  | { type: "timedOut"; holder: PublicLockHolder };
 
 export type LeaseForWrite = { lease: AcquiredLease; flush: FlushOutcome };
 
@@ -271,7 +272,7 @@ export const acquireLeaseForWrite = async ({
       if (attempt.isOk()) {
         return Result.ok({
           lease: attempt.value,
-          flush: { type: "flushed", holder, versionBefore },
+          flush: { type: "flushed", holder: publicLockHolder(holder), versionBefore },
         });
       }
       if (attempt.error.code !== FOLIO_CLI_ERROR_CODES.locked) return Result.err(attempt.error);
@@ -286,7 +287,12 @@ export const acquireLeaseForWrite = async ({
       }
     }
     const last = await take(force);
-    if (last.isOk()) return Result.ok({ lease: last.value, flush: { type: "timedOut", holder } });
+    if (last.isOk()) {
+      return Result.ok({
+        lease: last.value,
+        flush: { type: "timedOut", holder: publicLockHolder(holder) },
+      });
+    }
     if (last.error.code !== FOLIO_CLI_ERROR_CODES.locked) return Result.err(last.error);
     return Result.err(
       cliError({
