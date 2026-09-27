@@ -446,18 +446,17 @@ const batchAgainstOneAtATime = async (
     ),
   );
   // Tracked, a merge into a block the batch deletes joins across that block's
-  // deleted mark as well, into the block after it: that is what the marks
-  // say. Applied directly, the pair is refused.
+  // deleted mark as well, into the block after it — and across every deleted
+  // block that follows, to the first one the batch keeps: that is what the
+  // marks say. Applied directly, the pair is refused.
+  const deletes = (block: number) =>
+    applied.some(({ operation }) => operation.kind === "deleteBlock" && operation.block === block);
   for (const { operation } of applied) {
-    const joinsAcross =
-      mode !== "direct" &&
-      operation.kind === "mergeBlockWithNext" &&
-      applied.some(
-        ({ operation: other }) =>
-          other.kind === "deleteBlock" && other.block === operation.block + 1,
-      );
-    if (joinsAcross) {
-      named.add(operation.block + 2);
+    if (mode === "direct" || operation.kind !== "mergeBlockWithNext") {
+      continue;
+    }
+    for (let joined = operation.block + 1; deletes(joined); joined++) {
+      named.add(joined + 1);
     }
   }
   if (mode !== "direct") {
@@ -588,6 +587,17 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
         message: 'operation "delete", earlier in this batch, already claims its target.',
       },
     ]);
+  });
+});
+
+describe("a tracked merge into a run of blocks the batch deletes", () => {
+  test("joins across every deleted mark, as one at a time would", async () => {
+    const generated: GeneratedOperation[] = [
+      { kind: "deleteBlock", block: 1 },
+      { kind: "mergeBlockWithNext", block: 0 },
+      { kind: "deleteBlock", block: 2 },
+    ];
+    expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
   });
 });
 
