@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
 
+import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
 import { withFakeTextMeasure } from "../../packages/core/src/layout-engine/measure/__tests__/fakeTextMeasure";
@@ -11,6 +12,7 @@ import {
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
   browserInputTraceArbitrary,
+  browserSuggestionActionKinds,
   parseBrowserInputTraceConfig,
   type BrowserInputAction,
   type BrowserInputTrace,
@@ -268,6 +270,10 @@ const config = parseBrowserInputTraceConfig(
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
 );
 test.setTimeout(600_000);
+
+test("browser generator covers every declared suggestion input kind", () => {
+  expect(new Set(browserSuggestionActionKinds)).toEqual(new Set(SUGGESTION_INPUT_KINDS));
+});
 
 for (const seed of config.seeds) {
   test(`seed ${seed}: browser input preserves readers, fresh render, and suggesting equivalence`, async ({

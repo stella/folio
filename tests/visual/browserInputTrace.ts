@@ -93,6 +93,8 @@ const suggestionActionArbitraries = {
   dragCellDelete: fc.constant({ kind: "dragCellDelete" } as const),
 } satisfies Record<(typeof SUGGESTION_INPUT_KINDS)[number], fc.Arbitrary<BrowserInputAction>>;
 
+export const browserSuggestionActionKinds = Object.keys(suggestionActionArbitraries);
+
 const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[] = [
   ...SUGGESTION_INPUT_KINDS.filter((kind) => kind !== "dragCellDelete").map(
     (kind) => suggestionActionArbitraries[kind],
