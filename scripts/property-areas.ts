@@ -180,19 +180,25 @@ if (import.meta.main) {
   for (const entry of selected) {
     byPackage.set(entry.packageDir, [...(byPackage.get(entry.packageDir) ?? []), entry]);
   }
-  let failed = false;
-  for (const [packageDir, files] of byPackage) {
-    const relative = files.map(({ file }) => path.relative(packageDir, file));
-    const started = performance.now();
-    const run = await $`bun test ${relative}`
-      .cwd(path.join(REPO_ROOT, packageDir))
-      .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })
-      .nothrow();
-    const seconds = ((performance.now() - started) / 1000).toFixed(1);
-    console.log(
-      `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
-    );
-    failed ||= run.exitCode !== 0;
-  }
-  process.exit(failed ? 1 : 0);
+  // Packages run side by side (at factor 10 docx-core's operation properties
+  // alone take as long as all of core's); each one's output is printed whole
+  // when it finishes, so a log still reads one package, one file at a time.
+  const exitCodes = await Promise.all(
+    [...byPackage].map(async ([packageDir, files]) => {
+      const relative = files.map(({ file }) => path.relative(packageDir, file));
+      const started = performance.now();
+      const run = await $`bun test ${relative} 2>&1`
+        .cwd(path.join(REPO_ROOT, packageDir))
+        .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })
+        .quiet()
+        .nothrow();
+      const seconds = ((performance.now() - started) / 1000).toFixed(1);
+      process.stdout.write(run.stdout);
+      console.log(
+        `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
+      );
+      return run.exitCode;
+    }),
+  );
+  process.exit(exitCodes.every((code) => code === 0) ? 0 : 1);
 }
