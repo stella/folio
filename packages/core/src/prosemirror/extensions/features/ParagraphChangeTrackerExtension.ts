@@ -720,6 +720,9 @@ const sectionEditTransaction = (
   }
   const base = paragraphChangeTrackerKey.getState(oldState);
   if (!base) return null;
+  // With no existing section break, this edit cannot remove one. The regular
+  // state update still records any section break the edit added.
+  if (base.sectionRecords.size === 0) return null;
 
   const edits = sectionMarkEditsOf(transactions, newState.doc);
   const tr = newState.tr;
