@@ -62,7 +62,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
   activeId,
   onJump,
   surface,
-  expanded = false,
+  expanded,
   onExpand,
   onClose,
 }) => {
@@ -139,7 +139,7 @@ export const DocumentOutline: React.FC<DocumentOutlineProps> = ({
         style={{ width }}
       >
         <button
-          aria-expanded={expanded}
+          aria-expanded={expanded ?? false}
           aria-label={outlineLabel}
           className="folio-outline-icon-button"
           data-testid="folio-outline-expand"

@@ -42,7 +42,9 @@ export const useDrawerFocus = (
   initial: DrawerInitialFocus = "item",
 ) => {
   const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
   const active = onClose !== null;
 
   useEffect(() => {
