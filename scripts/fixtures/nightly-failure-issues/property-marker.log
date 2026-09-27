@@ -1,0 +1,70 @@
+bun test v1.4.2 (744846f84)
+
+::group::src/ai-edits/batchOverlap.test.ts:
+PROPERTY_FAILURE {"file":"packages/core/src/ai-edits/batchOverlap.test.ts","line":605,"test":"refuses each conflict and applies the rest as one at a time would","key":"packages/core/src/ai-edits/batchOverlap.test.ts::refuses each conflict and applies the rest as one at a time would","seed":-440111207,"path":"136:9:8:8","numRunsFactor":1,"pinned":true,"replay":"cd packages/core && PROPERTY_TEST_SEED=-440111207 PROPERTY_TEST_PATH='136:9:8:8' bun test src/ai-edits/batchOverlap.test.ts -t 'refuses each conflict and applies the rest as one at a time would'","counterexample":"[[{\"kind\":\"deleteBlock\",\"block\":3},{\"kind\":\"insertAfterBlock\",\"block\":3},{\"kind\":\"splitBlock\",\"block\":0,\"before\":1},{\"kind\":\"setBlockParagraphProperties\",\"block\":3}],\"tracked-changes\"]","error":"expect(received).toEqual(expected)\n\n- []\n+ [\n+   \"tracked-changes [{\"kind\":\"deleteBlock\",\"block\":3},{\"kind\":\"insertAfterBlock\",\"block\":3},{\"kind\":\"splitBlock\",\"block\":0,\"before\":1},{\"kind\":\"setBlockParagraphProperties\",\"block\":3}]: op3 no longer resolves one at a time\",\n+ ]\n\n- Expected  - 1\n+ Received  + 3\n"}
+357 |           counterexample: truncate(fc.stringify(details.counterexample), MAX_REPORTED_COUNTEREXAMPLE),
+358 |           error: truncate(errorText(details.errorInstance), 1_000),
+359 |         })}`,
+360 |       );
+361 |     }
+362 |     throw new Error(lines.join("\n"), { cause: details.errorInstance });
+                    ^
+error: Property failed after 1 tests
+{ seed: -440111207, path: "136:9:8:8", endOnFailure: true }
+Counterexample: [[{"kind":"deleteBlock","block":3},{"kind":"insertAfterBlock","block":3},{"kind":"splitBlock","block":0,"before":1},{"kind":"setBlockParagraphProperties","block":3}],"tracked-changes"]
+Shrunk 0 time(s)
+
+Encountered failures were:
+- [[{"kind":"deleteBlock","block":3},{"kind":"insertAfterBlock","block":3},{"kind":"splitBlock","block":0,"before":1},{"kind":"setBlockParagraphProperties","block":3}],"tracked-changes"]
+
+Pinned regression seed -440111207 from test/property-seeds.json failed again (#1128: formatting a last paragraph the batch deletes and inserts after).
+Replay: cd packages/core && PROPERTY_TEST_SEED=-440111207 PROPERTY_TEST_PATH='136:9:8:8' bun test src/ai-edits/batchOverlap.test.ts -t 'refuses each conflict and applies the rest as one at a time would'
+      at <anonymous> (/home/runner/work/folio/folio/test/property-testing.ts:362:15)
+      at asyncReportRunDetails (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:2495:70)
+
+605 |     await assertProperty(
+606 |       fc.asyncProperty(
+607 |         fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
+608 |         fc.constantFrom(...MODES),
+609 |         async (generated, mode) => {
+610 |           expect(await batchAgainstOneAtATime(generated, mode)).toEqual([]);
+                                                                      ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "tracked-changes [{"kind":"deleteBlock","block":3},{"kind":"insertAfterBlock","block":3},{"kind":"splitBlock","block":0,"before":1},{"kind":"setBlockParagraphProperties","block":3}]: op3 no longer resolves one at a time",
++ ]
+
+- Expected  - 1
++ Received  + 3
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/ai-edits/batchOverlap.test.ts:610:65)
+      at async run (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:1217:30)
+      at async asyncRunIt (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:2516:30)
+(fail) a random batch with overlapping, nested and duplicate targets > refuses each conflict and applies the rest as one at a time would [3246.97ms]
+
+::endgroup::
+
+::group::src/docx/xmlSerialize.property.test.ts:
+(pass) element serialization > matches the previous serializer [812.40ms]
+142 |   test("escapes attribute values", () => {
+143 |     expect(elementToXml(sample)).toBe(expected);
+                                        ^
+error: expect(received).toBe(expected)
+
+Expected: "<w:t a=\"&amp;\"/>"
+Received: "<w:t a=\"&\"/>"
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/docx/xmlSerialize.property.test.ts:143:40)
+(fail) element serialization > escapes attribute values [1.20ms]
+
+::endgroup::
+
+2 tests failed:
+(fail) a random batch with overlapping, nested and duplicate targets > refuses each conflict and applies the rest as one at a time would [3246.97ms]
+(fail) element serialization > escapes attribute values [1.20ms]
+
+ 12 pass
+ 2 fail
+Ran 14 tests across 2 files. [9.10s]

@@ -37,16 +37,30 @@ jobs:
       - run: bun install --frozen-lockfile
 
       # Run only the property tests, in isolation, with a larger per-test budget
-      # than PR CI affords. Each package's test:property selects every test file
-      # that uses fc.assert (by content, so a file need not be named
-      # *.property.test.ts to be covered). `propertyConfig` from
-      # test/property-testing.ts reads PROPERTY_TEST_NUM_RUNS_FACTOR to scale
-      # every property's numRuns; verbose reporting is on under CI so a failing
-      # run logs the full list of shrunk values plus the replay seed.
+      # than PR CI affords. `test:property` (scripts/property-areas.ts --all)
+      # runs every test file that drives a property, in every package.
+      # `propertyConfig` from test/property-testing.ts reads
+      # PROPERTY_TEST_NUM_RUNS_FACTOR to scale every property's numRuns, and
+      # seeds each property from the commit and PROPERTY_TEST_SEED_SALT (the run
+      # id, so an unchanged main still searches new seeds each night while a
+      # rerun of this run replays it). A failure logs its replay line and a
+      # PROPERTY_FAILURE line the report job below turns into an issue.
       - name: Property test suite
-        run: bun run test:property
+        run: |
+          set -o pipefail
+          bun run test:property 2>&1 | tee property-test.log
         env:
           PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '10' }}
+          PROPERTY_TEST_SEED_SALT: ${{ github.run_id }}
+
+      - name: Keep the log for the failure report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: property-test-log
+          path: property-test.log
+          retention-days: 14
+          if-no-files-found: ignore
 
   conformance-full:
     name: Editor-command conformance (full tier)
@@ -71,5 +85,86 @@ jobs:
       # to the full tier only reproduce here, so this run is also what fails
       # when one of them is fixed and its entry has to go.
       - name: Every operation at every placement
-        run: bun run test:conformance:full
         working-directory: packages/core
+        run: |
+          set -o pipefail
+          bun run test:conformance:full 2>&1 | tee ../../conformance-full.log
+
+      - name: Keep the log for the failure report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-full-log
+          path: conformance-full.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # A red nightly nobody reads is a failure nobody fixes: open an issue per
+  # failing test (or comment on the open one), with the replay line and, for a
+  # property, the test/property-seeds.json entry that pins it once fixed.
+  # Separate jobs so the test runs never hold a write token. Main only: a
+  # dispatch on a branch reports in its run, not in the issue tracker.
+  report-property:
+    name: Report property failures
+    needs: property-test
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        continue-on-error: true
+        with:
+          name: property-test-log
+
+      - name: Open or update the failure issues
+        run: >-
+          bun scripts/nightly-failure-issues.ts --kind property --log property-test.log
+          --run-url "${RUN_URL}" --sha "${GITHUB_SHA}" --factor "${FACTOR}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FACTOR: ${{ github.event.inputs.factor || '10' }}
+
+  report-conformance:
+    name: Report conformance failures
+    needs: conformance-full
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        continue-on-error: true
+        with:
+          name: conformance-full-log
+
+      - name: Open or update the failure issues
+        run: >-
+          bun scripts/nightly-failure-issues.ts --kind conformance --log conformance-full.log
+          --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

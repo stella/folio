@@ -1,0 +1,26 @@
+bun test v1.4.2 (744846f84)
+
+::group::src/__tests__/editorCommandConformance.test.ts:
+(pass) editor command conformance: coverage > every registry command is driven or excluded with a reason [2.10ms]
+(pass) editor command conformance > paragraphs › toggleBold @ collapsed-start [41.20ms]
+48 |       expect(unexpected.map(describeViolation)).toEqual([]);
+                                                     ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "suggesting: save refused (dangling revision range)",
++ ]
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/__tests__/editorCommandConformance.test.ts:139:49)
+(fail) editor command conformance > table-merged-cells › deleteRow @ across-cells [212.90ms]
+(pass) editor command conformance > no known gap is stale [0.40ms]
+
+::endgroup::
+
+1 tests failed:
+(fail) editor command conformance > table-merged-cells › deleteRow @ across-cells [212.90ms]
+
+ 2210 pass
+ 1 fail
+Ran 2211 tests across 1 file. [1203.40s]
