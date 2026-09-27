@@ -123,11 +123,13 @@ export const resolvedState = async (
   };
 };
 
-type Comment = { text: string; anchor: string };
+type Comment = { text: string; anchor: string; blockId: string | null };
 const commentsOf = (reviewer: Reviewer): Comment[] =>
-  reviewer
-    .getComments()
-    .map((comment) => ({ text: comment.text, anchor: comment.anchoredText ?? "" }));
+  reviewer.getComments().map((comment) => ({
+    text: comment.text,
+    anchor: comment.anchoredText ?? "",
+    blockId: comment.blockId ?? null,
+  }));
 
 // ---------------------------------------------------------------------------
 // The model
@@ -899,8 +901,23 @@ const compareComments = (
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
+  // A comment goes with the content it anchors: one whose whole anchor lay in
+  // a block the operation removed is gone, and one whose anchor started in a
+  // removed block but ran on past it keeps whatever it still covers, which the
+  // model does not predict.
+  const removedRow = (entry: Comment) =>
+    entry.blockId === null
+      ? undefined
+      : model.rows.find((row) => row.removed && row.pre?.id === entry.blockId);
+  const kept: Comment[] = [];
+  const gone: Comment[] = [];
+  for (const entry of before) {
+    const row = removedRow(entry);
+    if (!row) kept.push(entry);
+    else if ((row.pre?.text ?? "").includes(entry.anchor)) gone.push(entry);
+  }
   const expected = [
-    ...before.map((entry) => ({ text: entry.text, anchor: undefined })),
+    ...kept.map((entry) => ({ text: entry.text, anchor: undefined })),
     ...model.comments.map((comment) => ({ text: comment.text, anchor: comment.anchor?.() })),
   ];
   for (const comment of expected) {
@@ -913,6 +930,12 @@ const compareComments = (
       problems.push(`no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`);
     } else {
       remaining.splice(index, 1);
+    }
+  }
+  // Only what no expectation claimed can be the removed comment itself.
+  for (const entry of gone) {
+    if (remaining.some((candidate) => candidate.text === entry.text)) {
+      problems.push(`comment ${JSON.stringify(entry)} outlived the block it anchored`);
     }
   }
   return problems;
