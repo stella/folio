@@ -4642,7 +4642,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           onHyperlinkClick={handleHyperlinkClick}
                           onContextMenu={handleContextMenu}
                           pageEndGutter={panels.layout.commentsGutter}
-                          commentsSidebarOpen={showCommentsSidebar}
                           anchorPositionMode="comments"
                           onAnonymizationTermClick={onAnonymizationTermClick}
                           selectedAnonymizationCanonical={selectedAnonymizationCanonical}
