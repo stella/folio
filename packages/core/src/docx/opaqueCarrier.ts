@@ -37,6 +37,25 @@ export const opaqueRevisionCarrierName = (xml: string): string | undefined => {
   return undefined;
 };
 
+export const countOpaqueRevisionWrappers = (xml: string): number => {
+  const count = (element: ReturnType<typeof getChildElements>[number]): number => {
+    const localName = getLocalName(element.name);
+    let total =
+      WORDPROCESSINGML_NAMESPACE_URIS.has(element.namespaceUri ?? "") &&
+      REVISION_WRAPPERS.has(localName)
+        ? 1
+        : 0;
+    for (const child of getChildElements(element)) {
+      total += count(child);
+    }
+    return total;
+  };
+  return getChildElements(parseXml(xml, OOXML_NAMESPACE_SCOPE)).reduce(
+    (total, element) => total + count(element),
+    0,
+  );
+};
+
 export const isOpaqueNestedRowMarkup = (xml: string): boolean => {
   const element = getChildElements(parseXml(xml, OOXML_NAMESPACE_SCOPE)).at(0);
   return (
