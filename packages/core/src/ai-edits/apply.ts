@@ -2140,6 +2140,56 @@ const isSuggestedParagraphInsert = (paragraph: PMNode): boolean =>
   typeof paragraph.attrs["_suggestedInsert"] === "object" &&
   paragraph.attrs["_suggestedInsert"] !== null;
 
+/** A paragraph mark that is a pending deletion, or a relocation's source. */
+const isDeletedPPrMark = (value: unknown): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  "kind" in value &&
+  (value.kind === "del" || value.kind === "moveFrom");
+
+const hasRevisionMarker = (value: unknown): boolean =>
+  typeof value === "object" && value !== null && "revisionId" in value;
+
+const isDeletedCell = (cell: PMNode): boolean => {
+  const marker: unknown = cell.attrs["cellMarker"];
+  return typeof marker === "object" && marker !== null && "kind" in marker && marker.kind === "del";
+};
+
+/**
+ * Whether accepting every change removes the paragraph at `blockFrom` whole:
+ * its paragraph mark and all of its text pending deletion (`cleanText`, the
+ * accepted reading, is empty), or the table row or cell holding it pending
+ * deletion. A reader lists such a paragraph as a blank block.
+ *
+ * Word keeps a paragraph whose mark is deleted joined to the next one: text
+ * typed into it stays inserted there, and accepting runs it into the next
+ * paragraph (or, in a deleted row, takes it away with the row). An operation
+ * that asks for the paragraph to read something cannot get that without
+ * rejecting the deletion, which is the reviewer's call, not a side effect.
+ */
+const isPendingDeletion = (
+  doc: PMNode,
+  blockFrom: number,
+  paragraph: PMNode,
+  cleanText: string,
+): boolean => {
+  if (cleanText.length === 0 && isDeletedPPrMark(paragraph.attrs["pPrMark"])) {
+    return true;
+  }
+  const $block = doc.resolve(blockFrom);
+  for (let depth = $block.depth; depth > 0; depth -= 1) {
+    const ancestor = $block.node(depth);
+    const name = ancestor.type.name;
+    if (name === "tableRow" && hasRevisionMarker(ancestor.attrs["trDel"])) {
+      return true;
+    }
+    if ((name === "tableCell" || name === "tableHeader") && isDeletedCell(ancestor)) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /** Whether every piece of the paragraph's content is pending inserted text. */
 const holdsOnlyInsertedContent = (paragraph: PMNode): boolean => {
   let whollyInserted = true;
@@ -6155,6 +6205,15 @@ const resolveOperationTarget = ({
       type: "resolved",
       operation: { operation, from: blockTo, to: blockTo, blockFrom, blockTo, blockNode },
     };
+  }
+
+  if (
+    operation.type === "replaceBlock" &&
+    isPendingDeletion(doc, blockFrom, blockNode, currentText)
+  ) {
+    // Refused in every mode alike: direct text written there joins the next
+    // paragraph on accept just as tracked text does.
+    return { type: "skip", reason: "pendingDeletion" };
   }
 
   if (operation.type === "deleteBlock" || operation.type === "replaceBlock") {

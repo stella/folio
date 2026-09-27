@@ -689,7 +689,16 @@ export type FolioAIEditSkipReason =
    * would keep its body look. Use a paragraph style the document defines, or
    * `null` to clear the style.
    */
-  | "missingStyle";
+  | "missingStyle"
+  /**
+   * The block is pending deletion: a tracked change deletes its text and its
+   * paragraph mark, or the table row or cell holding it, so a reader lists it
+   * as a blank block and accepting removes it. Nothing was applied: text
+   * written there would join the next paragraph, or go with the row, once the
+   * deletion is accepted. Reject that deletion first, or insert a new block
+   * next to it.
+   */
+  | "pendingDeletion";
 
 export type FolioAIEditAppliedOperation = {
   id: string;

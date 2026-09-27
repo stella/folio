@@ -62,3 +62,11 @@ for (const [seed, steps] of [
   test(`suggested flow with seed ${seed} (${steps} steps) saves what the reviewer shows`, () =>
     runFlow(seed, steps));
 }
+
+// Collision flows that once rewrote a paragraph pending deletion into the one
+// after it (1088), and read a deleted pending insertion back as a deletion
+// alone after a save (1185); kept as fixed seeds.
+for (const seed of [1088, 1185]) {
+  test(`collision flow with seed ${seed} (10 steps) does what it asked and saves it`, () =>
+    runFlow(seed, 10, "collisions"));
+}

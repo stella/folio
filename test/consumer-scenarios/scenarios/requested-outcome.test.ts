@@ -171,6 +171,8 @@ describe("collision batches", () => {
 type FollowUp = {
   first: (blocks: readonly Block[]) => Operation[];
   second: (blocks: readonly Block[]) => Operation[] | null;
+  /** The issue code every mode must refuse the second edit with. */
+  refusedWith?: string;
 };
 
 const INSERTED = "An inserted clause about delivery terms.";
@@ -252,9 +254,12 @@ const FOLLOW_UPS: Record<string, FollowUp> = {
     },
   },
   // A paragraph pending deletion reads as a blank block, which a model may name.
+  // Word keeps text typed there joined to the next paragraph once accepted,
+  // so rewriting it is refused rather than glued onto that paragraph.
   rewritePendingDeletion: {
     first: deleteFirst,
     second: onDeleted((block) => ({ type: "replaceBlock", blockId: block.id, text: "Rewritten." })),
+    refusedWith: "pendingDeletion",
   },
   insertAfterPendingDeletion: {
     first: deleteFirst,
@@ -306,7 +311,14 @@ const runFollowUp = async (name: string, mode: Mode): Promise<void> => {
   const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
   const operations = followUp.second(blocksOf(reopened));
   assert.ok(operations, `${context}: the second edit found nothing to name`);
-  await applyChecked(reopened, operations, mode, context);
+  const second = await applyChecked(reopened, operations, mode, context);
+  if (followUp.refusedWith !== undefined) {
+    assert.deepEqual(second.applied, [], `${context}: applied what it must refuse`);
+    assert.ok(
+      second.issues.every((issue) => issue.endsWith(`: ${followUp.refusedWith}`)),
+      `${context}: refused with ${second.issues.join(", ")}, not ${followUp.refusedWith}`,
+    );
+  }
   if (mode === "suggested") reopened.acceptAll();
   await assertHealthy(reopened, context);
 };

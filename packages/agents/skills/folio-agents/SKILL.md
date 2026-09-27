@@ -147,6 +147,10 @@ stay exported for validation-only paths.
   id, or a table or character style, skips the operation (`missingStyle`, with
   the paragraph styles the document offers) before anything is applied.
   `null` clears the style.
+- A block pending deletion (a tracked change deletes its text and paragraph
+  mark, or its table row) reads as a blank block; `replaceBlock` on it skips
+  (`pendingDeletion`), since accepting would join the new text to the next
+  paragraph. Reject that deletion first, or insert a new block next to it.
 - Successful mutations return input-ordered `receipts`. Use their typed
   `affected` targets to identify updated blocks, stable ranges, insertions,
   and created comments without inferring effects from document text.

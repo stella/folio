@@ -588,6 +588,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "missingStyle") {
     return "`styleId` names no paragraph style this document defines (it is undefined, or a table or character style); nothing was applied. Use a paragraph style the document defines (the ones it offers are named after this reason), or `null` to clear the style.";
   }
+  if (reason === "pendingDeletion") {
+    return "this block is pending deletion (a tracked change deletes it; it reads as a blank block); nothing was applied, since text written there would join the next paragraph once the deletion is accepted. Reject that deletion first, or insert a new block next to it (insertAfterBlock / insertBeforeBlock).";
+  }
   return reason;
 };
 

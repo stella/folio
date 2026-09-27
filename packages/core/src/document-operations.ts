@@ -1740,6 +1740,7 @@ const recoveryByReason = {
   splitsCharacter: "changeTarget",
   protectedReference: "narrowMatch",
   missingStyle: "refreshDocument",
+  pendingDeletion: "resolveTrackedChange",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (
@@ -1762,6 +1763,7 @@ export const getFolioDocumentOperationIssues = (
         reason !== "noopOperation" &&
         reason !== "pendingParagraphPropertyChange" &&
         reason !== "pendingRunPropertyChange" &&
+        reason !== "pendingDeletion" &&
         // The same values never fit the same target; only a changed operation
         // can succeed.
         reason !== "payloadDoesNotFit" &&

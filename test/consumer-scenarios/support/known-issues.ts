@@ -16,10 +16,7 @@ export const OPEN_ISSUES = {
  * Found by these scenarios and not yet filed or fixed; each has a minimal
  * repro in the scenario that pins it.
  */
-export const FINDINGS = {
-  REWRITE_PENDING_DELETION:
-    "replaceBlock on a paragraph whose tracked deletion is pending (a reader lists it as a blank block) writes the new text but keeps the pending deletion around it, so accepting glues the new text onto the next paragraph (or, in a table pending deletion, drops it)",
-} as const;
+export const FINDINGS = {} as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
 export type Finding = keyof typeof FINDINGS;
@@ -35,10 +32,7 @@ export const KNOWN_FAILING_OPERATION_RUNS: readonly {
   fixture: string;
   mode: string;
   finding: Finding;
-}[] = [
-  // The generated replaceBlock names the list item the fixture deletes.
-  { fixture: "trackedChanges", mode: "tracked-changes", finding: "REWRITE_PENDING_DELETION" },
-];
+}[] = [];
 
 /**
  * Seeded flows (support/fuzz.ts) that reproduce a finding. The default fuzz
@@ -53,9 +47,7 @@ export const KNOWN_FAILING_FLOWS: readonly {
 }[] = [];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
-export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
-  REWRITE_PENDING_DELETION: /not what was asked \([^)]*replaceBlock[^)]*\):\s+block texts differ/u,
-};
+export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {};
 
 /**
  * requested-outcome.test.ts collisions (fixture / mode / collision) that
@@ -75,12 +67,7 @@ export const KNOWN_FAILING_FOLLOW_UPS: readonly {
   mode: string;
   finding: Finding;
   symptom: RegExp;
-}[] = (["direct", "tracked-changes"] as const).map((mode) => ({
-  followUp: "rewritePendingDeletion",
-  mode,
-  finding: "REWRITE_PENDING_DELETION",
-  symptom: /"Rewritten\.The Buyer pays/u,
-}));
+}[] = [];
 
 export const expectedFailure = (
   issue: OpenIssue | Finding,
