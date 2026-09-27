@@ -104,3 +104,23 @@ export const registerDecodedCommentHandlers = (
 export const getDecodedCommentHandlers = (
   bridge: FolioAgentBridge,
 ): DecodedCommentHandlers | undefined => decodedCommentHandlers.get(bridge);
+
+/**
+ * The document session an operation id is unique within. The reviewer bridge
+ * registers its reviewer, which holds one document for its lifetime, so a
+ * host that builds a new bridge per call keeps one session. Any other bridge
+ * is its own session: a live editor can load another document under the same
+ * ref, so a host builds one bridge per loaded document.
+ */
+const operationSessions = new WeakMap<FolioAgentBridge, object>();
+
+export const registerOperationSession = (
+  bridge: FolioAgentBridge,
+  session: object,
+): FolioAgentBridge => {
+  operationSessions.set(bridge, session);
+  return bridge;
+};
+
+export const getOperationSession = (bridge: FolioAgentBridge): object =>
+  operationSessions.get(bridge) ?? bridge;

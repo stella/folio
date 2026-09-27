@@ -56,6 +56,16 @@ skipped with `invalidResult` and nothing from it is applied. Successful
 mutation results include `receipts`
 that identify affected blocks, ranges, insertions, and created comments.
 
+An operation id names one operation for the whole document session: the
+reviewer a bridge wraps, or the bridge itself for a live editor (build one per
+loaded document). Resending a `suggest_changes` operation that already applied
+or queued, with the same id and content, is a retry: nothing runs again, and
+the result lists it under `replayed` with its original receipt. Reusing an id
+for a different operation fails the call. A skipped operation is not recorded,
+so resending it tries again. Ids the executor generates are unique, so a caller
+that omits them never collides; `add_comment` takes no id and is not
+deduplicated.
+
 For document questions, start with `get_document_outline`, then call
 `read_section` or scoped `find_text`. This keeps unrelated contract text out
 of model context. Section handles use Folio block identities, heading depth,

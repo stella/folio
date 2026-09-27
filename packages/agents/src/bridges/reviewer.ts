@@ -7,7 +7,7 @@ import type {
 } from "@stll/folio-core/server";
 
 import type { FolioAgentBridge } from "../bridge";
-import { registerDecodedCommentHandlers } from "../bridge";
+import { registerDecodedCommentHandlers, registerOperationSession } from "../bridge";
 import { decodeCommentId } from "../codecs";
 import type { FolioAgentComment, FolioAgentCommentReply } from "../types";
 import { toAgentChange } from "./shared";
@@ -80,6 +80,7 @@ export const createReviewerBridge = (
       return decoded !== null && reviewer.resolveComment(decoded.raw, { resolved });
     },
   };
+  registerOperationSession(bridge, reviewer);
   return registerDecodedCommentHandlers(bridge, {
     replyToComment: ({ numeric }, text) =>
       reviewer.replyTo(numeric, { text, ...replyDate }) !== null,

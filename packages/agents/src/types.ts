@@ -238,6 +238,12 @@ export type FolioAgentApplyOperationsSummary = {
   applied: { id: string }[];
   /** Operations a host review-queue bridge accepted for later human review instead of applying. */
   queued: { id: string }[];
+  /**
+   * Operations this document already applied or queued under the same id and
+   * the same content, resent (a retry after a lost response, say). Nothing
+   * runs again; their original receipts are in `receipts`.
+   */
+  replayed: { id: string }[];
   skipped: { id: string; reason: string }[];
   issues: FolioDocumentOperationIssue[];
   receipts: FolioDocumentOperationReceipt[];

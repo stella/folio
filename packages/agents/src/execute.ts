@@ -1,3 +1,5 @@
+import { panic } from "better-result";
+
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -12,6 +14,7 @@ import {
   type FolioAITextRangeHandle,
   type FolioDocumentOperation,
   type FolioDocumentOperationBatchPrecondition,
+  type FolioDocumentOperationReceipt,
   type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
@@ -22,7 +25,7 @@ import {
   decodeSectionHandle,
   decodeStoryHandle,
 } from "./codecs";
-import { getDecodedCommentHandlers } from "./bridge";
+import { getDecodedCommentHandlers, getOperationSession } from "./bridge";
 import {
   explainTextTooLong,
   MAX_OPERATION_TEXT_LENGTH,
@@ -657,6 +660,7 @@ const summarizeApplyResult = (
   version: result.version,
   applied: result.applied.map((entry) => ({ id: entry.id })),
   queued: (result.queued ?? []).map((entry) => ({ id: entry.id })),
+  replayed: [],
   skipped: result.skipped.map((entry) => ({
     id: entry.id,
     reason: explainSkippedOperation(entry),
@@ -759,6 +763,125 @@ const addComment = (
   return ok(applyOperations(bridge, { operations: [parsed.operation] }));
 };
 
+/** An operation a document session applied or queued, under the id it was sent with. */
+type RecordedOperation = {
+  /** The operation as parsed, printed with sorted keys so equal operations print equally. */
+  fingerprint: string;
+  receipt: FolioDocumentOperationReceipt | undefined;
+};
+
+const operationLedgers = new WeakMap<object, Map<string, RecordedOperation>>();
+
+const ledgerOf = (bridge: FolioAgentBridge): Map<string, RecordedOperation> => {
+  const session = getOperationSession(bridge);
+  const existing = operationLedgers.get(session);
+  if (existing !== undefined) return existing;
+  const created = new Map<string, RecordedOperation>();
+  operationLedgers.set(session, created);
+  return created;
+};
+
+const canonicalJson = (value: unknown): string => {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (isPlainObject(value)) {
+    const entries = Object.keys(value)
+      .toSorted()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+};
+
+/** An operation this session already settled, resent at `index` of the current call. */
+type Replay = { index: number; id: string; receipt: FolioDocumentOperationReceipt | undefined };
+
+type PartitionedOperations = { fresh: FolioDocumentOperation[]; replays: Replay[] };
+
+/**
+ * Split a call into operations to apply and operations the session already
+ * applied or queued under the same id. An id resent with a different
+ * operation is the caller's mistake, not a retry, and refuses the call.
+ */
+const partitionReplays = (
+  operations: readonly FolioDocumentOperation[],
+  ledger: ReadonlyMap<string, RecordedOperation>,
+): PartitionedOperations | string => {
+  const fresh: FolioDocumentOperation[] = [];
+  const replays: Replay[] = [];
+  for (const [index, operation] of operations.entries()) {
+    const recorded = ledger.get(operation.id);
+    if (recorded === undefined) {
+      fresh.push(operation);
+      continue;
+    }
+    if (recorded.fingerprint !== canonicalJson(operation)) {
+      return (
+        `operations[${String(index)}].id "${operation.id}" already names a different operation ` +
+        "this document applied. Give a new operation a new id, or omit ids to have them generated."
+      );
+    }
+    replays.push({ index, id: operation.id, receipt: recorded.receipt });
+  }
+  return { fresh, replays };
+};
+
+type RecordSettledOptions = {
+  ledger: Map<string, RecordedOperation>;
+  operations: readonly FolioDocumentOperation[];
+  summary: FolioAgentApplyOperationsSummary;
+};
+
+/** Remember what landed. A skipped operation is not recorded, so resending it tries again. */
+const recordSettled = ({ ledger, operations, summary }: RecordSettledOptions): void => {
+  const settled = new Set([...summary.applied, ...summary.queued].map(({ id }) => id));
+  for (const operation of operations) {
+    if (!settled.has(operation.id)) continue;
+    ledger.set(operation.id, {
+      fingerprint: canonicalJson(operation),
+      receipt: summary.receipts.find(({ operationId }) => operationId === operation.id),
+    });
+  }
+};
+
+type WithReplaysOptions = {
+  summary: FolioAgentApplyOperationsSummary;
+  /** Every operation of the call, in the order the caller sent them. */
+  operations: readonly FolioDocumentOperation[];
+  replays: readonly Replay[];
+};
+
+/**
+ * The summary of the operations that ran, with the replayed ones added back:
+ * listed under `replayed`, their original receipts restored, and every index
+ * restated against the call as sent rather than the subset that ran.
+ */
+const withReplays = ({
+  summary,
+  operations,
+  replays,
+}: WithReplaysOptions): FolioAgentApplyOperationsSummary => {
+  if (replays.length === 0) return summary;
+  const inputIndex = new Map(operations.map(({ id }, index) => [id, index]));
+  const indexOf = (id: string): number =>
+    inputIndex.get(id) ?? panic("A result names an operation the call did not send", { id });
+  const receipts: FolioDocumentOperationReceipt[] = [];
+  for (const receipt of summary.receipts) {
+    receipts.push({ ...receipt, operationIndex: indexOf(receipt.operationId) });
+  }
+  for (const { index, receipt } of replays) {
+    if (receipt !== undefined) receipts.push({ ...receipt, operationIndex: index });
+  }
+  return {
+    ...summary,
+    replayed: replays.map(({ id }) => ({ id })),
+    receipts: receipts.toSorted((left, right) => left.operationIndex - right.operationIndex),
+    issues: summary.issues.map((issue) => {
+      const index = indexOf(issue.operationId);
+      return { ...issue, operationIndex: index, path: `$.operations[${index}]` as const };
+    }),
+  };
+};
+
 /**
  * A version-pinned batch is compared against the bridge's document version
  * BEFORE any operation is applied or queued: an approval that runs after
@@ -775,23 +898,45 @@ const suggestChanges = (
   if (!parsed.ok) {
     return fail(parsed.error);
   }
-  if (parsed.precondition !== undefined) {
-    if (!bridge.getDocumentVersion) {
-      return fail(
-        "This editor surface cannot verify `documentVersion`; it has no document version to compare against.",
+  if (parsed.precondition !== undefined && !bridge.getDocumentVersion) {
+    return fail(
+      "This editor surface cannot verify `documentVersion`; it has no document version to compare against.",
+    );
+  }
+  const ledger = ledgerOf(bridge);
+  const partitioned = partitionReplays(parsed.operations, ledger);
+  if (typeof partitioned === "string") {
+    return fail(partitioned);
+  }
+  const { fresh, replays } = partitioned;
+  const applyFresh = (): FolioAgentApplyOperationsSummary => {
+    if (fresh.length === 0) {
+      return summarizeApplyResult(
+        {
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          applied: [],
+          skipped: [],
+          issues: [],
+          receipts: [],
+        },
+        parsed.normalizations,
       );
     }
-    if (bridge.getDocumentVersion() !== parsed.precondition.documentVersion) {
-      return ok(rejectBatch(parsed.operations, "documentVersionMismatch", parsed.normalizations));
+    if (
+      parsed.precondition !== undefined &&
+      bridge.getDocumentVersion?.() !== parsed.precondition.documentVersion
+    ) {
+      return rejectBatch(fresh, "documentVersionMismatch", parsed.normalizations);
     }
-  }
-  return ok(
-    applyOperations(bridge, {
-      operations: parsed.operations,
+    return applyOperations(bridge, {
+      operations: fresh,
       ...(parsed.precondition !== undefined && { precondition: parsed.precondition }),
       normalizations: parsed.normalizations,
-    }),
-  );
+    });
+  };
+  const summary = applyFresh();
+  recordSettled({ ledger, operations: fresh, summary });
+  return ok(withReplays({ summary, operations: parsed.operations, replays }));
 };
 
 const replyComment = (

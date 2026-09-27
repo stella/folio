@@ -95,7 +95,9 @@ const OPERATION_PROPERTY_SCHEMAS = {
   id: {
     type: "string",
     description:
-      "Optional caller-supplied operation id, echoed back in `applied` / `queued` / `skipped`. Generated when omitted.",
+      "Optional caller-supplied operation id, echoed back in `applied` / `queued` / `skipped`. Generated when omitted. " +
+      "An id names one operation for the whole document: resending an operation that already landed (a retry) " +
+      "changes nothing and lists it under `replayed`; reusing an id for a different operation fails the call.",
   },
   blockId: {
     type: "string",

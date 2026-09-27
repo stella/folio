@@ -139,6 +139,11 @@ stay exported for validation-only paths.
   reissue with fresh ids, not a dead end. The one exception is
   `invalidResult`: the operation would have left a document that cannot be
   saved, so nothing from it was applied; rephrase it rather than resend it.
+- An operation `id` names one operation for the whole document. If a
+  `suggest_changes` response is lost, resend the same call: operations that
+  already landed come back under `replayed` and are not applied twice. Never
+  reuse an id for a different operation (that fails the call); omit ids to
+  have fresh ones generated.
 - Every operation of one `suggest_changes` call addresses the document as it
   was read. Give each block or stretch of text at most one operation that
   deletes, rewrites, splits or merges it: a later operation on a target an

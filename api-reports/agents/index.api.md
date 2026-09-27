@@ -119,6 +119,9 @@ export type FolioAgentApplyOperationsSummary = {
     queued: {
         id: string;
     }[];
+    replayed: {
+        id: string;
+    }[];
     skipped: {
         id: string;
         reason: string;
