@@ -156,6 +156,31 @@ codspeed run --mode simulation -- node --import tsx benchmarks/index.ts
 The instrumented `full` corpus takes roughly 20 minutes and `fast` about 6;
 simulation is far slower than a native run by design.
 
+## Scale complexity gate
+
+The Benchmarks workflow also runs `benchmarks/scale/run.ts` on pull requests and
+main pushes. It measures process CPU time (user plus system) at three sizes for
+each operation, with fixture construction outside the timed span. Read includes
+reviewer opening; edit, save, and accept-all start from a prepared reviewer.
+Each size has three fresh-state samples; the median is used for the gate.
+The workflow uploads the complete JSON report as the `scale-complexity` artifact,
+so each run records its measured baseline alongside the CodSpeed history.
+
+| Fixture            | Sizes                     | Timed operations                      |
+| ------------------ | ------------------------- | ------------------------------------- |
+| Paragraphs         | 2,500 / 5,000 / 10,000    | read, one edit, save, compare, layout |
+| Two-column table   | 125 / 250 / 500 data rows | read, one cell edit, save             |
+| Anchored comments  | 250 / 500 / 1,000         | read, save                            |
+| Tracked insertions | 250 / 500 / 1,000         | read, save, accept all                |
+
+The gate fails when CPU time per input rises by more than 25% at _both_
+doublings. This sustained-growth rule allows a single noisy interval and does
+not set a wall-time budget. A failing JSON row contains the sizes, raw samples,
+median CPU times, both growth ratios, and the threshold for reproduction.
+Run one case with `FOLIO_SCALE_SCENARIO=paragraph-compare node --expose-gc
+--import tsx benchmarks/scale/run.ts`; omit the environment variable to run
+the full gate.
+
 ## Corpus
 
 Only repository-owned, synthetic, or upstream-redistributable fixtures may be

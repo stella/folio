@@ -45,6 +45,33 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scale-complexity:
+    name: Scale complexity
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - name: Check scale complexity
+        run: node --expose-gc --import tsx benchmarks/scale/run.ts
+      - name: Record scale baseline
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scale-complexity
+          path: .cache/performance/scale-complexity.json
+          if-no-files-found: error
+
   benchmarks:
     name: Benchmarks
     runs-on: ubuntu-latest
