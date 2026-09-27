@@ -22,11 +22,22 @@ import assert from "node:assert/strict";
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
   type FolioDocumentOperationType,
+  type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
 } from "@stll/folio-core/server";
 
+import { recordHit, type StepKind } from "./coverage.ts";
 import { openReviewer, toArrayBuffer } from "./documents.ts";
 import { coreBatch, type Mode, type Operation } from "./operations.ts";
+import {
+  blocksOfStory,
+  type Feature,
+  type FeatureIndex,
+  featureIndex,
+  storyKindOf,
+  type TargetBlock,
+  touchesSurrogate,
+} from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -65,7 +76,12 @@ const KEPT_FIELDS = ["kind", "styleId", "headingLevel", "listLevel"] as const;
 const ANY = Symbol("any");
 type Fields = { [Key in (typeof KEPT_FIELDS)[number] | "directAlignment"]?: Row[Key] | typeof ANY };
 
-export const rowsOf = (reviewer: Reviewer): Row[] => reviewer.getContent() as unknown as Row[];
+type Story = FolioDocumentStoryHandle;
+const MAIN: Story = { type: "main" };
+
+/** The blocks of `story` (the body by default) a reader lists. */
+export const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] =>
+  blocksOfStory(reviewer, story) as unknown as Row[];
 
 const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
   new Uint8Array(await reviewer.toBuffer());
@@ -77,13 +93,14 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
 export const resolvedState = async (
   bytes: Uint8Array,
   resolution: "accept" | "reject",
+  story: Story = MAIN,
 ): Promise<{ rows: Row[]; bytes: Uint8Array; comments: Comment[] }> => {
   const reviewer = await openReviewer(bytes);
   if (resolution === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
   const saved = await save(reviewer);
   const reopened = await openReviewer(saved);
-  return { rows: rowsOf(reopened), bytes: saved, comments: commentsOf(reopened) };
+  return { rows: rowsOf(reopened, story), bytes: saved, comments: commentsOf(reopened) };
 };
 
 type Comment = { text: string; anchor: string };
@@ -138,6 +155,8 @@ export type Model = {
   comments: { text: string; anchor?: () => string | undefined }[];
   /** Operations the oracle has no expectation for; the check notes them. */
   unmodelled: string[];
+  /** Blocks that are paragraphs of a text box drawn in the block before them. */
+  inTextBox?: ReadonlySet<string>;
 };
 
 const fieldsOf = (row: Row): Fields => {
@@ -358,6 +377,15 @@ type Expect = (model: Model, operation: Operation) => void;
  * an insertion anchored in a cell lands beside the table, not in the cell).
  */
 const insertionAnchor = (model: Model, row: ModelRow, position: "before" | "after"): ModelRow => {
+  const boxed = (candidate: ModelRow | undefined) =>
+    candidate?.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
+  if (position === "after" && !boxed(row)) {
+    // A text box's paragraphs belong to the paragraph it is drawn in: a
+    // block inserted after that paragraph follows them.
+    let index = model.rows.indexOf(row);
+    while (boxed(model.rows[index + 1])) index += 1;
+    row = model.rows[index] ?? row;
+  }
   const table = row.pre?.table;
   if (!table) return row;
   const rows = model.rows.filter(
@@ -816,38 +844,108 @@ export type Pre = {
   liveRows: Row[];
   comments: Comment[];
   rejected?: Row[];
+  /** The story the operations target; the body by default. */
+  story: Story;
+  /** The session the step runs in, for the coverage ledger. */
+  step: StepKind;
+  /** What each block of the story is, for the coverage ledger. */
+  targets: FeatureIndex;
 };
 
-const liveState = (reviewer: Reviewer): string =>
-  JSON.stringify({ blocks: reviewer.getContent(), comments: reviewer.getComments().length });
+export type CaptureOptions = { story?: Story; step?: StepKind };
+
+const liveState = (reviewer: Reviewer, story: Story = MAIN): string =>
+  JSON.stringify({
+    blocks: reviewer.getContent(),
+    ...(story.type === "main" ? {} : { story: rowsOf(reviewer, story) }),
+    comments: reviewer.getComments().length,
+  });
 
 const project = (rows: readonly Row[]) =>
   visible(rows).map(({ text, kind, styleId, listLevel }) => ({ text, kind, styleId, listLevel }));
 
 /** Capture what the oracle needs before an apply. */
-export const capture = async (reviewer: Reviewer, mode: Mode): Promise<Pre> => {
-  const live = liveState(reviewer);
+export const capture = async (
+  reviewer: Reviewer,
+  mode: Mode,
+  { story = MAIN, step = "fresh" }: CaptureOptions = {},
+): Promise<Pre> => {
+  const live = liveState(reviewer, story);
+  const context = { story, step, targets: featureIndex(reviewer, story) };
   if (mode === "suggested") {
-    const rows = rowsOf(reviewer);
-    return { mode, live, rows, liveRows: rows, comments: commentsOf(reviewer) };
+    const rows = rowsOf(reviewer, story);
+    return { mode, live, rows, liveRows: rows, comments: commentsOf(reviewer), ...context };
   }
   const bytes = await save(reviewer);
-  const accepted = await resolvedState(bytes, "accept");
+  const accepted = await resolvedState(bytes, "accept", story);
   return {
     mode,
     live,
     rows: accepted.rows,
-    liveRows: rowsOf(reviewer),
+    liveRows: rowsOf(reviewer, story),
     comments: accepted.comments,
     ...(mode === "tracked-changes"
-      ? { rejected: (await resolvedState(bytes, "reject")).rows }
+      ? { rejected: (await resolvedState(bytes, "reject", story)).rows }
       : {}),
+    ...context,
   };
 };
 
 export type Outcome = {
   /** The operations the receipt says applied, in request order. */
   applied: readonly Operation[];
+  /** Every operation asked for, applied or not (the ledger counts refusals); `applied` if absent. */
+  attempted?: readonly Operation[];
+};
+
+const LEDGER_MODES: Record<Mode, string> = {
+  direct: "direct",
+  "tracked-changes": "tracked",
+  suggested: "suggested",
+};
+
+/** The offsets an operation acts at, in its block's text, when it names any. */
+const offsetsOf = (operation: Operation, text: string): [number, number] | null => {
+  const range = operation["range"] as { startOffset?: unknown; endOffset?: unknown } | undefined;
+  if (typeof range?.startOffset === "number" && typeof range.endOffset === "number") {
+    return [range.startOffset, range.endOffset];
+  }
+  if (typeof operation["offset"] === "number") return [operation["offset"], operation["offset"]];
+  const find = operation["find"] ?? operation["quote"];
+  const at = typeof find === "string" && find.length > 0 ? text.indexOf(find) : -1;
+  return at === -1 ? null : [at, at + (find as string).length];
+};
+
+/** Record every attempted operation of an outcome in the coverage ledger. */
+const recordOutcome = (pre: Pre, outcome: Outcome): void => {
+  const applied = new Set(outcome.applied);
+  for (const operation of outcome.attempted ?? outcome.applied) {
+    if (typeof operation !== "object" || operation === null) continue;
+    const range = operation["range"] as { blockId?: unknown } | undefined;
+    const blockId = operation["blockId"] ?? range?.blockId;
+    const block = pre.liveRows.find((row) => row.id === blockId) as TargetBlock | undefined;
+    const features = new Set<Feature | "none">(pre.targets.features.get(String(blockId)) ?? []);
+    // A block with an astral character counts as a surrogate boundary only
+    // where the operation's own offsets meet one.
+    features.delete("surrogateBoundary");
+    const offsets = block && offsetsOf(operation, block.text);
+    if (block && offsets && touchesSurrogate(block.text, offsets[0], offsets[1])) {
+      features.add("surrogateBoundary");
+    }
+    if (features.size === 0) features.add("none");
+    for (const feature of features) {
+      recordHit(
+        {
+          op: String(operation.type),
+          story: storyKindOf(pre.targets, block),
+          mode: LEDGER_MODES[pre.mode],
+          feature,
+          step: pre.step,
+        },
+        applied.has(operation),
+      );
+    }
+  }
 };
 
 /**
@@ -860,15 +958,17 @@ export const assertRequestedOutcome = async (
   outcome: Outcome,
   context: string,
 ): Promise<string[]> => {
+  recordOutcome(pre, outcome);
   if (outcome.applied.length === 0) {
     assert.equal(
-      liveState(reviewer),
+      liveState(reviewer, pre.story),
       pre.live,
       `${context}: nothing applied, but the document changed`,
     );
     return [];
   }
   const model = modelOf(pre.rows, pre.liveRows);
+  model.inTextBox = pre.targets.inTextBox;
   for (const operation of outcome.applied) expectOperation(model, operation);
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.
@@ -878,15 +978,15 @@ export const assertRequestedOutcome = async (
   let comments: Comment[];
   let bytes: Uint8Array | null = null;
   if (pre.mode === "suggested") {
-    rows = rowsOf(reviewer);
+    rows = rowsOf(reviewer, pre.story);
     comments = commentsOf(reviewer);
   } else {
     const saved = await save(reviewer);
-    const accepted = await resolvedState(saved, "accept");
+    const accepted = await resolvedState(saved, "accept", pre.story);
     ({ rows, comments, bytes } = accepted);
     if (pre.rejected) {
       assert.deepEqual(
-        project((await resolvedState(saved, "reject")).rows),
+        project((await resolvedState(saved, "reject", pre.story)).rows),
         project(pre.rejected),
         `${context}: rejecting every change does not give the document before back`,
       );

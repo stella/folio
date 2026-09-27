@@ -12,6 +12,7 @@ import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-a
 import { docxToMarkdown, isFolioAIContentBlock } from "@stll/folio-core/server";
 
 import { openReviewer, toArrayBuffer } from "./documents.ts";
+import { featureIndex } from "./targets.ts";
 
 /** What one reader says about one block. */
 export type BlockView = {
@@ -75,8 +76,18 @@ const MARKDOWN_ESCAPE = /\\(?<char>[\\`*_{}[\]()#+\-.!|<>~])/gu;
 /** Inline emphasis a formatting edit adds; the block text carries none of it. */
 const EMPHASIS =
   /\*\*|__|~~|<\/?(?:u|sup|sub)>|(?<![\p{L}\p{N}\\])[*_]|(?<!\\)[*_](?![\p{L}\p{N}])/gu;
-const unescapeMarkdown = (text: string): string =>
-  text.replace(EMPHASIS, "").replace(MARKDOWN_ESCAPE, "$<char>");
+/**
+ * A hyperlink reads as its text; the block text carries no target. An empty
+ * one (a split at its edge leaves one) reads as nothing, so the blanks
+ * before it are trailing blanks again.
+ */
+const LINK = /(?<![!\\])\[(?<label>(?:[^\]\\]|\\.)*)\]\((?:[^()\s\\]|\\.|\([^()\s]*\))*\)/gu;
+const unescapeMarkdown = (text: string): string => {
+  const unlinked = text.replace(LINK, "$<label>");
+  return (unlinked === text ? text : unlinked.trim())
+    .replace(EMPHASIS, "")
+    .replace(MARKDOWN_ESCAPE, "$<char>");
+};
 
 /** `[^1]: note text`, the note trailer after the body. */
 const NOTE_DEFINITION = /^\[\^[^\]]+\]:/u;
@@ -228,13 +239,19 @@ export const readAll = async (bytes: Uint8Array): Promise<ReaderViews> => {
   // deleted paragraph mark joins two paragraphs); the readers above show the
   // markup. Markdown is compared with the same package, accepted.
   let accepted = content;
+  let acceptedReviewer = reviewer;
   if (reviewer.getChanges().length > 0) {
-    const acceptedReviewer = await openReviewer(bytes);
+    acceptedReviewer = await openReviewer(bytes);
     acceptedReviewer.acceptAll();
     accepted = (acceptedReviewer.getContent() as ContentBlock[]).filter((block) =>
       isFolioAIContentBlock(block as never),
     );
   }
+  // `docxToMarkdown` writes no text-box paragraph the block readers list
+  // (MARKDOWN_DROPS_TEXT_BOX, pinned in known-issues.test.ts); the rest of
+  // the document is still compared. Drop this once that finding is fixed.
+  const boxed = featureIndex(acceptedReviewer).inTextBox;
+  accepted = accepted.filter((block) => !boxed.has(block.id));
   return {
     getContent: contentViews,
     snapshot: snapshot.map(contentView),

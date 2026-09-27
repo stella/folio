@@ -16,7 +16,16 @@ export const OPEN_ISSUES = {
  * Found by these scenarios and not yet filed or fixed; each has a minimal
  * repro in the scenario that pins it.
  */
-export const FINDINGS = {} as const;
+export const FINDINGS = {
+  SUGGESTED_NOTE_EDIT_SAVE_THROWS:
+    "after a save that dropped a suggested format change in a footnote, a second suggested edit of that footnote plus any suggested body edit makes toBuffer() throw",
+  LIVE_COMMENT_ANCHOR_STALE:
+    "a paragraph inserted inside a comment range that spans several blocks is part of the anchored text after a save and reopen, but not in the live reviewer's getComments()",
+  TEXT_BOX_RESOLVE_MALFORMED_XML:
+    'with tracked changes pending both in a paragraph that draws a text box and in the text box, acceptAll() or rejectAll() after a reopen saves a document.xml that is not well-formed ("</w:p>></w:r>") and does not reopen',
+  MARKDOWN_DROPS_TEXT_BOX:
+    "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
+} as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
 export type Finding = keyof typeof FINDINGS;
@@ -44,10 +53,17 @@ export const KNOWN_FAILING_FLOWS: readonly {
   finding: Finding;
   /** The flow kind (support/fuzz.ts); `"random"` when absent. */
   kind?: "random" | "collisions";
+  /** The generation (support/fuzz.ts); `"targeted"` when absent. */
+  generation?: "targeted" | "legacy";
 }[] = [];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
-export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {};
+export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
+  SUGGESTED_NOTE_EDIT_SAVE_THROWS: /Cannot serialize changed footnote paragraphs/u,
+  LIVE_COMMENT_ANCHOR_STALE: /shows something else than the reviewer[\s\S]*\+\s+anchor: /u,
+  MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
+  TEXT_BOX_RESOLVE_MALFORMED_XML: /malformed markup/u,
+};
 
 /**
  * requested-outcome.test.ts collisions (fixture / mode / collision) that

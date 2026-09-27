@@ -14,6 +14,7 @@ import {
   ensureParaIds,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioDocxReviewer,
+  hyperlink,
   paragraph,
   run,
   table,
@@ -316,6 +317,136 @@ export const mergedTableDocument = (): Promise<Uint8Array> => {
   return packDocument(document);
 };
 
+type HeaderFooterKind = "default" | "first" | "even";
+
+/** A header or footer part holding one paragraph; a footer's ends in a PAGE field. */
+const headerFooterPart = (
+  type: "header" | "footer",
+  hdrFtrType: HeaderFooterKind,
+  text: string,
+) => ({
+  type,
+  hdrFtrType,
+  content: [
+    paragraph([
+      run(text),
+      ...(type === "footer"
+        ? [
+            {
+              type: "simpleField" as const,
+              instruction: "PAGE",
+              fieldType: "PAGE" as const,
+              content: [run("1")],
+            },
+          ]
+        : []),
+    ]),
+  ],
+});
+
+/** The text box's own paragraph in `storiesDocument`. */
+export const TEXT_BOX_TEXT = "Boxed note on delivery terms.";
+
+/**
+ * Every story a reviewer can reach beyond the body, and the body features
+ * edits collide with: a footnote and an endnote, default / first-page /
+ * even-page headers and footers (a PAGE field in each footer), two sections
+ * (the first ends in a paragraph carrying its `w:sectPr`), a paragraph that
+ * holds a text box, a hyperlink, a date field, a run-formatting boundary, a
+ * list, an emoji, and a comment whose range spans a whole table.
+ */
+export const storiesDocument = (): Promise<Uint8Array> => {
+  const document = fromMarkdown(
+    [
+      "# Master Agreement",
+      "The parties agree as follows.",
+      "- Goods are listed in the schedule\n- Prices are fixed for a year",
+      "Payment is due on receipt.",
+    ].join("\n\n"),
+  );
+  const pkg = document.package;
+  pkg.headers = new Map([
+    ["rIdStoryHeader1", headerFooterPart("header", "default", "Master Agreement header")],
+    ["rIdStoryHeader2", headerFooterPart("header", "first", "First page header")],
+    ["rIdStoryHeader3", headerFooterPart("header", "even", "Even page header")],
+  ]);
+  pkg.footers = new Map([
+    ["rIdStoryFooter1", headerFooterPart("footer", "default", "Page ")],
+    ["rIdStoryFooter2", headerFooterPart("footer", "even", "Even page ")],
+  ]);
+  pkg.settings = { defaultTabStop: 720, ...pkg.settings, evenAndOddHeaders: true };
+  const references = {
+    headerReferences: [
+      { type: "default" as const, rId: "rIdStoryHeader1" },
+      { type: "first" as const, rId: "rIdStoryHeader2" },
+      { type: "even" as const, rId: "rIdStoryHeader3" },
+    ],
+    footerReferences: [
+      { type: "default" as const, rId: "rIdStoryFooter1" },
+      { type: "even" as const, rId: "rIdStoryFooter2" },
+    ],
+    titlePg: true,
+  };
+  pkg.footnotes = [
+    { type: "footnote", id: 1, content: [paragraph("Schedules are part of this agreement.")] },
+  ];
+  const textBox = {
+    type: "shape" as const,
+    shape: {
+      type: "shape" as const,
+      shapeType: "textBox" as const,
+      id: "story-text-box",
+      size: { width: 2_000_000, height: 800_000 },
+      textBody: { content: [paragraph(TEXT_BOX_TEXT)] },
+    },
+  };
+  pkg.document.content.push(
+    paragraph([
+      run("Delivery follows the schedule"),
+      { type: "run", content: [{ type: "footnoteRef", id: 1 }] },
+      run(" and the "),
+      run("warranty", { bold: true }),
+      run(" applies"),
+      endnote(document, "Warranty terms are in annex two."),
+      run("."),
+    ]),
+    paragraph([
+      run("The box beside this clause restates it. "),
+      { type: "run", content: [textBox] },
+    ]),
+    paragraph([
+      run("Notices go to "),
+      hyperlink({ text: "the notice address", href: "https://example.com/notices" }),
+      run(" dated "),
+      { type: "simpleField", instruction: "DATE", fieldType: "DATE", content: [run("1 May 2026")] },
+      run(" in writing."),
+    ]),
+    { ...paragraph("This clause ends the first section."), sectionProperties: references },
+    paragraph([{ type: "commentRangeStart", id: 41 }, run("The schedule below is binding.")]),
+    table({
+      header: ["Item", "Price"],
+      rows: [
+        ["Widget", "10"],
+        ["Gadget", "20"],
+      ],
+    }),
+    paragraph([
+      run("Prices exclude taxes."),
+      { type: "commentRangeEnd", id: 41 },
+      { type: "commentReference", id: 41 },
+    ]),
+    paragraph("Signed by both parties 👍🏽 today."),
+  );
+  pkg.document.comments = [
+    { id: 41, author: "Earlier Reviewer", content: [paragraph("Check the whole schedule.")] },
+  ];
+  pkg.document.finalSectionProperties = {
+    ...pkg.document.finalSectionProperties,
+    ...references,
+  };
+  return packDocument(document);
+};
+
 /**
  * The fixtures the collision scenarios add to `FIXTURES`. Kept apart so the
  * seeded fuzz flows, which pick from `FIXTURES`, replay as before.
@@ -323,6 +454,14 @@ export const mergedTableDocument = (): Promise<Uint8Array> => {
 export const COLLISION_FIXTURES = {
   emoji: emojiDocument,
   mergedTable: mergedTableDocument,
+} as const satisfies Record<string, () => Promise<Uint8Array>>;
+
+/**
+ * Fixtures with headers, footers, notes, sections and text boxes. Kept apart
+ * from `FIXTURES` so the legacy flows, which pick from it, replay as before.
+ */
+export const STORY_FIXTURES = {
+  stories: storiesDocument,
 } as const satisfies Record<string, () => Promise<Uint8Array>>;
 
 /** Every fixture, by name; scenarios iterate this. */
