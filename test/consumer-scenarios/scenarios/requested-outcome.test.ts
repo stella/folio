@@ -119,6 +119,55 @@ describe("the requested-outcome oracle", () => {
     assert.deepEqual(model.tableGaps, []);
     assert.match(compareTableGeometry(model.tables, cells).join("\n"), /geometry/u);
   });
+
+  test("requires comments while any anchored character survives a text edit", () => {
+    const text = "abcdef";
+    for (let anchorStart = 0; anchorStart < text.length; anchorStart += 1) {
+      for (let anchorEnd = anchorStart + 1; anchorEnd <= text.length; anchorEnd += 1) {
+        for (let editStart = 0; editStart < text.length; editStart += 1) {
+          for (let editEnd = editStart + 1; editEnd <= text.length; editEnd += 1) {
+            const model = modelOf([row("b", text)]);
+            expectOperation(model, {
+              type: "replaceRange",
+              range: { blockId: "b", startOffset: editStart, endOffset: editEnd },
+              replace: "",
+            });
+            const comment = {
+              text: "review",
+              anchor: text.slice(anchorStart, anchorEnd),
+              blockId: "b",
+            };
+            const removed = editStart <= anchorStart && editEnd >= anchorEnd;
+            const problems = compareComments(model, [comment], []);
+            assert.equal(
+              problems.length === 0,
+              removed,
+              JSON.stringify({ anchorStart, anchorEnd, editStart, editEnd }),
+            );
+            assert.equal(
+              compareComments(model, [comment], [comment]).length === 0,
+              !removed,
+              JSON.stringify({ anchorStart, anchorEnd, editStart, editEnd }),
+            );
+          }
+        }
+      }
+    }
+  });
+
+  test("preserves a comment when a split or a different block changes its quoted text", () => {
+    const comment = { text: "review", anchor: "bcd", blockId: "b" };
+    const split = modelOf([row("b", "abcdef")]);
+    expectOperation(split, { type: "splitBlock", blockId: "b", offset: 3 });
+    assert.equal(compareComments(split, [comment], []).length, 1);
+    const elsewhere = modelOf([row("a", "bcd"), row("b", "abcdef")]);
+    expectOperation(elsewhere, {
+      type: "replaceRange",
+      range: { blockId: "a", startOffset: 0, endOffset: 3 },
+      replace: "",
+    });
+    assert.equal(compareComments(elsewhere, [comment], []).length, 1);
+  });
 });
 
 test("a style edit preserves the target of an unchanged link", async () => {

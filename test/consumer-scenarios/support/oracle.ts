@@ -894,30 +894,40 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
   return problems;
 };
 
-const compareComments = (
+/** Prove that every possible placement of an anchor in its original block was removed. */
+const removedAnchor = (model: Model, entry: Comment): boolean => {
+  const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
+  if (!row?.pre) return false;
+  if (entry.anchor === "") return row.removed;
+  const starts: number[] = [];
+  for (let start = 0; start <= row.pre.text.length - entry.anchor.length; start += 1) {
+    if (row.pre.text.startsWith(entry.anchor, start)) starts.push(start);
+  }
+  if (starts.length === 0) return false;
+  if (row.removed) return true;
+  const removed = [
+    ...row.edits.map(({ start, end }) => ({ start, end })),
+    ...row.splits.map(({ offset, consumed }) => ({ start: offset, end: offset + consumed })),
+  ];
+  return starts.every((start) =>
+    Array.from({ length: entry.anchor.length }, (_, index) => start + index).every((offset) =>
+      removed.some((cut) => cut.start <= offset && offset < cut.end),
+    ),
+  );
+};
+
+export const compareComments = (
   model: Model,
   before: readonly Comment[],
   after: readonly Comment[],
-  rows: readonly Row[],
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
-  // A comment goes with the content it anchors. One whose whole anchor lay in
-  // a block the operation removed must be gone. One whose anchored text no
-  // longer appears anywhere may be gone: the model does not track every
-  // stretch an operation removes (a block merged by a pending change reads as
-  // two). Every other comment must remain.
-  const removedRow = (entry: Comment) =>
-    entry.blockId === null
-      ? undefined
-      : model.rows.find((row) => row.removed && row.pre?.id === entry.blockId);
-  const resultText = rows.map((row) => row.text).join("");
   const kept: Comment[] = [];
   const gone: Comment[] = [];
   for (const entry of before) {
-    const row = removedRow(entry);
-    if (row && (row.pre?.text ?? "").includes(entry.anchor)) gone.push(entry);
-    else if (entry.anchor === "" || resultText.includes(entry.anchor)) kept.push(entry);
+    if (removedAnchor(model, entry)) gone.push(entry);
+    else kept.push(entry);
   }
   const expected = [
     ...kept.map((entry) => ({ text: entry.text, anchor: undefined })),
@@ -1195,7 +1205,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments, rows),
+    ...compareComments(model, pre.comments, comments),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
