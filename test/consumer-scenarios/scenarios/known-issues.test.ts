@@ -9,30 +9,15 @@ import assert from "node:assert/strict";
 import { describe } from "node:test";
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
-import { fromMarkdown } from "@stll/folio-core/markdown";
-import {
-  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-  generateRedlineDocx,
-} from "@stll/folio-core/server";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
 
-import {
-  openReviewer,
-  packDocument,
-  plainDocument,
-  toArrayBuffer,
-  unusedNumberingDocument,
-} from "../support/documents.ts";
+import { openReviewer, plainDocument, unusedNumberingDocument } from "../support/documents.ts";
 import { saveAndReopen } from "../support/invariants.ts";
 import { runFlow } from "../support/fuzz.ts";
 import { expectedFailure, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
 import { MODES } from "../support/operations.ts";
 
 const MISSING_NUMBERING = /Numbering definition \d+ is missing/u;
-
-const labelsOf = async (bytes: Uint8Array): Promise<string[]> =>
-  (await openReviewer(bytes))
-    .getContent()
-    .map((block) => `${block.displayLabel ?? "·"} ${block.text}`);
 
 describe("#1103: operations that name a numbering instance the package does not define", () => {
   for (const mode of MODES) {
@@ -121,24 +106,6 @@ describe("#1103: operations that name a numbering instance the package does not 
 });
 
 describe("findings not yet filed", () => {
-  expectedFailure(
-    "COMPARE_INSERTED_LIST_ITEMS",
-    "accepting a redline keeps an inserted bullet a bullet",
-    /inserted list item/u,
-    async () => {
-      const before = await packDocument(fromMarkdown("Intro.\n\nOutro."));
-      const after = await packDocument(fromMarkdown("Intro.\n\n- new bullet\n\nOutro."));
-      const redline = await generateRedlineDocx(toArrayBuffer(before), toArrayBuffer(after));
-      const reviewer = await openReviewer(new Uint8Array(redline.buffer));
-      reviewer.acceptAll();
-      assert.deepEqual(
-        await labelsOf(new Uint8Array(await reviewer.toBuffer())),
-        ["· Intro.", "• new bullet", "· Outro."],
-        "the inserted list item lost its bullet",
-      );
-    },
-  );
-
   for (const { seed, steps, finding } of KNOWN_FAILING_FLOWS) {
     expectedFailure(
       finding,

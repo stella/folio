@@ -728,3 +728,176 @@ describe("generateRedlineDocx", () => {
     ).rejects.toBeInstanceOf(InvalidGenerateRedlineDocxOptionsError);
   });
 });
+
+describe("generateRedlineDocx inserted list items", () => {
+  type ListParagraphSpec = { text: string; paraId: string; numId?: number; ilvl?: number };
+  type NumberingSpec = { numId: number; abstractNumId: number; numFmt: string; lvlText: string };
+
+  const buildListDocx = (
+    paragraphs: readonly ListParagraphSpec[],
+    numbering: readonly NumberingSpec[],
+  ): Promise<ArrayBuffer> => {
+    const document = createEmptyDocument();
+    document.package.document.content = paragraphs.map(({ text, paraId, numId, ilvl }) => ({
+      type: "paragraph",
+      paraId,
+      textId: paraId,
+      ...(numId !== undefined && {
+        formatting: { numPr: { kind: "reference", numId, ilvl: ilvl ?? 0 } },
+      }),
+      content: [{ type: "run", content: [{ type: "text", text }] }],
+    }));
+    if (numbering.length > 0) {
+      document.package.numbering = {
+        abstractNums: numbering.map(({ abstractNumId, numFmt, lvlText }) => ({
+          abstractNumId,
+          levels: [
+            { ilvl: 0, numFmt, lvlText, start: 1 },
+            { ilvl: 1, numFmt, lvlText, start: 1 },
+          ],
+        })),
+        nums: numbering.map(({ numId, abstractNumId }) => ({ numId, abstractNumId })),
+      };
+    }
+    return createDocx(document);
+  };
+
+  const BULLET = { numId: 1, abstractNumId: 1, numFmt: "bullet", lvlText: "•" };
+  const DECIMAL = { numId: 2, abstractNumId: 2, numFmt: "decimal", lvlText: "%1." };
+
+  /** Label and text of every block once every tracked change is accepted or rejected. */
+  const resolved = async (buffer: ArrayBuffer, resolution: "accept" | "reject") => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+    if (resolution === "accept") reviewer.acceptAll();
+    else reviewer.rejectAll();
+    const saved = await reviewer.toBuffer();
+    const reopened = await FolioDocxReviewer.fromBuffer(saved);
+    return {
+      blocks: reopened.snapshot().blocks.map((block) => ({
+        text: block.text,
+        label: block.displayLabel ?? null,
+        level: block.listLevel ?? null,
+      })),
+      saved,
+    };
+  };
+
+  /** Every `w:numId` the document part references, and every one numbering.xml defines. */
+  const numIdsOf = async (buffer: ArrayBuffer) => {
+    const zip = await JSZip.loadAsync(buffer);
+    const documentXml = (await zip.file("word/document.xml")?.async("text")) ?? "";
+    const numberingXml = (await zip.file("word/numbering.xml")?.async("text")) ?? "";
+    const referenced = new Set(
+      [...documentXml.matchAll(/<w:numId w:val="(\d+)"/gu)].map((match) => Number(match[1])),
+    );
+    const defined = new Set(
+      [...numberingXml.matchAll(/<w:num w:numId="(\d+)"/gu)].map((match) => Number(match[1])),
+    );
+    return { referenced, defined };
+  };
+
+  /** Accepting the redline gives the revision, rejecting it the base, and no numId dangles. */
+  const expectRoundTrip = async (base: ArrayBuffer, revised: ArrayBuffer) => {
+    const result = await generateRedlineDocx(base, revised);
+    expect(result.skipped).toEqual([]);
+    const accepted = await resolved(result.buffer, "accept");
+    expect(accepted.blocks).toEqual((await resolved(revised, "accept")).blocks);
+    expect((await resolved(result.buffer, "reject")).blocks).toEqual(
+      (await resolved(base, "accept")).blocks,
+    );
+    for (const buffer of [result.buffer, accepted.saved]) {
+      const { referenced, defined } = await numIdsOf(buffer);
+      for (const numId of referenced) expect(defined).toContain(numId);
+    }
+    return { accepted, redline: result.buffer };
+  };
+
+  test("an inserted bullet keeps its bullet and level, and rejecting removes it", async () => {
+    const base = await buildListDocx(
+      [
+        { text: "Intro.", paraId: "10000001" },
+        { text: "Existing bullet.", paraId: "10000002", numId: 1 },
+        { text: "Outro.", paraId: "10000003" },
+      ],
+      [BULLET],
+    );
+    const revised = await buildListDocx(
+      [
+        { text: "Intro.", paraId: "10000001" },
+        { text: "Existing bullet.", paraId: "10000002", numId: 1 },
+        { text: "New nested bullet.", paraId: "10000004", numId: 1, ilvl: 1 },
+        { text: "Outro.", paraId: "10000003" },
+        { text: "Trailing bullet.", paraId: "10000005", numId: 1 },
+      ],
+      [BULLET],
+    );
+    const { accepted } = await expectRoundTrip(base, revised);
+    expect(accepted.blocks).toEqual([
+      { text: "Intro.", label: null, level: null },
+      { text: "Existing bullet.", label: "•", level: 0 },
+      { text: "New nested bullet.", label: "•", level: 1 },
+      { text: "Outro.", label: null, level: null },
+      { text: "Trailing bullet.", label: "•", level: 0 },
+    ]);
+  });
+
+  test("an inserted numbered item takes its number, and a plain insertion stays plain", async () => {
+    const base = await buildListDocx(
+      [
+        { text: "First.", paraId: "20000001", numId: 2 },
+        { text: "Third.", paraId: "20000002", numId: 2 },
+      ],
+      [DECIMAL],
+    );
+    const revised = await buildListDocx(
+      [
+        { text: "Plain before the list.", paraId: "20000003" },
+        { text: "First.", paraId: "20000001", numId: 2 },
+        { text: "Second.", paraId: "20000004", numId: 2 },
+        { text: "Third.", paraId: "20000002", numId: 2 },
+      ],
+      [DECIMAL],
+    );
+    const { accepted } = await expectRoundTrip(base, revised);
+    expect(accepted.blocks.map(({ label, text }) => [label, text])).toEqual([
+      [null, "Plain before the list."],
+      ["1.", "First."],
+      ["2.", "Second."],
+      ["3.", "Third."],
+    ]);
+  });
+
+  test("numbering defined only in the revised package is carried into the redline", async () => {
+    const base = await buildListDocx([{ text: "Intro.", paraId: "30000001" }], []);
+    const revised = await buildListDocx(
+      [
+        { text: "Intro.", paraId: "30000001" },
+        { text: "Only numbered in the revision.", paraId: "30000002", numId: 2 },
+      ],
+      [DECIMAL],
+    );
+    const { accepted, redline } = await expectRoundTrip(base, revised);
+    expect(accepted.blocks.at(-1)).toEqual({
+      text: "Only numbered in the revision.",
+      label: "1.",
+      level: 0,
+    });
+    expect((await numIdsOf(redline)).referenced.size).toBe(1);
+  });
+
+  test("a numId the base uses for a different list is remapped, not reused", async () => {
+    const base = await buildListDocx(
+      [{ text: "Numbered in the base.", paraId: "40000001", numId: 1 }],
+      [{ ...DECIMAL, numId: 1, abstractNumId: 1 }],
+    );
+    const revised = await buildListDocx(
+      [
+        { text: "Numbered in the base.", paraId: "40000001", numId: 2 },
+        { text: "A bullet under the same id.", paraId: "40000002", numId: 1 },
+      ],
+      [BULLET, DECIMAL],
+    );
+    const { accepted } = await expectRoundTrip(base, revised);
+    expect(accepted.blocks.map(({ label }) => label)).toEqual(["1.", "•"]);
+  });
+});

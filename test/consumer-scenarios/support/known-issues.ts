@@ -16,10 +16,7 @@ export const OPEN_ISSUES = {
  * Found by these scenarios and not yet filed or fixed; each has a minimal
  * repro in the scenario that pins it.
  */
-export const FINDINGS = {
-  COMPARE_INSERTED_LIST_ITEMS:
-    "generateRedlineDocx inserts a paragraph the revised version has as a list item as a plain paragraph (the insertion carries only its style), so accepting the redline loses the bullet or number",
-} as const;
+export const FINDINGS = {} as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
 export type Finding = keyof typeof FINDINGS;

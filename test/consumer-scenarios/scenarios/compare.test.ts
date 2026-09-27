@@ -8,9 +8,17 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents";
+import { fromMarkdown } from "@stll/folio-core/markdown";
 import { generateRedlineDocx } from "@stll/folio-core/server";
 
-import { FIXTURE_NAMES, FIXTURES, openReviewer, toArrayBuffer } from "../support/documents.ts";
+import {
+  FIXTURE_NAMES,
+  FIXTURES,
+  openReviewer,
+  packDocument,
+  toArrayBuffer,
+} from "../support/documents.ts";
+import { labelsOf } from "../support/editor.ts";
 import { assertHealthy, assertReadersAgree } from "../support/invariants.ts";
 import { type Block, coreBatch, randomOperation } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
@@ -57,12 +65,9 @@ describe("compare round trips", () => {
       await assertReadersAgree(redlineBytes, `${name} redline`);
       await assertHealthy(await openReviewer(redlineBytes), `${name} redline saved`);
 
-      // Text only: an inserted list item comes back as a plain paragraph
-      // (COMPARE_INSERTED_LIST_ITEMS in known-issues.ts).
-      const textOf = (blocks: string[]) => blocks.map((block) => block.replace(/^\w+: /u, ""));
       assert.deepEqual(
-        textOf(await resolvedText(redlineBytes, "accept")),
-        textOf(await resolvedText(after, "accept")),
+        await resolvedText(redlineBytes, "accept"),
+        await resolvedText(after, "accept"),
         `${name}: accepting the redline does not give the revised version`,
       );
       assert.deepEqual(
@@ -75,4 +80,22 @@ describe("compare round trips", () => {
       assert.equal(typeof formatVersionDiffForLLM(diff), "string");
     });
   }
+
+  test("accepting a redline keeps an inserted bullet a bullet", async () => {
+    const before = await packDocument(fromMarkdown("Intro.\n\nOutro."));
+    const after = await packDocument(fromMarkdown("Intro.\n\n- new bullet\n\nOutro."));
+    const redline = await generateRedlineDocx(toArrayBuffer(before), toArrayBuffer(after));
+    const reviewer = await openReviewer(new Uint8Array(redline.buffer));
+    reviewer.acceptAll();
+    assert.deepEqual(
+      await labelsOf(new Uint8Array(await reviewer.toBuffer())),
+      ["· Intro.", "• new bullet", "· Outro."],
+      "the inserted list item lost its bullet",
+    );
+    assert.deepEqual(
+      await resolvedText(new Uint8Array(redline.buffer), "reject"),
+      await resolvedText(before, "accept"),
+      "rejecting the redline does not give the original version",
+    );
+  });
 });
