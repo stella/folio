@@ -7,6 +7,7 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
+import { checkWordprocessingPackage } from "./main-document-part";
 
 export { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
 
@@ -98,7 +99,12 @@ const readThroughHandle = async (real: string): Promise<Result<OpenedFile, Folio
   return Result.ok(read.value);
 };
 
-/** Read one input file, refusing directories and files over the size bound. */
+/**
+ * Read one input file, refusing directories, files over the size bound, and
+ * anything that is not a WordprocessingML package. Every command and tool
+ * that takes a document reads it here, so none can treat an archive without
+ * a main document part as an empty document.
+ */
 export const readDocumentFile = async (
   inputPath: string,
 ): Promise<Result<LoadedFile, FolioCliError>> => {
@@ -111,6 +117,8 @@ export const readDocumentFile = async (
   const opened = await readThroughHandle(real.value);
   if (opened.isErr()) return Result.err(opened.error);
   const { bytes, identity, links } = opened.value;
+  const checked = await checkWordprocessingPackage(real.value, bytes);
+  if (checked.isErr()) return Result.err(checked.error);
   return Result.ok({
     path: real.value,
     bytes,

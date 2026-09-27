@@ -11,10 +11,11 @@ import path from "node:path";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
-import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
+import { buildDocx, CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
 import { ISOLATED_GIT_ENV } from "./__tests__/io";
+import { MALFORMED_PACKAGES, TOOL_ARGUMENTS } from "./__tests__/malformed-packages";
 import { fileVersionOf } from "./document";
-import { FOLIO_FILE_TOOLS } from "./registry";
+import { FOLIO_FILE_TOOLS, toolAccess } from "./registry";
 
 const BIN = path.join(import.meta.dir, "bin.ts");
 
@@ -49,6 +50,10 @@ afterAll(async () => {
   await client.close();
   await cleanup();
 });
+
+const panicMissing = (message: string): never => {
+  throw new Error(message);
+};
 
 type Envelope = { ok: boolean; data?: Record<string, unknown>; error?: Record<string, unknown> };
 
@@ -192,6 +197,61 @@ describe("folio mcp", () => {
       expect(escape.error?.["code"]).toBe("outside_root");
       expect(destination.error?.["code"]).toBe("outside_root");
       expect(unversioned.error?.["code"]).toBe("invalid_input");
+    },
+    PROCESS_TEST_TIMEOUT_MS,
+  );
+
+  test(
+    "every tool refuses a file that is not a WordprocessingML package",
+    async () => {
+      const valid = await buildDocx(CONTRACT_PARAGRAPHS);
+      const other = path.join(root, "malformed-other.docx");
+      await writeFile(other, valid);
+      const outcomes: string[] = [];
+      const expected: string[] = [];
+      for (const [index, { name, build }] of MALFORMED_PACKAGES.entries()) {
+        const bytes = await build(valid);
+        const file = path.join(root, `malformed-${String(index)}.docx`);
+        await writeFile(file, bytes);
+        const fileVersion = fileVersionOf(bytes);
+        for (const tool of FOLIO_FILE_TOOLS) {
+          const calls: [string, Record<string, unknown>][] =
+            tool.type === "compare"
+              ? [
+                  ["base", { path: file, revisedPath: other }],
+                  ["revised", { path: other, revisedPath: file }],
+                  [
+                    "redline",
+                    {
+                      path: file,
+                      fileVersion,
+                      revisedPath: other,
+                      destination: path.join(root, `malformed-${String(index)}-redline.docx`),
+                    },
+                  ],
+                ]
+              : [
+                  [
+                    toolAccess(tool),
+                    {
+                      path: file,
+                      fileVersion,
+                      ...(TOOL_ARGUMENTS[tool.name] ??
+                        panicMissing(`no arguments for ${tool.name}`)),
+                    },
+                  ],
+                ];
+          for (const [variant, args] of calls) {
+            const label = `${name} / ${tool.name} (${variant})`;
+            const envelope = await call(tool.name, args);
+            outcomes.push(`${label}: ${String(envelope.error?.["code"])}`);
+            expected.push(`${label}: invalid_document`);
+          }
+        }
+        expect(new Uint8Array(await readFile(file))).toEqual(bytes);
+      }
+      expect(outcomes).toEqual(expected);
+      expect(new Uint8Array(await readFile(other))).toEqual(valid);
     },
     PROCESS_TEST_TIMEOUT_MS,
   );

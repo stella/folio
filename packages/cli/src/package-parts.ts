@@ -13,6 +13,7 @@ import path from "node:path";
 import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
+import { checkWordprocessingPackage } from "./main-document-part";
 
 export type PartChange = "added" | "modified" | "removed";
 
@@ -209,7 +210,8 @@ const checkChangedPart = async ({ zip, parts, part }: CheckPartOptions): Promise
  * Check what a save wrote before it replaces anything: the package opens,
  * every changed XML part is well formed, every relationship id a changed
  * part references resolves, every internal target a changed `.rels` part
- * names exists, and the package parses as a document again.
+ * names exists, the package still has the main document part folio reads,
+ * and it parses as a document again.
  */
 export const checkPackageIntegrity = async (
   bytes: Uint8Array<ArrayBuffer>,
@@ -224,6 +226,10 @@ export const checkPackageIntegrity = async (
     if (problem !== null) {
       return Result.err(integrityError(`The saved package failed validation: ${problem}`));
     }
+  }
+  const mainPart = await checkWordprocessingPackage("The saved package", bytes);
+  if (mainPart.isErr()) {
+    return Result.err(integrityError(mainPart.error.message));
   }
   const reopened = await Result.tryPromise({
     try: () => FolioDocxReviewer.fromBuffer(bytes.slice().buffer),

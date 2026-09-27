@@ -23,6 +23,7 @@ import path from "node:path";
 import { escapeHtmlText } from "@stll/folio-core/display-list/html/renderDisplayListToHtml";
 
 import { readDocumentFile } from "./document";
+import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { latestCommitFor } from "./journal";
 import { buildDisplayList, displayListHtml } from "./render";
 import { SIDECAR_DIRECTORY } from "./sidecar";
@@ -113,9 +114,9 @@ const DOCUMENT_CSP = "default-src 'none'; img-src data:; font-src data:; style-s
 export const startPreviewServer = async ({
   documentPath,
   port,
-}: PreviewServerOptions): Promise<Result<PreviewServer, Error>> => {
+}: PreviewServerOptions): Promise<Result<PreviewServer, FolioCliError>> => {
   const initial = await readDocumentFile(documentPath);
-  if (initial.isErr()) return Result.err(new Error(initial.error.message));
+  if (initial.isErr()) return Result.err(initial.error);
   const realPath = initial.value.path;
   const title = path.basename(realPath);
   const token = randomBytes(24).toString("base64url");
@@ -277,7 +278,12 @@ export const startPreviewServer = async ({
       }),
   );
   if (listening.isErr()) {
-    return Result.err(new Error(`Cannot listen on ${PREVIEW_HOST}:${String(port)}.`));
+    return Result.err(
+      cliError({
+        code: FOLIO_CLI_ERROR_CODES.invalidInput,
+        message: `Cannot listen on ${PREVIEW_HOST}:${String(port)}.`,
+      }),
+    );
   }
   const address = server.address();
   boundPort = typeof address === "object" && address !== null ? address.port : port;

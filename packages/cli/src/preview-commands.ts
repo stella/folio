@@ -279,15 +279,7 @@ export const runServe = async (rest: readonly string[], io: FolioCliIo): Promise
     );
   }
   const started = await startPreviewServer({ documentPath: input, port });
-  if (started.isErr()) {
-    return emit(
-      io,
-      format.value,
-      Result.err(
-        cliError({ code: FOLIO_CLI_ERROR_CODES.invalidInput, message: started.error.message }),
-      ),
-    );
-  }
+  if (started.isErr()) return emit(io, format.value, started);
   const exit = emit(
     io,
     format.value,
