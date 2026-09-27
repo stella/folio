@@ -162,6 +162,8 @@ const overlaps = (a: Interval, b: Interval) =>
 export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): Promise<void> => {
   const boxes = await readPanelBoxes(page);
   expect(boxes.pages.length).toBeGreaterThan(0);
+  const ruler = page.getByTestId("folio-horizontal-ruler");
+  if ((await ruler.count()) > 0) await expectOpaque(ruler, "the ruler");
   const panels: [string, Interval][] = [];
   if (boxes.outline) panels.push(["outline", boxes.outline]);
   if (boxes.comments) panels.push(["comments", boxes.comments]);
@@ -185,6 +187,22 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
       expect(pageBox.right).toBeLessThanOrEqual(boxes.viewport.right + EPSILON);
     }
   }
+};
+
+/**
+ * Chrome that pages scroll under (the sticky ruler, a comments drawer) must be
+ * opaque, or page text shows through it: its background colour, under any
+ * image layers, has full alpha.
+ */
+export const expectOpaque = async (locator: Locator, name: string): Promise<void> => {
+  const alpha = await locator.evaluate((element) => {
+    const probe = document.createElement("canvas").getContext("2d");
+    if (!probe) return 0;
+    probe.fillStyle = getComputedStyle(element).backgroundColor;
+    probe.fillRect(0, 0, 1, 1);
+    return probe.getImageData(0, 0, 1, 1).data[3] ?? 0;
+  });
+  expect(alpha, `${name} lets the page show through`).toBe(255);
 };
 
 const focusIsWithin = (locator: Locator) =>
@@ -214,6 +232,7 @@ export const expectDrawerCycle = async (
   await opener.click();
   await expect(drawer).toBeVisible();
   await expect.poll(() => focusIsWithin(drawer)).toBe(true);
+  await expectOpaque(drawer, "the drawer");
   const drawerBox = await drawer.boundingBox();
   const scrimBox = await scrim.boundingBox();
   if (!drawerBox || !scrimBox) throw new Error("drawer or scrim has no box");

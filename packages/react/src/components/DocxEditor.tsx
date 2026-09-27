@@ -4471,6 +4471,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                       layout reserved, so it tracks the page it shifts. */}
                     {rulerVisible && !readOnly && (
                       <div
+                        data-testid="folio-horizontal-ruler"
                         style={{
                           position: "sticky",
                           top: 0,
@@ -4485,7 +4486,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                             twipsToPixels(effectiveSectionProperties?.pageWidth ?? 12240) * zoom +
                             40 +
                             panels.layout.commentsGutter,
-                          backgroundColor: "var(--muted)",
+                          background: "var(--doc-canvas-surface)",
                           transition: "padding 0.2s ease",
                         }}
                       >

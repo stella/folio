@@ -142,7 +142,7 @@ const DRAWER_SURFACE_STYLE: React.CSSProperties = {
   boxSizing: "border-box",
   paddingInline: PANEL_METRICS.commentsGap,
   // Opaque: the canvas tint laid over the page colour.
-  background: "linear-gradient(var(--doc-bg), var(--doc-bg)) var(--doc-page)",
+  background: "var(--doc-canvas-surface)",
   borderInlineStart: "1px solid var(--doc-border)",
   boxShadow: "0 8px 28px var(--doc-shadow-md)",
   outline: "none",
@@ -229,7 +229,8 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const sidebarRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const isDrawer = surface === "drawer";
-  const [drawerSize, setDrawerSize] = useState<{ width: number; height: number }>({
+  const [drawerBox, setDrawerBox] = useState<{ top: number; width: number; height: number }>({
+    top: 0,
     width: PANEL_METRICS.drawerWidth,
     height: 0,
   });
@@ -249,12 +250,17 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
 
     const parentRect = offsetParent.getBoundingClientRect();
     if (isDrawer) {
-      // Pinned to the end edge of the visible viewport, whatever the scroll.
+      // Pinned to the end edge of the visible viewport, whatever the scroll,
+      // and reaching up over the sticky ruler to the top of the scroll content.
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const top = -Math.round(parentRect.top - scrollRect.top + scrollEl.scrollTop);
       const width = Math.min(PANEL_METRICS.drawerWidth, scrollEl.clientWidth - 16);
       const height = scrollEl.clientHeight;
-      const viewportEnd = scrollEl.getBoundingClientRect().left + scrollEl.clientWidth;
-      setDrawerSize((size) =>
-        size.width === width && size.height === height ? size : { width, height },
+      const viewportEnd = scrollRect.left + scrollEl.clientWidth;
+      setDrawerBox((box) =>
+        box.top === top && box.width === width && box.height === height
+          ? box
+          : { top, width, height },
       );
       setMeasuredLeft(viewportEnd - parentRect.left - width);
       return;
@@ -1055,10 +1061,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
       tabIndex={isDrawer ? -1 : undefined}
       style={{
         position: "absolute",
-        top: topOffset,
+        top: isDrawer ? drawerBox.top : topOffset,
         left: measuredLeft ?? `calc(50% - 120px + ${pageWidth / 2 + PANEL_METRICS.commentsGap}px)`,
         bottom: 0,
-        width: isDrawer ? drawerSize.width : SIDEBAR_WIDTH,
+        width: isDrawer ? drawerBox.width : SIDEBAR_WIDTH,
         fontFamily: "inherit",
         zIndex: isDrawer ? 46 : 40,
         overflowY: "visible",
@@ -1078,7 +1084,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
             ? {
                 position: "sticky",
                 top: 0,
-                maxHeight: drawerSize.height || undefined,
+                maxHeight: drawerBox.height || undefined,
                 overflowY: "auto",
                 paddingBlock: PANEL_METRICS.commentsGap,
                 boxSizing: "border-box",

@@ -8,3 +8,5 @@ The document outline and the comments no longer cover the page or each other. Th
 The outline is a proper panel: an "Outline" header, headings nested by level on one line each, the active heading marked with an accent bar and kept in view, and one tab stop with arrow-key navigation. `OutlineRail` receives a new optional `presentation` prop (`"panel"` or `"rail"`) and is mounted inside the outline's surface rather than positioning itself. The outline now also appears once the body view exists, not only after the first edit.
 
 The comments sidebar opens on load only when it has a thread to show; a document with tracked changes but no comments no longer opens an empty panel. A comments toggle in the toolbar shows the number of open threads. `showOutline` is documented with its actual default, `true`.
+
+The horizontal ruler has an opaque surface (a new `--doc-canvas-surface` token: the canvas tint over the page colour), so page text no longer shows through it when a translucent `--muted` is in use; a comments drawer starts at the top of the editor rather than below the ruler.

@@ -25,6 +25,10 @@
   --doc-canvas-text: var(--foreground);
 
   --doc-bg: var(--muted);
+  /* The canvas as an opaque surface, for chrome that pages scroll under (the
+     ruler, a drawer): --doc-bg may be translucent (a tint over the host's
+     background), so it is laid over the page colour. A `background` value. */
+  --doc-canvas-surface: linear-gradient(var(--doc-bg), var(--doc-bg)) var(--doc-page);
   --doc-bg-subtle: var(--muted);
   --doc-bg-muted: var(--muted);
   --doc-bg-hover: var(--accent);
