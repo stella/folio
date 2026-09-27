@@ -1217,7 +1217,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       commentsDirtyRef.current = false;
       commentsLoadedRef.current = false;
-      trackedChangesLoadedRef.current = false;
       setComments([]);
       setTrackedChanges([]);
       setVisibleCommentAuthors(null);
@@ -1260,34 +1259,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const { loadBuffer, loadParsedDocument, originalBufferRef, loadedDocumentIdentity } =
     documentLoader;
 
-  // Extract tracked changes once PM view is ready (after loading completes)
-  const trackedChangesLoadedRef = useRef(false);
+  // Extract tracked changes once PM view is ready (after loading completes).
+  // They do not open the review sidebar: it lists comments only (tracked
+  // changes are painted inline), so opening it for them showed an empty panel.
   useEffect(() => {
     if (state.documentLoad.status === "ready" && history.state) {
-      const timer = setTimeout(() => {
-        extractTrackedChanges();
-        // Auto-open sidebar once on initial load
-        if (!trackedChangesLoadedRef.current) {
-          trackedChangesLoadedRef.current = true;
-          // Check if we just populated tracked changes
-          setTrackedChanges((prev) => {
-            if (autoOpenReviewSidebar && prev.length > 0) {
-              setShowCommentsSidebar(true);
-            }
-            return prev;
-          });
-        }
-      }, 200);
+      const timer = setTimeout(extractTrackedChanges, 200);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [
-    state.documentLoad.status,
-    history.state,
-    extractTrackedChanges,
-    autoOpenReviewSidebar,
-    setShowCommentsSidebar,
-  ]);
+  }, [state.documentLoad.status, history.state, extractTrackedChanges]);
 
   useEffect(() => {
     if (
