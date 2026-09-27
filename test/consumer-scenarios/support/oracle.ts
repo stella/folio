@@ -898,23 +898,26 @@ const compareComments = (
   model: Model,
   before: readonly Comment[],
   after: readonly Comment[],
+  rows: readonly Row[],
 ): string[] => {
   const problems: string[] = [];
   const remaining = [...after];
-  // A comment goes with the content it anchors: one whose whole anchor lay in
-  // a block the operation removed is gone, and one whose anchor started in a
-  // removed block but ran on past it keeps whatever it still covers, which the
-  // model does not predict.
+  // A comment goes with the content it anchors. One whose whole anchor lay in
+  // a block the operation removed must be gone. One whose anchored text no
+  // longer appears anywhere may be gone: the model does not track every
+  // stretch an operation removes (a block merged by a pending change reads as
+  // two). Every other comment must remain.
   const removedRow = (entry: Comment) =>
     entry.blockId === null
       ? undefined
       : model.rows.find((row) => row.removed && row.pre?.id === entry.blockId);
+  const resultText = rows.map((row) => row.text).join("");
   const kept: Comment[] = [];
   const gone: Comment[] = [];
   for (const entry of before) {
     const row = removedRow(entry);
-    if (!row) kept.push(entry);
-    else if ((row.pre?.text ?? "").includes(entry.anchor)) gone.push(entry);
+    if (row && (row.pre?.text ?? "").includes(entry.anchor)) gone.push(entry);
+    else if (entry.anchor === "" || resultText.includes(entry.anchor)) kept.push(entry);
   }
   const expected = [
     ...kept.map((entry) => ({ text: entry.text, anchor: undefined })),
@@ -1192,7 +1195,7 @@ export const assertRequestedOutcome = async (
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
     ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
-    ...compareComments(model, pre.comments, comments),
+    ...compareComments(model, pre.comments, comments, rows),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
   if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
