@@ -254,8 +254,8 @@ const FOLLOW_UPS: Record<string, FollowUp> = {
     },
   },
   // A paragraph pending deletion reads as a blank block, which a model may name.
-  // Word keeps text typed there joined to the next paragraph once accepted,
-  // so rewriting it is refused rather than glued onto that paragraph.
+  // Text typed there stays joined to the next paragraph once accepted, so
+  // rewriting it is refused rather than glued onto that paragraph.
   rewritePendingDeletion: {
     first: deleteFirst,
     second: onDeleted((block) => ({ type: "replaceBlock", blockId: block.id, text: "Rewritten." })),
