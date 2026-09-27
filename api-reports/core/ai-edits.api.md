@@ -52,6 +52,9 @@ export const createFolioAIEditSnapshotWithStyleResolver: (doc: Node_2, styleReso
 // @public (undocumented)
 export const createFolioAITextRangeHandle: (input: CreateFolioAITextRangeHandleOptions) => FolioAITextRangeHandle | null;
 
+// @public
+export const createPendingSuggestionSourceSnapshot: (state: EditorState, commentIds: ReadonlySet<number>) => FolioAIEditSnapshot;
+
 // @public (undocumented)
 export const diffWordSegments: (before: string, after: string, options?: WordDiffOptions) => WordDiffSegment[];
 
@@ -109,6 +112,9 @@ export const FOLIO_LINE_SPACING_RULE_VALUES: readonly import__stll_docx_core_mod
 
 // @public
 export const FOLIO_PARAGRAPH_ALIGNMENT_VALUES: readonly import__stll_docx_core_model.ParagraphAlignment[];
+
+// @public (undocumented)
+export const FOLIO_PENDING_SUGGESTION_VERSION: 1;
 
 // @public (undocumented)
 export const FOLIO_RESOLVED_REVIEWED_VIEWS: readonly ["original", "final"];
@@ -831,6 +837,52 @@ export class FolioDocumentStoryNotFoundError extends FolioDocumentStoryNotFoundE
 
 // @public (undocumented)
 export type FolioEditableDocumentStoryHandle = FolioDocumentStoryHandle;
+
+// @public (undocumented)
+export type FolioPendingSuggestionLoadResult = {
+    status: "restaged";
+    suggestionId: string;
+} | {
+    status: "stale";
+    suggestionId: string | null;
+    reason: FolioPendingSuggestionStaleReason;
+};
+
+// @public
+export type FolioPendingSuggestionRecord = {
+    version: typeof FOLIO_PENDING_SUGGESTION_VERSION;
+    suggestionId: string;
+    operation: FolioAIEditOperation;
+    story: FolioDocumentStoryHandle;
+    anchor: {
+        blockId: string;
+        paraId: string | null;
+        originalTextHash: string;
+        selectedTextHash?: string;
+        startOffset?: number;
+        endOffset?: number;
+    };
+    author: string;
+    provenance: "suggested";
+    sourceDocumentFingerprint: string;
+    commentId?: number;
+};
+
+// @public
+export class FolioPendingSuggestionRegistry {
+    // (undocumented)
+    clear(): void;
+    // (undocumented)
+    exportPendingSuggestions(input: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[];
+    // (undocumented)
+    loadPendingSuggestions(input: LoadPendingSuggestionsOptions): FolioPendingSuggestionLoadResult[];
+    // (undocumented)
+    recordApplied(input: RecordAppliedOptions): void;
+    replaceRestagedStory(input: ReplaceRestagedStoryOptions): void;
+}
+
+// @public (undocumented)
+export type FolioPendingSuggestionStaleReason = "missingAnchor" | "ambiguousAnchor" | "textChanged" | "unsupportedVersion" | "documentChanged" | "invalidRecord" | "applyFailed";
 
 // @public (undocumented)
 export type FolioReadReviewedStoryOptions = {

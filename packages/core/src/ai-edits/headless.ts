@@ -144,6 +144,8 @@ import {
 } from "./comment-lifecycle";
 import {
   FolioPendingSuggestionRegistry,
+  createPendingSuggestionSourceSnapshot,
+  withoutPendingSuggestionCommentMarks,
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
 } from "./pending-suggestions";
@@ -1428,7 +1430,13 @@ export class FolioDocxReviewer {
     for (const entry of this.secondaryStoryStates.values()) {
       for (const { suggestionId } of getSuggestions(entry.state)) active.add(suggestionId);
     }
-    return this.pendingSuggestions.exportPendingSuggestions(active);
+    return this.pendingSuggestions.exportPendingSuggestions({
+      activeSuggestionIds: active,
+      snapshotForStory: (story, commentIds) => {
+        const state = this.getEditableStoryState(story);
+        return state ? createPendingSuggestionSourceSnapshot(state, commentIds) : null;
+      },
+    });
   }
 
   /** Validate saved proposals against this document before restaging them. */
@@ -2394,7 +2402,7 @@ export class FolioDocxReviewer {
   acceptSuggestion(suggestionId: string, options?: { author?: string }): boolean {
     return this.resolveWithSectionReferenceHistory(() => {
       let accepted = false;
-      for (const { handle } of this.listStories()) {
+      for (const handle of this.listStoryHandlesInternal()) {
         const state = this.getEditableStoryState(handle);
         if (!state || !getSuggestions(state).some((entry) => entry.suggestionId === suggestionId)) {
           continue;
@@ -2413,7 +2421,7 @@ export class FolioDocxReviewer {
   rejectSuggestion(suggestionId: string): boolean {
     return this.resolveWithSectionReferenceHistory(() => {
       let rejected = false;
-      for (const { handle } of this.listStories()) {
+      for (const handle of this.listStoryHandlesInternal()) {
         const state = this.getEditableStoryState(handle);
         if (!state || !getSuggestions(state).some((entry) => entry.suggestionId === suggestionId)) {
           continue;
@@ -2496,7 +2504,7 @@ export class FolioDocxReviewer {
     let count = 0;
     const resolvedStories: { handle: FolioEditableDocumentStoryHandle; state: EditorState }[] = [];
     const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] = [];
-    for (const { handle } of this.listStories()) {
+    for (const handle of this.listStoryHandlesInternal()) {
       const state = this.getEditableStoryState(handle);
       if (!state) {
         continue;
@@ -2547,7 +2555,11 @@ export class FolioDocxReviewer {
 
     // The ordinary resolver must see the complete story in one pass: resolving
     // revision ids separately can change paragraph joins and list ownership.
-    const clean = rejectSuggestions(state);
+    let clean = rejectSuggestions(state);
+    const restagedCommentIds = new Set(
+      records.flatMap(({ commentId }) => (commentId === undefined ? [] : [commentId])),
+    );
+    clean = withoutPendingSuggestionCommentMarks(clean, restagedCommentIds);
     let resolved = resolveAllChangesInHeadlessState(clean, "accept");
     const restaged: {
       snapshot: FolioAIEditSnapshot;
@@ -2573,19 +2585,24 @@ export class FolioDocxReviewer {
         },
         story: story.type === "main" ? "main" : story,
         author: record.author,
-        createCommentId: () => panic("A staged suggestion cannot create a comment"),
+        createCommentId: () => {
+          if (record.commentId === undefined) {
+            panic("A staged comment suggestion has no comment id", {
+              suggestionId: record.suggestionId,
+            });
+          }
+          return record.commentId;
+        },
       });
       const applied = result.applied.find(({ id }) => id === record.operation.id);
       if (!applied) {
-        panic("A pending suggestion could not be restaged after bulk acceptance", {
-          suggestionId: record.suggestionId,
-        });
+        continue;
       }
       restaged.push({ snapshot, operation: record.operation, applied, author: record.author });
       resolved = view.state;
     }
     const restagedIds = new Set(getSuggestions(resolved).map(({ suggestionId }) => suggestionId));
-    if (originalSuggestions.some(({ suggestionId }) => !restagedIds.has(suggestionId))) {
+    if (restaged.some(({ applied }) => !restagedIds.has(applied.suggestionId ?? applied.id))) {
       panic("Bulk acceptance lost a pending suggestion");
     }
     return {
@@ -2687,6 +2704,11 @@ export class FolioDocxReviewer {
 
   private captureSaveSnapshot(): FolioSaveSnapshot {
     const snapshot = this.captureReviewerState();
+    const pendingCommentIds = new Set(
+      this.exportPendingSuggestions().flatMap(({ commentId }) =>
+        commentId === undefined ? [] : [commentId],
+      ),
+    );
     const changedParaIds = new Set(getChangedParagraphIds(snapshot.mainState));
     let structuralChange =
       hasStructuralChanges(snapshot.mainState) ||
@@ -2714,7 +2736,15 @@ export class FolioDocxReviewer {
       path = { type: "full-repack", reason: "untrackedChange" };
     }
     return {
-      document: this.documentFromStateSnapshot(snapshot),
+      document: this.documentFromStateSnapshot({
+        ...snapshot,
+        mainState: withoutPendingSuggestionCommentMarks(snapshot.mainState, pendingCommentIds),
+        secondaryStoryStates: snapshot.secondaryStoryStates.map((entry) => ({
+          ...entry,
+          state: withoutPendingSuggestionCommentMarks(entry.state, pendingCommentIds),
+        })),
+        createdComments: snapshot.createdComments.filter(({ id }) => !pendingCommentIds.has(id)),
+      }),
       path,
       changedNoteParaIds,
       sectionReferenceRemovals: snapshot.sectionReferenceRemovals,

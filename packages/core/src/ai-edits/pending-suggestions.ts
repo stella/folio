@@ -4,7 +4,14 @@ import {
 } from "../document-operations";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
-import { hashFolioAIBlockText, sourceDocumentOf } from "./snapshot";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import { rejectAllSuggestions } from "../prosemirror/commands/comments";
+import type { EditorState } from "prosemirror-state";
+import {
+  createFolioAIEditSnapshotWithStyleResolver,
+  hashFolioAIBlockText,
+  sourceDocumentOf,
+} from "./snapshot";
 import type { FolioDocumentStoryHandle } from "./headless";
 import type {
   FolioAIEditAppliedOperation,
@@ -32,6 +39,7 @@ export type FolioPendingSuggestionRecord = {
   author: string;
   provenance: "suggested";
   sourceDocumentFingerprint: string;
+  commentId?: number;
 };
 
 export type FolioPendingSuggestionStaleReason =
@@ -79,6 +87,44 @@ type LoadPendingSuggestionsOptions = {
     snapshot: FolioAIEditSnapshot,
   ) => FolioAIEditApplyResult;
   activeSuggestionIds: () => ReadonlySet<string>;
+};
+
+type ExportPendingSuggestionsOptions = {
+  activeSuggestionIds: ReadonlySet<string>;
+  snapshotForStory: (
+    story: FolioDocumentStoryHandle,
+    commentIds: ReadonlySet<number>,
+  ) => FolioAIEditSnapshot | null;
+};
+
+/** Drop only comments attached to proposals that have not been accepted. */
+export const withoutPendingSuggestionCommentMarks = (
+  state: EditorState,
+  commentIds: ReadonlySet<number>,
+): EditorState => {
+  if (commentIds.size === 0) return state;
+  let transaction = state.tr;
+  state.doc.descendants((node, position) => {
+    for (const mark of node.marks) {
+      if (mark.type.name === "comment" && commentIds.has(mark.attrs["commentId"])) {
+        transaction = transaction.removeMark(position, position + node.nodeSize, mark);
+      }
+    }
+  });
+  return transaction.docChanged ? state.apply(transaction) : state;
+};
+
+/** The saved package's story, with all pending proposals removed. */
+export const createPendingSuggestionSourceSnapshot = (
+  state: EditorState,
+  commentIds: ReadonlySet<number>,
+): FolioAIEditSnapshot => {
+  let source = state;
+  rejectAllSuggestions()(state, (transaction) => {
+    source = state.apply(transaction);
+  });
+  source = withoutPendingSuggestionCommentMarks(source, commentIds);
+  return createFolioAIEditSnapshotWithStyleResolver(source.doc, getDocumentStyleResolver(source));
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -147,6 +193,8 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
     typeof value["author"] !== "string" ||
     value["provenance"] !== "suggested" ||
     typeof value["sourceDocumentFingerprint"] !== "string" ||
+    (value["commentId"] !== undefined &&
+      (typeof value["commentId"] !== "number" || !Number.isSafeInteger(value["commentId"]))) ||
     typeof anchor["blockId"] !== "string" ||
     (anchor["paraId"] !== null && typeof anchor["paraId"] !== "string") ||
     typeof anchor["originalTextHash"] !== "string"
@@ -202,6 +250,8 @@ const parseRecord = (value: unknown): FolioPendingSuggestionRecord | null => {
     author: value["author"],
     provenance: "suggested",
     sourceDocumentFingerprint: value["sourceDocumentFingerprint"],
+    ...(typeof value["commentId"] === "number" &&
+      Number.isSafeInteger(value["commentId"]) && { commentId: value["commentId"] }),
   };
 };
 
@@ -262,6 +312,7 @@ export class FolioPendingSuggestionRegistry {
         author,
         provenance: "suggested",
         sourceDocumentFingerprint: fingerprint,
+        ...(outcome.commentId !== undefined && { commentId: outcome.commentId }),
       };
       this.records.set(recordKey(record), record);
     }
@@ -293,16 +344,42 @@ export class FolioPendingSuggestionRegistry {
     }
   }
 
-  exportPendingSuggestions(
-    activeSuggestionIds: ReadonlySet<string>,
-  ): FolioPendingSuggestionRecord[] {
+  exportPendingSuggestions({
+    activeSuggestionIds,
+    snapshotForStory,
+  }: ExportPendingSuggestionsOptions): FolioPendingSuggestionRecord[] {
     const pending: FolioPendingSuggestionRecord[] = [];
+    const fingerprints = new Map<string, string>();
+    const commentIdsByStory = new Map<string, Set<number>>();
+    for (const record of this.records.values()) {
+      if (!activeSuggestionIds.has(record.suggestionId) || record.commentId === undefined) continue;
+      const storyKey = canonicalJson(record.story);
+      const commentIds = commentIdsByStory.get(storyKey) ?? new Set<number>();
+      commentIds.add(record.commentId);
+      commentIdsByStory.set(storyKey, commentIds);
+    }
     for (const [key, record] of this.records) {
       if (activeSuggestionIds.has(record.suggestionId)) {
-        pending.push(structuredClone(record));
+        const storyKey = canonicalJson(record.story);
+        let fingerprint = fingerprints.get(storyKey);
+        if (fingerprint === undefined) {
+          const snapshot = snapshotForStory(
+            record.story,
+            commentIdsByStory.get(storyKey) ?? new Set<number>(),
+          );
+          if (!snapshot) continue;
+          fingerprint = fingerprintOf(snapshot, record.story);
+          fingerprints.set(storyKey, fingerprint);
+        }
+        const current = { ...record, sourceDocumentFingerprint: fingerprint };
+        this.records.set(key, current);
+        pending.push(structuredClone(current));
       } else {
         this.records.delete(key);
       }
+    }
+    for (const [storyKey, fingerprint] of fingerprints) {
+      this.sourceFingerprints.set(storyKey, fingerprint);
     }
     if (pending.length === 0) this.sourceFingerprints.clear();
     return pending;
@@ -330,7 +407,9 @@ export class FolioPendingSuggestionRegistry {
       const key = recordKey(record);
       const existing = this.records.get(key);
       if (existing && activeSuggestionIds().has(record.suggestionId)) {
-        return canonicalJson(existing) === canonicalJson(record)
+        const { commentId: _existingCommentId, ...existingProposal } = existing;
+        const { commentId: _loadedCommentId, ...loadedProposal } = record;
+        return canonicalJson(existingProposal) === canonicalJson(loadedProposal)
           ? { status: "restaged", suggestionId: record.suggestionId }
           : { status: "stale", suggestionId, reason: "invalidRecord" };
       }
@@ -383,7 +462,7 @@ export class FolioPendingSuggestionRegistry {
         return { status: "stale", suggestionId, reason: "applyFailed" };
       }
       this.sourceFingerprints.set(storyKey, record.sourceDocumentFingerprint);
-      this.records.set(key, structuredClone(record));
+      if (!this.records.has(key)) this.records.set(key, structuredClone(record));
       changedStories.add(storyKey);
       return { status: "restaged", suggestionId: record.suggestionId };
     });

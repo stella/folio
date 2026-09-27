@@ -34,6 +34,7 @@ export { getFolioParaIdFromBlockId } from "../types/block-id";
 export {
   FOLIO_PENDING_SUGGESTION_VERSION,
   FolioPendingSuggestionRegistry,
+  createPendingSuggestionSourceSnapshot,
   type FolioPendingSuggestionLoadResult,
   type FolioPendingSuggestionRecord,
   type FolioPendingSuggestionStaleReason,

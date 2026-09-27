@@ -34,6 +34,7 @@ import {
   applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
+  createPendingSuggestionSourceSnapshot,
   createFolioAIEditSnapshotWithStyleResolver,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioPendingSuggestionRegistry,
@@ -404,6 +405,50 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     });
   }
 
+  const applyAIEditOperations = ({
+    snapshot,
+    operations,
+    mode = "tracked-changes",
+    author: operationAuthor = opts.author(),
+  }: Parameters<DocxEditorRef["applyAIEditOperations"]>[0]) => {
+    const view = opts.editorView.value;
+    if (!view) {
+      return {
+        applied: [],
+        skipped: operations.map((operation) => ({
+          id: operation.id,
+          reason: "unsupportedBlock" as const,
+        })),
+      };
+    }
+    const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
+    // Through the document-operation applier, like the batch path, so a
+    // result the save-time check refuses never reaches the editor.
+    const { applied, skipped } = applyWithStagedOperationComments({
+      createComment: (text) => opts.createAIEditComment(text, operationAuthor),
+      publishComments: opts.publishAIEditComments,
+      apply: (createCommentId) =>
+        applyFolioDocumentOperations({
+          view,
+          snapshot,
+          batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
+          author: operationAuthor,
+          createCommentId,
+        }),
+    });
+    if (mode === "suggested") {
+      pendingSuggestionRegistry.recordApplied({
+        snapshot,
+        story: { type: "main" },
+        operations,
+        applied,
+        author: operationAuthor,
+        activeSuggestionIds,
+      });
+    }
+    return { applied, skipped };
+  };
+
   const exposed = {
     getDocument: opts.getDocument,
     // React derives this live from the ParagraphChangeTracker plugin
@@ -563,49 +608,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       documentOperationUndoEntries.pop();
       return { status: "undone", undoHandle };
     },
-    applyAIEditOperations: ({
-      snapshot,
-      operations,
-      mode = "tracked-changes",
-      author: operationAuthor = opts.author(),
-    }) => {
-      const view = opts.editorView.value;
-      if (!view) {
-        return {
-          applied: [],
-          skipped: operations.map((operation) => ({
-            id: operation.id,
-            reason: "unsupportedBlock",
-          })),
-        };
-      }
-      const activeSuggestionIds = new Set(getSuggestions(view.state).map((s) => s.suggestionId));
-      // Through the document-operation applier, like the batch path, so a
-      // result the save-time check refuses never reaches the editor.
-      const { applied, skipped } = applyWithStagedOperationComments({
-        createComment: (text) => opts.createAIEditComment(text, operationAuthor),
-        publishComments: opts.publishAIEditComments,
-        apply: (createCommentId) =>
-          applyFolioDocumentOperations({
-            view,
-            snapshot,
-            batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
-            author: operationAuthor,
-            createCommentId,
-          }),
-      });
-      if (mode === "suggested") {
-        pendingSuggestionRegistry.recordApplied({
-          snapshot,
-          story: { type: "main" },
-          operations,
-          applied,
-          author: operationAuthor,
-          activeSuggestionIds,
-        });
-      }
-      return { applied, skipped };
-    },
+    applyAIEditOperations,
     acceptAIEditOperation: (revisionIds) => {
       const view = opts.editorView.value;
       if (!view) {
@@ -731,7 +734,13 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     exportPendingSuggestions: () => {
       const view = opts.editorView.value;
       const activeIds = new Set(view ? getSuggestions(view.state).map((s) => s.suggestionId) : []);
-      return pendingSuggestionRegistry.exportPendingSuggestions(activeIds);
+      return pendingSuggestionRegistry.exportPendingSuggestions({
+        activeSuggestionIds: activeIds,
+        snapshotForStory: (story, commentIds) =>
+          story.type === "main" && view
+            ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+            : null,
+      });
     },
     loadPendingSuggestions: (records) =>
       pendingSuggestionRegistry.loadPendingSuggestions({
@@ -741,7 +750,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
         },
         apply: (record, snapshot) =>
-          exposed.applyAIEditOperations({
+          applyAIEditOperations({
             snapshot,
             operations: [record.operation],
             mode: "suggested",

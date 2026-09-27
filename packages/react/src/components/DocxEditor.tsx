@@ -42,6 +42,7 @@ import {
   applyFolioDocumentOperations,
   assertSupportedFolioDocumentOperationVersion,
   createFolioAIEditSnapshot,
+  createPendingSuggestionSourceSnapshot,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   FolioPendingSuggestionRegistry,
   getCommentAnchorsFromDoc,
@@ -3401,7 +3402,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const activeIds = new Set(
           view ? getSuggestions(view.state).map((s) => s.suggestionId) : [],
         );
-        return pendingSuggestionRegistryRef.current.exportPendingSuggestions(activeIds);
+        return pendingSuggestionRegistryRef.current.exportPendingSuggestions({
+          activeSuggestionIds: activeIds,
+          snapshotForStory: (story, commentIds) =>
+            story.type === "main" && view
+              ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+              : null,
+        });
       },
       loadPendingSuggestions: (records) =>
         pendingSuggestionRegistryRef.current.loadPendingSuggestions({

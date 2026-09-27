@@ -1272,10 +1272,14 @@ export type FolioDocxPreparedXmlReplacement = {
 export class FolioDocxReviewer {
     acceptAll(): number;
     acceptChange(target: FolioReviewChange | number): boolean;
+    acceptSuggestion(suggestionId: string, options?: {
+        author?: string;
+    }): boolean;
     applyDocumentOperations(batch: FolioDocumentOperationBatch, options?: FolioApplyDocumentOperationsOptions): FolioDocumentOperationResult;
     applyDocumentOperationsToStory(input: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult;
     applyOperations(operations: FolioAIEditOperation[], options?: FolioApplyOperationsOptions): FolioAIEditApplyResult;
     readonly author: string;
+    exportPendingSuggestions(): FolioPendingSuggestionRecord[];
     static fromBuffer(buffer: ArrayBuffer, options?: FolioDocxReviewerOptions): Promise<FolioDocxReviewer>;
     getChanges(filter?: FolioReviewChangeFilter): FolioReviewChange[];
     getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[];
@@ -1284,12 +1288,14 @@ export class FolioDocxReviewer {
     getDocumentProperties(): Readonly<NonNullable<import__stll_docx_core_model.Document["package"]["properties"]>> | null;
     getNotesAsText(): string;
     listStories(): FolioDocumentStory[];
+    loadPendingSuggestions(records: readonly unknown[]): FolioPendingSuggestionLoadResult[];
     matchStoryTableGeometry(input: FolioMatchStoryTableGeometryOptions): number;
     readNumberingDefinitions(): FolioNumberingLevel[];
     readReviewedStory(options?: FolioReadReviewedStoryOptions): FolioReviewedStory | null;
     readStory(handle: FolioDocumentStoryHandle): FolioDocumentStory | null;
     rejectAll(): number;
     rejectChange(target: FolioReviewChange | number): boolean;
+    rejectSuggestion(suggestionId: string): boolean;
     replyTo(target: FolioReviewComment | number, input: FolioReviewReplyInput): FolioReviewCommentReply | null;
     resolveComment(commentId: string, options?: {
         resolved?: boolean;

@@ -236,6 +236,84 @@ describe("resolving every suggestion headlessly", () => {
     );
   });
 
+  test("bulk acceptance preserves a pending comment and its comment id", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument());
+    const [first, last] = reviewer.getContent();
+    if (!first || !last) throw new Error("fixture paragraphs missing");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [
+          {
+            id: "tracked",
+            type: "replaceInBlock",
+            blockId: first.id,
+            find: "First",
+            replace: "Opening",
+          },
+        ],
+      }).applied,
+    ).toHaveLength(1);
+    const comment = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "suggested",
+      operations: [
+        {
+          id: "pending-comment",
+          type: "replaceInBlock",
+          blockId: last.id,
+          find: "two",
+          replace: "three",
+          comment: { text: "Review this." },
+        },
+      ],
+    });
+    expect(comment.skipped).toEqual([]);
+    expect(comment.applied).toHaveLength(1);
+    const commentId = comment.applied.at(0)?.commentId;
+    expect(commentId).toBeDefined();
+    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.exportPendingSuggestions().at(0)?.commentId).toBe(commentId);
+    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reopened.getComments()).toEqual([]);
+    expect(reopened.loadPendingSuggestions(records)).toEqual([
+      { status: "restaged", suggestionId: "pending-comment" },
+    ]);
+    expect(reopened.acceptAll()).toBe(0);
+  });
+
+  test("bulk acceptance drops a proposal whose anchor was merged away", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument());
+    const [first, last] = reviewer.getContent();
+    if (!first || !last) throw new Error("fixture paragraphs missing");
+    expect(
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "suggested",
+        operations: [
+          {
+            id: "pending",
+            type: "replaceInBlock",
+            blockId: last.id,
+            find: "two",
+            replace: "three",
+          },
+        ],
+      }).applied,
+    ).toHaveLength(1);
+    expect(
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode: "tracked-changes",
+        operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: first.id }],
+      }).applied,
+    ).toHaveLength(1);
+    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(reviewer.exportPendingSuggestions()).toEqual([]);
+  });
+
   test("refuses a suggestion that would retract a tracked insertion", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
     const first = reviewer.getContent()[0];

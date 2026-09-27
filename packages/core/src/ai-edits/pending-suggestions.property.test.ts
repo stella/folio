@@ -234,6 +234,29 @@ describe("host-persisted pending suggestions", () => {
     ]);
   });
 
+  test("an unrelated direct edit after staging refreshes the saved story fingerprint", async () => {
+    const { reviewer } = await stage("Second clause.", "Revised clause.");
+    expect(
+      reviewer.applyOperations(
+        [
+          {
+            id: "later-edit",
+            type: "replaceInBlock",
+            blockId: FIRST_ID,
+            find: "First",
+            replace: "Opening",
+          },
+        ],
+        { mode: "direct" },
+      ).applied,
+    ).toHaveLength(1);
+    const records = JSON.parse(JSON.stringify(reviewer.exportPendingSuggestions()));
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reopened.loadPendingSuggestions(records)).toEqual([
+      { status: "restaged", suggestionId: "proposal-1" },
+    ]);
+  });
+
   test("secondary-story proposals retain their story on reload", async () => {
     const relationshipId = "rId_pending_header";
     const story = { type: "header", relationshipId } as const;
