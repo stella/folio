@@ -13,6 +13,7 @@ import {
 } from "@stll/folio-core/server";
 
 import { type Random, sentence } from "./random.ts";
+import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
 
 export type Mode = "direct" | "tracked-changes" | "suggested";
 export const MODES: readonly Mode[] = ["direct", "tracked-changes", "suggested"];
@@ -29,23 +30,21 @@ export type Operation = { type: string } & Record<string, unknown>;
 
 const inTable = (block: Block): boolean => block.table !== undefined;
 
-const wordsOf = (text: string): { word: string; start: number }[] =>
-  [...text.matchAll(/[\p{L}\p{N}]{3,}/gu)].map((match) => ({
-    word: match[0],
-    start: match.index,
-  }));
-
-type Generator = (blocks: readonly Block[], random: Random) => Operation | null;
+/**
+ * Builds one operation from the blocks a model just read, or null when
+ * nothing fits. `pick` chooses the block, span and split point; without one
+ * the draws are uniform, as they were before targeting.
+ */
+type Generator = (blocks: readonly Block[], random: Random, pick?: Picker) => Operation | null;
 
 const withText = (blocks: readonly Block[]) => blocks.filter((block) => wordsOf(block.text).length);
 
 const numberingRefs = (blocks: readonly Block[]) =>
   blocks.flatMap((block) => (block.listReference ? [block.listReference] : []));
 
-const range = (block: Block, random: Random) => {
-  const words = wordsOf(block.text);
-  if (words.length === 0) return null;
-  const { word, start } = random.pick(words);
+const range = (block: Block, pick: Picker) => {
+  if (wordsOf(block.text).length === 0) return null;
+  const { word, start } = pick.span(block);
   return createFolioAITextRangeHandle({
     blockId: block.id,
     text: block.text,
@@ -69,28 +68,28 @@ const paragraphProperties = (blocks: readonly Block[], random: Random) => {
 
 /** Well-formed operations, by type. A generator returns null when nothing fits. */
 export const GENERATORS: Record<string, Generator> = {
-  replaceInBlock: (blocks, random) => {
+  replaceInBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
-    const block = random.pick(candidates);
+    const block = pick.block(candidates);
     return {
       type: "replaceInBlock",
       blockId: block.id,
-      find: random.pick(wordsOf(block.text)).word,
+      find: pick.span(block).word,
       replace: random.pick(["revised", "amended", "the Customer", ""]),
       precondition: { blockTextHash: hashFolioAIBlockText(block.text) },
     };
   },
-  replaceRange: (blocks, random) => {
+  replaceRange: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
-    const handle = range(random.pick(candidates), random);
+    const handle = range(pick.block(candidates), pick);
     return handle && { type: "replaceRange", range: handle, replace: "updated" };
   },
-  formatRange: (blocks, random) => {
+  formatRange: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
-    const handle = range(random.pick(candidates), random);
+    const handle = range(pick.block(candidates), pick);
     return (
       handle && {
         type: "formatRange",
@@ -99,13 +98,13 @@ export const GENERATORS: Record<string, Generator> = {
       }
     );
   },
-  commentOnRange: (blocks, random) => {
+  commentOnRange: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
-    const handle = range(random.pick(candidates), random);
+    const handle = range(pick.block(candidates), pick);
     return handle && { type: "commentOnRange", range: handle, comment: { text: sentence(random) } };
   },
-  insertAfterBlock: (blocks, random) => {
+  insertAfterBlock: (blocks, random, pick = uniformPicker(random)) => {
     if (blocks.length === 0) return null;
     const refs = numberingRefs(blocks);
     const extra = random.pick([
@@ -117,76 +116,75 @@ export const GENERATORS: Record<string, Generator> = {
     ]);
     return {
       type: "insertAfterBlock",
-      blockId: random.pick(blocks).id,
+      blockId: pick.block(blocks).id,
       text: sentence(random),
       ...extra,
     };
   },
-  insertBeforeBlock: (blocks, random) =>
+  insertBeforeBlock: (blocks, random, pick = uniformPicker(random)) =>
     blocks.length === 0
       ? null
-      : { type: "insertBeforeBlock", blockId: random.pick(blocks).id, text: sentence(random) },
-  replaceBlock: (blocks, random) => {
+      : { type: "insertBeforeBlock", blockId: pick.block(blocks).id, text: sentence(random) },
+  replaceBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));
     if (candidates.length === 0) return null;
-    return { type: "replaceBlock", blockId: random.pick(candidates).id, text: sentence(random) };
+    return { type: "replaceBlock", blockId: pick.block(candidates).id, text: sentence(random) };
   },
-  deleteBlock: (blocks, random) => {
+  deleteBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));
     if (candidates.length < 3) return null;
-    return { type: "deleteBlock", blockId: random.pick(candidates).id };
+    return { type: "deleteBlock", blockId: pick.block(candidates).id };
   },
-  splitBlock: (blocks, random) => {
+  splitBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block) && wordsOf(block.text).length > 1);
     if (candidates.length === 0) return null;
-    const block = random.pick(candidates);
-    const words = wordsOf(block.text);
-    return { type: "splitBlock", blockId: block.id, offset: random.pick(words.slice(1)).start };
+    const block = pick.block(candidates);
+    return { type: "splitBlock", blockId: block.id, offset: pick.split(block) };
   },
-  mergeBlockWithNext: (blocks, random) => {
+  mergeBlockWithNext: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter(
       (block, index) =>
         !inTable(block) && blocks[index + 1] !== undefined && !inTable(blocks[index + 1] as Block),
     );
     if (candidates.length === 0) return null;
-    return { type: "mergeBlockWithNext", blockId: random.pick(candidates).id, separator: " " };
+    return { type: "mergeBlockWithNext", blockId: pick.block(candidates).id, separator: " " };
   },
-  setBlockParagraphProperties: (blocks, random) => {
+  setBlockParagraphProperties: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));
     if (candidates.length === 0) return null;
     return {
       type: "setBlockParagraphProperties",
-      blockId: random.pick(candidates).id,
+      blockId: pick.block(candidates).id,
       properties: paragraphProperties(blocks, random),
     };
   },
-  commentOnBlock: (blocks, random) => {
+  commentOnBlock: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = withText(blocks);
     if (candidates.length === 0) return null;
-    const block = random.pick(candidates);
+    const block = pick.block(candidates);
     return {
       type: "commentOnBlock",
       blockId: block.id,
-      quote: random.pick(wordsOf(block.text)).word,
+      quote: pick.span(block).word,
       comment: { text: sentence(random) },
     };
   },
-  insertTable: (blocks, random) => {
+  insertTable: (blocks, random, pick = uniformPicker(random)) => {
     const candidates = blocks.filter((block) => !inTable(block));
     if (candidates.length === 0) return null;
     return {
       type: "insertTable",
-      blockId: random.pick(candidates).id,
+      blockId: pick.block(candidates).id,
       rows: [
         ["Term", "Value"],
         ["Period", "12 months"],
       ],
     };
   },
-  insertTableRow: (blocks, random) => {
+  insertTableRow: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
     if (cells.length === 0) return null;
-    const anchor = random.pick(cells);
+    const anchor = pick.block(cells);
     return {
       type: "insertTableRow",
       blockId: anchor.id,
@@ -194,19 +192,19 @@ export const GENERATORS: Record<string, Generator> = {
       cellTexts: cellTexts(cellCount(rowCells(blocks, anchor)), "Row cell"),
     };
   },
-  deleteTableRow: (blocks, random) => {
+  deleteTableRow: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
-    return cells.length === 0 ? null : { type: "deleteTableRow", blockId: random.pick(cells).id };
+    return cells.length === 0 ? null : { type: "deleteTableRow", blockId: pick.block(cells).id };
   },
-  insertTableColumn: (blocks, random) => {
+  insertTableColumn: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
     return cells.length === 0
       ? null
-      : { type: "insertTableColumn", blockId: random.pick(cells).id, position: "after" };
+      : { type: "insertTableColumn", blockId: pick.block(cells).id, position: "after" };
   },
-  deleteTable: (blocks, random) => {
+  deleteTable: (blocks, random, pick = uniformPicker(random)) => {
     const cells = blocks.filter(inTable);
-    return cells.length === 0 ? null : { type: "deleteTable", blockId: random.pick(cells).id };
+    return cells.length === 0 ? null : { type: "deleteTable", blockId: pick.block(cells).id };
   },
 };
 
@@ -220,11 +218,12 @@ export const randomOperation = (
   mode: Mode,
   random: Random,
   types: readonly string[] = Object.keys(GENERATORS),
+  pick?: Picker,
 ): Operation | null => {
   const usable = types.filter((type) => supports(type, mode));
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const generator = GENERATORS[random.pick(usable)];
-    const operation = generator?.(blocks, random);
+    const operation = generator?.(blocks, random, pick);
     if (operation) return operation;
   }
   return null;
@@ -270,7 +269,7 @@ export const MISTAKES: Record<
         },
   staleRange: (blocks, random) => {
     const block = withText(blocks)[0];
-    const handle = block && range(block, random);
+    const handle = block && range(block, uniformPicker(random));
     return {
       operations: [
         {
