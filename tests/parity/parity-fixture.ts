@@ -11,55 +11,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-
-/** Mirror of the playgrounds' `FolioParityBridge`. Kept in sync by hand. */
-type FolioParityBridge = {
-  getTotalPages: () => number;
-  ensureView: () => void;
-  hasView: () => boolean;
-  getDocumentText: () => string;
-  getTextWatermark: () => string | null;
-  insertText: (text: string) => boolean;
-  boldFirstWord: () => boolean;
-  selectFirstWord: () => boolean;
-  countSelectionRects: () => number;
-  setupContentControls: () => boolean;
-  dispatchClipboardEvent: (kind: "copy" | "cut" | "paste") => number;
-  getCurrentTableProperties: () => {
-    width: number | null;
-    widthType: string | null;
-    justification: string | null;
-  } | null;
-  insertTable: (rows: number, cols: number) => boolean;
-  countTables: () => number;
-  commentFirstWord: () => boolean;
-  countCommentAnchors: () => number;
-  aiSnapshotBlockCount: () => number;
-  readBlockGeometry: () => {
-    rects: {
-      snapshotBlockId: string;
-      blockId: string;
-      page: number;
-      top: number;
-      height: number;
-    }[];
-    missingIsNull: boolean;
-    hasScrollRoot: boolean;
-  };
-  navigateToFirstBlock: () => { shown: boolean; targetPage: number; currentPage: number };
-  getSelectedText: () => string;
-  applyAndUndoDocumentOperation: () => boolean;
-  anonymizeFirstWord: () => boolean;
-  countAnonymizationRects: () => number;
-  startAutocomplete: (text: string) => boolean;
-  finishAutocomplete: () => boolean;
-  clearAutocomplete: () => boolean;
-  save: () => Promise<number>;
-  hasPendingChanges: () => boolean;
-  insertTextViaPagedEditorRef: (text: string) => boolean;
-  getPageNumberForSelection: () => number;
-  typeThenReloadDocument: (marker: string) => boolean;
-};
+import type { FolioParityBridge } from "../../packages/playground-vue/src/parityBridge";
 
 declare global {
   // Window augmentation requires an interface (declaration merging).

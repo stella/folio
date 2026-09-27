@@ -71,7 +71,11 @@ import {
   readFontSetSignature,
   watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
-import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
+import {
+  browserClock,
+  createLayoutScheduler,
+  TRANSACTION_LAYOUT_TIMING,
+} from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
@@ -139,10 +143,6 @@ import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter"
 // ============================================================================
 
 const DEFAULT_PAGE_GAP = 24;
-/** Quiet-window debounce before an interactive layout pass. */
-const TRANSACTION_LAYOUT_DEBOUNCE_MS = 32;
-/** Upper bound for how long visible layout can trail the hidden editor. */
-const TRANSACTION_LAYOUT_MAX_DELAY_MS = 96;
 /** Delay before converting PM state back to the Folio document model. */
 const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 
@@ -782,8 +782,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // transaction produced before a document load replaced it.
     readState: () => editorView.value?.state ?? null,
     runLayout: (state, runOptions) => runLayoutPipeline(state, runOptions),
-    debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
-    maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
+    ...TRANSACTION_LAYOUT_TIMING,
     clock: browserClock,
   });
 

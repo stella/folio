@@ -58,6 +58,7 @@ import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/
 import {
   browserClock,
   createLayoutScheduler,
+  TRANSACTION_LAYOUT_TIMING,
   type LayoutScheduler,
 } from "@stll/folio-core/controller/layoutScheduler";
 import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
@@ -508,10 +509,6 @@ const TABLE_INSERT_EDGE_PROXIMITY = 30;
 const TABLE_INSERT_HIDE_DELAY = 200;
 /** Delay before converting PM state back to the Folio document model. */
 const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
-/** Quiet window for coalescing follow-up transactions after the leading frame. */
-const TRANSACTION_LAYOUT_DEBOUNCE_MS = 32;
-/** Upper bound for how long visible layout can trail the hidden editor. */
-const TRANSACTION_LAYOUT_MAX_DELAY_MS = 96;
 /** Keep the visual caret hidden briefly while typed content relayouts. */
 const SELECTION_REVEAL_AFTER_INPUT_DELAY = 120;
 /**
@@ -2028,9 +2025,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         // one a transaction produced before a document load replaced it.
         readState: () => hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
         runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
-        debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
-        leadingFrame: true,
-        maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
+        ...TRANSACTION_LAYOUT_TIMING,
         clock: browserClock,
       });
     }

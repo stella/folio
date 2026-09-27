@@ -57,6 +57,16 @@ export type LayoutSchedulerConfig<TState> = {
   clock: SchedulerClock;
 };
 
+/** Interactive transaction layout timing shared by framework adapters. */
+export const TRANSACTION_LAYOUT_TIMING = {
+  debounceMs: 32,
+  maxDelayMs: 96,
+  leadingFrame: true,
+} as const satisfies Pick<
+  LayoutSchedulerConfig<unknown>,
+  "debounceMs" | "maxDelayMs" | "leadingFrame"
+>;
+
 export type LayoutScheduler = {
   /**
    * Request an incremental layout pass after a short coalescing window.
