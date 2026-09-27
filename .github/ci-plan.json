@@ -1,0 +1,110 @@
+{
+  "runAll": [
+    ".github/workflows/**",
+    ".github/ci-plan.json",
+    "scripts/ci-*",
+    "bun.lock",
+    "bunfig.toml",
+    "package.json",
+    "tsconfig.base.json",
+    ".gitmodules"
+  ],
+  "fullDepth": "all",
+  "areas": {
+    "code": {
+      "paths": [
+        "**",
+        "!**/*.md",
+        "api-reports/**",
+        "docs/container-contract.md",
+        "packages/agents/**",
+        "scripts/**",
+        "specifications/**"
+      ]
+    },
+    "typecheck_budget": {
+      "paths": [
+        "packages/**",
+        "parity/**",
+        "specifications/**",
+        "!**/*.md",
+        "tsconfig*.json",
+        "scripts/tsc-native.ts",
+        "scripts/typecheck-budget.*"
+      ]
+    },
+    "container_contract": {
+      "paths": [
+        "packages/core/src/**",
+        "packages/docx-core/src/**",
+        "packages/{core,docx-core}/package.json",
+        "specifications/**",
+        "!**/*.md",
+        "docs/container-contract.md",
+        "scripts/container-*",
+        "scripts/generate-ooxml-schema-graph.ts",
+        "scripts/lib/**"
+      ]
+    },
+    "docx_kernel": {
+      "paths": [
+        "crates/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        "hawk.toml",
+        "packages/docx-core/src/generated/**",
+        "packages/docx-core/src/projection*.ts",
+        "packages/core/src/generated/**",
+        "packages/{core,docx-core}/package.json",
+        "scripts/build-docx-kernel-wasm.ts",
+        "scripts/build-shaper-wasm.ts",
+        "scripts/canonical-wasm.Dockerfile",
+        "scripts/lib/rust-wasm-artifact.ts",
+        "scripts/sync-docx-kernel-version.ts"
+      ]
+    },
+    "interactions": {
+      "paths": [
+        "packages/{core,docx-core,react,vue,playground,playground-vue,editor-web}/**",
+        "tests/**",
+        "!**/*.md",
+        "playwright.config.ts"
+      ]
+    },
+    "differential": {
+      "paths": [
+        "packages/core/src/**",
+        "packages/core/scripts/differential/**",
+        "packages/docx-core/src/**",
+        "packages/{core,docx-core}/package.json",
+        "benchmarks/compare/**",
+        "!**/*.md"
+      ]
+    },
+    "consumer_scenarios": {
+      "paths": [
+        "packages/{docx-core,core,agents,cli}/**",
+        "!packages/{docx-core,core,cli}/**/*.md",
+        "!packages/*/src/**/*.test.{ts,tsx}",
+        "!packages/*/src/**/__tests__/**",
+        "test/consumer-scenarios/**",
+        "test/property-testing.ts",
+        "scripts/consumer-scenarios.ts",
+        "scripts/packaged-consumer-lib.ts",
+        "scripts/prepare-publish.ts"
+      ]
+    },
+    "packaged_consumer": {
+      "paths": [
+        "packages/{docx-core,core,react}/**",
+        "!**/*.md",
+        "!packages/*/src/**/*.test.{ts,tsx}",
+        "!packages/*/src/**/__tests__/**",
+        "test/packaged-consumer/**",
+        "scripts/packaged-consumer-*.ts",
+        "scripts/prepare-publish.ts"
+      ]
+    }
+  }
+}

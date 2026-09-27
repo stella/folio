@@ -14,6 +14,8 @@ on:
       - packages/editor-web/**
       - packages/react/src/**
       - scripts/sync-plugin-cli-version*.ts
+      - parity/fixtures/layout-kitchen-sink.docx
+      - bun.lock
       - .github/workflows/vscode-extension.yml
   workflow_dispatch:
 
