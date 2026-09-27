@@ -223,6 +223,7 @@ export type LegalSourceParseResult = {
 export type MarkdownContent = {
     content: BlockContent[];
     numbering?: NumberingDefinitions;
+    warnings?: string[];
 };
 
 // @public
