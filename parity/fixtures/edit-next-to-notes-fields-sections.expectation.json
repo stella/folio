@@ -1,0 +1,46 @@
+{
+  "script": "edit-next-to-notes-fields-sections",
+  "seedSha256": "6d106ead1c407002b7e348946054a28047197d83b2f0e1766a166daa561ea26f",
+  "structure": {
+    "package": {
+      "paragraphs": 6,
+      "sections": 2,
+      "fields": 2,
+      "noteReferences": 2
+    },
+    "blocks": [
+      {
+        "kind": "heading",
+        "text": "Notes fields and sections seed 29",
+        "label": "Heading1",
+        "headingLevel": 1
+      },
+      {
+        "kind": "paragraph",
+        "text": "Footnote[^1] endnote[^e1]"
+      },
+      {
+        "kind": "paragraph",
+        "text": "4"
+      },
+      {
+        "kind": "paragraph",
+        "text": "Cached field result 53."
+      },
+      {
+        "kind": "paragraph",
+        "text": "Section boundary 59."
+      },
+      {
+        "kind": "heading",
+        "text": "Second section 62.",
+        "label": "Heading1",
+        "headingLevel": 1
+      }
+    ],
+    "cells": [],
+    "revisions": [],
+    "comments": [],
+    "notes": ["[footnote] Synthetic footnote text 42.", "[endnote] Synthetic endnote text 84."]
+  }
+}
