@@ -24,10 +24,10 @@ bun run parity:build-edit-expectation-fixtures --check
 `editOperationScripts.test.ts` test runs every script and reads its saved
 structure: blocks and labels, table cells, revisions, comment anchors, note
 text, and package carrier counts. Reviewed structural expectations for the
-final-paragraph, paragraph-boundary, numbering, and notes/fields/sections
-cases are pinned by `editStructuralExpectations.test.ts`. The remaining
-scripts retain reproducible saved outputs while their expectations are being
-reviewed.
+final-paragraph, paragraph-boundary, numbering, merged-table, and
+notes/fields/sections cases are pinned by `editStructuralExpectations.test.ts`.
+The comment-reply script retains a reproducible saved output while its
+expectation is being reviewed.
 
 Inspect a saved result and its structural view in the ignored `.cache` directory:
 

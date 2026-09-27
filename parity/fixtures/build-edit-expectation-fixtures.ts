@@ -84,7 +84,7 @@ const SEEDS = {
     references: "",
   },
   "edit-merged-table-seed.docx": {
-    body: `${heading("Merged table seed 16")}${mergedTable}`,
+    body: `${heading("Merged table seed 16")}${mergedTable}${paragraph("After table 79.")}`,
     references: "",
   },
   "edit-comment-range-seed.docx": {
