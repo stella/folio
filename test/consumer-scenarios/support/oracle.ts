@@ -177,6 +177,8 @@ export type Model = {
   tableGaps: string[];
   /** Existing paragraphs reveal style-derived kind, levels and effective run formatting. */
   styleExamples: Map<string, Row>;
+  /** Live blocks explicitly deleted by applied operations, including pending joins. */
+  deletedBlockIds: Set<string>;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
@@ -223,6 +225,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
         row.styleId !== undefined && row.text.length > 0 ? [[row.styleId, row] as const] : [],
       ),
     ),
+    deletedBlockIds: new Set(),
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -703,6 +706,9 @@ export const OPERATION_TYPES: readonly string[] = FOLIO_DOCUMENT_OPERATION_TYPES
 
 /** Apply one applied operation's expectation to `model`. */
 export const expectOperation = (model: Model, operation: Operation): void => {
+  if (operation.type === "deleteBlock" && typeof operation["blockId"] === "string") {
+    model.deletedBlockIds.add(operation["blockId"]);
+  }
   if (
     model.mode === "suggested" &&
     ["deleteTable", "deleteTableRow", "deleteTableColumn"].includes(operation.type)
@@ -897,15 +903,18 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
 
 /** Prove that every possible placement of an anchor in its original block was removed. */
 const removedAnchor = (model: Model, entry: Comment): boolean => {
+  if (entry.blockId !== null && model.deletedBlockIds.has(entry.blockId)) return true;
   const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
   if (!row?.pre) return false;
-  if (entry.anchor === "") return row.removed;
+  // A pending join is already absent from the accepted pre-state; its live
+  // block has not been removed by this batch.
+  if (row.removed) return !row.pendingJoin;
+  if (entry.anchor === "") return false;
   const starts: number[] = [];
   for (let start = 0; start <= row.pre.text.length - entry.anchor.length; start += 1) {
     if (row.pre.text.startsWith(entry.anchor, start)) starts.push(start);
   }
   if (starts.length === 0) return false;
-  if (row.removed) return true;
   const removed = [
     ...row.edits
       .filter(({ replace }) => replace.length === 0)

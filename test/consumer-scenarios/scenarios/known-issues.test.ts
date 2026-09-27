@@ -193,26 +193,6 @@ describe("findings not yet filed", () => {
     },
   );
 
-  expectedFailure(
-    "LIVE_COMMENT_ANCHOR_STALE",
-    "a paragraph inserted inside a comment spanning a table reads the same before and after a save",
-    FINDING_SYMPTOMS.LIVE_COMMENT_ANCHOR_STALE,
-    async () => {
-      const reviewer = await openReviewer(await storiesDocument());
-      const start = reviewer
-        .getContent()
-        .find((block) => block.text === "The schedule below is binding.");
-      assert.ok(start);
-      applyTo(
-        reviewer,
-        { type: "main" },
-        { type: "insertAfterBlock", blockId: start.id, text: "New clause." },
-        "direct",
-      );
-      await saveAndReopen(reviewer, "insert inside a comment range");
-    },
-  );
-
   for (const {
     seed,
     steps,
@@ -229,6 +209,21 @@ describe("findings not yet filed", () => {
       () => runFlow(seed, steps, kind, generation ? { generation } : {}),
     );
   }
+});
+
+test("a paragraph inserted inside a comment spanning a table reads the same before and after a save", async () => {
+  const reviewer = await openReviewer(await storiesDocument());
+  const start = reviewer
+    .getContent()
+    .find((block) => block.text === "The schedule below is binding.");
+  assert.ok(start);
+  applyTo(
+    reviewer,
+    { type: "main" },
+    { type: "insertAfterBlock", blockId: start.id, text: "New clause." },
+    "direct",
+  );
+  await saveAndReopen(reviewer, "insert inside a comment range");
 });
 
 describe("findings of the metamorphic relations (support/metamorphic.ts) and their sweeps", () => {

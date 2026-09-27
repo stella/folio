@@ -196,6 +196,34 @@ describe("the requested-outcome oracle", () => {
       /outlived the block it anchored/u,
     );
   });
+
+  test("a comment on a pending join survives an edit to another block", () => {
+    const joined = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
+    const model = modelOf(
+      [row("a", "First Signed"), row("c", "Other")],
+      [row("a", "First"), row("b", "Signed"), row("c", "Other")],
+    );
+    expectOperation(model, { type: "replaceBlock", blockId: "c", text: "Revised" });
+    assert.deepEqual(compareComments(model, [joined], [joined], [joined]), []);
+    assert.equal(compareComments(model, [joined], [], [joined]).length, 1);
+    expectOperation(model, { type: "deleteBlock", blockId: "b" });
+    assert.deepEqual(compareComments(model, [joined], [], [joined]), []);
+    assert.match(
+      compareComments(model, [joined], [joined], [joined]).join("\n"),
+      /outlived the block it anchored/u,
+    );
+  });
+
+  test("an explicit block deletion removes a live comment even when accepted text differs", () => {
+    const comment = { id: 1, text: "review", anchor: "Live quote", blockId: "b" };
+    const model = modelOf([row("b", "Accepted text")], [row("b", "Live quote")]);
+    expectOperation(model, { type: "deleteBlock", blockId: "b" });
+    assert.deepEqual(compareComments(model, [comment], [], [comment]), []);
+    assert.match(
+      compareComments(model, [comment], [comment], [comment]).join("\n"),
+      /outlived the block it anchored/u,
+    );
+  });
 });
 
 test("a style edit preserves the target of an unchanged link", async () => {

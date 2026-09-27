@@ -233,7 +233,6 @@ describe("a document carried across sessions", () => {
         for (const story of [MAIN, ...secondaryStories(reviewer).slice(0, 1)]) {
           for (const type of ["replaceInBlock", "insertAfterBlock", "formatRange"]) {
             if (!supports(type, mode)) continue;
-            // Not inside the comment that spans the table (LIVE_COMMENT_ANCHOR_STALE).
             const index = featureIndex(reviewer, story);
             const blocks = (blocksOfStory(reviewer, story) as Block[]).filter(
               (block) => !index.features.get(block.id)?.has("commentAnchor"),
