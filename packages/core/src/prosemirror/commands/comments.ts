@@ -60,6 +60,11 @@ import { getDocumentStyleResolver } from "../plugins/documentStyles";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
+import {
+  deleteTextBoxesAnchoredAt,
+  droppedTextBoxAnchorIds,
+  moveTextBoxesPastNextParagraph,
+} from "../anchoredTextBoxes";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
@@ -431,6 +436,11 @@ function resolveChange(
       for (const range of rangesToDelete.toReversed()) {
         tr.delete(range.from, range.to);
       }
+      // A text box goes with its anchor, and before any paragraph mark joins:
+      // the box stands between its paragraph and the next one.
+      if (deleteTextBoxesAnchoredAt(tr, droppedTextBoxAnchorIds(state.doc, tr.doc))) {
+        markStructuralChange(tr);
+      }
 
       // Invariant: table rows and cells resolve BEFORE paragraph marks. A join
       // must see the sibling the resolved document has, so a table this
@@ -519,6 +529,11 @@ function resolveChange(
         if (op.action === "clear") {
           tr.setNodeAttribute(mappedPos, "pPrMark", null);
           continue;
+        }
+        // The text boxes drawn in the paragraph are blocks between it and the
+        // next one; they follow the joined paragraph instead.
+        if (moveTextBoxesPastNextParagraph(tr, mappedPos)) {
+          markStructuralChange(tr);
         }
         const joinPos = mappedPos + paragraph.nodeSize;
         let nextPos = joinPos;

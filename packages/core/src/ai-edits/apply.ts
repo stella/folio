@@ -81,6 +81,15 @@ import {
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
+import {
+  deleteTextBoxesAnchoredAt,
+  droppedTextBoxAnchorIds,
+  endOfParagraphWithItsTextBoxes,
+  gatherTextBoxesAfterParagraph,
+  textBoxAnchorIdOf,
+  textBoxAnchorIdsBetween,
+} from "../prosemirror/anchoredTextBoxes";
+import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
@@ -758,11 +767,18 @@ const REVISION_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion
 const withoutRevisionsOnZeroWidthAnchors = (
   tr: Transaction,
   batchRevisionIds: ReadonlySet<number>,
+  deletedTextBoxAnchorIds: ReadonlySet<string>,
 ): Transaction => {
   const anchors: { from: number; to: number; marks: readonly Mark[] }[] = [];
   tr.doc.descendants((node, pos) => {
     if (!isZeroWidthAnchor(node)) {
       return true;
+    }
+    // A text box's anchor is where its drawing run is, and a paragraph
+    // deleted whole deletes its drawings: that anchor's mark is the box's.
+    const textBoxAnchorId = textBoxAnchorIdOf(node);
+    if (textBoxAnchorId !== undefined && deletedTextBoxAnchorIds.has(textBoxAnchorId)) {
+      return false;
     }
     const marks = node.marks.filter(
       ({ attrs, type }) =>
@@ -787,7 +803,9 @@ const withoutRevisionsOnZeroWidthAnchors = (
  *
  * Skips what is already deleted, so an earlier revision's run is not marked
  * twice, and skips zero-width anchors because the operation did not create or
- * delete them; their existing revision ownership must remain unchanged.
+ * delete them; their existing revision ownership must remain unchanged. A
+ * text box's anchor is the exception: it stands for the box's drawing run,
+ * which is the paragraph's content, and the box follows it.
  */
 const undeletedContentAtomRanges = (
   tr: Transaction,
@@ -802,7 +820,7 @@ const undeletedContentAtomRanges = (
   block.forEach((child, offset) => {
     if (
       child.isText ||
-      isZeroWidthAnchor(child) ||
+      (isZeroWidthAnchor(child) && child.type.name !== TEXT_BOX_ANCHOR_NODE_NAME) ||
       child.marks.some(({ type }) => type.name === "deletion")
     ) {
       return;
@@ -2919,6 +2937,8 @@ const applyFolioAIEditOperationsInternal = ({
   }
 
   let tr = view.state.tr;
+  /** Text boxes a tracked block deletion deletes, by anchor. */
+  const deletedTextBoxAnchorIds = new Set<string>();
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
   let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor;
   /**
@@ -3809,6 +3829,13 @@ const applyFolioAIEditOperationsInternal = ({
           for (const { from, to } of atomRanges) {
             tr = tr.addMark(from, to, deletionMark);
           }
+          for (const anchorId of textBoxAnchorIdsBetween(
+            tr.doc,
+            tr.mapping.map(item.blockFrom),
+            tr.mapping.map(item.blockTo),
+          )) {
+            deletedTextBoxAnchorIds.add(anchorId);
+          }
           // The block's content controls go with it, as they do directly.
           encloseWholeControls({ tr, from: item.blockFrom, to: item.blockTo, revisionId });
           const inlineRevisionApplied = item.from < item.to || atomRanges.length > 0;
@@ -4031,11 +4058,24 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "splitBlock": {
+        // A text box drawn before the split point belongs to the first half,
+        // so it has to move up to it from after the second. A rejected split
+        // then has to join the halves across the box, which the resolver
+        // cannot do, so a tracked split there is refused.
+        const splitsFromItsTextBoxes =
+          textBoxAnchorIdsBetween(tr.doc, item.blockFrom, item.from).size > 0 &&
+          endOfParagraphWithItsTextBoxes(tr.doc, item.blockFrom) > item.blockTo;
         if (mode === "direct") {
           if (item.to > item.from) {
             tr = tr.delete(item.from, item.to);
           }
           tr = tr.split(item.from);
+          if (splitsFromItsTextBoxes) {
+            gatherTextBoxesAfterParagraph(tr, item.blockFrom);
+          }
+        } else if (splitsFromItsTextBoxes) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
         } else {
           const revisionIdMark = operationRevisionSeed++;
           const info = { id: revisionIdMark, author, date, ...trackedRevisionExtras };
@@ -4285,7 +4325,11 @@ const applyFolioAIEditOperationsInternal = ({
 
   if (tr.docChanged) {
     const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
-    tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds);
+    tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds, deletedTextBoxAnchorIds);
+    // A text box goes with the paragraph content it is drawn in.
+    if (deleteTextBoxesAnchoredAt(tr, droppedTextBoxAnchorIds(view.state.doc, tr.doc))) {
+      markStructuralChange(tr);
+    }
     continueSharedRevisionIds();
     const rotated = withRotatedAddedFinalBreaks({
       tr,
@@ -5747,7 +5791,9 @@ const resolveOperationTarget = ({
     if (tableBoundary) {
       insertFrom = isInsertAfter ? tableBoundary.after : tableBoundary.before;
     } else {
-      insertFrom = isInsertAfter ? blockTo : blockFrom;
+      // After a paragraph is after the text boxes drawn in it too: a block
+      // between the two is read after the boxes once the package is saved.
+      insertFrom = isInsertAfter ? endOfParagraphWithItsTextBoxes(doc, blockFrom) : blockFrom;
     }
     const splitParagraphs =
       operation.lineBreakMode !== "inline" && LINE_BREAK_PATTERN.test(operation.text);
@@ -5778,7 +5824,8 @@ const resolveOperationTarget = ({
     if (tableBoundary) {
       insertFrom = position === "after" ? tableBoundary.after : tableBoundary.before;
     } else {
-      insertFrom = position === "after" ? blockTo : blockFrom;
+      insertFrom =
+        position === "after" ? endOfParagraphWithItsTextBoxes(doc, blockFrom) : blockFrom;
     }
     return {
       type: "resolved",
@@ -6016,7 +6063,7 @@ const resolveOperationTarget = ({
     // insertion: `insertTableRow` is the operation for growing one in place.
     const boundary = findOutermostTableBoundary(doc, blockFrom) ?? {
       before: blockFrom,
-      after: blockTo,
+      after: endOfParagraphWithItsTextBoxes(doc, blockFrom),
     };
     const insertFrom =
       (operation.position ?? "after") === "after" ? boundary.after : boundary.before;

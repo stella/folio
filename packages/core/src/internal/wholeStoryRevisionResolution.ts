@@ -14,6 +14,7 @@ import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolvePara
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
+import { anchoredTextBoxId, droppedTextBoxAnchorIds } from "../prosemirror/anchoredTextBoxes";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import {
   readAuthoredRunFormatting,
@@ -146,6 +147,8 @@ type StructuralContext = {
   failed: boolean;
   removedEndpointCount: number;
   removedReferences: RemovedSectionReference[];
+  /** Text box anchors the inline pass removed: their boxes go with them. */
+  droppedTextBoxAnchors: ReadonlySet<string>;
 };
 
 type StructuralReplacement = { from: number; to: number; slice: Slice };
@@ -258,6 +261,11 @@ type ParagraphChain = {
 type ResolveStructureOptions = { node: PMNode; position: number; context: StructuralContext };
 const resolveStructure = ({ node, position, context }: ResolveStructureOptions): PMNode | null => {
   if (node.isLeaf) return node;
+  const textBoxAnchor = anchoredTextBoxId(node);
+  if (textBoxAnchor !== undefined && context.droppedTextBoxAnchors.has(textBoxAnchor)) {
+    context.structural = true;
+    return null;
+  }
   const structuralStart = {
     steps: context.steps.length,
     deleted: context.deleted.length,
@@ -564,6 +572,9 @@ export const resolveWholeStory = ({
     failed: false,
     removedEndpointCount: 0,
     removedReferences: [],
+    droppedTextBoxAnchors: inline
+      ? droppedTextBoxAnchorIds(properties, inline.resolved)
+      : new Set<string>(),
   };
   const resolved =
     resolveStructure({ node: inline?.resolved ?? properties, position: -1, context }) ?? doc;
