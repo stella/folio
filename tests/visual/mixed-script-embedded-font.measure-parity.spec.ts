@@ -10,6 +10,7 @@ const EDITOR_HOSTS = [
 
 for (const host of EDITOR_HOSTS) {
   test(`${host.name} measures mixed-script text with its loaded fonts`, async ({ page }) => {
+    test.setTimeout(35_000);
     const failedFontRequests: string[] = [];
     const failedResponses: string[] = [];
     const failedRequests: string[] = [];
@@ -38,16 +39,26 @@ for (const host of EDITOR_HOSTS) {
     try {
       await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
     } catch (error) {
-      const domSummary = await page.evaluate(() => ({
-        bodyText: document.body.innerText.slice(0, 600),
-        lineCount: document.querySelectorAll(".layout-page .layout-line").length,
-        pageCount: document.querySelectorAll(".layout-page").length,
-        statusText: [
-          ...document.querySelectorAll(
-            ".pg-vue-status, .docx-editor-vue__error, .docx-editor-vue__loading",
-          ),
-        ].map((element) => element.textContent?.slice(0, 200) ?? ""),
-      }));
+      const domSummary = await Promise.race([
+        page
+          .evaluate(() => ({
+            bodyText: document.body.innerText.slice(0, 600),
+            lineCount: document.querySelectorAll(".layout-page .layout-line").length,
+            pageCount: document.querySelectorAll(".layout-page").length,
+            statusText: [
+              ...document.querySelectorAll(
+                ".pg-vue-status, .docx-editor-vue__error, .docx-editor-vue__loading",
+              ),
+            ].map((element) => element.textContent?.slice(0, 200) ?? ""),
+          }))
+          .catch((evaluationError: unknown) => ({
+            evaluationError:
+              evaluationError instanceof Error ? evaluationError.message : String(evaluationError),
+          })),
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ evaluationTimedOut: true }), 4_000);
+        }),
+      ]);
       throw new Error(
         `${host.name} layout did not render: ${JSON.stringify({
           domSummary,
