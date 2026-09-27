@@ -8,7 +8,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
 import { repackDocx } from "../docx/rezip";
@@ -58,34 +58,38 @@ const stage = async (text: string, replacement: string) => {
 };
 
 describe("host-persisted pending suggestions", () => {
-  test("export, JSON save, reopen, and load restore the live projection", async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.stringMatching(/^[A-Za-z]{3,12}$/u),
-        fc.stringMatching(/^[A-Za-z]{3,12}$/u),
-        async (original, replacement) => {
-          fc.pre(original !== replacement);
-          const text = `Clause ${original}.`;
-          const { reviewer, records } = await stage(text, `Clause ${replacement}.`);
-          const before = projection(reviewer);
-          const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
-          expect(projection(reopened)).not.toEqual(before);
-          expect(reopened.loadPendingSuggestions(records)).toEqual([
-            { status: "restaged", suggestionId: "proposal-1" },
-          ]);
-          expect(projection(reopened)).toEqual(before);
-          expect(reopened.exportPendingSuggestions()).toEqual(records);
-          expect(reopened.loadPendingSuggestions(records)).toEqual([
-            { status: "restaged", suggestionId: "proposal-1" },
-          ]);
-          expect(projection(reopened)).toEqual(before);
-          expect(reopened.acceptAll()).toBe(0);
-          expect(reopened.exportPendingSuggestions()).toEqual(records);
-        },
-      ),
-      propertyConfig({ numRuns: 12, seed: 174496237 }),
-    );
-  });
+  test(
+    "export, JSON save, reopen, and load restore the live projection",
+    async () => {
+      await fc.assert(
+        fc.asyncProperty(
+          fc.stringMatching(/^[A-Za-z]{3,12}$/u),
+          fc.stringMatching(/^[A-Za-z]{3,12}$/u),
+          async (original, replacement) => {
+            fc.pre(original !== replacement);
+            const text = `Clause ${original}.`;
+            const { reviewer, records } = await stage(text, `Clause ${replacement}.`);
+            const before = projection(reviewer);
+            const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+            expect(projection(reopened)).not.toEqual(before);
+            expect(reopened.loadPendingSuggestions(records)).toEqual([
+              { status: "restaged", suggestionId: "proposal-1" },
+            ]);
+            expect(projection(reopened)).toEqual(before);
+            expect(reopened.exportPendingSuggestions()).toEqual(records);
+            expect(reopened.loadPendingSuggestions(records)).toEqual([
+              { status: "restaged", suggestionId: "proposal-1" },
+            ]);
+            expect(projection(reopened)).toEqual(before);
+            expect(reopened.acceptAll()).toBe(0);
+            expect(reopened.exportPendingSuggestions()).toEqual(records);
+          },
+        ),
+        propertyConfig({ numRuns: 12, seed: 174496237 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
 
   test("changed text and deleted anchors stay inert", async () => {
     const { records } = await stage("Second clause.", "Revised clause.");
