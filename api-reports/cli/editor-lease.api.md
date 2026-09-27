@@ -34,13 +34,13 @@ export type FlushOutcome =
 /** The holder released within the wait; `versionBefore` is the file's version when asked. */
     {
     type: "flushed";
-    holder: LockHolder;
+    holder: PublicLockHolder;
     versionBefore: string | null;
 } |
 /** The holder never released; the lease was taken by the ordinary rules (stale, or `force`). */
     {
     type: "timedOut";
-    holder: LockHolder;
+    holder: PublicLockHolder;
 };
 
 // @public
@@ -82,6 +82,11 @@ export type LeaseKeeper = {
 
 // @public
 export const pendingFlushRequests: (documentPath: string, now?: Date) => Promise<FlushRequest[]>;
+
+// @public
+export type PublicFlushRequest = Omit<FlushRequest, "leaseToken"> & {
+    leaseToken?: never;
+};
 
 // @public
 export const watchFlushRequests: (input: WatchFlushRequestsOptions) => FlushWatcher;
