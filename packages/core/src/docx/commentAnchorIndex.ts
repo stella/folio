@@ -49,10 +49,9 @@ export const visitCommentMarkers = (
       }
       return;
     }
-    if (block.type !== "blockSdt") {
-      // Captured bytes hold no comment boundary folio ever read, and a
-      // bookmark marker anchors none. Asking which block *does* hold children
-      // keeps a new block kind out of the content control's branch.
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
+      // Captured bytes hold no comment boundary folio read, and a bookmark
+      // marker anchors none. Only wrappers with parsed children recurse.
       return;
     }
     visitBlocks(block.content);

@@ -535,6 +535,18 @@ const validateNodeAttrs = (
       }
       return;
 
+    case "blockCustomXml":
+      if (
+        typeof node.attrs["openingXml"] !== "string" ||
+        typeof node.attrs["closingXml"] !== "string"
+      ) {
+        issues.push({ path, message: "Invalid block custom XML wrapper attributes." });
+      }
+      for (let i = 0; i < node.childCount; i += 1) {
+        validateNode(node.child(i), `${path}.content[${i}]`, issues);
+      }
+      return;
+
     case "shape":
       appendAttrIssues(path, readShapeAttrs(node), issues);
       return;

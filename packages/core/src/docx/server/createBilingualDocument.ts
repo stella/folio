@@ -335,7 +335,7 @@ const flattenBlocks = (content: BlockContent[]): BodyBlock[] => {
       out.push(block);
       return;
     }
-    if (block.type !== "blockSdt") {
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
       return;
     }
     for (const child of block.content) {
@@ -761,7 +761,7 @@ const collectTableParagraphs = (table: Table): Paragraph[] => {
         out.push(item);
       } else if (item.type === "table") {
         out.push(...collectTableParagraphs(item));
-      } else if (item.type === "blockSdt") {
+      } else if (item.type === "blockSdt" || item.type === "blockCustomXml") {
         collectBlocks(item.content);
       }
     }
@@ -802,7 +802,7 @@ const cloneTableForTarget = ({
       if (item.type === "table") {
         return cloneTable(item);
       }
-      if (item.type === "blockSdt") {
+      if (item.type === "blockSdt" || item.type === "blockCustomXml") {
         return { ...structuredClone(item), content: cloneBlocks(item.content) };
       }
       if (item.type !== "paragraph") {

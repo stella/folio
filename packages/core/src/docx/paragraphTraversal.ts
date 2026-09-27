@@ -205,6 +205,7 @@ export const visitBlockTreeRecords = (
           }
           break;
         case "blockSdt":
+        case "blockCustomXml":
           visitBlocks(block.content);
           break;
         // Opaque markup: folio models nothing inside it, so it owns no record.

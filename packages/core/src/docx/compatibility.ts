@@ -190,7 +190,7 @@ function inspectBlocks(
       continue;
     }
 
-    if (block.type !== "blockSdt") {
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
       continue;
     }
 

@@ -682,7 +682,7 @@ function collectNewImages(blocks: BlockContent[]): DrawingContent[] {
           images.push(...collectNewImages(cell.content));
         }
       }
-    } else if (block.type === "blockSdt") {
+    } else if (block.type === "blockSdt" || block.type === "blockCustomXml") {
       images.push(...collectNewImages(block.content));
     }
   }
@@ -891,7 +891,7 @@ export function collectHyperlinksWithoutRId(blocks: BlockContent[]): Hyperlink[]
           hyperlinks.push(...collectHyperlinksWithoutRId(cell.content));
         }
       }
-    } else if (block.type === "blockSdt") {
+    } else if (block.type === "blockSdt" || block.type === "blockCustomXml") {
       hyperlinks.push(...collectHyperlinksWithoutRId(block.content));
     }
   }

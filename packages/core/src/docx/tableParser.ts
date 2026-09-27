@@ -46,6 +46,7 @@ import type {
   Paragraph,
   PositionedBookmarkMarker,
   TableCellBlock,
+  BlockCustomXml,
   PreservedBlock,
   PreservedChild,
   SdtProperties,
@@ -53,6 +54,7 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
+import { blockCustomXmlShell } from "./blockCustomXmlShell";
 import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
 import { TABLE_LOOK_FLAGS } from "./tableLook";
@@ -1477,7 +1479,7 @@ const findLastFlowBlock = (blocks: readonly TableCellBlock[]): Paragraph | Table
     if (block?.type === "paragraph" || block?.type === "table") {
       return block;
     }
-    if (block?.type === "blockSdt") {
+    if (block?.type === "blockSdt" || block?.type === "blockCustomXml") {
       const nested = findLastFlowBlock(block.content);
       if (nested) {
         return nested;
@@ -1554,6 +1556,19 @@ const CELL_CONTENT_HANDLERS = {
     });
     return undefined;
   },
+  customXml: (child, { resources, options, modelled }) => {
+    const customXml: BlockCustomXml = {
+      type: "blockCustomXml",
+      ...blockCustomXmlShell(child),
+      content: parseCellChildren({
+        element: child,
+        resources,
+        options: withContainerXmlns(options, child),
+        requireTrailingParagraph: false,
+      }),
+    };
+    modelled.push(customXml);
+  },
   // `CT_Tc` declares the marker beside its blocks, so the cell keeps it
   // there rather than folding it into a neighbouring paragraph.
   bookmarkStart: (child, { modelled }) => {
@@ -1569,7 +1584,6 @@ const CELL_CONTENT_HANDLERS = {
   altChunk: CAPTURE,
   commentRangeEnd: CAPTURE,
   commentRangeStart: CAPTURE,
-  customXml: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,

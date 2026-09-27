@@ -130,7 +130,8 @@ export function renderBlocks(
         prevWasListItem = false;
         break;
       }
-      case "blockSdt": {
+      case "blockSdt":
+      case "blockCustomXml": {
         const nested = renderBlocks(ctx, pkg, block.content);
         if (nested) {
           if (out.length) {

@@ -141,7 +141,7 @@ const forEachParagraph = (blocks: readonly BlockContent[], visit: ParagraphVisit
         walkTable(block);
         continue;
       }
-      if (isBlockSdt(block)) {
+      if (isBlockContainer(block)) {
         walkBlocks(block.content);
       }
     }
@@ -306,5 +306,9 @@ const isTableRow = (value: unknown): value is TableRow =>
 const isTableCell = (value: unknown): value is TableCell =>
   isRecord(value) && Array.isArray(value["content"]);
 
-const isBlockSdt = (value: unknown): value is Extract<BlockContent, { type: "blockSdt" }> =>
-  isRecord(value) && value["type"] === "blockSdt" && Array.isArray(value["content"]);
+const isBlockContainer = (
+  value: unknown,
+): value is Extract<BlockContent, { type: "blockSdt" | "blockCustomXml" }> =>
+  isRecord(value) &&
+  (value["type"] === "blockSdt" || value["type"] === "blockCustomXml") &&
+  Array.isArray(value["content"]);

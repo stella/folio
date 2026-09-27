@@ -16,7 +16,8 @@ import { OP_STORIES, type OpStory } from "./types";
 /** One step from a block list down to a block list nested in one of its blocks. */
 type BlockListStep =
   | { kind: "tableCell"; block: number; row: number; cell: number }
-  | { kind: "blockSdt"; block: number };
+  | { kind: "blockSdt"; block: number }
+  | { kind: "blockCustomXml"; block: number };
 
 /** Where a paragraph sits: the block list that holds it, and its index there. */
 export type ParagraphLocation = {
@@ -48,6 +49,9 @@ const collectParagraphs = (
         break;
       case "blockSdt":
         collectParagraphs(block.content, [...list, { kind: "blockSdt", block: index }], out);
+        break;
+      case "blockCustomXml":
+        collectParagraphs(block.content, [...list, { kind: "blockCustomXml", block: index }], out);
         break;
       case "preservedBlock":
       case "bookmarkStart":
@@ -91,6 +95,8 @@ const sameStep = (left: BlockListStep, right: BlockListStep): boolean => {
       );
     case "blockSdt":
       return right.kind === "blockSdt" && left.block === right.block;
+    case "blockCustomXml":
+      return right.kind === "blockCustomXml" && left.block === right.block;
     default: {
       const unreachable: never = left;
       return unreachable;
@@ -137,6 +143,13 @@ const updateBlockList = (
     case "blockSdt": {
       if (block?.type !== "blockSdt") {
         return panic(`Block list step does not name a block content control at ${step.block}.`);
+      }
+      out[step.block] = { ...block, content: updateBlockList(block.content, rest, update) };
+      return out;
+    }
+    case "blockCustomXml": {
+      if (block?.type !== "blockCustomXml") {
+        return panic(`Block list step does not name a custom XML wrapper at ${step.block}.`);
       }
       out[step.block] = { ...block, content: updateBlockList(block.content, rest, update) };
       return out;

@@ -2098,6 +2098,17 @@ export type BlockSdt = {
   content: BlockContent[];
 };
 
+/** Transparent block-level `w:customXml` wrapper. */
+export type BlockCustomXml = {
+  type: "blockCustomXml";
+  /** Replayable start tag, including attributes and in-scope namespace bindings. */
+  openingXml: string;
+  /** Replayable end tag matching `openingXml`. */
+  closingXml: string;
+  /** Parsed block children; `w:customXmlPr` remains a positioned preserved child. */
+  content: BlockContent[];
+};
+
 // ============================================================================
 // PARAGRAPH
 // ============================================================================
@@ -2677,6 +2688,7 @@ export type BlockContent =
   | Paragraph
   | Table
   | BlockSdt
+  | BlockCustomXml
   | PreservedBlock
   | BookmarkStart
   | BookmarkEnd;

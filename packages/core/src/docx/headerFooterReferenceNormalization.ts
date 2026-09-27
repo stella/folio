@@ -81,7 +81,7 @@ export const normalizeHeaderFooterReferences = ({
       normalizeTable(block);
       return;
     }
-    if (block.type !== "blockSdt") {
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
       return;
     }
     normalizeBlocks(block.content);

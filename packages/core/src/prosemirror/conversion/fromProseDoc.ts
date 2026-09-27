@@ -85,6 +85,7 @@ import type {
   BlockContent,
   TableCellBlock,
   BlockSdt,
+  BlockCustomXml,
   BookmarkEnd,
   BookmarkStart,
   Document,
@@ -1153,6 +1154,9 @@ function extractBlocks(
       }
       blocks.push(convertPMBlockSdt(node, styleResolver));
       previousStandaloneTextBox = null;
+    } else if (node.type.name === "blockCustomXml") {
+      blocks.push(convertPMBlockCustomXml(node, styleResolver));
+      previousStandaloneTextBox = null;
     } else if (node.type.name === "preservedBlock") {
       blocks.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(node).xml });
       previousStandaloneTextBox = null;
@@ -1379,6 +1383,17 @@ function convertPMBlockSdt(node: PMNode, styleResolver: StyleEngine | null): Blo
   return { type: "blockSdt", properties, content };
 }
 
+function convertPMBlockCustomXml(node: PMNode, styleResolver: StyleEngine | null): BlockCustomXml {
+  const { openingXml, closingXml, _originallyEmpty } = node.attrs;
+  if (typeof openingXml !== "string" || typeof closingXml !== "string") {
+    panic("Invalid block custom XML wrapper attributes");
+  }
+  const innerDoc = node.type.schema.node("doc", null, node.content);
+  const extracted = extractBlocks(innerDoc, "inherit", styleResolver);
+  const content = _originallyEmpty === true && isStillSyntheticFiller(extracted) ? [] : extracted;
+  return { type: "blockCustomXml", openingXml, closingXml, content };
+}
+
 function isStillSyntheticFiller(blocks: BlockContent[]): boolean {
   if (blocks.length !== 1) {
     return false;
@@ -1591,7 +1606,7 @@ function replaceTextBoxAnchorInBlocks(
       }
       continue;
     }
-    if (block.type !== "blockSdt") {
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
       continue;
     }
     if (replaceTextBoxAnchorInBlocks(block.content, marker, textBoxRun)) {
@@ -1696,7 +1711,7 @@ function removeTextBoxAnchorFromBlocks(blocks: BlockContent[], marker: Run): boo
       }
       continue;
     }
-    if (block.type !== "blockSdt") {
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
       continue;
     }
     if (removeTextBoxAnchorFromBlocks(block.content, marker)) {
@@ -6257,6 +6272,9 @@ function convertPMTableCell(
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "blockSdt") {
       content.push(convertPMBlockSdt(contentNode, styleResolver));
+      previousStandaloneTextBox = null;
+    } else if (contentNode.type.name === "blockCustomXml") {
+      content.push(convertPMBlockCustomXml(contentNode, styleResolver));
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "textBox") {
       previousStandaloneTextBox = appendTextBoxBlock(content, contentNode, {

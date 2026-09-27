@@ -289,7 +289,7 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
         trailingPageBreakSectionPositions.add(childStart);
         consumedPageBreakPositions.add(childStart + child.nodeSize);
       }
-      if (child.type.name === "blockSdt") {
+      if (child.type.name === "blockSdt" || child.type.name === "blockCustomXml") {
         collectTrailingPageBreakSections(child, childStart + 1);
       }
       childStart += child.nodeSize;
@@ -301,6 +301,15 @@ export function toFlowBlocks(doc: PMNode, options: ToFlowBlocksOptions = {}): Fl
   // children without duplicating the per-block conversion code.
   const visit = (node: PMNode, pos: number): void => {
     switch (node.type.name) {
+      case "blockCustomXml": {
+        let childOffset = pos + 1;
+        for (let i = 0; i < node.childCount; i += 1) {
+          const child = node.child(i);
+          visit(child, childOffset);
+          childOffset += child.nodeSize;
+        }
+        return;
+      }
       case "blockSdt": {
         const attrs = expectBlockSdtAttrs(node);
         sdtSeq += 1;

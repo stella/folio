@@ -16,6 +16,6 @@ export const DocExtension = createNodeExtension({
       _doNotUseIndentAsNumberingTabStop: { default: false },
     },
     content:
-      "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | preservedBlock | blockBookmarkBoundary)+",
+      "(paragraph | horizontalRule | pageBreak | table | textBox | blockSdt | blockCustomXml | preservedBlock | blockBookmarkBoundary)+",
   },
 });

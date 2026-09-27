@@ -134,7 +134,10 @@ function remapBlock(
   // This helper also runs on hand-built `Document` inputs (not necessarily
   // produced by `parseDocx`), so keep the array guard: a control without a
   // `content` array passes through unchanged instead of throwing.
-  if (block.type === "blockSdt" && Array.isArray(block.content)) {
+  if (
+    (block.type === "blockSdt" || block.type === "blockCustomXml") &&
+    Array.isArray(block.content)
+  ) {
     return {
       ...block,
       content: block.content.map((child) => remapBlock(child, numIdRemap, abstractNumIdRemap)),

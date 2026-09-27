@@ -23,6 +23,7 @@ import type {
   InlineWrapper,
   BlockContent,
   BlockSdt,
+  BlockCustomXml,
   BookmarkEnd,
   BookmarkStart,
   Document,
@@ -415,6 +416,7 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
           }
           break;
         case "blockSdt":
+        case "blockCustomXml":
           visitBlocks(block.content);
           break;
         // Opaque markup: nothing inside it for a visitor to reach.
@@ -499,6 +501,9 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
           break;
         case "blockSdt":
           out.push(convertBlockSdt(block, convertBodyBlocks));
+          break;
+        case "blockCustomXml":
+          out.push(convertBlockCustomXml(block, convertBodyBlocks));
           break;
         case "preservedBlock":
           out.push(convertPreservedBlock(block));
@@ -649,6 +654,25 @@ function convertBlockSdt(
     children.push(schema.node("paragraph", {}, []));
   }
   return schema.node("blockSdt", attrs, children);
+}
+
+function convertBlockCustomXml(
+  block: BlockCustomXml,
+  convertBlocks: (blocks: BlockContent[]) => PMNode[],
+): PMNode {
+  const children = convertBlocks(block.content);
+  if (children.length === 0) {
+    children.push(schema.node("paragraph", {}, []));
+  }
+  return schema.node(
+    "blockCustomXml",
+    {
+      openingXml: block.openingXml,
+      closingXml: block.closingXml,
+      _originallyEmpty: block.content.length === 0,
+    },
+    children,
+  );
 }
 
 /**
@@ -2044,9 +2068,8 @@ function blockHasMeaningfulContent(block: TableCellBlock): boolean {
   if (block.type === "table") {
     return block.rows.some((row) => row.cells.some((cell) => tableCellHasMeaningfulContent(cell)));
   }
-  if (block.type === "blockSdt") {
-    // The wrapper itself carries bindings, locks, and identity. Pruning an
-    // empty control would lose authored document structure.
+  if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+    // The wrapper carries authored structure even when its children are empty.
     return true;
   }
 
@@ -2892,6 +2915,9 @@ function convertTableCell({
           break;
         case "blockSdt":
           nodes.push(convertBlockSdt(block, convertCellBlocks));
+          break;
+        case "blockCustomXml":
+          nodes.push(convertBlockCustomXml(block, convertCellBlocks));
           break;
         case "preservedBlock":
           nodes.push(convertPreservedBlock(block));
@@ -5621,6 +5647,9 @@ export function headerFooterToProseDoc(
           break;
         case "blockSdt":
           out.push(convertBlockSdt(block, convertBlocks));
+          break;
+        case "blockCustomXml":
+          out.push(convertBlockCustomXml(block, convertBlocks));
           break;
         case "preservedBlock":
           out.push(convertPreservedBlock(block));

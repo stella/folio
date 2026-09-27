@@ -35,6 +35,7 @@ import { SelectionTrackerExtension } from "./features/SelectionTrackerExtension"
 // Marks
 import { MARK_EXTENSIONS, MARK_NESTING_ORDER } from "./markRegistry";
 import { BlockSdtExtension } from "./nodes/BlockSdtExtension";
+import { BlockCustomXmlExtension } from "./nodes/BlockCustomXmlExtension";
 import { BlockBookmarkBoundaryExtension } from "./nodes/BlockBookmarkBoundaryExtension";
 import { BookmarkBoundaryExtension } from "./nodes/BookmarkBoundaryExtension";
 import { CommentReferenceExtension } from "./nodes/CommentReferenceExtension";
@@ -139,6 +140,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("field", StructuredFieldExtension({ getInternalClipboardToken }));
   add("sdt", SdtExtension());
   add("blockSdt", BlockSdtExtension());
+  add("blockCustomXml", BlockCustomXmlExtension());
   add("preservedBlock", PreservedBlockExtension());
   add("math", MathExtension());
 

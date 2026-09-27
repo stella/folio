@@ -188,6 +188,7 @@ export const buildPageBreakRunSourceDescendantIndex = (
         case "table":
           return inspectMany(block.rows, inspectTableRow);
         case "blockSdt":
+        case "blockCustomXml":
           return inspectBlocks(block.content);
         // Opaque markup holds no run folio can index a page break against.
         case "preservedBlock":

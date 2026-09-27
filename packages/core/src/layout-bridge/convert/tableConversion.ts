@@ -136,7 +136,7 @@ function convertTableCell(
       blocks.push(convertTable(child, childStart, options));
     } else if (child.type.name === "textBox") {
       blocks.push(convertTextBoxNode(child, childStart, options));
-    } else if (child.type.name === "blockSdt") {
+    } else if (child.type.name === "blockSdt" || child.type.name === "blockCustomXml") {
       // A `w:sdt` among a cell's block content wraps blocks of that cell:
       // what its `w:sdtContent` holds lays out as the cell's own blocks.
       let sdtChildStart = childStart + 1;

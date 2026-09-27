@@ -22,6 +22,7 @@
 
 import type { BlockContent, Endnote, Footnote } from "../../types/document";
 import { serializeBlockSdt } from "./blockSdtSerializer";
+import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
 import { serializePartElement, type OoxmlNamespacePrefix } from "./partNamespaces";
 import { serializeParagraph } from "./paragraphSerializer";
@@ -77,6 +78,8 @@ function serializeBlock(block: BlockContent): string {
       return serializeTable(block, serializeParagraph);
     case "blockSdt":
       return serializeBlockSdt(block, serializeBlock);
+    case "blockCustomXml":
+      return serializeBlockCustomXml(block, serializeBlock);
     case "preservedBlock":
       return block.xml;
     // The container declares the marker beside its blocks and the model keeps

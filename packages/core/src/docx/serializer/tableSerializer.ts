@@ -44,6 +44,7 @@ import type {
   TablePreservedMarkup,
 } from "../../types/document";
 import { serializeBlockSdt } from "./blockSdtSerializer";
+import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { canonicalJson } from "../../utils/canonicalJson";
 import { isValidHexColor } from "../../utils/colorResolver";
 import {
@@ -1042,6 +1043,8 @@ function serializeCellContent(
         return serializeTable(block, serializeParagraph);
       case "blockSdt":
         return serializeBlockSdt(block, serializeCellBlock);
+      case "blockCustomXml":
+        return serializeBlockCustomXml(block, serializeCellBlock);
       case "preservedBlock":
         return block.xml;
       // `CT_Tc` declares the marker beside its blocks; the cell keeps it there

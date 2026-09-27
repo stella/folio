@@ -82,7 +82,7 @@ const eachParagraph = (blocks: BlockContent[], visit: (paragraph: Paragraph) => 
       }
       continue;
     }
-    if (block.type !== "blockSdt") {
+    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
       continue;
     }
     eachParagraph(block.content ?? [], visit);

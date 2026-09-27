@@ -287,6 +287,7 @@ export type {
   SdtEndProperties,
   InlineSdt,
   BlockSdt,
+  BlockCustomXml,
   ParagraphContent,
   Paragraph,
   ParagraphMarkChange,

@@ -140,6 +140,7 @@ function renderGfmCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: T
           break;
         }
         case "blockSdt":
+        case "blockCustomXml":
           renderBlocks(item.content);
           break;
         case "table":
@@ -258,6 +259,7 @@ function renderHtmlCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: 
           break;
         }
         case "blockSdt":
+        case "blockCustomXml":
           renderBlocks(item.content);
           break;
         case "preservedBlock":

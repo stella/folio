@@ -108,7 +108,10 @@ function forEachSearchParagraph(doc: ProseMirrorNode, visit: SearchParagraphVisi
         paragraphIndex++;
       } else if (child.type.name === "table" && !walkTable(child, childPos)) {
         return false;
-      } else if (child.type.name === "blockSdt" && !walkBlocks(child, childPos + 1)) {
+      } else if (
+        (child.type.name === "blockSdt" || child.type.name === "blockCustomXml") &&
+        !walkBlocks(child, childPos + 1)
+      ) {
         return false;
       }
       offset += child.nodeSize;

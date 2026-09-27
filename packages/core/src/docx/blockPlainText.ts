@@ -38,6 +38,7 @@ export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => 
         }
         break;
       case "blockSdt":
+      case "blockCustomXml":
         texts.push(...collectBlockTexts(block.content));
         break;
       // Opaque markup, so folio cannot say what text it puts on the page; an

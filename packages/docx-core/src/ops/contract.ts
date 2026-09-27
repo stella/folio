@@ -160,6 +160,7 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
         break;
       }
       case "blockSdt":
+      case "blockCustomXml":
         out.push({ ...block, content: normalizeBlocks(block.content) });
         break;
       case "preservedBlock":

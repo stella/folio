@@ -122,6 +122,7 @@ const normalizeCellBlock = (block: TableCellBlock, styles: StyleResolver): Table
     case "table":
       return normalizeTable(block, styles);
     case "blockSdt":
+    case "blockCustomXml":
       return { ...block, content: block.content.map((child) => normalizeCellBlock(child, styles)) };
     case "preservedBlock":
     // A delimiter carries no text and so no base direction.

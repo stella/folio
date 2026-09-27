@@ -9,6 +9,7 @@
 
 import type {
   BlockContent,
+  BlockCustomXml,
   BlockSdt,
   MediaFile,
   PreservedBlock,
@@ -17,6 +18,7 @@ import type {
   Theme,
 } from "../types/document";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
+import { blockCustomXmlShell } from "./blockCustomXmlShell";
 import {
   CAPTURE,
   type ChildHandlers,
@@ -332,6 +334,30 @@ const BLOCK_CONTENT_UNDECLARED = {
   },
 } as const satisfies Record<string, ChildReader<BlockContentWalk>>;
 
+const parseBlockCustomXml = (
+  child: XmlElement,
+  styles: StyleMap | null,
+  theme: Theme | null,
+  numbering: NumberingMap | null,
+  rels: RelationshipMap | null,
+  media: Map<string, MediaFile> | null,
+  state: ParseBlockContentState,
+): BlockCustomXml => {
+  return {
+    type: "blockCustomXml",
+    ...blockCustomXmlShell(child),
+    content: parseBlockContentWithState(
+      child,
+      styles,
+      theme,
+      numbering,
+      rels,
+      media,
+      withContainerXmlns(state, child),
+    ),
+  };
+};
+
 const BLOCK_CONTENT_HANDLERS = {
   p: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
     const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, {
@@ -369,6 +395,9 @@ const BLOCK_CONTENT_HANDLERS = {
   sdt: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
     modelled.push(parseBlockSdt(child, styles, theme, numbering, rels, media, state));
   },
+  customXml: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
+    modelled.push(parseBlockCustomXml(child, styles, theme, numbering, rels, media, state));
+  },
   // A block container declares the marker beside its blocks, so the model
   // keeps it there: it is a block in its own right, between the same two
   // siblings the source wrote it between. Re-anchoring it into a
@@ -383,7 +412,6 @@ const BLOCK_CONTENT_HANDLERS = {
   altChunk: CAPTURE,
   commentRangeEnd: CAPTURE,
   commentRangeStart: CAPTURE,
-  customXml: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,

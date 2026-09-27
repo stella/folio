@@ -243,7 +243,7 @@ const withoutOrphanBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
-  if (block.type !== "blockSdt") {
+  if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
     return block;
   }
 
@@ -331,7 +331,7 @@ const withoutOrphanTableCellBlockMarker = (
     return withoutOrphanTableMarkers(block, validCommentIds);
   }
 
-  if (block.type === "blockSdt") {
+  if (block.type === "blockSdt" || block.type === "blockCustomXml") {
     const content = withoutOrphanTableCellBlockMarkers(block.content, validCommentIds);
     return content ? { ...block, content } : block;
   }
