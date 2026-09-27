@@ -448,6 +448,7 @@ const REVIEW_COMMENT_FIELD_CENSUS = {
   text: "text",
   anchoredText: "anchoredText",
   blockId: "blockId",
+  story: "story",
   replies: "replies",
   done: "done",
 } as const satisfies Record<keyof FolioReviewComment, keyof FolioReviewComment>;
@@ -462,13 +463,14 @@ const REVIEW_COMMENT_REPLY_FIELD_CENSUS = {
 const commentProjection = (reviewer: FolioDocxReviewer) =>
   reviewer
     .getComments()
-    .map(({ id, author, date, text, anchoredText, blockId, replies, done }) => ({
+    .map(({ id, author, date, text, anchoredText, blockId, story, replies, done }) => ({
       id,
       author,
       date,
       text,
       anchoredText,
       blockId,
+      story,
       replies: replies.map(
         ({ id: replyId, author: replyAuthor, date: replyDate, text: replyText }) => ({
           id: replyId,
@@ -757,7 +759,7 @@ describe("resolved story serialization structural matrix", () => {
         REVIEW_COMMENT_SCENARIOS.length,
     );
     expect(new Set(keys).size).toBe(keys.length);
-    expect(Object.values(REVIEW_COMMENT_FIELD_CENSUS)).toHaveLength(8);
+    expect(Object.values(REVIEW_COMMENT_FIELD_CENSUS)).toHaveLength(9);
     expect(Object.values(REVIEW_COMMENT_REPLY_FIELD_CENSUS)).toHaveLength(4);
   });
 

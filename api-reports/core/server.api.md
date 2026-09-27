@@ -1471,6 +1471,7 @@ export type FolioReviewComment = {
     text: string;
     anchoredText: string;
     blockId: string | null;
+    story: FolioDocumentStoryHandle | null;
     replies: FolioReviewCommentReply[];
     done: boolean;
 };

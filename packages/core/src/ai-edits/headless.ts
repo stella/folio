@@ -937,11 +937,26 @@ export type FolioReviewComment = {
   text: string;
   /** The document text the comment is anchored to, or `""` when unanchored. */
   anchoredText: string;
-  /** Stable id of the anchored body block, or `null` when the anchor is absent. */
+  /**
+   * Stable id of the anchored block, or `null` when the anchor is absent. The
+   * id is the one {@link FolioDocxReviewer.snapshotStory} gives the block in
+   * {@link FolioReviewComment.story}.
+   */
   blockId: string | null;
+  /**
+   * The story holding the anchor — the body, a header or footer, a footnote or
+   * an endnote — or `null` when the anchor is absent.
+   */
+  story: FolioDocumentStoryHandle | null;
   replies: FolioReviewCommentReply[];
   /** Whether the comment is marked resolved / done. */
   done: boolean;
+};
+
+type FolioCommentAnchor = {
+  text: string;
+  blockId: string | null;
+  story: FolioDocumentStoryHandle;
 };
 
 /** Filter for {@link FolioDocxReviewer.getComments}. */
@@ -1949,6 +1964,7 @@ export class FolioDocxReviewer {
         text: commentPlainText(comment),
         anchoredText: anchor?.text ?? "",
         blockId: anchor?.blockId ?? null,
+        story: anchor?.story ?? null,
         replies: (repliesByParent.get(comment.id) ?? []).map((reply) => ({
           id: reply.id,
           author: reply.author,
@@ -2523,6 +2539,38 @@ export class FolioDocxReviewer {
     if (existing) {
       return existing.state;
     }
+    const doc = this.secondaryStoryDoc(story);
+    if (!doc) {
+      return null;
+    }
+    const state = ensureBaseDirectionInState(
+      EditorState.create({
+        schema,
+        doc,
+        plugins: createHeadlessPlugins(
+          this.baseDocument.package.styles,
+          this.baseDocument.package.numbering,
+        ),
+      }),
+    );
+    this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });
+    return state;
+  }
+
+  /**
+   * A secondary story as its editable state holds it: the loaded state's
+   * document once an operation has loaded it, otherwise the conversion loading
+   * performs — with the same deterministic block ids — without retaining a
+   * state for a story nothing edits.
+   */
+  private readSecondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
+    return (
+      this.secondaryStoryStates.get(secondaryStoryKey(story))?.state.doc ??
+      this.secondaryStoryDoc(story)
+    );
+  }
+
+  private secondaryStoryDoc(story: FolioSecondaryStoryHandle): PMNode | null {
     const source =
       story.type === "header" || story.type === "footer"
         ? this.getHeaderFooterStory(story)
@@ -2542,18 +2590,7 @@ export class FolioDocxReviewer {
       story.type === "header" || story.type === "footer"
         ? headerFooterToProseDoc(source.content, conversionOptions)
         : footnoteToProseDoc(source.content, conversionOptions);
-    const state = ensureBaseDirectionInState(
-      EditorState.create({
-        schema,
-        doc: ensureDeterministicParaIdsInDoc(storyDoc),
-        plugins: createHeadlessPlugins(
-          this.baseDocument.package.styles,
-          this.baseDocument.package.numbering,
-        ),
-      }),
-    );
-    this.secondaryStoryStates.set(key, { handle: story, initialState: state, state });
-    return state;
+    return ensureDeterministicParaIdsInDoc(storyDoc);
   }
 
   private requireEditableStoryState(story: FolioEditableDocumentStoryHandle): EditorState {
@@ -2867,11 +2904,23 @@ export class FolioDocxReviewer {
     });
   }
 
-  /** Map each anchored comment id to its anchored text and containing block id. */
-  private commentAnchors(): Map<number, { text: string; blockId: string | null }> {
-    const anchors = new Map<number, { text: string; blockId: string | null }>();
-    for (const anchor of getCommentAnchorsFromDoc(this.state.doc)) {
-      anchors.set(anchor.commentId, { text: anchor.quote, blockId: anchor.blockId });
+  /**
+   * Map each anchored comment id to its anchored text, its containing block id
+   * and the story holding it. A comment can be anchored in any story, so every
+   * story is read, not only the body.
+   */
+  private commentAnchors(): Map<number, FolioCommentAnchor> {
+    const anchors = new Map<number, FolioCommentAnchor>();
+    for (const story of this.listStoryHandlesInternal()) {
+      const doc = story.type === "main" ? this.state.doc : this.readSecondaryStoryDoc(story);
+      if (!doc) {
+        continue;
+      }
+      for (const anchor of getCommentAnchorsFromDoc(doc)) {
+        if (!anchors.has(anchor.commentId)) {
+          anchors.set(anchor.commentId, { text: anchor.quote, blockId: anchor.blockId, story });
+        }
+      }
     }
     return anchors;
   }
