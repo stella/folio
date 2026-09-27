@@ -1850,6 +1850,7 @@ export const ROW_CONTENT_HANDLERS = {
 
   commentRangeEnd: CAPTURE,
   commentRangeStart: CAPTURE,
+  customXmlPr: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,
