@@ -4,6 +4,7 @@ import { sanitizeXmlCharacters } from "@stll/docx-core";
 
 import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
 import { isNumberingReference } from "./docx/numberingReference";
+import { outlineLevelFromAttrValue } from "./prosemirror/outlineLevelAttr";
 import type { FolioTableTemplates } from "./ai-edits/table-template";
 import {
   applyFolioAIEditOperations,
@@ -33,7 +34,12 @@ import type {
   FolioAIParagraphSpacing,
   FolioAITextRangeHandle,
 } from "./ai-edits/types";
-import type { BreakContent, LineSpacingRule, ParagraphAlignment } from "./types/document";
+import type {
+  BreakContent,
+  LineSpacingRule,
+  OutlineLevel,
+  ParagraphAlignment,
+} from "./types/document";
 import { LINE_SPACING_RULE_VALUES, PARAGRAPH_ALIGNMENT_VALUES } from "./types/documentEnumValues";
 
 export const FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION = 1 as const;
@@ -719,6 +725,23 @@ type ReadParagraphPropertiesOptions = {
   path: string;
 };
 
+const readClearableOutlineLevel = (
+  value: Record<string, unknown>,
+  path: string,
+): OutlineLevel | null | undefined => {
+  const candidate = value["outlineLevel"];
+  if (candidate === undefined || candidate === null) return candidate;
+  if (!isPlainObject(candidate)) {
+    return invalidBatch(`${path}.outlineLevel`, "expected an outline level");
+  }
+  assertAllowedKeys(candidate, `${path}.outlineLevel`, ["kind", "level"]);
+  const outlineLevel = outlineLevelFromAttrValue(candidate);
+  if (outlineLevel === null) {
+    return invalidBatch(`${path}.outlineLevel`, "expected a valid outline level");
+  }
+  return outlineLevel;
+};
+
 const readParagraphProperties = ({
   value,
   key,
@@ -731,6 +754,7 @@ const readParagraphProperties = ({
   }
   assertAllowedKeys(candidate, propertiesPath, [
     "styleId",
+    "outlineLevel",
     "listLevel",
     "numbering",
     "alignment",
@@ -740,6 +764,7 @@ const readParagraphProperties = ({
   const rawStyleId = candidate["styleId"];
   const styleId =
     rawStyleId === null ? null : readOptionalString(candidate, "styleId", propertiesPath);
+  const outlineLevel = readClearableOutlineLevel(candidate, propertiesPath);
   const listLevel = readClearableNonNegativeInteger(candidate, "listLevel", propertiesPath);
   const numbering = readClearableNumbering({
     value: candidate,
@@ -763,6 +788,7 @@ const readParagraphProperties = ({
   });
   if (
     styleId === undefined &&
+    outlineLevel === undefined &&
     listLevel === undefined &&
     numbering === undefined &&
     alignment === undefined &&
@@ -773,6 +799,7 @@ const readParagraphProperties = ({
   }
   return {
     ...(styleId !== undefined && { styleId }),
+    ...(outlineLevel !== undefined && { outlineLevel }),
     ...(listLevel !== undefined && { listLevel }),
     ...(numbering !== undefined && { numbering }),
     ...(alignment !== undefined && { alignment }),

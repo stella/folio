@@ -1248,6 +1248,7 @@ export type FolioContentBlock<Kind extends string = string> = {
     headingLevel?: number;
     displayLabel?: string;
     styleId?: string;
+    directOutlineLevel?: import__stll_docx_core_model.OutlineLevel;
     directAlignment?: FolioContentParagraphAlignment;
     directSpacing?: FolioContentParagraphSpacing;
     directIndentation?: FolioContentParagraphIndentation;
@@ -1388,6 +1389,7 @@ export type FolioContentParagraphAlignment = import__stll_docx_core_model.Paragr
 // @public
 export type FolioContentParagraphFormattingPatch = {
     styleId?: string | null;
+    outlineLevel?: FolioContentBlock["directOutlineLevel"] | null;
     listLevel?: number | null;
     listReference?: FolioContentListReference | null;
     alignment?: FolioContentBlock["directAlignment"] | null;

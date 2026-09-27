@@ -367,6 +367,7 @@ const toFolioAIBlockParagraphProperties = (
   properties: FolioContentParagraphFormattingPatch,
 ): FolioAIBlockParagraphProperties => ({
   ...(properties.styleId !== undefined && { styleId: properties.styleId }),
+  ...(properties.outlineLevel !== undefined && { outlineLevel: properties.outlineLevel }),
   ...(properties.listLevel !== undefined && { listLevel: properties.listLevel }),
   ...(properties.listReference !== undefined && { numbering: properties.listReference }),
   ...(properties.alignment !== undefined && { alignment: properties.alignment }),

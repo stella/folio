@@ -200,6 +200,32 @@ describe("document operation contract", () => {
     expect(Object.isFrozen(operation?.precondition)).toBe(true);
   });
 
+  test("validates and preserves a direct paragraph outline level", () => {
+    const operation = {
+      id: "outline",
+      type: "setBlockParagraphProperties",
+      blockId: "0304003A",
+      properties: { outlineLevel: { kind: "heading", level: 1 } },
+    };
+    const batch = parseFolioDocumentOperationBatch({ version: 1, operations: [operation] });
+    expect(batch.operations.at(0)).toMatchObject(operation);
+    expect(parseFolioDocumentOperationBatch(batch)).toBe(batch);
+
+    for (const outlineLevel of [{ kind: "heading", level: 9 }, { kind: "unknown" }]) {
+      expect(() =>
+        parseFolioDocumentOperationBatch({
+          version: 1,
+          operations: [{ ...operation, properties: { outlineLevel } }],
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          _tag: "InvalidFolioDocumentOperationBatchError",
+          path: "$.operations[0].properties.outlineLevel",
+        }),
+      );
+    }
+  });
+
   test("validates an authored hard page-break carrier separately from paragraph layout", () => {
     expect(FOLIO_PAGE_BREAK_CLEAR_VALUES).toEqual(["none", "left", "right", "all"]);
     const batch = parseFolioDocumentOperationBatch({

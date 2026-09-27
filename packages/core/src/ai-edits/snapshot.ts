@@ -752,6 +752,10 @@ const createFolioAIEditSnapshotInternal = (
     const kind = getBlockKind(headingLevel, listLabel);
     const displayLabel = getDisplayLabel(node, listLabel, kind === "heading");
     const styleId = getStyleId(node);
+    const directOutlineLevel =
+      node.type.name === "paragraph"
+        ? expectParagraphAttrs(node)._originalFormatting?.outlineLevel
+        : undefined;
     const listLevel = getListLevel(node);
     const listReference = getListReference(node);
     const numberingReferenceKey = getNumberingReferenceKey(node);
@@ -773,6 +777,7 @@ const createFolioAIEditSnapshotInternal = (
         ...(headingLevel !== undefined && { headingLevel }),
         ...(displayLabel !== undefined && { displayLabel }),
         ...(styleId !== undefined && { styleId }),
+        ...(directOutlineLevel !== undefined && { directOutlineLevel }),
         ...(listLevel !== undefined && { listLevel }),
         ...(listReference !== undefined && { listReference }),
         ...(directAlignment !== undefined && { directAlignment }),

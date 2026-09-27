@@ -103,6 +103,7 @@ const writeCanonicalInlinePresentationDifferences = (
   base: FolioContentRun | undefined,
   revised: FolioContentRun | undefined,
   patch: FolioContentInlineFormattingPatch | null,
+  presentationBasis: "full" | "authored" = "full",
 ): boolean => {
   let changed = false;
   const baseDirect = base?.directFormatting ?? {};
@@ -115,7 +116,7 @@ const writeCanonicalInlinePresentationDifferences = (
     let value;
     if (baseAuthored !== revisedAuthored) {
       value = revisedAuthored ?? null;
-    } else if (baseEffective === revisedEffective) {
+    } else if (presentationBasis === "authored" || baseEffective === revisedEffective) {
       value = NO_PRESENTATION_DIFFERENCE;
     } else {
       value = revisedEffective;
@@ -129,7 +130,10 @@ const writeCanonicalInlinePresentationDifferences = (
   let stringValue;
   if (baseDirect[stringProperty] !== revisedDirect[stringProperty]) {
     stringValue = revisedDirect[stringProperty] ?? null;
-  } else if (base?.[stringProperty] === revised?.[stringProperty]) {
+  } else if (
+    presentationBasis === "authored" ||
+    base?.[stringProperty] === revised?.[stringProperty]
+  ) {
     stringValue = NO_PRESENTATION_DIFFERENCE;
   } else {
     stringValue = revised?.[stringProperty] ?? null;
@@ -142,7 +146,10 @@ const writeCanonicalInlinePresentationDifferences = (
   let numberValue;
   if (baseDirect[numberProperty] !== revisedDirect[numberProperty]) {
     numberValue = revisedDirect[numberProperty] ?? null;
-  } else if (base?.[numberProperty] === revised?.[numberProperty]) {
+  } else if (
+    presentationBasis === "authored" ||
+    base?.[numberProperty] === revised?.[numberProperty]
+  ) {
     numberValue = NO_PRESENTATION_DIFFERENCE;
   } else {
     numberValue = revised?.[numberProperty] ?? null;
@@ -159,7 +166,7 @@ const writeCanonicalInlinePresentationDifferences = (
   let color;
   if (baseAuthoredColor !== revisedAuthoredColor) {
     color = revisedAuthoredColor ?? null;
-  } else if (baseEffectiveColor === revisedEffectiveColor) {
+  } else if (presentationBasis === "authored" || baseEffectiveColor === revisedEffectiveColor) {
     color = NO_PRESENTATION_DIFFERENCE;
   } else {
     color = revisedEffectiveColor ?? null;
@@ -179,9 +186,12 @@ const canonicalInlinePresentationsEqual = (
 const changedCanonicalInlinePresentation = (
   base: FolioContentRun | undefined,
   revised: FolioContentRun | undefined,
+  presentationBasis: "full" | "authored",
 ): FolioContentInlineFormattingPatch | null => {
   const patch: FolioContentInlineFormattingPatch = {};
-  return writeCanonicalInlinePresentationDifferences(base, revised, patch) ? patch : null;
+  return writeCanonicalInlinePresentationDifferences(base, revised, patch, presentationBasis)
+    ? patch
+    : null;
 };
 
 const sameCanonicalInlinePresentationPatch = (
@@ -214,6 +224,7 @@ type VisitAlignedRunRangesOptions =
       revisedBlock: InlinePresentationBlock;
       maxSegments: number;
       segments: FolioContentFormatRange[];
+      presentationBasis: "full" | "authored";
     }
   | {
       type: "equivalence";
@@ -285,7 +296,11 @@ const visitAlignedRunRanges = (options: VisitAlignedRunRangesOptions): AlignedRu
         return "stopped";
       }
     } else if (!exceededBudget) {
-      const formatting = changedCanonicalInlinePresentation(baseRun, revisedRun);
+      const formatting = changedCanonicalInlinePresentation(
+        baseRun,
+        revisedRun,
+        options.presentationBasis,
+      );
       if (formatting !== null) {
         const previous = options.segments.at(-1);
         if (
@@ -327,6 +342,7 @@ type CanonicalInlinePresentationSegmentsOptions = {
   baseBlock: InlinePresentationBlock;
   revisedBlock: InlinePresentationBlock;
   maxSegments: number;
+  presentationBasis?: "full" | "authored";
 };
 
 /**
@@ -338,6 +354,7 @@ export const canonicalInlinePresentationSegments = ({
   baseBlock,
   revisedBlock,
   maxSegments,
+  presentationBasis = "full",
 }: CanonicalInlinePresentationSegmentsOptions): FolioContentInlineComparisonResult => {
   const segments: FolioContentFormatRange[] = [];
   const result = visitAlignedRunRanges({
@@ -346,6 +363,7 @@ export const canonicalInlinePresentationSegments = ({
     revisedBlock,
     maxSegments,
     segments,
+    presentationBasis,
   });
   switch (result) {
     case "complete":

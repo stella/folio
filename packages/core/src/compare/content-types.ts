@@ -1,4 +1,4 @@
-import type { ParagraphAlignment } from "../types/document";
+import type { OutlineLevel, ParagraphAlignment } from "../types/document";
 
 /** How callers expect a block identifier to behave across document revisions. */
 export type FolioContentIdStability = "stable" | "positional";
@@ -133,6 +133,8 @@ export type FolioContentBlock<Kind extends string = string> = {
    */
   displayLabel?: string;
   styleId?: string;
+  /** Authored `w:outlineLvl`; absent when heading depth comes only from a style. */
+  directOutlineLevel?: OutlineLevel;
   /** Direct paragraph alignment; absent when alignment comes only from a style. */
   directAlignment?: FolioContentParagraphAlignment;
   /** Direct paragraph spacing; absent when every spacing value is inherited. */

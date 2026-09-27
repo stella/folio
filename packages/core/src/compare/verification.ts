@@ -4,7 +4,7 @@
  * The check compares two block projections: what accepting the generated
  * revisions leaves against the target, and what rejecting them leaves against
  * the base. A projection carries each block's container, style, list level,
- * direct alignment, spacing, indentation and text, so WHICH field diverged names
+ * direct outline level, alignment, spacing, indentation and text, so WHICH field diverged names
  * which part of the pipeline lost the difference — and that is worth reporting
  * as a typed cause rather than as one opaque "did not reproduce".
  *
@@ -19,6 +19,7 @@ import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
 import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
+import { sameFolioContentOutlineLevel } from "./content";
 
 /** The two directions of the round trip, each an invariant of its own. */
 export const COMPARE_VERIFICATION_INVARIANTS = Object.freeze([
@@ -93,6 +94,7 @@ type ProjectedBlock = Pick<
   | "text"
   | "table"
   | "styleId"
+  | "directOutlineLevel"
   | "listLevel"
   | "listReference"
   | "directAlignment"
@@ -162,6 +164,7 @@ const sameProjectedBlock = (left: ProjectedBlock, right: ProjectedBlock): boolea
   sameContainer(left.table, right.table) &&
   sameStructuralBoundaries(left.structuralBoundaries, right.structuralBoundaries) &&
   left.styleId === right.styleId &&
+  sameFolioContentOutlineLevel(left.directOutlineLevel, right.directOutlineLevel) &&
   left.listLevel === right.listLevel &&
   left.listReference?.numId === right.listReference?.numId &&
   left.listReference?.level === right.listReference?.level &&
@@ -356,6 +359,12 @@ export const classifyProjectionMismatch = ({
   }
   if (left.text === right.text && left.styleId !== right.styleId) {
     return failure("style", `the paragraph style did not move ${at} (${counts})`);
+  }
+  if (
+    left.text === right.text &&
+    !sameFolioContentOutlineLevel(left.directOutlineLevel, right.directOutlineLevel)
+  ) {
+    return failure("style", `the direct outline level did not move ${at} (${counts})`);
   }
   if (left.text === right.text && left.listLevel !== right.listLevel) {
     return failure("list-level", `the list level did not move ${at} (${counts})`);

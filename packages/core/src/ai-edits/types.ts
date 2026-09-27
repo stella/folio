@@ -12,7 +12,7 @@ import type {
   FolioContentTableLocation,
 } from "../compare/content-types";
 import type { ListKind } from "../docx/listNumberingInstances";
-import type { BreakContent, ParagraphAlignment } from "../types/document";
+import type { BreakContent, OutlineLevel, ParagraphAlignment } from "../types/document";
 
 export type FolioAIBlockKind = FolioContentParagraphKind;
 
@@ -111,6 +111,8 @@ export type FolioAIInsertFormattingScope = "firstParagraph" | "allParagraphs";
 export type FolioAIBlockParagraphProperties = {
   /** `w:pStyle`. `null` clears the style back to the default. */
   styleId?: string | null;
+  /** Direct `w:outlineLvl`. `null` restores style inheritance. */
+  outlineLevel?: OutlineLevel | null;
   /**
    * `w:numPr/w:ilvl`, zero-based. `null` removes numbering unless `numbering`
    * supplies a concrete instance; together they retain that instance without

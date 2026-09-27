@@ -635,6 +635,17 @@ const paragraphPropertiesPatch = ({
       }),
     );
   }
+  if (properties.outlineLevel !== undefined) {
+    const directOutlineLevel = properties.outlineLevel ?? undefined;
+    originalFormatting ??= {};
+    if (directOutlineLevel === undefined) {
+      Reflect.deleteProperty(originalFormatting, "outlineLevel");
+    } else {
+      originalFormatting.outlineLevel = directOutlineLevel;
+    }
+    patch["outlineLevel"] = directOutlineLevel ?? resolvedFormattingFromStyle?.outlineLevel ?? null;
+    originalFormattingChanged = true;
+  }
   // The style numbering in force once any style change above applies.
   const numPrFromStyle = styleChanged
     ? readParagraphNumberingAttr(patch["numPrFromStyle"])

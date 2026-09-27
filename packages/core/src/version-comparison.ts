@@ -162,6 +162,7 @@ const INLINE_FORMAT_PROPERTIES = {
 const PARAGRAPH_FORMAT_PROPERTIES = {
   indentation: true,
   styleId: true,
+  outlineLevel: true,
   listLevel: true,
   listReference: true,
   alignment: true,

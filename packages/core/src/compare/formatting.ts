@@ -19,4 +19,7 @@ export const inlineFormattingSegments = ({
     baseBlock,
     revisedBlock: targetBlock,
     maxSegments,
+    // Paragraph styles supply inherited run values; only authored values need
+    // a run operation when the style itself changes.
+    presentationBasis: baseBlock.styleId === targetBlock.styleId ? "full" : "authored",
   });

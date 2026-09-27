@@ -17,6 +17,7 @@ import {
 } from "../ai-edits/word-diff";
 import { inlineFormattingSegments } from "./formatting";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
+import { outlineLevelFromAttrValue } from "../prosemirror/outlineLevelAttr";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 import {
   alignFolioContentStructure,
@@ -123,12 +124,21 @@ export type FolioContentTextSegment = {
 /** Target-side paragraph properties that differ from the base block. */
 export type FolioContentParagraphFormattingPatch = {
   styleId?: string | null;
+  outlineLevel?: FolioContentBlock["directOutlineLevel"] | null;
   listLevel?: number | null;
   listReference?: FolioContentListReference | null;
   alignment?: FolioContentBlock["directAlignment"] | null;
   spacing?: FolioContentParagraphSpacing | null;
   indentation?: FolioContentParagraphIndentation | null;
 };
+
+/** Authored outline identity, including the distinction between heading and body text. */
+export const sameFolioContentOutlineLevel = (
+  left: FolioContentBlock["directOutlineLevel"],
+  right: FolioContentBlock["directOutlineLevel"],
+): boolean =>
+  left?.kind === right?.kind &&
+  (left?.kind !== "heading" || (right?.kind === "heading" && left.level === right.level));
 
 /** Presentation differences for one text-aligned block pair. */
 export type FolioContentFormattingChange = {
@@ -421,6 +431,17 @@ const validateParagraphFormatting = (
       side,
       `blocks[${String(blockIndex)}].directAlignment`,
       "Paragraph alignment is not recognized.",
+      blockIndex,
+    );
+  }
+  if (
+    block.directOutlineLevel !== undefined &&
+    outlineLevelFromAttrValue(block.directOutlineLevel) === null
+  ) {
+    return invalidInput(
+      side,
+      `blocks[${String(blockIndex)}].directOutlineLevel`,
+      "Direct outline level is not recognized.",
       blockIndex,
     );
   }
@@ -1067,6 +1088,9 @@ export const changedFolioContentParagraphFormatting = (
   if ((base.styleId ?? null) !== (revised.styleId ?? null)) {
     patch.styleId = revised.styleId ?? null;
   }
+  if (!sameFolioContentOutlineLevel(base.directOutlineLevel, revised.directOutlineLevel)) {
+    patch.outlineLevel = revised.directOutlineLevel ?? null;
+  }
   const listReferenceChanged = base.listReference?.numId !== revised.listReference?.numId;
   const targetOmitsLevelOnChangedReference =
     listReferenceChanged && revised.listReference !== undefined && revised.listLevel === undefined;
@@ -1490,7 +1514,11 @@ const formattingChange = (
   const paragraph = changedFolioContentParagraphFormatting(base, revised);
   const inlineComparison =
     base.text === revised.text
-      ? inlineFormattingSegments({ baseBlock: base, targetBlock: revised, maxSegments: maxRanges })
+      ? inlineFormattingSegments({
+          baseBlock: base,
+          targetBlock: revised,
+          maxSegments: maxRanges,
+        })
       : ({ status: "compared", segments: [] } as const);
   switch (inlineComparison.status) {
     case "compared": {

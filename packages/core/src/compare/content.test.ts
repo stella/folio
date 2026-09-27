@@ -733,6 +733,37 @@ describe("representation-neutral comparison stream", () => {
     ]);
   });
 
+  test("a restyle carries authored outline changes without repeating inherited run formatting", () => {
+    const base = contentBlock({
+      id: "heading",
+      kind: "heading",
+      text: "Scope",
+      styleId: "Heading1",
+      directOutlineLevel: { kind: "heading", level: 0 },
+      previewRuns: [{ text: "Scope", bold: true, fontSizePt: 20 }],
+    });
+    const revised = contentBlock({
+      id: "heading",
+      kind: "heading",
+      text: "Scope",
+      styleId: "Heading2",
+      directOutlineLevel: { kind: "heading", level: 1 },
+      previewRuns: [{ text: "Scope", bold: true, fontSizePt: 16 }],
+    });
+
+    expect(successfulComparison({ base: [base], revised: [revised] }).events).toEqual([
+      {
+        type: "formatting",
+        baseBlocks: [base],
+        revisedBlocks: [revised],
+        formatting: {
+          paragraph: { styleId: "Heading2", outlineLevel: { kind: "heading", level: 1 } },
+          ranges: [],
+        },
+      },
+    ]);
+  });
+
   test("inline-only formatting changes carry UTF-16 range offsets", () => {
     const base = contentBlock({
       id: "clause",
@@ -1460,6 +1491,8 @@ describe("identity semantics and input boundaries", () => {
     Reflect.set(invalidLabel, "displayLabel", false);
     const invalidSpacing = contentBlock({ id: "spacing", text: "Text" });
     Reflect.set(invalidSpacing, "directSpacing", "120");
+    const invalidOutline = contentBlock({ id: "outline", text: "Text" });
+    Reflect.set(invalidOutline, "directOutlineLevel", { kind: "heading", level: 9 });
     const invalidDirectFormatting = contentBlock({
       id: "formatting",
       text: "Text",
@@ -1476,6 +1509,7 @@ describe("identity semantics and input boundaries", () => {
       { block: invalidStyle, field: "blocks[0].styleId" },
       { block: invalidLabel, field: "blocks[0].displayLabel" },
       { block: invalidSpacing, field: "blocks[0].directSpacing" },
+      { block: invalidOutline, field: "blocks[0].directOutlineLevel" },
       {
         block: invalidDirectFormatting,
         field: "blocks[0].previewRuns[0].directFormatting",
