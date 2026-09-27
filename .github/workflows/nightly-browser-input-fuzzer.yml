@@ -37,7 +37,7 @@ jobs:
           bunx playwright install --with-deps chromium
 
       - name: Run nightly browser fuzzer
-        run: bunx playwright test --project=interactions tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1
+        run: bunx playwright test --project=browser-fuzzer --workers=1
         env:
           CI: "true"
           FOLIO_FUZZ_SEEDS: "11,29,47,83,131,197,263,347,431,557"

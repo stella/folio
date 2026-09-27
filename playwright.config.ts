@@ -32,7 +32,12 @@ export default defineConfig({
   // both the React (4200) and Vue (4201) playgrounds; `vue` runs only the Vue
   // fork of each parity spec.
   projects: [
-    { name: "interactions", testMatch: /(?:interactions|editing-flows)\.spec\.ts/u },
+    {
+      name: "interactions",
+      testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
+      testIgnore: /browser-input-fuzz\.interactions\.spec\.ts/u,
+    },
+    { name: "browser-fuzzer", testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u },
     // Measure/paint parity compares two numbers read from the SAME browser in
     // the same layout pass, so unlike the screenshot baselines it cannot go
     // flaky on cross-machine font rendering, and it is safe to gate CI on.
