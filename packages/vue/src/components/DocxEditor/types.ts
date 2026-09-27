@@ -241,7 +241,7 @@ export type DocxEditorProps = {
   initialScrollTop?: number;
   /** Callback when the editor's document scroll container scrolls. */
   onScrollTopChange?: (scrollTop: number) => void;
-  /** Whether to show the document outline sidebar (default: false) */
+  /** Whether to show the document outline when headings exist (default: true). Its column, rail, or drawer presentation follows the available editor width. */
   showOutline?: boolean;
   /** Whether to show print button in toolbar (default: true) */
   showPrintButton?: boolean;

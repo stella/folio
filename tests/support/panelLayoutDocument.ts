@@ -1,7 +1,7 @@
 /**
  * A short NDA-shaped document for the side-panel layout specs: four headings
- * over three pages (so the outline has a rail and a column to fill), and,
- * when asked, a tracked insertion and deletion, with an optional comment.
+ * over three pages (so the outline has a rail and a column to fill), with
+ * optional review content for the sidebar auto-open cases.
  *
  * Built from hand-written OOXML at test time rather than committed as a
  * binary, so what the document holds stays reviewable.
@@ -46,11 +46,12 @@ const reviewedParagraph = (review: PanelLayoutReview) => {
   if (review === "none") {
     return paragraph(run("Each party discloses information to the other under this Agreement."));
   }
+  const hasComment = review === "comment-and-changes";
   return paragraph(
     [
-      ...(review === "comment-and-changes" ? ['<w:commentRangeStart w:id="1"/>'] : []),
+      ...(hasComment ? ['<w:commentRangeStart w:id="1"/>'] : []),
       run("Each party discloses information to the other"),
-      ...(review === "comment-and-changes"
+      ...(hasComment
         ? ['<w:commentRangeEnd w:id="1"/>', '<w:r><w:commentReference w:id="1"/></w:r>']
         : []),
       `<w:ins w:id="10" w:author="Counsel" w:date="${REVIEW_DATE}">${run(" in writing")}</w:ins>`,

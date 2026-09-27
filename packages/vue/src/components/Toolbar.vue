@@ -412,14 +412,38 @@
 
     <span class="divider" />
 
-    <!-- 15. Comments & Changes -->
+    <!-- 15. Side panels -->
     <button
+      v-if="outlineDrawer"
+      type="button"
+      data-testid="toolbar-outline-toggle"
+      :title="t('editor.showDocumentOutline')"
+      :aria-label="t('editor.showDocumentOutline')"
+      :aria-pressed="outlineDrawerOpen"
+      :class="{ active: outlineDrawerOpen }"
+      @mousedown.prevent
+      @click="$emit('toggle-outline')"
+    >
+      <MaterialSymbol name="format_list_bulleted" />
+    </button>
+    <button
+      type="button"
+      data-testid="toolbar-comments-toggle"
       :title="t('formattingBar.commentsAndChanges')"
       :aria-label="t('formattingBar.commentsAndChanges')"
+      :aria-pressed="commentsSidebarOpen"
       :class="{ active: commentsSidebarOpen }"
-      @mousedown.prevent="$emit('toggle-sidebar')"
+      @mousedown.prevent
+      @click="$emit('toggle-sidebar')"
     >
       <MaterialSymbol name="comment" />
+      <span
+        v-if="commentCount > 0"
+        data-testid="toolbar-comments-count"
+        class="basic-toolbar__comment-count"
+      >
+        {{ commentCount > 99 ? "99+" : commentCount }}
+      </span>
     </button>
 
     <!-- 15.5 Image context group — visible only when a NodeSelection lands on
@@ -562,6 +586,9 @@ const props = withDefaults(
     /** Whether the comments sidebar is currently open — drives the
       active state on the comments toolbar button. */
     commentsSidebarOpen?: boolean;
+    outlineDrawer?: boolean;
+    outlineDrawerOpen?: boolean;
+    commentCount?: number;
     /** Image-node selection context — when non-null, the image group
       (properties button) renders inline inside the pill. */
     imageContext?: ImageToolbarContext | null;
@@ -593,6 +620,7 @@ const props = withDefaults(
     trackChangesOn: false,
     displayMode: "all-markup",
     readOnly: false,
+    commentCount: 0,
   },
 );
 
@@ -943,6 +971,17 @@ function isCurrentLineSpacing(twips: number): boolean {
 .basic-toolbar button.active:hover {
   background: hsl(var(--foreground));
   color: var(--doc-on-primary);
+}
+.basic-toolbar__comment-count {
+  min-width: 1rem;
+  border-radius: 999px;
+  padding-inline: 0.25rem;
+  background: var(--doc-primary);
+  color: var(--primary-foreground, var(--doc-page));
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1rem;
+  text-align: center;
 }
 /* Dark: --foreground flips light → white slab; use Word's accent toggle. */
 .ep-root.dark .basic-toolbar button.active,

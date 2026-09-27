@@ -10,7 +10,7 @@
  * default), told which presentation it fills.
  *
  * The editor decides the surface from the width it has (see
- * `panelLayout.ts`): a `column` beside the page, a `rail` of heading ticks
+ * `@stll/folio-core/panel-layout`): a `column` beside the page, a `rail` of heading ticks
  * that can open the full outline as a drawer, or a `drawer` over the page.
  */
 
@@ -25,7 +25,7 @@ import { useFolioUI } from "../ui/folio-ui";
 import type { OutlineItem } from "../ui/folio-ui";
 import { headingId } from "./hooks/useActiveHeading";
 import { useDrawerFocus } from "./panelDrawer";
-import { PANEL_METRICS } from "./panelLayout";
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 
 /** Where the outline sits: its own column, a rail of ticks, or a drawer over the page. */
 export type DocumentOutlineSurface = "column" | "rail" | "drawer";

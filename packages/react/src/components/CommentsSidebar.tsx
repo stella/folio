@@ -19,7 +19,7 @@ import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import { closestHtmlElement, queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { containedHandler } from "../utils/contained-handler";
 import { useDrawerFocus } from "./panelDrawer";
-import { PANEL_METRICS } from "./panelLayout";
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 
 /** Extract plain text from a Comment's paragraph content */
 function getCommentText(paragraphs?: Paragraph[]): string {

@@ -8,11 +8,12 @@
 
 import { expect, type Locator, type Page } from "@playwright/test";
 
-import type {
-  CommentsPresentation,
-  OutlinePresentation,
-  PanelLayoutTier,
-} from "../../packages/react/src/components/panelLayout";
+import {
+  PANEL_METRICS,
+  type CommentsPresentation,
+  type OutlinePresentation,
+  type PanelLayoutTier,
+} from "@stll/folio-core/panel-layout";
 import type { PanelLayoutReview } from "./panelLayoutDocument";
 
 export type PanelState = {
@@ -186,6 +187,14 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
 
   expect(boxes.outline !== null).toBe(state.outline === "column" || state.outline === "rail");
   expect(boxes.comments !== null).toBe(state.comments === "column");
+  if (boxes.outline) {
+    const width =
+      state.outline === "rail" ? PANEL_METRICS.outlineRailWidth : PANEL_METRICS.outlineColumnWidth;
+    expect(boxes.outline.right - boxes.outline.left).toBeCloseTo(width, 0);
+  }
+  if (boxes.comments) {
+    expect(boxes.comments.right - boxes.comments.left).toBeCloseTo(PANEL_METRICS.commentsWidth, 0);
+  }
 
   for (const [name, panel] of panels) {
     for (const pageBox of boxes.pages) {
@@ -251,6 +260,7 @@ export const expectDrawerCycle = async (
   const drawerBox = await drawer.boundingBox();
   const scrimBox = await scrim.boundingBox();
   if (!drawerBox || !scrimBox) throw new Error("drawer or scrim has no box");
+  expect(drawerBox.width).toBeLessThanOrEqual(PANEL_METRICS.drawerWidth + EPSILON);
   // Press the scrim on the side the drawer does not cover.
   const drawerOnLeft =
     drawerBox.x - scrimBox.x < scrimBox.x + scrimBox.width - (drawerBox.x + drawerBox.width);
