@@ -202,6 +202,43 @@ describe("a paragraph inserted with a style of its own", () => {
   });
 });
 
+describe("restyling a paragraph", () => {
+  const restyle = async (text: string, styleId: string | null): Promise<string[]> => {
+    const reviewer = await styleNumberedReviewer();
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "1",
+          type: "setBlockParagraphProperties",
+          blockId: blockId(reviewer, text),
+          properties: { styleId },
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+    const live = reviewer.getContent().map(({ kind, text: blockText }) => `${kind} ${blockText}`);
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reopened.getContent().map(({ kind, text: t }) => `${kind} ${t}`)).toEqual(live);
+    expect(labels(reopened)).toEqual(labels(reviewer));
+    return labels(reviewer);
+  };
+
+  test("into a numbered style takes that style's numbering", async () => {
+    expect(await restyle("Body.", "Heading2")).toEqual([
+      "1. Scope",
+      "2. Body.",
+      "3. Payment",
+      "Closing.",
+    ]);
+  });
+
+  test("out of a numbered heading style leaves its numbering and its heading level", async () => {
+    expect(await restyle("Scope", null)).toEqual(["Scope", "Body.", "1. Payment", "Closing."]);
+  });
+});
+
 describe("a paragraph inserted with a style of its own after a heading", () => {
   test("takes its outline level from its new style, not the anchor's style", async () => {
     const document = fromMarkdown("Intro.\n\nStyled heading\n\nClosing.");

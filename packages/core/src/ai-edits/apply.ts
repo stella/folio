@@ -586,10 +586,30 @@ const paragraphPropertiesPatch = ({
       originalFormatting.alignment = currentDirectAlignment;
     }
     originalFormattingChanged = true;
+    // What the old style supplied leaves with it, and the new style's takes
+    // its place: its outline level unless the paragraph states one, and its
+    // numbering unless the paragraph states other numbering. The save writes
+    // only the stated values, so anything else would read differently on
+    // reopening.
+    patch["outlineLevel"] =
+      attrs._originalFormatting?.outlineLevel ?? resolvedFormattingFromStyle?.outlineLevel ?? null;
+    Object.assign(
+      patch,
+      restyledListAttrs({
+        attrs: { ...attrs },
+        styleNumbering: resolvedFormattingFromStyle?.numPr,
+        removesNumbering: false,
+        numbering,
+      }),
+    );
   }
+  // The style numbering in force once any style change above applies.
+  const numPrFromStyle = styleChanged
+    ? readParagraphNumberingAttr(patch["numPrFromStyle"])
+    : attrs.numPrFromStyle;
   if (properties.numbering !== undefined) {
     if (properties.numbering === null) {
-      patch["numPr"] = removedNumberingAttr(attrs.numPrFromStyle);
+      patch["numPr"] = removedNumberingAttr(numPrFromStyle);
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
       const listReference = concreteListReference(properties.numbering);
@@ -612,7 +632,7 @@ const paragraphPropertiesPatch = ({
     }
   } else if (properties.listLevel !== undefined) {
     if (properties.listLevel === null) {
-      patch["numPr"] = removedNumberingAttr(attrs.numPrFromStyle);
+      patch["numPr"] = removedNumberingAttr(numPrFromStyle);
       Object.assign(patch, CLEARED_LIST_RENDERING_ATTRS);
     } else {
       const numId = paragraphNumberingReferenceId(
