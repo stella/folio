@@ -1,12 +1,15 @@
 name: Publish VS Code extension
 
 # Builds plugins/vscode into one .vsix and publishes that exact file to the
-# VS Code Marketplace and Open VSX. publish.yml calls it after every release,
+# VS Code Marketplace and Open VSX. publish.yml starts it after every release,
 # so each @stll/folio-cli version ships the extension at the same version; a
-# release that left that version alone is skipped as a duplicate. Run it by
-# hand to retry a publish. Leave `publish` unchecked for a dry run: it builds
-# and packages, and signs in to the Marketplace to print the publishing
-# identity's user id, but publishes nothing.
+# release that left that version alone is skipped as a duplicate. It is
+# started as its own run, not called: each registry job then takes its
+# credential from its own environment, and the release passes it no secrets.
+# Run it by hand to retry a publish; publishing takes a commit on main. Leave
+# `publish` unchecked for a dry run: it builds and packages, and signs in to
+# the Marketplace to print the publishing identity's user id, but publishes
+# nothing.
 #
 # Setup, once:
 # - VS Code Marketplace: an Entra ID app registration with a federated
@@ -35,19 +38,8 @@ on:
         description: Publish to Open VSX
         type: boolean
         default: true
-  workflow_call:
-    inputs:
-      publish:
-        type: boolean
-        default: false
-      marketplace:
-        type: boolean
-        default: true
-      open-vsx:
-        type: boolean
-        default: true
       source-ref:
-        description: The released commit to build (defaults to the calling commit)
+        description: The released commit to build, a full SHA (defaults to the commit the run starts on)
         type: string
         default: ""
 
@@ -66,6 +58,26 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # Anyone who can start this workflow could otherwise publish any commit,
+      # merged or not, by naming it or by starting the run on its branch: only
+      # a commit already on main may be published. A dry run builds any commit.
+      - name: The source commit is on main
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SOURCE_REF: ${{ inputs.source-ref || github.sha }}
+        run: |
+          if [[ ! "$SOURCE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source-ref must be a full commit SHA, got '$SOURCE_REF'."
+            exit 1
+          fi
+          status="$(gh api "repos/$REPO/compare/$SOURCE_REF...main" --jq .status)"
+          if [ "$status" != "ahead" ] && [ "$status" != "identical" ]; then
+            echo "::error::$SOURCE_REF is not on main (compare status: $status)."
+            exit 1
+          fi
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false

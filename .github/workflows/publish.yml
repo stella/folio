@@ -131,10 +131,20 @@ jobs:
     needs: release
     # The extension's version follows @stll/folio-cli, so each release that
     # bumps the CLI publishes it; any other release is a skipped duplicate.
+    # Started as its own run rather than called: a called workflow does not
+    # see the open-vsx environment's OVSX_PAT, so Open VSX was skipped.
+    runs-on: ubuntu-latest
     permissions:
-      contents: read
-      id-token: write # Marketplace federated login in the called workflow.
-    uses: ./.github/workflows/publish-vscode.yml
-    with:
-      publish: true
-      source-ref: ${{ inputs.source-ref || github.sha }}
+      actions: write # Start publish-vscode.yml, which owns the registry environments.
+    steps:
+      # publish-vscode.yml publishes only a full SHA already on main, and
+      # source-ref here may be a branch or tag: pass the commit it names.
+      - name: Start the extension publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SOURCE_REF: ${{ inputs.source-ref || github.sha }}
+        run: |
+          sha="$(gh api "repos/$REPO/commits/$SOURCE_REF" --jq .sha)"
+          gh workflow run publish-vscode.yml --repo "$REPO" --ref main -f publish=true -f source-ref="$sha"
+          echo "Started publish-vscode.yml for $sha: https://github.com/$REPO/actions/workflows/publish-vscode.yml"
