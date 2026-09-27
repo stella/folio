@@ -1155,7 +1155,54 @@ type ComplexFieldScan = {
   // `begin` is read — the runs whose `begin` opens a field this walk closes.
   container: XmlElement;
   assembledFieldBegins: ReadonlySet<XmlElement> | undefined;
+  // One entry per currently open `fldChar begin` in this paragraph, in source
+  // order, regardless of whether that field ever assembles into a
+  // `ComplexField` — a `w:fldSimple` nested in an unassembled field's code
+  // region still must not display before that field's own separator. An
+  // entry is `true` once its own `separate` has been read (its code region is
+  // behind it) and is popped on its own `end`. Kept for the whole paragraph
+  // walk, not reset per field.
+  codeDepthStack: boolean[];
+  // `codeDepthStack.length` at the moment the field currently being
+  // assembled opened. A run read while the stack is deeper than this belongs
+  // to a field nested inside this one's code or result — see
+  // `assembledFieldBeginsOf` — and its own field characters are content this
+  // field's code/result runs carry rather than structure this field's
+  // serializer regenerates.
+  complexFieldBaseDepth: number;
 };
+
+/**
+ * Whether the walk is currently inside some open field's code region — its
+ * own `begin` has been read but not yet its `separate` — at any nesting
+ * depth. `codeDepthStack` tracks every open field regardless of whether it
+ * assembles into a `ComplexField`, so this answers the question for content,
+ * such as a `w:fldSimple`, that a `ComplexField`'s own code/result split
+ * cannot carry.
+ */
+const isHiddenByOpenFieldCode = (scan: ComplexFieldScan): boolean =>
+  scan.codeDepthStack.some((pastSeparator) => !pastSeparator);
+
+/**
+ * A run captured for a position this field's `fieldResult` (or `fieldCode`)
+ * must hold — the source ordering a save has to reproduce puts it there —
+ * whose actual content sits inside a deeper, still-open field's own
+ * instruction region and so must show nothing. Every non-`w:rPr` child is
+ * captured through `preserveRunChild`, the same verbatim-with-no-text capture
+ * an unrecognised run child already gets, rather than kept as the `text`/
+ * `instrText` the parse produced — a `w:t` this walk read as authored result
+ * text is exactly what must not read back out of `fieldResult`.
+ */
+const hiddenRunCaptureOf = (
+  runElement: XmlElement,
+  formatting: TextFormatting | undefined,
+): Run => ({
+  type: "run",
+  content: getChildElements(runElement)
+    .filter((child) => getLocalName(child.name) !== "rPr")
+    .map((child) => preserveRunChild(child)),
+  ...(formatting && Object.keys(formatting).length > 0 ? { formatting } : {}),
+});
 
 /**
  * The container children a complex field's result may hold and still be
@@ -1197,26 +1244,32 @@ const isWordprocessingChild = (child: XmlElement) => {
 
 /**
  * The `w:r` children whose `begin` opens a complex field that this container's
- * walk closes.
+ * walk closes as its own top-level `ComplexField`.
  *
  * A field is assembled from the runs between its `begin` and its `end`, so it
  * exists only when both are runs of this container with nothing between them
  * that a `ComplexField` cannot hold. A TOC opened here and closed in a later
- * paragraph, a field whose result holds a `w:hyperlink` (a TOC's `\h` entries),
- * and an outer field whose result holds a nested field are none of these; their
- * runs are ordinary content, read in source order alongside the siblings
- * between them. Mirrors the `w:r` handler run by run: a run with a `begin`
- * opens a field, and a run with an `end` closes the one open.
+ * paragraph, and a field whose result holds a `w:hyperlink` (a TOC's `\h`
+ * entries), are neither of those; their runs are ordinary content, read in
+ * source order alongside the siblings between them.
+ *
+ * A `begin`/`end` pair that closes while another `begin` is still open is
+ * nested inside that other field's code or result — its own runs stay with
+ * the outer field's, carried in `fieldCode`/`fieldResult` rather than
+ * assembled into a `ComplexField` of their own, which is why only the
+ * outermost pair of a nested run adds its `begin` here. Tracked with a stack
+ * rather than one slot so a field nested inside a field nested inside a field
+ * closes each level against the right opener instead of the most recent one.
  */
 const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> => {
   const assembled = new Set<XmlElement>();
-  let open: XmlElement | undefined;
+  const open: XmlElement[] = [];
   for (const child of getChildElements(container)) {
     const wordprocessing = isWordprocessingChild(child);
     const localName = getLocalName(child.name);
     if (!wordprocessing || localName !== "r") {
       if (!wordprocessing || !FIELD_TRANSPARENT_CHILDREN.has(localName)) {
-        open = undefined;
+        open.length = 0;
       }
       continue;
     }
@@ -1234,11 +1287,13 @@ const assembledFieldBeginsOf = (container: XmlElement): ReadonlySet<XmlElement> 
       }
     }
     if (hasBegin) {
-      open = child;
+      open.push(child);
     }
-    if (hasEnd && open !== undefined) {
-      assembled.add(open);
-      open = undefined;
+    if (hasEnd && open.length > 0) {
+      const closed = open.pop();
+      if (closed !== undefined && open.length === 0) {
+        assembled.add(closed);
+      }
     }
   }
   return assembled;
@@ -1352,6 +1407,21 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       }
     }
 
+    // `codeDepthStack` tracks every open field's own code/result boundary
+    // regardless of whether it assembles into a `ComplexField` below, so a
+    // `w:fldSimple` (which can never join `fieldCode`/`fieldResult`, both
+    // `Run[]`) can still ask whether it sits inside an enclosing field's
+    // still-open code region. Read `hasFieldBegin` before the assembly check
+    // right after this: a nested field's `begin` opens a level here even
+    // though it will not open a new `ComplexField` scan below.
+    const rawHasFieldBegin = hasFieldBegin;
+    if (rawHasFieldBegin) {
+      scan.codeDepthStack.push(false);
+    }
+    if (hasFieldSeparate && scan.codeDepthStack.length > 0) {
+      scan.codeDepthStack[scan.codeDepthStack.length - 1] = true;
+    }
+
     // A `begin` this walk never closes opens no field: the run is ordinary
     // content, and so is every run after it up to its `end`.
     if (hasFieldBegin) {
@@ -1362,10 +1432,10 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     }
 
     if (hasFieldBegin) {
-      // Nesting is not modelled in ParagraphContent, and an outer field whose
-      // result holds another field is not in `assembledFieldBegins`; this
-      // only runs when a field the scan expected to close did not. Its runs,
-      // `begin` and code included, go back as the content they are.
+      // An outer field whose code or result holds another field is not in
+      // `assembledFieldBegins` (see its doc comment); this only runs when a
+      // field the scan expected to close did not. Its runs, `begin` and code
+      // included, go back as the content they are.
       if (scan.inComplexField) {
         contents.push(...scan.complexFieldOpenRuns);
         scan.inComplexField = false;
@@ -1382,6 +1452,19 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // The structural run carrying `begin` often holds the field's run
       // formatting (e.g. a footer PAGE field collapsed into one run).
       scan.complexFieldFormatting = run.formatting;
+      // Every run from here until `codeDepthStack` unwinds back to this
+      // depth is this field's own; anything deeper belongs to a field
+      // nested inside it.
+      scan.complexFieldBaseDepth = scan.codeDepthStack.length;
+    }
+
+    // Read before `codeDepthStack` is popped below: a run carrying a nested
+    // field's own `end` is still that nested field's content, one instant
+    // before the depth it opened at is removed.
+    const isNestedField = scan.codeDepthStack.length > scan.complexFieldBaseDepth;
+
+    if (hasFieldEnd && scan.codeDepthStack.length > 0) {
+      scan.codeDepthStack.pop();
     }
 
     if (scan.inComplexField) {
@@ -1402,11 +1485,20 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // A single physical run may contain both the instruction text and
       // structural begin/separate/end markers. Preserve only the content
       // inside the code region: fieldCode owns authored code content, while
-      // the ComplexField serializer owns all structural markers.
+      // the ComplexField serializer owns all structural markers — except a
+      // nested field's own markers, which are not this field's structure but
+      // content this field's code (or result) carries, kept exactly as read
+      // so they round-trip through `serializeRun` unchanged.
       let inFieldCodeRegion = !hasFieldBegin && !scan.afterSeparator;
       const fieldCodeContent: Run["content"] = [];
       for (const content of run.content) {
         if (content.type === "fieldChar") {
+          if (isNestedField) {
+            if (inFieldCodeRegion) {
+              fieldCodeContent.push(content);
+            }
+            continue;
+          }
           inFieldCodeRegion = content.charType === "begin";
           continue;
         }
@@ -1422,18 +1514,29 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         );
       }
 
-      if (hasFieldSeparate) {
+      // A nested field's own `separate`/`end` say nothing about this field's
+      // boundary — they belong to the field nested inside it, whose own
+      // `codeDepthStack` entry (not `scan.afterSeparator`) already tracks it.
+      if (hasFieldSeparate && !isNestedField) {
         scan.afterSeparator = true;
       }
 
       if (scan.afterSeparator && !hasFieldEnd) {
-        // Add to result runs (excluding the separator run itself)
+        // Add to result runs (excluding the separator run itself). A run
+        // read here can still sit inside a deeper field's own still-open
+        // instruction region — this field's own `afterSeparator` only says
+        // this position is not in *this* field's code, not that no
+        // enclosing field's code contains it (see the two-nesting-level
+        // case in `nestedFieldCodeVisibility.property.test.ts`) — so its
+        // content shows only when nothing currently open still hides it.
         if (!hasFieldSeparate) {
-          scan.complexFieldResultRuns.push(run);
+          scan.complexFieldResultRuns.push(
+            isHiddenByOpenFieldCode(scan) ? hiddenRunCaptureOf(runElement, run.formatting) : run,
+          );
         }
       }
 
-      if (hasFieldEnd) {
+      if (hasFieldEnd && !isNestedField) {
         let resultRuns = scan.complexFieldResultRuns;
         // Legacy form checkboxes are rendered from `w:ffData`; they often
         // have a separator but no cached result run of their own. The glyph
@@ -1505,6 +1608,22 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         type: "commentReference",
         id: commentReferenceId,
       });
+    } else if (isHiddenByOpenFieldCode(scan)) {
+      // A run positioned inside some other, still-open field's instruction
+      // region that this walk could not assemble into that field's own
+      // `ComplexField` — e.g. because a `w:fldSimple` elsewhere in its span
+      // broke assembly for every level currently open (see
+      // `assembledFieldBeginsOf`) — is exactly as undisplayed as instruction
+      // content that did assemble. Captured the same way a `w:fldSimple`
+      // there is: verbatim, with nothing shown, rather than falling through
+      // to the ordinary-run case below and putting its text on the page.
+      if (hasRunPayload({ run, runElement, rels, media })) {
+        contents.push({
+          type: "preservedInline",
+          xml: captureVerbatimXml(runElement),
+          text: "",
+        });
+      }
     } else {
       // Regular run, not part of a field. A `separate` or `end` character
       // with no `begin` before it lands here, and it is field structure
@@ -1531,10 +1650,26 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
   fldSimple: (
     child,
-    { contents, styles, theme, rels, media, previews, inScopeXmlns, trackedContext },
+    { contents, styles, theme, rels, media, previews, inScopeXmlns, trackedContext, scan },
   ) => {
     const fieldElement =
       trackedContext === "deletion" ? normalizeDeletionContentElement(child) : child;
+    // A `w:fldSimple` cannot become part of a `ComplexField`'s `fieldCode` or
+    // `fieldResult` (both are `Run[]`), so it never joins the assembly the
+    // `w:r` handler builds; it is read here regardless of that field's own
+    // scan. But when it sits inside another field's still-open code region —
+    // `codeDepthStack` says so independent of whether that field ever
+    // assembles — its cached result is exactly as undisplayed as a nested
+    // complex field's, and parsing it as a live `SimpleField` would show it
+    // anyway. Capture it verbatim with no text instead.
+    if (isHiddenByOpenFieldCode(scan)) {
+      contents.push({
+        type: "preservedInline",
+        xml: captureVerbatimXml(fieldElement),
+        text: "",
+      });
+      return;
+    }
     contents.push(
       parseSimpleField(fieldElement, styles, theme, rels, media, inScopeXmlns, previews),
     );
@@ -1751,6 +1886,8 @@ function parseParagraphContents(
     complexFieldFormatting: undefined,
     container: paraElement,
     assembledFieldBegins: undefined,
+    codeDepthStack: [],
+    complexFieldBaseDepth: 0,
   };
 
   const preserved = dispatchChildrenWithContext({
