@@ -136,6 +136,11 @@ import type {
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
+  anchoredCommentIdsInBlocks,
+  anchoredCommentIdsInProseDoc,
+  withoutLostCommentThreads,
+} from "./comment-lifecycle";
+import {
   getCommentAnchorsFromDoc,
   getTrackedChangeStatsFromDoc,
   getTrackedChangesFromDoc,
@@ -1077,6 +1082,8 @@ export class FolioDocxReviewer {
   private readonly resolvedStoryExpectations = new Map<string, FolioResolvedStoryExpectation>();
   private readonly createdComments: Comment[] = [];
   private readonly usedCommentIds: Set<number>;
+  /** Comments the body anchored when it was loaded, read as the editor projects it. */
+  private readonly loadedMainCommentIds: ReadonlySet<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
   /**
    * Resolved-state overrides recorded by {@link resolveComment}, keyed by
@@ -1101,6 +1108,7 @@ export class FolioDocxReviewer {
     this.usedCommentIds = new Set(
       (args.baseDocument.package.document.comments ?? []).map(({ id }) => id),
     );
+    this.loadedMainCommentIds = anchoredCommentIdsInProseDoc(args.state.doc);
     comparisonAccessByReviewer.set(
       this,
       Object.freeze({
@@ -1977,10 +1985,13 @@ export class FolioDocxReviewer {
    * (nested tracked changes, hyperlinks) is out of scope.
    */
   getComments(filter?: FolioReviewCommentFilter): FolioReviewComment[] {
-    const definitions = this.withResolvedOverrides([
-      ...(this.baseDocument.package.document.comments ?? []),
-      ...this.createdComments,
-    ]);
+    const definitions = this.withResolvedOverrides(
+      this.keptCommentThreads(
+        [...(this.baseDocument.package.document.comments ?? []), ...this.createdComments],
+        this.state,
+        this.secondaryStoryStates.values(),
+      ),
+    );
     if (definitions.length === 0) {
       return [];
     }
@@ -2438,9 +2449,22 @@ export class FolioDocxReviewer {
       }
     }
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
-    if (snapshot.createdComments.length > 0 || snapshot.resolvedOverrides.size > 0) {
+    const definitions = [
+      ...(document.package.document.comments ?? []),
+      ...snapshot.createdComments,
+    ];
+    const kept = this.keptCommentThreads(
+      definitions,
+      snapshot.mainState,
+      snapshot.secondaryStoryStates,
+    );
+    if (
+      kept.length !== definitions.length ||
+      snapshot.createdComments.length > 0 ||
+      snapshot.resolvedOverrides.size > 0
+    ) {
       document.package.document.comments = this.withResolvedOverrides(
-        [...(document.package.document.comments ?? []), ...snapshot.createdComments],
+        kept,
         snapshot.resolvedOverrides,
       );
     }
@@ -2976,6 +3000,49 @@ export class FolioDocxReviewer {
       const override = resolvedOverrides.get(comment.id);
       return override === undefined ? comment : { ...comment, done: override };
     });
+  }
+
+  /**
+   * `comments` without the threads an edit left anchored nowhere: anchored in
+   * a story when it was loaded (or created anchored by this reviewer), and
+   * anchored in no story now. See `comment-lifecycle.ts`.
+   */
+  private keptCommentThreads(
+    comments: readonly Comment[],
+    mainState: EditorState,
+    secondaryStoryStates: Iterable<FolioSecondaryStoryState>,
+  ): Comment[] {
+    const anchoredBefore = new Set(this.loadedMainCommentIds);
+    for (const { id } of this.createdComments) {
+      anchoredBefore.add(id);
+    }
+    const anchoredNow = anchoredCommentIdsInProseDoc(mainState.doc);
+    const loaded = new Map<string, FolioSecondaryStoryState>();
+    for (const entry of secondaryStoryStates) {
+      loaded.set(secondaryStoryKey(entry.handle), entry);
+    }
+    const addAll = (target: Set<number>, ids: Iterable<number>) => {
+      for (const id of ids) {
+        target.add(id);
+      }
+    };
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") {
+        continue;
+      }
+      const entry = loaded.get(secondaryStoryKey(handle));
+      if (entry) {
+        addAll(anchoredBefore, anchoredCommentIdsInProseDoc(entry.initialState.doc));
+        addAll(anchoredNow, anchoredCommentIdsInProseDoc(entry.state.doc));
+        continue;
+      }
+      const source =
+        handle.type === "header" || handle.type === "footer"
+          ? this.getHeaderFooterStory(handle)
+          : this.getNoteStory(handle);
+      addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
+    }
+    return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
 
   /**

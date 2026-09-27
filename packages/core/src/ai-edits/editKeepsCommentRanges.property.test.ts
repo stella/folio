@@ -12,7 +12,8 @@
  *
  * A surviving comment must also keep what it is — id, author, text — and a
  * range still spanning every paragraph of its original span the edit left
- * standing. It may disappear only once all of its commented text is gone.
+ * standing. It disappears exactly when all of its commented text is gone: the
+ * definition too, not only the markers.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -312,7 +313,14 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             .map((index) => survivingParagraphs.get(index))
             .filter((offsets) => offsets !== undefined && offsets !== null);
           if (covered.length === 0) {
-            // Every character the comment covered is gone; losing it is correct.
+            // Every character the comment covered is gone, and the comment
+            // with it: no definition, no marker; its reference run went with
+            // that content.
+            expect({ id, kept: authored.has(id), anchored: commentSpans.has(id) }).toEqual({
+              id,
+              kept: false,
+              anchored: false,
+            });
             continue;
           }
 
