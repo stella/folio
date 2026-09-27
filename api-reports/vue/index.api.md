@@ -103,6 +103,8 @@ import { FolioDocumentOperationResult } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationUndoHandle } from '@stll/folio-core/ai-edits';
 import { FolioDocumentOperationUndoResult } from '@stll/folio-core/ai-edits';
 import { FolioEditor } from '@stll/folio-core/controller/folioEditor';
+import { FolioPendingSuggestionLoadResult } from '@stll/folio-core/ai-edits';
+import { FolioPendingSuggestionRecord } from '@stll/folio-core/ai-edits';
 import { FolioReviewChange } from '@stll/folio-core/ai-edits';
 import { FolioSelectiveSaveFlags } from '@stll/folio-core/docx/selectiveSaveFlags';
 import { FolioSuggestion } from '@stll/folio-core/prosemirror/commands/comments';
@@ -494,6 +496,8 @@ export type DocxEditorRef = {
     clearPassageHighlight: () => void;
     showInDocument: (target: FolioDocumentNavigationTarget, snapshot?: FolioAIEditSnapshot) => boolean;
     getSuggestions: () => FolioSuggestion[];
+    exportPendingSuggestions: () => FolioPendingSuggestionRecord[];
+    loadPendingSuggestions: (records: readonly unknown[]) => FolioPendingSuggestionLoadResult[];
     acceptSuggestion: (suggestionId: string, options?: {
         author?: string;
     }) => {
