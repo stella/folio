@@ -232,7 +232,6 @@ describe("findings not yet filed", () => {
 });
 
 describe("findings of the metamorphic relations (support/metamorphic.ts) and their sweeps", () => {
-  type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
   const apply = (
     reviewer: Reviewer,
     mode: (typeof MODES)[number],

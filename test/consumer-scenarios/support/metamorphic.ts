@@ -739,27 +739,22 @@ const cloneReviewer = (reviewer: Reviewer): Reviewer => {
     const descriptor = Object.getOwnPropertyDescriptor(reviewer, key);
     if (!descriptor) continue;
     const value = descriptor.value;
-    const cloned =
-      key === "state"
-        ? value.apply(value.tr)
-        : key === "secondaryStoryStates"
-          ? new Map(
-              [...value].map(([storyKey, entry]) => [
-                storyKey,
-                {
-                  ...entry,
-                  state: entry.state.apply(entry.state.tr),
-                  initialState: entry.initialState.apply(entry.initialState.tr),
-                },
-              ]),
-            )
-          : value instanceof Map
-            ? new Map(value)
-            : value instanceof Set
-              ? new Set(value)
-              : Array.isArray(value)
-                ? [...value]
-                : value;
+    let cloned = value;
+    if (key === "state") cloned = value.apply(value.tr);
+    else if (key === "secondaryStoryStates") {
+      cloned = new Map(
+        [...value].map(([storyKey, entry]) => [
+          storyKey,
+          {
+            ...entry,
+            state: entry.state.apply(entry.state.tr),
+            initialState: entry.initialState.apply(entry.initialState.tr),
+          },
+        ]),
+      );
+    } else if (value instanceof Map) cloned = new Map(value);
+    else if (value instanceof Set) cloned = new Set(value);
+    else if (Array.isArray(value)) cloned = [...value];
     Object.defineProperty(copy, key, {
       ...descriptor,
       value: cloned,
@@ -886,10 +881,10 @@ export const startRelations = async ({
     const copy = cloneReviewer(pre);
     const preRows = rowsOf(copy, story);
     const preState = exactState(copy);
-    const apply = (reviewer: Reviewer, operations: Batch): Result =>
+    const apply = (candidateReviewer: Reviewer, operations: Batch): Result =>
       story.type === "main"
-        ? reviewer.applyDocumentOperations(operations)
-        : reviewer.applyDocumentOperationsToStory({ story, batch: operations });
+        ? candidateReviewer.applyDocumentOperations(operations)
+        : candidateReviewer.applyDocumentOperationsToStory({ story, batch: operations });
     const again = apply(copy, structuredClone(batch));
     const applied = operationsOf(batch).filter((operation) => appliedIds(again).has(operation.id));
     assert.deepEqual(
