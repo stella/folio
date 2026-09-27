@@ -52,6 +52,53 @@ for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
   });
 }
 
+// Loading and heading collection can finish before fonts permit the first
+// paint. The previous oracle sampled geometry immediately after those signals.
+test("panel geometry waits for the first paint when document fonts are delayed", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: VIEWPORT_HEIGHT });
+  await openWebview(page, "dark");
+  await waitForSent(page, { type: "ready" });
+  const fonts = Promise.withResolvers();
+  let pendingFonts = 0;
+  await page.route("**/fonts/*.woff2", async (route) => {
+    pendingFonts += 1;
+    await fonts.promise;
+    await route.fallback();
+  });
+
+  try {
+    await postDocument(page, {
+      type: "load",
+      document: {
+        bytes: await buildPanelLayoutDocument("none"),
+        fileVersion: "delayed-fonts",
+        fileName: "nda.docx",
+      },
+      author: "Test Author",
+      mode: "editing",
+      locale: "en",
+    });
+    await waitForSent(page, { type: "loaded", fileVersion: "delayed-fonts" });
+    await expect.poll(() => pendingFonts).toBeGreaterThan(0);
+    const expected = { tier: "medium", outline: "rail", comments: "hidden" } as const;
+    await expect.poll(() => readPanelState(page)).toEqual(expected);
+    expect(await page.locator(".layout-page").count()).toBe(0);
+
+    const release = setTimeout(() => fonts.resolve(undefined), 500);
+    try {
+      await waitForPanels(page, "none");
+      await expectPanelsDoNotOverlap(page, expected);
+    } finally {
+      clearTimeout(release);
+    }
+  } finally {
+    fonts.resolve(undefined);
+    await page.unrouteAll({ behavior: "wait" });
+  }
+});
+
 const ZOOMED_WIDTHS = [
   { width: 1590, expected: { tier: "wide", outline: "column", comments: "column" } },
   { width: 1100, expected: { tier: "medium", outline: "rail", comments: "column" } },
