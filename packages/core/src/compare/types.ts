@@ -262,6 +262,8 @@ export const COMPARE_UNSUPPORTED_REASONS = Object.freeze([
   "story-missing-in-target",
   /** The story is present on both sides but carries no editable state. */
   "story-not-editable",
+  /** A preserved w:altChunk payload cannot be interpreted by comparison. */
+  "unsupported-content",
 ] as const);
 
 export type CompareUnsupportedReason = (typeof COMPARE_UNSUPPORTED_REASONS)[number];

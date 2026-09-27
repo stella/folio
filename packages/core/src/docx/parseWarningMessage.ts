@@ -77,6 +77,12 @@ const PARSE_WARNING_MESSAGES = {
     `The style set names initial paragraph style${quoted(warning.value)}, which it does not contain; used the set's default instead${where(warning)}.`,
   [PARSE_WARNING_CODES.pageBreakProjectionApproximated]: (warning) =>
     `${warning.detail ?? "An explicit page break is laid out approximately"}${where(warning)}.`,
+  [PARSE_WARNING_CODES.altChunkUnsupported]: (warning) =>
+    `Preserved ${plural(warning.count, "w:altChunk")}; Folio cannot import its external content. Readers show a diagnostic marker.`,
+  [PARSE_WARNING_CODES.revisionCarrierOpaque]: (warning) =>
+    `Preserved ${plural(warning.count, "block-level tracked-change wrapper")}; Folio cannot interpret its block content, so that content is unavailable to readers or edits.`,
+  [PARSE_WARNING_CODES.nestedRowOpaque]: (warning) =>
+    `Preserved ${plural(warning.count, "nested table row")} as opaque markup; readers show a diagnostic marker for its content.`,
 } as const satisfies Record<ParseWarningCode, ParseWarningFormatter>;
 
 export const formatParseWarning = (warning: ParseWarning): string =>

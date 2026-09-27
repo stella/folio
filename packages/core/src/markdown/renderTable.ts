@@ -21,6 +21,12 @@ import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { escapeTableCell } from "./escape";
 import { registerImage } from "./images";
 import { getHyperlinkRuns } from "../docx/hyperlinkParser";
+import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "../docx/altChunk";
+import {
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  isOpaqueNestedRowMarkup,
+  opaqueRevisionCarrierName,
+} from "../docx/opaqueCarrier";
 import { RELATIONSHIP_TYPES, resolveRelationshipIdOfType } from "../docx/relsParser";
 import { numberNoteReference, pushWarning } from "./internals";
 import { renderParagraph } from "./renderParagraph";
@@ -33,14 +39,29 @@ export function renderTable(
   table: Table,
 ): string {
   const { rows } = table;
+  const diagnostics = [
+    ...preservedCarrierDiagnostics(table.preserved?.children),
+    ...rows.flatMap((row) => preservedCarrierDiagnostics(row.preserved?.children)),
+  ];
   if (!rows.length) {
-    return "";
+    return diagnostics.join("\n");
   }
-  if (needsHtmlFallback(rows)) {
-    return renderHtmlTable(ctx, pkg, rows, true);
-  }
-  return renderGfmTable(ctx, pkg, rows, true);
+  const rendered = needsHtmlFallback(rows)
+    ? renderHtmlTable(ctx, pkg, rows, true)
+    : renderGfmTable(ctx, pkg, rows, true);
+  return [rendered, ...diagnostics].filter(Boolean).join("\n\n");
 }
+
+const preservedCarrierDiagnostics = (children: readonly { xml: string }[] | undefined): string[] =>
+  (children ?? []).flatMap(({ xml }) => {
+    if (isAltChunkMarkup(xml)) {
+      return [ALT_CHUNK_READER_DIAGNOSTIC];
+    }
+    if (opaqueRevisionCarrierName(xml) !== undefined) {
+      return [OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC];
+    }
+    return isOpaqueNestedRowMarkup(xml) ? ["[Unsupported nested w:tr content]"] : [];
+  });
 
 function needsHtmlFallback(rows: TableRow[]): boolean {
   for (const row of rows) {
@@ -144,7 +165,20 @@ function renderGfmCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: T
           renderBlocks(item.content);
           break;
         case "table":
+          break;
         case "preservedBlock":
+          if (isAltChunkMarkup(item.xml)) {
+            blocks.push(
+              item.readerText === undefined
+                ? ALT_CHUNK_READER_DIAGNOSTIC
+                : `${ALT_CHUNK_READER_DIAGNOSTIC}\n${item.readerText}`,
+            );
+          } else if (opaqueRevisionCarrierName(item.xml) !== undefined) {
+            blocks.push(OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC);
+          } else if (isOpaqueNestedRowMarkup(item.xml)) {
+            blocks.push("[Unsupported nested w:tr content]");
+          }
+          break;
         case "bookmarkStart":
         case "bookmarkEnd":
           break;
@@ -263,6 +297,18 @@ function renderHtmlCell(ctx: RenderContext, pkg: DocxPackage | undefined, cell: 
           renderBlocks(item.content);
           break;
         case "preservedBlock":
+          if (isAltChunkMarkup(item.xml)) {
+            parts.push(
+              item.readerText === undefined
+                ? ALT_CHUNK_READER_DIAGNOSTIC
+                : `${ALT_CHUNK_READER_DIAGNOSTIC} ${item.readerText}`,
+            );
+          } else if (opaqueRevisionCarrierName(item.xml) !== undefined) {
+            parts.push(OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC);
+          } else if (isOpaqueNestedRowMarkup(item.xml)) {
+            parts.push("[Unsupported nested w:tr content]");
+          }
+          break;
         case "bookmarkStart":
         case "bookmarkEnd":
           break;

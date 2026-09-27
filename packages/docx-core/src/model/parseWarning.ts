@@ -68,6 +68,12 @@ export const PARSE_WARNING_CODES = {
   styleSetInitialStyleMissing: "style-set-initial-style-missing",
   /** An explicit page-break run the editable model lays out approximately. */
   pageBreakProjectionApproximated: "page-break-projection-approximated",
+  /** An altChunk payload Folio preserves but cannot safely interpret. */
+  altChunkUnsupported: "alt-chunk-unsupported",
+  /** A block-level tracked-change wrapper Folio preserves without interpreting. */
+  revisionCarrierOpaque: "revision-carrier-opaque",
+  /** A row nested where the table model can only preserve it as opaque markup. */
+  nestedRowOpaque: "nested-row-opaque",
 } as const;
 
 export type ParseWarningCode = (typeof PARSE_WARNING_CODES)[keyof typeof PARSE_WARNING_CODES];

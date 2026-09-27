@@ -1159,7 +1159,12 @@ function extractBlocks(
       blocks.push(convertPMBlockCustomXml(node, styleResolver));
       previousStandaloneTextBox = null;
     } else if (node.type.name === "preservedBlock") {
-      blocks.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(node).xml });
+      const { xml, readerText } = expectPreservedBlockAttrs(node);
+      blocks.push({
+        type: "preservedBlock",
+        xml,
+        ...(readerText === undefined ? {} : { readerText }),
+      });
       previousStandaloneTextBox = null;
     } else if (node.type.name === "blockBookmarkBoundary") {
       blocks.push(blockBookmarkMarker(node));
@@ -5816,6 +5821,7 @@ function restoreCarriedTableAttrs(table: Table, attrs: TableAttrs): void {
   if (hasSinkChildren(attrs._preserved)) {
     table.preserved = attrs._preserved;
   }
+  if (attrs.carrierStack?.length) table.carrierStack = attrs.carrierStack;
 }
 
 type ActiveVerticalMerge = {
@@ -6109,6 +6115,7 @@ function convertPMTableRow(
   if (attrs.contentControls && attrs.contentControls.length > 0) {
     row.contentControls = attrs.contentControls;
   }
+  if (attrs.carrierStack?.length) row.carrierStack = attrs.carrierStack;
   if (hasSinkChildren(attrs._preserved)) {
     row.preserved = attrs._preserved;
   }
@@ -6308,6 +6315,7 @@ function convertPMTableCell(
   if (attrs.contentControls && attrs.contentControls.length > 0) {
     cell.contentControls = attrs.contentControls;
   }
+  if (attrs.carrierStack?.length) cell.carrierStack = attrs.carrierStack;
   if (attrs.cellMarker) {
     const info = {
       id: attrs.cellMarker.info.revisionId,

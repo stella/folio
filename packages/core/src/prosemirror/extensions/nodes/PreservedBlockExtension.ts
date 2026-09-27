@@ -74,6 +74,7 @@ export const PreservedBlockExtension = createNodeExtension({
     selectable: false,
     attrs: {
       xml: {},
+      readerText: { default: null },
     },
     parseDOM: [
       {

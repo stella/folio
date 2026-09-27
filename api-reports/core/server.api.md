@@ -501,6 +501,10 @@ export const FOLIO_YJS_UPDATE_MAX_BYTES: number;
 // @public (undocumented)
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+    diagnostic?: {
+        type: "opaqueCarrier";
+        carrier: string;
+    };
 };
 
 // @public (undocumented)
@@ -516,7 +520,7 @@ export type FolioAIBlockAnchor = {
 };
 
 // @public (undocumented)
-export type FolioAIBlockKind = FolioContentParagraphKind;
+export type FolioAIBlockKind = FolioContentParagraphKind | "diagnostic";
 
 // @public (undocumented)
 export type FolioAIBlockPreviewRun = FolioContentRun;

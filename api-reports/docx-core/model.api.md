@@ -1172,6 +1172,7 @@ export type PositionedBookmarkMarker = {
     index: number;
     marker: BookmarkStart | BookmarkEnd;
     contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public
@@ -1185,6 +1186,7 @@ export type PreservedAttribute = {
 export type PreservedBlock = {
     type: "preservedBlock";
     xml: string;
+    readerText?: string;
 };
 
 // @public
@@ -1696,6 +1698,7 @@ export type Table = {
     rows: TableRow[];
     preserved?: TablePreservedMarkup;
     bookmarks?: PositionedBookmarkMarker[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public
@@ -1726,6 +1729,7 @@ export type TableCell = {
     structuralChange?: TableStructuralChangeInfo;
     content: TableCellBlock[];
     contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public
@@ -1762,6 +1766,22 @@ export type TableCellPropertyChange = {
     previousFormatting?: TableCellFormatting;
     currentFormatting?: TableCellFormatting;
     previousStructuralChange?: TableStructuralChangeInfo;
+};
+
+// @public
+export type TableContentCarrier = {
+    type: "customXml";
+    wrapper: TableCustomXmlWrapper;
+} | {
+    type: "sdt";
+    properties: SdtProperties;
+};
+
+// @public
+export type TableCustomXmlWrapper = {
+    id: number;
+    openingXml: string;
+    closingXml: string;
 };
 
 // @public
@@ -1816,6 +1836,7 @@ export type TableMeasurement = {
 export type TablePreservedMarkup = {
     children?: (PreservedChild & {
         contentControls?: SdtProperties[];
+        carrierStack?: TableContentCarrier[];
     })[];
 };
 
@@ -1851,6 +1872,7 @@ export type TableRow = {
     preservedAttributes?: PreservedAttribute[];
     bookmarks?: PositionedBookmarkMarker[];
     contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public

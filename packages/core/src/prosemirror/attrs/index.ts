@@ -687,6 +687,7 @@ export const readPreservedBlockAttrs = (
   expectNodeType(node, "preservedBlock", issues);
 
   requiredString(attrs, "xml", "preservedBlock.attrs.xml", issues);
+  optionalString(attrs, "readerText", "preservedBlock.attrs.readerText", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -737,6 +738,7 @@ const readTableAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<TableA
   optionalRecord(attrs, "_originalFormatting", "table.attrs._originalFormatting", issues);
   optionalPositionedBookmarks(attrs, "table.attrs._bookmarks", issues);
   optionalTablePreservedMarkup(attrs, "_preserved", "table.attrs._preserved", issues);
+  optionalTableContentCarriers(attrs, "carrierStack", "table.attrs.carrierStack", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -791,6 +793,7 @@ const readTableRowAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   );
   optionalPositionedBookmarks(attrs, "tableRow.attrs._bookmarks", issues);
   optionalContentControls(attrs, "tableRow.attrs.contentControls", issues);
+  optionalTableContentCarriers(attrs, "carrierStack", "tableRow.attrs.carrierStack", issues);
   optionalTablePreservedMarkup(attrs, "_preserved", "tableRow.attrs._preserved", issues);
 
   return attrsResult(attrs, issues);
@@ -857,6 +860,7 @@ export const readTableCellAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Tab
   optionalRecord(attrs, "_originalFormatting", "tableCell.attrs._originalFormatting", issues);
   optionalTableCellRevision(attrs, issues);
   optionalContentControls(attrs, "tableCell.attrs.contentControls", issues);
+  optionalTableContentCarriers(attrs, "carrierStack", "tableCell.attrs.carrierStack", issues);
   optionalBoolean(
     attrs,
     "_preserveVMergeRestart",
@@ -2940,6 +2944,48 @@ const optionalContentControls = (
   }
 };
 
+const optionalTableContentCarriers = (
+  attrs: Record<string, unknown>,
+  key: string,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs[key];
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value)) {
+    issues.push({ path, message: "Expected an array." });
+    return;
+  }
+  for (const [index, carrier] of value.entries()) {
+    const carrierPath = `${path}[${index}]`;
+    if (!isRecord(carrier)) {
+      issues.push({ path: carrierPath, message: "Expected an object." });
+      continue;
+    }
+    if (carrier["type"] === "customXml") {
+      const wrapper = carrier["wrapper"];
+      if (!isRecord(wrapper)) {
+        issues.push({ path: `${carrierPath}.wrapper`, message: "Expected an object." });
+        continue;
+      }
+      requiredNumber(wrapper, "id", `${carrierPath}.wrapper.id`, issues);
+      requiredString(wrapper, "openingXml", `${carrierPath}.wrapper.openingXml`, issues);
+      requiredString(wrapper, "closingXml", `${carrierPath}.wrapper.closingXml`, issues);
+      continue;
+    }
+    if (carrier["type"] === "sdt") {
+      const properties = carrier["properties"];
+      if (!isRecord(properties)) {
+        issues.push({ path: `${carrierPath}.properties`, message: "Expected an object." });
+        continue;
+      }
+      requiredString(properties, "sdtType", `${carrierPath}.properties.sdtType`, issues);
+      continue;
+    }
+    issues.push({ path: `${carrierPath}.type`, message: 'Expected "customXml" or "sdt".' });
+  }
+};
+
 /** A table sink entry may itself sit inside a row- or cell-level control. */
 const optionalTablePreservedMarkup = (
   attrs: Record<string, unknown>,
@@ -3052,6 +3098,7 @@ const optionalPreservedMarkup = (
     }
     requiredNumber(entry, "index", `${entryPath}.index`, issues);
     requiredString(entry, "xml", `${entryPath}.xml`, issues);
+    optionalTableContentCarriers(entry, "carrierStack", `${entryPath}.carrierStack`, issues);
     const xml = entry["xml"];
     if (typeof xml === "string" && !isSafePreservedChildXml(xml)) {
       issues.push({
@@ -3089,6 +3136,7 @@ const optionalPositionedBookmarks = (
       continue;
     }
     validateNonNegativeSafeInteger(entry["index"], `${entryPath}.index`, issues);
+    optionalTableContentCarriers(entry, "carrierStack", `${entryPath}.carrierStack`, issues);
     const marker = entry["marker"];
     if (!isRecord(marker)) {
       issues.push({ path: `${entryPath}.marker`, message: "Expected an object." });

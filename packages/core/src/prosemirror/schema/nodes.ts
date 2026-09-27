@@ -58,6 +58,7 @@ import type {
   ShapeTextBody,
   SdtEndProperties,
   SdtProperties,
+  TableContentCarrier,
   SdtType,
   TrackedChangeInfo,
 } from "../../types/document";
@@ -123,6 +124,8 @@ export type PreservedXmlAttrs = {
 export type PreservedBlockAttrs = {
   /** Replayable markup, as `captureVerbatimXml` wrote it. */
   xml: string;
+  /** Plain text safely extracted from a related w:altChunk part, when available. */
+  readerText?: string;
 };
 
 export type BookmarkBoundaryAttrs =
@@ -1156,6 +1159,8 @@ export type TableAttrs = {
    * none and a copy does not inherit one.
    */
   _preserved?: TablePreservedMarkup;
+  /** Transparent table-level custom-XML wrappers, outermost first. */
+  carrierStack?: TableContentCarrier[];
   /**
    * Marks this whole table as a *suggested* insertion (AI proposal). The table
    * is dropped from serialized DOCX until accepted; because OOXML has no tracked
@@ -1219,6 +1224,8 @@ export type TableRowAttrs = {
    * name the same control. See `TableRow.contentControls`.
    */
   contentControls?: SdtProperties[];
+  /** Transparent row-level custom-XML wrappers, outermost first. */
+  carrierStack?: TableContentCarrier[];
   /**
    * Markup the authored `w:tr` carried beside its cells, with the cell count
    * that places it back between the same two cells. Follows the record the
@@ -1379,6 +1386,8 @@ export type TableCellAttrs = {
    * outermost first. The row's twin, one level down.
    */
   contentControls?: SdtProperties[];
+  /** Transparent row-level custom-XML wrappers, outermost first. */
+  carrierStack?: TableContentCarrier[];
   /** Preserve a DOCX vMerge restart even when PM cannot model it as a rowspan. */
   _preserveVMergeRestart?: boolean;
   /** Original DOCX vMerge continuation cells skipped into this PM rowspan. */

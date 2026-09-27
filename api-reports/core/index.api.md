@@ -257,7 +257,7 @@ export const clearTemplateSlashMenu: (tr: Transaction) => Transaction;
 export const COMPARE_REVISION_FORMATS: readonly ["word", "folio-exact"];
 
 // @public
-export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable"];
+export const COMPARE_UNSUPPORTED_REASONS: readonly ["story-missing-in-base", "story-missing-in-target", "story-not-editable", "unsupported-content"];
 
 // @public
 export const COMPARE_VERIFICATION_CAUSES: readonly ["invisible-structure", "block-count", "container", "inline-structure", "table-geometry", "section-properties", "style", "list-level", "alignment", "spacing", "indentation", "inline-formatting", "whitespace", "text"];
@@ -827,6 +827,10 @@ export const FOLIO_YJS_ATTR_SCHEMA_VERSION = 11;
 // @public (undocumented)
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+    diagnostic?: {
+        type: "opaqueCarrier";
+        carrier: string;
+    };
 };
 
 // @public (undocumented)
@@ -842,7 +846,7 @@ export type FolioAIBlockAnchor = {
 };
 
 // @public (undocumented)
-export type FolioAIBlockKind = FolioContentParagraphKind;
+export type FolioAIBlockKind = FolioContentParagraphKind | "diagnostic";
 
 // @public (undocumented)
 export type FolioAIBlockPreviewRun = FolioContentRun;

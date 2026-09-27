@@ -26,8 +26,9 @@ import {
   DRAWING_SAFETY_CLASSES,
   type DrawingSafetyClass,
 } from "./imageRawXml";
+import { isAltChunkMarkup } from "./altChunk";
 
-export type DocxCompatibilityReason = "opaqueDrawing";
+export type DocxCompatibilityReason = "opaqueDrawing" | "unsupportedAltChunk";
 
 export type FolioDocxCompatibilityHost = "browser" | "server" | "unknown";
 export type FolioDocxCompatibilityProfile = DocxConformanceClass;
@@ -85,6 +86,7 @@ type InspectionLocationContext = {
 };
 
 type RecordDrawing = (drawing: DocxDrawingClassification) => void;
+type RecordIssue = (issue: DocxCompatibilityIssue) => void;
 
 const resolveCompatibilityContext = (
   doc: Document,
@@ -108,24 +110,25 @@ export const inspectDocxCompatibility = (
     if (drawing.class !== DRAWING_SAFETY_CLASSES.OPAQUE) {
       return;
     }
-    const code = "opaqueDrawing";
-    reasons.add(code);
-    issues.push({
-      code,
-      location: drawing.location,
-    });
+    recordIssue({ code: "opaqueDrawing", location: drawing.location });
+  };
+  const recordIssue: RecordIssue = (issue) => {
+    reasons.add(issue.code);
+    issues.push(issue);
   };
 
   inspectBlocks(doc.package.document.content, {
     part: { type: "document" },
     path: "package.document.content",
     record,
+    recordIssue,
   });
   for (const [relationshipId, header] of doc.package.headers?.entries() ?? []) {
     inspectHeaderFooter(header, {
       part: { type: "header", relationshipId },
       path: `package.headers.get(${JSON.stringify(relationshipId)}).content`,
       record,
+      recordIssue,
     });
   }
   for (const [relationshipId, footer] of doc.package.footers?.entries() ?? []) {
@@ -133,6 +136,7 @@ export const inspectDocxCompatibility = (
       part: { type: "footer", relationshipId },
       path: `package.footers.get(${JSON.stringify(relationshipId)}).content`,
       record,
+      recordIssue,
     });
   }
   for (const footnote of doc.package.footnotes ?? []) {
@@ -140,6 +144,7 @@ export const inspectDocxCompatibility = (
       part: { type: "footnote", id: footnote.id },
       path: `package.footnotes[id=${footnote.id}].content`,
       record,
+      recordIssue,
     });
   }
   for (const endnote of doc.package.endnotes ?? []) {
@@ -147,6 +152,7 @@ export const inspectDocxCompatibility = (
       part: { type: "endnote", id: endnote.id },
       path: `package.endnotes[id=${endnote.id}].content`,
       record,
+      recordIssue,
     });
   }
 
@@ -163,7 +169,7 @@ export const inspectDocxCompatibility = (
 
 function inspectBlocks(
   blocks: BlockContent[],
-  context: InspectionLocationContext & { record: RecordDrawing },
+  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
 ): void {
   for (const [blockIndex, block] of blocks.entries()) {
     const blockPath = `${context.path}[${blockIndex}]`;
@@ -173,6 +179,7 @@ function inspectBlocks(
         part: context.part,
         path: `${blockPath}.content`,
         record: context.record,
+        recordIssue: context.recordIssue,
       });
       continue;
     }
@@ -184,9 +191,18 @@ function inspectBlocks(
             part: context.part,
             path: `${blockPath}.rows[${rowIndex}].cells[${cellIndex}].content`,
             record: context.record,
+            recordIssue: context.recordIssue,
           });
         }
       }
+      continue;
+    }
+
+    if (block.type === "preservedBlock" && isAltChunkMarkup(block.xml)) {
+      context.recordIssue({
+        code: "unsupportedAltChunk",
+        location: { part: context.part, path: blockPath },
+      });
       continue;
     }
 
@@ -198,20 +214,21 @@ function inspectBlocks(
       part: context.part,
       path: `${blockPath}.content`,
       record: context.record,
+      recordIssue: context.recordIssue,
     });
   }
 }
 
 function inspectHeaderFooter(
   headerFooter: HeaderFooter,
-  context: InspectionLocationContext & { record: RecordDrawing },
+  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
 ): void {
   inspectBlocks(headerFooter.content, context);
 }
 
 function inspectParagraphContent(
   content: ParagraphContent[],
-  context: InspectionLocationContext & { record: RecordDrawing },
+  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
 ): void {
   for (const [itemIndex, item] of content.entries()) {
     const itemContext = {

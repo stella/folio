@@ -369,6 +369,7 @@ export type ParagraphPropertyChangeAttrs = Omit<import__stll_docx_core_model.Par
 // @public
 export type PreservedBlockAttrs = {
     xml: string;
+    readerText?: string;
 };
 
 // @public
@@ -558,6 +559,7 @@ export type TableAttrs = {
     tblPrChange?: import__stll_docx_core_model.TablePropertyChange[];
     _bookmarks?: import__stll_docx_core_model.PositionedBookmarkMarker[];
     _preserved?: import__stll_docx_core_model.TablePreservedMarkup;
+    carrierStack?: import__stll_docx_core_model.TableContentCarrier[];
     _suggestedInsert?: SuggestedStructuralMarker | null;
 };
 
@@ -620,6 +622,7 @@ export type TableCellAttrs = {
         verticalMergeOriginal?: "continue" | "rest";
     };
     contentControls?: import__stll_docx_core_model.SdtProperties[];
+    carrierStack?: import__stll_docx_core_model.TableContentCarrier[];
     _preserveVMergeRestart?: boolean;
     _docxVMergeContinuationCells?: unknown;
 };
@@ -638,6 +641,7 @@ export type TableRowAttrs = {
     _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
     _bookmarks?: import__stll_docx_core_model.PositionedBookmarkMarker[];
     contentControls?: import__stll_docx_core_model.SdtProperties[];
+    carrierStack?: import__stll_docx_core_model.TableContentCarrier[];
     _preserved?: import__stll_docx_core_model.TablePreservedMarkup;
 } & ({
     trIns: {

@@ -40,6 +40,7 @@ import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
 import {
   findWordprocessingChild,
+  getLocalName,
   mergeXmlnsDeclarations,
   selectAlternateContentBranch,
   type XmlElement,
@@ -358,7 +359,7 @@ const parseBlockCustomXml = (
   };
 };
 
-const BLOCK_CONTENT_HANDLERS = {
+export const BLOCK_CONTENT_HANDLERS = {
   p: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
     const paragraph = parseParagraph(child, styles, theme, numbering, rels, media, {
       ...state.options,
@@ -388,7 +389,12 @@ const BLOCK_CONTENT_HANDLERS = {
   tbl: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
     const table = parseTable(child, styles, theme, numbering, rels, media, state.options);
     if (!table) {
-      return;
+      const hasUnmodeledTableContent =
+        child.elements?.some((tableChild) => {
+          const localName = getLocalName(tableChild.name ?? "");
+          return localName !== "tblPr" && localName !== "tblGrid";
+        }) ?? false;
+      return hasUnmodeledTableContent ? CAPTURE : undefined;
     }
     modelled.push(table);
   },

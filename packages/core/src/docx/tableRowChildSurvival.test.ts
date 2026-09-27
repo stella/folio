@@ -18,6 +18,7 @@ import fc from "fast-check";
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseTable } from "./tableParser";
+import { createParseWarningCollector } from "./parseContext";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializeTable } from "./serializer/tableSerializer";
 import { parseXmlDocument, type XmlElement } from "./xmlParser";
@@ -89,10 +90,153 @@ describe("a table row keeps the children folio does not model", () => {
   });
 
   test("a row-level content control is still unwrapped, and its markup kept", () => {
-    const saved = roundTrip(
-      `<w:sdt><w:sdtPr/><w:sdtContent>${CELL}<w:proofErr w:type="spellEnd"/></w:sdtContent></w:sdt>`,
-    );
+    const input = `<w:sdt><w:sdtPr><w:alias w:val="row-control"/></w:sdtPr><w:sdtContent><w:tr>${CELL}</w:tr></w:sdtContent></w:sdt>`;
+    const root = parseXmlDocument(`<w:tbl xmlns:w="${W}">${input}</w:tbl>`) as XmlElement;
+    const parsed = parseTable(root, null, null, null, null, null);
+
+    expect(parsed?.rows[0]?.cells).toHaveLength(1);
+    expect(parsed?.rows[0]?.contentControls?.[0]?.alias).toBe("row-control");
+    const saved = serializeTable(parsed!, serializeParagraph);
     expect(saved).toContain("<w:tc>");
-    expect(saved).toContain('<w:proofErr w:type="spellEnd"/>');
+    expect(saved).toContain("row-control");
+  });
+
+  test("a cell-level content control leaves its cell content readable", () => {
+    const cellWithControl =
+      '<w:sdt><w:sdtPr><w:alias w:val="cell-control"/></w:sdtPr><w:sdtContent>' +
+      "<w:tc><w:p><w:r><w:t>visible sentinel</w:t></w:r></w:p></w:tc>" +
+      "</w:sdtContent></w:sdt>";
+    const root = parseXmlDocument(tableXml(cellWithControl)) as XmlElement;
+    const parsed = parseTable(root, null, null, null, null, null);
+    const cell = parsed?.rows[0]?.cells[0];
+
+    expect(cell?.contentControls?.[0]?.alias).toBe("cell-control");
+    expect(cell?.content[0]?.type).toBe("paragraph");
+    expect(JSON.stringify(cell?.content)).toContain("visible sentinel");
+    expect(roundTrip(cellWithControl)).toContain("visible sentinel");
+  });
+
+  test("row and table customXml wrappers leave their rows and cells readable", () => {
+    const rowCustomXml = '<w:customXml w:uri="urn:row" w:element="row">' + `${CELL}</w:customXml>`;
+    const tableCustomXml =
+      '<w:customXml w:uri="urn:table" w:element="table">' + `<w:tr>${CELL}</w:tr></w:customXml>`;
+    const rowRoot = parseXmlDocument(tableXml(rowCustomXml)) as XmlElement;
+    const tableRoot = parseXmlDocument(
+      `<w:tbl xmlns:w="${W}">${tableCustomXml}</w:tbl>`,
+    ) as XmlElement;
+
+    const rowTable = parseTable(rowRoot, null, null, null, null, null);
+    const tableTable = parseTable(tableRoot, null, null, null, null, null);
+    expect(rowTable?.rows[0]?.cells).toHaveLength(1);
+    expect(tableTable?.rows[0]?.cells).toHaveLength(1);
+    expect(serializeTable(rowTable!, serializeParagraph)).toContain('<w:customXml w:uri="urn:row"');
+    expect(serializeTable(tableTable!, serializeParagraph)).toContain(
+      '<w:customXml w:uri="urn:table"',
+    );
+  });
+
+  test("a nested row reports that folio retained it as opaque markup", () => {
+    const root = parseXmlDocument(
+      `<w:tbl xmlns:w="${W}"><w:tr><w:tr><w:tc><w:p><w:r><w:t>hidden row</w:t></w:r></w:p></w:tc></w:tr></w:tr></w:tbl>`,
+    ) as XmlElement;
+    const collector = createParseWarningCollector("word/document.xml");
+
+    parseTable(root, null, null, null, null, null, { context: collector.context });
+
+    expect(collector.warnings()).toContainEqual({
+      code: "nested-row-opaque",
+      location: { part: "word/document.xml", element: "w:tr" },
+      count: 1,
+    });
+  });
+
+  test("customXmlPr and bookmark markers stay inside table and row wrappers", () => {
+    const property = '<w:customXmlPr><w:attr w:name="key" w:val="value"/></w:customXmlPr>';
+    const rowWrapped =
+      '<w:customXml w:element="row">' +
+      `${property}<w:bookmarkStart w:id="21" w:name="row-boundary"/>${CELL}` +
+      '<w:bookmarkEnd w:id="21"/></w:customXml>';
+    const tableWrapped =
+      '<w:customXml w:element="table">' +
+      `${property}<w:bookmarkStart w:id="22" w:name="table-boundary"/>` +
+      `<w:tr>${CELL}</w:tr><w:bookmarkEnd w:id="22"/></w:customXml>`;
+    const rowSaved = roundTrip(`<w:tr>${rowWrapped}</w:tr>`);
+    const tableRoot = parseXmlDocument(
+      `<w:tbl xmlns:w="${W}">${tableWrapped}</w:tbl>`,
+    ) as XmlElement;
+    const tableSaved = serializeTable(
+      parseTable(tableRoot, null, null, null, null, null)!,
+      serializeParagraph,
+    );
+
+    const rowWrapperContent = rowSaved
+      .split('<w:customXml w:element="row">')[1]
+      ?.split("</w:customXml>")[0];
+    const tableWrapperContent = tableSaved
+      .split('<w:customXml w:element="table">')[1]
+      ?.split("</w:customXml>")[0];
+    expect(rowWrapperContent).toContain("<w:customXmlPr>");
+    expect(rowWrapperContent).toContain('w:name="row-boundary"');
+    expect(rowWrapperContent).toContain("<w:tc>");
+    expect(tableWrapperContent).toContain("<w:customXmlPr>");
+    expect(tableWrapperContent).toContain('w:name="table-boundary"');
+    expect(tableWrapperContent).toContain("<w:tr>");
+  });
+
+  test("adjacent identical customXml wrappers stay distinct", () => {
+    const duplicateRowWrappers =
+      `<w:tr><w:customXml w:element="same">${CELL}</w:customXml>` +
+      `<w:customXml w:element="same">${CELL}</w:customXml></w:tr>`;
+    const rowSaved = roundTrip(duplicateRowWrappers);
+    const duplicateTableWrappers =
+      `<w:customXml w:element="same"><w:tr>${CELL}</w:tr></w:customXml>` +
+      `<w:customXml w:element="same"><w:tr>${CELL}</w:tr></w:customXml>`;
+    const tableRoot = parseXmlDocument(
+      `<w:tbl xmlns:w="${W}">${duplicateTableWrappers}</w:tbl>`,
+    ) as XmlElement;
+    const tableSaved = serializeTable(
+      parseTable(tableRoot, null, null, null, null, null)!,
+      serializeParagraph,
+    );
+    const wrapperCount = (xml: string): number =>
+      (xml.match(/<w:customXml w:element="same">/gu) ?? []).length;
+
+    expect(wrapperCount(rowSaved)).toBe(2);
+    expect(wrapperCount(tableSaved)).toBe(2);
+  });
+
+  test("mixed SDT and customXml wrappers keep their authored nesting order", () => {
+    const sdtOuter =
+      `<w:sdt><w:sdtPr/><w:sdtContent><w:customXml w:element="inner">` +
+      `<w:tr>${CELL}</w:tr></w:customXml></w:sdtContent></w:sdt>`;
+    const customXmlOuter =
+      `<w:customXml w:element="outer"><w:sdt><w:sdtPr/><w:sdtContent>` +
+      `<w:tr>${CELL}</w:tr></w:sdtContent></w:sdt></w:customXml>`;
+    const parseAndSave = (children: string): string => {
+      const root = parseXmlDocument(`<w:tbl xmlns:w="${W}">${children}</w:tbl>`) as XmlElement;
+      return serializeTable(parseTable(root, null, null, null, null, null)!, serializeParagraph);
+    };
+    const sdtOuterSaved = parseAndSave(sdtOuter);
+    const customXmlOuterSaved = parseAndSave(customXmlOuter);
+
+    const rowSdtOuter =
+      `<w:sdt><w:sdtPr/><w:sdtContent><w:customXml w:element="inner">` +
+      `${CELL}</w:customXml></w:sdtContent></w:sdt>`;
+    const rowCustomXmlOuter =
+      `<w:customXml w:element="outer"><w:sdt><w:sdtPr/><w:sdtContent>` +
+      `${CELL}</w:sdtContent></w:sdt></w:customXml>`;
+    const rowSdtOuterSaved = roundTrip(rowSdtOuter);
+    const rowCustomXmlOuterSaved = roundTrip(rowCustomXmlOuter);
+
+    expect(sdtOuterSaved.indexOf("<w:sdt>")).toBeLessThan(sdtOuterSaved.indexOf("<w:customXml"));
+    expect(customXmlOuterSaved.indexOf("<w:customXml")).toBeLessThan(
+      customXmlOuterSaved.indexOf("<w:sdt>"),
+    );
+    expect(rowSdtOuterSaved.indexOf("<w:sdt>")).toBeLessThan(
+      rowSdtOuterSaved.indexOf("<w:customXml"),
+    );
+    expect(rowCustomXmlOuterSaved.indexOf("<w:customXml")).toBeLessThan(
+      rowCustomXmlOuterSaved.indexOf("<w:sdt>"),
+    );
   });
 });

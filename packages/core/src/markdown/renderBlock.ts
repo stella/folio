@@ -5,6 +5,12 @@
  */
 
 import { panic } from "better-result";
+import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "../docx/altChunk";
+import {
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  isOpaqueNestedRowMarkup,
+  opaqueRevisionCarrierName,
+} from "../docx/opaqueCarrier";
 
 import type {
   BlockContent,
@@ -143,6 +149,18 @@ export function renderBlocks(
       }
       // Markup folio keeps opaquely, with no text it can claim to render.
       case "preservedBlock":
+        if (isAltChunkMarkup(block.xml)) {
+          out.push(
+            block.readerText === undefined
+              ? ALT_CHUNK_READER_DIAGNOSTIC
+              : `${ALT_CHUNK_READER_DIAGNOSTIC}\n\n${block.readerText}`,
+          );
+        } else if (opaqueRevisionCarrierName(block.xml) !== undefined) {
+          out.push(OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC);
+        } else if (isOpaqueNestedRowMarkup(block.xml)) {
+          out.push("[Unsupported nested w:tr content]");
+        }
+        break;
       // A delimiter, with no text to render.
       case "bookmarkStart":
       case "bookmarkEnd":

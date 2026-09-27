@@ -23,6 +23,8 @@
 import type {
   Table,
   TablePreservedMarkup,
+  TableCustomXmlWrapper,
+  TableContentCarrier,
   TableRow,
   TableCell,
   TableFormatting,
@@ -54,6 +56,7 @@ import type {
   RelationshipMap,
   MediaFile,
 } from "../types/document";
+import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
 import { blockCustomXmlShell } from "./blockCustomXmlShell";
 import { attributeRemainder, NO_MODELLED_ATTRIBUTES } from "./attributeRemainder";
 import { parseBookmarkEnd, parseBookmarkStart } from "./bookmarkParser";
@@ -81,6 +84,7 @@ import {
   narrowEnum,
 } from "./parserEnums";
 import type { StyleMap } from "./styleParser";
+import type { ParseContext } from "./parseContext";
 import { captureVerbatimXml } from "./verbatimCapture";
 import { parseBorderSpec } from "./borderParser";
 import { parseShading } from "./shadingParser";
@@ -1391,9 +1395,35 @@ export function parseTableCellProperties(
  */
 type TablePreservedChild = NonNullable<TablePreservedMarkup["children"]>[number];
 
-const recordContentControl = <Wrapped extends { contentControls?: SdtProperties[] }>(
+const createCustomXmlWrapper = (
+  element: XmlElement,
+  identity: { next: number },
+): TableCustomXmlWrapper => ({
+  id: identity.next++,
+  ...blockCustomXmlShell(element),
+});
+
+const recordCustomXmlWrapper = <Wrapped extends { carrierStack?: TableContentCarrier[] }>(
   wrapped: readonly Wrapped[],
-  carriers: readonly { contentControls?: SdtProperties[] }[],
+  wrapper: TableCustomXmlWrapper,
+): void => {
+  for (const item of wrapped) {
+    item.carrierStack = [{ type: "customXml", wrapper }, ...(item.carrierStack ?? [])];
+  }
+};
+
+const recordContentControl = <
+  Wrapped extends {
+    contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
+  },
+  Carrier extends {
+    contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
+  },
+>(
+  wrapped: readonly Wrapped[],
+  carriers: readonly Carrier[],
   sdtElement: XmlElement,
 ): void => {
   const properties = parseSdtProperties(
@@ -1409,9 +1439,11 @@ const recordContentControl = <Wrapped extends { contentControls?: SdtProperties[
   }
   for (const item of wrapped) {
     item.contentControls = [properties, ...(item.contentControls ?? [])];
+    item.carrierStack = [{ type: "sdt", properties }, ...(item.carrierStack ?? [])];
   }
   for (const item of carriers) {
     item.contentControls = [properties, ...(item.contentControls ?? [])];
+    item.carrierStack = [{ type: "sdt", properties }, ...(item.carrierStack ?? [])];
   }
 };
 
@@ -1435,6 +1467,7 @@ type TableParseOptions = {
   rootXmlns?: Record<string, string>;
   /** The ledger of the package this table belongs to; a table read on its own has none. */
   previews?: PreviewLedger;
+  context?: ParseContext;
 };
 
 /** What a table's rows, cells and blocks read: the ledger is settled where the walk enters. */
@@ -1502,7 +1535,7 @@ const CELL_CONTENT_UNDECLARED = {
   },
 } as const satisfies Record<string, ChildReader<CellChildrenWalk>>;
 
-const CELL_CONTENT_HANDLERS = {
+export const CELL_CONTENT_HANDLERS = {
   p: (child, { resources: { styles, theme, numbering, rels, media }, options, modelled }) => {
     const para = parseParagraph(child, styles, theme, numbering, rels, media, {
       ...options,
@@ -1753,9 +1786,10 @@ type RowChildrenWalk = {
   row: TableRow;
   bookmarks: PositionedBookmarkMarker[];
   preservedChildren: TablePreservedChild[];
+  customXmlIdentity: { next: number };
 };
 
-const ROW_CONTENT_HANDLERS = {
+export const ROW_CONTENT_HANDLERS = {
   tc: (child, { resources: { styles, theme, numbering, rels, media }, options, row }) => {
     row.cells.push(parseTableCell(child, styles, theme, numbering, rels, media, options));
   },
@@ -1788,6 +1822,17 @@ const ROW_CONTENT_HANDLERS = {
     return undefined;
   },
 
+  customXml: (child, walk) => {
+    const firstWrapped = walk.row.cells.length;
+    const firstCaptured = walk.preservedChildren.length;
+    const firstBookmark = walk.bookmarks.length;
+    dispatchRowChildren(child, walk);
+    const wrapper = createCustomXmlWrapper(child, walk.customXmlIdentity);
+    recordCustomXmlWrapper(walk.row.cells.slice(firstWrapped), wrapper);
+    recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
+    recordCustomXmlWrapper(walk.bookmarks.slice(firstBookmark), wrapper);
+  },
+
   // A bookmark that selects whole rows opens and closes here, between
   // two cells. The row models one kind of child, so the marker keeps its
   // place as an index among the cells rather than as a member — and it
@@ -1805,7 +1850,6 @@ const ROW_CONTENT_HANDLERS = {
 
   commentRangeEnd: CAPTURE,
   commentRangeStart: CAPTURE,
-  customXml: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
   customXmlInsRangeEnd: CAPTURE,
@@ -1828,7 +1872,13 @@ const ROW_CONTENT_HANDLERS = {
   // A row nested directly in a row is legal markup folio has no model
   // for; captured whole rather than flattened into this row's cells,
   // which would move its content into a row the author did not write.
-  tr: CAPTURE,
+  tr: (child, { options }) => {
+    options.context?.warn({
+      code: PARSE_WARNING_CODES.nestedRowOpaque,
+      element: child.name ?? "w:tr",
+    });
+    return CAPTURE;
+  },
 } as const satisfies ChildHandlers<"row-content", RowChildrenWalk>;
 
 /**
@@ -1914,6 +1964,7 @@ export function parseTableRow(
     row,
     bookmarks,
     preservedChildren,
+    customXmlIdentity: { next: 0 },
   });
   if (preservedChildren.length > 0) {
     row.preserved = { children: preservedChildren };
@@ -2082,9 +2133,10 @@ type TableChildrenWalk = {
   rowsWithGridOffsets: Set<number>;
   bookmarks: PositionedBookmarkMarker[];
   preservedChildren: TablePreservedChild[];
+  customXmlIdentity: { next: number };
 };
 
-const TABLE_CONTENT_HANDLERS = {
+export const TABLE_CONTENT_HANDLERS = {
   tr: (
     child,
     { resources: { styles, theme, numbering, rels, media }, options, table, rowsWithGridOffsets },
@@ -2124,6 +2176,17 @@ const TABLE_CONTENT_HANDLERS = {
     return undefined;
   },
 
+  customXml: (child, walk) => {
+    const firstWrapped = walk.table.rows.length;
+    const firstCaptured = walk.preservedChildren.length;
+    const firstBookmark = walk.bookmarks.length;
+    dispatchTableChildren(child, walk);
+    const wrapper = createCustomXmlWrapper(child, walk.customXmlIdentity);
+    recordCustomXmlWrapper(walk.table.rows.slice(firstWrapped), wrapper);
+    recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
+    recordCustomXmlWrapper(walk.bookmarks.slice(firstBookmark), wrapper);
+  },
+
   ...TABLE_CHILD_OWNERS,
 
   // A bookmark that selects a whole table opens and closes here. The
@@ -2138,12 +2201,8 @@ const TABLE_CONTENT_HANDLERS = {
   },
   commentRangeEnd: CAPTURE,
   commentRangeStart: CAPTURE,
-  // Kept whole rather than unwrapped, so everything the wrapper holds
-  // survives the save as the bytes the source wrote.
-  customXml: CAPTURE,
-  // Only `w:customXml` declares it, and that wrapper is captured whole,
-  // so this walk never meets one. Capture is still the right answer for
-  // a source that writes it where the schema does not admit it.
+  // Only `w:customXml` declares this property child. The wrapper itself is
+  // transparent; its property record remains positioned markup.
   customXmlPr: CAPTURE,
   customXmlDelRangeEnd: CAPTURE,
   customXmlDelRangeStart: CAPTURE,
@@ -2258,6 +2317,7 @@ export function parseTable(
     rowsWithGridOffsets,
     bookmarks,
     preservedChildren,
+    customXmlIdentity: { next: 0 },
   });
 
   // OOXML encountered in the wild can contain placeholder w:tbl elements

@@ -411,6 +411,9 @@ export type PositionedBookmarkMarker = {
   marker: BookmarkStart | BookmarkEnd;
   /** Row- or cell-level controls whose content held this marker. */
   contentControls?: SdtProperties[];
+  /** Table/row custom-XML wrappers whose content held this marker. */
+  /** Original mixed order of transparent wrappers around this marker. */
+  carrierStack?: TableContentCarrier[];
 };
 
 // ============================================================================
@@ -1308,6 +1311,8 @@ export type TableCell = {
    * wrapper.
    */
   contentControls?: SdtProperties[];
+  /** Original mixed order of customXml and SDT wrappers around this cell. */
+  carrierStack?: TableContentCarrier[];
 };
 
 /**
@@ -1320,8 +1325,24 @@ export type TableCell = {
  * rebuilt as two wrappers around the children on either side of it.
  */
 export type TablePreservedMarkup = {
-  children?: (PreservedChild & { contentControls?: SdtProperties[] })[];
+  children?: (PreservedChild & {
+    contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
+  })[];
 };
+
+/** Replayable shell for a transparent custom-XML wrapper around table structure. */
+export type TableCustomXmlWrapper = {
+  /** Parser-assigned identity; equal shell markup can still name distinct wrappers. */
+  id: number;
+  openingXml: string;
+  closingXml: string;
+};
+
+/** Ordered transparent carrier stack on table, row and cell children. */
+export type TableContentCarrier =
+  | { type: "customXml"; wrapper: TableCustomXmlWrapper }
+  | { type: "sdt"; properties: SdtProperties };
 
 /**
  * Table row
@@ -1404,6 +1425,8 @@ export type TableRow = {
    * them.
    */
   contentControls?: SdtProperties[];
+  /** Original mixed order of customXml and SDT wrappers around this row. */
+  carrierStack?: TableContentCarrier[];
 };
 
 /**
@@ -1440,6 +1463,8 @@ export type Table = {
    * joining {@link Table.preserved}.
    */
   bookmarks?: PositionedBookmarkMarker[];
+  /** Original mixed order of customXml and SDT wrappers around this table's rows. */
+  carrierStack?: TableContentCarrier[];
 };
 
 // ============================================================================
@@ -2664,6 +2689,8 @@ export type PreservedBlock = {
   type: "preservedBlock";
   /** Replayable markup for one child, as `captureVerbatimXml` wrote it. */
   xml: string;
+  /** Plain text safely extracted from a related w:altChunk part, when available. */
+  readerText?: string;
 };
 
 /**

@@ -567,7 +567,10 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
  * no index and nothing has to keep one honest as the blocks around it change.
  */
 function convertPreservedBlock(block: PreservedBlock): PMNode {
-  return schema.node("preservedBlock", { xml: block.xml });
+  return schema.node("preservedBlock", {
+    xml: block.xml,
+    readerText: block.readerText ?? null,
+  });
 }
 
 /**
@@ -2262,6 +2265,7 @@ function convertTable(
   if (hasSinkChildren(table.preserved)) {
     attrs._preserved = table.preserved;
   }
+  if (table.carrierStack?.length) attrs.carrierStack = table.carrierStack;
 
   const conditionalStyles: {
     wholeTable?: TableConditionalStyle;
@@ -2483,6 +2487,7 @@ function convertTableRow(
   if (row.contentControls && row.contentControls.length > 0) {
     attrsWithoutStructuralChange.contentControls = row.contentControls;
   }
+  if (row.carrierStack?.length) attrsWithoutStructuralChange.carrierStack = row.carrierStack;
   // The row's child sink, carried by identity for the reason the table's is.
   if (hasSinkChildren(row.preserved)) {
     attrsWithoutStructuralChange._preserved = row.preserved;
@@ -2842,6 +2847,7 @@ function convertTableCell({
   if (cell.contentControls && cell.contentControls.length > 0) {
     attrs.contentControls = cell.contentControls;
   }
+  if (cell.carrierStack?.length) attrs.carrierStack = cell.carrierStack;
   const cellStructuralChange = cell.structuralChange;
   if (cellStructuralChange) {
     const info = {

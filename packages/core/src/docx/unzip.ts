@@ -729,7 +729,7 @@ function isParsedDocxEntry(path: string): boolean {
   );
 }
 
-function getEntryUncompressedSize(file: JSZip.JSZipObject): number | null {
+export function getEntryUncompressedSize(file: JSZip.JSZipObject): number | null {
   const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
   return typeof metadata?.uncompressedSize === "number" ? metadata.uncompressedSize : null;
 }

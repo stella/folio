@@ -42,6 +42,7 @@ import type {
   SdtProperties,
   TableCellBlock,
   TablePreservedMarkup,
+  TableContentCarrier,
 } from "../../types/document";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
@@ -959,58 +960,42 @@ const serializeTableGridChange = ({ id, columnWidths }: TableGridChange): string
  * controlled children stays inside one wrapper instead of splitting that
  * wrapper into two.
  */
-type ControlledChild = { controls: readonly SdtProperties[]; xml: string };
+type ControlledChild = {
+  carriers: readonly TableContentCarrier[];
+  xml: string;
+};
 
-/**
- * What makes two rows members of the same control.
- *
- * The control's record is on every child it held, so the wrapper is rebuilt
- * by grouping consecutive children that name the same control. Equality is
- * the record's canonical spelling rather than object identity, because the
- * editor carries these records through JSON — a Yjs sync, a snapshot, a
- * structured clone — and hands back an equal record rather than the same one.
- * A wrapper that split in two there would mint a second `w:id` for one
- * control, which is the defect, not the fix.
- *
- * The cost is the other direction: two adjacent rows the author put in two
- * separate but identically spelled controls come back as one. Word mints a
- * distinct `w:id` per control, so that needs a producer that writes none; the
- * inline wrapper stack makes the same trade for the same reason.
- */
-const contentControlKey = (properties: SdtProperties): string => canonicalJson(properties);
+const tableCarrierKey = (carrier: TableContentCarrier): string =>
+  carrier.type === "customXml"
+    ? `customXml:${String(carrier.wrapper.id)}`
+    : `sdt:${canonicalJson(carrier.properties)}`;
 
-/**
- * Re-open each control around the run of children that named it, outermost
- * first.
- *
- * @param depth which layer of the stack this call is opening
- */
-const serializeControlledChildren = (
-  children: readonly ControlledChild[],
-  depth: number,
-): string => {
+const serializeTableCarriers = (children: readonly ControlledChild[], depth = 0): string => {
   const parts: string[] = [];
   let index = 0;
   while (index < children.length) {
-    // SAFETY: `index < children.length` is the loop's own condition.
-    const child = children[index]!;
-    const control = child.controls[depth];
-    if (control === undefined) {
+    const child = children[index];
+    if (!child) break;
+    const carrier = child.carriers[depth];
+    if (!carrier) {
       parts.push(child.xml);
       index += 1;
       continue;
     }
-    const key = contentControlKey(control);
+    const carrierKey = tableCarrierKey(carrier);
     let end = index + 1;
     while (end < children.length) {
-      const next = children[end]?.controls[depth];
-      if (next === undefined || contentControlKey(next) !== key) {
-        break;
-      }
+      const next = children[end]?.carriers[depth];
+      const nextKey = next ? tableCarrierKey(next) : undefined;
+      if (nextKey !== carrierKey) break;
       end += 1;
     }
-    const inner = serializeControlledChildren(children.slice(index, end), depth + 1);
-    parts.push(serializeSdtWrapper(control, inner));
+    const inner = serializeTableCarriers(children.slice(index, end), depth + 1);
+    if (carrier.type === "customXml") {
+      parts.push(`${carrier.wrapper.openingXml}${inner}${carrier.wrapper.closingXml}`);
+    } else {
+      parts.push(serializeSdtWrapper(carrier.properties, inner));
+    }
     index = end;
   }
   return parts.join("");
@@ -1018,9 +1003,17 @@ const serializeControlledChildren = (
 
 type TablePreservedChild = NonNullable<TablePreservedMarkup["children"]>[number];
 
+const carriersFor = (value: {
+  carrierStack?: TableContentCarrier[];
+  contentControls?: SdtProperties[];
+}): TableContentCarrier[] =>
+  value.carrierStack ?? [
+    ...(value.contentControls ?? []).map((properties) => ({ type: "sdt" as const, properties })),
+  ];
+
 /** A capture from the sink, with the controls it sat inside when parsed. */
 const preservedChild = (xml: string, child: TablePreservedChild): ControlledChild => ({
-  controls: child.contentControls ?? [],
+  carriers: carriersFor(child),
   xml,
 });
 
@@ -1121,10 +1114,11 @@ const positionedChildren = (
   return {
     children: [
       ...(preserved?.children ?? []),
-      ...bookmarks.map(({ index, marker, contentControls }) => ({
+      ...bookmarks.map(({ index, marker, contentControls, carrierStack }) => ({
         index,
         xml: serializeBookmarkMarker(marker),
         ...(contentControls === undefined ? {} : { contentControls }),
+        ...(carrierStack === undefined ? {} : { carrierStack }),
       })),
     ],
   };
@@ -1162,11 +1156,11 @@ export function serializeTableRow(row: TableRow, serializeParagraph: ParagraphSe
   // cells that named it. `w:trPr` and `w:tblPrEx` come first in the content
   // model and are written above, so the sink's index counts cells only.
   parts.push(
-    serializeControlledChildren(
+    serializeTableCarriers(
       withPreservedChildren(
         row.cells.map(
           (cell): ControlledChild => ({
-            controls: cell.contentControls ?? [],
+            carriers: carriersFor(cell),
             xml: serializeTableCell(cell, serializeParagraph),
           }),
         ),
@@ -1208,11 +1202,11 @@ export function serializeTable(table: Table, serializeParagraph: ParagraphSerial
   const parts: string[] = [
     tblPrXml,
     serializeTableGrid(table),
-    serializeControlledChildren(
+    serializeTableCarriers(
       withPreservedChildren(
         table.rows.map(
           (row): ControlledChild => ({
-            controls: row.contentControls ?? [],
+            carriers: carriersFor(row),
             xml: serializeTableRow(row, serializeParagraph),
           }),
         ),

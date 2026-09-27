@@ -16,6 +16,12 @@
 import { panic } from "better-result";
 
 import type { BlockContent } from "../types/document";
+import { ALT_CHUNK_READER_DIAGNOSTIC, isAltChunkMarkup } from "./altChunk";
+import {
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  isOpaqueNestedRowMarkup,
+  opaqueRevisionCarrierName,
+} from "./opaqueCarrier";
 import { getParagraphText } from "./paragraphParser";
 
 /** One entry per block, so callers can join or count lines as they need. */
@@ -41,9 +47,21 @@ export const collectBlockTexts = (blocks: readonly BlockContent[]): string[] => 
       case "blockCustomXml":
         texts.push(...collectBlockTexts(block.content));
         break;
+      case "preservedBlock":
+        if (isAltChunkMarkup(block.xml)) {
+          texts.push(
+            block.readerText === undefined
+              ? ALT_CHUNK_READER_DIAGNOSTIC
+              : `${ALT_CHUNK_READER_DIAGNOSTIC}\n${block.readerText}`,
+          );
+        } else if (opaqueRevisionCarrierName(block.xml) !== undefined) {
+          texts.push(OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC);
+        } else if (isOpaqueNestedRowMarkup(block.xml)) {
+          texts.push("[Unsupported nested w:tr content]");
+        }
+        break;
       // Opaque markup, so folio cannot say what text it puts on the page; an
       // entry of its own would claim an empty line the reader does not see.
-      case "preservedBlock":
       // A delimiter, not content: it puts no text on the page.
       case "bookmarkStart":
       case "bookmarkEnd":

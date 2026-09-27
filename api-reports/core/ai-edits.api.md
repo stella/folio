@@ -119,6 +119,10 @@ export const FOLIO_REVIEWED_VIEWS: readonly ["original", "current-markup", "fina
 // @public (undocumented)
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
     structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+    diagnostic?: {
+        type: "opaqueCarrier";
+        carrier: string;
+    };
 };
 
 // @public (undocumented)
@@ -134,7 +138,7 @@ export type FolioAIBlockAnchor = {
 };
 
 // @public (undocumented)
-export type FolioAIBlockKind = FolioContentParagraphKind;
+export type FolioAIBlockKind = FolioContentParagraphKind | "diagnostic";
 
 // @public (undocumented)
 export type FolioAIBlockPreviewRun = FolioContentRun;

@@ -1,4 +1,6 @@
 import { sectionReferenceHistory } from "../docx/sectionReferenceHistory";
+import { isAltChunkMarkup } from "../docx/altChunk";
+import { isOpaqueNestedRowMarkup, opaqueRevisionCarrierName } from "../docx/opaqueCarrier";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 /**
  * Deterministic `.docx` compare: two packages in, one redlined package plus a
@@ -119,6 +121,43 @@ const parseSide = async (
         cause,
       }),
   });
+
+const snapshotContainsUnsupportedCarrier = (snapshot: FolioAIEditSnapshot): boolean => {
+  let found = false;
+  sourceDocumentOf(snapshot).descendants((node) => {
+    if (node.type.name === "preservedBlock") {
+      const xml = node.attrs["xml"];
+      if (
+        typeof xml === "string" &&
+        (isAltChunkMarkup(xml) ||
+          opaqueRevisionCarrierName(xml) !== undefined ||
+          isOpaqueNestedRowMarkup(xml))
+      ) {
+        found = true;
+      }
+    }
+    const preserved = node.attrs["_preserved"];
+    if (preserved !== null && typeof preserved === "object" && "children" in preserved) {
+      const children: unknown = preserved.children;
+      if (!Array.isArray(children)) {
+        return;
+      }
+      for (const child of children) {
+        if (child === null || typeof child !== "object" || !("xml" in child)) {
+          continue;
+        }
+        const xml = child.xml;
+        if (
+          typeof xml === "string" &&
+          (opaqueRevisionCarrierName(xml) !== undefined || isOpaqueNestedRowMarkup(xml))
+        ) {
+          found = true;
+        }
+      }
+    }
+  });
+  return found;
+};
 
 type FormattingRoundTripFailureOptions = {
   invariant: CompareVerificationFailure["invariant"];
@@ -532,6 +571,13 @@ export const parseComparison = async (
     collectNumberingReferences(targetSnapshot);
     if (!baseSnapshot || !targetSnapshot) {
       unsupported.push({ reason: "story-not-editable", baseStory, targetStory });
+      continue;
+    }
+    if (
+      snapshotContainsUnsupportedCarrier(baseSnapshot) ||
+      snapshotContainsUnsupportedCarrier(targetSnapshot)
+    ) {
+      unsupported.push({ reason: "unsupported-content", baseStory, targetStory });
       continue;
     }
     const rawBaseSnapshot = baseSnapshot;
