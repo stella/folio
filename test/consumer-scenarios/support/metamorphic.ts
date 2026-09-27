@@ -34,7 +34,9 @@
  * (`directTracked` / `rejectAll` at the flow's end, `batchSequential` on a
  * seeded share of batches). The flow's own random stream is never drawn
  * from, so a seed replays the same flow with relations on or off.
- * `relationSummary()` reports what ran and what was skipped, and why.
+ * `relationSummary()` reports what ran, what was skipped and why, and how
+ * many comparisons each tolerance (a difference an open finding causes,
+ * keyed by its `FINDINGS` entry) let pass.
  */
 
 import assert from "node:assert/strict";
@@ -48,6 +50,7 @@ import {
 } from "@stll/folio-core/server";
 
 import { openReviewer } from "./documents.ts";
+import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
 import { createRandom, type Random } from "./random.ts";
@@ -117,6 +120,8 @@ export const relationSummary = (): string =>
       const why = [...reasons].map(([reason, times]) => `${reason} ×${times}`).join("; ");
       return `  ${relation}: ${count} checked${why ? `; skipped: ${why}` : ""}`;
     }),
+    "tolerated findings (comparisons each let pass that would have failed without it):",
+    ...[...ABSORBED].map(([{ finding, what }, absorbed]) => `  ${finding}: ${what}: ${absorbed}`),
   ].join("\n");
 
 // ---------------------------------------------------------------------------
@@ -226,51 +231,105 @@ const withoutKeys = (value: unknown, keys: readonly string[]): unknown => {
   );
 };
 
-// Tolerances for open findings (support/known-issues.ts), each pinned there
-// by its smallest scenario. When a fix lands the scenario's expected failure
-// fails, and the tolerance below comes out with the marker.
+// ---------------------------------------------------------------------------
+// Tolerances
+// ---------------------------------------------------------------------------
 
 /**
- * LIVE_STALE_BLOCK_FIELDS: the live reviewer does not re-resolve what a
- * paragraph's style gives it after an edit (`previewRuns`, and the
- * indentation a numbered style's level gives); the reopened package reads
- * them otherwise.
+ * A difference a relation lets through because an open finding causes it.
+ * Each is keyed by its `FINDINGS` entry (support/known-issues.ts), whose
+ * minimal repro runs as an expected failure: when a fix lands, that expected
+ * failure fails, the entry comes out of `FINDINGS`, and the tolerance stops
+ * compiling until it is deleted in the same change.
  */
-const STALE_LIVE_FIELDS = ["previewRuns", "directIndentation"];
+type ToleranceName = {
+  finding: Finding;
+  /** What the tolerance leaves out of the comparison. */
+  what: string;
+};
+type Tolerance<T> = { name: ToleranceName; apply: (value: T) => T };
+
+/** Every tolerance, with how many comparisons it let pass that would have failed without it. */
+const ABSORBED = new Map<ToleranceName, number>();
+
+const tolerate = <T>(finding: Finding, what: string, apply: (value: T) => T): Tolerance<T> => {
+  const name = { finding, what };
+  ABSORBED.set(name, 0);
+  return { name, apply };
+};
 
 /**
- * LIVE_REPLY_RANGES: a reply gains its own comment range only on save,
- * which shifts the snapshot's editor positions after it.
+ * Where `a` and `b` differ once `tolerances` are applied to both. A pair the
+ * tolerances reconcile is counted against each tolerance it needed (every
+ * one of them when no single one is needed on its own).
  */
-const EDITOR_POSITIONS = ["from", "to"];
+const tolerantDifferences = <T>(a: T, b: T, tolerances: readonly Tolerance<T>[]): string[] => {
+  const through = (value: T, list: readonly Tolerance<T>[]): T => {
+    let current = value;
+    for (const tolerance of list) current = tolerance.apply(current);
+    return current;
+  };
+  const found = differences(through(a, tolerances), through(b, tolerances));
+  if (found.length > 0 || differences(a, b).length === 0) return found;
+  const needed = tolerances.filter((tolerance) => {
+    const rest = tolerances.filter((other) => other !== tolerance);
+    return differences(through(a, rest), through(b, rest)).length > 0;
+  });
+  for (const { name } of needed.length > 0 ? needed : tolerances) {
+    ABSORBED.set(name, (ABSORBED.get(name) ?? 0) + 1);
+  }
+  return found;
+};
 
-/**
- * Markdown as a save must keep it. Revision ids are renumbered on save, and
- * two adjacent runs with the same emphasis, which a save joins, read as one
- * run. Comment tags are left out (LIVE_REPLY_RANGES: a reply's range is
- * written only on save); comment anchors are compared through getComments.
- */
-const comparableMarkdown = (markdown: string): string =>
-  markdown
-    .replace(/(<(?:ins|del)\b[^>]*?) id="[^"]*"/gu, "$1")
-    .replace(/<\/?comment\b[^>]*>/gu, "")
-    .replaceAll("****", "");
+const STALE_LIVE_FIELDS = tolerate<unknown>(
+  "LIVE_STALE_BLOCK_FIELDS",
+  "previewRuns and directIndentation left out of getContent and the snapshot",
+  (value) => withoutKeys(value, ["previewRuns", "directIndentation"]),
+);
 
-/**
- * TRACKED_DELETE_LAST_PARAGRAPH: a tracked deletion of the story's last
- * paragraph leaves an empty paragraph once accepted, where direct removes it;
- * TRACKED_LAST_PARAGRAPH_REJECT: with an insertion after it in the same
- * batch, rejecting every change leaves an empty paragraph after it.
- */
-const withoutTrailingBlank = <T extends { blocks: { text: string; table?: unknown }[] }>(
-  view: T,
-): T => {
+/** A reply's range is written only on save, which shifts the editor positions after it. */
+const REPLY_POSITIONS = tolerate<unknown>(
+  "LIVE_REPLY_RANGES",
+  "snapshot from/to positions left out",
+  (value) => withoutKeys(value, ["from", "to"]),
+);
+
+/** Comment anchors are compared through getComments. */
+const REPLY_COMMENT_TAGS = tolerate<unknown>(
+  "LIVE_REPLY_RANGES",
+  "comment tags stripped from toMarkdown",
+  (value) => String(value).replace(/<\/?comment\b[^>]*>/gu, ""),
+);
+
+type BlocksView = { blocks: readonly { text: string; table?: unknown }[] };
+
+const withoutTrailingBlank = <T extends BlocksView>(view: T): T => {
   const blocks = [...view.blocks];
   while (blocks.length > 0 && blocks.at(-1)?.text === "" && blocks.at(-1)?.table === undefined) {
     blocks.pop();
   }
   return { ...view, blocks };
 };
+
+const ACCEPTED_LAST_PARAGRAPH = tolerate<BlocksView>(
+  "TRACKED_DELETE_LAST_PARAGRAPH",
+  "a trailing empty paragraph after accept-all",
+  withoutTrailingBlank,
+);
+
+const REJECTED_LAST_PARAGRAPH = tolerate<BlocksView>(
+  "TRACKED_LAST_PARAGRAPH_REJECT",
+  "a trailing empty paragraph after reject-all",
+  withoutTrailingBlank,
+);
+
+/**
+ * Markdown as a save must keep it: revision ids are renumbered on save, and
+ * two adjacent runs with the same emphasis, which a save joins, read as one
+ * run. Neither is a finding: the package says the same either way.
+ */
+const comparableMarkdown = (markdown: string): string =>
+  markdown.replace(/(<(?:ins|del)\b[^>]*?) id="[^"]*"/gu, "$1").replaceAll("****", "");
 
 // ---------------------------------------------------------------------------
 // Package parts
@@ -576,22 +635,25 @@ const shadowProblems = async (
   switch (check) {
     case "directTracked":
       if (shadows.parted !== null) return null;
-      return differences(
-        withoutTrailingBlank(await resolvedView(await save(shadows.direct), "accept")),
-        withoutTrailingBlank(await resolvedView(await save(shadows.tracked), "accept")),
+      return tolerantDifferences<BlocksView>(
+        await resolvedView(await save(shadows.direct), "accept"),
+        await resolvedView(await save(shadows.tracked), "accept"),
+        [ACCEPTED_LAST_PARAGRAPH],
       );
     case "rejectTracked":
-      return differences(
-        withoutTrailingBlank(fixtureRejected).blocks,
-        withoutTrailingBlank(await resolvedView(await save(shadows.tracked), "reject")).blocks,
+      return tolerantDifferences<BlocksView>(
+        { blocks: fixtureRejected.blocks },
+        { blocks: (await resolvedView(await save(shadows.tracked), "reject")).blocks },
+        [REJECTED_LAST_PARAGRAPH],
       );
     case "rejectSuggested": {
       const suggested = shadows.suggested;
       if (suggested === null) return [];
       suggested.rejectAll();
-      return differences(
-        withoutTrailingBlank(fixtureRejected).blocks,
-        withoutTrailingBlank(await resolvedView(await save(suggested), "accept")).blocks,
+      return tolerantDifferences<BlocksView>(
+        { blocks: fixtureRejected.blocks },
+        { blocks: (await resolvedView(await save(suggested), "accept")).blocks },
+        [REJECTED_LAST_PARAGRAPH],
       );
     }
   }
@@ -812,12 +874,9 @@ export const startRelations = async ({
 
   const readerStability = (live: Reviewer, reopened: Reviewer, context: string): void => {
     const views = (target: Reviewer) => ({
-      getContent: withoutKeys(target.getContent(), STALE_LIVE_FIELDS),
-      snapshot: withoutKeys(createReviewerBridge(target).snapshot(), [
-        ...STALE_LIVE_FIELDS,
-        ...EDITOR_POSITIONS,
-      ]),
-      toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())),
+      getContent: target.getContent() as unknown,
+      snapshot: createReviewerBridge(target).snapshot() as unknown,
+      toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())) as unknown,
       // Which kinds of change by whom. Revision ids are renumbered on save,
       // and how a reader groups revision sites into entries (a nested
       // `w:ins > w:del`, a range split by a comment mark, a column's cells
@@ -827,16 +886,24 @@ export const startRelations = async ({
       getChanges: [
         ...new Set(target.getChanges().map((change) => `${change.type} by ${change.author}`)),
       ].sort(),
-      getComments: target.getComments(),
+      getComments: target.getComments() as unknown,
     });
+    const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
+      getContent: [STALE_LIVE_FIELDS],
+      snapshot: [STALE_LIVE_FIELDS, REPLY_POSITIONS],
+      toMarkdown: [REPLY_COMMENT_TAGS],
+      getChanges: [],
+      getComments: [],
+    };
     const a = views(live);
     const b = views(reopened);
     for (const reader of Object.keys(a) as (keyof typeof a)[]) {
-      assertSame(
-        b[reader],
-        a[reader],
-        `${context}: [readerStability] ${reader} reads otherwise after the save than before it (before → after)`,
-      );
+      const found = tolerantDifferences(a[reader], b[reader], tolerances[reader]);
+      if (found.length > 0) {
+        throw new Error(
+          `${context}: [readerStability] ${reader} reads otherwise after the save than before it (before → after):\n    ${found.join("\n    ")}`,
+        );
+      }
     }
     checked("readerStability");
   };

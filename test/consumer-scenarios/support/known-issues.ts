@@ -29,7 +29,9 @@ export const FINDINGS = {
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
   // Found by the metamorphic relations (support/metamorphic.ts) and the
-  // flows they run in; a relation tolerates the frequent ones until fixed.
+  // flows they run in. A relation tolerates the frequent ones through
+  // `tolerate(<entry>, …)`, so deleting a fixed entry here makes its
+  // tolerance fail to compile until it is deleted too.
   LIVE_STALE_BLOCK_FIELDS:
     "the live reviewer does not re-resolve what a paragraph's style gives it after an edit: a restyled paragraph keeps its old style's previewRuns, a paragraph inserted after a bold heading previews bold despite its direct bold off, and a paragraph inserted with a numbered heading style has no directIndentation; the saved package reopens with other values",
   LIVE_REPLY_RANGES:
