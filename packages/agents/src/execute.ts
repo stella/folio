@@ -544,7 +544,7 @@ const explainSkipReason = (reason: string): string => {
     return "`find` was not found in this block; re-read the block's current text and retry.";
   }
   if (reason === "unsupportedBlock") {
-    return "this block kind does not support this operation.";
+    return "this block does not support that operation; use read_document to inspect its kind and embedded content, then choose an operation for its text or containing structure. If none fits, tell the user this edit cannot be applied.";
   }
   if (reason === "unsupportedMode") {
     return "this operation does not support the requested mutation mode; inspect document operation capabilities and retry with a supported mode.";

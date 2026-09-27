@@ -1326,7 +1326,10 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     }
     const text = readString(value, "text", path);
     if (hardPageBreak !== undefined && text.length > 0) {
-      return invalidBatch(`${path}.text`, "expected empty text with hardPageBreak");
+      return invalidBatch(
+        `${path}.text`,
+        'omit hardPageBreak to insert text, or set text to "" to insert a hard page break',
+      );
     }
     if (hardPageBreak !== undefined && pageBreakBefore !== undefined) {
       return invalidBatch(
