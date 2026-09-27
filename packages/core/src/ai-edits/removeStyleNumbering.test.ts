@@ -201,3 +201,36 @@ describe("a paragraph inserted with a style of its own", () => {
     expect(labels(reopened)).toEqual(expected);
   });
 });
+
+describe("a paragraph inserted with a style of its own after a heading", () => {
+  test("takes its outline level from its new style, not the anchor's style", async () => {
+    const document = fromMarkdown("Intro.\n\nStyled heading\n\nClosing.");
+    const heading = document.package.document.content[1];
+    if (heading?.type !== "paragraph") {
+      throw new Error("fixture paragraph is missing");
+    }
+    // A heading only through its style: no outline level of its own.
+    heading.formatting = { ...heading.formatting, styleId: "Heading4" };
+    const { docx } = await ensureParaIds(await createDocx(document));
+    const reviewer = await FolioDocxReviewer.fromBuffer(docx, { author: "Agent" });
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Styled heading"),
+          text: "Body under it",
+          styleId: "Normal",
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+
+    const kindOf = (current: FolioDocxReviewer) =>
+      current.getContent().find(({ text }) => text === "Body under it")?.kind;
+    expect(kindOf(reviewer)).toBe("paragraph");
+    expect(kindOf(await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer()))).toBe("paragraph");
+  });
+});

@@ -2455,6 +2455,12 @@ const buildInsertedParagraphs = ({
             numbering,
           }),
         );
+        // The copied outline level is the anchor's effective one, its style's
+        // included; only a level the anchor states itself carries over. The
+        // save writes no other, so a heading style's level would make the
+        // paragraph a heading only until the document is reopened.
+        const original = attrs["_originalFormatting"] as ParagraphFormatting | null | undefined;
+        attrs["outlineLevel"] = original?.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
       }
     }
     if (
