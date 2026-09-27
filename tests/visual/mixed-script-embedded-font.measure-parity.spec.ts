@@ -64,6 +64,13 @@ for (const host of EDITOR_HOSTS) {
         apply(target, thisArg, args) {
           if (args[1] === 2_000) {
             console.info("[font-wait] 2000ms fallback timer scheduled");
+            const callback = args[0];
+            if (typeof callback === "function") {
+              args[0] = (...callbackArgs) => {
+                console.info("[font-wait] 2000ms fallback timer fired");
+                return callback(...callbackArgs);
+              };
+            }
           }
           return Reflect.apply(target, thisArg, args);
         },
@@ -106,6 +113,10 @@ for (const host of EDITOR_HOSTS) {
       );
     }
     await page.evaluate(() => document.fonts.ready);
+    if (host.name === "React") {
+      // oxlint-disable-next-line no-console -- Temporary bounded CI font-readiness comparison.
+      console.info(`[font-load-summary][React] ${loadStages.slice(0, 32).join(" | ")}`);
+    }
     expect(failedFontRequests).toEqual([]);
     const loadedFamilies = await page.evaluate(() =>
       [...document.fonts].filter((face) => face.status === "loaded").map((face) => face.family),
