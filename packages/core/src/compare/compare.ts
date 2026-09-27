@@ -53,8 +53,10 @@ import {
   type FolioTableTemplates,
 } from "../ai-edits/table-template";
 import {
+  alignedNoteReferenceLabels,
   numberingReferenceKeysOf,
   detachFolioAIEditSnapshotExternalHyperlinks,
+  relabelFolioAIEditSnapshotNoteReferences,
   remapFolioAIEditSnapshotNumberingReferences,
   remapFolioAIEditSnapshotStyleReferences,
   sourceDocumentOf,
@@ -640,6 +642,13 @@ export const parseComparison = async (
   });
 };
 
+/** The note-reference markers a story's plan is written in: the base's, then the target's new notes. */
+const noteReferenceLabelsOf = (pair: ComparedStoryPair) =>
+  alignedNoteReferenceLabels(
+    sourceDocumentOf(pair.baseSnapshot),
+    sourceDocumentOf(pair.targetSnapshot),
+  );
+
 /** One story's plan, kept with the pair it belongs to. */
 export type PlannedStoryComparison = { pair: ComparedStoryPair; plan: CompareStoryPlan };
 
@@ -674,10 +683,17 @@ export const planComparison = ({
     const remainingStructuralTokenLookups = workSession.alignment.remainingStructuralTokenLookups;
     const remainingMoveComparisons = workSession.remainingMoveComparisons;
     const remainingMoveTokenLookups = workSession.remainingMoveTokenLookups;
+    // Planned against the base's note-reference markers, so a reference both
+    // sides keep reads the same on both even when the revised story numbers
+    // its notes differently, and one the plan brings writes the base's marker.
+    const planningTarget = relabelFolioAIEditSnapshotNoteReferences(
+      pair.targetSnapshot,
+      noteReferenceLabelsOf(pair),
+    );
     let plan = planStoryCompare({
       story: pair.baseStory,
       baseSnapshot: pair.baseSnapshot,
-      targetSnapshot: pair.targetSnapshot,
+      targetSnapshot: planningTarget,
       maxOperations: remainingOperations,
       wholeTableReplacement: "allow",
       workSession,
@@ -692,7 +708,7 @@ export const planComparison = ({
       plan = planStoryCompare({
         story: pair.baseStory,
         baseSnapshot: pair.baseSnapshot,
-        targetSnapshot: pair.targetSnapshot,
+        targetSnapshot: planningTarget,
         maxOperations: remainingOperations,
         wholeTableReplacement: "avoid",
         workSession,
@@ -1010,6 +1026,7 @@ export const applyComparison = (
     const atoms = comparisonAccess.matchInlineAtoms({
       story: pair.baseStory,
       targetSnapshot: pair.targetSnapshot,
+      noteReferenceLabels: noteReferenceLabelsOf(pair),
       revisionStamp: { date: revisionStamp.date, idSeed },
       originalRevisionIdSeed: revisionStamp.idSeed,
       maxRanges: remainingProvenanceRanges,

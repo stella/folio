@@ -519,26 +519,66 @@ export const collectNoteReferenceLabels = (doc: PMNode): NoteReferenceLabels => 
   if (cached !== undefined) {
     return cached;
   }
-  let numbered: NoteReferenceLabels | undefined;
-  const numberStory = (): NoteReferenceLabels => {
-    const labeler = createNoteReferenceLabeler();
-    doc.descendants((node) => {
-      if (isHiddenTableRow(node)) {
-        return false;
-      }
-      if (node.isTextblock) {
-        labeler.numberBlock(node);
-        return false;
-      }
-      return true;
-    });
-    return labeler;
-  };
-  const labels: NoteReferenceLabels = {
-    labelOf: (reference) => (numbered ??= numberStory()).labelOf(reference),
-  };
+  const labels = numberNoteReferencesLazily([doc]);
   noteReferenceLabelsByStory.set(doc, labels);
   return labels;
+};
+
+/** Number the stories' references in reading order, one story after another, on first use. */
+const numberNoteReferencesLazily = (stories: readonly PMNode[]): NoteReferenceLabels => {
+  let numbered: NoteReferenceLabels | undefined;
+  const numberStories = (): NoteReferenceLabels => {
+    const labeler = createNoteReferenceLabeler();
+    for (const doc of stories) {
+      doc.descendants((node) => {
+        if (isHiddenTableRow(node)) {
+          return false;
+        }
+        if (node.isTextblock) {
+          labeler.numberBlock(node);
+          return false;
+        }
+        return true;
+      });
+    }
+    return labeler;
+  };
+  return { labelOf: (reference) => (numbered ??= numberStories()).labelOf(reference) };
+};
+
+/**
+ * @internal The markers a comparison reads a revised story's references as:
+ * each note the base story references keeps the base's marker, and a note
+ * only the revised story references is numbered after them.
+ *
+ * Each story's own reading-order numbering would renumber every later marker
+ * of the revised story as soon as a reference is added or removed before it,
+ * and a text comparison would then read a reference both stories keep as an
+ * edit of it. Numbering the revised story on from the base keeps a kept
+ * reference's marker identical, and makes a reference the comparison brings
+ * write the marker the base story (which the edits resolve against) gives it.
+ */
+export const alignedNoteReferenceLabels = (base: PMNode, revised: PMNode): NoteReferenceLabels =>
+  numberNoteReferencesLazily([base, revised]);
+
+/**
+ * @internal The same snapshot with every note reference read through `labels`
+ * rather than the story's own numbering. Only the text and structural
+ * boundaries can change: block ids, anchors and the source document do not.
+ */
+export const relabelFolioAIEditSnapshotNoteReferences = (
+  snapshot: FolioAIEditSnapshot,
+  labels: NoteReferenceLabels,
+): FolioAIEditSnapshot => {
+  const metadata = metadataOf(snapshot);
+  if (
+    !snapshot.blocks.some((block) =>
+      block.structuralBoundaries?.some(({ type }) => type === "noteReference"),
+    )
+  ) {
+    return snapshot;
+  }
+  return createFolioAIEditSnapshotInternal(metadata.sourceDocument, metadata.styleResolver, labels);
 };
 
 /** One table of a story, numbered the way {@link createFolioAIEditSnapshot} numbers it. */
@@ -652,14 +692,18 @@ const getTableLocation = ({
 const createFolioAIEditSnapshotInternal = (
   doc: PMNode,
   styleResolver: RunStyleResolver | null,
+  noteReferenceLabels?: NoteReferenceLabels,
 ): FolioAIEditSnapshot => {
   // Resolved once: the walk below classifies every block, and the index is
   // what lets a localized heading style reach the model as a heading.
   const builtInStyles = styleResolver?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
   // Numbered block by block as the walk reads them, so each reference marker
   // carries the number the page shows (and the Markdown export writes), not the
-  // package id; the same numbering `collectNoteReferenceLabels` gives.
-  const noteReferences: NoteReferenceLabeler = createNoteReferenceLabeler();
+  // package id; the same numbering `collectNoteReferenceLabels` gives. A
+  // comparison supplies its own labels instead.
+  const noteReferences: NoteReferenceLabeler = noteReferenceLabels
+    ? { labelOf: noteReferenceLabels.labelOf, numberBlock: () => {} }
+    : createNoteReferenceLabeler();
   const draftBlocks: {
     block: FolioAIBlock;
     anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;

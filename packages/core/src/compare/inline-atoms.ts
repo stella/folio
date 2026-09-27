@@ -3,7 +3,12 @@ import type { EditorState, Transaction } from "prosemirror-state";
 
 import type { FolioRevisionStamp } from "../ai-edits/apply";
 import { buildCleanBlockText, type BuildCleanBlockTextOptions } from "../ai-edits/clean-text";
-import { sourceDocumentOf } from "../ai-edits/snapshot";
+import {
+  noteReferenceOf,
+  type NoteReferenceIdentity,
+  type NoteReferenceLabels,
+} from "../ai-edits/note-references";
+import { collectNoteReferenceLabels, sourceDocumentOf } from "../ai-edits/snapshot";
 import type { FolioAIEditSnapshot } from "../ai-edits/types";
 import { drawingXmlWithoutIdentity } from "../docx/drawingIdNormalization";
 import { resolveAllChangesInHeadlessStateWithMapping } from "../prosemirror/commands/comments";
@@ -19,6 +24,11 @@ export type MatchInlineAtomsOptions = {
   originalRevisionIdSeed: number;
   author: string;
   maxRanges: number;
+  /**
+   * The markers the comparison's operations wrote note references as.
+   * Defaults to the target story's own numbering.
+   */
+  noteReferenceLabels?: NoteReferenceLabels;
 };
 
 export type MatchInlineAtomsResult =
@@ -41,12 +51,24 @@ type InlineAtom = {
   key: string;
 };
 
+/** A footnote or endnote reference read as its marker, over `length` clean-text characters. */
+type NoteReferenceAt = NoteReferenceIdentity & { offset: number; length: number; from: number };
+
 type AtomBlock = TextBlock & {
   cleanText: string;
   offsets: readonly number[];
   supported: readonly InlineAtom[];
   unsupportedTopology: readonly { offset: number; key: string }[];
+  /** Empty unless the block was read with note reference labels. */
+  noteReferences: readonly NoteReferenceAt[];
 };
+
+/**
+ * How a block's note references read. `"sourceText"` is the editor's own text
+ * for a reference (its package id); labels read it as the marker (`[^1]`) the
+ * comparison planned in, which is the text its operations write for one.
+ */
+type NoteReferenceReading = NoteReferenceLabels | "sourceText";
 
 type InsertAction = {
   kind: "insert";
@@ -63,6 +85,18 @@ type ReplaceTextAction = {
   textDisposition: "inserted" | "retained";
   targetBlockId: string | undefined;
 };
+/**
+ * Turn the marker text a comparison operation wrote (`[^1]`) back into the
+ * note reference the target holds there. The text is this comparison's own
+ * insertion, so the reference takes its place inside that insertion.
+ */
+type NoteReferenceAction = {
+  kind: "note-reference";
+  from: number;
+  to: number;
+  node: PMNode;
+  targetBlockId: string | undefined;
+};
 type ReplaceAtomAction = {
   kind: "replace-atom";
   from: number;
@@ -72,7 +106,12 @@ type ReplaceAtomAction = {
   marks: PMNode["marks"];
   targetBlockId: string | undefined;
 };
-type Action = InsertAction | DeleteAction | ReplaceTextAction | ReplaceAtomAction;
+type Action =
+  | InsertAction
+  | DeleteAction
+  | ReplaceTextAction
+  | ReplaceAtomAction
+  | NoteReferenceAction;
 
 const actionRangeCount = (action: Action): number =>
   (action.kind === "replace-text" && action.textDisposition === "retained") ||
@@ -194,8 +233,20 @@ const atomKey = (node: PMNode): string =>
 const atomBlockOf = (
   { node, from }: TextBlock,
   fieldResults: BuildCleanBlockTextOptions["fieldResults"],
+  noteReferences: NoteReferenceReading,
 ): AtomBlock => {
-  const clean = buildCleanBlockText(node, from, { fieldResults, noteReferences: "sourceText" });
+  const clean = buildCleanBlockText(node, from, { fieldResults, noteReferences });
+  const references: NoteReferenceAt[] = [];
+  for (const boundary of clean.structuralBoundaries) {
+    if (boundary.type !== "noteReference") continue;
+    references.push({
+      noteType: boundary.noteType,
+      noteId: boundary.noteId,
+      offset: boundary.offset,
+      length: boundary.length,
+      from: boundary.from,
+    });
+  }
   const supported: InlineAtom[] = [];
   const unsupportedTopology: { offset: number; key: string }[] = [];
   node.descendants((child, relativePosition) => {
@@ -236,6 +287,7 @@ const atomBlockOf = (
     offsets: clean.offsets,
     supported,
     unsupportedTopology,
+    noteReferences: references,
   };
 };
 
@@ -264,7 +316,52 @@ const targetBlockIdLookup = (snapshot: FolioAIEditSnapshot) => {
 const atomBlocksOf = (
   doc: PMNode,
   fieldResults: BuildCleanBlockTextOptions["fieldResults"],
-): AtomBlock[] => textBlocksOf(doc).map((block) => atomBlockOf(block, fieldResults));
+  noteReferences: NoteReferenceReading = "sourceText",
+): AtomBlock[] =>
+  textBlocksOf(doc).map((block) => atomBlockOf(block, fieldResults, noteReferences));
+
+const noteReferenceKey = ({ noteType, noteId }: NoteReferenceIdentity): string =>
+  `${noteType}:${noteId}`;
+
+/** Every note a story references, tracked-deleted references included. */
+const referencedNotesOf = (doc: PMNode): ReadonlySet<string> => {
+  const notes = new Set<string>();
+  doc.descendants((node) => {
+    const reference = noteReferenceOf(node);
+    if (reference) notes.add(noteReferenceKey(reference));
+    return !node.isText;
+  });
+  return notes;
+};
+
+const hasNoteReference = (doc: PMNode): boolean => {
+  let found = false;
+  doc.descendants((node) => {
+    if (found) return false;
+    if (noteReferenceOf(node)) found = true;
+    return !node.isText;
+  });
+  return found;
+};
+
+/**
+ * Whether this comparison inserted text that may stand for a note reference.
+ * Operations carry clean text, where a reference reads as its marker, so an
+ * operation that brings a reference writes the marker as text.
+ */
+const wroteNoteReferenceMarker = (doc: PMNode, originalRevisionIdSeed: number): boolean => {
+  let found = false;
+  doc.descendants((node) => {
+    if (found) return false;
+    if (!node.isText) return true;
+    if (!node.text?.includes("[^") || noteReferenceOf(node)) return false;
+    const insertion = node.marks.find(({ type }) => type.name === "insertion");
+    const revisionId: unknown = insertion?.attrs["revisionId"];
+    if (typeof revisionId === "number" && revisionId >= originalRevisionIdSeed) found = true;
+    return false;
+  });
+  return found;
+};
 
 const sameBlockTopology = (left: AtomBlock, right: AtomBlock): boolean => {
   if (left.node.type !== right.node.type || left.cleanText !== right.cleanText) return false;
@@ -493,20 +590,19 @@ const sameParagraphSourcePosition = ({
   reviewed,
   offset,
   fieldResults,
+  noteReferences,
 }: {
   sourceBlocks: ReadonlyMap<string, TextBlock | null>;
   reviewed: AtomBlock;
   offset: number;
   fieldResults: BuildCleanBlockTextOptions["fieldResults"];
+  noteReferences: NoteReferenceReading;
 }): number | null => {
   const paraId = reviewed.node.attrs["paraId"];
   if (typeof paraId !== "string" || paraId.length === 0) return null;
   const source = sourceBlocks.get(paraId);
   if (!source || source.node.type !== reviewed.node.type) return null;
-  const clean = buildCleanBlockText(source.node, source.from, {
-    fieldResults,
-    noteReferences: "sourceText",
-  });
+  const clean = buildCleanBlockText(source.node, source.from, { fieldResults, noteReferences });
   return clean.text === reviewed.cleanText ? (clean.offsets[offset] ?? null) : null;
 };
 
@@ -575,7 +671,8 @@ const atomDisposition = ({
 };
 
 /**
- * Restore field, image, and page-break atoms omitted by text-only comparison operations.
+ * Restore field, image, and page-break atoms omitted by text-only comparison
+ * operations, and the note references whose markers they wrote as text.
  * Positions come from the legacy review resolver's mapping, never a guessed
  * paragraph correspondence: paragraph-mark deletions can merge paragraphs.
  */
@@ -586,10 +683,24 @@ export const matchInlineAtoms = ({
   originalRevisionIdSeed,
   author,
   maxRanges,
+  noteReferenceLabels,
 }: MatchInlineAtomsOptions): MatchInlineAtomsResult => {
   if (!Number.isSafeInteger(maxRanges) || maxRanges < 0) return { status: "budget-exceeded" };
   const targetDocument = sourceDocumentOf(targetSnapshot);
-  if (!hasSupportedAtom(state.doc) && !hasSupportedAtom(targetDocument)) {
+  // An operation that brings a note reference writes its marker, which is
+  // the reference's clean text. Reading both sides' references with the
+  // markers the plan was written in lines that text up with the reference
+  // it stands for.
+  const restoresNoteReferences =
+    wroteNoteReferenceMarker(state.doc, originalRevisionIdSeed) && hasNoteReference(targetDocument);
+  const noteReferences: NoteReferenceReading = restoresNoteReferences
+    ? (noteReferenceLabels ?? collectNoteReferenceLabels(targetDocument))
+    : "sourceText";
+  if (
+    !restoresNoteReferences &&
+    !hasSupportedAtom(state.doc) &&
+    !hasSupportedAtom(targetDocument)
+  ) {
     return {
       status: "matched",
       transaction: state.tr,
@@ -602,8 +713,8 @@ export const matchInlineAtoms = ({
   const reviewed = resolveAllChangesInHeadlessStateWithMapping(state, "accept");
   const targetBlockIdAt = targetBlockIdLookup(targetSnapshot);
   let sourceBlocks: ReadonlyMap<string, TextBlock | null> | undefined;
-  const liveBlocks = atomBlocksOf(reviewed.state.doc, "text");
-  const targetBlocks = atomBlocksOf(targetDocument, "text");
+  const liveBlocks = atomBlocksOf(reviewed.state.doc, "text", noteReferences);
+  const targetBlocks = atomBlocksOf(targetDocument, "text", noteReferences);
   if (liveBlocks.length !== targetBlocks.length) {
     return { status: "unalignable" };
   }
@@ -617,11 +728,80 @@ export const matchInlineAtoms = ({
     actions.push(action);
     return true;
   };
+  let referencedNotes: ReadonlySet<string> | undefined;
   let omittedLiveBlocks: readonly AtomBlock[] | undefined;
   let omittedTargetBlocks: readonly AtomBlock[] | undefined;
   for (const [index, fullLive] of liveBlocks.entries()) {
     const fullTarget = targetBlocks[index];
     if (!fullTarget) return { status: "unalignable" };
+    if (
+      (fullLive.noteReferences.length > 0 || fullTarget.noteReferences.length > 0) &&
+      fullLive.cleanText === fullTarget.cleanText
+    ) {
+      const kept = new Map(
+        fullLive.noteReferences.map((reference) => [reference.offset, reference]),
+      );
+      for (const reference of fullTarget.noteReferences) {
+        const live = kept.get(reference.offset);
+        if (live) {
+          kept.delete(reference.offset);
+          if (
+            noteReferenceKey(live) !== noteReferenceKey(reference) ||
+            live.length !== reference.length
+          ) {
+            return { status: "unalignable" };
+          }
+          continue;
+        }
+        // The marker is text this comparison wrote. It may only stand for a
+        // note the story already references: a reference to a note the base
+        // does not have would point at nothing in the redline.
+        referencedNotes ??= referencedNotesOf(state.doc);
+        if (!referencedNotes.has(noteReferenceKey(reference))) return { status: "unalignable" };
+        const node = targetDocument.nodeAt(reference.from);
+        const reviewedFrom = fullLive.offsets[reference.offset];
+        const reviewedLast = fullLive.offsets[reference.offset + reference.length - 1];
+        if (
+          !node ||
+          !noteReferenceOf(node) ||
+          reviewedFrom === undefined ||
+          reviewedLast === undefined
+        ) {
+          return { status: "unalignable" };
+        }
+        const from = mappedSourcePosition({ mapping: reviewed.mapping, position: reviewedFrom });
+        const to = mappedSourcePosition({ mapping: reviewed.mapping, position: reviewedLast + 1 });
+        if (
+          from === null ||
+          to === null ||
+          textRangeDisposition({
+            doc: state.doc,
+            from,
+            to,
+            expectedText: fullTarget.cleanText.slice(
+              reference.offset,
+              reference.offset + reference.length,
+            ),
+            originalRevisionIdSeed,
+          }) !== "inserted"
+        ) {
+          return { status: "unalignable" };
+        }
+        if (
+          !planAction({
+            kind: "note-reference",
+            from,
+            to,
+            node,
+            targetBlockId: targetBlockIdAt(fullTarget.from),
+          })
+        ) {
+          return { status: "budget-exceeded" };
+        }
+      }
+      // A reference the reviewed story keeps where the target has none.
+      if (kept.size > 0) return { status: "unalignable" };
+    }
     if (fullLive.supported.length === 0 && fullTarget.supported.length === 0) continue;
     // An unsupported zero-width neighbor cannot make an unchanged supported
     // carrier need reconciliation. Package-local comment ids are the common
@@ -632,8 +812,8 @@ export const matchInlineAtoms = ({
     let target = fullTarget;
     let fieldResults: BuildCleanBlockTextOptions["fieldResults"] = "text";
     if (!sameBlockTopology(live, target)) {
-      omittedLiveBlocks ??= atomBlocksOf(reviewed.state.doc, "omitted");
-      omittedTargetBlocks ??= atomBlocksOf(targetDocument, "omitted");
+      omittedLiveBlocks ??= atomBlocksOf(reviewed.state.doc, "omitted", noteReferences);
+      omittedTargetBlocks ??= atomBlocksOf(targetDocument, "omitted", noteReferences);
       const omittedLive = omittedLiveBlocks[index];
       const omittedTarget = omittedTargetBlocks[index];
       if (!omittedLive || !omittedTarget || !sameBlockTopology(omittedLive, omittedTarget)) {
@@ -706,6 +886,7 @@ export const matchInlineAtoms = ({
           reviewed: live,
           offset: atom.offset,
           fieldResults,
+          noteReferences,
         });
       if (from === null) return { status: "unalignable" };
       const resultText = runFormattingInlineAtomResultText(atom.node);
@@ -800,6 +981,20 @@ export const matchInlineAtoms = ({
             .create({ revisionId: nextRevisionId++, author, date: revisionStamp.date })
             .addToSet(action.node.marks),
         ),
+      );
+      if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
+      continue;
+    }
+    if (action.kind === "note-reference") {
+      const from = transaction.mapping.map(action.from, 1);
+      const to = transaction.mapping.map(action.to, -1);
+      const written = transaction.doc.nodeAt(from);
+      const noteMark = action.node.marks.find(({ type }) => type.name === "footnoteRef");
+      if (from >= to || !written?.isText || !noteMark) return { status: "unalignable" };
+      transaction.replaceWith(
+        from,
+        to,
+        state.schema.text(action.node.text ?? "", noteMark.addToSet(written.marks)),
       );
       if (action.targetBlockId) changedTargetBlockIds.add(action.targetBlockId);
       continue;
