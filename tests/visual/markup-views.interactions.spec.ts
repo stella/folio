@@ -51,6 +51,10 @@ const chooseView = async (page: Page, adapter: AdapterFixture, label: string): P
     return;
   }
   await page.locator(".review-controls__display").click();
+  await page.locator(".paged-editor__pages").evaluate((pages) => {
+    pages.dispatchEvent(new Event("scroll"));
+  });
+  await expect(page.locator(".review-controls__option", { hasText: label })).toBeVisible();
   // Playwright's actionability wait sees this option detached and re-created
   // for as long as the test runs; the click handler is all a choice runs.
   await page.locator(".review-controls__option", { hasText: label }).dispatchEvent("click");

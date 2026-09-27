@@ -29,7 +29,7 @@ const props = withDefaults(
     panelClass?: string;
     /** Extra panel inline styles. */
     panelStyle?: CSSProperties;
-    /** Close when the user scrolls outside the panel (default true). */
+    /** Close when the trigger's scroll container moves (default true). */
     closeOnScroll?: boolean;
   }>(),
   { placement: "bottom-left", closeOnScroll: true },
@@ -93,6 +93,9 @@ function onScroll(e: Event) {
   // *inside* the panel (e.g. an overflow-y:auto menu) must not dismiss it.
   if (!props.closeOnScroll || !props.open) return;
   if (e.target instanceof Node && panelRef.value?.contains(e.target)) return;
+  // Scrolling unrelated document content does not move the trigger. Closing
+  // here can dismiss the menu while the editor is still laying out pages.
+  if (e.target instanceof Node && rootRef.value && !e.target.contains(rootRef.value)) return;
   close();
 }
 function onResize() {
