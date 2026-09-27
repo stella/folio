@@ -188,6 +188,7 @@ import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { autocompleteSuggestionPlugin } from "@stll/folio-core/prosemirror/plugins/autocompleteSuggestion";
 import {
   createSuggestionModePlugin,
+  deleteSelectionAsSuggestion,
   setSuggestionMode,
 } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import { createTemplateDirectivesPlugin } from "@stll/folio-core/prosemirror/plugins/templateDirectives";
@@ -1385,6 +1386,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     const pmDoc = pagedEditorRef.current?.getDocument();
     if (pmDoc) {
       doc.package.document.content = pmDoc.package.document.content;
+      if (pmDoc.package.numbering) {
+        doc.package.numbering = pmDoc.package.numbering;
+      } else {
+        delete doc.package.numbering;
+      }
       if (pmDoc.package.footnotes !== undefined) {
         doc.package.footnotes = pmDoc.package.footnotes;
       }
@@ -2566,7 +2572,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
           const { from, to } = view.state.selection;
           const text = view.state.doc.textBetween(from, to, "\n");
           void navigator.clipboard.writeText(text).catch(() => undefined);
-          view.dispatch(view.state.tr.deleteSelection());
+          if (!deleteSelectionAsSuggestion(view.state, view.dispatch)) {
+            view.dispatch(view.state.tr.deleteSelection());
+          }
           onCut?.();
           break;
         }
