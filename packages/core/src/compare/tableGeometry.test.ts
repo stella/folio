@@ -662,8 +662,10 @@ describe("table geometry round trip", () => {
   test(
     "accepting reproduces the target's table model and rejecting reproduces the base's",
     async () => {
-      await fc.assert(
-        fc.asyncProperty(tableArbitrary(), tableArbitrary(), async (baseTable, targetTable) => {
+      const roundTripProperty = fc.asyncProperty(
+        tableArbitrary(),
+        tableArbitrary(),
+        async (baseTable, targetTable) => {
           const base = await buildBodySequenceDocx([INTRO, baseTable, OUTRO]);
           const target = await buildBodySequenceDocx([INTRO, targetTable, OUTRO]);
           const result = await compareDocx(base, target, OPTIONS);
@@ -678,9 +680,10 @@ describe("table geometry round trip", () => {
           expect(projectTableGeometry(compared.storyTables({ view: "original" }))).toEqual(
             projectTableGeometry((await FolioDocxReviewer.fromBuffer(base)).storyTables()),
           );
-        }),
-        propertyConfig(),
+        },
       );
+      await fc.assert(roundTripProperty, propertyConfig({ seed: -2012280836 }));
+      await fc.assert(roundTripProperty, propertyConfig());
     },
     propertyTestTimeout(),
   );

@@ -2294,7 +2294,7 @@ const pairTableRows = <Block extends FolioContentBlock>({
     item: row,
     profile: rowStructureProfile(row, idStability),
   });
-  return alignProfiledContentSequence({
+  const aligned = alignProfiledContentSequence({
     base: baseRows.map(profile),
     revised: revisedRows.map(profile),
     workSession,
@@ -2305,7 +2305,23 @@ const pairTableRows = <Block extends FolioContentBlock>({
     primaryEvidence: "exact",
     similarityFactor: (base, revised) =>
       base.profile.physicalCellCount === revised.profile.physicalCellCount ? 1 : 0.5,
-  }).map((alignment): TableRowAlignment<Block> => {
+  });
+  // A paired table needs a surviving row when every row's words change.
+  // Otherwise a delete of its sole row removes the table before the new rows
+  // can be attached, and the derived batch cannot represent the replacement.
+  if (
+    baseRows.length === 1 &&
+    revisedRows.length > 0 &&
+    !aligned.some(({ type }) => type === "pair")
+  ) {
+    return [
+      { type: "pair", baseRow: baseRows[0], revisedRow: revisedRows[0] },
+      ...revisedRows
+        .slice(1)
+        .map((row): TableRowAlignment<Block> => ({ type: "revisedOnly", row })),
+    ];
+  }
+  return aligned.map((alignment): TableRowAlignment<Block> => {
     switch (alignment.type) {
       case "pair":
         return { type: "pair", baseRow: alignment.base, revisedRow: alignment.revised };

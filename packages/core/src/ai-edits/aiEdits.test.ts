@@ -3936,7 +3936,7 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc.child(0).child(1).textContent).toBe("CNew bottom");
   });
 
-  test("maps column deletion through earlier operations in a mixed batch", () => {
+  test("refuses a row insertion after column deletion and applies the independent insertion", () => {
     const rows = [
       ["A", "B"],
       ["C", "D"],
@@ -3965,7 +3965,7 @@ describe("Folio AI edit operations", () => {
         {
           id: "insert-row",
           type: "insertTableRow",
-          blockId: "mapped-column-C",
+          blockId: "mapped-column-D",
           cellTexts: ["E", "F"],
         },
         {
@@ -3978,12 +3978,18 @@ describe("Folio AI edit operations", () => {
       mode: "direct",
     });
 
-    expect(result.skipped).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        id: "insert-row",
+        reason: "overlappingOperation",
+        message: 'operation "delete-column", earlier in this batch, already claims its target.',
+      },
+    ]);
     expect(view.state.doc.child(0).textContent).toBe("Before table");
     const updatedTable = view.state.doc.child(1);
     expect(TableMap.get(updatedTable).width).toBe(1);
-    expect(updatedTable.childCount).toBe(3);
-    expect(updatedTable.textContent).toBe("BDF");
+    expect(updatedTable.childCount).toBe(2);
+    expect(updatedTable.textContent).toBe("BD");
   });
 
   test("table-column deletes create one revision across every removed cell", () => {
