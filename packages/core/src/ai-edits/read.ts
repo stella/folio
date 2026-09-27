@@ -12,7 +12,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import type { RunPropertyChange } from "../types/document";
-import { expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  expectRunPropertyChangeMarkAttrs,
+  expectTrackedChangeMarkAttrs,
+} from "../prosemirror/attrs";
 import {
   expandRunFormattingCarrier,
   runFormattingCarrierReviewText,
@@ -155,10 +158,9 @@ type RowRevisionScope = {
  * an author + timestamp match counts too. A third party's edit inside the row
  * matches neither and keeps its own entry.
  */
-const belongsToRowRevision = (
-  scope: RowRevisionScope,
-  revision: { id: number; author: string; date: string | null },
-): boolean =>
+type RevisionInfo = { id: number; author: string; date: string | null };
+
+const belongsToRowRevision = (scope: RowRevisionScope, revision: RevisionInfo): boolean =>
   revision.id === scope.change.id ||
   (revision.author === scope.change.author && revision.date === scope.change.date);
 
@@ -378,25 +380,46 @@ const getTrackedChangesFromProjectedDoc = (
       } else {
         continue;
       }
-      const revisionId = mark.attrs["revisionId"];
       const author = mark.attrs["author"];
       const date = mark.attrs["date"];
-      const revision = {
-        id: revisionId,
-        author: typeof author === "string" ? author : "",
-        date: typeof date === "string" ? date : null,
-      };
-      const rowScope = rowRevisionScopes.at(-1);
-      if (rowScope?.kind === kind && belongsToRowRevision(rowScope, revision)) {
-        continue;
+      // A parsed `w:ins > w:del` is one deletion mark that records the
+      // insertion around it as an ancestor, where an edit made in this
+      // session carries two marks. Both are the same two revisions: read the
+      // ancestors too, so a save and reopen lists what the reviewer showed.
+      const layers: { kind: FolioReviewChangeKind; revision: RevisionInfo }[] = [
+        ...(expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors ?? []).map((ancestor) => ({
+          kind:
+            ancestor.type === "insertion" || ancestor.type === "moveTo"
+              ? ("insertion" as const)
+              : ("deletion" as const),
+          revision: {
+            id: ancestor.revisionId,
+            author: ancestor.author,
+            date: ancestor.date ?? null,
+          },
+        })),
+        {
+          kind,
+          revision: {
+            id: mark.attrs["revisionId"],
+            author: typeof author === "string" ? author : "",
+            date: typeof date === "string" ? date : null,
+          },
+        },
+      ];
+      for (const { kind: layerKind, revision } of layers) {
+        const rowScope = rowRevisionScopes.at(-1);
+        if (rowScope?.kind === layerKind && belongsToRowRevision(rowScope, revision)) {
+          continue;
+        }
+        const key = `${currentBlockId ?? ""}:${layerKind}:${revision.id}`;
+        const existing = grouped.get(key);
+        if (existing) {
+          existing.text += text;
+          continue;
+        }
+        grouped.set(key, { ...revision, type: layerKind, text, blockId: currentBlockId });
       }
-      const key = `${currentBlockId ?? ""}:${kind}:${revisionId}`;
-      const existing = grouped.get(key);
-      if (existing) {
-        existing.text += text;
-        continue;
-      }
-      grouped.set(key, { ...revision, type: kind, text, blockId: currentBlockId });
     }
     return undefined;
   });
