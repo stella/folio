@@ -18,6 +18,8 @@ import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchor
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import { closestHtmlElement, queryHtmlElement } from "@stll/folio-core/utils/domGuards";
 import { containedHandler } from "../utils/contained-handler";
+import { useDrawerFocus } from "./panelDrawer";
+import { PANEL_METRICS } from "./panelLayout";
 
 /** Extract plain text from a Comment's paragraph content */
 function getCommentText(paragraphs?: Paragraph[]): string {
@@ -124,10 +126,29 @@ export type CommentsSidebarProps = {
   editorContainerRef?: React.RefObject<HTMLDivElement | null>;
   /** Pre-computed Y positions from layout engine (keys: "comment-{id}") */
   anchorPositions?: Map<string, number>;
-  /** Temporary position for a newly added comment before layout anchors update. */
+  /**
+   * `column`: beside the page, in the gutter the editor reserved for it.
+   * `drawer`: over the page at the viewport's end edge, on its own surface.
+   */
+  surface?: "column" | "drawer";
+  /** Drawer only: close it (Escape, or a press outside it). */
+  onDismiss?: () => void;
 };
 
-export const SIDEBAR_WIDTH = 280;
+export const SIDEBAR_WIDTH = PANEL_METRICS.commentsWidth;
+
+/** A drawer is a surface of its own over the page; a column is transparent. */
+const DRAWER_SURFACE_STYLE: React.CSSProperties = {
+  boxSizing: "border-box",
+  paddingInline: PANEL_METRICS.commentsGap,
+  // Opaque: the canvas tint laid over the page colour.
+  background: "var(--doc-canvas-surface)",
+  borderInlineStart: "1px solid var(--doc-border)",
+  boxShadow: "0 8px 28px var(--doc-shadow-md)",
+  outline: "none",
+};
+
+const COLUMN_SURFACE_STYLE: React.CSSProperties = { backgroundColor: "transparent" };
 
 // Minimum gap between stacked cards to avoid overlap
 const MIN_CARD_GAP = 6;
@@ -189,6 +210,8 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   pageWidth = 816,
   editorContainerRef,
   anchorPositions,
+  surface = "column",
+  onDismiss,
 }) => {
   const t = useTranslations("folio");
   const locale = useLocale();
@@ -205,6 +228,13 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const lastKnownCardPositionsRef = useRef<Map<string, number>>(new Map());
   const sidebarRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const isDrawer = surface === "drawer";
+  const [drawerBox, setDrawerBox] = useState<{ top: number; width: number; height: number }>({
+    top: 0,
+    width: PANEL_METRICS.drawerWidth,
+    height: 0,
+  });
+  useDrawerFocus(sidebarRef, isDrawer && onDismiss ? onDismiss : null, "container");
 
   const updateSidebarLeft = useCallback(() => {
     const scrollEl = editorContainerRef?.current;
@@ -219,11 +249,27 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
 
     const parentRect = offsetParent.getBoundingClientRect();
+    if (isDrawer) {
+      // Pinned to the end edge of the visible viewport, whatever the scroll,
+      // and reaching up over the sticky ruler to the top of the scroll content.
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const top = -Math.round(parentRect.top - scrollRect.top + scrollEl.scrollTop);
+      const width = Math.min(PANEL_METRICS.drawerWidth, scrollEl.clientWidth - 16);
+      const height = scrollEl.clientHeight;
+      const viewportEnd = scrollRect.left + scrollEl.clientWidth;
+      setDrawerBox((box) =>
+        box.top === top && box.width === width && box.height === height
+          ? box
+          : { top, width, height },
+      );
+      setMeasuredLeft(viewportEnd - parentRect.left - width);
+      return;
+    }
     const pageRect = pageEl.getBoundingClientRect();
-    const rawLeft = pageRect.right - parentRect.left + 12;
+    const rawLeft = pageRect.right - parentRect.left + PANEL_METRICS.commentsGap;
     const maxVisibleLeft = Math.max(8, parentRect.width - SIDEBAR_WIDTH - 8);
     setMeasuredLeft(Math.max(8, Math.min(rawLeft, maxVisibleLeft)));
-  }, [editorContainerRef]);
+  }, [editorContainerRef, isDrawer]);
 
   useLayoutEffect(() => {
     updateSidebarLeft();
@@ -284,9 +330,7 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
   const getReplies = (commentId: number) => repliesByParent.get(commentId) ?? [];
 
   // Find Y positions for comment/change anchors.
-  // Uses pre-computed layout positions (anchorPositions) as primary source —
-  // these work even for virtualized pages that haven't rendered to DOM.
-  // Falls back to DOM queries for rendered elements (e.g., when anchorPositions unavailable).
+  // Prefer rendered anchors; layout positions cover virtualized pages.
   const updateCardPositions = useCallback(() => {
     const container = editorContainerRef?.current;
     if (!container) {
@@ -558,10 +602,25 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
         nextExpandedCard === null && activeCommentId === commentId ? null : commentId,
       );
     }
+    if (isDrawer && commentId !== undefined && nextExpandedCard !== null) {
+      revealAnchor(cardId);
+    }
   };
 
-  // Determine if we have valid positions (fallback to stacked layout if not)
-  const hasPositions = cardPositions.size > 0;
+  // A drawer lists its cards rather than pinning them beside their text, so
+  // opening one scrolls the document to the text it is about.
+  const revealAnchor = (cardId: string) => {
+    const scrollEl = editorContainerRef?.current;
+    const anchorY = lastKnownCardPositionsRef.current.get(cardId) ?? anchorPositions?.get(cardId);
+    if (!scrollEl || anchorY === undefined) {
+      return;
+    }
+    scrollEl.scrollTop = Math.max(0, anchorY - scrollEl.clientHeight / 3);
+  };
+
+  // Cards sit beside their anchors when positions are known; a drawer, and a
+  // column before the first measurement, stack them instead.
+  const hasPositions = !isDrawer && cardPositions.size > 0;
 
   // --- Shared styles ---
   const avatarStyle = (name: string, size: 28 | 22 = 28): React.CSSProperties => ({
@@ -994,26 +1053,43 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     <aside
       ref={sidebarRef}
       className="docx-comments-sidebar"
-      aria-label="Comments"
+      aria-label={t("comments.visibility")}
+      data-folio-comments-surface={surface}
+      data-testid="folio-comments"
+      tabIndex={isDrawer ? -1 : undefined}
       style={{
         position: "absolute",
-        top: topOffset,
-        left: measuredLeft ?? `calc(50% - 120px + ${pageWidth / 2 + 12}px)`,
+        top: isDrawer ? drawerBox.top : topOffset,
+        left: measuredLeft ?? `calc(50% - 120px + ${pageWidth / 2 + PANEL_METRICS.commentsGap}px)`,
         bottom: 0,
-        width: SIDEBAR_WIDTH,
+        width: isDrawer ? drawerBox.width : SIDEBAR_WIDTH,
         fontFamily: "inherit",
-        zIndex: 40,
-        backgroundColor: "transparent",
+        zIndex: isDrawer ? 46 : 40,
         overflowY: "visible",
         overflowX: "visible",
-        opacity: initialPositionsDone || cardPositions.size > 0 ? 1 : 0,
-        pointerEvents: initialPositionsDone || cardPositions.size > 0 ? "auto" : "none",
+        opacity: isDrawer || initialPositionsDone || cardPositions.size > 0 ? 1 : 0,
+        pointerEvents: isDrawer || initialPositionsDone || cardPositions.size > 0 ? "auto" : "none",
         transition: "opacity 0.15s ease",
+        ...(isDrawer ? DRAWER_SURFACE_STYLE : COLUMN_SURFACE_STYLE),
       }}
       onMouseDown={containedHandler((e: React.MouseEvent) => e.stopPropagation())}
     >
-      {/* Cards container — relative for absolute card positioning */}
-      <div style={{ position: "relative" }}>
+      {/* Cards container — relative for absolute card positioning; in a
+          drawer, a list pinned to the viewport that scrolls on its own. */}
+      <div
+        style={
+          isDrawer
+            ? {
+                position: "sticky",
+                top: 0,
+                maxHeight: drawerBox.height || undefined,
+                overflowY: "auto",
+                paddingBlock: PANEL_METRICS.commentsGap,
+                boxSizing: "border-box",
+              }
+            : { position: "relative" }
+        }
+      >
         {/* New comment input — positioned like other cards via cardPositions */}
         {isAddingComment && (
           <div

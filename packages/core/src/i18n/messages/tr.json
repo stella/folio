@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Düzenleme",
       "editingDescription": "Belgeyi doğrudan düzenleyin",
+      "outlineTitle": "Ana hat",
       "showDocumentOutline": "Belge ana hattı",
       "suggesting": "Önerme",
       "suggestingDescription": "Düzenlemeler izlenen önerilere dönüşür",

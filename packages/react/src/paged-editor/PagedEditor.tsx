@@ -365,8 +365,8 @@ export type PagedEditorProps = {
   className?: string;
   /** Custom styles. */
   style?: CSSProperties;
-  /** Whether comments sidebar is open (shifts document left). */
-  commentsSidebarOpen?: boolean;
+  /** Width reserved after the page for the comments column; the page centres in what is left. */
+  pageEndGutter?: number;
   /** Sidebar overlay rendered inside the scroll container (scrolls with document). */
   sidebarOverlay?: React.ReactNode;
   /** Ref callback for the scroll container element. */
@@ -500,7 +500,6 @@ type EnsureHiddenEditorViewOptions = {
 // =============================================================================
 
 export const DEFAULT_PAGE_GAP = 24;
-export const COMMENTS_SIDEBAR_SCROLL_GUTTER = 304;
 
 /** Distance in px from a row/column boundary that triggers the insert button */
 /** Distance in px from the table edge where boundary detection is active */
@@ -1349,7 +1348,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       onBodyClick,
       className,
       style,
-      commentsSidebarOpen = false,
+      pageEndGutter = 0,
       sidebarOverlay,
       scrollContainerRef: scrollContainerRefProp,
       onHyperlinkClick,
@@ -5795,10 +5794,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       return numPages * pageSize.h + (numPages - 1) * pageGap + 48;
     }, [layout, pageSize.h, pageGap]);
     const scaledViewportHeight = Math.max(1, totalHeight * zoom);
-    const scaledViewportWidth = Math.max(
-      1,
-      pageSize.w * zoom + (commentsSidebarOpen ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
-    );
+    let widestPageWidth = layout?.pages.length ? 0 : pageSize.w;
+    for (const page of layout?.pages ?? []) {
+      widestPageWidth = Math.max(widestPageWidth, page.size.w);
+    }
+    const scaledViewportWidth = Math.max(1, widestPageWidth * zoom + pageEndGutter);
     const viewportExtentStyle: CSSProperties = {
       position: "relative",
       width: `max(100%, ${String(scaledViewportWidth)}px)`,
@@ -5817,7 +5817,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       position: "absolute",
       top: 0,
       left: `max(0px, calc((100% - ${String(scaledViewportWidth)}px) / 2))`,
-      width: pageSize.w,
+      width: widestPageWidth,
       minHeight: totalHeight,
       transform: (() => {
         const parts: string[] = [];

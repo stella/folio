@@ -4,6 +4,8 @@ GlobalRegistrator.register();
 
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { Comment } from "@stll/folio-core/types/content";
+import type { Document } from "@stll/folio-core/types/document";
+import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -39,6 +41,8 @@ type Harness = {
 };
 
 type MountOptions = {
+  doc?: Document;
+  autoOpenReviewSidebar?: boolean;
   commentsProp?: Comment[];
   onCommentsChange?: (comments: Comment[]) => void;
   /** Painted content root the highlight sync reads its anchors from. */
@@ -52,15 +56,21 @@ const makeComment = (id: number): Comment => ({
   content: [],
 });
 
-const mount = ({ commentsProp, onCommentsChange, editorContent }: MountOptions = {}): Harness => {
+const mount = ({
+  doc,
+  autoOpenReviewSidebar = false,
+  commentsProp,
+  onCommentsChange,
+  editorContent,
+}: MountOptions = {}): Harness => {
   let latest: Hook | null = null;
   let bump: (() => void) | null = null;
   const Host = () => {
     const [, setTick] = useState(0);
     bump = () => setTick((tick) => tick + 1);
     latest = useFolioComments({
-      doc: null,
-      autoOpenReviewSidebar: false,
+      doc: doc ?? null,
+      autoOpenReviewSidebar,
       anchorPositions: new Map(),
       editorContentRef: { current: editorContent ?? null },
       commentsProp,
@@ -187,5 +197,25 @@ describe("useFolioComments highlight sync", () => {
     act(() => harness.hook.setActiveCommentId(9));
     expect(inBoth.dataset["activeComment"]).toBe("true");
     expect(inOne.dataset["activeComment"]).toBeUndefined();
+  });
+});
+
+describe("useFolioComments auto-open", () => {
+  const openOnLoad = (comments: Comment[]) => {
+    const doc = createEmptyDocument();
+    doc.package.document.comments = comments;
+    return mount({ doc, autoOpenReviewSidebar: true }).hook.showCommentsSidebar;
+  };
+
+  test("opens the sidebar when a thread would show a card", () => {
+    expect(openOnLoad([makeComment(1)])).toBe(true);
+  });
+
+  test("keeps the sidebar closed when it would be empty", () => {
+    // Resolved threads and replies have no card of their own, so the panel
+    // would only say "No comments yet."
+    const resolved = { ...makeComment(1), done: true };
+    const reply = { ...makeComment(2), parentId: 1 };
+    expect(openOnLoad([resolved, reply])).toBe(false);
   });
 });

@@ -345,6 +345,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Editing",
         "editingDescription": "Edit the document directly",
+        "outlineTitle": "Outline",
         "showDocumentOutline": "Document outline",
         "suggesting": "Suggesting",
         "suggestingDescription": "Edits become tracked suggestions",
@@ -999,6 +1000,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Bearbeiten",
         "editingDescription": "Dokument direkt bearbeiten",
+        "outlineTitle": "Gliederung",
         "showDocumentOutline": "Dokumentgliederung",
         "suggesting": "Vorschlagen",
         "suggestingDescription": "Bearbeitungen werden zu nachverfolgten Vorschlägen",
@@ -1653,6 +1655,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Modification",
         "editingDescription": "Modifier directement le document",
+        "outlineTitle": "Plan",
         "showDocumentOutline": "Plan du document",
         "suggesting": "Suggestion",
         "suggestingDescription": "Les modifications deviennent des suggestions suivies",
@@ -2307,6 +2310,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Edición",
         "editingDescription": "Editar el documento directamente",
+        "outlineTitle": "Esquema",
         "showDocumentOutline": "Esquema del documento",
         "suggesting": "Sugerencias",
         "suggestingDescription": "Las ediciones se convierten en sugerencias con seguimiento",
@@ -2961,6 +2965,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Úpravy",
         "editingDescription": "Upravovat dokument přímo",
+        "outlineTitle": "Osnova",
         "showDocumentOutline": "Osnova dokumentu",
         "suggesting": "Návrhy",
         "suggestingDescription": "Úpravy se převedou na sledované návrhy",
@@ -3615,6 +3620,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "تحرير",
         "editingDescription": "تحرير المستند مباشرةً",
+        "outlineTitle": "المخطط",
         "showDocumentOutline": "مخطط المستند",
         "suggesting": "اقتراح",
         "suggestingDescription": "تصبح عمليات التحرير اقتراحات متعقبة",
@@ -4269,6 +4275,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Redigeerimine",
         "editingDescription": "Redigeerige dokumenti otse",
+        "outlineTitle": "Liigendus",
         "showDocumentOutline": "Dokumendi liigendus",
         "suggesting": "Soovitamine",
         "suggestingDescription": "Muudatused muutuvad jälitatud soovitusteks",
@@ -4923,6 +4930,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "עריכה",
         "editingDescription": "ערוך את המסמך ישירות",
+        "outlineTitle": "ניווט",
         "showDocumentOutline": "חלונית הניווט במסמך",
         "suggesting": "הצעות",
         "suggestingDescription": "עריכות הופכות להצעות במעקב",
@@ -5577,6 +5585,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "संपादन",
         "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
+        "outlineTitle": "रूपरेखा",
         "showDocumentOutline": "दस्तावेज़ रूपरेखा",
         "suggesting": "सुझाव",
         "suggestingDescription": "संपादन ट्रैक किए गए सुझाव बन जाते हैं",
@@ -6231,6 +6240,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Szerkesztés",
         "editingDescription": "A dokumentum közvetlen szerkesztése",
+        "outlineTitle": "Vázlat",
         "showDocumentOutline": "Dokumentum vázlata",
         "suggesting": "Javaslat",
         "suggestingDescription": "A módosítások követett javaslatokká válnak",
@@ -6885,6 +6895,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Redagavimas",
         "editingDescription": "Redaguokite dokumentą tiesiogiai",
+        "outlineTitle": "Struktūra",
         "showDocumentOutline": "Dokumento struktūra",
         "suggesting": "Siūlymas",
         "suggestingDescription": "Redagavimai tampa sekamais pasiūlymais",
@@ -7539,6 +7550,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Rediģēšana",
         "editingDescription": "Rediģējiet dokumentu tieši",
+        "outlineTitle": "Struktūra",
         "showDocumentOutline": "Dokumenta struktūra",
         "suggesting": "Ieteikšana",
         "suggestingDescription": "Labojumi kļūst par reģistrētiem ieteikumiem",
@@ -8193,6 +8205,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Edytowanie",
         "editingDescription": "Edytuj dokument bezpośrednio",
+        "outlineTitle": "Konspekt",
         "showDocumentOutline": "Konspekt dokumentu",
         "suggesting": "Sugerowanie",
         "suggestingDescription": "Edycje stają się śledzonymi sugestiami",
@@ -8847,6 +8860,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Editando",
         "editingDescription": "Edite o documento diretamente",
+        "outlineTitle": "Estrutura de tópicos",
         "showDocumentOutline": "Estrutura de tópicos do documento",
         "suggesting": "Sugerindo",
         "suggestingDescription": "As edições se tornam sugestões controladas",
@@ -9501,6 +9515,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Úpravy",
         "editingDescription": "Upravujte dokument priamo",
+        "outlineTitle": "Prehľad",
         "showDocumentOutline": "Prehľad dokumentu",
         "suggesting": "Návrhy",
         "suggestingDescription": "Úpravy sa zmenia na sledované návrhy",
@@ -10155,6 +10170,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "Düzenleme",
         "editingDescription": "Belgeyi doğrudan düzenleyin",
+        "outlineTitle": "Ana hat",
         "showDocumentOutline": "Belge ana hattı",
         "suggesting": "Önerme",
         "suggestingDescription": "Düzenlemeler izlenen önerilere dönüşür",
@@ -10809,6 +10825,7 @@ export const CATALOGS = {
       "editor": {
         "editing": "编辑",
         "editingDescription": "直接编辑文档",
+        "outlineTitle": "大纲",
         "showDocumentOutline": "文档大纲",
         "suggesting": "建议",
         "suggestingDescription": "编辑内容将成为修订建议",

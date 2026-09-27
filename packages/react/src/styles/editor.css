@@ -25,6 +25,10 @@
   --doc-canvas-text: var(--foreground);
 
   --doc-bg: var(--muted);
+  /* The canvas as an opaque surface, for chrome that pages scroll under (the
+     ruler, a drawer): --doc-bg may be translucent (a tint over the host's
+     background), so it is laid over the page colour. A `background` value. */
+  --doc-canvas-surface: linear-gradient(var(--doc-bg), var(--doc-bg)) var(--doc-page);
   --doc-bg-subtle: var(--muted);
   --doc-bg-muted: var(--muted);
   --doc-bg-hover: var(--accent);
@@ -1331,42 +1335,285 @@
   color: var(--doc-text, inherit);
 }
 
-/* ── Default chrome OutlineRail ────────────────────────────────────────
-   Styling for the built-in, dependency-free outline nav used when a consumer
-   does not inject one (see `ui/defaults/outline-rail.tsx`). */
-.folio-default-outline-rail {
-  position: absolute;
-  inset-inline-end: 0;
-  overflow-y: auto;
-  max-height: 100%;
-  padding: 0.25rem 0;
+/* ── Side panels: outline column, rail and drawer; drawer scrim ────────
+   The editor lays the outline out beside the page (see
+   `components/panelLayout.ts`): a column in the wide tier, a rail of heading
+   ticks in the medium tier, a drawer over the page otherwise. The list inside
+   comes from the OutlineRail seam; the default one is styled here too (see
+   `ui/defaults/outline-rail.tsx`). */
+.folio-outline {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  background: var(--doc-page);
+  color: var(--doc-text);
+  font-size: 0.8125rem;
 }
 
-.folio-default-outline-list {
+.folio-outline--column {
+  flex: none;
+  border-inline-end: 1px solid var(--doc-border);
+}
+
+/* Above the page so a tick's label can extend over it. */
+.folio-outline--rail {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  align-items: center;
+  padding-block: 4px 8px;
+  border-inline-end: 1px solid var(--doc-border);
+}
+
+.folio-outline--drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 46;
+  max-width: calc(100% - 16px);
+  border-inline-end: 1px solid var(--doc-border);
+  box-shadow: 0 8px 28px var(--doc-shadow-md);
+}
+
+.folio-outline-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-height: 2.25rem;
+  padding-block: 0.25rem;
+  padding-inline: 0.75rem 0.375rem;
+  border-bottom: 1px solid var(--doc-border);
+}
+
+.folio-outline-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--doc-text-muted);
+}
+
+.folio-outline-icon-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--doc-text-muted);
+  cursor: pointer;
+}
+
+.folio-outline-icon-button:hover,
+.folio-outline-icon-button[aria-expanded="true"] {
+  background: var(--doc-bg-hover);
+  color: var(--doc-text);
+}
+
+.folio-outline-icon-button:focus-visible,
+.folio-outline-item:focus-visible,
+.folio-outline-tick:focus-visible {
+  outline: 2px solid var(--ring, var(--doc-primary));
+  outline-offset: -2px;
+}
+
+.folio-outline-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
   margin: 0;
+  padding: 0.25rem 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.folio-outline-item {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding-block: 0.3125rem;
+  padding-inline: 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--doc-text-muted);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.folio-outline-item[data-depth="1"] {
+  padding-inline-start: 1.5rem;
+}
+
+.folio-outline-item[data-depth="2"] {
+  padding-inline-start: 2.25rem;
+}
+
+.folio-outline-item[data-depth="3"] {
+  padding-inline-start: 3rem;
+}
+
+.folio-outline-item[data-depth="4"] {
+  padding-inline-start: 3.75rem;
+}
+
+.folio-outline-item-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folio-outline-item:hover {
+  background: var(--doc-bg-hover);
+  color: var(--doc-text);
+}
+
+.folio-outline-item--active {
+  background: var(--doc-bg-hover);
+  color: var(--doc-text);
+  font-weight: 600;
+}
+
+.folio-outline-item--active::before {
+  position: absolute;
+  inset-block: 0.1875rem;
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary, var(--doc-primary));
+  content: "";
+}
+
+.folio-outline-ticks {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  margin: 0.375rem 0 0;
   padding: 0;
   list-style: none;
 }
 
-.folio-default-outline-item {
-  display: block;
-  width: 100%;
-  padding-block: 0.25rem;
-  padding-inline-end: 0.5rem;
-  font-size: 0.8125rem;
-  text-align: start;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--doc-text-muted, inherit);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.folio-outline-tick-slot {
+  position: absolute;
+  inset-inline: 0;
+  height: 12px;
 }
 
-.folio-default-outline-item--active {
-  font-weight: 500;
-  color: var(--doc-text, inherit);
+.folio-outline-tick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  padding-inline-start: 7px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.folio-outline-tick[data-depth="1"] {
+  padding-inline-start: 10px;
+}
+
+.folio-outline-tick[data-depth="2"] {
+  padding-inline-start: 13px;
+}
+
+.folio-outline-tick[data-depth="3"],
+.folio-outline-tick[data-depth="4"] {
+  padding-inline-start: 16px;
+}
+
+.folio-outline-tick-mark {
+  display: block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--doc-text-muted);
+  opacity: 0.55;
+}
+
+.folio-outline-tick[data-depth="1"] .folio-outline-tick-mark {
+  width: 11px;
+}
+
+.folio-outline-tick[data-depth="2"] .folio-outline-tick-mark,
+.folio-outline-tick[data-depth="3"] .folio-outline-tick-mark,
+.folio-outline-tick[data-depth="4"] .folio-outline-tick-mark {
+  width: 8px;
+}
+
+.folio-outline-tick:hover .folio-outline-tick-mark,
+.folio-outline-tick:focus-visible .folio-outline-tick-mark {
+  opacity: 1;
+}
+
+.folio-outline-tick--active .folio-outline-tick-mark {
+  height: 3px;
+  background: var(--primary, var(--doc-primary));
+  opacity: 1;
+}
+
+.folio-outline-tick-label {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: calc(100% + 6px);
+  display: none;
+  max-width: 15rem;
+  padding: 0.25rem 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--doc-border);
+  border-radius: 0.375rem;
+  background: var(--popover, var(--doc-page));
+  box-shadow: 0 4px 12px var(--doc-shadow-sm);
+  color: var(--popover-foreground, var(--doc-text));
+  font-size: 0.75rem;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.folio-outline-tick:hover .folio-outline-tick-label,
+.folio-outline-tick:focus-visible .folio-outline-tick-label {
+  display: block;
+}
+
+/* Under an open drawer: dims the page and closes the drawer when pressed. */
+.folio-panel-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  background: rgb(0 0 0 / 24%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .folio-outline--drawer,
+  .docx-comments-sidebar[data-folio-comments-surface="drawer"],
+  .folio-panel-scrim {
+    animation: folio-panel-fade-in 0.16s ease-out;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layout-page-content [data-folio-outline-flash] {
+    animation: none;
+  }
+}
+
+@keyframes folio-panel-fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* ── Default chrome Menu ───────────────────────────────────────────────

@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Edytowanie",
       "editingDescription": "Edytuj dokument bezpośrednio",
+      "outlineTitle": "Konspekt",
       "showDocumentOutline": "Konspekt dokumentu",
       "suggesting": "Sugerowanie",
       "suggestingDescription": "Edycje stają się śledzonymi sugestiami",

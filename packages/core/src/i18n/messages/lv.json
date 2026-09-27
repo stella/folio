@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Rediģēšana",
       "editingDescription": "Rediģējiet dokumentu tieši",
+      "outlineTitle": "Struktūra",
       "showDocumentOutline": "Dokumenta struktūra",
       "suggesting": "Ieteikšana",
       "suggestingDescription": "Labojumi kļūst par reģistrētiem ieteikumiem",

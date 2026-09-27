@@ -337,6 +337,7 @@
     "editor": {
       "editing": "تحرير",
       "editingDescription": "تحرير المستند مباشرةً",
+      "outlineTitle": "المخطط",
       "showDocumentOutline": "مخطط المستند",
       "suggesting": "اقتراح",
       "suggestingDescription": "تصبح عمليات التحرير اقتراحات متعقبة",

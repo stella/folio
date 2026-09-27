@@ -204,7 +204,13 @@ export type DocxEditorProps = {
   hostShortcuts?: readonly HostShortcut[];
   /** Whether the editor is read-only. When true, hides toolbar and rulers */
   readOnly?: boolean;
-  /** Whether comments/tracked changes should auto-open the review sidebar (default: true) */
+  /**
+   * Whether the comments sidebar opens when a document with open comment
+   * threads loads (default: true). It stays closed when it would be empty:
+   * tracked changes are painted inline and have no card, and resolved threads
+   * are hidden. Where the comments do not fit beside the page they stay in
+   * their drawer, and the toolbar toggle shows how many threads are open.
+   */
   autoOpenReviewSidebar?: boolean;
   /**
    * Override folio's built-in chrome UI primitives (Button, …) with a
@@ -228,7 +234,21 @@ export type DocxEditorProps = {
   initialScrollTop?: number;
   /** Callback when the editor's document scroll container scrolls. */
   onScrollTopChange?: (scrollTop: number) => void;
-  /** Whether to show the document outline sidebar (default: false) */
+  /**
+   * Whether to show the document outline when it has two or more headings
+   * (default: true). The editor lays the page out between the outline (start
+   * side) and the comments (end side) by the width it has, so neither covers
+   * the page:
+   *
+   * - wide: the outline and the comments each get a column beside the page;
+   * - medium: the outline shrinks to a rail of heading ticks (hover or focus
+   *   names a heading; its button opens the full outline as a drawer);
+   * - narrow: the outline, and the comments when they no longer fit beside
+   *   the page, open as drawers from toolbar toggles.
+   *
+   * The thresholds derive from the page width at the current zoom plus the
+   * panel widths, not from fixed breakpoints.
+   */
   showOutline?: boolean;
   /** Whether to show print button in toolbar (default: true) */
   showPrintButton?: boolean;

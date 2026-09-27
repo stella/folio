@@ -84,6 +84,8 @@ export type FormattingBarProps = {
   children?: ReactNode;
   /** Host controls that should stay in the primary row before text formatting */
   priorityExtra?: ReactNode;
+  /** Side-panel toggles (outline, comments), pinned at the end so they never overflow. */
+  panelToggles?: ReactNode;
   /** Extra controls rendered inline in the center column (after formatting buttons) */
   inlineExtra?: ReactNode;
   /** Display label for the style picker when the backing document is hydrating. */
@@ -133,6 +135,7 @@ export function FormattingBar(props: FormattingBarProps) {
     onInsertSymbol,
     priorityExtra,
     inlineExtra,
+    panelToggles,
     stylePickerLabel,
     stylePickerLabelStyle,
     inline = false,
@@ -868,6 +871,7 @@ export function FormattingBar(props: FormattingBarProps) {
 
       {/* Host extras (zoom, track changes, etc.) */}
       <div className="ms-auto flex shrink-0 items-center gap-1">
+        {panelToggles}
         {onToggleRuler && (
           <ToolbarGroup label={t("viewGroup")}>
             <ToolbarButton
