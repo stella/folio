@@ -16,6 +16,7 @@ import {
   type AtomicTextSpan,
   commonPrefixLength,
   commonSuffixLength,
+  keepAtomicSpans,
   planTextChanges,
   shortestTokenDiff,
   type TextChange,
@@ -298,5 +299,37 @@ describe("widenChangesToAtomicSpans", () => {
         [{ offset: 2, length: 3 }],
       ),
     ).toEqual([{ start: 2, end: 5, text: "928" }]);
+  });
+});
+
+describe("keepAtomicSpans", () => {
+  test("a word rewritten into a field keeps the field and marks only what changed", () => {
+    // Tab, a field showing `3.6`, then `Seller `. The word diff rewrites the
+    // whole `\t3.6Seller ` word; the direct plan changes only the tab. Cut
+    // around the kept field, the text after it rewrites `Seller ` to itself,
+    // which is no change at all.
+    const source = "\t3.6Seller ";
+    const replacement = " and3.6Seller ";
+    expect(
+      keepAtomicSpans(
+        source,
+        replacement,
+        [{ start: 0, end: 11, text: replacement }],
+        planTextChanges(source, replacement),
+        [{ offset: 1, length: 3 }],
+      ),
+    ).toEqual([{ start: 0, end: 1, text: " and" }]);
+  });
+
+  test("a word prefixed in front of a field is an insertion before the field", () => {
+    expect(
+      keepAtomicSpans(
+        "3.6",
+        "X3.6",
+        [{ start: 0, end: 3, text: "X3.6" }],
+        planTextChanges("3.6", "X3.6"),
+        [{ offset: 0, length: 3 }],
+      ),
+    ).toEqual([{ start: 0, end: 0, text: "X" }]);
   });
 });

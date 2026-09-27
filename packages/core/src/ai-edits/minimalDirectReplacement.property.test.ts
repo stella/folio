@@ -16,10 +16,11 @@
  *
  * The same paragraphs, with highlighted runs among them, drive the
  * tracked-changes and suggested modes. The redline marks as deleted exactly
- * the characters its changes remove and inserts exactly their new text;
- * nothing else carries a revision, and a background is cleared as a property
- * change only on untouched characters of a highlighted stretch a change
- * touches. Accepting every revision gives the replacement; rejecting every
+ * the characters its changes remove and inserts exactly their new text, its
+ * changes cut around every field the direct edit keeps and none rewriting
+ * text to itself; nothing else carries a revision, and a background is
+ * cleared as a property change only on untouched characters of a highlighted
+ * stretch a change touches. Accepting every revision gives the replacement; rejecting every
  * revision gives back the original paragraph.
  */
 
@@ -44,6 +45,7 @@ import { buildCleanBlockText } from "./clean-text";
 import { FolioDocxReviewer } from "./headless";
 import {
   changesFromSegments,
+  keepAtomicSpans,
   planTextChanges,
   type TextChange,
   widenChangesToAtomicSpans,
@@ -591,11 +593,27 @@ describe("a tracked or suggested replacement redlines only the characters it cha
               ? [{ offset: boundary.offset - start, length: boundary.length }]
               : [],
           );
-          const changes = widenChangesToAtomicSpans(
+          // The redline's changes are the diff's, cut around every field the
+          // direct edit keeps: accepted, a field stays a field rather than
+          // coming back as its displayed text, as when a reviewer types beside
+          // one. No change rewrites text to itself.
+          const changes = keepAtomicSpans(
             find,
-            changesFromSegments(diffWordSegments(find, replace, { granularity })),
+            replace,
+            widenChangesToAtomicSpans(
+              find,
+              changesFromSegments(diffWordSegments(find, replace, { granularity })),
+              fields,
+            ),
+            widenChangesToAtomicSpans(find, planTextChanges(find, replace), fields),
             fields,
           );
+          for (const change of changes) {
+            expect({ change, rewritten: find.slice(change.start, change.end) }).not.toEqual({
+              change,
+              rewritten: change.text,
+            });
+          }
 
           const result = reviewer.applyOperations(
             [{ id: "edit", type: "replaceInBlock", blockId: block.id, find, replace }],
@@ -1006,6 +1024,43 @@ describe("tracked replacement examples", () => {
     const accepting = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
     accepting.acceptAll();
     expect(accepting.snapshot().blocks.at(0)?.text).toBe("see 3.6\tbelow here");
+  });
+
+  test("a word rewritten into a field redlines only what changed and keeps the field", async () => {
+    // Seed 873192623: `\t3.6Seller ` becomes ` and3.6Seller `, the `3.6` a
+    // field result. The word diff rewrites the whole word, the redline keeps
+    // the field the direct edit keeps, and `Seller ` after it is unchanged.
+    const paragraph =
+      itemXml({ kind: "tab" }, 0) +
+      itemXml({ kind: "field", result: "3.6" }, 1) +
+      runXml("Seller ", { ...PLAIN, size: 20 });
+    for (const mode of ["tracked-changes", "suggested"] as const) {
+      const { reviewer } = await replaceFirst(paragraph, {
+        replace: (text) => text.replace("\t", " and"),
+        mode,
+        granularity: "word",
+      });
+      const redline: string[] = [];
+      firstParagraph(reviewer).node.descendants((node) => {
+        const revision = node.marks.find((mark) => REVISION_MARKS.has(mark.type.name));
+        if (node.isInline && node.type.name !== "field") {
+          redline.push(`${node.isText ? node.text : node.type.name}:${revision?.type.name ?? ""}`);
+        }
+        return node.type.name !== "field";
+      });
+      expect({ mode, redline }).toEqual({
+        mode,
+        redline: ["tab:deletion", " and:insertion", "Seller :"],
+      });
+      expect(countNodes(firstParagraph(reviewer).node, "field")).toBe(1);
+      const accepted = firstParagraphOf(resolveEverything(reviewer.state, mode, "accept").doc);
+      expect(countNodes(accepted.node, "field")).toBe(1);
+      expect(
+        cleanCharacters(accepted.node)
+          .map((entry) => entry.character)
+          .join(""),
+      ).toBe(" and3.6Seller ");
+    }
   });
 
   test("a replaced highlighted amount keeps its highlight as deleted text", async () => {
