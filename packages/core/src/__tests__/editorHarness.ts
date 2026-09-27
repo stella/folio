@@ -28,6 +28,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
+import { repackWithEditorSectionRemovals } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { ensureParaIdsInDoc } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNumbering";
 import {
@@ -408,7 +409,14 @@ export const saveHarnessState = async (
 ): Promise<SavedDocument> => {
   const model = fromProseDoc(state.doc, base);
   assertValidFolioDocumentModel(model, "Editor state converts to an invalid DOCX model");
-  const bytes = new Uint8Array(await repackDocx(model, { updateModifiedDate: false }));
+  // As the editors save: with the section removals the edit made on purpose.
+  const bytes = new Uint8Array(
+    await repackWithEditorSectionRemovals({
+      state,
+      document: model,
+      repack: () => repackDocx(model, { updateModifiedDate: false }),
+    }),
+  );
   return { model, bytes };
 };
 

@@ -4,6 +4,7 @@ GlobalRegistrator.register();
 
 import { afterAll, expect, test } from "bun:test";
 import { panic } from "better-result";
+import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { act, createRef } from "react";
 import { createRoot } from "react-dom/client";
@@ -30,7 +31,7 @@ afterAll(() => {
 const FIRST = "First section.";
 const SECOND = "Second section.";
 
-/** Two sections: the first ends at the mark of its only paragraph. */
+/** Two sections: the first, landscape, ends at the mark of its only paragraph. */
 const twoSections = async (): Promise<ArrayBuffer> => {
   const model = fromMarkdown(`${FIRST}\n\n${SECOND}`);
   const [first] = model.package.document.content;
@@ -38,6 +39,7 @@ const twoSections = async (): Promise<ArrayBuffer> => {
   first.sectionProperties = {
     ...structuredClone(model.package.document.finalSectionProperties),
     sectionStart: "nextPage",
+    orientation: "landscape",
   };
   return await createDocx(model);
 };
@@ -59,6 +61,7 @@ const createReports = () => {
 const editAndSave = async (
   bytes: ArrayBuffer,
   edit: (view: EditorView, editor: DocxEditorRef) => void,
+  mode: "editing" | "suggesting" = "editing",
 ): Promise<{ saved: ArrayBuffer | null; errors: Error[] }> => {
   const container = document.createElement("div");
   document.body.append(container);
@@ -72,6 +75,7 @@ const editAndSave = async (
           <DocxEditor
             ref={editor}
             documentBuffer={bytes}
+            mode={mode}
             onEditorViewReady={onEditorViewReady}
             onError={onError}
             showToolbar={false}
@@ -97,6 +101,31 @@ const editAndSave = async (
     await act(async () => root.unmount());
     container.remove();
   }
+};
+
+/** Press `key` in the body view, as the keyboard does. */
+const press = (view: EditorView, key: "Backspace" | "Delete"): void => {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+  expect(view.someProp("handleKeyDown", (handle) => handle(view, event))).toBe(true);
+};
+
+/** Put the selection in the body view, from `anchor` to `head`. */
+const select = (view: EditorView, anchor: number, head = anchor): void => {
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, anchor, head)));
+};
+
+/** Where the text of the body's second paragraph starts. */
+const secondStart = (view: EditorView): number => view.state.doc.child(0).nodeSize + 1;
+
+/** What the saved package holds: its paragraphs, and whether any is landscape. */
+const savedSections = async (bytes: ArrayBuffer) => {
+  const body = (await parseDocx(bytes)).package.document;
+  return {
+    carriers: body.content.filter(
+      (block) => block.type === "paragraph" && block.sectionProperties !== undefined,
+    ).length,
+    finalOrientation: body.finalSectionProperties?.orientation ?? "portrait",
+  };
 };
 
 const sectionCarriers = async (bytes: ArrayBuffer): Promise<number> =>
@@ -149,4 +178,51 @@ test("the editor saves after accepting a tracked deletion of that paragraph", as
   expect(errors).toEqual([]);
   if (saved === null) panic("The save returned nothing");
   expect(await sectionCarriers(saved)).toBe(0);
+});
+
+test("the editor saves after Backspace joins across the paragraph that ends a section", async () => {
+  const { saved, errors } = await editAndSave(await twoSections(), (view) => {
+    select(view, secondStart(view));
+    press(view, "Backspace");
+    expect(view.state.doc.childCount).toBe(1);
+    expect(view.state.doc.textContent).toBe(FIRST + SECOND);
+  });
+
+  expect(errors).toEqual([]);
+  if (saved === null) panic("The save returned nothing");
+  // The first section is gone; its content took the following section's
+  // properties, as a deleteBlock of the paragraph leaves them.
+  expect(await savedSections(saved)).toEqual({ carriers: 0, finalOrientation: "portrait" });
+});
+
+test("the editor saves after deleting a selection that spans the section break", async () => {
+  const { saved, errors } = await editAndSave(await twoSections(), (view) => {
+    select(view, 1 + 5, secondStart(view) + 6);
+    press(view, "Delete");
+    expect(view.state.doc.childCount).toBe(1);
+  });
+
+  expect(errors).toEqual([]);
+  if (saved === null) panic("The save returned nothing");
+  expect(await savedSections(saved)).toEqual({ carriers: 0, finalOrientation: "portrait" });
+});
+
+test("in suggesting mode, Backspace across the break is tracked and saves once accepted", async () => {
+  const { saved, errors } = await editAndSave(
+    await twoSections(),
+    (view) => {
+      select(view, secondStart(view));
+      press(view, "Backspace");
+      // Tracked: both paragraphs are still there, the first one's mark deleted.
+      expect(view.state.doc.childCount).toBe(2);
+      expect(view.state.doc.child(0).attrs["pPrMark"]).toMatchObject({ kind: "del" });
+      acceptAllChanges()(view.state, view.dispatch);
+      expect(view.state.doc.childCount).toBe(1);
+    },
+    "suggesting",
+  );
+
+  expect(errors).toEqual([]);
+  if (saved === null) panic("The save returned nothing");
+  expect(await savedSections(saved)).toEqual({ carriers: 0, finalOrientation: "portrait" });
 });

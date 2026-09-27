@@ -66,10 +66,7 @@ import {
 } from "../prosemirror/styles/resolvedStyleAttrs";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
-import {
-  markRemovedSectionEndpoints,
-  markStructuralChange,
-} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
   addedBreakCarrierBefore,
@@ -4459,10 +4456,6 @@ const applyFolioAIEditOperationsInternal = ({
       // derived from the stamp too.
       requestDeterministicParaIds(tr, `${revisionStamp.date}:${String(revisionStamp.idSeed)}`);
     }
-    // A paragraph removed with its section break took the break with it, and
-    // its section now runs on into the next one: the save is told the section
-    // count fell on purpose.
-    tr = markRemovedSectionEndpoints(tr, view.state.doc);
     view.dispatch(tr);
   }
 
