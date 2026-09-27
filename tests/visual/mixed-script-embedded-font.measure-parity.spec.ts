@@ -11,13 +11,54 @@ const EDITOR_HOSTS = [
 for (const host of EDITOR_HOSTS) {
   test(`${host.name} measures mixed-script text with its loaded fonts`, async ({ page }) => {
     const failedFontRequests: string[] = [];
+    const failedResponses: string[] = [];
+    const failedRequests: string[] = [];
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
     page.on("response", (response) => {
-      if (/\.woff2?(?:\?|$)/u.test(response.url()) && response.status() >= 400) {
-        failedFontRequests.push(`${response.status()} ${response.url()}`);
+      if (response.status() >= 400) {
+        const path = new URL(response.url()).pathname;
+        failedResponses.push(`${response.status()} ${path}`);
+        if (/\.woff2?$/u.test(path)) {
+          failedFontRequests.push(`${response.status()} ${path}`);
+        }
+      }
+    });
+    page.on("requestfailed", (request) => {
+      const path = new URL(request.url()).pathname;
+      failedRequests.push(`${path}: ${request.failure()?.errorText ?? "unknown failure"}`);
+    });
+    page.on("pageerror", (error) => pageErrors.push(error.message.slice(0, 300)));
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        consoleErrors.push(message.text().slice(0, 300));
       }
     });
     await page.goto(`${host.url}/?file=${FIXTURE}`);
-    await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
+    try {
+      await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
+    } catch (error) {
+      const domSummary = await page.evaluate(() => ({
+        bodyText: document.body.innerText.slice(0, 600),
+        lineCount: document.querySelectorAll(".layout-page .layout-line").length,
+        pageCount: document.querySelectorAll(".layout-page").length,
+        statusText: [
+          ...document.querySelectorAll(
+            ".pg-vue-status, .docx-editor-vue__error, .docx-editor-vue__loading",
+          ),
+        ].map((element) => element.textContent?.slice(0, 200) ?? ""),
+      }));
+      throw new Error(
+        `${host.name} layout did not render: ${JSON.stringify({
+          domSummary,
+          failedResponses: failedResponses.slice(-8),
+          failedRequests: failedRequests.slice(-8),
+          pageErrors: pageErrors.slice(-8),
+          consoleErrors: consoleErrors.slice(-8),
+        })}`,
+        { cause: error },
+      );
+    }
     await page.evaluate(() => document.fonts.ready);
     expect(failedFontRequests).toEqual([]);
     const loadedFamilies = await page.evaluate(() =>
