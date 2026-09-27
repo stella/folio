@@ -18,9 +18,14 @@ internal static class Program
             return Run(() => SchemaValidator.Validate(args[1]));
         }
 
+        if (args.Length == 2 && args[0] == "validate-all")
+        {
+            return Run(() => SchemaValidator.Validate(args[1], maxReportedErrors: null));
+        }
+
         if (args.Length != 1)
         {
-            Console.Error.WriteLine("usage: OpenXmlProjector [validate] <docx-path>");
+            Console.Error.WriteLine("usage: OpenXmlProjector [validate|validate-all] <docx-path>");
             return 2;
         }
 
@@ -58,7 +63,7 @@ internal static class SchemaValidator
 {
     private const int MaxReportedErrors = 50;
 
-    public static ValidationReport Validate(string path)
+    public static ValidationReport Validate(string path, int? maxReportedErrors = MaxReportedErrors)
     {
         using var document = WordprocessingDocument.Open(path, false);
         var validator = new OpenXmlValidator(FileFormatVersions.Office2019);
@@ -66,7 +71,7 @@ internal static class SchemaValidator
         foreach (ValidationErrorInfo error in validator.Validate(document))
         {
             errors.Add($"{error.ErrorType} {error.Id} at {error.Path?.XPath}: {error.Description}");
-            if (errors.Count >= MaxReportedErrors)
+            if (maxReportedErrors.HasValue && errors.Count >= maxReportedErrors.Value)
             {
                 break;
             }
