@@ -337,6 +337,7 @@
     "editor": {
       "editing": "संपादन",
       "editingDescription": "दस्तावेज़ को सीधे संपादित करें",
+      "outlineTitle": "रूपरेखा",
       "showDocumentOutline": "दस्तावेज़ रूपरेखा",
       "suggesting": "सुझाव",
       "suggestingDescription": "संपादन ट्रैक किए गए सुझाव बन जाते हैं",

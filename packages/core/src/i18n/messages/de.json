@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Bearbeiten",
       "editingDescription": "Dokument direkt bearbeiten",
+      "outlineTitle": "Gliederung",
       "showDocumentOutline": "Dokumentgliederung",
       "suggesting": "Vorschlagen",
       "suggestingDescription": "Bearbeitungen werden zu nachverfolgten Vorschlägen",

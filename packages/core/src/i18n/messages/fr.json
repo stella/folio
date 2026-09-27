@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Modification",
       "editingDescription": "Modifier directement le document",
+      "outlineTitle": "Plan",
       "showDocumentOutline": "Plan du document",
       "suggesting": "Suggestion",
       "suggestingDescription": "Les modifications deviennent des suggestions suivies",

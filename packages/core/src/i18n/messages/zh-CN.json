@@ -337,6 +337,7 @@
     "editor": {
       "editing": "编辑",
       "editingDescription": "直接编辑文档",
+      "outlineTitle": "大纲",
       "showDocumentOutline": "文档大纲",
       "suggesting": "建议",
       "suggestingDescription": "编辑内容将成为修订建议",

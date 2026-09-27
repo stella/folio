@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Szerkesztés",
       "editingDescription": "A dokumentum közvetlen szerkesztése",
+      "outlineTitle": "Vázlat",
       "showDocumentOutline": "Dokumentum vázlata",
       "suggesting": "Javaslat",
       "suggestingDescription": "A módosítások követett javaslatokká válnak",

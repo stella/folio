@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Redagavimas",
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
+      "outlineTitle": "Struktūra",
       "showDocumentOutline": "Dokumento struktūra",
       "suggesting": "Siūlymas",
       "suggestingDescription": "Redagavimai tampa sekamais pasiūlymais",
