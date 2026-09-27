@@ -7,7 +7,9 @@ declare global {
   var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
 }
 
-test("IME replacement preserves the selected text as a deletion after save", async ({ page }) => {
+test("IME replacement preserves the selected text as a deletion after save @browser-input:imeReplacement", async ({
+  page,
+}) => {
   await page.goto("/?file=sample.docx");
   await page.waitForSelector(".layout-page");
   await page.evaluate(() =>

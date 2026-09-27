@@ -455,7 +455,7 @@ const paragraphNodeSpec: NodeSpec = {
         const pastedListLevel = Number(element.dataset["folioListLevel"]);
         const pastedListKind = element.dataset["folioListKind"];
         const pastedListStart = Number(element.dataset["folioListStart"]);
-        const pastedHtmlList =
+        const pastedHtmlList: ParagraphAttrs["_pastedHtmlList"] =
           Number.isSafeInteger(pastedListGroup) &&
           pastedListGroup > 0 &&
           Number.isSafeInteger(pastedListLevel) &&

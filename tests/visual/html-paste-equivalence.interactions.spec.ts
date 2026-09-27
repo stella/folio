@@ -1,10 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
-import {
-  SUGGESTION_INPUT_DRIVERS,
-  SUGGESTION_INPUT_KINDS,
-} from "../../packages/core/src/__tests__/suggestionInputKinds";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 
 declare global {
@@ -50,20 +46,6 @@ const cases = [
 ] as const;
 
 type PasteCase = (typeof cases)[number];
-
-test("browser input kinds match the declared drivers", () => {
-  const declared = SUGGESTION_INPUT_KINDS.filter(
-    (kind) => SUGGESTION_INPUT_DRIVERS[kind].type === "browser",
-  );
-  const exercised = [
-    "imeReplacement",
-    ...cases
-      .map(({ kind }) => kind)
-      .filter((kind) => SUGGESTION_INPUT_DRIVERS[kind].type === "browser"),
-  ];
-  expect(new Set(exercised)).toEqual(new Set(declared));
-  expect(exercised).toHaveLength(declared.length);
-});
 
 const project = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map(({ text, displayLabel, listLevel, table }) => ({
@@ -151,7 +133,10 @@ const paste = async (page: Page, input: PasteCase, suggesting: boolean) => {
 };
 
 for (const input of cases) {
-  test(`${input.name} paste accepts to editing mode and rejects to original`, async ({ page }) => {
+  const tag = input.kind === "pastePlain" ? "" : ` @browser-input:${input.kind}`;
+  test(`${input.name} paste accepts to editing mode and rejects to original${tag}`, async ({
+    page,
+  }) => {
     const edited = await paste(page, input, false);
     const suggested = await paste(page, input, true);
     expect(suggested.baseline).toEqual(edited.baseline);
