@@ -40,10 +40,19 @@ export type BatchClaim =
   | {
       type: "deleteBlock";
       block: number;
-      /** The paragraph survives, emptied: it ends its container. */
+      /** Where the node ends. */
+      end: number;
+      /**
+       * The paragraph survives, emptied: it ends its container. A block the
+       * batch inserts at `end` lands first (the batch runs backwards), so the
+       * paragraph no longer ends anything when the deletion runs and goes as
+       * any other does — see `followedByInsertion`.
+       */
       keepsParagraph: boolean;
       /** The node leaves the document while the batch is still applying. */
       removesNode: boolean;
+      /** Applied directly rather than tracked. */
+      direct: boolean;
     }
   /**
    * Joins `block` with the block starting at `next`, where `block` ends.
@@ -72,7 +81,7 @@ export type BatchClaim =
 type BlockRole =
   | { kind: InlineClaim["type"]; claim: InlineClaim }
   | { kind: "rewriteBlock" | "paragraphProperties" }
-  | { kind: "deleteBlock"; keepsParagraph: boolean; removesNode: boolean }
+  | { kind: "deleteBlock"; keepsParagraph: boolean; removesNode: boolean; direct: boolean }
   /** The block a merge ends (`own`), or the one it pulls in (`next`). */
   | { kind: "mergeOwn" | "mergeNext"; joinsNow: boolean };
 
@@ -95,6 +104,7 @@ const blockRolesOf = (claim: BatchClaim): { block: number; role: BlockRole }[] =
             kind: "deleteBlock",
             keepsParagraph: claim.keepsParagraph,
             removesNode: claim.removesNode,
+            direct: claim.direct,
           },
         },
       ];
@@ -107,6 +117,20 @@ const blockRolesOf = (claim: BatchClaim): { block: number; role: BlockRole }[] =
       return [];
   }
 };
+
+type DeleteBlockRole = Extract<BlockRole, { kind: "deleteBlock" }>;
+
+/**
+ * A deletion of the paragraph that ends its container, once the batch inserts
+ * a block after it: the insertion lands first, the paragraph then ends
+ * nothing, and it goes as any other — tracked, its mark is deleted into the
+ * inserted block and its properties with it; directly, the node goes.
+ */
+const followedByInsertion = (role: DeleteBlockRole): DeleteBlockRole => ({
+  ...role,
+  keepsParagraph: false,
+  removesNode: role.direct,
+});
 
 const isPoint = ({ from, to }: PositionRange): boolean => from === to;
 
@@ -245,13 +269,51 @@ export class BatchClaims {
   private readonly joins = new Map<number, string>();
   private readonly removals: { operationId: string; claim: TableRemovalClaim }[] = [];
   private readonly tables = new Map<number, string>();
+  /** Accepted deletions that keep their paragraph, by where the paragraph ends. */
+  private readonly keptParagraphs = new Map<number, { block: number; operationId: string }>();
+
+  /** `claim`'s roles, given the insertions accepted so far. */
+  private rolesOf(claim: BatchClaim): { block: number; role: BlockRole }[] {
+    return blockRolesOf(claim).map(({ block, role }) =>
+      role.kind === "deleteBlock" &&
+      role.keepsParagraph &&
+      claim.type === "deleteBlock" &&
+      this.insertions.has(claim.end)
+        ? { block, role: followedByInsertion(role) }
+        : { block, role },
+    );
+  }
+
+  /**
+   * The operation an insertion at `at` conflicts with through a deletion it
+   * would stop keeping its paragraph: one the deleted paragraph then no
+   * longer allows.
+   */
+  private conflictOfFollowing(at: number): string | null {
+    const kept = this.keptParagraphs.get(at);
+    if (kept === undefined) {
+      return null;
+    }
+    const entries = this.blocks.get(kept.block) ?? [];
+    const deletion = entries.find(({ operationId }) => operationId === kept.operationId);
+    if (deletion?.role.kind !== "deleteBlock") {
+      return null;
+    }
+    const followed = followedByInsertion(deletion.role);
+    return (
+      entries.find(
+        ({ operationId, role }) =>
+          operationId !== kept.operationId && rolesConflict(followed, role),
+      )?.operationId ?? null
+    );
+  }
 
   /**
    * The id of an accepted operation `claim` conflicts with, or `null` when it
    * conflicts with none.
    */
   conflictOf(claim: BatchClaim): string | null {
-    for (const { block, role } of blockRolesOf(claim)) {
+    for (const { block, role } of this.rolesOf(claim)) {
       for (const entry of this.blocks.get(block) ?? []) {
         if (rolesConflict(entry.role, role)) {
           return entry.operationId;
@@ -275,6 +337,10 @@ export class BatchClaims {
         const join = this.joins.get(claim.at);
         if (join !== undefined) {
           return join;
+        }
+        const following = this.conflictOfFollowing(claim.at);
+        if (following !== null) {
+          return following;
         }
         const removal = this.removals.find(({ claim: removed }) =>
           strictlyInsideAny(removed.ranges, claim.at),
@@ -321,23 +387,36 @@ export class BatchClaims {
   }
 
   add(operationId: string, claim: BatchClaim): void {
-    for (const { block, role } of blockRolesOf(claim)) {
+    for (const { block, role } of this.rolesOf(claim)) {
       const entries = this.blocks.get(block);
       if (entries) {
         entries.push({ operationId, role });
       } else {
         this.blocks.set(block, [{ operationId, role }]);
       }
+      if (claim.type === "deleteBlock" && role.kind === "deleteBlock" && role.keepsParagraph) {
+        this.keptParagraphs.set(claim.end, { block, operationId });
+      }
     }
     switch (claim.type) {
       case "merge":
         this.joins.set(claim.next, operationId);
         break;
-      case "insertion":
+      case "insertion": {
         if (!this.insertions.has(claim.at)) {
           this.insertions.set(claim.at, operationId);
         }
+        const kept = this.keptParagraphs.get(claim.at);
+        if (kept !== undefined) {
+          this.keptParagraphs.delete(claim.at);
+          for (const entry of this.blocks.get(kept.block) ?? []) {
+            if (entry.operationId === kept.operationId && entry.role.kind === "deleteBlock") {
+              entry.role = followedByInsertion(entry.role);
+            }
+          }
+        }
         break;
+      }
       case "tableStructure":
         if (!this.tables.has(claim.table)) {
           this.tables.set(claim.table, operationId);

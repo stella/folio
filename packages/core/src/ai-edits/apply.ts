@@ -1757,8 +1757,10 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
       return {
         type: "deleteBlock",
         block,
+        end: item.blockTo,
         keepsParagraph,
         removesNode: !producesTrackedChanges && !keepsParagraph,
+        direct: !producesTrackedChanges,
       };
     }
     case "insertAfterBlock":

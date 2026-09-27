@@ -531,6 +531,66 @@ describe("a batch of two operations on one block or its neighbours", () => {
   }
 });
 
+describe("a batch that deletes the story's last paragraph and inserts after it", () => {
+  // Deleted alone, the last paragraph keeps its mark and stays a paragraph to
+  // format. The insertion after it lands first, so the deletion then takes
+  // its mark as well, and its properties with it: formatting it is refused,
+  // whichever of the three comes last.
+  const last = BLOCK_COUNT - 1;
+  const trio: readonly GeneratedOperation[] = [
+    { kind: "deleteBlock", block: last },
+    { kind: "insertAfterBlock", block: last },
+    { kind: "setBlockParagraphProperties", block: last },
+  ];
+  const orders = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ].map((order) => order.flatMap((index) => trio[index] ?? []));
+
+  for (const mode of MODES) {
+    test(`refuses the conflict and applies the rest as one at a time would (${mode})`, async () => {
+      const problems: string[] = [];
+      // The counterexample the random batch below found.
+      const found: GeneratedOperation[] = [
+        { kind: "deleteBlock", block: last },
+        { kind: "insertAfterBlock", block: last },
+        { kind: "splitBlock", block: 0, before: 1 },
+        { kind: "setBlockParagraphProperties", block: last },
+      ];
+      for (const generated of [...orders, found]) {
+        problems.push(...(await batchAgainstOneAtATime(generated, mode)));
+      }
+      expect(problems).toEqual([]);
+    });
+  }
+
+  test("refuses the paragraph properties once the insertion follows the deletion", async () => {
+    const session = await freshSession();
+    const blockId = session.snapshot().blocks[last]?.id ?? "";
+    const result = session.apply("tracked-changes", [
+      { id: "delete", type: "deleteBlock", blockId },
+      { id: "insert", type: "insertAfterBlock", blockId, text: "Added." },
+      {
+        id: "center",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: { alignment: "center" },
+      },
+    ]);
+    expect(result.skipped).toEqual([
+      {
+        id: "center",
+        reason: "overlappingOperation",
+        message: 'operation "delete", earlier in this batch, already claims its target.',
+      },
+    ]);
+  });
+});
+
 const spanArbitrary = fc
   .record({
     block: fc.nat({ max: BLOCK_COUNT - 1 }),
