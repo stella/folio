@@ -69,6 +69,7 @@ import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOpti
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import {
   readFontSetSignature,
+  waitForInitialLayoutFonts,
   watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
@@ -518,6 +519,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
   let loadSequence = 0;
+  let destroyed = false;
+  let initialFontWaitId = 0;
+  let initialFontWaitPending = false;
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
@@ -617,6 +621,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     watchLayoutFontLoads({
       measuredFontSet: () => session.lastMeasureInputs?.fontSet ?? null,
       relayout: () => {
+        if (initialFontWaitPending) {
+          return;
+        }
         const state = editorView.value?.state ?? session.lastEditorState;
         if (state) {
           runLayoutPipeline(state, { reason: "font-ready" });
@@ -699,6 +706,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
    * plain inputs, matching the React adapter).
    */
   function runLayoutPipeline(state: EditorState, runOptions: LayoutRunOptions = {}): void {
+    if (initialFontWaitPending) {
+      return;
+    }
     const container = pagesContainer.value;
     // The pipeline paints into an HTMLDivElement; narrow without a cast so a
     // non-div host (or a not-yet-mounted ref) simply computes without painting.
@@ -952,9 +962,22 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorState.value = view.state;
     isReady.value = true;
 
-    // Initial layout for the freshly mounted view.
-    runLayoutPipeline(view.state, { reason: "initial" });
-    syncCoordinator.requestRender();
+    const model = docModel.value;
+    const sequence = loadSequence;
+    const waitId = ++initialFontWaitId;
+    initialFontWaitPending = true;
+    const runInitialLayout = () => {
+      if (initialFontWaitId !== waitId) {
+        return;
+      }
+      initialFontWaitPending = false;
+      if (destroyed || loadSequence !== sequence || manager.getView() !== view) {
+        return;
+      }
+      runLayoutPipeline(view.state, { reason: "initial" });
+      syncCoordinator.requestRender();
+    };
+    void waitForInitialLayoutFonts(model, view.state.doc).then(runInitialLayout, runInitialLayout);
 
     // Apply the current editor mode to the mounted suggestion plugin.
     syncSuggestionMode(view);
@@ -1102,7 +1125,28 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         reason: "mount",
       });
       editorState.value = initialState;
-      runLayoutPipeline(initialState, { reason: "initial" });
+      const sequence = loadSequence;
+      const waitId = ++initialFontWaitId;
+      initialFontWaitPending = true;
+      const runInitialLayout = () => {
+        if (initialFontWaitId !== waitId) {
+          return;
+        }
+        initialFontWaitPending = false;
+        if (
+          destroyed ||
+          loadSequence !== sequence ||
+          docModel.value !== model ||
+          manager.getView()
+        ) {
+          return;
+        }
+        runLayoutPipeline(initialState, { reason: "initial" });
+      };
+      void waitForInitialLayoutFonts(model, initialState.doc).then(
+        runInitialLayout,
+        runInitialLayout,
+      );
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
@@ -1324,6 +1368,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   );
 
   function destroy(): void {
+    destroyed = true;
+    initialFontWaitId += 1;
+    initialFontWaitPending = false;
     scheduler.dispose();
     if (docChangeTimer !== null) {
       window.clearTimeout(docChangeTimer);

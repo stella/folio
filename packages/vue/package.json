@@ -67,13 +67,21 @@
     "access": "public"
   },
   "scripts": {
-    "build": "rm -rf dist && vite build",
+    "build": "rm -rf dist && vite build && bun scripts/build-css.ts",
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
     "typecheck": "vue-tsc --noEmit -p tsconfig.build.json",
     "test": "bun test src"
   },
   "dependencies": {
+    "@fontsource/arimo": "^5.2.8",
+    "@fontsource/caladea": "^5.2.8",
+    "@fontsource/carlito": "^5.2.8",
+    "@fontsource/cousine": "^5.2.7",
+    "@fontsource/lato": "^5.2.7",
+    "@fontsource/noto-sans-arabic": "^5.2.7",
+    "@fontsource/source-sans-3": "^5.2.9",
+    "@fontsource/tinos": "^5.2.7",
     "@stll/folio-core": "workspace:^",
     "better-result": "3.0.1",
     "use-intl": "^4.13.0",

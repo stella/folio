@@ -1,11 +1,23 @@
 import vue from "@vitejs/plugin-vue";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, searchForWorkspaceRoot, type Plugin } from "vite";
 
 const playgroundRoot = import.meta.dirname;
 const repoRoot = path.resolve(playgroundRoot, "../..");
 const fixturesDir = path.join(repoRoot, "tests/visual/fixtures");
+const vuePackageJsonPath = path.join(repoRoot, "packages/vue/package.json");
+
+function bundledFontPackageDirs(): string[] {
+  const vuePackage: { dependencies?: Record<string, string> } = JSON.parse(
+    fs.readFileSync(vuePackageJsonPath, "utf8"),
+  );
+  const requireFromVue = createRequire(vuePackageJsonPath);
+  return Object.keys(vuePackage.dependencies ?? {})
+    .filter((name) => name.startsWith("@fontsource/"))
+    .map((name) => path.dirname(fs.realpathSync(requireFromVue.resolve(`${name}/package.json`))));
+}
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const FIXTURE_PREFIX = "/fixtures/";
@@ -66,6 +78,9 @@ export default defineConfig({
     port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4201,
     strictPort: true,
     open: false,
+    fs: {
+      allow: [searchForWorkspaceRoot(playgroundRoot), ...bundledFontPackageDirs()],
+    },
   },
   build: {
     outDir: "dist",

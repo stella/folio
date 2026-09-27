@@ -1,5 +1,7 @@
 import { createApp } from "vue";
 import { colorModePlugin, i18nPlugin, type ColorMode } from "@stll/folio-vue";
+import "../../vue/src/styles/fonts.css";
+import "../../vue/src/styles/font-aliases.css";
 
 import App from "./App.vue";
 
