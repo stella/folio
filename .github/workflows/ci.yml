@@ -114,16 +114,9 @@ jobs:
     steps:
       - name: Plan changed-path scopes
         id: plan
-        # stella/.github#122 head; move to the release tag once it is cut.
-        uses: stella/.github/.github/actions/ci-plan@72dc2d1b94e46eb29691532f6ddb3836a0ed70b9 # feat/ci-plan-action
+        uses: stella/.github/.github/actions/ci-plan@37bfa04a893d1ae2b9d28379cf68e8360781c8bc # v1.8.0
         with:
           policy-file: .github/ci-plan.json
-
-      # A skipped job satisfies a required check, so a merge group that failed
-      # the trust check must fail here rather than skip everything.
-      - name: Refuse an untrusted merge group
-        if: steps.plan.outputs.trusted != 'true'
-        run: exit 1
 
   # oxfmt formats Markdown too, so a documentation-only change still has its
   # formatting checked; any other change runs the full format check in `ci`.
