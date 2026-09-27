@@ -293,7 +293,7 @@ const STORY_FIXTURE = new URL(
 );
 
 const EMBEDDED_FONT_FIXTURE = new URL(
-  "../../../tests/visual/fixtures/performance-mixed-script-embedded-font.docx",
+  "../../../tests/visual/fixtures/mixed-script-font-sample.docx",
   import.meta.url,
 );
 

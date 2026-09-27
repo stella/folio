@@ -194,7 +194,7 @@ await Promise.all([
     const buffer = await createDocx(buildMixedScriptDocument());
     const withFont = await addEmbeddedFont(buffer);
     await writeFile(
-      resolve(FIXTURES_DIR, "performance-mixed-script-embedded-font.docx"),
+      resolve(FIXTURES_DIR, "mixed-script-font-sample.docx"),
       new Uint8Array(withFont),
     );
   })(),

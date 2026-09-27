@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
 
-const FIXTURE = "performance-mixed-script-embedded-font.docx";
+const FIXTURE = "mixed-script-font-sample.docx";
 const EDITOR_HOSTS = [
   { name: "React", url: "http://localhost:4200" },
   { name: "Vue", url: "http://localhost:4201" },
