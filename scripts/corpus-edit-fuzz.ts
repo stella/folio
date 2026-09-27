@@ -31,7 +31,7 @@ type Report = {
   cases: Case[];
   incomplete: Incomplete[];
 };
-type Baseline = { schemaVersion: 1; lockDigest: string; signatures: string[] };
+type Baseline = { schemaVersion: 1; lockDigest: string; signatures: Record<string, number> };
 
 const BASELINE = path.join(REPOSITORY_ROOT, "corpus", "edit-fuzz-baseline.json");
 const WORKER = path.join(REPOSITORY_ROOT, "test", "corpus-edit-fuzz-worker.ts");
@@ -58,9 +58,18 @@ const check = async (reports: readonly Report[]): Promise<void> => {
   const baseline = JSON.parse(await Bun.file(BASELINE).text()) as Baseline;
   if (reports.some(({ lockDigest }) => lockDigest !== baseline.lockDigest))
     throw new Error("edit fuzz report and baseline lock digests differ");
-  const known = new Set(baseline.signatures);
-  const observed = new Set(reports.flatMap(({ cases }) => cases.map(({ signature }) => signature)));
-  const introduced = [...observed].filter((signature) => !known.has(signature));
+  const observed = new Map<string, number>();
+  for (const { signature } of reports.flatMap(({ cases }) => cases)) {
+    observed.set(signature, (observed.get(signature) ?? 0) + 1);
+  }
+  const introduced = [...observed.keys()].filter(
+    (signature) => !Object.hasOwn(baseline.signatures, signature),
+  );
+  const grown = [...observed].filter(
+    ([signature, count]) =>
+      Object.hasOwn(baseline.signatures, signature) &&
+      count > (baseline.signatures[signature] ?? 0),
+  );
   const fullRun = reports.length === 1 && reports[0]?.shard === null && reports[0]?.sample === null;
   const allShards =
     reports.length > 1 &&
@@ -71,12 +80,14 @@ const check = async (reports: readonly Report[]): Promise<void> => {
   const complete = fullRun || allShards;
   if (!complete && reports.length > 1)
     throw new Error("edit fuzz check needs every shard exactly once");
-  const resolved = complete
-    ? baseline.signatures.filter((signature) => !observed.has(signature))
+  const shrunk = complete
+    ? Object.entries(baseline.signatures).filter(
+        ([signature, count]) => (observed.get(signature) ?? 0) < count,
+      )
     : [];
-  if (introduced.length || resolved.length) {
+  if (introduced.length || grown.length || shrunk.length) {
     process.stderr.write(
-      `edit fuzz baseline mismatch: new ${JSON.stringify(introduced)}, resolved ${JSON.stringify(resolved)}\n`,
+      `edit fuzz baseline mismatch: new ${JSON.stringify(introduced)}, grown ${JSON.stringify(grown)}, shrunk ${JSON.stringify(shrunk)}\n`,
     );
     process.exitCode = 1;
   }
@@ -141,7 +152,7 @@ const main = async (): Promise<void> => {
       ...[...counts]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([kind, count]) => `- ${kind}: ${count}`),
-      `Baseline signatures: ${(JSON.parse(await Bun.file(BASELINE).text()) as Baseline).signatures.length}`,
+      `Baseline signatures: ${Object.keys((JSON.parse(await Bun.file(BASELINE).text()) as Baseline).signatures).length}`,
       "### Minimal replay cases",
       ...cases
         .slice(0, 3)

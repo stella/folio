@@ -54,7 +54,7 @@ tier-1 corpus. It tries three seeded public edits in direct and tracked modes
 per parsable document, then checks the consumer requested-outcome oracle,
 save/reopen, reject-all, package-part locality and Open XML SDK validity against
 the original. A child process has a two-minute document deadline. Findings are
-reduced to replay cases; new signatures fail against
+reduced to replay cases; new signatures and growth in known counts fail against
 `corpus/edit-fuzz-baseline.json`. The workflow publishes a summary and JSON
 artifact. Timeouts are reported as incomplete coverage; a crashed worker fails
 the gate. Replay a case with
