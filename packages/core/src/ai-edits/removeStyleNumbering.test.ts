@@ -156,6 +156,29 @@ describe("a paragraph inserted with a style of its own", () => {
     expect(labels(reopened)).toEqual(expected);
   });
 
+  test("with numbering: null, stays out of the list its new style numbers", async () => {
+    const reviewer = await styleNumberedReviewer();
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "Body."),
+          text: "Inserted",
+          styleId: "Heading2",
+          numbering: null,
+        },
+      ],
+    });
+    expect(result.issues).toEqual([]);
+    const expected = ["1. Scope", "Body.", "Inserted", "2. Payment", "Closing."];
+    expect(labels(reviewer)).toEqual(expected);
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(labels(reopened)).toEqual(expected);
+  });
+
   test("anchored on a style-numbered heading, leaves that style's numbering behind", async () => {
     const reviewer = await styleNumberedReviewer();
     const result = reviewer.applyDocumentOperations({
