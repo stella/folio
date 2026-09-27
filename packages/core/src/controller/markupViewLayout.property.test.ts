@@ -32,7 +32,7 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import type { EditorState } from "prosemirror-state";
+import { EditorState } from "prosemirror-state";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
@@ -53,6 +53,7 @@ import type { FlowBlock, Run } from "../layout-engine/types";
 import { DISPLAY_MODES } from "../managers/EditorModeManager";
 import type { DisplayMode } from "../managers/EditorModeManager";
 import { projectMarkupView, visibleCaretPosition } from "../prosemirror/markupViewProjection";
+import { schema } from "../prosemirror/schema";
 import type { Document } from "../types/document";
 import {
   LOAD_LAYOUT,
@@ -373,7 +374,7 @@ const materialise = (state: EditorState, view: DisplayMode): EditorState => {
 
 const runText = (run: Run): string => (run.kind === "text" ? run.text : `[${run.kind}]`);
 
-type Addressing = { text: string; reads: string };
+type Addressing = { text: string; reads: string; pmSpan: number };
 
 /** Text runs whose editor positions do not read the text they paint. */
 const misaddressedRuns = (blocks: readonly FlowBlock[], state: EditorState): Addressing[] => {
@@ -386,9 +387,11 @@ const misaddressedRuns = (blocks: readonly FlowBlock[], state: EditorState): Add
     if (block.kind !== "paragraph") return;
     for (const run of block.runs) {
       if (run.kind !== "text" || run.pmStart === undefined || run.pmEnd === undefined) continue;
-      if (run.text.length !== run.pmEnd - run.pmStart) continue;
       const reads = state.doc.textBetween(run.pmStart, run.pmEnd);
-      if (reads !== run.text) out.push({ text: run.text, reads });
+      const pmSpan = run.pmEnd - run.pmStart;
+      if (run.text.length !== pmSpan || reads !== run.text) {
+        out.push({ text: run.text, reads, pmSpan });
+      }
     }
   };
   blocks.forEach(visit);
@@ -525,6 +528,22 @@ const runScenario = async (
 };
 
 describe("markup views lay out the text they show", () => {
+  test("addressing oracle rejects a text run whose editor span is too short", () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, schema.text("abc")),
+    ]);
+    const state = EditorState.create({ doc });
+    const blocks = [
+      {
+        kind: "paragraph",
+        id: "generated",
+        runs: [{ kind: "text", text: "abc", pmStart: 1, pmEnd: 3 }],
+      },
+    ] satisfies FlowBlock[];
+
+    expect(misaddressedRuns(blocks, state)).toEqual([{ text: "abc", reads: "ab", pmSpan: 2 }]);
+  });
+
   test("every view settles on the layout of the text it reads, through any event sequence", async () => {
     await fc.assert(
       fc.asyncProperty(scenarioArb, async (scenario) => {

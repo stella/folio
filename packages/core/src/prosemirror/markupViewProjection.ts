@@ -85,19 +85,19 @@ export type MarkupViewProjection =
 
 const AUTHORED: MarkupViewProjection = { type: "authored" };
 
-const projectionCache = new WeakMap<PMNode, Map<DisplayMode, MarkupViewProjection>>();
+const projectionCache = new WeakMap<EditorState, Map<DisplayMode, MarkupViewProjection>>();
 
 /**
  * The document a markup view lays out, for the state's current document.
- * Cached per document node, so a relayout that does not change the document
- * (fonts, page setup, zoom) does not resolve it again.
+ * Cached per editor state: the resolver also reads its styles and numbering
+ * plugins, which may change while the document node stays the same.
  */
 export const projectMarkupView = (state: EditorState, view: DisplayMode): MarkupViewProjection => {
   const resolution = MARKUP_VIEW_RESOLUTIONS[view];
   if (resolution.type === "authored") {
     return AUTHORED;
   }
-  let byView = projectionCache.get(state.doc);
+  let byView = projectionCache.get(state);
   const cached = byView?.get(view);
   if (cached) {
     return cached;
@@ -117,7 +117,7 @@ export const projectMarkupView = (state: EditorState, view: DisplayMode): Markup
       };
   if (!byView) {
     byView = new Map();
-    projectionCache.set(state.doc, byView);
+    projectionCache.set(state, byView);
   }
   byView.set(view, projection);
   return projection;
