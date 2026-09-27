@@ -531,6 +531,17 @@ jobs:
       - name: Scenarios over packed tarballs
         run: bun scripts/consumer-scenarios.ts --typecheck
 
+      # Which operation types met which stories, modes, target features and
+      # sessions; the run fails on a required cell with no hits.
+      - name: Upload the coverage ledger
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: consumer-scenarios-coverage
+          path: test-results/consumer-scenarios-coverage.json
+          retention-days: 14
+          if-no-files-found: warn
+
   packaged-consumer:
     name: Packaged-consumer build (tarballs)
     runs-on: ubuntu-latest

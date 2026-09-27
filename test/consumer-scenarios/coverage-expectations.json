@@ -1,0 +1,503 @@
+{
+  "//": "Coverage cells the default consumer-scenarios run must apply at least once (scripts/consumer-scenarios.ts fails naming each one with no hits), and the cells the public API cannot reach yet. A cell leaves a dimension out to match any value. Dimensions: op, story (body, tableCell, textbox, header, footer, footnote, endnote), mode (direct, tracked, suggested), feature (support/targets.ts FEATURES, or none), step (fresh, reopened, newReviewer). The required cells are met by the deterministic scenarios, not by seeded flows.",
+  "required": [
+    { "cell": { "story": "body", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "body", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "body", "mode": "suggested" }, "why": "every story in every mode" },
+    { "cell": { "story": "tableCell", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "tableCell", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "tableCell", "mode": "suggested" }, "why": "every story in every mode" },
+    { "cell": { "story": "textbox", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "textbox", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "textbox", "mode": "suggested" }, "why": "every story in every mode" },
+    { "cell": { "story": "header", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "header", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "header", "mode": "suggested" }, "why": "every story in every mode" },
+    { "cell": { "story": "footer", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "footer", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "footer", "mode": "suggested" }, "why": "every story in every mode" },
+    { "cell": { "story": "footnote", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "footnote", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "footnote", "mode": "suggested" }, "why": "every story in every mode" },
+    { "cell": { "story": "endnote", "mode": "direct" }, "why": "every story in every mode" },
+    { "cell": { "story": "endnote", "mode": "tracked" }, "why": "every story in every mode" },
+    { "cell": { "story": "endnote", "mode": "suggested" }, "why": "every story in every mode" },
+    {
+      "cell": { "feature": "sectionCarrier", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "sectionCarrier", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "sectionCarrier", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "listItem", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "listItem", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "listItem", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "tableEdge", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "tableEdge", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "tableEdge", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "inlineObject", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "inlineObject", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "inlineObject", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "pendingRevision", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "pendingRevision", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "pendingRevision", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "commentAnchor", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "commentAnchor", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "commentAnchor", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "field", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "field", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "field", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "hyperlink", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "hyperlink", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "hyperlink", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "noteReference", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "noteReference", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "noteReference", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "formatBoundary", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "formatBoundary", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "formatBoundary", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "storyEdge", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "storyEdge", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "storyEdge", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "surrogateBoundary", "mode": "direct" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "surrogateBoundary", "mode": "tracked" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "feature": "surrogateBoundary", "mode": "suggested" },
+      "why": "every target feature in every mode"
+    },
+    {
+      "cell": { "op": "replaceInBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "replaceRange", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    { "cell": { "op": "formatRange", "story": "body" }, "why": "every operation type in the body" },
+    {
+      "cell": { "op": "commentOnRange", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "commentOnBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "insertAfterBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "insertBeforeBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "replaceBlock", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    { "cell": { "op": "deleteBlock", "story": "body" }, "why": "every operation type in the body" },
+    { "cell": { "op": "splitBlock", "story": "body" }, "why": "every operation type in the body" },
+    {
+      "cell": { "op": "mergeBlockWithNext", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    {
+      "cell": { "op": "setBlockParagraphProperties", "story": "body" },
+      "why": "every operation type in the body"
+    },
+    { "cell": { "op": "insertTable", "story": "body" }, "why": "every operation type in the body" },
+    {
+      "cell": { "op": "insertTableRow", "story": "tableCell" },
+      "why": "every table operation on a cell"
+    },
+    {
+      "cell": { "op": "deleteTableRow", "story": "tableCell" },
+      "why": "every table operation on a cell"
+    },
+    {
+      "cell": { "op": "insertTableColumn", "story": "tableCell" },
+      "why": "every table operation on a cell"
+    },
+    {
+      "cell": { "op": "deleteTable", "story": "tableCell" },
+      "why": "every table operation on a cell"
+    },
+    {
+      "cell": { "op": "replaceInBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceRange", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "formatRange", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnRange", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertAfterBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertBeforeBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "deleteBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "splitBlock", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "mergeBlockWithNext", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "setBlockParagraphProperties", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertTable", "story": "header" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceInBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceRange", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "formatRange", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnRange", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertAfterBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertBeforeBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "deleteBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "splitBlock", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "mergeBlockWithNext", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "setBlockParagraphProperties", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertTable", "story": "footer" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceInBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceRange", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "formatRange", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnRange", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertAfterBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertBeforeBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "deleteBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "splitBlock", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "mergeBlockWithNext", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "setBlockParagraphProperties", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertTable", "story": "footnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceInBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceRange", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "formatRange", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnRange", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "commentOnBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertAfterBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertBeforeBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "replaceBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "deleteBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "splitBlock", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "mergeBlockWithNext", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "setBlockParagraphProperties", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "op": "insertTable", "story": "endnote" },
+      "why": "every text operation in every header, footer and note"
+    },
+    {
+      "cell": { "story": "header", "feature": "pendingRevision", "mode": "tracked" },
+      "why": "a pending revision in every secondary story"
+    },
+    {
+      "cell": { "story": "footer", "feature": "pendingRevision", "mode": "tracked" },
+      "why": "a pending revision in every secondary story"
+    },
+    {
+      "cell": { "story": "footnote", "feature": "pendingRevision", "mode": "tracked" },
+      "why": "a pending revision in every secondary story"
+    },
+    {
+      "cell": { "story": "endnote", "feature": "pendingRevision", "mode": "tracked" },
+      "why": "a pending revision in every secondary story"
+    },
+    { "cell": { "story": "footer", "feature": "field" }, "why": "a field in a footer" },
+    { "cell": { "step": "fresh", "mode": "direct" }, "why": "every session in every mode" },
+    { "cell": { "step": "fresh", "mode": "tracked" }, "why": "every session in every mode" },
+    { "cell": { "step": "fresh", "mode": "suggested" }, "why": "every session in every mode" },
+    { "cell": { "step": "fresh", "story": "header" }, "why": "every session in a header" },
+    { "cell": { "step": "reopened", "mode": "direct" }, "why": "every session in every mode" },
+    { "cell": { "step": "reopened", "mode": "tracked" }, "why": "every session in every mode" },
+    { "cell": { "step": "reopened", "mode": "suggested" }, "why": "every session in every mode" },
+    { "cell": { "step": "reopened", "story": "header" }, "why": "every session in a header" },
+    { "cell": { "step": "newReviewer", "mode": "direct" }, "why": "every session in every mode" },
+    { "cell": { "step": "newReviewer", "mode": "tracked" }, "why": "every session in every mode" },
+    {
+      "cell": { "step": "newReviewer", "mode": "suggested" },
+      "why": "every session in every mode"
+    },
+    { "cell": { "step": "newReviewer", "story": "header" }, "why": "every session in a header" }
+  ],
+  "unreachable": [
+    {
+      "cell": { "story": "header", "feature": "pendingRevision", "mode": "suggested" },
+      "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
+    },
+    {
+      "cell": { "story": "footer", "feature": "pendingRevision", "mode": "suggested" },
+      "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
+    },
+    {
+      "cell": { "story": "footnote", "feature": "pendingRevision", "mode": "suggested" },
+      "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
+    },
+    {
+      "cell": { "story": "endnote", "feature": "pendingRevision", "mode": "suggested" },
+      "reason": "getChanges() lists body changes only and toDocument() carries no pending suggestion, so no public reader shows a header, footer or note block with a suggestion pending"
+    },
+    {
+      "cell": { "op": "deleteTableColumn" },
+      "reason": "no generator yet (support/operations.ts GENERATORS); the oracle and the operation contract know the type"
+    },
+    {
+      "cell": { "op": "mergeTableCells" },
+      "reason": "no generator yet (support/operations.ts GENERATORS); the oracle and the operation contract know the type"
+    },
+    {
+      "cell": { "op": "splitTableCell" },
+      "reason": "no generator yet (support/operations.ts GENERATORS); the oracle and the operation contract know the type"
+    }
+  ],
+  "notes": [
+    "Text boxes: listStories() has no text-box story and snapshotStory() cannot address one; a text box's paragraphs are main-story blocks (getContent() lists them after the paragraph that draws the box), which is how story=textbox is reached.",
+    "suggest_changes (the agent tool) takes main-story operations only; header, footer and note cells come from FolioDocxReviewer.applyDocumentOperationsToStory.",
+    "getComments() reads anchors in the body only: a comment on a header, footer or note lists with anchoredText \"\" and blockId null, so the oracle checks such a comment's text, not its anchor.",
+    "getChanges() lists body changes only: acceptChange()/rejectChange() cannot address a change in a header, footer or note; acceptAll()/rejectAll() resolve them.",
+    "field, hyperlink and inlineObject are block-level features: no reader exposes their offsets, so an operation counts when it targets a block holding one. noteReference, formatBoundary and surrogateBoundary spans are aimed at by offset (support/targets.ts)."
+  ]
+}
