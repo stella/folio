@@ -19,8 +19,6 @@ export const OPEN_ISSUES = {
 export const FINDINGS = {
   REWRITE_PENDING_DELETION:
     "replaceBlock on a paragraph whose tracked deletion is pending (a reader lists it as a blank block) writes the new text but keeps the pending deletion around it, so accepting glues the new text onto the next paragraph (or, in a table pending deletion, drops it)",
-  READER_KEEPS_INSERTION_IN_DELETED_ROW:
-    "after a suggested or tracked deleteTableRow over a row holding a pending insertion, getContent() still lists the inserted text (the row's other text reads blank), though accepting removes the whole row",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -57,7 +55,6 @@ export const KNOWN_FAILING_FLOWS: readonly {
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   REWRITE_PENDING_DELETION: /not what was asked \([^)]*replaceBlock[^)]*\):\s+block texts differ/u,
-  READER_KEEPS_INSERTION_IN_DELETED_ROW: /block texts differ[^]*got {6}\[[^\]]*"amended"/u,
 };
 
 /**

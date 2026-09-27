@@ -236,6 +236,36 @@ describe("folio writes both halves of a row revision", () => {
     expect(rowTexts(await tableRows(await reviewer.toBuffer()))).toEqual([["Alpha"], ["Beta"]]);
   });
 
+  for (const mode of ["tracked-changes", "suggested"] as const) {
+    test(`a row deletion over a pending insertion reads, accepts and rejects as one (${mode})`, async () => {
+      const source = await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]);
+      const edited = async () => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(source, { author: "Reviewer" });
+        const blockId = await findRowBlock(reviewer, "Beta");
+        for (const operation of [
+          { id: "word", type: "replaceInBlock", blockId, find: "Beta", replace: "Gamma" },
+          { id: "row", type: "deleteTableRow", blockId },
+        ] as const) {
+          expect(reviewer.applyOperations([operation], { mode }).applied).toHaveLength(1);
+        }
+        return reviewer;
+      };
+
+      // The row reads as a paragraph pending deletion does: blank, the
+      // inserted word with it.
+      const reading = await edited();
+      expect(reading.getContent().map(({ text }) => text)).toEqual(["Alpha", ""]);
+      expect(reading.getContentAsText()).not.toContain("Gamma");
+
+      const accepting = await edited();
+      accepting.acceptAll();
+      expect(rowTexts(await tableRows(await accepting.toBuffer()))).toEqual([["Alpha"]]);
+      const rejecting = await edited();
+      rejecting.rejectAll();
+      expect(rowTexts(await tableRows(await rejecting.toBuffer()))).toEqual([["Alpha"], ["Beta"]]);
+    });
+  }
+
   test("resolving one revision clears the row marker and the run marks together", async () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(
       await buildTableDocx([{ texts: ["Alpha"] }, { texts: ["Beta"] }]),

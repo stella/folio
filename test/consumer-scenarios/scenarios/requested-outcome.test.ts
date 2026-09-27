@@ -15,7 +15,6 @@ import { COLLISION_FIXTURES, FIXTURES, openReviewer, plainDocument } from "../su
 import { assertHealthy, saveAndReopen } from "../support/invariants.ts";
 import {
   expectedFailure,
-  FINDING_SYMPTOMS,
   KNOWN_FAILING_COLLISIONS,
   KNOWN_FAILING_FOLLOW_UPS,
 } from "../support/known-issues.ts";
@@ -391,25 +390,26 @@ describe("findings the oracle pins", () => {
     });
   }
 
-  expectedFailure(
-    "READER_KEEPS_INSERTION_IN_DELETED_ROW",
-    "a suggested row deletion over a suggested word leaves the reader no text of that row",
-    FINDING_SYMPTOMS.READER_KEEPS_INSERTION_IN_DELETED_ROW,
-    async () => {
+  for (const mode of ["tracked-changes", "suggested"] as const) {
+    test(`a row deletion over a pending word leaves the reader no text of that row (${mode})`, async () => {
       const reviewer = await openReviewer(await ALL_FIXTURES.tables());
       const cell = blocksOf(reviewer).find((block) => block.text === "Price") as Block;
       await applyChecked(
         reviewer,
         [{ type: "replaceInBlock", blockId: cell.id, find: "Price", replace: "amended" }],
-        "suggested",
-        "suggest a word",
+        mode,
+        "a pending word",
       );
       await applyChecked(
         reviewer,
         [{ type: "deleteTableRow", blockId: cell.id }],
-        "suggested",
+        mode,
         "then its row's deletion",
       );
-    },
-  );
+      assert.ok(
+        !blocksOf(reviewer).some((block) => block.text.includes("amended")),
+        "the reader still lists the deleted row's pending word",
+      );
+    });
+  }
 });

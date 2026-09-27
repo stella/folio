@@ -236,12 +236,14 @@ export type MarkTableRowContentOptions = {
  * accept and an inserted row's text on reject when the row marker stands
  * alone, so the two must always be written together.
  *
- * Two kinds of run stay unmarked. A run that already carries a revision keeps
- * it, because OOXML nests `w:ins`/`w:del` but the editable model holds one
- * wrapper per run and overwriting would drop the earlier revision. A cell that
- * spans into the row below survives the deletion — `removeTableRow` moves it down
- * and shortens its span — so marking its text would delete content the
- * accepted document must still hold.
+ * Two kinds of run stay unmarked. A run that already carries a revision of the
+ * same kind keeps it, because overwriting would drop the earlier revision; a
+ * pending insertion inside a deleted row is marked deleted as well (`w:ins >
+ * w:del`), as `deleteBlock` marks one inside a deleted paragraph, so every
+ * reader leaves it out with the rest of the row. A cell that spans into the
+ * row below survives the deletion — `removeTableRow` moves it down and
+ * shortens its span — so marking its text would delete content the accepted
+ * document must still hold.
  */
 export const markTableRowContent = ({
   tr,
@@ -275,7 +277,9 @@ export const markTableRowContent = ({
     }
     if (node.marks.some(isTrackedChangeMark)) {
       wholeRowMarkable = false;
-      return false;
+      if (kind === "insertion" || node.marks.some(({ type }) => type.name === "deletion")) {
+        return false;
+      }
     }
     const from = contentFrom + offset;
     markable.push({ from, to: from + node.nodeSize });
