@@ -61,9 +61,12 @@ import {
 import {
   addCarriedMarks,
   annotatedReplacement,
+  commentsAcrossParagraphBoundary,
+  commentsForTrackedInsertion,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
   NON_INCLUSIVE_MARK_DISPOSITION,
+  placeTrackedInsertion,
   surveyReplacedAnnotations,
 } from "../prosemirror/replacedAnnotations";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
@@ -2016,6 +2019,28 @@ type RotatedAddedFinalBreaks = {
   }[];
 };
 
+/**
+ * Insert blocks at the boundary `at`. A comment that runs across the boundary
+ * runs across what is inserted there too: a comment covers one stretch.
+ */
+const insertBlocksInsideComments = (
+  tr: Transaction,
+  at: number,
+  blocks: PMNode | readonly PMNode[],
+): Transaction => {
+  const $at = tr.doc.resolve(at);
+  const spanning =
+    $at.nodeBefore && $at.nodeAfter
+      ? commentsAcrossParagraphBoundary($at.nodeBefore, $at.nodeAfter)
+      : [];
+  const fragment = Fragment.from(blocks as PMNode | PMNode[]);
+  let next = tr.insert(at, fragment);
+  for (const comment of spanning) {
+    next = next.addMark(at, at + fragment.size, comment);
+  }
+  return next;
+};
+
 /** A paragraph mark that is a pending insertion (not a relocation's end). */
 const isInsertedPPrMark = (value: unknown): boolean =>
   typeof value === "object" && value !== null && "kind" in value && value.kind === "ins";
@@ -3256,7 +3281,7 @@ const applyFolioAIEditOperationsInternal = ({
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
-        tr = tr.insert(item.from, built.nodes);
+        tr = insertBlocksInsideComments(tr, item.from, built.nodes);
         break;
       }
       case "insertSignatureTable": {
@@ -3637,7 +3662,7 @@ const applyFolioAIEditOperationsInternal = ({
         if (producesTrackedChanges) {
           appliedRevisionIds = [operationRevisionSeed++];
         }
-        tr = tr.insert(item.from, table);
+        tr = insertBlocksInsideComments(tr, item.from, table);
         markStructuralChange(tr);
         break;
       }
@@ -3838,9 +3863,22 @@ const applyFolioAIEditOperationsInternal = ({
       case "mergeBlockWithNext": {
         const separator = item.operation.separator ?? "";
         const insertAt = item.blockTo - 1;
+        // A comment running from one paragraph into the next runs across the
+        // separator too, or it would cover two stretches.
+        const first = tr.doc.nodeAt(item.blockFrom);
+        const second = tr.doc.nodeAt(item.blockTo);
+        const spanningComments =
+          first && second ? commentsAcrossParagraphBoundary(first, second) : [];
+        const withSeparator = (transaction: Transaction): Transaction => {
+          let next = transaction.insertText(separator, insertAt);
+          for (const comment of spanningComments) {
+            next = next.addMark(insertAt, insertAt + separator.length, comment);
+          }
+          return next;
+        };
         if (mode === "direct") {
           if (separator.length > 0) {
-            tr = tr.insertText(separator, insertAt);
+            tr = withSeparator(tr);
           }
           tr = tr.join(item.blockTo + separator.length);
         } else {
@@ -3848,7 +3886,7 @@ const applyFolioAIEditOperationsInternal = ({
           appliedRevisionIds = [revisionIdMark];
           if (separator.length > 0 && insertionType) {
             const revisionIdSeparator = operationRevisionSeed++;
-            tr = tr.insertText(separator, insertAt);
+            tr = withSeparator(tr);
             tr = tr.addMark(
               insertAt,
               insertAt + separator.length,
@@ -4169,6 +4207,11 @@ type InsertCleanTextOptions = {
    * left alone: a tracked deletion removes nothing.
    */
   standsInFor?: { from: number; to: number };
+  /**
+   * The span stood in for stays, as a tracked deletion: a comment on it then
+   * goes on the insertion only where the insertion continues its range.
+   */
+  keepsReplacedText?: boolean;
 };
 
 type InsertedCleanText = {
@@ -4185,11 +4228,15 @@ const insertCleanText = ({
   to,
   text,
   standsInFor,
+  keepsReplacedText = false,
 }: InsertCleanTextOptions): InsertedCleanText => {
   const annotations = surveyReplacedAnnotations(tr.doc, from, to);
-  const replaced = standsInFor
+  const carried = standsInFor
     ? surveyReplacedAnnotations(tr.doc, standsInFor.from, standsInFor.to).carried
     : [];
+  const replaced = keepsReplacedText
+    ? (commentsForTrackedInsertion(tr.doc, from, [carried])[0] ?? [])
+    : carried;
   if (
     !hasReplacedAnnotations(annotations) &&
     replaced.length === 0 &&
@@ -4300,6 +4347,7 @@ const applyTextReplacement = ({
       to: item.to,
       text: replacement,
       standsInFor: { from: item.from, to: item.to },
+      keepsReplacedText: true,
     });
     nextTr = inserted.transaction;
     nextTr = nextTr.addMark(inserted.start, inserted.end, insertionType.create(insAttrs));
@@ -4994,6 +5042,8 @@ const applyMinimalTrackedReplacement = ({
     const doc = nextTr.doc;
     let at: number;
     let marks: readonly Mark[];
+    // Where the removed text starts, when there is removed text.
+    let removedFrom: number | null = null;
     if (change.insertion !== undefined) {
       at = change.insertion.at;
       marks = change.insertion.marks(doc);
@@ -5005,8 +5055,10 @@ const applyMinimalTrackedReplacement = ({
         panic("A planned replacement lost the characters it removes");
       }
       // After the removed text, which reads first in the redline, formatted
-      // as the text it replaces, carrying the links and comments over it.
+      // as the text it replaces, carrying the links over it and the comments
+      // whose range it continues.
       at = last.to;
+      removedFrom = first.from;
       marks = addCarriedMarks(
         inheritedReplacementMarks(doc, styleSource.from, styleSource.to),
         surveyReplacedAnnotations(doc, first.from, last.to).carried,
@@ -5021,12 +5073,43 @@ const applyMinimalTrackedReplacement = ({
     if (change.text.length === 0) {
       continue;
     }
-    const nodes = insertedNodes(change.text, replacementStarts[plannedIndex] ?? 0, marks);
-    nextTr = nextTr.insert(at, nodes);
-    const end = at + Fragment.fromArray(nodes).size;
-    nextTr = nextTr.addMark(at, end, insertion);
-    if (commentMark) {
-      nextTr = nextTr.addMark(at, end, commentMark);
+    const pieces = insertedNodes(change.text, replacementStarts[plannedIndex] ?? 0, marks);
+    // A piece given a comment goes next to that comment's removed text, so
+    // the comment stays one stretch (see `placeTrackedInsertion`).
+    const positions =
+      removedFrom === null
+        ? pieces.map(() => at)
+        : placeTrackedInsertion(
+            nextTr.doc,
+            removedFrom,
+            at,
+            pieces.map((node) => node.marks),
+          );
+    const runs: { at: number; pieces: PMNode[] }[] = [];
+    for (const [index, piece] of pieces.entries()) {
+      const position = positions[index] ?? at;
+      const run = runs.at(-1);
+      if (run?.at === position) {
+        run.pieces.push(piece);
+      } else {
+        runs.push({ at: position, pieces: [piece] });
+      }
+    }
+    // The later run first, so the earlier positions stay put.
+    for (const run of runs.toReversed()) {
+      // Inherited or carried, a comment only goes on when its range continues.
+      const pieceMarks = commentsForTrackedInsertion(
+        nextTr.doc,
+        run.at,
+        run.pieces.map((node) => node.marks),
+      );
+      const nodes = run.pieces.map((node, index) => node.mark(pieceMarks[index] ?? node.marks));
+      nextTr = nextTr.insert(run.at, nodes);
+      const end = run.at + Fragment.fromArray(nodes).size;
+      nextTr = nextTr.addMark(run.at, end, insertion);
+      if (commentMark) {
+        nextTr = nextTr.addMark(run.at, end, commentMark);
+      }
     }
   }
   return {

@@ -14,9 +14,8 @@ type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 export type VisibleStateOptions = {
   /**
    * Compare the fields a reviewer only settles at open too: list labels and
-   * levels (STALE_LIST_LABELS) and comment anchor text (COMMENT_ANCHOR_DRIFT
-   * in known-issues.ts). Off by default; the saved package's readers are
-   * compared with each other either way.
+   * levels (STALE_LIST_LABELS in known-issues.ts). Off by default; the saved
+   * package's readers are compared with each other either way.
    */
   exact?: boolean;
 };
@@ -44,7 +43,7 @@ export const visibleState = (reviewer: Reviewer, { exact = false }: VisibleState
   comments: reviewer.getComments().map((comment) => ({
     author: comment.author,
     text: comment.text,
-    anchor: exact ? comment.anchoredText : comment.anchoredText.length > 0,
+    anchor: comment.anchoredText,
     done: comment.done,
     replies: comment.replies.map((reply) => reply.text),
   })),

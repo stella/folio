@@ -70,6 +70,7 @@ import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "./extensions/nodes/MoveRangeBound
 import { RANGE_ANCHOR_NODE_NAME } from "./extensions/nodes/RangeAnchorExtension";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "./extensions/nodes/TextBoxAnchorExtension";
 import { readMoveRangeBoundaryAttrs } from "./moveRangeBoundaryAttrs";
+import { isZeroWidthAnchor } from "./zeroWidthAnchors";
 
 /**
  * What a replacement does with each mark the schema declares
@@ -221,6 +222,202 @@ export const addCarriedMarks = (
   }
   return next;
 };
+
+/**
+ * Invariant: a comment mark covers ONE contiguous stretch of a paragraph. A
+ * save writes one range start and one range end per comment, so a comment on
+ * two stretches reopens covering the text between them as well.
+ *
+ * Text an edit inserts is where that breaks: it lands next to the text of a
+ * comment, or inside it. These pick the comments inserted text takes so that
+ * every comment stays one stretch.
+ */
+
+/** The first (`1`) or last (`-1`) child of `paragraph` that is not a zero-width anchor. */
+const edgeContent = (paragraph: PMNode, direction: -1 | 1): PMNode | null => {
+  for (
+    let index = direction === 1 ? 0 : paragraph.childCount - 1;
+    index >= 0 && index < paragraph.childCount;
+    index += direction
+  ) {
+    const child = paragraph.child(index);
+    if (!isZeroWidthAnchor(child)) {
+      return child;
+    }
+  }
+  return null;
+};
+
+/**
+ * The content either side of `at` in its paragraph, past zero-width anchors
+ * (a comment's own reference sits between its text and what follows).
+ */
+const neighboursAt = (doc: PMNode, at: number): { before: PMNode | null; after: PMNode | null } => {
+  const $at = doc.resolve(at);
+  const parent = $at.parent;
+  const neighbour = (direction: -1 | 1): PMNode | null => {
+    const adjacent = direction === -1 ? $at.nodeBefore : $at.nodeAfter;
+    if (!adjacent || !isZeroWidthAnchor(adjacent)) {
+      return adjacent;
+    }
+    // An anchor is an atom, so `at` sits on a child boundary here.
+    for (
+      let index = direction === -1 ? $at.index() - 2 : $at.index() + 1;
+      index >= 0 && index < parent.childCount;
+      index += direction
+    ) {
+      const child = parent.child(index);
+      if (!isZeroWidthAnchor(child)) {
+        return child;
+      }
+    }
+    return null;
+  };
+  return { before: neighbour(-1), after: neighbour(1) };
+};
+
+/** The comments on both `before` and `after`: text between them must carry them. */
+const commentsAround = (before: PMNode | null, after: PMNode | null): Mark[] =>
+  before && after
+    ? before.marks.filter((mark) => mark.type.name === "comment" && mark.isInSet(after.marks))
+    : [];
+
+/**
+ * The mark sets of a run of text a TRACKED edit inserts at `at` (one set per
+ * piece, in order), with the comments that keep every comment one stretch.
+ *
+ * A tracked replacement keeps the replaced text (as a deletion), and that text
+ * keeps its comments, so a comment carried or inherited onto the insertion
+ * only CONTINUES its range: it stays when, through the run, it reaches the
+ * content directly before or after `at`, and goes otherwise. Between two
+ * pieces that have a comment (the neighbours included), every piece takes
+ * it, or the run would split it in two.
+ */
+export const commentsForTrackedInsertion = (
+  doc: PMNode,
+  at: number,
+  pieces: readonly (readonly Mark[])[],
+): (readonly Mark[])[] => {
+  const { before, after } = neighboursAt(doc, at);
+  const sets: (readonly Mark[])[] = [before?.marks ?? [], ...pieces, after?.marks ?? []];
+  const comments: Mark[] = [];
+  for (const set of sets) {
+    for (const mark of set) {
+      if (mark.type.name === "comment" && !mark.isInSet(comments)) {
+        comments.push(mark);
+      }
+    }
+  }
+  const result: (readonly Mark[])[] = pieces.map((set) =>
+    set.filter((mark) => mark.type.name !== "comment"),
+  );
+  for (const comment of comments) {
+    const covered = sets.flatMap((set, index) => (comment.isInSet(set) ? [index] : []));
+    const first = covered[0]!;
+    const last = covered.at(-1)!;
+    // Only a stretch that reaches a neighbour continues the comment.
+    if (first !== 0 && last !== sets.length - 1) {
+      continue;
+    }
+    for (let index = Math.max(first, 1); index <= Math.min(last, pieces.length); index++) {
+      result[index - 1] = comment.addToSet([...result[index - 1]!]);
+    }
+  }
+  return result;
+};
+
+/**
+ * Where, within the text a tracked replacement removes (`from` to `to`), each
+ * piece of its new text goes, one position per piece and never decreasing.
+ *
+ * The redline reads the removed text first and the new text after it, so by
+ * default every piece goes at `to`. A piece given a comment goes where that
+ * comment's stretch of removed text ends instead, next to it; the pieces
+ * before it that have no comment go where that stretch begins, and the ones
+ * after it follow it. So each comment stays one stretch, holding the removed
+ * text it held and exactly the new text given it.
+ */
+export const placeTrackedInsertion = (
+  doc: PMNode,
+  from: number,
+  to: number,
+  pieces: readonly (readonly Mark[])[],
+): number[] => {
+  const stretches = new Map<Mark, { start: number; end: number }>();
+  doc.nodesBetween(from, to, (node, position) => {
+    if (!node.isText) {
+      return true;
+    }
+    for (const mark of node.marks) {
+      if (mark.type.name !== "comment") {
+        continue;
+      }
+      const known = [...stretches.keys()].find((other) => other.eq(mark)) ?? mark;
+      const start = Math.max(position, from);
+      const end = Math.min(position + node.nodeSize, to);
+      const stretch = stretches.get(known);
+      stretches.set(known, stretch ? { start: stretch.start, end } : { start, end });
+    }
+    return false;
+  });
+  // Where a piece given comments goes: next to every one of their stretches
+  // (a position between two of them, past only zero-width anchors), or else
+  // where the last of them ends.
+  const stretchOf = (set: readonly Mark[]) => {
+    const own = [...stretches].filter(([mark]) => mark.isInSet(set));
+    if (own.length === 0) {
+      return undefined;
+    }
+    const start = Math.min(...own.map(([, stretch]) => stretch.start));
+    // After the removed text first, as the redline reads; before it only when
+    // nothing after it is next to every comment.
+    const ascending = (left: number, right: number) => left - right;
+    const candidates = [
+      ...own.map(([, stretch]) => stretch.end).toSorted(ascending),
+      ...own.map(([, stretch]) => stretch.start).toSorted(ascending),
+    ];
+    for (const position of candidates) {
+      const { before, after } = neighboursAt(doc, position);
+      const nextToAll = own.every(
+        ([mark]) =>
+          Boolean(before && mark.isInSet(before.marks)) ||
+          Boolean(after && mark.isInSet(after.marks)),
+      );
+      if (nextToAll) {
+        return { start, end: position };
+      }
+    }
+    return { start, end: Math.max(...own.map(([, stretch]) => stretch.end)) };
+  };
+  const anchored = pieces.map(stretchOf);
+  const positions: number[] = [];
+  let previous = from;
+  for (const [index, stretch] of anchored.entries()) {
+    let position: number;
+    if (stretch) {
+      position = stretch.end;
+    } else {
+      const next = anchored.slice(index + 1).find((candidate) => candidate !== undefined);
+      const placedBefore = anchored.slice(0, index).some((candidate) => candidate !== undefined);
+      position = next && !placedBefore ? next.start : to;
+      if (placedBefore && next) {
+        position = previous;
+      }
+    }
+    position = Math.max(position, previous);
+    positions.push(position);
+    previous = position;
+  }
+  return positions;
+};
+
+/**
+ * The comments text inserted between the end of `first` and the start of
+ * `next` must carry: those covering both sides. A merge's separator lands
+ * there.
+ */
+export const commentsAcrossParagraphBoundary = (first: PMNode, next: PMNode): Mark[] =>
+  commentsAround(edgeContent(first, -1), edgeContent(next, 1));
 
 const withCarriedMarks = (node: PMNode, carried: readonly Mark[]): PMNode =>
   node.mark(addCarriedMarks(node.marks, carried));

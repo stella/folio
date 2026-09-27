@@ -14,6 +14,7 @@ import {
 } from "../document-operations";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { FolioDocxReviewer } from "./headless";
+import { createFolioAITextRangeHandle } from "./snapshot";
 
 const SUPPLIER = "The Supplier delivers the goods on time and in good order.";
 const SIGNED = "Signed in two copies.";
@@ -129,5 +130,74 @@ describe("rejecting a split with an inserted table after its first half", () => 
     expect(texts(reviewer)).toContain("Term");
     reviewer.rejectAll();
     expect(texts(reviewer)).toEqual(ORIGINAL);
+  });
+});
+
+const anchorsOf = (reviewer: FolioDocxReviewer): string[] =>
+  reviewer.getComments().map(({ anchoredText }) => anchoredText);
+
+describe("a comment on words a tracked replacement removes", () => {
+  const commentThenReplace = async (mode: FolioDocumentOperationMode) => {
+    const reviewer = await open();
+    const start = SUPPLIER.indexOf("good order");
+    applier(reviewer)({
+      type: "commentOnRange",
+      range: createFolioAITextRangeHandle({
+        blockId: idOf(reviewer, "The Supplier"),
+        text: SUPPLIER,
+        startOffset: start,
+        endOffset: start + "good".length,
+      }),
+      comment: { text: "Which standard?" },
+    });
+    applier(
+      reviewer,
+      mode,
+    )({
+      type: "replaceBlock",
+      blockId: idOf(reviewer, "The Supplier"),
+      text: "The Supplier delivers promptly.",
+    });
+    return reviewer;
+  };
+
+  test("stays one stretch: it reads the same before and after a save", async () => {
+    const reviewer = await commentThenReplace("tracked-changes");
+    // The removed word, and the new one that takes its place.
+    expect(anchorsOf(reviewer)).toEqual(["goodpromptly"]);
+    expect(anchorsOf(await reopen(reviewer))).toEqual(anchorsOf(reviewer));
+  });
+
+  test("accepted, covers what the direct edit's comment covers", async () => {
+    const reviewer = await commentThenReplace("tracked-changes");
+    reviewer.acceptAll();
+    expect(anchorsOf(reviewer)).toEqual(anchorsOf(await commentThenReplace("direct")));
+  });
+
+  test("a replacement right after the comment still continues it", async () => {
+    const reviewer = await open();
+    const apply = applier(reviewer);
+    const start = SUPPLIER.indexOf("order");
+    apply({
+      type: "commentOnRange",
+      range: createFolioAITextRangeHandle({
+        blockId: idOf(reviewer, "The Supplier"),
+        text: SUPPLIER,
+        startOffset: start,
+        endOffset: start + "order".length,
+      }),
+      comment: { text: "Which standard?" },
+    });
+    apply({
+      type: "replaceInBlock",
+      blockId: idOf(reviewer, "The Supplier"),
+      find: "order",
+      replace: "shape",
+    });
+    const anchored = reviewer.getComments().map(({ anchoredText }) => anchoredText);
+    expect(anchored).toEqual(["ordershape"]);
+    expect((await reopen(reviewer)).getComments().map(({ anchoredText }) => anchoredText)).toEqual(
+      anchored,
+    );
   });
 });

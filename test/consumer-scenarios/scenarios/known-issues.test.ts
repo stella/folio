@@ -11,7 +11,6 @@ import { describe } from "node:test";
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
-  createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   generateRedlineDocx,
   paragraph,
@@ -154,54 +153,6 @@ describe("findings not yet filed", () => {
           "4. Retention after inspection",
         ],
         "labels before the save are stale",
-      );
-    },
-  );
-
-  expectedFailure(
-    "COMMENT_ANCHOR_DRIFT",
-    "a comment's anchored text reads the same before and after a save when its text is replaced",
-    /anchored text/u,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const text = "The Supplier delivers the goods on time and in good order.";
-      const target = reviewer.getContent().find((block) => block.text === text);
-      assert.ok(target);
-      const start = text.indexOf("good order");
-      const range = createFolioAITextRangeHandle({
-        blockId: target.id,
-        text,
-        startOffset: start,
-        endOffset: start + "good".length,
-      });
-      assert.ok(range);
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "comment", type: "commentOnRange", range, comment: { text: "Which standard?" } },
-        ],
-      });
-      // Before the save the comment covers "good" and the replacement text;
-      // after it, "good order." and the replacement text.
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "replace",
-            type: "replaceBlock",
-            blockId: target.id,
-            text: "The Supplier delivers promptly.",
-          },
-        ],
-      });
-      const before = reviewer.getComments().map((comment) => comment.anchoredText);
-      const { reopened } = await saveAndReopen(reviewer, "comment anchor");
-      assert.deepEqual(
-        reopened.getComments().map((comment) => comment.anchoredText),
-        before,
-        "the anchored text changed across the save",
       );
     },
   );

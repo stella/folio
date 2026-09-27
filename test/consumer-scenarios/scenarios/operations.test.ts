@@ -9,10 +9,13 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
+import {
+  createFolioAITextRangeHandle,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+} from "@stll/folio-core/server";
 
 import { FIXTURE_NAMES, FIXTURES, openReviewer, plainDocument } from "../support/documents.ts";
-import { assertHealthy, visibleState } from "../support/invariants.ts";
+import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
 import { expectedFailure, KNOWN_FAILING_OPERATION_RUNS } from "../support/known-issues.ts";
@@ -168,6 +171,30 @@ describe("resolving tracked edits that build on pending ones", () => {
     assert.deepEqual(
       reviewer.getContent().map(({ text }) => text),
       await originalText(),
+    );
+  });
+
+  test("a comment's anchored text reads the same before and after a save when its text is replaced", async () => {
+    const { reviewer, apply, block } = await tracked();
+    const target = block("The Supplier");
+    const start = SUPPLIER.indexOf("good order");
+    const range = createFolioAITextRangeHandle({
+      blockId: target.id,
+      text: SUPPLIER,
+      startOffset: start,
+      endOffset: start + "good".length,
+    });
+    assert.ok(range);
+    apply({ type: "commentOnRange", range, comment: { text: "Which standard?" } });
+    apply({ type: "replaceBlock", blockId: target.id, text: "The Supplier delivers promptly." });
+    const before = reviewer.getComments().map((comment) => comment.anchoredText);
+    // The removed word, and the new one that takes its place.
+    assert.deepEqual(before, ["goodpromptly"]);
+    const { reopened } = await saveAndReopen(reviewer, "comment anchor");
+    assert.deepEqual(
+      reopened.getComments().map((comment) => comment.anchoredText),
+      before,
+      "the anchored text changed across the save",
     );
   });
 });

@@ -19,8 +19,6 @@ export const OPEN_ISSUES = {
 export const FINDINGS = {
   STALE_LIST_LABELS:
     "after an operation adds, removes or renumbers list items, the reviewer's getContent() / snapshot labels keep the numbers read at open until a save and reopen",
-  COMMENT_ANCHOR_DRIFT:
-    "a comment whose range an edit splits or replaces reads a different anchoredText before the save (the marked text) than after it (everything between the range markers)",
   NOTE_REFERENCE_TEXT:
     'getContent(), the snapshot and read_document render a footnote/endnote reference as its w:id ("7"), while the page shows its number ("1", or "i" for an endnote)',
   COMPARE_INSERTED_LIST_ITEMS:
