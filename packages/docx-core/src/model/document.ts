@@ -250,6 +250,8 @@ export type {
   Shape,
   TextBox,
   TableCell,
+  TableContentCarrier,
+  TableCustomXmlWrapper,
   TablePreservedMarkup,
   TableRow,
   Table,

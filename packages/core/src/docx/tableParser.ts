@@ -1467,7 +1467,7 @@ type TableParseOptions = {
   rootXmlns?: Record<string, string>;
   /** The ledger of the package this table belongs to; a table read on its own has none. */
   previews?: PreviewLedger;
-  context?: ParseContext;
+  context?: ParseContext | undefined;
 };
 
 /** What a table's rows, cells and blocks read: the ledger is settled where the walk enters. */

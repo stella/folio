@@ -397,6 +397,7 @@ export const BLOCK_CONTENT_HANDLERS = {
       return hasUnmodeledTableContent ? CAPTURE : undefined;
     }
     modelled.push(table);
+    return undefined;
   },
   sdt: (child, { resources: { styles, theme, numbering, rels, media }, state, modelled }) => {
     modelled.push(parseBlockSdt(child, styles, theme, numbering, rels, media, state));

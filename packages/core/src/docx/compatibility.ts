@@ -295,7 +295,7 @@ function inspectParagraphContent(
 
 function inspectHyperlink(
   hyperlink: Hyperlink,
-  context: InspectionLocationContext & { record: RecordDrawing },
+  context: InspectionLocationContext & { record: RecordDrawing; recordIssue: RecordIssue },
 ): void {
   for (const [childIndex, child] of hyperlink.children.entries()) {
     const path = `${context.path}.children[${childIndex}]`;
