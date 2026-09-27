@@ -572,7 +572,36 @@ const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<vo
     { author: "Agent" },
   );
   const log: string[] = [];
+  const check = async (body: () => Promise<void> | void): Promise<void> => {
+    try {
+      await body();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`seed ${seed} (${mode}) after ${log.join(" → ")}\n${detail}`, {
+        cause: error,
+      });
+    }
+  };
+  // What rejecting every pending change must give back: the document as it
+  // stood before the changes still pending.
+  let settled = readLive(reviewer).views.getContent;
+  // Tracked runs resolve their changes now and then, and at the end.
+  const resolve = async (resolution: "acceptAll" | "rejectAll"): Promise<void> => {
+    reviewer[resolution]();
+    log.push(resolution);
+    await check(async () => {
+      if (resolution === "rejectAll") {
+        expect(readLive(reviewer).views.getContent).toEqual(settled);
+      }
+      settled = readLive(reviewer).views.getContent;
+      await expectLiveAndSavedAgree(reviewer);
+    });
+  };
   for (let step = 0; step < steps; step += 1) {
+    if (mode === "tracked-changes" && random.next() < 0.2) {
+      await resolve(random.next() < 0.5 ? "acceptAll" : "rejectAll");
+      continue;
+    }
     const name = random.pick(Object.keys(LIST_EDITS)) ?? "insertAfterItem";
     const blocks = reviewer.getContent().filter(isFolioAIContentBlock);
     const operations = LIST_EDITS[name]?.(blocks, random, step);
@@ -583,14 +612,10 @@ const runListEdits = async (seed: number, mode: Mode, steps: number): Promise<vo
       operations,
     });
     log.push(`${name}:${result.status}`);
-    try {
-      await expectLiveAndSavedAgree(reviewer);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`seed ${seed} (${mode}) after ${log.join(" → ")}\n${detail}`, {
-        cause: error,
-      });
-    }
+    await check(() => expectLiveAndSavedAgree(reviewer));
+  }
+  if (mode === "tracked-changes") {
+    await resolve("rejectAll");
   }
 };
 
@@ -600,7 +625,7 @@ describe("readers agree after list edits", () => {
       await runListEdits(seed, "direct", 8);
     });
   }
-  for (const seed of [21, 34, 55]) {
+  for (const seed of [21, 34, 55, 89, 144]) {
     test(`seed ${seed}: tracked edits`, async () => {
       await runListEdits(seed, "tracked-changes", 8);
     });
