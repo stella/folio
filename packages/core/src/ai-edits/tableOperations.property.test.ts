@@ -312,6 +312,14 @@ const run = async (
 
 const appliedIds = ({ result }: Run): Set<string> => new Set(result.applied.map(({ id }) => id));
 
+const readTablesAt = async (stage: string, reviewer: FolioDocxReviewer): Promise<TableReading> => {
+  try {
+    return await readReviewerTables(reviewer);
+  } catch (cause) {
+    throw new Error(`Table property failed while reading ${stage}`, { cause });
+  }
+};
+
 const resolve = async (
   reviewer: FolioDocxReviewer,
   resolution: "accept" | "reject",
@@ -322,7 +330,7 @@ const resolve = async (
   } else {
     reopened.rejectAll();
   }
-  return readReviewerTables(reopened);
+  return readTablesAt(resolution, reopened);
 };
 
 /** What a caller sees of a document: its blocks' text and every table's cells. */
@@ -400,7 +408,7 @@ const trackedRefusalIsExpected = (planned: PlannedOperation, plan: OperationPlan
 
 const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Promise<void> => {
   const base = await buildTableDocx(spec);
-  const original = await readReviewerTables(await open(base));
+  const original = await readTablesAt("original", await open(base));
   expect(tableReadingProblems(original)).toEqual([]);
 
   const direct = await run(base, spec, plans, "direct");
@@ -408,7 +416,7 @@ const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Prom
   const directApplied = appliedIds(direct);
   const trackedApplied = appliedIds(tracked);
 
-  const directReading = await readReviewerTables(direct.reviewer);
+  const directReading = await readTablesAt("direct", direct.reviewer);
   expect(tableReadingProblems(directReading)).toEqual([]);
   if (directApplied.size > 0) {
     // (a) Every value an applied operation supplied landed.
@@ -469,6 +477,22 @@ describe("table operations on merged tables", () => {
   test(
     "keep every value, agree across modes and readers, and reject cleanly",
     async () => {
+      await fc.assert(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        propertyConfig({ numRuns: 150, seed: -1930932135 }),
+      );
+      await fc.assert(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        propertyConfig({ numRuns: 150, seed: 58022172 }),
+      );
+      await fc.assert(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        propertyConfig({ numRuns: 150, seed: -324071034 }),
+      );
+      await fc.assert(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        propertyConfig({ numRuns: 150, seed: -1330713042 }),
+      );
       await fc.assert(
         fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
         propertyConfig({ numRuns: 150 }),

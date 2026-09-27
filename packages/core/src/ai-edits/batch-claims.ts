@@ -72,10 +72,11 @@ export type BatchClaim =
       type: "tableRemoval";
       table: number;
       wholeTable: boolean;
+      axis: "row" | "column" | "table";
       ranges: readonly PositionRange[];
     }
   /** Any other change to a table's grid: rows or columns added, cells merged or split. */
-  | { type: "tableStructure"; table: number }
+  | { type: "tableStructure"; table: number; axis: "row" | "column" | "cell" }
   | { type: "unclaimed" };
 
 type BlockRole =
@@ -272,6 +273,8 @@ export class BatchClaims {
   private readonly joins = new Map<number, string>();
   private readonly removals: { operationId: string; claim: TableRemovalClaim }[] = [];
   private readonly tables = new Map<number, string>();
+  private readonly rowInsertions = new Map<number, string>();
+  private readonly columnInsertions = new Map<number, string>();
   /** Accepted deletions that keep their paragraph, by where the paragraph ends. */
   private readonly keptParagraphs = new Map<number, { block: number; operationId: string }>();
 
@@ -353,10 +356,26 @@ export class BatchClaims {
       case "tableStructure":
         return (
           this.removals.find(
+            ({ claim: removed }) =>
+              insideAny(removed.ranges, claim.table) ||
+              (removed.table === claim.table &&
+                removed.axis !== claim.axis &&
+                (removed.axis === "row" || removed.axis === "column")),
+          )?.operationId ??
+          this.removals.find(
             ({ claim: removed }) => removed.wholeTable && removed.table === claim.table,
-          )?.operationId ?? null
+          )?.operationId ??
+          null
         );
       case "tableRemoval": {
+        if (claim.axis === "row") {
+          const columnInsertion = this.columnInsertions.get(claim.table);
+          if (columnInsertion !== undefined) return columnInsertion;
+        }
+        if (claim.axis === "column") {
+          const rowInsertion = this.rowInsertions.get(claim.table);
+          if (rowInsertion !== undefined) return rowInsertion;
+        }
         if (claim.wholeTable) {
           const structural = this.tables.get(claim.table);
           if (structural !== undefined) {
@@ -365,10 +384,17 @@ export class BatchClaims {
         }
         for (const removal of this.removals) {
           if (
-            removal.claim.table === claim.table &&
-            (removal.claim.wholeTable || claim.wholeTable)
+            insideAny(removal.claim.ranges, claim.table) ||
+            insideAny(claim.ranges, removal.claim.table) ||
+            (removal.claim.table === claim.table &&
+              (removal.claim.wholeTable || claim.wholeTable || removal.claim.axis !== claim.axis))
           ) {
             return removal.operationId;
+          }
+        }
+        for (const [table, operationId] of this.tables) {
+          if (strictlyInsideAny(claim.ranges, table)) {
+            return operationId;
           }
         }
         for (const [block, entries] of this.blocks) {
@@ -423,6 +449,12 @@ export class BatchClaims {
       case "tableStructure":
         if (!this.tables.has(claim.table)) {
           this.tables.set(claim.table, operationId);
+        }
+        if (claim.axis === "row" && !this.rowInsertions.has(claim.table)) {
+          this.rowInsertions.set(claim.table, operationId);
+        }
+        if (claim.axis === "column" && !this.columnInsertions.has(claim.table)) {
+          this.columnInsertions.set(claim.table, operationId);
         }
         break;
       case "tableRemoval":

@@ -15,6 +15,7 @@ import type { Paragraph, Table, TableCell, TableCellBlock, TableRow } from "@stl
 import { parseDocx } from "../docx/parser";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
+import { findChildren, OOXML_NAMESPACE_SCOPE, parseXml } from "../docx/xmlParser";
 import { fromMarkdown, toMarkdown } from "../markdown";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
@@ -218,7 +219,12 @@ export const checkTableGrid = (
   topLevel: boolean,
 ): { projection: ProjectedTable; problems: TableGridProblem[] } => {
   const problems: TableGridProblem[] = [];
-  const columns = table.columnWidths?.length ?? 0;
+  // Widths are optional on w:gridCol. Count the declared grid columns in the
+  // captured XML so an unmeasured but well formed grid is still checked.
+  const gridSource = table.formatting?.gridSourceXml;
+  const columns = gridSource
+    ? findChildren(parseXml(gridSource, OOXML_NAMESPACE_SCOPE).elements?.[0], "w", "gridCol").length
+    : (table.columnWidths?.length ?? 0);
   const cells: ProjectedCell[] = [];
   const openByColumn = new Map<number, ProjectedCell>();
   table.rows.forEach((row, rowIndex) => {

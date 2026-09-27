@@ -1,4 +1,11 @@
-import { Fragment, Mark, type MarkType, type Node as PMNode, type Schema } from "prosemirror-model";
+import {
+  Fragment,
+  Mark,
+  type MarkType,
+  type Node as PMNode,
+  type ResolvedPos,
+  type Schema,
+} from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
@@ -1731,6 +1738,37 @@ const deletedColumnCellRanges = (
   return ranges;
 };
 
+type DeletedRowAffectedRangesOptions = {
+  doc: PMNode;
+  deletion: TableRowDeletion;
+  row: PMNode;
+};
+
+/** A row deletion also changes cells whose vertical merge began above it. */
+const deletedRowAffectedRanges = ({
+  doc,
+  deletion,
+  row,
+}: DeletedRowAffectedRangesOptions): { from: number; to: number }[] => {
+  const ranges = [{ from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize }];
+  const table = doc.nodeAt(deletion.tablePosition);
+  if (table?.type.spec["tableRole"] !== "table") {
+    return panic("A resolved row deletion lost its table", { position: deletion.tablePosition });
+  }
+  const map = TableMap.get(table);
+  const seen = new Set<number>();
+  for (let column = 0; column < map.width; column++) {
+    const relative = map.map[deletion.rowIndex * map.width + column];
+    if (relative === undefined || seen.has(relative)) continue;
+    seen.add(relative);
+    const position = deletion.tableStart + relative;
+    if (position >= deletion.rowPosition) continue;
+    const cell = table.nodeAt(relative);
+    if (cell) ranges.push({ from: position, to: position + cell.nodeSize });
+  }
+  return ranges;
+};
+
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions): BatchClaim => {
   const block = item.blockFrom;
@@ -1780,6 +1818,7 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
             type: "tableRemoval",
             table: deleted.position,
             wholeTable: true,
+            axis: "table",
             ranges: [{ from: deleted.position, to: deleted.position + deleted.node.nodeSize }],
           }
         : { type: "unclaimed" };
@@ -1787,12 +1826,17 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
     case "deleteTableRow": {
       const deletion = item.tableRowDeletion;
       const row = deletion ? doc.nodeAt(deletion.rowPosition) : null;
-      return deletion && row
+      const table = deletion ? doc.nodeAt(deletion.tablePosition) : null;
+      return deletion && row && table?.type.spec["tableRole"] === "table"
         ? {
             type: "tableRemoval",
             table: deletion.tablePosition,
-            wholeTable: false,
-            ranges: [{ from: deletion.rowPosition, to: deletion.rowPosition + row.nodeSize }],
+            wholeTable: table.childCount === 1,
+            axis: "row",
+            ranges:
+              table.childCount === 1
+                ? [{ from: deletion.tablePosition, to: deletion.tablePosition + table.nodeSize }]
+                : deletedRowAffectedRanges({ doc, deletion, row }),
           }
         : { type: "unclaimed" };
     }
@@ -1803,6 +1847,7 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
             type: "tableRemoval",
             table: deletion.tablePosition,
             wholeTable: false,
+            axis: "column",
             ranges: deletedColumnCellRanges(doc, deletion),
           }
         : { type: "unclaimed" };
@@ -1812,9 +1857,12 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
     case "mergeTableCells":
     case "splitTableCell": {
       const target = getTableMutationPlanTarget(item);
+      let axis: "row" | "column" | "cell" = "cell";
+      if (item.operation.type === "insertTableRow") axis = "row";
+      if (item.operation.type === "insertTableColumn") axis = "column";
       return target.type === "none"
         ? { type: "unclaimed" }
-        : { type: "tableStructure", table: target.tablePosition };
+        : { type: "tableStructure", table: target.tablePosition, axis };
     }
   }
 };
@@ -4756,7 +4804,11 @@ const applyFolioAIEditOperationsInternal = ({
         });
       }
       const revisionIds = [...(receipt.revisionIds ?? []), revisionId];
-      applied[receiptIndex] = { ...receipt, revisionId: revisionIds[0], revisionIds };
+      applied[receiptIndex] = {
+        ...receipt,
+        revisionId: receipt.revisionId ?? revisionId,
+        revisionIds,
+      };
     }
     const retractedRevisionIds = new Set([
       ...rotated.retractedRevisionIds,
@@ -4773,10 +4825,11 @@ const applyFolioAIEditOperationsInternal = ({
           revisionIds: _oldRevisionIds,
           ...withoutRevisions
         } = receipt;
+        const firstRevisionId = revisionIds.at(0);
         applied[receiptIndex] =
-          revisionIds.length > 0
-            ? { ...withoutRevisions, revisionId: revisionIds[0], revisionIds }
-            : withoutRevisions;
+          firstRevisionId === undefined
+            ? withoutRevisions
+            : { ...withoutRevisions, revisionId: firstRevisionId, revisionIds };
       }
     }
     // Before dispatch, which may start another batch.
