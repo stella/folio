@@ -185,9 +185,14 @@ export const GENERATORS: Record<string, Generator> = {
   },
   insertTableRow: (blocks, random) => {
     const cells = blocks.filter(inTable);
-    return cells.length === 0
-      ? null
-      : { type: "insertTableRow", blockId: random.pick(cells).id, position: "after" };
+    if (cells.length === 0) return null;
+    const anchor = random.pick(cells);
+    return {
+      type: "insertTableRow",
+      blockId: anchor.id,
+      position: "after",
+      cellTexts: cellTexts(cellCount(rowCells(blocks, anchor)), "Row cell"),
+    };
   },
   deleteTableRow: (blocks, random) => {
     const cells = blocks.filter(inTable);
