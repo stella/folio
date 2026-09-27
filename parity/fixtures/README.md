@@ -23,10 +23,11 @@ bun run parity:build-edit-expectation-fixtures --check
 `edit-operation-scripts.ts` defines one saved edit per seed. The focused
 `editOperationScripts.test.ts` test runs every script and reads its saved
 structure: blocks and labels, table cells, revisions, comment anchors, note
-text, and package carrier counts. A reviewed structural expectation for the
-notes, fields, and sections case is pinned by `editStructuralExpectations.test.ts`.
-The remaining scripts retain their reproducible saved outputs while their
-expectations are being reviewed.
+text, and package carrier counts. Reviewed structural expectations for the
+final-paragraph, paragraph-boundary, numbering, and notes/fields/sections
+cases are pinned by `editStructuralExpectations.test.ts`. The remaining
+scripts retain reproducible saved outputs while their expectations are being
+reviewed.
 
 Inspect a saved result and its structural view in the ignored `.cache` directory:
 
