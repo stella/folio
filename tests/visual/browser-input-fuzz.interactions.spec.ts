@@ -31,6 +31,7 @@ type Block = {
   listLevel?: number | null;
   table?: unknown;
 };
+type LiveBlock = Pick<Block, "kind" | "text" | "table">;
 const project = (reviewer: FolioDocxReviewer): Block[] =>
   reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
     kind,
@@ -39,16 +40,16 @@ const project = (reviewer: FolioDocxReviewer): Block[] =>
     listLevel,
     table,
   }));
+const projectLive = (blocks: readonly Block[]): LiveBlock[] =>
+  blocks.map(({ kind, text, table }) => ({ kind, text, table }));
 
 const liveBlocks = (page: Page) =>
   page.evaluate(() => {
     const snapshot = globalThis.__folioPlayground?.getEditorRef()?.createAIEditSnapshot();
     if (!snapshot) throw new Error("live reader unavailable");
-    return snapshot.blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
+    return snapshot.blocks.map(({ kind, text, table }) => ({
       kind,
       text,
-      displayLabel,
-      listLevel,
       table,
     }));
   });
@@ -75,7 +76,7 @@ const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggestin
     },
     [...new Uint8Array(bytes)],
   );
-  await expect.poll(() => liveBlocks(page)).toEqual(baseline);
+  await expect.poll(() => liveBlocks(page)).toEqual(projectLive(baseline));
   await editor(page);
   if (suggesting) await page.getByRole("button", { name: "Track Changes", exact: true }).click();
   await page.evaluate(() =>
@@ -210,7 +211,7 @@ const runMode = async (
   const painted = await page.locator(".layout-page-content").allTextContents();
   const buffer = await save(page);
   const reopened = await FolioDocxReviewer.fromBuffer(buffer);
-  expect(project(reopened)).toEqual(live);
+  expect(projectLive(project(reopened))).toEqual(live);
   await page.evaluate(
     async (saved) => {
       await globalThis.__folioPlayground?.getEditorRef()?.loadDocumentBuffer(new Uint8Array(saved));

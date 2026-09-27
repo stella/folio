@@ -52,6 +52,10 @@ const pastePayload = {
     plain: "First bold\nSecond",
     html: "<p>First <strong>bold</strong></p><p>Second</p>",
   },
+  pasteGoogleDocsHtml: {
+    plain: "First bold\nSecond",
+    html: '<b id="docs-internal-guid-folio"><p style="line-height:1.15"><span style="font-weight:700">First bold</span></p><p><span>Second</span></p></b>',
+  },
   pasteWordHtml: {
     plain: "Opening\nClosing",
     html: '<p class="MsoNormal">Opening</p><p class="MsoNormal">Closing</p>',
@@ -73,7 +77,10 @@ const suggestionActionArbitraries = {
   backspace: fc.constant({ kind: "backspace" } as const),
   delete: fc.constant({ kind: "delete" } as const),
   pastePlain: plainTextArbitrary.map((plain) => ({ kind: "pastePlain", plain, html: "" }) as const),
-  pasteHtml: fc.constant({ kind: "pasteHtml", ...pastePayload.pasteHtml } as const),
+  pasteHtml: fc.constantFrom(
+    { kind: "pasteHtml", ...pastePayload.pasteHtml } as const,
+    { kind: "pasteHtml", ...pastePayload.pasteGoogleDocsHtml } as const,
+  ),
   pasteWordHtml: fc.constant({ kind: "pasteWordHtml", ...pastePayload.pasteWordHtml } as const),
   pasteListHtml: fc.constant({ kind: "pasteListHtml", ...pastePayload.pasteListHtml } as const),
   pasteTable: fc.constant({ kind: "pasteTable", ...pastePayload.pasteTable } as const),
