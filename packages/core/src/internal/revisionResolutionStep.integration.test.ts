@@ -4,7 +4,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { RevisionResolutionStep } from "./revisionResolutionStep";
@@ -181,7 +181,7 @@ test(
           }
         },
       ),
-      { seed: 260926, numRuns: 32, verbose: true },
+      propertyConfig({ seed: 260926, numRuns: 32, verbose: true }),
     );
     if (result.failed) {
       throw result.errorInstance;

@@ -5,6 +5,8 @@ import fc from "fast-check";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
+import { propertyConfig } from "../../../../test/property-testing";
+
 import { createSuggestionModePlugin } from "./plugins/suggestionMode";
 import { createTextInputPlugin } from "./textInput";
 
@@ -172,7 +174,7 @@ describe("text input routing", () => {
         );
         expect(markedText(view, markName)).toBe(revisionText);
       }),
-      { numRuns: 40 },
+      propertyConfig({ numRuns: 40 }),
     );
   });
 

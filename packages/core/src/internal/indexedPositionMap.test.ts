@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { StepMap } from "prosemirror-transform";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { indexedPositionMap } from "./indexedPositionMap";
 
 test(
@@ -43,7 +43,7 @@ test(
           }
         },
       ),
-      { seed: 2_609_261, numRuns: 100 },
+      propertyConfig({ seed: 2_609_261, numRuns: 100 }),
     );
   },
   propertyTestTimeout(30_000),

@@ -1,10 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, type Plugin } from "prosemirror-state";
+
+import { propertyConfig, propertyTestTimeout } from "../../../../../../test/property-testing";
 
 import { schema } from "../../schema";
 import { validateProseMirrorDocument } from "../../validation";
 import { BookmarkBoundaryExtension } from "./BookmarkBoundaryExtension";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 class FakeHTMLElement {
   constructor(private readonly attrs: Readonly<Record<string, string>>) {}
@@ -207,6 +211,7 @@ describe("BookmarkBoundaryExtension editing integrity", () => {
           }
         },
       ),
+      propertyConfig(),
     );
   });
 });

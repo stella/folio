@@ -13,7 +13,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { registerImage } from "../markdown/images";
 import type { RenderContext } from "../markdown/types";
@@ -38,7 +38,7 @@ describe("bytes to base64", () => {
       fc.property(byteArrays, (bytes) => {
         expect([...decodeToBytes(encodeBase64Portable(bytes))]).toEqual([...bytes]);
       }),
-      { numRuns: 400 },
+      propertyConfig({ numRuns: 400 }),
     );
   });
 
@@ -47,7 +47,7 @@ describe("bytes to base64", () => {
       fc.property(byteArrays, (bytes) => {
         expect(bytesToBase64(bytes)).toBe(encodeBase64Portable(bytes));
       }),
-      { numRuns: 400 },
+      propertyConfig({ numRuns: 400 }),
     );
   });
 

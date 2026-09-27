@@ -3,7 +3,7 @@ import { panic } from "better-result";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { modelParagraphFormattingEmission } from "../internal/paragraphFormattingSerialization";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
@@ -328,7 +328,7 @@ describe("captured paragraph properties follow modeled fallback emission", () =>
           expect(serialized).toContain(serializeParagraphFormatting(paragraph.formatting));
         }
       }),
-      { numRuns: 128 },
+      propertyConfig({ numRuns: 128 }),
     );
   });
 

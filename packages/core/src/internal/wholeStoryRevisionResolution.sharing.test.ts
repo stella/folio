@@ -1,8 +1,12 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { schema } from "../prosemirror/schema";
 import { resolveWholeStory } from "./wholeStoryRevisionResolution";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const paragraphs = fc.array(fc.string({ minLength: 1, maxLength: 30 }), {
   minLength: 1,
@@ -31,6 +35,7 @@ for (const mode of ["accept", "reject"] as const) {
           expect(resolved.child(clean.length + 1 + index)).toBe(paragraph);
         }
       }),
+      propertyConfig(),
     );
   });
 }

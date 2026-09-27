@@ -4,7 +4,7 @@ import JSZip from "jszip";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseStreamingXml, rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
 import {
@@ -178,7 +178,7 @@ describe("parseStreamingXml", () => {
           });
         },
       ),
-      { numRuns: 250 },
+      propertyConfig({ numRuns: 250 }),
     );
   });
 
@@ -231,7 +231,7 @@ describe("parseStreamingXml", () => {
       fc.property(document, ({ xml, scope }) => {
         expectStreamingMatchesFallback(xml, xml, scope);
       }),
-      { numRuns: 300 },
+      propertyConfig({ numRuns: 300 }),
     );
   });
 

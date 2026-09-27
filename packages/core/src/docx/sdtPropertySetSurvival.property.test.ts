@@ -11,7 +11,7 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { CONTAINER_CHILDREN } from "./containerChildren.gen";
 import { parseSdtProperties } from "./sdtProperties";
@@ -120,7 +120,7 @@ describe("w:sdtPr survives a rebuild", () => {
           body.length === 0 ? "<w:sdtPr/>" : `<w:sdtPr>${body}</w:sdtPr>`,
         );
       }),
-      { numRuns: 300 },
+      propertyConfig({ numRuns: 300 }),
     );
   });
 
@@ -131,7 +131,7 @@ describe("w:sdtPr survives a rebuild", () => {
           parse(body),
         );
       }),
-      { numRuns: 300 },
+      propertyConfig({ numRuns: 300 }),
     );
   });
 

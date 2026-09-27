@@ -1,5 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+
+import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
 
 import coreConfigs from "../../packages/core/tsdown.config";
 import agentsConfigs from "../../packages/agents/tsdown.config";
@@ -7,6 +9,8 @@ import {
   canonicalizeRelativeImportOrder,
   STABLE_RELATIVE_IMPORT_ORDER_PLUGIN,
 } from "./stable-relative-import-order";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const RELATIVE_IMPORTS = [
   'import { alpha } from "./alpha.js";',
@@ -94,6 +98,7 @@ describe("stableRelativeImportOrder", () => {
           canonicalizeRelativeImportOrder(canonical, relativeImportSpans(expected.split("\n"))),
         ).toBe(canonical);
       }),
+      propertyConfig(),
     );
   });
 

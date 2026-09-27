@@ -4,7 +4,7 @@ import { history, undoDepth } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
 
-import { propertyTestTimeout } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
@@ -197,7 +197,7 @@ describe("resolve-all command equivalence", () => {
             expectEquivalent(state);
           },
         ),
-        { seed: 2_609_260, numRuns: 32, verbose: true },
+        propertyConfig({ seed: 2_609_260, numRuns: 32, verbose: true }),
       );
     },
     propertyTestTimeout(30_000),

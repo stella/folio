@@ -25,7 +25,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { XMLBuilder } from "fast-xml-parser";
 import fc from "fast-check";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { elementToXml, type XmlElement } from "./xmlParser";
 
@@ -144,7 +144,7 @@ describe("element serialization", () => {
       fc.property(elementNode, (element) => {
         expect(elementToXml(element)).toBe(previousElementToXml(element));
       }),
-      { numRuns: 2000 },
+      propertyConfig({ numRuns: 2000 }),
     );
   });
 
@@ -153,7 +153,7 @@ describe("element serialization", () => {
       fc.property(textNode, (node) => {
         expect(elementToXml(node)).toBe(previousElementToXml(node));
       }),
-      { numRuns: 300 },
+      propertyConfig({ numRuns: 300 }),
     );
   });
 

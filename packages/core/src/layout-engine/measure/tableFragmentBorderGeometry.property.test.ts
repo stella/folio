@@ -1,7 +1,11 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+
 import { tableFragmentBottomBorders } from "./tableFragmentBorderGeometry";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("a split row projects every visible bottom border onto its fragment edge", () => {
   fc.assert(
@@ -72,5 +76,6 @@ test("a split row projects every visible bottom border onto its fragment edge", 
         ).toEqual(expected);
       },
     ),
+    propertyConfig(),
   );
 });

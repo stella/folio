@@ -21,7 +21,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyTestTimeout } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { createEmptyDocument } from "../../utils/createDocument";
 import type {
@@ -208,7 +208,7 @@ describe("a style-resolved paragraph property stays out of direct w:pPr", () => 
           }
         }
       }),
-      { numRuns: 200 },
+      propertyConfig({ numRuns: 200 }),
     );
   });
 
@@ -238,7 +238,7 @@ describe("a style-resolved paragraph property stays out of direct w:pPr", () => 
         ];
         expect(sameValue(after, before), `a style edit must still reach ${field}`).toBe(false);
       }),
-      { numRuns: 200 },
+      propertyConfig({ numRuns: 200 }),
     );
   });
 });

@@ -2,7 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { serializeParagraphFormatting } from "../docx/serializer/paragraphSerializer";
 import type { ParagraphFormatting } from "../types/document";
 import { canonicalJson } from "../utils/canonicalJson";
@@ -180,7 +180,7 @@ describe("paragraph formatting emission model", () => {
           );
         },
       ),
-      { numRuns: 128 },
+      propertyConfig({ numRuns: 128 }),
     );
   });
 
@@ -251,7 +251,7 @@ describe("paragraph formatting emission model", () => {
           );
         },
       ),
-      { numRuns: 128 },
+      propertyConfig({ numRuns: 128 }),
     );
   });
 });

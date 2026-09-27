@@ -16,6 +16,10 @@
  * helper (which always sets one). Either way the budget must come from
  * `propertyTestTimeout`, per test or once for the file: a plain number pins
  * PR CI and leaves the nightly run the same wall clock for ten times the work.
+ *
+ * Every `fc.assert` / `fc.check` also takes its parameters from
+ * `propertyConfig` (or runs through `assertProperty`, which does), so every
+ * property gets the per-commit seed, the replay line and the nightly factor.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -27,17 +31,25 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
 const BUDGET_HELPER = "propertyTestTimeout";
 const RUN_COUNT_HELPER = "propertyConfig";
+const ASSERT_HELPER = "assertProperty";
 const FAST_CHECK_DRIVERS = new Set(["assert", "sample", "check"]);
 const TEST_CALLEES = new Set(["test", "it"]);
 
 setDefaultTimeout(120_000);
 
 /** `fc.assert(...)`, `fc.sample(...)`, `fc.check(...)`. */
-const drivesFastCheck = (node: ts.CallExpression): boolean =>
+const callsFastCheck = (node: ts.CallExpression): boolean =>
   ts.isPropertyAccessExpression(node.expression) &&
   FAST_CHECK_DRIVERS.has(node.expression.name.text) &&
   ts.isIdentifier(node.expression.expression) &&
   node.expression.expression.text === "fc";
+
+/** `assertProperty(...)`: `fc.assert` through `propertyConfig`. */
+const callsAssertHelper = (node: ts.CallExpression): boolean =>
+  ts.isIdentifier(node.expression) && node.expression.text === ASSERT_HELPER;
+
+const drivesFastCheck = (node: ts.CallExpression): boolean =>
+  callsFastCheck(node) || callsAssertHelper(node);
 
 /** `test(...)`, `it(...)`, and their `.each` / `.skip` / `.failing` forms. */
 const isTestCall = (node: ts.CallExpression): boolean => {
@@ -69,6 +81,7 @@ const isAsyncTest = (call: ts.CallExpression): boolean => {
  * even when the literal it wraps omits the field.
  */
 const passesNumRuns = (call: ts.CallExpression): boolean => {
+  if (callsAssertHelper(call)) return true;
   const params = call.arguments.at(1);
   if (params === undefined) return false;
   if (ts.isCallExpression(params)) {
@@ -135,6 +148,38 @@ const budgetRequiringSites = (file: string, sourceText: string): BudgetRequiring
   return sites;
 };
 
+/**
+ * `fc.assert(...)` / `fc.check(...)` calls whose parameters do not come from
+ * `propertyConfig(...)`: they would miss the per-commit seed, the replay line
+ * and the nightly factor.
+ */
+const bypassingSites = (file: string, sourceText: string): string[] => {
+  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+  const sites: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      callsFastCheck(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text !== "sample"
+    ) {
+      const params = node.arguments.at(1);
+      const configured =
+        params !== undefined &&
+        ts.isCallExpression(params) &&
+        ts.isIdentifier(params.expression) &&
+        params.expression.text === RUN_COUNT_HELPER;
+      if (!configured) {
+        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        sites.push(`${file}:${String(line + 1)}`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return sites;
+};
+
 const scanRepository = (): BudgetRequiringSite[] =>
   testFiles().flatMap((file) => {
     const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
@@ -187,6 +232,25 @@ describe("property test budgets", () => {
       SCANNED_ROOTS.filter((root) => !files.some((file) => file.startsWith(`${root}/`))),
     ).toEqual([]);
     expect(scanRepository().length).toBeGreaterThan(0);
+  });
+
+  test("reads which properties bypass propertyConfig", () => {
+    expect(bypassingSites("probe.ts", "fc.assert(p, { numRuns: 4 });\nfc.check(p);")).toEqual([
+      "probe.ts:1",
+      "probe.ts:2",
+    ]);
+    expect(
+      bypassingSites("probe.ts", "fc.assert(p, propertyConfig());\nassertProperty(p, {});"),
+    ).toEqual([]);
+  });
+
+  test("every fc.assert and fc.check takes its parameters from propertyConfig", () => {
+    const bypassing = testFiles().flatMap((file) => {
+      const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
+      if (sourceText === undefined) panic(`Cannot read ${file}.`);
+      return sourceText.includes("fc.") ? bypassingSites(file, sourceText) : [];
+    });
+    expect(bypassing).toEqual([]);
   });
 
   test("every budget-requiring site declares propertyTestTimeout", () => {

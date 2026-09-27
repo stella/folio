@@ -15,7 +15,7 @@ import fc from "fast-check";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
-import { propertyTestTimeout } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -170,7 +170,7 @@ describe("list rendering fixed point under a no-op rebuild", () => {
         expectParagraphFixedPoint(document);
         expect(markers(rebuild(document))).toEqual(markers(document));
       }),
-      { numRuns: 25 },
+      propertyConfig({ numRuns: 25 }),
     );
   });
 });

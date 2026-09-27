@@ -17,7 +17,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyTestTimeout } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
 
@@ -127,7 +127,7 @@ describe("preflight counts and parsed tree", () => {
         expect(scanned.elements).toBe(counted.elements);
         expect(scanned.attributes).toBe(counted.attributes);
       }),
-      { numRuns: 500 },
+      propertyConfig({ numRuns: 500 }),
     );
   });
 });
@@ -149,7 +149,7 @@ describe("byte bound", () => {
           expect(exceedsUtf8ByteLimit(value, maxBytes)).toBe(bytes > maxBytes);
         },
       ),
-      { numRuns: 2_000 },
+      propertyConfig({ numRuns: 2_000 }),
     );
   });
 });
