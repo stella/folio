@@ -375,8 +375,6 @@ const replayReporter =
 // Seeds and parameters
 // ---------------------------------------------------------------------------
 
-const randomSeed = (): number => (Date.now() ^ (Math.random() * 0x1_0000_0000)) | 0;
-
 /** The seed a property with no seed of its own runs under, or `undefined` to let fast-check pick. */
 const defaultSeed = (identity: PropertyIdentity): number | undefined => {
   const explicit = propertyTestSeed();
@@ -393,13 +391,6 @@ const defaultSeed = (identity: PropertyIdentity): number | undefined => {
   ].join("\0");
   return commitSeed(salt);
 };
-
-/**
- * The seed to run a property under when the test needs to know it up front
- * (to name it in its own report): `PROPERTY_TEST_SEED`, else the per-commit
- * seed under CI, else a random one. Pass it on as `propertyConfig({ seed })`.
- */
-export const propertySeed = (): number => defaultSeed(identify()) ?? randomSeed();
 
 /**
  * `PROPERTY_TEST_PATH` for a property running under the `PROPERTY_TEST_SEED`
