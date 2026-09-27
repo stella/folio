@@ -31,6 +31,37 @@ const rewritten = async (valid: Uint8Array, rewrite: Rewrite): Promise<Uint8Arra
   return await zip.generateAsync({ type: "uint8array" });
 };
 
+/** Add a second central-directory record for the same local part. JSZip's name map hides it. */
+const duplicateExactMember = (valid: Uint8Array): Uint8Array => {
+  const view = new DataView(valid.buffer, valid.byteOffset, valid.byteLength);
+  const end = valid.length - 22;
+  const count = view.getUint16(end + 10, true);
+  const size = view.getUint32(end + 12, true);
+  let offset = view.getUint32(end + 16, true);
+  let member: { offset: number; length: number } | null = null;
+  for (let index = 0; index < count; index += 1) {
+    const nameLength = view.getUint16(offset + 28, true);
+    const length =
+      46 + nameLength + view.getUint16(offset + 30, true) + view.getUint16(offset + 32, true);
+    const name = new TextDecoder().decode(valid.subarray(offset + 46, offset + 46 + nameLength));
+    if (name === "word/document.xml") {
+      member = { offset, length };
+      break;
+    }
+    offset += length;
+  }
+  if (!member) throw new Error("fixture has no main part in its central directory");
+  const duplicate = new Uint8Array(valid.length + member.length);
+  duplicate.set(valid.subarray(0, end));
+  duplicate.set(valid.subarray(member.offset, member.offset + member.length), end);
+  duplicate.set(valid.subarray(end), end + member.length);
+  const updated = new DataView(duplicate.buffer);
+  updated.setUint16(end + member.length + 8, count + 1, true);
+  updated.setUint16(end + member.length + 10, count + 1, true);
+  updated.setUint32(end + member.length + 12, size + member.length, true);
+  return duplicate;
+};
+
 export type MalformedCase = {
   name: string;
   reason: InvalidPackageReason;
@@ -168,6 +199,11 @@ export const MALFORMED_PACKAGES: readonly MalformedCase[] = [
         valid,
         (zip) => void zip.file("WORD/DOCUMENT.XML", `<w:document xmlns:w="${W_NS}"/>`),
       ),
+  },
+  {
+    name: "two entries with exactly the same part name",
+    reason: "duplicatePartName",
+    build: duplicateExactMember,
   },
 ];
 

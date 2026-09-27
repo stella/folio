@@ -299,7 +299,100 @@ const rootOfPrefix = (xml: string): XmlElement | null => {
   return { namespace: scope.get(prefix), localName, attributes: {}, children: [] };
 };
 
+const ZIP_END_SIGNATURE = 0x06054b50;
+const ZIP64_END_SIGNATURE = 0x06064b50;
+const ZIP64_LOCATOR_SIGNATURE = 0x07064b50;
+const ZIP_CENTRAL_MEMBER_SIGNATURE = 0x02014b50;
+const ZIP_END_LENGTH = 22;
+const ZIP_CENTRAL_MEMBER_LENGTH = 46;
+const ZIP_MAX_COMMENT_LENGTH = 0xffff;
+
+/** Read central-directory names before JSZip stores members by name. */
+const checkRawMemberNames = (bytes: Uint8Array): Result<void, Refusal> => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let end = -1;
+  for (
+    let offset = bytes.length - ZIP_END_LENGTH;
+    offset >= Math.max(0, bytes.length - ZIP_END_LENGTH - ZIP_MAX_COMMENT_LENGTH);
+    offset -= 1
+  ) {
+    if (
+      view.getUint32(offset, true) === ZIP_END_SIGNATURE &&
+      offset + ZIP_END_LENGTH + view.getUint16(offset + 20, true) === bytes.length
+    ) {
+      end = offset;
+      break;
+    }
+  }
+  if (end < 0) {
+    return refuse(INVALID_PACKAGE_REASONS.notZip, "it has no readable ZIP directory.");
+  }
+
+  let count = view.getUint16(end + 10, true);
+  let size = view.getUint32(end + 12, true);
+  let directoryEnd = end;
+  if (count === 0xffff || size === 0xffffffff || view.getUint32(end + 16, true) === 0xffffffff) {
+    const locator = end - 20;
+    if (locator < 0 || view.getUint32(locator, true) !== ZIP64_LOCATOR_SIGNATURE) {
+      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP64 directory is missing.");
+    }
+    const zip64Offset = Number(view.getBigUint64(locator + 8, true));
+    if (
+      !Number.isSafeInteger(zip64Offset) ||
+      zip64Offset < 0 ||
+      zip64Offset + 56 > locator ||
+      view.getUint32(zip64Offset, true) !== ZIP64_END_SIGNATURE
+    ) {
+      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP64 directory is invalid.");
+    }
+    count = Number(view.getBigUint64(zip64Offset + 32, true));
+    size = Number(view.getBigUint64(zip64Offset + 40, true));
+    directoryEnd = zip64Offset;
+  }
+  if (!Number.isSafeInteger(count) || !Number.isSafeInteger(size) || size > directoryEnd) {
+    return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+  }
+
+  const seen = new Set<string>();
+  let offset = directoryEnd - size;
+  for (let index = 0; index < count; index += 1) {
+    if (
+      offset + ZIP_CENTRAL_MEMBER_LENGTH > directoryEnd ||
+      view.getUint32(offset, true) !== ZIP_CENTRAL_MEMBER_SIGNATURE
+    ) {
+      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+    }
+    const nameLength = view.getUint16(offset + 28, true);
+    const extraLength = view.getUint16(offset + 30, true);
+    const commentLength = view.getUint16(offset + 32, true);
+    const next = offset + ZIP_CENTRAL_MEMBER_LENGTH + nameLength + extraLength + commentLength;
+    if (next > directoryEnd) {
+      return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+    }
+    const name = Buffer.from(
+      bytes.subarray(
+        offset + ZIP_CENTRAL_MEMBER_LENGTH,
+        offset + ZIP_CENTRAL_MEMBER_LENGTH + nameLength,
+      ),
+    ).toString("hex");
+    if (seen.has(name)) {
+      return refuse(
+        INVALID_PACKAGE_REASONS.duplicatePartName,
+        "two ZIP entries have the same name.",
+      );
+    }
+    seen.add(name);
+    offset = next;
+  }
+  if (offset !== directoryEnd) {
+    return refuse(INVALID_PACKAGE_REASONS.notZip, "its ZIP directory is invalid.");
+  }
+  return Result.ok();
+};
+
 const checkPackage = async (bytes: Uint8Array): Promise<Result<void, Refusal>> => {
+  const rawNames = checkRawMemberNames(bytes);
+  if (rawNames.isErr()) return rawNames;
   const zip = await Result.tryPromise({
     try: () => JSZip.loadAsync(bytes),
     catch: () => ({
