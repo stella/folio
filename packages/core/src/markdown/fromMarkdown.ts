@@ -48,12 +48,19 @@ const applyMarkdownPageGeometry = (document: Document): void => {
  */
 export function fromMarkdown(markdown: string): Document {
   const document = createEmptyDocument();
-  const { content, numbering } = compileMarkdownToContent(markdown);
+  const { content, numbering, warnings } = compileMarkdownToContent(markdown);
   if (content.length > 0) {
     document.package.document.content = content;
   }
   if (numbering) {
     document.package.numbering = numbering;
+  }
+  // Same channel every other reader of `warnings` already checks (the DOCX
+  // parser's non-fatal diagnostics) — e.g. a table/code block/blockquote
+  // inside a list item that this document's list model can't nest, kept as a
+  // following block rather than silently dropped.
+  if (warnings && warnings.length > 0) {
+    document.warnings = [...(document.warnings ?? []), ...warnings];
   }
   applyMarkdownPageGeometry(document);
   return document;

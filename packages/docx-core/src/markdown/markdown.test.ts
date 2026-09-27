@@ -16,6 +16,10 @@ const paragraphs = (content: BlockContent[]): Paragraph[] =>
 const runText = (run: Run): string =>
   run.content.map((node) => (node.type === "text" ? node.text : "")).join("");
 
+/** Every run's text in a paragraph's content, concatenated. */
+const paragraphText = (paragraph: Paragraph): string =>
+  paragraph.content.flatMap((node) => (node.type === "run" ? [runText(node)] : [])).join("");
+
 const flattenRuns = (content: ParagraphContent[]): Run[] =>
   content.flatMap((node) => {
     if (node.type === "run") {
@@ -128,6 +132,62 @@ describe("compileMarkdownToContent", () => {
 
   test("carries no numbering without lists", () => {
     expect(compileMarkdownToContent("Just prose.").numbering).toBeUndefined();
+  });
+
+  test("a nested list stays nested, with no warning", () => {
+    // The one case the block model can actually express as nesting: a deeper
+    // `ilvl` under the parent item. No content was flattened, so no warning.
+    const { content, warnings } = compileMarkdownToContent("1. Parent\n   - Child\n2. Next");
+    expect(content.map((block) => block.type)).toEqual(["paragraph", "paragraph", "paragraph"]);
+    expect(warnings).toBeUndefined();
+  });
+
+  test("a table inside a list item becomes a following table block, with a warning", () => {
+    // OOXML lists are numbered paragraphs, not containers: a table cannot
+    // nest inside a list item, so it must survive as a sibling block instead
+    // of being silently dropped (the block model has no other way to keep
+    // it).
+    const source = "- Parent\n\n  | A | B |\n  | --- | --- |\n  | X | Y |\n\n- Next";
+    const { content, warnings } = compileMarkdownToContent(source);
+    expect(content.map((block) => block.type)).toEqual(["paragraph", "table", "paragraph"]);
+    const [parentPara, table, nextPara] = content;
+    expect(parentPara?.type === "paragraph" ? paragraphText(parentPara) : undefined).toBe("Parent");
+    expect(nextPara?.type === "paragraph" ? paragraphText(nextPara) : undefined).toBe("Next");
+    if (table?.type !== "table") {
+      throw new Error("expected a table block");
+    }
+    const cellText = (rowIndex: number, cellIndex: number): string | undefined => {
+      const cell = table.rows[rowIndex]?.cells[cellIndex];
+      const cellPara = cell?.content[0];
+      return cellPara?.type === "paragraph" ? paragraphText(cellPara) : undefined;
+    };
+    expect(cellText(0, 0)).toBe("A");
+    expect(cellText(0, 1)).toBe("B");
+    expect(cellText(1, 0)).toBe("X");
+    expect(cellText(1, 1)).toBe("Y");
+    expect(warnings).toBeDefined();
+    expect(warnings?.some((warning) => warning.includes("table"))).toBe(true);
+  });
+
+  test("a code block inside a list item becomes following paragraphs, with a warning", () => {
+    const source = "- Parent\n\n  ```\n  const sentinel = 1;\n  ```\n\n- Next";
+    const { content, warnings } = compileMarkdownToContent(source);
+    expect(content.map((block) => block.type)).toEqual(["paragraph", "paragraph", "paragraph"]);
+    const [, codeLine] = content;
+    expect(codeLine?.type === "paragraph" ? paragraphText(codeLine) : undefined).toBe(
+      "const sentinel = 1;",
+    );
+    expect(warnings?.some((warning) => warning.includes("code"))).toBe(true);
+  });
+
+  test("a blockquote in a list item becomes a following Quote paragraph, with a warning", () => {
+    const source = "- Parent\n\n  > cited sentinel\n\n- Next";
+    const { content, warnings } = compileMarkdownToContent(source);
+    expect(content.map((block) => block.type)).toEqual(["paragraph", "paragraph", "paragraph"]);
+    const [, quote] = content;
+    expect(quote?.type === "paragraph" ? quote.formatting?.styleId : undefined).toBe("Quote");
+    expect(quote?.type === "paragraph" ? paragraphText(quote) : undefined).toBe("cited sentinel");
+    expect(warnings?.some((warning) => warning.includes("blockquote"))).toBe(true);
   });
 
   test("every list paragraph references a numbering instance it synthesized", () => {

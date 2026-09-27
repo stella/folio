@@ -116,3 +116,17 @@ describe("nested lists under an ordered parent keep CommonMark's indentation", (
     expect(await roundTrip(first)).toBe(first);
   });
 });
+
+describe("a table inside a list item", () => {
+  test("survives as a following block, with a warning, through actual DOCX bytes", async () => {
+    const source = "- Parent\n\n  | A | B |\n  | --- | --- |\n  | X | Y |\n\n- Next";
+    const doc = fromMarkdown(source);
+    // Never silently dropped: the model can't nest a table inside a list
+    // item's paragraph, so it says so.
+    expect(doc.warnings?.some((warning) => warning.includes("table"))).toBe(true);
+    const bytes = await createDocx(doc);
+    const result = await docxToMarkdown(bytes, CLEAN);
+    const markdown = typeof result === "string" ? result : result.markdown;
+    expect(markdown).toBe("- Parent\n\n| A | B |\n| --- | --- |\n| X | Y |\n\n- Next");
+  });
+});

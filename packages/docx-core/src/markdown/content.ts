@@ -43,6 +43,12 @@ export type MarkdownContent = {
   content: BlockContent[];
   /** Present only when the markdown contained at least one list. */
   numbering?: NumberingDefinitions;
+  /**
+   * Non-fatal diagnostics from the compile, e.g. a table/code block/blockquote
+   * inside a list item that the block model can't nest and had to keep as a
+   * following sibling block instead. Present only when there is at least one.
+   */
+  warnings?: string[];
 };
 
 const para = (runs: ParagraphContent[], styleId?: string): Paragraph => ({
@@ -149,16 +155,30 @@ const resolveListNumId = (
   return numId;
 };
 
+/**
+ * Whether an item-content token is one the block model cannot nest inside a
+ * list item's own paragraph: a nested list (handled separately, at a deeper
+ * `ilvl`) or a block the DOCX list model has no notion of nesting at all
+ * (OOXML lists are just numbered paragraphs, not containers — a table,
+ * code block, or blockquote next to one is always a sibling, never a child).
+ */
+const isNestedBlockToken = (token: Token | undefined): boolean =>
+  token !== undefined &&
+  (isTokenType(token, "list") ||
+    isTokenType(token, "table") ||
+    isTokenType(token, "code") ||
+    isTokenType(token, "blockquote"));
+
 const listBlocks = (
   list: Tokens.List,
   level: number,
   parentNumId: number,
-  numIds: NumIdAllocator,
+  state: CompileState,
 ): BlockContent[] => {
   const out: BlockContent[] = [];
   const start = Number(list.start) || 1;
   const decimalLevels = Array.from({ length: level + 1 }, () => "decimal" as const);
-  const numId = resolveListNumId(numIds, parentNumId, buildListLevel(level, !list.ordered, start));
+  const numId = resolveListNumId(state, parentNumId, buildListLevel(level, !list.ordered, start));
   for (const item of list.items) {
     const rendering: ListRendering = list.ordered
       ? {
@@ -171,18 +191,56 @@ const listBlocks = (
           ...(start !== 1 && { startOverride: start }),
         }
       : { marker: "•", level, numId, isBullet: true };
+    // The item's own paragraph is every leading token up to the first block
+    // the model can't fold into it; everything from there on (that block, and
+    // anything after it) is handled separately below, in source order. The
+    // blank-line `space` token right before that first block is a pure
+    // separator, not a continuation break inside the item's own paragraph
+    // (unlike a `space` between two inline paragraphs of a loose item, which
+    // does belong there — see `inline.ts`'s handling of it), so it is dropped
+    // rather than folded into either side.
     const inlineTokens: Token[] = [];
-    const nestedLists: Tokens.List[] = [];
-    for (const child of item.tokens) {
-      if (isTokenType(child, "list")) {
-        nestedLists.push(child);
+    const trailing: Token[] = [];
+    let inTrailing = false;
+    for (const [index, child] of item.tokens.entries()) {
+      if (!inTrailing && isNestedBlockToken(child)) {
+        inTrailing = true;
+      }
+      if (!inTrailing && child.type === "space" && isNestedBlockToken(item.tokens[index + 1])) {
+        continue;
+      }
+      if (inTrailing) {
+        trailing.push(child);
       } else {
         inlineTokens.push(child);
       }
     }
     out.push(listPara(inlineTokensToRuns(inlineTokens, item.text), rendering));
-    for (const nested of nestedLists) {
-      out.push(...listBlocks(nested, level + 1, numId, numIds));
+    for (const block of trailing) {
+      if (isTokenType(block, "list")) {
+        // A true nested list: a deeper `ilvl` under the same item, the one
+        // case the model can actually express as nesting.
+        out.push(...listBlocks(block, level + 1, numId, state));
+        continue;
+      }
+      if (block.type === "space") {
+        // Pure whitespace between the item's text and its trailing block(s);
+        // nothing to preserve.
+        continue;
+      }
+      // A table, code block, blockquote, or (rarer) further prose that
+      // followed one of those inside the item: keep it as a block right
+      // after the item instead of silently dropping it, since the model has
+      // no way to nest it inside the item's own paragraph.
+      const rendered = blocksFromTokens([block], state);
+      if (rendered.length > 0) {
+        out.push(...rendered);
+        state.warnings.push(
+          `A list item's ${block.type} content could not stay nested inside the item ` +
+            "(the DOCX list model has no way to nest it); it was kept as a block right " +
+            "after the item instead.",
+        );
+      }
     }
   }
   return out;
@@ -191,9 +249,11 @@ const listBlocks = (
 /**
  * Allocates one numId per markdown list so each list counts independently,
  * and collects the level definitions needed to synthesize `numbering` for
- * every list it mints.
+ * every list it mints. Also carries diagnostics collected while walking the
+ * tokens (list item content the block model can't nest — see `listBlocks`).
  */
 type NumIdAllocator = { next: number; levels: Map<number, NumIdLevels> };
+type CompileState = NumIdAllocator & { warnings: string[] };
 
 /**
  * The deepest heading the built-in style sets define, so a `#####` compiles to
@@ -225,7 +285,7 @@ const headingParagraph = (runs: ParagraphContent[], depth: number): Paragraph =>
 /** The built-in a markdown blockquote compiles to. */
 const QUOTE_STYLE_ID = "Quote";
 
-const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): BlockContent[] => {
+const blocksFromTokens = (tokens: Token[] | undefined, state: CompileState): BlockContent[] => {
   const blocks: BlockContent[] = [];
   for (const token of tokens ?? []) {
     if (isTokenType(token, "heading")) {
@@ -233,9 +293,9 @@ const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): 
     } else if (isTokenType(token, "paragraph")) {
       blocks.push(para(inlineTokensToRuns(token.tokens, token.text)));
     } else if (isTokenType(token, "list")) {
-      const numId = numIds.next++;
-      numIds.levels.set(numId, new Map());
-      blocks.push(...listBlocks(token, 0, numId, numIds));
+      const numId = state.next++;
+      state.levels.set(numId, new Map());
+      blocks.push(...listBlocks(token, 0, numId, state));
     } else if (isTokenType(token, "table")) {
       blocks.push(tableFromToken(token));
     } else if (isTokenType(token, "code")) {
@@ -243,7 +303,7 @@ const blocksFromTokens = (tokens: Token[] | undefined, numIds: NumIdAllocator): 
         blocks.push(para([textRun(line.length > 0 ? line : " ", { mono: true })]));
       }
     } else if (isTokenType(token, "blockquote")) {
-      for (const inner of blocksFromTokens(token.tokens, numIds)) {
+      for (const inner of blocksFromTokens(token.tokens, state)) {
         const styled: BlockContent =
           inner.type === "paragraph"
             ? {
@@ -294,14 +354,15 @@ const buildNumbering = (numIdLevels: Map<number, NumIdLevels>): NumberingDefinit
  * (page geometry, styles, and presets are the host's decision).
  */
 export const compileMarkdownToContent = (markdown: string): MarkdownContent => {
-  const numIds: NumIdAllocator = { next: 1, levels: new Map() };
+  const state: CompileState = { next: 1, levels: new Map(), warnings: [] };
   // Markdown arrives as text from outside folio, so it can carry characters no
   // XML document may contain. They are dropped here, while the input is still
   // one string, rather than at the serializer, where nothing could say which
-  // input lost them. `MarkdownContent` has no channel to report it on.
-  const content = blocksFromTokens(lexMarkdown(sanitizeXmlCharacters(markdown)), numIds);
+  // input lost them. This particular drop has no channel to report it on.
+  const content = blocksFromTokens(lexMarkdown(sanitizeXmlCharacters(markdown)), state);
   return {
     content,
-    ...(numIds.levels.size > 0 && { numbering: buildNumbering(numIds.levels) }),
+    ...(state.levels.size > 0 && { numbering: buildNumbering(state.levels) }),
+    ...(state.warnings.length > 0 && { warnings: state.warnings }),
   };
 };
