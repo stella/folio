@@ -173,7 +173,7 @@ export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {
 } as const satisfies FolioJsonSchema;
 
 /** Direct `w:outlineLvl`, or null to restore style inheritance. */
-export const FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA = {
+export const FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA: FolioJsonSchema = {
   oneOf: [
     {
       type: "object",
@@ -195,7 +195,7 @@ export const FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA = {
   description:
     "Direct outline level (`w:outlineLvl`): a heading level from 0 (top) to 8, or body text. " +
     "null removes it and lets the paragraph style decide.",
-} as const satisfies FolioJsonSchema;
+};
 
 /** Complete direct `w:ind` attributes, or null to restore style inheritance. */
 export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {

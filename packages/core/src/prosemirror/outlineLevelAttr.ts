@@ -20,7 +20,7 @@ export const outlineLevelFromAttrValue = (value: unknown): OutlineLevel | null =
   }
   const kind: unknown = Reflect.get(value, "kind");
   if (kind === "bodyText") {
-    return { kind: "bodyText" };
+    return Reflect.has(value, "level") ? null : { kind: "bodyText" };
   }
   if (kind !== "heading") {
     return null;
