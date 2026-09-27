@@ -25,6 +25,7 @@ import { panic, Result } from "better-result";
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createFolioAITextRangeHandle } from "../ai-edits/snapshot";
 import type { FolioAIBlock, FolioAIEditOperation } from "../ai-edits/types";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import type { FolioContentFormatRange } from "./content-types";
 import {
   CompareDocxParseError,
@@ -298,14 +299,30 @@ export const applyEditScript = async (
     planned.push({ step, operations: plan.operations });
   }
 
-  const { skipped } = reviewer.applyOperations(
-    planned.flatMap(({ operations }) => [...operations]),
-    { mode: "direct", snapshot },
-  );
+  const { skipped } = reviewer.applyDocumentOperationsToStory({
+    story: { type: "main" },
+    batch: {
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: planned.flatMap(({ operations }) => [...operations]),
+    },
+    snapshot,
+    // A relocation or split re-creates a paragraph with the style the base
+    // gave it, and a base may name one it never defines (a dangling
+    // `w:pStyle`). Refusing it would drop the insertion while the paired
+    // deletion lands, leaving a target the script no longer describes.
+    undefinedStyles: "keep",
+  });
   const skippedIds = new Set(skipped.map(({ id }) => id));
   const applied: EditScriptStep[] = [];
   for (const { step, operations } of planned) {
     if (operations.some(({ id }) => skippedIds.has(id))) {
+      // A step is all or nothing: one whose operations landed in part left an
+      // edit in the target that neither `applied` nor `unresolved` describes,
+      // and every property measured against the script would be misled by it.
+      if (!operations.every(({ id }) => skippedIds.has(id))) {
+        panic("An edit script step was applied in part", { step, skipped });
+      }
       unresolved.push({ step, reason: "refused" });
       continue;
     }

@@ -883,6 +883,37 @@ describe("compareDocx", () => {
     );
   });
 
+  test("a paragraph whose style the document never defines relocates whole", async () => {
+    // The counterexample the change-count property found at
+    // PROPERTY_TEST_SEED=-508007194. The fixture's headings name `Heading2`
+    // without defining it, so an applier that refused the re-created heading
+    // kept only the deletion half of the relocation, and the comparison
+    // reported a change the script did not account for.
+    const base = readFixture("upstream-complex-styles.docx");
+    const baseBlocks = await blocksOf(base);
+    expect(baseBlocks[2]).toMatchObject({ styleId: "Heading2", text: "Heading 2" });
+
+    const script: EditScript = [{ type: "moveParagraph", blockIndex: 2, beforeBlockIndex: 0 }];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) {
+      throw scripted.error;
+    }
+    expect(scripted.value.unresolved).toEqual([]);
+    expect(scripted.value.applied).toEqual(script);
+
+    const targetBlocks = await blocksOf(scripted.value.buffer);
+    expect(targetBlocks.slice(0, 2)).toMatchObject([
+      { styleId: "Heading2", text: "Heading 2" },
+      { styleId: "Heading1", text: "Heading 1" },
+    ]);
+
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(changes.length).toBeGreaterThan(0);
+    expect(changes.length).toBeLessThanOrEqual(
+      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+    );
+  });
+
   test("a story whose last paragraph leaves and is written over round-trips", async () => {
     // The counterexample the change-count property found at PROPERTY_TEST_SEED=2.
     // One relocation takes the story's last paragraph away and the other puts a
