@@ -1755,7 +1755,9 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
       // The same test the deletion itself makes: see its case in the applier.
       const at = doc.resolve(block);
       const endsItsContainer = paragraphEndsItsContainer(at, item.blockNode.type.name);
-      const keepsParagraph = endsItsContainer;
+      const keepsParagraph = producesTrackedChanges
+        ? endsItsContainer
+        : endsItsContainer && at.nodeBefore?.type.name !== item.blockNode.type.name;
       return {
         type: "deleteBlock",
         block,
@@ -3850,13 +3852,19 @@ const applyFolioAIEditOperationsInternal = ({
         if (mode === "direct") {
           // A container has to END with a paragraph: a body, a cell, a header,
           // a note and a text box each do, and one left ending in a table is a
-          // package a consumer refuses. The final paragraph keeps its mark
-          // and loses its contents, as the tracked path does on acceptance.
+          // package a consumer refuses. Removing the node removes its mark
+          // with it, so the last paragraph of a container that nothing else
+          // could terminate keeps its place and loses only its content. Where
+          // a paragraph precedes it, that one becomes the terminator and this
+          // node goes as any other would — which is what the tracked path
+          // resolves to as well, its mark deleted one paragraph earlier.
           const at = tr.doc.resolve(item.blockFrom);
           const endsItsContainer = paragraphEndsItsContainer(at, item.blockNode.type.name);
-          tr = endsItsContainer
-            ? tr.delete(item.blockFrom + 1, item.blockTo - 1)
-            : tr.delete(item.blockFrom, item.blockTo);
+          const leavesAParagraph =
+            !endsItsContainer || at.nodeBefore?.type.name === item.blockNode.type.name;
+          tr = leavesAParagraph
+            ? tr.delete(item.blockFrom, item.blockTo)
+            : tr.delete(item.blockFrom + 1, item.blockTo - 1);
           break;
         }
 

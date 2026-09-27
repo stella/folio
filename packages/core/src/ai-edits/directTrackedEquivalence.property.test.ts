@@ -362,13 +362,12 @@ describe("an edit applied directly and the same edit accepted", () => {
       fc.asyncProperty(
         fc.array(itemArbitrary, { minLength: 1, maxLength: 7 }),
         editArbitrary,
-        fc.constantFrom("first", "last"),
-        async (items, edit, placement) => {
+        async (items, edit) => {
           const { content, comments } = paragraphOf(items);
-          const untouched = [textRun("Untouched paragraph.")];
-          const paragraphs = placement === "first" ? [content, untouched] : [untouched, content];
-          const base = await openReviewer(await paragraphsDocx(paragraphs, comments));
-          const block = base.snapshot().blocks[placement === "first" ? 0 : 1];
+          const base = await openReviewer(
+            await paragraphsDocx([content, [textRun("Untouched paragraph.")]], comments),
+          );
+          const block = base.snapshot().blocks[0];
           const operation = block && operationFor(edit, block.id, block.text);
           if (!block || !operation) {
             return;

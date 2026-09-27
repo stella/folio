@@ -1185,28 +1185,27 @@ describe("compareDocx", () => {
       if (movable === null) {
         throw new Error("The synthetic base offers no block the move pass would pair.");
       }
-      await fc.assert(
-        fc.asyncProperty(
-          fc.tuple(movable, movable).filter(([from, to]) => Math.abs(from - to) > 1),
-          async ([blockIndex, beforeBlockIndex]) => {
-            const scripted = await applyEditScript(base, [
-              { type: "moveParagraph", blockIndex, beforeBlockIndex },
-            ]);
-            if (scripted.isErr()) {
-              throw scripted.error;
-            }
-            if (scripted.value.applied.length === 0) {
-              return;
-            }
-            const { changes } = await compareOrThrow(base, scripted.value.buffer);
-            // The alignment may absorb a move whose text still lands in an
-            // order the LCS can walk forward; what it must never do is report
-            // the relocation as unrelated churn.
-            expect(kindsOf(changes).every((kind) => kind === "move")).toBe(true);
-          },
-        ),
-        propertyConfig({ numRuns: 15 }),
+      const moveProperty = fc.asyncProperty(
+        fc.tuple(movable, movable).filter(([from, to]) => Math.abs(from - to) > 1),
+        async ([blockIndex, beforeBlockIndex]) => {
+          const scripted = await applyEditScript(base, [
+            { type: "moveParagraph", blockIndex, beforeBlockIndex },
+          ]);
+          if (scripted.isErr()) {
+            throw scripted.error;
+          }
+          if (scripted.value.applied.length === 0) {
+            return;
+          }
+          const { changes } = await compareOrThrow(base, scripted.value.buffer);
+          // The alignment may absorb a move whose text still lands in an
+          // order the LCS can walk forward; what it must never do is report
+          // the relocation as unrelated churn.
+          expect(kindsOf(changes).every((kind) => kind === "move")).toBe(true);
+        },
       );
+      await fc.assert(moveProperty, propertyConfig({ numRuns: 15, seed: 1658375732 }));
+      await fc.assert(moveProperty, propertyConfig({ numRuns: 15 }));
     },
     propertyTestTimeout(120_000),
   );
