@@ -6,7 +6,7 @@
  */
 
 import assert from "node:assert/strict";
-import { describe } from "node:test";
+import { describe, test } from "node:test";
 
 import {
   createFolioAITextRangeHandle,
@@ -337,50 +337,40 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     },
   );
 
-  expectedFailure(
-    "TRACKED_DELETE_LAST_PARAGRAPH",
-    "deleting the last paragraph tracked and accepting it leaves what deleting it directly does",
-    /\[directTracked\]/u,
-    async () => {
-      const texts: Record<string, string[]> = {};
-      for (const mode of ["direct", "tracked-changes"] as const) {
-        const reviewer = await openReviewer(await plainDocument());
-        apply(reviewer, mode, [
-          { type: "deleteBlock", blockId: blockId(reviewer, "Signed in two copies.") },
-        ]);
-        const saved = await reopen(reviewer);
-        saved.acceptAll();
-        texts[mode] = (await reopen(saved)).getContent().map((block) => block.text);
-      }
-      assert.deepEqual(
-        texts["tracked-changes"],
-        texts["direct"],
-        "[directTracked] deleted tracked and accepted (actual) vs deleted directly (expected)",
-      );
-    },
-  );
-
-  expectedFailure(
-    "TRACKED_LAST_PARAGRAPH_REJECT",
-    "rejecting a tracked replacement of the last paragraph gives the document back",
-    /\[rejectAll\]/u,
-    async () => {
+  test("deleting the last paragraph tracked and accepting it leaves what deleting it directly does", async () => {
+    const texts: Record<string, string[]> = {};
+    for (const mode of ["direct", "tracked-changes"] as const) {
       const reviewer = await openReviewer(await plainDocument());
-      const before = reviewer.getContent().map((block) => block.text);
-      const last = blockId(reviewer, "Signed in two copies.");
-      apply(reviewer, "tracked-changes", [
-        { type: "deleteBlock", blockId: last },
-        { type: "insertAfterBlock", blockId: last, text: "Inserted." },
+      apply(reviewer, mode, [
+        { type: "deleteBlock", blockId: blockId(reviewer, "Signed in two copies.") },
       ]);
       const saved = await reopen(reviewer);
-      saved.rejectAll();
-      assert.deepEqual(
-        (await reopen(saved)).getContent().map((block) => block.text),
-        before,
-        "[rejectAll] rejected (actual) vs the document before (expected)",
-      );
-    },
-  );
+      saved.acceptAll();
+      texts[mode] = (await reopen(saved)).getContent().map((block) => block.text);
+    }
+    assert.deepEqual(
+      texts["tracked-changes"],
+      texts["direct"],
+      "[directTracked] deleted tracked and accepted (actual) vs deleted directly (expected)",
+    );
+  });
+
+  test("rejecting a tracked replacement of the last paragraph gives the document back", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const before = reviewer.getContent().map((block) => block.text);
+    const last = blockId(reviewer, "Signed in two copies.");
+    apply(reviewer, "tracked-changes", [
+      { type: "deleteBlock", blockId: last },
+      { type: "insertAfterBlock", blockId: last, text: "Inserted." },
+    ]);
+    const saved = await reopen(reviewer);
+    saved.rejectAll();
+    assert.deepEqual(
+      (await reopen(saved)).getContent().map((block) => block.text),
+      before,
+      "[rejectAll] rejected (actual) vs the document before (expected)",
+    );
+  });
 
   expectedFailure(
     "COMMENT_ANCHOR_REPLACED_BLOCK",
@@ -413,21 +403,16 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     },
   );
 
-  expectedFailure(
-    "BATCH_ROW_INSERT_DELETE",
-    "a batch that inserts a row and deletes the row below it deletes that row",
-    /not what was asked \(deleteTableRow, insertTableRow\)/u,
-    async () => {
-      const reviewer = await openReviewer(await tableDocument());
-      await applyChecked(
-        reviewer,
-        [
-          { type: "deleteTableRow", blockId: blockId(reviewer, "Gadget") },
-          { type: "insertTableRow", blockId: blockId(reviewer, "Widget"), position: "after" },
-        ],
-        "direct",
-        "row insert and delete",
-      );
-    },
-  );
+  test("a batch that inserts a row and deletes the row below it deletes that row", async () => {
+    const reviewer = await openReviewer(await tableDocument());
+    await applyChecked(
+      reviewer,
+      [
+        { type: "deleteTableRow", blockId: blockId(reviewer, "Gadget") },
+        { type: "insertTableRow", blockId: blockId(reviewer, "Widget"), position: "after" },
+      ],
+      "direct",
+      "row insert and delete",
+    );
+  });
 });

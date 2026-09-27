@@ -2115,6 +2115,8 @@ type RotatedAddedFinalBreaks = {
     ownerRevisionId: number;
     revisionId: number;
   }[];
+  /** Batch revisions a cancelled break took out of the document. */
+  retractedRevisionIds: number[];
 };
 
 /**
@@ -2266,6 +2268,232 @@ const addedBreakRevisionId = (value: unknown): number | null => {
   return typeof info.id === "number" ? info.id : null;
 };
 
+/** The revision id of a paragraph mark that says its break was added or deleted. */
+const addedOrDeletedBreakRevisionId = (value: unknown): number | null => {
+  if (typeof value !== "object" || value === null || !("kind" in value) || !("info" in value)) {
+    return null;
+  }
+  if (value.kind !== "del") {
+    return addedBreakRevisionId(value);
+  }
+  const info = value.info;
+  if (typeof info !== "object" || info === null || !("id" in info)) {
+    return null;
+  }
+  return typeof info.id === "number" ? info.id : null;
+};
+
+/** Whether every piece of the paragraph's content is pending deleted text (or it has none). */
+const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
+  let whollyDeleted = true;
+  paragraph.descendants((node) => {
+    if (!whollyDeleted) {
+      return false;
+    }
+    if (!node.isInline || isZeroWidthAnchor(node)) {
+      return true;
+    }
+    whollyDeleted = node.marks.some((mark) => mark.type.name === "deletion");
+    return false;
+  });
+  return whollyDeleted;
+};
+
+/** A paragraph mark that is a plain pending deletion (not a relocation's source). */
+const isPlainDeletedPPrMark = (value: unknown): boolean =>
+  typeof value === "object" && value !== null && "kind" in value && value.kind === "del";
+
+/**
+ * Where the added break of the final paragraph at `at` rotates to: the free
+ * mark `addedBreakCarrierBefore` finds, or else a paragraph the batch deletes
+ * whole, whose deleted break the added one cancels (`cancelsDeletedBreak`).
+ * The cancelling paragraph must be followed directly by the paragraph its
+ * words run into.
+ */
+const finalBreakCarrierBefore = (
+  at: ResolvedPos,
+  paragraphTypeName: string,
+  batchRevisionIds: ReadonlySet<number>,
+): { position: number; node: PMNode; cancelsDeletedBreak: boolean } | null => {
+  const free = addedBreakCarrierBefore(at, paragraphTypeName);
+  if (free) {
+    return { ...free, cancelsDeletedBreak: false };
+  }
+  let position = at.pos;
+  for (let index = at.index() - 1; index >= 0; index--) {
+    const sibling = at.parent.child(index);
+    position -= sibling.nodeSize;
+    if (sibling.type.name !== paragraphTypeName) {
+      if (sibling.type.spec["tableRole"] === "table") {
+        return null;
+      }
+      continue;
+    }
+    const mark: unknown = sibling.attrs["pPrMark"];
+    const revisionId = addedBreakRevisionId(mark);
+    if (revisionId !== null && batchRevisionIds.has(revisionId)) {
+      continue;
+    }
+    const deletedBreakId = isPlainDeletedPPrMark(mark) ? addedOrDeletedBreakRevisionId(mark) : null;
+    const cancels =
+      deletedBreakId !== null &&
+      batchRevisionIds.has(deletedBreakId) &&
+      holdsOnlyDeletedContent(sibling) &&
+      at.parent.maybeChild(index + 1)?.type.name === paragraphTypeName;
+    return cancels ? { position, node: sibling, cancelsDeletedBreak: true } : null;
+  }
+  return null;
+};
+
+/** A container-ending paragraph a tracked `deleteBlock` emptied, as it recorded it. */
+type DeletedFinalParagraph = {
+  operationId: string;
+  /** Where the paragraph was when the deletion ran, mapped from `mappedFrom`. */
+  position: number;
+  mappedFrom: number;
+  revisionExtras: { initials?: string; provenance?: "suggested"; suggestionId?: string };
+};
+
+type RetireFinalParagraphsOptions = {
+  tr: Transaction;
+  deletions: readonly DeletedFinalParagraph[];
+  /** Operations the batch applied: a deletion that changed nothing is not one. */
+  appliedIds: ReadonlySet<string>;
+  batchRevisionIds: ReadonlySet<number>;
+  revisionSeed: number;
+  author: string;
+  date: string;
+};
+
+type RetiredFinalParagraphs = {
+  nextRevisionId: number;
+  /** Revisions written for an operation after it ran. */
+  addedRevisions: { operationId: string; revisionId: number }[];
+  /** Batch revisions a retracted inserted break took out of the document. */
+  retractedRevisionIds: number[];
+};
+
+/**
+ * Finish the tracked deletion of every paragraph a container ends with.
+ *
+ * Its own mark cannot be deleted (see `paragraphEndsItsContainer`), so the
+ * deletion emptied it and left the mark. Applied directly, the paragraph goes
+ * whenever a paragraph precedes it, which becomes the container's last; only
+ * a container that would be left empty or ending in a table keeps an empty
+ * paragraph. Tracked resolves to the same: the preceding paragraph's mark is
+ * deleted, and accepting runs that paragraph into the emptied one, keeping
+ * its own properties since it holds the words.
+ *
+ * A paragraph with a break pending deletion already runs into this one;
+ * another final-break revision there would depend on batch boundaries.
+ * A preceding break that is itself a pending insertion is
+ * retracted instead of deleted: the paragraph joins the emptied one now, and
+ * records the emptied one's properties as `w:pPrChange` where they differ,
+ * which is what rejecting reads to put them back.
+ *
+ * This runs once over the finished batch: which paragraph precedes the
+ * emptied one is settled only then, since the batch runs backwards and an
+ * insertion or deletion before it lands after it.
+ */
+const withRetiredFinalParagraphs = ({
+  tr,
+  deletions,
+  appliedIds,
+  batchRevisionIds,
+  revisionSeed,
+  author,
+  date,
+}: RetireFinalParagraphsOptions): RetiredFinalParagraphs => {
+  let nextRevisionId = revisionSeed;
+  const addedRevisions: RetiredFinalParagraphs["addedRevisions"] = [];
+  const retractedRevisionIds: number[] = [];
+  const located = deletions
+    .filter(({ operationId }) => appliedIds.has(operationId))
+    .map((deletion) => ({
+      deletion,
+      at: tr.mapping.slice(deletion.mappedFrom).map(deletion.position),
+    }))
+    // A retraction joins two paragraphs: the last one first keeps the others' positions.
+    .toSorted((left, right) => right.at - left.at);
+  for (const {
+    deletion: { operationId, revisionExtras },
+    at,
+  } of located) {
+    const emptied = tr.doc.nodeAt(at);
+    if (emptied?.type.name !== "paragraph") {
+      continue;
+    }
+    const $emptied = tr.doc.resolve(at);
+    if (!paragraphEndsItsContainer($emptied, emptied.type.name)) {
+      continue;
+    }
+    let position = at;
+    for (let index = $emptied.index() - 1; index >= 0; index--) {
+      const previous = $emptied.parent.child(index);
+      position -= previous.nodeSize;
+      if (previous.type.name !== emptied.type.name) {
+        // A table, or a text box: directly, the paragraph stays too.
+        break;
+      }
+      const mark: unknown = previous.attrs["pPrMark"];
+      if (mark == null) {
+        const revisionId = nextRevisionId++;
+        tr.setNodeAttribute(position, "pPrMark", {
+          kind: "del",
+          info: { id: revisionId, author, date, ...revisionExtras },
+        });
+        addedRevisions.push({ operationId, revisionId });
+        break;
+      }
+      if (isPlainDeletedPPrMark(mark)) {
+        // Its break is already owned by a deletion. A later deletion of that
+        // paragraph must leave the same final carrier as separate batches.
+        break;
+      }
+      if (isInsertedPPrMark(mark)) {
+        const following = tr.doc.nodeAt(position + previous.nodeSize);
+        if (following?.type.name !== emptied.type.name) {
+          break;
+        }
+        const previousFormatting = paragraphPropertiesBeforeBatch(following, batchRevisionIds);
+        const formattingChanges =
+          JSON.stringify(previousFormatting) !==
+          JSON.stringify(paragraphPropertiesSnapshot(previous));
+        const existing = expectParagraphAttrs(previous)._propertyChanges;
+        if (formattingChanges && hasSerializableParagraphPropertyChange(existing)) {
+          // One w:pPrChange per paragraph: the emptied paragraph stays.
+          break;
+        }
+        joinAtParagraphMark({ tr, paragraphPos: position, paragraph: previous, next: following });
+        const retracted = addedBreakRevisionId(mark);
+        if (retracted !== null) {
+          retractedRevisionIds.push(retracted);
+        }
+        const joined = tr.doc.nodeAt(position);
+        if (formattingChanges && joined) {
+          const revisionId = nextRevisionId++;
+          tr.setNodeMarkup(position, undefined, {
+            ...joined.attrs,
+            _propertyChanges: [
+              ...(Array.isArray(existing) ? existing : []),
+              {
+                type: "paragraphPropertyChange",
+                info: { id: revisionId, author, date, ...revisionExtras },
+                previousFormatting,
+              } satisfies ParagraphPropertyChangeAttrs,
+            ],
+          });
+          addedRevisions.push({ operationId, revisionId });
+        }
+        break;
+      }
+      // A relocation's end: left as it is.
+      break;
+    }
+  }
+  return { nextRevisionId, addedRevisions, retractedRevisionIds };
+};
+
 /**
  * Move an ADDED paragraph break off every paragraph its container ends with.
  *
@@ -2288,6 +2516,13 @@ const addedBreakRevisionId = (value: unknown): number | null => {
  * which paragraph ends a container is only settled when the batch is, and an
  * insertion that looked final was undone by the next operation writing a table
  * after it.
+ *
+ * The paragraph the run was appended after may be one the same batch deletes:
+ * the insertion landed first, so the deletion took that paragraph's mark as
+ * well. The break rotating onto it then cancels the deleted one, as deleting a
+ * paragraph whose break is inserted does one operation at a time: the deleted
+ * paragraph's words run into the one after it, which ends with the free mark,
+ * and neither break is left to resolve.
  */
 const withRotatedAddedFinalBreaks = ({
   tr,
@@ -2298,21 +2533,26 @@ const withRotatedAddedFinalBreaks = ({
   initials,
 }: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
   const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
-  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName).flatMap(({ node, position }) => {
-    const mark: unknown = node.attrs["pPrMark"];
-    const revisionId = addedBreakRevisionId(mark);
-    return revisionId !== null && batchRevisionIds.has(revisionId)
-      ? [{ mark, node, ownerRevisionId: revisionId, position }]
-      : [];
-  });
+  const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
+    .flatMap(({ node, position }) => {
+      const mark: unknown = node.attrs["pPrMark"];
+      const revisionId = addedBreakRevisionId(mark);
+      return revisionId !== null && batchRevisionIds.has(revisionId)
+        ? [{ mark, node, ownerRevisionId: revisionId, position }]
+        : [];
+    })
+    // A cancelled break joins two paragraphs, which moves what follows them:
+    // the last container first keeps the others' positions valid.
+    .toSorted((left, right) => right.position - left.position);
 
   let next = tr;
   let nextRevisionId = revisionSeed;
   const synthesizedRevisions: RotatedAddedFinalBreaks["synthesizedRevisions"] = [];
+  const retractedRevisionIds: number[] = [];
   // Attribute writes do not move anything, so the positions stay valid.
   for (const { position: finalPosition, node: final, mark: finalMark } of rotations) {
     const resolved = next.doc.resolve(finalPosition);
-    const carrier = addedBreakCarrierBefore(resolved, final.type.name);
+    const carrier = finalBreakCarrierBefore(resolved, final.type.name, batchRevisionIds);
     if (!carrier) {
       // Nothing to hand the break to. Writing it would be worse than losing
       // it: the redline would carry a revision no reader can resolve.
@@ -2366,7 +2606,10 @@ const withRotatedAddedFinalBreaks = ({
         });
       }
       const displacedMark: unknown = previous.node.attrs["pPrMark"];
-      next = next.setNodeAttribute(previous.position, "pPrMark", carriedMark);
+      const cancels = carrier.cancelsDeletedBreak && previous.position === carrier.position;
+      if (!cancels) {
+        next = next.setNodeAttribute(previous.position, "pPrMark", carriedMark);
+      }
 
       const currentFormatting = paragraphPropertiesSnapshot(current.node);
       // Both snapshots are built by the same fixed walk over the in-scope keys,
@@ -2397,13 +2640,35 @@ const withRotatedAddedFinalBreaks = ({
         synthesizedRevisions.push({ ownerRevisionId, revisionId });
       }
 
+      if (cancels) {
+        const deleted = next.doc.nodeAt(previous.position);
+        const following = next.doc.nodeAt(current.position);
+        if (!deleted || !following) {
+          panic("A cancelled final-mark rotation lost its paragraphs", {
+            position: previous.position,
+          });
+        }
+        joinAtParagraphMark({
+          tr: next,
+          paragraphPos: previous.position,
+          paragraph: deleted,
+          next: following,
+          firstIsGoing: true,
+        });
+        retractedRevisionIds.push(ownerRevisionId);
+        const deletedBreakId = addedOrDeletedBreakRevisionId(displacedMark);
+        if (deletedBreakId !== null) {
+          retractedRevisionIds.push(deletedBreakId);
+        }
+        break;
+      }
       if (displacedMark == null) {
         break;
       }
       carriedMark = displacedMark;
     }
   }
-  return { transaction: next, nextRevisionId, synthesizedRevisions };
+  return { transaction: next, nextRevisionId, synthesizedRevisions, retractedRevisionIds };
 };
 
 /**
@@ -3026,6 +3291,8 @@ const applyFolioAIEditOperationsInternal = ({
   let tr = view.state.tr;
   /** Text boxes a tracked block deletion deletes, by anchor. */
   const deletedTextBoxAnchorIds = new Set<string>();
+  /** Container-ending paragraphs a tracked `deleteBlock` emptied: see `withRetiredFinalParagraphs`. */
+  const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
   let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor;
   /**
@@ -3939,9 +4206,10 @@ const applyFolioAIEditOperationsInternal = ({
           // cell, a header, a note and a text box each end with a paragraph
           // that nothing follows. Such a mark states an edit that cannot be
           // carried out, and a consumer reading it refuses the package. That
-          // paragraph therefore loses its words and keeps its mark, and the
-          // caller that wants the paragraph gone deletes the mark of the one
-          // BEFORE it, which merges forward into this carrier.
+          // paragraph therefore loses its words and keeps its mark, and once
+          // the batch is done the mark of the paragraph BEFORE it goes
+          // instead, which merges forward into this carrier: accepted, the
+          // paragraph is gone, as it is when deleted directly.
           //
           // A paragraph before a TABLE still carries its own mark: the table
           // is a following sibling, so the paragraph does not end anything.
@@ -3984,6 +4252,15 @@ const applyFolioAIEditOperationsInternal = ({
             appliedRevisionIds = inlineRevisionApplied
               ? [revisionId, markRevisionId]
               : [markRevisionId];
+          } else if (endsItsContainer && !isPairedMove(item.operation.moveId)) {
+            // Which paragraph precedes it, and so whose mark goes instead, is
+            // settled only once the batch is: see `withRetiredFinalParagraphs`.
+            deletedFinalParagraphs.push({
+              operationId: item.operation.id,
+              position: markPosition,
+              mappedFrom: tr.mapping.maps.length,
+              revisionExtras: trackedRevisionExtras,
+            });
           }
         }
         if (commentMark) {
@@ -4439,6 +4716,16 @@ const applyFolioAIEditOperationsInternal = ({
     });
     tr = rotated.transaction;
     revisionSeed = rotated.nextRevisionId;
+    const retired = withRetiredFinalParagraphs({
+      tr,
+      deletions: deletedFinalParagraphs,
+      appliedIds: new Set(applied.map(({ id }) => id)),
+      batchRevisionIds,
+      revisionSeed,
+      author,
+      date,
+    });
+    revisionSeed = retired.nextRevisionId;
     const receiptIndexByRevisionId = new Map<number, number>();
     for (const [receiptIndex, receipt] of applied.entries()) {
       for (const revisionId of receipt.revisionIds ?? []) {
@@ -4458,6 +4745,39 @@ const applyFolioAIEditOperationsInternal = ({
         ...receipt,
         revisionIds: [...receipt.revisionIds, revisionId],
       };
+    }
+    for (const { operationId, revisionId } of retired.addedRevisions) {
+      const receiptIndex = applied.findIndex(({ id }) => id === operationId);
+      const receipt = applied.at(receiptIndex);
+      if (receiptIndex < 0 || !receipt) {
+        panic("A retired final-mark revision lost its operation receipt", {
+          operationId,
+          revisionId,
+        });
+      }
+      const revisionIds = [...(receipt.revisionIds ?? []), revisionId];
+      applied[receiptIndex] = { ...receipt, revisionId: revisionIds[0], revisionIds };
+    }
+    const retractedRevisionIds = new Set([
+      ...rotated.retractedRevisionIds,
+      ...retired.retractedRevisionIds,
+    ]);
+    if (retractedRevisionIds.size > 0) {
+      for (const [receiptIndex, receipt] of applied.entries()) {
+        const revisionIds = receipt.revisionIds?.filter((id) => !retractedRevisionIds.has(id));
+        if (revisionIds === undefined) {
+          continue;
+        }
+        const {
+          revisionId: _oldRevisionId,
+          revisionIds: _oldRevisionIds,
+          ...withoutRevisions
+        } = receipt;
+        applied[receiptIndex] =
+          revisionIds.length > 0
+            ? { ...withoutRevisions, revisionId: revisionIds[0], revisionIds }
+            : withoutRevisions;
+      }
     }
     // Before dispatch, which may start another batch.
     claimSharedRevisionIds(revisionSeed);

@@ -315,26 +315,6 @@ const REPLY_COMMENT_TAGS = tolerate<unknown>(
 
 type BlocksView = { blocks: readonly { text: string; table?: unknown }[] };
 
-const withoutTrailingBlank = <T extends BlocksView>(view: T): T => {
-  const blocks = [...view.blocks];
-  while (blocks.length > 0 && blocks.at(-1)?.text === "" && blocks.at(-1)?.table === undefined) {
-    blocks.pop();
-  }
-  return { ...view, blocks };
-};
-
-const ACCEPTED_LAST_PARAGRAPH = tolerate<BlocksView>(
-  "TRACKED_DELETE_LAST_PARAGRAPH",
-  "a trailing empty paragraph after accept-all",
-  withoutTrailingBlank,
-);
-
-const REJECTED_LAST_PARAGRAPH = tolerate<BlocksView>(
-  "TRACKED_LAST_PARAGRAPH_REJECT",
-  "a trailing empty paragraph after reject-all",
-  withoutTrailingBlank,
-);
-
 /**
  * Markdown as a save must keep it: revision ids are renumbered on save, and
  * two adjacent runs with the same emphasis, which a save joins, read as one
@@ -661,14 +641,14 @@ const shadowProblems = async (
         found = tolerantDifferences<BlocksView>(
           await resolvedView(await save(shadows.direct), "accept", story),
           await resolvedView(await save(shadows.tracked), "accept", story),
-          story.type === "main" ? [ACCEPTED_LAST_PARAGRAPH] : [],
+          [],
         );
         break;
       case "rejectTracked":
         found = tolerantDifferences<BlocksView>(
           { blocks: (await resolvedView(fixture, "reject", story)).blocks },
           { blocks: (await resolvedView(await save(shadows.tracked), "reject", story)).blocks },
-          story.type === "main" ? [REJECTED_LAST_PARAGRAPH] : [],
+          [],
         );
         break;
       case "rejectSuggested":
@@ -676,7 +656,7 @@ const shadowProblems = async (
         found = tolerantDifferences<BlocksView>(
           { blocks: (await resolvedView(fixture, "reject", story)).blocks },
           { blocks: (await resolvedView(await save(suggested), "accept", story)).blocks },
-          story.type === "main" ? [REJECTED_LAST_PARAGRAPH] : [],
+          [],
         );
         break;
     }

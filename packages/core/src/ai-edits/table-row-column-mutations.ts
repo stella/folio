@@ -468,20 +468,22 @@ export const applyTableRowDeletion = ({
     return applied(tr, revision);
   }
 
-  const table = tr.doc.nodeAt(deletion.tablePosition);
-  if (!table || table.type.spec["tableRole"] !== "table" || deletion.rowIndex >= table.childCount) {
+  // Located through what the batch has applied, as the tracked path is: a row
+  // another operation inserted at this row's boundary lands before it and
+  // takes its index, and deleting by the index read before the batch would
+  // delete that new row instead.
+  const at = tr.doc.resolve(tr.mapping.map(deletion.rowPosition));
+  const table = at.parent;
+  if (table.type.spec["tableRole"] !== "table" || at.nodeAfter?.type.spec["tableRole"] !== "row") {
     return { type: "unsupported" };
   }
+  const tablePosition = at.before();
   if (table.childCount === 1) {
-    const transaction = deleteTableNode({ tr, tablePosition: deletion.tablePosition, table });
+    const transaction = deleteTableNode({ tr, tablePosition, table });
     return transaction ? applied(transaction, null) : { type: "unsupported" };
   }
 
-  removeTableRow(
-    tr,
-    { map: TableMap.get(table), table, tableStart: deletion.tableStart },
-    deletion.rowIndex,
-  );
+  removeTableRow(tr, { map: TableMap.get(table), table, tableStart: at.start() }, at.index());
   return applied(tr, null);
 };
 

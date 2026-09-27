@@ -272,15 +272,10 @@ const runDirectly = async (steps: readonly Step[]): Promise<FolioDocxReviewer | 
       // two paragraphs where the direct run has one.
       return null;
     }
-    if (
-      operation.type === "deleteBlock" &&
-      (direct.getContent().at(-1)?.id === mapped || beforeTable)
-    ) {
-      // Tracked, the story's final paragraph loses its words and keeps its
-      // mark (nothing follows it to join); directly, it goes. Deliberately
-      // different: see `deleteBlock` in apply.ts. So does a paragraph before
-      // a table whose break is itself a pending insertion: a mark cannot say
-      // inserted and deleted at once, and there is no paragraph to join.
+    if (operation.type === "deleteBlock" && beforeTable) {
+      // A paragraph before a table whose break is itself a pending insertion
+      // cannot carry an inserted and deleted mark at once, and there is no
+      // paragraph to join.
       return null;
     }
     let counterpart: Operation;
