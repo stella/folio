@@ -68,7 +68,7 @@ import { createScopedWordDiffOptions, type WordDiffGranularity } from "../ai-edi
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { pairFolioDocumentStories } from "../document-stories";
 import { sameAuthoredInlineProvenance } from "./inline-provenance";
-import { sameInlineAtoms } from "./inline-atoms";
+import { MISSING_NOTE_DETAIL, sameInlineAtoms } from "./inline-atoms";
 import { compareSectionBoundaryProperties } from "./section-boundary-properties";
 import { sameCanonicalInlinePresentation } from "../internal/compare/inline-presentation";
 import { createContentComparisonWorkSession } from "./content";
@@ -1439,8 +1439,18 @@ export const compareDocx = async (
     return Result.err(applied.error);
   }
   const { changes, verification } = applied.value;
-  if (verification.status === "unverified" && (options.onUnverified ?? "refuse") === "refuse") {
-    const [firstFailure] = verification.failures;
+  // A reference to a note the base does not have stays the marker text the
+  // operations wrote. Emitted, that text would read as a reference and be
+  // none, so it is refused under either `onUnverified` setting.
+  const missingNote =
+    verification.status === "unverified"
+      ? verification.failures.find(({ detail }) => detail === MISSING_NOTE_DETAIL)
+      : undefined;
+  if (
+    verification.status === "unverified" &&
+    (missingNote !== undefined || (options.onUnverified ?? "refuse") === "refuse")
+  ) {
+    const firstFailure = missingNote ?? verification.failures[0];
     if (firstFailure === undefined) {
       panic("An unverified comparison reported no failing invariant");
     }

@@ -44,7 +44,9 @@ export type CompareDocxOptions = {
    * redline that reads plausibly and is wrong is worse than no redline.
    * `"emit"` returns the redline anyway, with `verification` naming every
    * invariant that did not hold, for a caller that would rather show its best
-   * attempt and say what is missing.
+   * attempt and say what is missing. A reference to a note the base document
+   * does not have is refused either way: the redline would carry its marker
+   * as text that reads like a reference.
    */
   onUnverified?: "refuse" | "emit";
   /**

@@ -199,7 +199,8 @@ describe("comparing documents whose kept paragraphs gain or lose note references
 
   // The note part cannot yet take a note the base does not have (the save
   // patches existing notes only), so the reference is refused by name rather
-  // than written as a reference to nothing.
+  // than written as a reference to nothing, or as marker text that reads like
+  // one, even when an unverified redline is asked for.
   test("a reference to a note only the revised document has is refused by name", async () => {
     const base = await buildDocx(BASE);
     const revised = await buildDocx(
@@ -211,18 +212,11 @@ describe("comparing documents whose kept paragraphs gain or lose note references
       ],
       { footnotes: [...FOOTNOTE_IDS, 50], endnotes: ENDNOTE_IDS },
     );
-    const compared = await compareDocx(base, revised, OPTIONS);
-    if (compared.isOk()) throw new Error("the comparison wrote a reference to a missing note");
-    expect(compared.error._tag).toBe("CompareDocxRoundTripError");
-    const failures = "failures" in compared.error ? compared.error.failures : [];
-    expect(failures.map(({ detail }) => detail)).toContain(MISSING_NOTE_DETAIL);
-
-    const emitted = await compareDocx(base, revised, { ...OPTIONS, onUnverified: "emit" });
-    if (emitted.isErr()) throw emitted.error;
-    expect(emitted.value.unsupported).toContainEqual({
-      reason: "story-missing-in-base",
-      baseStory: null,
-      targetStory: { type: "footnote", noteId: 50 },
-    });
+    for (const onUnverified of ["refuse", "emit"] as const) {
+      const compared = await compareDocx(base, revised, { ...OPTIONS, onUnverified });
+      if (compared.isOk()) throw new Error("the comparison wrote a reference to a missing note");
+      expect(compared.error._tag).toBe("CompareDocxRoundTripError");
+      expect(compared.error.message).toContain(MISSING_NOTE_DETAIL);
+    }
   });
 });
