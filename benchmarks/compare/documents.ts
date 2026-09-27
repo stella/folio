@@ -7,8 +7,10 @@
  * flat alignment cannot see, notes and section stories are scopes the main
  * story alignment must not reach into, indivisible atoms (images, equations,
  * fields, breaks) must not be split down the middle, bidirectional and CJK
- * text breaks word-granularity assumptions, and a base that already carries
- * revisions forces the engine to say which view it compares.
+ * text breaks word-granularity assumptions, a base that already carries
+ * revisions forces the engine to say which view it compares, and headings
+ * whose level the paragraph states itself are what a paragraph placed beside
+ * them must not inherit.
  *
  * Sizes are block counts, not byte counts: the engine's cost tracks blocks.
  */
@@ -25,6 +27,7 @@ export const DOCUMENT_CLASSES = Object.freeze([
   "sections",
   "multiscript",
   "revised",
+  "outline",
 ] as const);
 
 export type DocumentClass = (typeof DOCUMENT_CLASSES)[number];
@@ -530,6 +533,37 @@ const buildRevised = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
   return { body: body.join("") };
 };
 
+/**
+ * A heading's level stated three ways: by a built-in heading style alone, by
+ * the style plus a direct `w:outlineLvl` (the shape Markdown converters
+ * write), and by a direct `w:outlineLvl` on an unstyled paragraph. The last
+ * two are properties of the paragraph, so a paragraph inserted or moved beside
+ * one takes them unless the edit states its own.
+ */
+const OUTLINE_HEADING_PROPERTIES = Object.freeze([
+  '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>',
+  '<w:pPr><w:pStyle w:val="Heading1"/><w:outlineLvl w:val="0"/></w:pPr>',
+  '<w:pPr><w:outlineLvl w:val="1"/></w:pPr>',
+] as const);
+
+const buildOutline = ({ blocks, random }: ClassBuilderOptions): ClassBuild => {
+  const body: string[] = [];
+  for (let index = 0; index < blocks; index++) {
+    if (index % 4 === 0) {
+      const section = index / 4;
+      body.push(
+        paragraph(
+          run(`Section ${String(section + 1)}`),
+          OUTLINE_HEADING_PROPERTIES[section % OUTLINE_HEADING_PROPERTIES.length],
+        ),
+      );
+      continue;
+    }
+    body.push(paragraph(run(sentence(random, "latin", 10 + Math.floor(random() * 8)))));
+  }
+  return { body: body.join("") };
+};
+
 const BUILDERS = {
   prose: buildProse,
   lists: buildLists,
@@ -540,6 +574,7 @@ const BUILDERS = {
   sections: buildSections,
   multiscript: buildMultiscript,
   revised: buildRevised,
+  outline: buildOutline,
 } as const satisfies Record<DocumentClass, (options: ClassBuilderOptions) => ClassBuild>;
 
 /** Distinct per class and size, so no two documents share a word stream. */

@@ -40,6 +40,7 @@ export const EDIT_VARIANTS = Object.freeze([
   "numbering",
   "notes",
   "references",
+  "restyle",
   "headers",
   "everywhere",
   "rewrite",
@@ -281,6 +282,74 @@ const references: BodyRewrite = (children) => {
   });
 };
 
+const PROMOTED_HEADING_PROPERTIES =
+  '<w:pPr><w:pStyle w:val="Heading1"/><w:outlineLvl w:val="0"/></w:pPr>';
+
+/** A heading by its style or by an outline level the paragraph states itself. */
+const isHeading = (paragraphXml: string): boolean =>
+  paragraphXml.includes('<w:pStyle w:val="Heading1"/>') || paragraphXml.includes("<w:outlineLvl ");
+
+/** A paragraph with no properties of its own, so a promotion writes all of them. */
+const hasNoParagraphProperties = (paragraphXml: string): boolean =>
+  !paragraphXml.includes("<w:pPr>");
+
+const withoutParagraphProperties = (paragraphXml: string): string =>
+  paragraphXml.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/u, "");
+
+/**
+ * Paragraphs promoted to headings and headings demoted to body text, with new
+ * and relocated body paragraphs placed directly before a heading. The last two
+ * are the insertions whose anchor is a heading, so a paragraph that takes what
+ * the edit does not state comes out a heading; accepting has to leave every
+ * block the kind the target gives it. Top-level paragraphs only.
+ */
+const restyle: BodyRewrite = (children) => {
+  const rewritten: string[] = [];
+  let held: string | null = null;
+  let headingOrdinal = 0;
+  let bodyOrdinal = 0;
+  for (const child of children) {
+    if (!isParagraph(child)) {
+      rewritten.push(child);
+      continue;
+    }
+    if (isHeading(child)) {
+      if (held !== null) {
+        rewritten.push(held);
+        held = null;
+      }
+      const step = headingOrdinal++ % 3;
+      if (step === 0) {
+        const added = withoutParagraphProperties(child);
+        rewritten.push(withBlockText(added, "A newly added paragraph before the heading."), child);
+        continue;
+      }
+      rewritten.push(step === 1 ? withoutParagraphProperties(child) : child);
+      continue;
+    }
+    if (!hasNoParagraphProperties(child) || blockText(child).length === 0) {
+      rewritten.push(child);
+      continue;
+    }
+    const step = bodyOrdinal++ % 7;
+    if (step === 2) {
+      rewritten.push(
+        child.replace(/^<w:p(\s[^>]*)?>/u, (open) => `${open}${PROMOTED_HEADING_PROPERTIES}`),
+      );
+      continue;
+    }
+    if (step === 5 && held === null) {
+      held = child;
+      continue;
+    }
+    rewritten.push(child);
+  }
+  if (held !== null) {
+    rewritten.splice(Math.max(0, rewritten.length - 1), 0, held);
+  }
+  return rewritten;
+};
+
 const rewrite: BodyRewrite = (children) =>
   mapParagraphs(children, (paragraph) => {
     const text = blockText(paragraph);
@@ -300,6 +369,7 @@ const BODY_REWRITES = {
   numbering: identical,
   notes: identical,
   references,
+  restyle,
   headers: identical,
   everywhere: light,
   rewrite,
