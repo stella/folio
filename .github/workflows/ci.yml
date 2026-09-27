@@ -468,6 +468,15 @@ jobs:
       - name: Run editor-web webview check
         run: bun --filter @stll/folio-editor-web test:e2e
 
+      - name: Upload mixed-script Vue render trace
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mixed-script-vue-render-trace
+          path: test-results/**/vue-layout-trace.zip
+          if-no-files-found: ignore
+          retention-days: 1
+
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)
     runs-on: ubuntu-latest

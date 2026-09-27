@@ -9,8 +9,10 @@ const EDITOR_HOSTS = [
 ] as const;
 
 for (const host of EDITOR_HOSTS) {
-  test(`${host.name} measures mixed-script text with its loaded fonts`, async ({ page }) => {
-    test.setTimeout(35_000);
+  test(`${host.name} measures mixed-script text with its loaded fonts`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(45_000);
     const failedFontRequests: string[] = [];
     const failedResponses: string[] = [];
     const failedRequests: string[] = [];
@@ -35,10 +37,26 @@ for (const host of EDITOR_HOSTS) {
         consoleErrors.push(message.text().slice(0, 300));
       }
     });
+    if (host.name === "Vue") {
+      await page.context().tracing.start({ screenshots: true, snapshots: true });
+    }
     await page.goto(`${host.url}/?file=${FIXTURE}`);
     try {
       await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
     } catch (error) {
+      const traceStatus =
+        host.name === "Vue"
+          ? await Promise.race([
+              page
+                .context()
+                .tracing.stop({ path: testInfo.outputPath("vue-layout-trace.zip") })
+                .then(
+                  () => "saved",
+                  () => "failed",
+                ),
+              new Promise((resolve) => setTimeout(() => resolve("stop timed out"), 5_000)),
+            ])
+          : "not captured";
       const domSummary = await Promise.race([
         page
           .evaluate(() => ({
@@ -62,6 +80,7 @@ for (const host of EDITOR_HOSTS) {
       throw new Error(
         `${host.name} layout did not render: ${JSON.stringify({
           domSummary,
+          traceStatus,
           failedResponses: failedResponses.slice(-8),
           failedRequests: failedRequests.slice(-8),
           pageErrors: pageErrors.slice(-8),
@@ -91,5 +110,8 @@ for (const host of EDITOR_HOSTS) {
             `line ${line.index} "${line.text}": measured ${line.measured.toFixed(2)}px, painted ${line.painted.toFixed(2)}px`,
         ),
     ).toEqual([]);
+    if (host.name === "Vue") {
+      await page.context().tracing.stop();
+    }
   });
 }
