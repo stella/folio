@@ -183,7 +183,7 @@ const lockedError = (documentPath: string, state: LeaseState): FolioCliError =>
         : ""
     }.`,
     hint: "Retry after it finishes, or pass --force to take the lease over.",
-    details: state.type === "held" ? { holder: publicLockHolder(state.holder) } : undefined,
+    ...(state.type === "held" && { details: { holder: publicLockHolder(state.holder) } }),
   });
 
 const lostError = (documentPath: string): FolioCliError =>
@@ -344,7 +344,7 @@ export const adoptLease = async (
         code: FOLIO_CLI_ERROR_CODES.locked,
         message: `${documentPath} is not held under that lease token.`,
         hint: "The lease expired or was taken over; acquire it again and retry.",
-        details: current.type === "held" ? { holder: publicLockHolder(current.holder) } : undefined,
+        ...(current.type === "held" && { details: { holder: publicLockHolder(current.holder) } }),
       }),
     );
   }
