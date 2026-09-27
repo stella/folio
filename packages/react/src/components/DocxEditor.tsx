@@ -847,6 +847,17 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // handleDocumentChange keeps it in sync after subsequent edits. Page-number
   // resolution depends on the paged layout having run at least once, so we
   // retry briefly until every heading has a page or we give up.
+  // The body view is created lazily (first click or `ensureEditorView`), after
+  // the document loads; readers of its state, such as the outline's heading
+  // collection, re-run when it appears.
+  const [bodyViewEpoch, setBodyViewEpoch] = useState(0);
+  const handleBodyViewReady = useCallback(
+    (view: EditorView | null) => {
+      reportEditorViewReady(view);
+      setBodyViewEpoch((epoch) => epoch + 1);
+    },
+    [reportEditorViewReady],
+  );
   useEffect(() => {
     if (!showOutline) {
       return;
@@ -889,7 +900,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         clearTimeout(timer);
       }
     };
-  }, [showOutline, history.state]);
+  }, [showOutline, history.state, bodyViewEpoch]);
 
   // Refs
   const pagedEditorRef = useRef<PagedEditorRef>(null);
@@ -4516,9 +4527,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           : {})}
                         onSelectionChange={handlePagedSelectionChange}
                         {...(onSelectionTextChange !== undefined ? { onSelectionTextChange } : {})}
-                        {...(onEditorViewReady !== undefined
-                          ? { onEditorViewReady: reportEditorViewReady }
-                          : {})}
+                        onEditorViewReady={handleBodyViewReady}
                         externalPlugins={editorPlugins}
                         showTemplateDirectives={showTemplateDirectives}
                         {...(collaboration !== undefined ? { collaboration } : {})}
