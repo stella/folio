@@ -80,7 +80,7 @@
     "test:conformance:full": "FOLIO_CONFORMANCE=full bun test src/__tests__/editorCommandConformance.test.ts",
     "wasm:check": "bun ../../scripts/build-shaper-wasm.ts --check",
     "wasm:generate": "bun ../../scripts/build-shaper-wasm.ts --write",
-    "test:property": "bun test $(grep -rlF 'fc.assert' src --include='*.test.ts')",
+    "test:property": "bun test $(grep -rlE 'fc\\.(assert|check)\\(|assertProperty\\(' src --include='*.test.ts')",
     "perf": "bun scripts/profile-editor.ts"
   },
   "dependencies": {

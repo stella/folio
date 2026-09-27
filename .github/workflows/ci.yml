@@ -119,6 +119,31 @@ jobs:
         with:
           policy-file: .github/ci-plan.json
 
+  property-areas:
+    name: Properties of the changed areas (5x runs)
+    needs: ci-plan
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0 # need history to compute the merge base with the target branch
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      # Rerun properties in the areas this PR changes at five times their
+      # normal runs, with the same commit-derived seeds.
+      - name: Changed areas' properties at 5x numRuns
+        run: bun scripts/property-areas.ts --base "origin/${BASE_REF}" --factor 5
+        env:
+          BASE_REF: ${{ github.base_ref }}
+
   # oxfmt formats Markdown too, so a documentation-only change still has its
   # formatting checked; any other change runs the full format check in `ci`.
   docs-format:
@@ -713,6 +738,7 @@ jobs:
     needs:
       - ci-plan
       - changeset
+      - property-areas
       - docs-format
       - ci
       - typecheck-budget
@@ -739,6 +765,7 @@ jobs:
           PLAN_RESULT: ${{ needs.ci-plan.result }}
           JOB_SCOPES: >-
             {"changeset":{"event":"pull_request"},
+            "property-areas":{"event":"pull_request","area":"code_required"},
             "docs-format":{"area":"code_required","value":"false"},
             "ci":{"area":"code_required"},
             "typecheck-budget":{"area":"typecheck_budget_required","depth":"full"},
@@ -780,9 +807,10 @@ jobs:
           violations=$(jq -r --arg event "$EVENT" --arg depth "$depth" --argjson plan "$PLAN" --argjson scopes "$JOB_SCOPES" '
             . as $needs | [$scopes | to_entries[] | .key as $job | .value as $scope
               | $needs[$job].result as $result
-              | ($scope.event == $event or
-                 ($scope.area != null and $plan[$scope.area] == ($scope.value // "true") and
-                  ($scope.depth == null or $scope.depth == $depth))) as $selected
+              | (($scope.event == null or $scope.event == $event) and
+                 ($scope.area == null or
+                  ($plan[$scope.area] == ($scope.value // "true") and
+                   ($scope.depth == null or $scope.depth == $depth)))) as $selected
               | if $selected and $result != "success" then "\($job) (selected, \($result // "missing"))"
                 elif ($selected | not) and $result != "success" and $result != "skipped" then
                   "\($job) (unexpected \($result // "missing"))"

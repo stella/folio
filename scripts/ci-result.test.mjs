@@ -25,10 +25,10 @@ const needsFor = (depth, event, codeRequired = "true") => {
   const needs = { "ci-plan": { result: "success", outputs } };
   for (const [job, scope] of Object.entries(scopes)) {
     const selected =
-      scope.event === event ||
-      (scope.area !== undefined &&
-        outputs[scope.area] === (scope.value ?? "true") &&
-        (scope.depth === undefined || scope.depth === depth));
+      (scope.event === undefined || scope.event === event) &&
+      (scope.area === undefined ||
+        (outputs[scope.area] === (scope.value ?? "true") &&
+          (scope.depth === undefined || scope.depth === depth)));
     needs[job] = { result: selected ? "success" : "skipped" };
   }
   return needs;
@@ -68,12 +68,13 @@ describe("CI result", () => {
       if (scope.event) {
         expect(gate).toContain("github.event_name == 'pull_request'");
         expect(gate).toContain("github.event.pull_request.draft != true");
-        continue;
       }
-      expect(gate).toContain(`needs.ci-plan.outputs.${scope.area} == '${scope.value ?? "true"}'`);
-      expect(gate.includes("needs.ci-plan.outputs.suite_depth == 'full'")).toBe(
-        scope.depth === "full",
-      );
+      if (scope.area) {
+        expect(gate).toContain(`needs.ci-plan.outputs.${scope.area} == '${scope.value ?? "true"}'`);
+        expect(gate.includes("needs.ci-plan.outputs.suite_depth == 'full'")).toBe(
+          scope.depth === "full",
+        );
+      }
     }
   });
 
