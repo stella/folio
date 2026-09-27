@@ -79,8 +79,10 @@ describe("CI result", () => {
   const scenarios = [
     ["fast", "pull_request", "true"],
     ["fast", "pull_request", "false"],
+    ["fast", "push", "true"],
+    ["fast", "workflow_dispatch", "true"],
+    ["fast", "schedule", "true"],
     ["full", "merge_group", "true"],
-    ["full", "pull_request", "true"],
   ];
   test("every declared job is selected in at least one scenario", () => {
     const exercised = new Set();
@@ -109,13 +111,26 @@ describe("CI result", () => {
     });
   }
 
-  test("an unexpected failure, cancelled plan, or fast merge group fails", () => {
+  test("an unexpected failure, cancelled plan, or wrong event depth fails", () => {
     const needs = needsFor("fast", "pull_request");
     needs["docx-kernel"].result = "failure";
     expect(runResult("pull_request", needs).exitCode).toBe(1);
     needs["ci-plan"].result = "cancelled";
     expect(runResult("pull_request", needs).exitCode).toBe(1);
-    expect(runResult("merge_group", needsFor("fast", "merge_group")).exitCode).toBe(1);
+
+    for (const event of ["pull_request", "push", "workflow_dispatch", "schedule"]) {
+      for (const depth of ["full", "invalid"]) {
+        const run = runResult(event, needsFor(depth, event));
+        expect(run.exitCode).toBe(1);
+        expect(run.stdout.toString()).toContain(`wrong suite depth for ${event}`);
+      }
+    }
+    for (const depth of ["fast", "invalid"]) {
+      const run = runResult("merge_group", needsFor(depth, "merge_group"));
+      expect(run.exitCode).toBe(1);
+      expect(run.stdout.toString()).toContain("wrong suite depth for merge_group");
+    }
+
     const untrusted = needsFor("full", "merge_group");
     untrusted["ci-plan"].outputs.trusted = "false";
     expect(runResult("merge_group", untrusted).exitCode).toBe(1);

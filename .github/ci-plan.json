@@ -9,7 +9,7 @@
     "tsconfig.base.json",
     ".gitmodules"
   ],
-  "fullDepth": "all",
+  "fullDepth": "scoped",
   "areas": {
     "code": {
       "paths": [

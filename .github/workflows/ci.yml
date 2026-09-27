@@ -88,30 +88,29 @@ jobs:
   # One scheduling wave decides what the run checks; every other job waits on
   # it and skips when its area is not selected. The planner is the shared
   # stella/.github ci-plan action; `.github/ci-plan.json` holds folio's areas.
-  # A pull request plans by changed path, unless labelled `ci:full`. Pushes,
-  # merge groups and manual runs select every area, and so does a change to a
-  # workflow, the plan, the lockfile or the root manifests. Drafts plan
-  # nothing; marking one ready for review runs it.
+  # Pull requests plan by changed path. Merge groups select every area.
+  # Suite depth depends only on the event; the shared planner supplies path
+  # scopes and trust. Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-      # The live `ci:full` label, and the merge-group trust check.
+      # The shared planner reads PR metadata and checks merge-group trust.
       pull-requests: read
       actions: read
     outputs:
-      suite_depth: ${{ steps.plan.outputs.suite-depth }}
+      suite_depth: ${{ github.event_name == 'merge_group' && 'full' || 'fast' }}
       trusted: ${{ steps.plan.outputs.trusted }}
-      code_required: ${{ fromJSON(steps.plan.outputs.areas).code }}
-      typecheck_budget_required: ${{ fromJSON(steps.plan.outputs.areas).typecheck_budget }}
-      container_contract_required: ${{ fromJSON(steps.plan.outputs.areas).container_contract }}
-      docx_kernel_required: ${{ fromJSON(steps.plan.outputs.areas).docx_kernel }}
-      interactions_required: ${{ fromJSON(steps.plan.outputs.areas).interactions }}
-      differential_required: ${{ fromJSON(steps.plan.outputs.areas).differential }}
-      consumer_scenarios_required: ${{ fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
-      packaged_consumer_required: ${{ fromJSON(steps.plan.outputs.areas).packaged_consumer }}
+      code_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).code }}
+      typecheck_budget_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
+      container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
+      docx_kernel_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
+      interactions_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).interactions }}
+      differential_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).differential }}
+      consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
+      packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
     steps:
       - name: Plan changed-path scopes
         id: plan
@@ -328,18 +327,8 @@ jobs:
         if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run build
 
-      # The gate builds each package twice and compares the emitted JavaScript
-      # and declarations, which costs roughly two extra minutes across all six.
-      # A pull request pays it for the two that carry nearly all the declaration
-      # surface; every other event (push to main, the merge queue, a manual
-      # run) covers the adapters too. Either step leaves a freshly built dist
-      # behind for the steps below.
-      - name: Reproducible package builds
-        if: needs.ci-plan.outputs.suite_depth == 'full' && github.event_name == 'pull_request'
-        run: bun scripts/check-build-reproducibility.ts --packages core,docx-core
-
       - name: Reproducible package builds (all published packages)
-        if: needs.ci-plan.outputs.suite_depth == 'full' && github.event_name != 'pull_request'
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:build-reproducibility
 
       - name: API surface report
@@ -742,12 +731,12 @@ jobs:
           fi
           depth=$(jq -r .suite_depth <<< "$PLAN")
           trusted=$(jq -r .trusted <<< "$PLAN")
-          if [[ "$trusted" != "true" || ( "$EVENT" == "merge_group" && "$depth" != "full" ) ]]; then
-            echo "::error::CI plan is untrusted or merge group did not select full CI."
-            exit 1
+          expected_depth=fast
+          if [[ "$EVENT" == "merge_group" ]]; then
+            expected_depth=full
           fi
-          if [[ "$depth" != "fast" && "$depth" != "full" ]]; then
-            echo "::error::Invalid CI depth: $depth"
+          if [[ "$trusted" != "true" || "$depth" != "$expected_depth" ]]; then
+            echo "::error::CI plan is untrusted or selects the wrong suite depth for $EVENT."
             exit 1
           fi
           violations=$(jq -r --arg event "$EVENT" --arg depth "$depth" --argjson plan "$PLAN" --argjson scopes "$JOB_SCOPES" '

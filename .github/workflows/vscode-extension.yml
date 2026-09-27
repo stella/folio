@@ -1,14 +1,12 @@
 name: VS Code extension
 
-# Builds, tests, and packages the extension on merge queue runs and when a PR
-# carries the `ci:full` label. Ordinary PR runs skip the package job.
+# Builds, tests, and packages the extension for merge groups.
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
-  workflow_dispatch:
 
 concurrency:
   group: vscode-extension-${{ github.ref }}
@@ -19,12 +17,7 @@ permissions:
 
 jobs:
   package:
-    if: >-
-      github.event_name == 'merge_group'
-      || github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'pull_request'
-        && github.event.pull_request.draft != true
-        && contains(github.event.pull_request.labels.*.name, 'ci:full'))
+    if: github.event_name == 'merge_group'
     name: Build and package the .vsix
     runs-on: ubuntu-latest
     timeout-minutes: 30

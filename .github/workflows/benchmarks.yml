@@ -7,41 +7,21 @@ name: Benchmarks
 # on shared GitHub runners. Authentication uses OpenID Connect, so no
 # long-lived token has to be stored in the repository.
 #
-# Main pushes and merge groups run the `fast` corpus; labeled pull requests run
-# it before queueing. The nightly schedule runs the `full` corpus, adding the
-# large document. CodSpeed reports benchmarks a run omits as skipped and carries
-# their last result forward.
+# Benchmark runs use the full corpus.
 
 on:
-  push:
-    branches: [main]
-  # Ordinary PR runs are a cheap skipped gate; `ci:full` opts into benchmarks.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
-  schedule:
-    - cron: "17 3 * * *"
-  # `workflow_dispatch` lets CodSpeed trigger backtest runs to seed baselines.
-  workflow_dispatch:
-    inputs:
-      corpus:
-        description: Benchmark corpus
-        type: choice
-        options: [fast, full]
-        default: fast
 
 concurrency:
-  # Each main commit is a CodSpeed baseline, so only superseded PR runs cancel.
-  group: benchmarks-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: benchmarks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   benchmarks:
-    if: >-
-      github.event_name != 'pull_request'
-      || (github.event.pull_request.draft != true
-        && contains(github.event.pull_request.labels.*.name, 'ci:full'))
+    if: github.event_name == 'merge_group'
     name: Benchmarks
     runs-on: ubuntu-latest
     # Least privilege: read the checkout, and mint an OIDC token for CodSpeed.
@@ -70,7 +50,7 @@ jobs:
       - name: Run benchmarks
         uses: CodSpeedHQ/action@373d6868929f444bc08d901fd0eb0ad52a8875ea # v5.2.1
         env:
-          FOLIO_BENCH_CORPUS: ${{ github.event_name == 'schedule' && 'full' || inputs.corpus || 'fast' }}
+          FOLIO_BENCH_CORPUS: full
         with:
           mode: simulation
           run: node --import tsx benchmarks/index.ts
