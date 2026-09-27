@@ -11,7 +11,7 @@
  * blank paragraphs, and fails every comparison here.
  */
 
-import type { Page } from "@playwright/test";
+import { test, type Page } from "@playwright/test";
 
 import { expect, forEachAdapter, openEditor } from "../parity/parity-fixture";
 import type { AdapterFixture } from "../parity/parity-fixture";
@@ -84,3 +84,15 @@ for (const { label, companion } of VIEWS) {
     await expect.poll(() => paintedBody(page)).toEqual(expected);
   });
 }
+
+test("document scroll closes the Vue markup menu", async ({ page }) => {
+  const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
+  await openEditor(page, { name: "vue", baseUrl: `http://localhost:${vuePort}` }, TRACKED_FIXTURE);
+
+  await page.locator(".review-controls__display").click();
+  await expect(page.locator(".review-controls__panel")).toBeVisible();
+
+  await page.evaluate(() => document.dispatchEvent(new Event("scroll")));
+
+  await expect(page.locator(".review-controls__panel")).toHaveCount(0);
+});

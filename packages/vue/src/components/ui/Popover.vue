@@ -95,7 +95,12 @@ function onScroll(e: Event) {
   if (e.target instanceof Node && panelRef.value?.contains(e.target)) return;
   // A click on a panel option may scroll the toolbar that contains its trigger
   // into view. Keep the option mounted and follow the trigger as it moves.
-  if (e.target instanceof Node && rootRef.value && e.target.contains(rootRef.value)) {
+  if (
+    e.target instanceof Node &&
+    e.target !== document &&
+    rootRef.value &&
+    e.target.contains(rootRef.value)
+  ) {
     computePosition();
     return;
   }
