@@ -23,8 +23,8 @@
 // scenario ran, fails if a cell test/consumer-scenarios/coverage-expectations.json
 // requires was never applied or an unreachable cell was attempted.
 //
-// Environment: FOLIO_SCENARIO_SEED (fuzz seed; fixed by default, `random` to
-// explore; always printed), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS
+// Environment: FOLIO_SCENARIO_SEED (fuzz seed; per commit under CI, fixed
+// locally, `random` to explore; always printed), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS
 // (fuzz size; 12 runs of 10 steps by default), FOLIO_SCENARIO_COLLISION_RUNS
 // (collision flows; 8 by default), FOLIO_ORACLE_GAPS=1 (print the operations
 // the requested-outcome oracle could not model), FOLIO_SCENARIO_RELATIONS
@@ -40,6 +40,7 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { commitSeed } from "../test/commit-seed";
 import {
   type Expectations,
   describePattern,
@@ -366,11 +367,20 @@ if (args.packOnly !== null) {
   process.exit(0);
 }
 
-// A fixed seed by default, so CI replays the same flows on every run and a
-// red run is a regression, not a new search; `FOLIO_SCENARIO_SEED=random`
-// explores. The seed is printed either way and replays with the same value.
+// Under CI the fuzz base derives from the commit (test/commit-seed.ts): every
+// commit searches new flows, yet a rerun of the same commit replays exactly,
+// so a red run stays red. Locally the fixed default replays the same flows;
+// `FOLIO_SCENARIO_SEED=random` explores. The seed is printed either way and
+// replays with the same value. Pinned seeds in the scenarios run regardless.
 const DEFAULT_SEED = "20260926";
-const requestedSeed = process.env["FOLIO_SCENARIO_SEED"] ?? DEFAULT_SEED;
+/** A non-negative base with room for `seed + run` to stay a safe integer. */
+const ciSeed = (): string | null => {
+  const ci = process.env["CI"];
+  if (ci === undefined || ci === "" || ci === "false" || ci === "0") return null;
+  const derived = commitSeed("consumer-scenarios fuzz");
+  return derived === undefined ? null : String(derived >>> 1);
+};
+const requestedSeed = process.env["FOLIO_SCENARIO_SEED"] ?? ciSeed() ?? DEFAULT_SEED;
 const seed =
   requestedSeed === "random" ? String(Math.floor(Math.random() * 2 ** 31)) : requestedSeed;
 
