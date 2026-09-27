@@ -111,16 +111,30 @@ export const captureLinks = (reviewer: FolioDocxReviewer): LinkSnapshot => {
  * formatting, style, comment, and neighboring structural edits. Text edits
  * need an explicit link-inheritance rule and are left to a later model.
  */
-export const comparePreservedLinks = (
-  before: LinkSnapshot,
-  after: LinkSnapshot,
-): { problems: string[]; checked: number } => {
+type ComparePreservedLinksArgs = {
+  before: LinkSnapshot;
+  after: LinkSnapshot;
+  afterRows: readonly { id: string; text: string }[];
+};
+
+export const comparePreservedLinks = ({
+  before,
+  after,
+  afterRows,
+}: ComparePreservedLinksArgs): { problems: string[]; checked: number } => {
   const problems: string[] = [];
+  const readerText = new Map(afterRows.map(({ id, text }) => [id, text]));
   let checked = 0;
   for (const [id, expected] of before) {
+    // A real text edit changes this reader text. A missing model projection
+    // must not look like a text edit when the reader still shows the old text.
+    if (readerText.get(id) !== expected.text) continue;
     const actual = after.get(id);
-    if (!actual || actual.text !== expected.text) continue;
     checked++;
+    if (!actual || actual.text !== expected.text) {
+      problems.push(`block ${id} ("${expected.text}") has no matching link projection`);
+      continue;
+    }
     if (JSON.stringify(actual.targets) !== JSON.stringify(expected.targets)) {
       problems.push(
         `block ${id} ("${expected.text}") has link targets ${JSON.stringify(actual.targets)}, expected ${JSON.stringify(expected.targets)}`,

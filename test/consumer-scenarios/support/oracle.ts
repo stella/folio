@@ -1168,7 +1168,7 @@ export const assertRequestedOutcome = async (
   const problems = [
     ...(predictable ? compareWithModel(model, rows) : []),
     ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
-    ...comparePreservedLinks(pre.links, links).problems,
+    ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
     ...compareComments(model, pre.comments, comments),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];

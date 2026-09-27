@@ -35,7 +35,7 @@ import {
   OPERATION_TYPES,
   type Row,
 } from "../support/oracle.ts";
-import { captureLinks } from "../support/link-oracle.ts";
+import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
 import { compareTableGeometry } from "../support/table-oracle.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -143,6 +143,31 @@ test("a style edit preserves the target of an unchanged link", async () => {
     "link after style edit",
   );
   assert.equal(applied.length, 1);
+});
+
+test("a missing saved link projection fails for an unchanged reader block", async () => {
+  const reviewer = await openReviewer(
+    await packDocument(fromMarkdown("Read the [schedule](https://example.com/schedule).")),
+  );
+  const before = captureLinks(reviewer);
+  const { reopened } = await saveAndReopen(reviewer, "link projection fixture");
+  const after = new Map(captureLinks(reopened));
+  const linked = [...before.keys()].at(0);
+  assert.ok(linked);
+  assert.ok(after.delete(linked));
+
+  const unchanged = comparePreservedLinks({ before, after, afterRows: blocksOf(reopened) });
+  assert.equal(unchanged.checked, 1);
+  assert.match(unchanged.problems.join("\n"), /has no matching link projection/u);
+
+  const editedRows = blocksOf(reopened).map(({ id, text }) => ({
+    id,
+    text: id === linked ? `${text} changed` : text,
+  }));
+  assert.deepEqual(comparePreservedLinks({ before, after, afterRows: editedRows }), {
+    problems: [],
+    checked: 0,
+  });
 });
 
 test("a signature table has one cell per party after save and reopen", async () => {
