@@ -4,8 +4,10 @@
  * FOLIO_SCENARIO_SEED fixes the flows (the runner prints it; run `i` uses
  * seed + i), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS size the
  * search, and FOLIO_SCENARIO_COLLISION_RUNS the collision flows (support/fuzz.ts)
- * that follow them, seeded from the same base. A flow that reproduces a known
- * finding runs in known-issues.test.ts instead, as an expected failure.
+ * that follow them, seeded from the same base. Both use the targeted generation
+ * (support/fuzz.ts); seeds pinned before it existed replay on the legacy one.
+ * A flow that reproduces a known finding runs in known-issues.test.ts
+ * instead, as an expected failure.
  */
 
 import { test } from "node:test";
@@ -26,7 +28,11 @@ const COLLISION_RUNS = integer(process.env["FOLIO_SCENARIO_COLLISION_RUNS"], 8);
 const flowTest = (kind: FlowKind, run: number, seed: number) => {
   const { fixture, mode } = describeFlow(seed, kind);
   const known = KNOWN_FAILING_FLOWS.find(
-    (flow) => flow.seed === seed && flow.steps === STEPS && (flow.kind ?? "random") === kind,
+    (flow) =>
+      flow.seed === seed &&
+      flow.steps === STEPS &&
+      (flow.kind ?? "random") === kind &&
+      (flow.generation ?? "targeted") === "targeted",
   );
   const runs =
     kind === "random"
@@ -53,20 +59,22 @@ for (let run = 0; run < RUNS; run += 1) flowTest("random", run, SEED + run);
 for (let run = 0; run < COLLISION_RUNS; run += 1) flowTest("collisions", run, SEED + run);
 
 // Flows that once lost accepted suggestions on save (a suggested paragraph
-// deleted again, then every suggestion accepted); kept as fixed seeds.
+// deleted again, then every suggestion accepted); kept as fixed seeds on the
+// generation that found them.
 for (const [seed, steps] of [
   [20_260_933, 10],
   [99, 15],
   [101, 15],
 ] as const) {
   test(`suggested flow with seed ${seed} (${steps} steps) saves what the reviewer shows`, () =>
-    runFlow(seed, steps));
+    runFlow(seed, steps, "random", { generation: "legacy" }));
 }
 
 // Collision flows that once rewrote a paragraph pending deletion into the one
 // after it (1088), and read a deleted pending insertion back as a deletion
-// alone after a save (1185); kept as fixed seeds.
+// alone after a save (1185); kept as fixed seeds on the generation that
+// found them.
 for (const seed of [1088, 1185]) {
   test(`collision flow with seed ${seed} (10 steps) does what it asked and saves it`, () =>
-    runFlow(seed, 10, "collisions"));
+    runFlow(seed, 10, "collisions", { generation: "legacy" }));
 }
