@@ -149,6 +149,38 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
   });
 });
 
+describe("inserting after a deleted final paragraph", () => {
+  test("rejecting a later insertion after the deleted paragraph restores the source", async () => {
+    const reviewer = await open();
+    const signedId = idOf(reviewer, "Signed");
+    const headingId = idOf(reviewer, "Service Agreement");
+    const apply = applier(reviewer);
+    apply({ type: "deleteBlock", blockId: signedId });
+    apply({ type: "insertAfterBlock", blockId: headingId, text: "Inserted clause." });
+    apply({ type: "insertAfterBlock", blockId: signedId, text: "Inserted clause." });
+    reviewer.rejectAll();
+    expect(texts(reviewer)).toEqual(ORIGINAL);
+  });
+
+  test("accepting keeps the insertion on its own paragraph", async () => {
+    const reviewer = await open();
+    const signedId = idOf(reviewer, "Signed");
+    const headingId = idOf(reviewer, "Service Agreement");
+    const buyerId = idOf(reviewer, "The Buyer");
+    const apply = applier(reviewer);
+    apply({ type: "deleteBlock", blockId: signedId });
+    apply({ type: "insertAfterBlock", blockId: headingId, text: "Inserted clause." });
+    apply({ type: "insertAfterBlock", blockId: buyerId, text: "Inserted clause." });
+
+    reviewer.acceptAll();
+    expect(texts(reviewer).slice(-2)).toEqual([
+      "The Buyer pays each invoice within thirty days.",
+      "Inserted clause.",
+    ]);
+    expect(texts(await reopen(reviewer))).toEqual(texts(reviewer));
+  });
+});
+
 describe("rejecting a split with an inserted table after its first half", () => {
   test("joins the halves again once the table is gone", async () => {
     const reviewer = await open();
@@ -235,6 +267,27 @@ describe("a comment on words a tracked replacement removes", () => {
 });
 
 describe("accepting every suggestion", () => {
+  test("keeps an insertion after a deleted final paragraph beside a later insertion", async () => {
+    const reviewer = await open();
+    const signedId = idOf(reviewer, "Signed");
+    const headingId = idOf(reviewer, "Service Agreement");
+    const apply = applier(reviewer, "suggested");
+    apply({ type: "insertAfterBlock", blockId: signedId, text: "Inserted clause." });
+    apply({ type: "deleteBlock", blockId: signedId });
+    apply({ type: "insertAfterBlock", blockId: headingId, text: "Inserted clause." });
+
+    const direct = await open();
+    const directSignedId = idOf(direct, "Signed");
+    const directHeadingId = idOf(direct, "Service Agreement");
+    const applyDirect = applier(direct, "direct");
+    applyDirect({ type: "insertAfterBlock", blockId: directSignedId, text: "Inserted clause." });
+    applyDirect({ type: "deleteBlock", blockId: directSignedId });
+    applyDirect({ type: "insertAfterBlock", blockId: directHeadingId, text: "Inserted clause." });
+
+    reviewer.acceptAll();
+    expect(texts(reviewer)).toEqual(texts(direct));
+  });
+
   test("keeps each suggested paragraph when one of them cannot become a tracked change", async () => {
     const reviewer = await open();
     const apply = applier(reviewer, "suggested");

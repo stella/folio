@@ -2580,6 +2580,59 @@ const withRotatedAddedFinalBreaks = ({
   date,
   initials,
 }: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
+  // A later insertion may land between a deleted break and the paragraph it
+  // would join into. Move the old deletion to the new boundary so resolving
+  // either revision keeps the inserted paragraph separate.
+  const supersededDeletedBreaks: {
+    preceding: number;
+    inserted: number;
+    deletedMark: unknown;
+    precedingMark: unknown;
+  }[] = [];
+  const collectSupersededDeletedBreaks = (parent: PMNode, contentStart: number): void => {
+    let previous: { node: PMNode; position: number } | null = null;
+    parent.forEach((node, offset) => {
+      const position = contentStart + offset;
+      if (node.type.name !== "paragraph") {
+        previous = null;
+        if (!node.isTextblock && node.childCount > 0) {
+          collectSupersededDeletedBreaks(node, position + 1);
+        }
+        return;
+      }
+      if (previous) {
+        const deletedMark: unknown = previous.node.attrs["pPrMark"];
+        const insertedMark: unknown = node.attrs["pPrMark"];
+        const insertedRevisionId = addedBreakRevisionId(insertedMark);
+        const trackedInsertion =
+          insertedRevisionId !== null && batchRevisionIds.has(insertedRevisionId);
+        const suggestedInsertion = isSuggestedParagraphInsert(node);
+        const deletedBreakRevisionId = addedOrDeletedBreakRevisionId(deletedMark);
+        if (
+          isPlainDeletedPPrMark(deletedMark) &&
+          deletedBreakRevisionId !== null &&
+          !batchRevisionIds.has(deletedBreakRevisionId) &&
+          !holdsOnlyDeletedContent(previous.node) &&
+          (trackedInsertion || suggestedInsertion) &&
+          holdsOnlyInsertedContent(node)
+        ) {
+          supersededDeletedBreaks.push({
+            preceding: previous.position,
+            inserted: position,
+            deletedMark,
+            precedingMark: trackedInsertion ? insertedMark : null,
+          });
+        }
+      }
+      previous = { node, position };
+    });
+  };
+  collectSupersededDeletedBreaks(tr.doc, 0);
+  for (const { preceding, inserted, deletedMark, precedingMark } of supersededDeletedBreaks) {
+    tr.setNodeAttribute(preceding, "pPrMark", precedingMark);
+    tr.setNodeAttribute(inserted, "pPrMark", deletedMark);
+  }
+
   const paragraphTypeName = tr.doc.type.schema.nodes["paragraph"]?.name ?? "paragraph";
   const rotations = finalParagraphsOf(tr.doc, paragraphTypeName)
     .flatMap(({ node, position }) => {
