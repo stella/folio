@@ -422,8 +422,8 @@ const batchAgainstOneAtATime = async (
   // A tracked batch that adds a paragraph after the story's last one gives it
   // the story's last paragraph mark; one at a time, the insertion has
   // already moved that mark before the deletion of the old last paragraph
-  // could claim it. The redlines differ by design, so only the untouched
-  // blocks are checked below.
+  // could claim it. The redlines differ by design; what they accept to does
+  // not.
   const lastBlock = BLOCK_COUNT - 1;
   const rotatesFinalBreak =
     mode !== "direct" &&
@@ -460,24 +460,18 @@ const batchAgainstOneAtATime = async (
       named.add(operation.block + 2);
     }
   }
-  if (mode !== "direct" && !rotatesFinalBreak) {
-    // The batch owes an acceptable redline wherever the same operations
-    // applied one at a time leave one. Some redlines cannot be accepted in
-    // memory whichever way they were made; for those the redlines compared
-    // above are the whole claim.
-    const accepts = (session: OperationSession): boolean => {
+  if (mode !== "direct") {
+    // Both redlines accept, and to the same document.
+    const accepts = (session: OperationSession, whose: string): boolean => {
       try {
         session.acceptAll();
         return true;
-      } catch {
+      } catch (error) {
+        report(`${whose} redline cannot be accepted: ${String(error).slice(0, 120)}`);
         return false;
       }
     };
-    const oracleAccepts = accepts(oracle);
-    const batchAccepts = accepts(batch);
-    if (oracleAccepts && !batchAccepts) {
-      report("the batch's redline cannot be accepted, one at a time it can");
-    } else if (oracleAccepts) {
+    if (accepts(oracle, "the one-at-a-time") && accepts(batch, "the batch's")) {
       compareDocuments("accepted");
     }
   }
