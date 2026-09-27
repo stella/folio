@@ -23,6 +23,7 @@
  */
 
 import { $ } from "bun";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -95,6 +96,7 @@ export const parseFailures = (
   let located: string | null = null;
   let pending: Partial<Failure> = {};
   let marker: Marker | null = null;
+  let summary = false;
 
   const resolveGroup = (file: string): string => {
     if (file.startsWith("packages/") || file.startsWith("scripts/")) return file;
@@ -107,8 +109,18 @@ export const parseFailures = (
     const group = GROUP_FILE.exec(line.trim());
     if (group !== null) {
       groupFile = resolveGroup(group[1] as string);
+      summary = false;
       continue;
     }
+    if (line.trim() === "::endgroup::") {
+      groupFile = null;
+      continue;
+    }
+    if (/^\d+ tests? failed:$/.test(line.trim())) {
+      summary = true;
+      continue;
+    }
+    if (summary) continue;
     if (line.startsWith("PROPERTY_FAILURE ")) {
       try {
         marker = JSON.parse(line.slice("PROPERTY_FAILURE ".length)) as Marker;
@@ -143,10 +155,12 @@ export const parseFailures = (
     const fail = FAIL_LINE.exec(line);
     if (fail === null) continue;
     const name = fail[1] as string;
-    if (!failures.has(name)) {
-      failures.set(name, {
+    const file = marker?.file ?? located ?? groupFile;
+    const key = `${file ?? "<unknown file>"}::${name}`;
+    if (!failures.has(key)) {
+      failures.set(key, {
         name,
-        file: marker?.file ?? located ?? groupFile,
+        file,
         seed: marker?.seed ?? pending.seed ?? null,
         path: marker === null ? (pending.path ?? null) : marker.path,
         counterexample: marker?.counterexample ?? pending.counterexample ?? null,
@@ -227,8 +241,10 @@ type Context = {
 };
 
 export const issueTitle = (kind: Kind, failure: Failure): string => {
-  const title = `Nightly ${kind} failure: ${failure.name}`;
-  return title.length > 240 ? `${title.slice(0, 239)}…` : title;
+  const title = `Nightly ${kind} failure: ${failure.file ?? "<unknown file>"}::${failure.name}`;
+  if (title.length <= 240) return title;
+  const key = createHash("sha256").update(title).digest("hex").slice(0, 12);
+  return `${title.slice(0, 226)}…${key}`;
 };
 
 /** The body of a new issue, or of a comment on the open one, for a failure. */

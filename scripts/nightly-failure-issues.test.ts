@@ -80,7 +80,7 @@ describe("nightly failure issues", () => {
     const [failure] = parseFailures(fixture("property-run-36297187033.log"), packageOf);
     const body = issueBody(failure!, context, false);
     expect(issueTitle("property", failure!)).toBe(
-      "Nightly property failure: a tracked or suggested replacement redlines only the characters it changes > over generated paragraphs and edits, accepted and rejected",
+      "Nightly property failure: packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts::a tracked or suggested replacement redlines only the characters it changes > over generated paragraphs and edits, accepted and rejected",
     );
     expect(body).toContain("commit `2bf761d01ae4`, factor 10");
     expect(body).toContain("### Replay\n```sh\ncd packages/core && PROPERTY_TEST_SEED=-449189980");
@@ -111,7 +111,23 @@ describe("nightly failure issues", () => {
   test("a failed run with no failing test in its log still gets an issue", () => {
     expect(parseFailures("error: something crashed\n")).toEqual([]);
     expect(issueTitle("property", unparsedFailure("property"))).toBe(
-      "Nightly property failure: property sweep failed without a failing test in the log",
+      "Nightly property failure: <unknown file>::property sweep failed without a failing test in the log",
     );
+  });
+
+  test("same test name in different files produces separate issues", () => {
+    const failures = parseFailures(
+      [
+        "scripts/first.test.ts:",
+        "(fail) same property",
+        "scripts/second.test.ts:",
+        "(fail) same property",
+      ].join("\n"),
+    );
+    expect(failures.map(({ file }) => file)).toEqual([
+      "scripts/first.test.ts",
+      "scripts/second.test.ts",
+    ]);
+    expect(new Set(failures.map((failure) => issueTitle("property", failure))).size).toBe(2);
   });
 });

@@ -28,11 +28,12 @@
 import { $ } from "bun";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
+const ROOT_TEST_DIRS = ["scripts", "test"] as const;
 const PROPERTY_FILE = /\.test\.tsx?$/;
-const DRIVES_PROPERTY = /\bfc\.(?:assert|check)\(|\bassertProperty\(/;
 const PROPERTY_SEEDS_FILE = "test/property-seeds.json";
 
 /**
@@ -63,6 +64,30 @@ const walk = (dir: string): string[] =>
     return entry.isDirectory() ? walk(absolute) : [absolute];
   });
 
+const drivesProperty = (file: string): boolean => {
+  const source = ts.createSourceFile(
+    file,
+    readFileSync(file, "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      found ||=
+        (ts.isIdentifier(callee) && callee.text === "assertProperty") ||
+        (ts.isPropertyAccessExpression(callee) &&
+          ts.isIdentifier(callee.expression) &&
+          callee.expression.text === "fc" &&
+          (callee.name.text === "assert" || callee.name.text === "check"));
+    }
+    if (!found) ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return found;
+};
+
 /** `packages/<pkg>/src/<segment>/...` → `<pkg>/<segment>`; a file directly under src → `<pkg>`. */
 export const areaOf = (repoPath: string): string | undefined => {
   const match = /^packages\/([^/]+)\/src\/(?:([^/]+)\/)?/.exec(repoPath);
@@ -70,9 +95,9 @@ export const areaOf = (repoPath: string): string | undefined => {
   return match[2] === undefined ? match[1] : `${match[1]}/${match[2]}`;
 };
 
-/** Every test file under packages/*\/src that drives a fast-check property. */
-export const propertyFiles = (): PropertyFile[] =>
-  readdirSync(PACKAGES_DIR).flatMap((pkg) => {
+/** Every package and root test file that drives a fast-check property. */
+export const propertyFiles = (): PropertyFile[] => {
+  const packages = readdirSync(PACKAGES_DIR).flatMap((pkg) => {
     const src = path.join(PACKAGES_DIR, pkg, "src");
     let files: string[];
     try {
@@ -81,9 +106,7 @@ export const propertyFiles = (): PropertyFile[] =>
       return [];
     }
     return files
-      .filter(
-        (file) => PROPERTY_FILE.test(file) && DRIVES_PROPERTY.test(readFileSync(file, "utf8")),
-      )
+      .filter((file) => PROPERTY_FILE.test(file) && drivesProperty(file))
       .map((file) => {
         const repoPath = path.relative(REPO_ROOT, file).replaceAll("\\", "/");
         return {
@@ -94,6 +117,17 @@ export const propertyFiles = (): PropertyFile[] =>
       })
       .toSorted((a, b) => a.file.localeCompare(b.file));
   });
+  const rootTests = ROOT_TEST_DIRS.flatMap((root) =>
+    walk(path.join(REPO_ROOT, root))
+      .filter((file) => PROPERTY_FILE.test(file) && drivesProperty(file))
+      .map((file) => ({
+        area: root,
+        packageDir: ".",
+        file: path.relative(REPO_ROOT, file).replaceAll("\\", "/"),
+      })),
+  );
+  return [...packages, ...rootTests].toSorted((a, b) => a.file.localeCompare(b.file));
+};
 
 /** The areas a set of changed repo paths touches. */
 export const touchedAreas = (changed: readonly string[]): Set<string> => {
@@ -104,6 +138,9 @@ export const touchedAreas = (changed: readonly string[]): Set<string> => {
     if (PROPERTY_FILE.test(file)) continue;
     const own = areaOf(file);
     if (own !== undefined) areas.add(own);
+    for (const root of ROOT_TEST_DIRS) {
+      if (file.startsWith(`${root}/`)) areas.add(root);
+    }
     for (const { prefix, areas: coupled } of COUPLINGS) {
       if (file.startsWith(prefix)) for (const area of coupled) areas.add(area);
     }
