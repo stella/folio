@@ -21,6 +21,20 @@ export type PanelState = {
   comments: CommentsPresentation;
 };
 
+/** Closing comments as a drawer also closes their requested panel visibility. */
+export const afterPanelDrawersDismissed = (state: PanelState): PanelState => {
+  if (state.comments !== "drawer") {
+    return state;
+  }
+  let tier: PanelLayoutTier = "wide";
+  if (state.outline === "drawer") {
+    tier = "narrow";
+  } else if (state.outline === "rail") {
+    tier = "medium";
+  }
+  return { ...state, tier, comments: "hidden" };
+};
+
 export type PanelLayoutCase = {
   width: number;
   review: PanelLayoutReview;

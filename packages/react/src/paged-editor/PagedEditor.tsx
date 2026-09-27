@@ -5794,7 +5794,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       return numPages * pageSize.h + (numPages - 1) * pageGap + 48;
     }, [layout, pageSize.h, pageGap]);
     const scaledViewportHeight = Math.max(1, totalHeight * zoom);
-    const scaledViewportWidth = Math.max(1, pageSize.w * zoom + pageEndGutter);
+    let widestPageWidth = layout?.pages.length ? 0 : pageSize.w;
+    for (const page of layout?.pages ?? []) {
+      widestPageWidth = Math.max(widestPageWidth, page.size.w);
+    }
+    const scaledViewportWidth = Math.max(1, widestPageWidth * zoom + pageEndGutter);
     const viewportExtentStyle: CSSProperties = {
       position: "relative",
       width: `max(100%, ${String(scaledViewportWidth)}px)`,
@@ -5813,7 +5817,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       position: "absolute",
       top: 0,
       left: `max(0px, calc((100% - ${String(scaledViewportWidth)}px) / 2))`,
-      width: pageSize.w,
+      width: widestPageWidth,
       minHeight: totalHeight,
       transform: (() => {
         const parts: string[] = [];

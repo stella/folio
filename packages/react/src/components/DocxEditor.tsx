@@ -920,6 +920,27 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const editorContentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollAppliedRef = useRef(false);
+  const [widestLaidOutPageWidth, setWidestLaidOutPageWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const pagedEditor = pagedEditorRef.current;
+    if (!pagedEditor) {
+      return;
+    }
+    const updatePageWidth = () => {
+      const pages = pagedEditor.getLayout()?.pages;
+      if (!pages) {
+        setWidestLaidOutPageWidth(null);
+        return;
+      }
+      let width = 0;
+      for (const page of pages) {
+        width = Math.max(width, page.size.w);
+      }
+      setWidestLaidOutPageWidth(width);
+    };
+    updatePageWidth();
+    return pagedEditor.onLayoutChange(updatePageWidth);
+  }, []);
 
   // Format painter: "armed" paints the next selection once then disarms;
   // "sticky" keeps painting until Esc or the button is toggled off. The ref
@@ -1079,7 +1100,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Side panels: the page is centred between the outline track and the
   // comments; the width the row has decides how each is shown.
   const panels = usePanelLayout({
-    pageWidth: getPageSize(effectiveSectionProperties).w * zoom,
+    pageWidth: (widestLaidOutPageWidth ?? getPageSize(effectiveSectionProperties).w) * zoom,
     outline: showOutline && outlineHeadings.length > 1 ? "available" : "absent",
     comments: showCommentsSidebar ? "open" : "closed",
     scrollContainerRef,
@@ -4002,7 +4023,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       handleCancelAddComment();
     }
     setPanelOverlay("none");
-  }, [handleCancelAddComment, isAddingComment, setPanelOverlay]);
+    setShowCommentsSidebar(false);
+    setActiveCommentId(null);
+  }, [
+    handleCancelAddComment,
+    isAddingComment,
+    setActiveCommentId,
+    setPanelOverlay,
+    setShowCommentsSidebar,
+  ]);
   // Starting a comment where the comments are a drawer opens the drawer.
   useEffect(() => {
     if (isAddingComment && panels.layout.comments === "drawer") {
@@ -4011,7 +4040,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   }, [isAddingComment, panels.layout.comments, setPanelOverlay]);
   const toggleComments = useCallback(() => {
     if (commentsSurface === "drawer") {
-      setPanelOverlay("none");
+      dismissCommentsDrawer();
       return;
     }
     if (commentsSurface === "column") {
@@ -4028,6 +4057,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
   }, [
     commentsSurface,
+    dismissCommentsDrawer,
     layoutWithCommentsOpen,
     setActiveCommentId,
     setPanelOverlay,

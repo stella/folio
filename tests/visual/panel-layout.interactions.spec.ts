@@ -18,12 +18,17 @@ import type { Page } from "@playwright/test";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
   PANEL_LAYOUT_CASES,
+  afterPanelDrawersDismissed,
   expectPanelDrawers,
   expectPanelsDoNotOverlap,
   readPanelState,
   waitForPanels,
 } from "../support/panelLayoutAssertions";
-import { buildPanelLayoutDocument, type PanelLayoutReview } from "../support/panelLayoutDocument";
+import {
+  buildPanelLayoutDocument,
+  type PanelLayoutReview,
+  type PanelLayoutSections,
+} from "../support/panelLayoutDocument";
 
 declare global {
   var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
@@ -31,8 +36,12 @@ declare global {
 
 const VIEWPORT_HEIGHT = 900;
 
-const loadDocument = async (page: Page, review: PanelLayoutReview) => {
-  const bytes = [...(await buildPanelLayoutDocument(review))];
+const loadDocument = async (
+  page: Page,
+  review: PanelLayoutReview,
+  sections: PanelLayoutSections = "portrait",
+) => {
+  const bytes = [...(await buildPanelLayoutDocument(review, sections))];
   await page.goto("/");
   await page.waitForFunction(() => globalThis.__folioPlayground?.getEditorRef() != null);
   await page.evaluate(async (array) => {
@@ -60,11 +69,43 @@ test.describe("side panel layout", () => {
         await expect(page.getByTestId("toolbar-comments-count")).toHaveText("1");
       }
       await expectPanelDrawers(page, expected);
-      // Opening and closing drawers leaves the layout as it was.
-      expect(await readPanelState(page)).toEqual(expected);
-      await expectPanelsDoNotOverlap(page, expected);
+      const afterDismissal = afterPanelDrawersDismissed(expected);
+      expect(await readPanelState(page)).toEqual(afterDismissal);
+      await expectPanelsDoNotOverlap(page, afterDismissal);
     });
   }
+
+  test("the widest page in mixed sections controls panel room", async ({ page }) => {
+    await page.setViewportSize({ width: 1400, height: VIEWPORT_HEIGHT });
+    await loadDocument(page, "comment-and-changes", "landscape-then-portrait");
+
+    await expect
+      .poll(() =>
+        page
+          .locator(".layout-page")
+          .evaluateAll((pages) =>
+            Math.max(...pages.map((element) => element.getBoundingClientRect().width)),
+          ),
+      )
+      .toBeGreaterThan(1000);
+    const expected = { tier: "narrow", outline: "column", comments: "drawer" } as const;
+    await expect.poll(() => readPanelState(page)).toEqual(expected);
+    await expectPanelsDoNotOverlap(page, expected);
+  });
+
+  test("a dismissed comments drawer stays closed after the editor widens", async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: VIEWPORT_HEIGHT });
+    await loadDocument(page, "comment-and-changes");
+    const toggle = page.getByTestId("toolbar-comments-toggle");
+    await toggle.click();
+    await expect(page.locator('[data-folio-comments-surface="drawer"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-folio-comments-surface="drawer"]')).toBeHidden();
+    await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });
+    const expected = { tier: "wide", outline: "column", comments: "hidden" } as const;
+    await expect.poll(() => readPanelState(page)).toEqual(expected);
+    await expectPanelsDoNotOverlap(page, expected);
+  });
 
   test("the outline column is keyboard navigable", async ({ page }) => {
     await page.setViewportSize({ width: 1500, height: VIEWPORT_HEIGHT });

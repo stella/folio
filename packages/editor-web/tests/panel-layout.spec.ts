@@ -9,6 +9,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   PANEL_LAYOUT_CASES,
+  afterPanelDrawersDismissed,
   expectPanelDrawers,
   expectPanelsDoNotOverlap,
   readPanelState,
@@ -45,7 +46,8 @@ for (const { width, review, expected } of PANEL_LAYOUT_CASES) {
     expect(await readPanelState(page)).toEqual(expected);
     await expectPanelsDoNotOverlap(page, expected);
     await expectPanelDrawers(page, expected);
-    expect(await readPanelState(page)).toEqual(expected);
+    const afterDismissal = afterPanelDrawersDismissed(expected);
+    expect(await readPanelState(page)).toEqual(afterDismissal);
     expect(pageErrors).toEqual([]);
   });
 }

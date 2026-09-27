@@ -11,6 +11,7 @@
 import JSZip from "jszip";
 
 export type PanelLayoutReview = "none" | "comment-and-changes";
+export type PanelLayoutSections = "portrait" | "landscape-then-portrait";
 
 /** Fixed so the bytes are the same on every run. */
 const FIXED_DATE = new Date("2026-01-01T00:00:00.000Z");
@@ -60,13 +61,19 @@ const reviewedParagraph = (review: PanelLayoutReview) => {
   );
 };
 
-const documentXml = (review: PanelLayoutReview) => {
+const pageSection = (width: number, height: number) =>
+  `<w:sectPr><w:type w:val="nextPage"/><w:pgSz w:w="${String(width)}" w:h="${String(height)}"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>`;
+
+const documentXml = (review: PanelLayoutReview, sections: PanelLayoutSections) => {
   const [definitions, obligations, disclosures, term] = PANEL_LAYOUT_HEADINGS;
   const body = [
     paragraph(run("Mutual Non-Disclosure Agreement")),
     reviewedParagraph(review),
     heading(definitions.text, definitions.level),
     clauses(6),
+    ...(sections === "landscape-then-portrait"
+      ? [`<w:p><w:pPr>${pageSection(15840, 12240)}</w:pPr>${run("Section break")}</w:p>`]
+      : []),
     heading(obligations.text, obligations.level),
     clauses(6),
     heading(disclosures.text, disclosures.level),
@@ -120,12 +127,15 @@ const documentRels = (
 </Relationships>`;
 
 /** The document's `.docx` bytes. */
-export const buildPanelLayoutDocument = (review: PanelLayoutReview): Promise<Uint8Array> => {
+export const buildPanelLayoutDocument = (
+  review: PanelLayoutReview,
+  sections: PanelLayoutSections = "portrait",
+): Promise<Uint8Array> => {
   const zip = new JSZip();
   const options = { date: FIXED_DATE };
   zip.file("[Content_Types].xml", contentTypes(review), options);
   zip.file("_rels/.rels", PACKAGE_RELS, options);
-  zip.file("word/document.xml", documentXml(review), options);
+  zip.file("word/document.xml", documentXml(review, sections), options);
   zip.file("word/_rels/document.xml.rels", documentRels(review), options);
   zip.file("word/styles.xml", STYLES_XML, options);
   if (review !== "none") {
