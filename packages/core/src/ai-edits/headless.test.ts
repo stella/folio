@@ -3120,6 +3120,21 @@ const readNotesFixture = async (): Promise<ArrayBuffer> => {
 const SECONDARY_STORY_PROPERTY_SOURCE =
   '<w:pPr><w:ind w:left="720" w:leftChars="100"/><w:cnfStyle w:val="000000100000" w:oddHBand="1"/><w:rPr><w:bCs/><w:sz w:val="21"/><w:szCs w:val="22"/><w:noProof/></w:rPr></w:pPr>';
 
+/** Define the paragraph style the property edits below apply. */
+const defineStoryEditedStyle = async (zip: JSZip): Promise<void> => {
+  const styles = await zip.file("word/styles.xml")?.async("text");
+  if (!styles) {
+    panic("fixture missing word/styles.xml");
+  }
+  zip.file(
+    "word/styles.xml",
+    styles.replace(
+      "</w:styles>",
+      '<w:style w:type="paragraph" w:styleId="StoryEdited"><w:name w:val="Story Edited"/></w:style></w:styles>',
+    ),
+  );
+};
+
 const withSecondaryStoryPropertyParagraphs = async ({
   source,
   part,
@@ -3153,6 +3168,7 @@ const withSecondaryStoryPropertyParagraphs = async ({
     `<w:p${editedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText}</w:t></w:r></w:p>` +
     `<w:p${untouchedId}>${SECONDARY_STORY_PROPERTY_SOURCE}<w:r><w:t>${originalText} untouched</w:t></w:r></w:p>`;
   zip.file(part, `${xml.slice(0, paragraphStart)}${replacement}${xml.slice(paragraphEnd + 6)}`);
+  await defineStoryEditedStyle(zip);
   return zip.generateAsync({ type: "arraybuffer" });
 };
 
@@ -3212,6 +3228,7 @@ const mainDocumentWithIdlessPropertyParagraphs = async (): Promise<ArrayBuffer> 
         "<w:sectPr/></w:body>",
     ),
   );
+  await defineStoryEditedStyle(zip);
   return zip.generateAsync({ type: "arraybuffer" });
 };
 

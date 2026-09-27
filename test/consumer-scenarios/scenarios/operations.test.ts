@@ -260,3 +260,88 @@ describe("list labels after an operation", () => {
     await assertHealthy(reviewer, "undefined level");
   });
 });
+
+describe("an operation naming a paragraph style the package does not define", () => {
+  for (const mode of MODES) {
+    for (const styleId of ["NoSuchStyle", "TableGrid"]) {
+      test(`insertAfterBlock with styleId ${styleId} is refused, not applied (${mode})`, async () => {
+        const reviewer = await openReviewer(await plainDocument());
+        const anchor = reviewer
+          .getContent()
+          .find((block) => block.text === "Signed in two copies.");
+        assert.ok(anchor);
+        const before = visibleState(reviewer);
+        const result = reviewer.applyDocumentOperations({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            {
+              id: "1",
+              type: "insertAfterBlock",
+              blockId: anchor.id,
+              text: "An inserted clause.",
+              styleId,
+            },
+          ],
+        });
+        assert.deepEqual(result.applied, []);
+        assert.deepEqual(
+          result.skipped.map(({ reason }) => reason),
+          ["missingStyle"],
+        );
+        assert.deepEqual(visibleState(reviewer), before);
+        await assertHealthy(reviewer, `undefined style ${styleId} (${mode})`);
+      });
+    }
+  }
+
+  test("setBlockParagraphProperties with an undefined styleId is refused, not applied", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+    assert.ok(target);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "1",
+          type: "setBlockParagraphProperties",
+          blockId: target.id,
+          properties: { styleId: "NoSuchStyle" },
+        },
+      ],
+    });
+    assert.deepEqual(result.applied, []);
+    assert.deepEqual(
+      result.skipped.map(({ reason }) => reason),
+      ["missingStyle"],
+    );
+    await assertHealthy(reviewer, "setBlockParagraphProperties undefined styleId");
+  });
+
+  test("control: a defined paragraph style applies and reopens as a heading", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+    assert.ok(target);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [
+        {
+          id: "1",
+          type: "setBlockParagraphProperties",
+          blockId: target.id,
+          properties: { styleId: "Heading2" },
+        },
+      ],
+    });
+    assert.deepEqual(
+      result.applied.map(({ id }) => id),
+      ["1"],
+    );
+    const { reopened } = await assertHealthy(reviewer, "defined paragraph style");
+    const heading = reopened.getContent().find((block) => block.text === "Signed in two copies.");
+    assert.equal(heading?.kind, "heading");
+    assert.equal(heading?.headingLevel, 2);
+  });
+});

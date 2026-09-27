@@ -36,7 +36,10 @@ import {
   paragraphSpacingFromFormatting,
   withDirectParagraphSpacing,
 } from "../prosemirror/paragraphSpacing";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import {
+  getDocumentStyleDefinitions,
+  getDocumentStyleResolver,
+} from "../prosemirror/plugins/documentStyles";
 import { getDocumentNumbering } from "../prosemirror/plugins/documentNumbering";
 import { concreteListReference, resolveNewListOperations } from "./newListNumbering";
 import {
@@ -81,7 +84,12 @@ import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
-import type { ParagraphFormatting, RunPropertyChange, TextFormatting } from "../types/document";
+import type {
+  ParagraphFormatting,
+  RunPropertyChange,
+  Style,
+  TextFormatting,
+} from "../types/document";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
@@ -229,6 +237,8 @@ type ApplyFolioAIEditOperationsOptions = {
   tableTemplates?: FolioTableTemplates;
   /** What a replacement does with a background the text it replaces carries. */
   replacementBackground?: FolioReplacementBackground;
+  /** What an operation naming a paragraph style the document does not define does. */
+  undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 type ApplyFolioAIEditOperationsInternalOptions = ApplyFolioAIEditOperationsOptions & {
@@ -330,6 +340,19 @@ export type FolioWordDiffOptions = { granularity?: WordDiffGranularity };
  * same.
  */
 export type FolioReplacementBackground = "clear" | "keep";
+
+/**
+ * What an operation naming a paragraph style the document does not define —
+ * no `w:style` with that id, or one of another type — does.
+ *
+ * `refuse` is the default: such a `w:pStyle` confers no formatting, so the
+ * paragraph would keep its body look while the operation reported a restyle;
+ * the operation is skipped with `missingStyle`. `keep` is for a caller that
+ * copies references another document already holds — a comparison or redline
+ * reproducing the revised document, which may itself reference a style it
+ * never defines — and writes them as given.
+ */
+export type FolioUndefinedStylePolicy = "refuse" | "keep";
 
 /**
  * An apply result plus where the batch left the revision-id counter.
@@ -2623,6 +2646,7 @@ const applyFolioAIEditOperationsInternal = ({
   wordDiffMode = "bounded",
   tableTemplates,
   replacementBackground = "clear",
+  undefinedStyles = "refuse",
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
@@ -2667,6 +2691,10 @@ const applyFolioAIEditOperationsInternal = ({
     return id;
   };
   const styleResolver = getDocumentStyleResolver(view.state);
+  // `null` when the caller keeps undefined styles, or when the state carries no
+  // styles plugin at all, the one case that cannot say what the package defines.
+  const styleDefinitions =
+    undefinedStyles === "keep" ? null : getDocumentStyleDefinitions(view.state);
   // A new-list request becomes a reference to the instance minted for it, so
   // everything below applies one kind of numbering.
   const { operations, numbering } = resolveNewListOperations(
@@ -2743,6 +2771,15 @@ const applyFolioAIEditOperationsInternal = ({
     }
     if (commentText !== undefined && !hasRepresentableCommentAnchor(resolution.operation, mode)) {
       skipped.push({ id: operation.id, reason: "unsupportedBlock" });
+      continue;
+    }
+    const undefinedStyle = findUndefinedParagraphStyleReference(operation, styleDefinitions);
+    if (undefinedStyle !== undefined) {
+      skipped.push({
+        id: operation.id,
+        reason: "missingStyle",
+        message: describeUndefinedParagraphStyle(undefinedStyle, styleDefinitions),
+      });
       continue;
     }
 
@@ -6259,6 +6296,100 @@ const getTextRangeFromCleanBlock = (cleanBlock: {
 
 const getOperationCommentText = (operation: FolioAIEditOperation): string | undefined =>
   "comment" in operation ? operation.comment?.text : undefined;
+
+type UndefinedParagraphStyleReference = {
+  path: string;
+  styleId: string;
+  /** The type of the definition the id names, when it names one of another type. */
+  definedAs: Style["type"] | undefined;
+};
+
+type StyleDefinitionLookup = ReturnType<typeof getDocumentStyleDefinitions>;
+
+/**
+ * Every paragraph style an operation names, with the field that names it.
+ * `null` clears the style and names none; an omitted one keeps the style the
+ * paragraph or its anchor already carries, which the document holds by
+ * construction.
+ */
+const operationParagraphStyleReferences = (
+  operation: FolioAIEditOperation,
+): { path: string; styleId: string | null | undefined }[] => {
+  switch (operation.type) {
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+    case "replaceBlock":
+      return [{ path: "styleId", styleId: operation.styleId }];
+    case "setBlockParagraphProperties":
+      return [{ path: "properties.styleId", styleId: operation.properties.styleId }];
+    case "splitBlock":
+      return [
+        {
+          path: "firstParagraphProperties.styleId",
+          styleId: operation.firstParagraphProperties?.styleId,
+        },
+        {
+          path: "secondParagraphProperties.styleId",
+          styleId: operation.secondParagraphProperties?.styleId,
+        },
+      ];
+    case "mergeBlockWithNext":
+      return [
+        {
+          path: "mergedParagraphProperties.styleId",
+          styleId: operation.mergedParagraphProperties?.styleId,
+        },
+      ];
+    default:
+      return [];
+  }
+};
+
+/**
+ * The first paragraph style the operation names that the document does not
+ * define as a paragraph style. A `w:pStyle` naming no definition, or a table
+ * or character style, confers no formatting: the paragraph keeps its body
+ * look while the operation reports a restyle. Refused here, before anything
+ * is applied, the way an undefined block id is. `null` definitions (a state
+ * without the styles plugin) cannot say what is defined, and check nothing.
+ */
+const findUndefinedParagraphStyleReference = (
+  operation: FolioAIEditOperation,
+  definitions: StyleDefinitionLookup,
+): UndefinedParagraphStyleReference | undefined => {
+  if (definitions === null) {
+    return undefined;
+  }
+  for (const { path, styleId } of operationParagraphStyleReferences(operation)) {
+    if (styleId === null || styleId === undefined) {
+      continue;
+    }
+    const definition = definitions.get(styleId);
+    if (definition?.type !== "paragraph") {
+      return { path, styleId, definedAs: definition?.type };
+    }
+  }
+  return undefined;
+};
+
+const MAX_LISTED_PARAGRAPH_STYLES = 12;
+
+const describeUndefinedParagraphStyle = (
+  { path, styleId, definedAs }: UndefinedParagraphStyleReference,
+  definitions: StyleDefinitionLookup,
+): string => {
+  const defined = (definitions?.paragraphStyles() ?? []).map((style) => style.styleId);
+  let available = "it defines no visible paragraph styles";
+  if (defined.length > 0) {
+    const listed = defined.slice(0, MAX_LISTED_PARAGRAPH_STYLES).join(", ");
+    available = `its paragraph styles include ${listed}${defined.length > MAX_LISTED_PARAGRAPH_STYLES ? ", …" : ""}`;
+  }
+  const names =
+    definedAs === undefined
+      ? "names no style in this document"
+      : `names a ${definedAs} style, not a paragraph style`;
+  return `${path} "${styleId}" ${names} (${available}).`;
+};
 
 const getOperationQuote = (operation: FolioAIEditOperation): string | undefined => {
   if (operation.type === "replaceInBlock") {

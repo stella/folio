@@ -338,6 +338,9 @@ export const generateRedlineDocx = async (
         operations,
       },
       wordDiff,
+      // The revised document's references, carried as it holds them; its
+      // styles are not imported, so refusing one would drop the paragraph.
+      undefinedStyles: "keep",
     });
     applied.push(...result.applied);
     skipped.push(...result.skipped);

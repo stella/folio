@@ -171,6 +171,7 @@ export type ApplyFolioDocumentOperationsOptions = {
     wordDiff?: FolioWordDiffOptions;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
+    undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 // @public (undocumented)
@@ -1199,7 +1200,15 @@ export type FolioAIEditSkipReason = "missingBlock" | "changedBlock" | "ambiguous
 * the match covers in the replacement, in order, or match only the prose
 * beside it.
 */
-"protectedReference";
+"protectedReference" |
+/**
+* The operation names a paragraph style (`styleId`) the document does not
+* define, or one defined as a table, character or numbering style. Nothing
+* was applied: such a `w:pStyle` confers no formatting, so the paragraph
+* would keep its body look. Use a paragraph style the document defines, or
+* `null` to clear the style.
+*/
+"missingStyle";
 
 // @public
 export type FolioAIEditSnapshot = FolioContentSnapshot<FolioAIBlock> & {

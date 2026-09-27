@@ -12,7 +12,7 @@ import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-a
 
 import { FIXTURE_NAMES, FIXTURES, openReviewer } from "../support/documents.ts";
 import { assertHealthy, visibleState } from "../support/invariants.ts";
-import { type Block, MISTAKES, MODES, type Mode } from "../support/operations.ts";
+import { type Block, MISTAKES, MODES, type Mode, REFUSED_MISTAKES } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -144,7 +144,16 @@ describe("model mistakes", () => {
           "suggest_changes",
           build(blocks, createRandom(mistake.length), staleIds),
         );
-        if (result.ok) {
+        const refusedWith = REFUSED_MISTAKES[mistake];
+        if (refusedWith !== undefined) {
+          assert.ok(result.ok, `${mistake}: the call failed instead of reporting an issue`);
+          const outcome = result.result as SuggestResult;
+          assert.equal(outcome.applied.length, 0, `${mistake}: applied instead of refused`);
+          assert.deepEqual(
+            outcome.issues.map(({ code }) => code),
+            [refusedWith],
+          );
+        } else if (result.ok) {
           const outcome = result.result as SuggestResult;
           if (outcome.applied.length === 0) {
             assert.ok(

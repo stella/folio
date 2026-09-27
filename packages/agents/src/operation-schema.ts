@@ -161,7 +161,9 @@ const blockIdProperty = {
 
 export const FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA = {
   oneOf: [{ type: "string" }, { type: "null" }],
-  description: "Paragraph style id; null clears the direct style.",
+  description:
+    "Paragraph style id; it must name a paragraph style the document defines, or the operation " +
+    "skips with `missingStyle`. null clears the direct style.",
 } as const satisfies FolioJsonSchema;
 
 export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {

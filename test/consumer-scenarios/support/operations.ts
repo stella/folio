@@ -354,6 +354,15 @@ export const MISTAKES: Record<
   },
 };
 
+/**
+ * Mistakes the package can recognise before applying anything, by the issue
+ * code `suggest_changes` must refuse each with. Accepting one would save a
+ * document that silently ignores what the model asked for.
+ */
+export const REFUSED_MISTAKES: Readonly<Partial<Record<keyof typeof MISTAKES, string>>> = {
+  styleThatDoesNotExist: "missingStyle",
+};
+
 /** A numbering reference to an instance the package does not define (#1103). */
 export const undefinedNumbering = (blocks: readonly Block[]) => {
   const used = new Set(numberingRefs(blocks).map((ref) => ref.numId));

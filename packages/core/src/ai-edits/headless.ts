@@ -126,7 +126,12 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "../document-operations";
-import type { FolioReplacementBackground, FolioRevisionStamp, FolioWordDiffOptions } from "./apply";
+import type {
+  FolioReplacementBackground,
+  FolioRevisionStamp,
+  FolioUndefinedStylePolicy,
+  FolioWordDiffOptions,
+} from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
 import {
   getCommentAnchorsFromDoc,
@@ -458,6 +463,13 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
    * the target document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
+  /**
+   * What an operation naming a paragraph style the document does not define
+   * does. Refusing it is the default; a caller copying another document's
+   * style references — `compareDocx` and `generateRedlineDocx` reproducing the
+   * revised document — keeps them instead.
+   */
+  undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 export type { FolioRevisionStamp };
@@ -583,6 +595,7 @@ type ApplyDocumentOperationsInternalOptions = {
   wordDiff?: FolioWordDiffOptions;
   tableTemplates?: FolioTableTemplates;
   replacementBackground?: FolioReplacementBackground;
+  undefinedStyles?: FolioUndefinedStylePolicy;
   createUndoEntry: boolean;
 };
 
@@ -1623,6 +1636,7 @@ export class FolioDocxReviewer {
     wordDiff,
     tableTemplates,
     replacementBackground,
+    undefinedStyles,
   }: FolioApplyDocumentOperationsToStoryOptions): FolioDocumentOperationResult {
     return this.applyDocumentOperationsInternal({
       story,
@@ -1632,6 +1646,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
+      ...(undefinedStyles !== undefined && { undefinedStyles }),
       createUndoEntry: true,
     });
   }
@@ -1644,6 +1659,7 @@ export class FolioDocxReviewer {
     wordDiff,
     tableTemplates,
     replacementBackground,
+    undefinedStyles,
     createUndoEntry,
   }: ApplyDocumentOperationsInternalOptions): FolioDocumentOperationResult {
     const beforeState = this.requireEditableStoryState(story);
@@ -1665,6 +1681,7 @@ export class FolioDocxReviewer {
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
+      ...(undefinedStyles !== undefined && { undefinedStyles }),
       createCommentId: (text) => {
         const comment = createReviewerComment({
           id: this.nextCommentId(),

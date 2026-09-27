@@ -143,6 +143,10 @@ stay exported for validation-only paths.
   characters: not inside an emoji, and for a text change or split not between
   a letter and its combining marks either (`splitsCharacter`, with the
   offsets on either side).
+- A `styleId` must name a paragraph style the document defines; an undefined
+  id, or a table or character style, skips the operation (`missingStyle`, with
+  the paragraph styles the document offers) before anything is applied.
+  `null` clears the style.
 - Successful mutations return input-ordered `receipts`. Use their typed
   `affected` targets to identify updated blocks, stable ranges, insertions,
   and created comments without inferring effects from document text.

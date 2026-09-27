@@ -817,6 +817,7 @@ export type FolioApplyDocumentOperationsToStoryOptions = FolioApplyDocumentOpera
     batch: FolioDocumentOperationBatch;
     tableTemplates?: FolioTableTemplates;
     replacementBackground?: FolioReplacementBackground;
+    undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 // @public

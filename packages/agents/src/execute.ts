@@ -585,6 +585,9 @@ const explainSkipReason = (reason: string): string => {
   if (reason === "overlappingOperation") {
     return "an earlier operation in this batch already deletes, rewrites, splits or merges this block, or edits an overlapping stretch of its text; nothing of this operation was applied. Re-read the document after this batch and send it again on its own.";
   }
+  if (reason === "missingStyle") {
+    return "`styleId` names no paragraph style this document defines (it is undefined, or a table or character style); nothing was applied. Use a paragraph style the document defines (the ones it offers are named after this reason), or `null` to clear the style.";
+  }
   return reason;
 };
 

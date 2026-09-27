@@ -10,6 +10,7 @@ import {
   type FolioAIEditApplyOutcome,
   type FolioAIEditView,
   type FolioReplacementBackground,
+  type FolioUndefinedStylePolicy,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
   previewFolioAIEditOperations,
@@ -1711,6 +1712,7 @@ const recoveryByReason = {
   overlappingOperation: "refreshDocument",
   splitsCharacter: "changeTarget",
   protectedReference: "narrowMatch",
+  missingStyle: "refreshDocument",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
 export const getFolioDocumentOperationIssues = (
@@ -1957,6 +1959,13 @@ export type ApplyFolioDocumentOperationsOptions = {
    * revised document — keeps them instead.
    */
   replacementBackground?: FolioReplacementBackground;
+  /**
+   * What an operation naming a paragraph style the document does not define
+   * does. Refusing it (`missingStyle`) is the default; a caller copying the
+   * style references of another document — a comparison reproducing the
+   * revised one — keeps them instead.
+   */
+  undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
 type ApplyParsedDocumentOperationBatchOptions = {
@@ -1977,6 +1986,7 @@ export const applyFolioDocumentOperations = ({
   wordDiff,
   tableTemplates,
   replacementBackground,
+  undefinedStyles,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
   const apply = ({
@@ -1996,6 +2006,7 @@ export const applyFolioDocumentOperations = ({
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
+      ...(undefinedStyles !== undefined && { undefinedStyles }),
     });
   };
 

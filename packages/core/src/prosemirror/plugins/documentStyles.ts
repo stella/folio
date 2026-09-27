@@ -18,7 +18,7 @@
 import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
 
 import { type BuiltInStyleIndex, EMPTY_BUILT_IN_STYLE_INDEX } from "../../docx/builtInStyles";
-import type { StyleDefinitions } from "../../types/document";
+import type { Style, StyleDefinitions } from "../../types/document";
 import { StyleResolver, createStyleResolver } from "../styles/styleResolver";
 
 export const documentStylesKey = new PluginKey<StyleResolver | null>("documentStyles");
@@ -53,6 +53,24 @@ export function createDocumentStylesPlugin(
 /** Read the document's StyleResolver, or null when the plugin isn't installed. */
 export function getDocumentStyleResolver(state: EditorState): StyleResolver | null {
   return documentStylesKey.getState(state) ?? null;
+}
+
+/**
+ * The document's style definitions by id, or `null` when the state carries no
+ * styles plugin and so cannot say what the document defines. A document
+ * without a styles part defines none.
+ */
+export function getDocumentStyleDefinitions(
+  state: EditorState,
+): { get: (styleId: string) => Style | undefined; paragraphStyles: () => Style[] } | null {
+  if (documentStylesKey.get(state) === undefined) {
+    return null;
+  }
+  const resolver = getDocumentStyleResolver(state);
+  return {
+    get: (styleId) => resolver?.getStyle(styleId),
+    paragraphStyles: () => resolver?.getParagraphStyles() ?? [],
+  };
 }
 
 /**

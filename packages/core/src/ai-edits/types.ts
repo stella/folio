@@ -679,7 +679,15 @@ export type FolioAIEditSkipReason =
    * the match covers in the replacement, in order, or match only the prose
    * beside it.
    */
-  | "protectedReference";
+  | "protectedReference"
+  /**
+   * The operation names a paragraph style (`styleId`) the document does not
+   * define, or one defined as a table, character or numbering style. Nothing
+   * was applied: such a `w:pStyle` confers no formatting, so the paragraph
+   * would keep its body look. Use a paragraph style the document defines, or
+   * `null` to clear the style.
+   */
+  | "missingStyle";
 
 export type FolioAIEditAppliedOperation = {
   id: string;
@@ -717,8 +725,8 @@ export type FolioAIEditSkippedOperation = {
   /**
    * What exactly was wrong when the reason alone does not say: the values a
    * `payloadDoesNotFit` skip could not place, the earlier operation an
-   * `overlappingOperation` skip conflicts with, or the offset and character
-   * of a `splitsCharacter` skip.
+   * `overlappingOperation` skip conflicts with, the offset and character of a
+   * `splitsCharacter` skip, or the undefined style of a `missingStyle` skip.
    */
   message?: string;
 };

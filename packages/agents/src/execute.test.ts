@@ -330,7 +330,6 @@ describe("executeFolioToolCall: happy path against a real FolioDocxReviewer", ()
               type: "insertAfterBlock",
               blockId: heading.blockId,
               text: "6. Force Majeure\nNeither party shall be liable for delays beyond its control.",
-              styleId: "Heading2",
             },
           ],
         },

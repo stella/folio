@@ -16,6 +16,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
@@ -116,15 +117,34 @@ const shapeOf = ({ id, text, table }: FolioAIBlock): BlockShape => ({
 /** A style id that names the block it was meant for, so a swap is visible. */
 const styleFor = (index: number): string => `Probe${String(index).padStart(3, "0")}`;
 
+/** The package with a paragraph style defined for each of its first `count` blocks. */
+const withProbeStyles = async (docx: ArrayBuffer, count: number): Promise<ArrayBuffer> => {
+  const zip = await JSZip.loadAsync(docx);
+  const styles = await zip.file("word/styles.xml")?.async("text");
+  if (!styles) {
+    throw new Error("fixture must carry a styles part");
+  }
+  const probes = Array.from(
+    { length: count },
+    (_, index) =>
+      `<w:style w:type="paragraph" w:styleId="${styleFor(index)}"><w:name w:val="${styleFor(index)}"/></w:style>`,
+  ).join("");
+  zip.file("word/styles.xml", styles.replace("</w:styles>", `${probes}</w:styles>`));
+  return zip.generateAsync({ type: "arraybuffer" });
+};
+
 describe("block ids resolve against the live document", () => {
   test(
     "every block of a snapshot resolves to the block it was taken from",
     async () => {
       await fc.assert(
         fc.asyncProperty(bodyArb, async (items) => {
-          const reviewer = await FolioDocxReviewer.fromBuffer(await buildBodySequenceDocx(items), {
-            author: "probe",
-          });
+          const docx = await buildBodySequenceDocx(items);
+          const blockCount = (await FolioDocxReviewer.fromBuffer(docx)).snapshot().blocks.length;
+          const reviewer = await FolioDocxReviewer.fromBuffer(
+            await withProbeStyles(docx, blockCount),
+            { author: "probe" },
+          );
           const before = reviewer.snapshot().blocks;
 
           const { skipped } = reviewer.applyOperations(

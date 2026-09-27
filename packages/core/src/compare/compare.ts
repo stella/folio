@@ -748,6 +748,7 @@ const COMPARE_SKIP_DISPOSITION = {
   overlappingOperation: "fatal",
   splitsCharacter: "unwritable",
   protectedReference: "unwritable",
+  missingStyle: "fatal",
 } as const satisfies Record<FolioAIEditSkipReason, "fatal" | "unwritable">;
 
 export const getCompareSkipDisposition = (reason: FolioAIEditSkipReason): "fatal" | "unwritable" =>
@@ -948,6 +949,10 @@ export const applyComparison = (
         // straight back, and the reader is left with a revision whose before
         // and after are the same.
         replacementBackground: "keep",
+        // The revised document's own references, carried as it holds them:
+        // one it never defines (a dangling `w:pStyle` is common in generated
+        // packages) is reproduced, not refused, or the paragraph would be lost.
+        undefinedStyles: "keep",
       });
       if (nextRevisionId === undefined) {
         // Only a host bridge that does not allocate ids itself omits this, and
