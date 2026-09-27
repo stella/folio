@@ -416,6 +416,28 @@ describe("findIntroducedModelErrors", () => {
     ]);
   });
 
+  test("recognizes existing comment ids outside the changed window, but rejects new dangling ids", () => {
+    const paragraph = (id: number) =>
+      schema.node("paragraph", null, [
+        schema.text("Commented", [schema.mark("comment", { commentId: id })]),
+      ]);
+    const before = schema.node("doc", null, [paragraph(7)]);
+    const state = EditorState.create({ schema, doc: before });
+    const context = { numbering: undefined, createdCommentIds: [] };
+    expect(
+      findIntroducedModelErrors(before, state.tr.insert(0, paragraph(7)).doc, context),
+    ).toEqual([]);
+    expect(
+      findIntroducedModelErrors(before, state.tr.insert(0, paragraph(8)).doc, context),
+    ).toEqual([
+      {
+        path: "package.document.content[0].content[0]",
+        message: "Comment 8 is referenced but not present in comments.xml.",
+        severity: "error",
+      },
+    ]);
+  });
+
   const numbered = (numId: number) => {
     const model = fromMarkdown("Alpha.\n\nBeta.\n\nGamma.");
     model.package.numbering = UNUSED_901;

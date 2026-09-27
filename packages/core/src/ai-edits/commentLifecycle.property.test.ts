@@ -48,7 +48,7 @@ const BODY_SLOTS = 6;
 const TABLE_SLOTS = new Set([2, 3]);
 const NOTE_SLOTS = 3;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
-const EDIT_KINDS = ["replaceInBlock", "insertAfterBlock", "deleteBlock"] as const;
+const EDIT_KINDS = ["replaceInBlock", "replaceBlock", "insertAfterBlock", "deleteBlock"] as const;
 
 type Story = "body" | "note";
 type GeneratedComment = { story: Story; first: number; last: number; text: string };
@@ -227,6 +227,8 @@ const editFor = (
             find: block.text,
             replace: "Revised.",
           };
+    case "replaceBlock":
+      return { id: "edit", type: "replaceBlock", blockId: block.id, text: "Revised." };
     case "insertAfterBlock":
       return { id: "edit", type: "insertAfterBlock", blockId: block.id, text: "Inserted clause." };
     case "deleteBlock":

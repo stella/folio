@@ -28,8 +28,9 @@ import type { ValidateDocumentModelIssue } from "@stll/docx-core";
 
 import { validateFolioDocumentModel } from "../docx/modelValidation";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import type { Comment, Document, HeaderFooter, NumberingDefinitions } from "../types/document";
 import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
+import type { Comment, Document, HeaderFooter, NumberingDefinitions } from "../types/document";
+import { anchoredCommentIdsInProseDoc } from "./comment-lifecycle";
 
 /** What the story's package knows that the story itself does not. */
 export type FolioOperationResultValidationContext = {
@@ -120,6 +121,7 @@ const windowErrors = (
   to: number,
   context: FolioOperationResultValidationContext,
   knownParts?: KnownSectionParts,
+  knownCommentIds?: ReadonlySet<number>,
 ): ValidateDocumentModelIssue[] => {
   if (to <= from) {
     return [];
@@ -149,9 +151,12 @@ const windowErrors = (
     package: {
       document: {
         content,
-        comments: context.createdCommentIds.map((id) =>
-          syntheticComment(id, context.commentAuthor ?? ""),
-        ),
+        comments: [
+          ...[...(knownCommentIds ?? [])].map((id) => syntheticComment(id, "")),
+          ...context.createdCommentIds
+            .filter((id) => !knownCommentIds?.has(id))
+            .map((id) => syntheticComment(id, context.commentAuthor ?? "")),
+        ],
       },
       ...(context.numbering !== null &&
         context.numbering !== undefined && { numbering: context.numbering }),
@@ -184,14 +189,20 @@ export const findIntroducedModelErrors = (
     return [];
   }
   let afterErrors = windowErrors(after, window.from, window.afterTo, context);
-  // A newly changed window can include a section record that was already in
-  // the story. Its header/footer parts live in the host, outside this window.
-  // Supply only references known before the batch, so a new dangling rId
-  // still fails validation.
+  // The host owns section parts and comments outside the changed window. Use
+  // only references already present before the batch; new dangling ones fail.
   let parts: KnownSectionParts | undefined;
   if (afterErrors.some(({ message }) => message.startsWith("Section references missing "))) {
     parts = knownSectionParts(before);
-    afterErrors = windowErrors(after, window.from, window.afterTo, context, parts);
+  }
+  let knownCommentIds: ReadonlySet<number> | undefined;
+  if (
+    afterErrors.some(({ message }) => /^Comment \d+ is referenced but not present/u.test(message))
+  ) {
+    knownCommentIds = anchoredCommentIdsInProseDoc(before);
+  }
+  if (parts || knownCommentIds) {
+    afterErrors = windowErrors(after, window.from, window.afterTo, context, parts, knownCommentIds);
   }
   if (afterErrors.length === 0) {
     return afterErrors;
@@ -207,6 +218,7 @@ export const findIntroducedModelErrors = (
       createdCommentIds: [],
     },
     parts,
+    knownCommentIds,
   )) {
     known.set(message, (known.get(message) ?? 0) + 1);
   }
