@@ -151,8 +151,9 @@ describe("a nested field's instruction-region result stays hidden", () => {
 
   test("a field spanning many runs assembles the same way nested", async () => {
     // The nested field's own instruction, result and the outer's instruction
-    // are each split across extra runs, mirroring how Word sometimes splits
-    // a single logical run at formatting or revision boundaries.
+    // are each split across extra runs, mirroring how a source document
+    // sometimes splits a single logical run at formatting or revision
+    // boundaries.
     const nested = complexField(instrRun(" PA") + instrRun("GE "), run("9") + run("9"));
     const outerCode =
       instrRun(" I") + instrRun("F ") + nested + instrRun(' = 99 "Sh') + instrRun('own" "Hidden" ');
