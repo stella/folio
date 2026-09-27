@@ -1827,6 +1827,11 @@ export const ROW_CONTENT_HANDLERS = {
     const firstCaptured = walk.preservedChildren.length;
     const firstBookmark = walk.bookmarks.length;
     dispatchRowChildren(child, walk);
+    if (walk.row.cells.length === firstWrapped) {
+      walk.preservedChildren.splice(firstCaptured);
+      walk.bookmarks.splice(firstBookmark);
+      return CAPTURE;
+    }
     const wrapper = createCustomXmlWrapper(child, walk.customXmlIdentity);
     recordCustomXmlWrapper(walk.row.cells.slice(firstWrapped), wrapper);
     recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
@@ -2182,6 +2187,11 @@ export const TABLE_CONTENT_HANDLERS = {
     const firstCaptured = walk.preservedChildren.length;
     const firstBookmark = walk.bookmarks.length;
     dispatchTableChildren(child, walk);
+    if (walk.table.rows.length === firstWrapped) {
+      walk.preservedChildren.splice(firstCaptured);
+      walk.bookmarks.splice(firstBookmark);
+      return CAPTURE;
+    }
     const wrapper = createCustomXmlWrapper(child, walk.customXmlIdentity);
     recordCustomXmlWrapper(walk.table.rows.slice(firstWrapped), wrapper);
     recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);

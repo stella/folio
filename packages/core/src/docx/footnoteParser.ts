@@ -19,11 +19,9 @@
  */
 
 import type {
-  BlockSdt,
+  BlockContent,
   Footnote,
   Endnote,
-  Paragraph,
-  Table,
   Theme,
   RelationshipMap,
   MediaFile,
@@ -38,12 +36,14 @@ import { parseParagraph } from "./paragraphParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import type { StyleMap } from "./styleParser";
 import { parseTable } from "./tableParser";
+import { captureVerbatimXml } from "./verbatimCapture";
 import {
   findChildren,
   findWordprocessingChild,
   getAttributes,
   getChildElements,
   getLocalName,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
   type XmlElement,
 } from "./xmlParser";
@@ -158,8 +158,8 @@ function parseNoteBlockContent(
   rels: RelationshipMap | null,
   media: Map<string, MediaFile> | null,
   previews: PreviewLedger,
-): (Paragraph | Table | BlockSdt)[] {
-  const blocks: (Paragraph | Table | BlockSdt)[] = [];
+): BlockContent[] {
+  const blocks: BlockContent[] = [];
 
   for (const child of getChildElements(element)) {
     const localName = getLocalName(child.name ?? "");
@@ -192,6 +192,11 @@ function parseNoteBlockContent(
           ? parseNoteBlockContent(sdtContent, styles, theme, numbering, rels, media, previews)
           : [],
       });
+    } else if (
+      localName === "altChunk" &&
+      WORDPROCESSINGML_NAMESPACE_URIS.has(child.namespaceUri ?? "")
+    ) {
+      blocks.push({ type: "preservedBlock", xml: captureVerbatimXml(child) });
     }
   }
 

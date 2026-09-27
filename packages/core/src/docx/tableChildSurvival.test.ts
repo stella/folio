@@ -30,15 +30,13 @@ const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
  * Children `CT_Tbl` declares and folio models nothing of.
  *
  * One per shape: an empty marker, a marker carrying revision attributes, a
- * custom-XML revision range, a transparent wrapper holding a whole row — kept
- * whole rather than unwrapped — and an element from a namespace the content
+ * custom-XML revision range, and an element from a namespace the content
  * model does not name, which is the sink rather than the handler map.
  */
 const UNMODELLED_CHILDREN = [
   '<w:permStart w:id="7" w:edGrp="everyone"/>',
   '<w:proofErr w:type="spellStart"/>',
   '<w:customXmlInsRangeStart w:id="3" w:author="Reviewer"/>',
-  '<w:customXml w:element="aside"><w:tr><w:tc><w:p/></w:tc></w:tr></w:customXml>',
   '<x:note xmlns:x="urn:example:vendor" x:kind="aside">kept</x:note>',
 ] as const;
 
@@ -87,6 +85,50 @@ describe("a table keeps the children folio does not model", () => {
       }),
       propertyConfig({ numRuns: 100 }),
     );
+  });
+
+  test("empty customXml wrappers retain their position across saves", () => {
+    const wrappers = [
+      '<w:customXml w:element="empty"/>',
+      '<w:customXml w:element="empty"></w:customXml>',
+      '<w:customXml w:element="empty"><w:customXmlPr/></w:customXml>',
+      '<w:customXml w:element="empty"><w:proofErr w:type="spellStart"/></w:customXml>',
+    ] as const;
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...wrappers),
+        fc.integer({ min: 0, max: 2 }),
+        (wrapper, index) => {
+          const expected =
+            wrapper === '<w:customXml w:element="empty"></w:customXml>'
+              ? '<w:customXml w:element="empty"/>'
+              : wrapper;
+          const children = [ROW, ROW];
+          children.splice(index, 0, wrapper);
+          const saved = roundTrip(children.join(""));
+          const savedAgain = roundTrip(savedChildren(saved));
+          for (const output of [saved, savedAgain]) {
+            expect(output).toContain(expected);
+            expect(output.split('<w:customXml w:element="empty"').length - 1).toBe(1);
+            const rowsBefore = output.slice(0, output.indexOf(expected)).match(/<w:tr>/gu) ?? [];
+            expect(rowsBefore).toHaveLength(index);
+          }
+        },
+      ),
+      propertyConfig({ numRuns: 100, seed: -2126465269 }),
+    );
+  });
+
+  test("a customXml wrapper with a row stays modelled across saves", () => {
+    const wrapper = '<w:customXml w:element="aside">';
+    const saved = roundTrip(`${ROW}${wrapper}${ROW}</w:customXml>${ROW}`);
+    const savedAgain = roundTrip(savedChildren(saved));
+    for (const output of [saved, savedAgain]) {
+      expect(output).toContain(`${wrapper}<w:tr>`);
+      expect(output.match(/<w:tr>/gu)).toHaveLength(3);
+      expect(output.indexOf(wrapper)).toBeGreaterThan(output.indexOf("<w:tr>"));
+      expect(output.indexOf(wrapper)).toBeLessThan(output.lastIndexOf("<w:tr>"));
+    }
   });
 
   test("a capture before every row comes back before every row", () => {

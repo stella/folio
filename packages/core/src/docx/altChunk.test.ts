@@ -11,6 +11,8 @@ import { createEmptyDocx, repackDocx } from "./rezip";
 import { docxToMarkdown } from "./server/docxToMarkdown";
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE_RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships";
 const CHUNK = '<w:altChunk r:id="rIdChunk"/>';
 
 type BuildDocxOptions = {
@@ -18,6 +20,7 @@ type BuildDocxOptions = {
   payload?: string | Uint8Array;
   relationshipMode?: "Internal" | "External";
   relationshipType?: "strict" | "transitional";
+  defaultContentType?: string;
 };
 
 const buildDocx = async (chunk: string, options: BuildDocxOptions = {}): Promise<ArrayBuffer> => {
@@ -26,6 +29,7 @@ const buildDocx = async (chunk: string, options: BuildDocxOptions = {}): Promise
     payload = "<html><body>Imported payload sentinel</body></html>",
     relationshipMode = "Internal",
     relationshipType = "transitional",
+    defaultContentType,
   } = options;
   const extension = contentType === "text/plain" ? "txt" : "htm";
   const relationshipNamespace =
@@ -52,7 +56,8 @@ const buildDocx = async (chunk: string, options: BuildDocxOptions = {}): Promise
     "[Content_Types].xml",
     (await zip.file("[Content_Types].xml")?.async("text"))?.replace(
       "</Types>",
-      `<Override PartName="/word/afchunk.${extension}" ContentType="${contentType}"/></Types>`,
+      `${defaultContentType ? `<Default Extension="${extension}" ContentType="${defaultContentType}"/>` : ""}` +
+        `<Override PartName="/word/afchunk.${extension}" ContentType="${contentType}"/></Types>`,
     ) ?? "",
   );
   if (relationshipMode === "Internal") {
@@ -143,6 +148,208 @@ describe("w:altChunk", () => {
     }
     expect(compared.value.unsupported).toContainEqual(
       expect.objectContaining({ reason: "unsupported-content" }),
+    );
+  });
+
+  test("part overrides take precedence over conflicting extension defaults", async () => {
+    for (const [contentType, defaultContentType, exposed] of [
+      ["text/plain", "text/html", true],
+      ["text/html", "text/plain", false],
+    ] as const) {
+      const input = await buildDocx(CHUNK, {
+        contentType,
+        defaultContentType,
+        payload: "Override precedence sentinel",
+      });
+      const text = (await FolioDocxReviewer.fromBuffer(input)).getContentAsText();
+      expect(text.includes("Override precedence sentinel")).toBe(exposed);
+    }
+  });
+
+  test("extracts each secondary story through its own relationship part", async () => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    const stories = [
+      {
+        kind: "header",
+        id: "rIdHeader",
+        file: "header1.xml",
+        root: "hdr",
+        text: "Header payload",
+        relationshipKind: "header",
+      },
+      {
+        kind: "footer",
+        id: "rIdFooter",
+        file: "footer1.xml",
+        root: "ftr",
+        text: "Footer payload",
+        relationshipKind: "footer",
+      },
+      {
+        kind: "footnote",
+        id: "rIdFootnote",
+        file: "footnotes.xml",
+        root: "footnotes",
+        text: "Footnote payload",
+        relationshipKind: "footnotes",
+      },
+      {
+        kind: "endnote",
+        id: "rIdEndnote",
+        file: "endnotes.xml",
+        root: "endnotes",
+        text: "Endnote payload",
+        relationshipKind: "endnotes",
+      },
+    ] as const;
+    zip.file(
+      "word/document.xml",
+      `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body><w:p/>${CHUNK}` +
+        `<w:sectPr><w:headerReference w:type="default" r:id="rIdHeader"/>` +
+        `<w:footerReference w:type="default" r:id="rIdFooter"/></w:sectPr></w:body></w:document>`,
+    );
+    const documentRels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+    if (!documentRels || !contentTypes) {
+      throw new Error("The fixture is missing its package declarations");
+    }
+    zip.file(
+      "word/_rels/document.xml.rels",
+      documentRels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="body.txt"/>` +
+          stories
+            .map(
+              ({ relationshipKind, id, file }) =>
+                `<Relationship Id="${id}" Type="${R}/${relationshipKind}" Target="${file}"/>`,
+            )
+            .join("") +
+          "</Relationships>",
+      ),
+    );
+    zip.file(
+      "[Content_Types].xml",
+      contentTypes.replace(
+        "</Types>",
+        '<Default Extension="txt" ContentType="text/plain"/>' +
+          stories
+            .map(
+              ({ kind, file }) =>
+                `<Override PartName="/word/${file}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.${kind}+xml"/>`,
+            )
+            .join("") +
+          "</Types>",
+      ),
+    );
+    zip.file("word/body.txt", "Body payload");
+    for (const { kind, file, root, text } of stories) {
+      const content =
+        kind === "footnote" || kind === "endnote"
+          ? `<w:${kind} w:id="1">${CHUNK}</w:${kind}>`
+          : CHUNK;
+      zip.file(`word/${file}`, `<w:${root} xmlns:w="${W}" xmlns:r="${R}">${content}</w:${root}>`);
+      zip.file(
+        `word/_rels/${file}.rels`,
+        `<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">` +
+          `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="${kind}.txt"/>` +
+          "</Relationships>",
+      );
+      zip.file(`word/${kind}.txt`, text);
+    }
+    const input = await zip.generateAsync({ type: "arraybuffer" });
+    const parsed = await parseDocx(input, {
+      preloadFonts: false,
+    });
+    expect(
+      parsed.package.document.content.find(({ type }) => type === "preservedBlock"),
+    ).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Body payload",
+    });
+    expect(parsed.package.headers?.get("rIdHeader")?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Header payload",
+    });
+    expect(parsed.package.footers?.get("rIdFooter")?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Footer payload",
+    });
+    expect(parsed.package.footnotes?.at(0)?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Footnote payload",
+    });
+    expect(parsed.package.endnotes?.at(0)?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Endnote payload",
+    });
+    const saved = await repackDocx(parsed, { updateModifiedDate: false });
+    const savedZip = await JSZip.loadAsync(saved);
+    expect(await savedZip.file("word/header1.xml")?.async("text")).toBe(
+      await zip.file("word/header1.xml")?.async("text"),
+    );
+    expect(await savedZip.file("word/footer1.xml")?.async("text")).toBe(
+      await zip.file("word/footer1.xml")?.async("text"),
+    );
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(reopened.package.footnotes?.at(0)?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Footnote payload",
+    });
+    expect(reopened.package.endnotes?.at(0)?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      readerText: "Endnote payload",
+    });
+  });
+
+  test("shares the plain-text byte limit between document and header stories", async () => {
+    const largeText = "x".repeat(Math.floor(ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES / 2) + 1);
+    const zip = await JSZip.loadAsync(
+      await buildDocx(CHUNK, { contentType: "text/plain", payload: largeText }),
+    );
+    const documentRels = await zip.file("word/_rels/document.xml.rels")?.async("text");
+    const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
+    if (!documentRels || !contentTypes) {
+      throw new Error("The fixture is missing its package declarations");
+    }
+    zip.file(
+      "word/_rels/document.xml.rels",
+      documentRels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdHeader" Type="${R}/header" Target="header1.xml"/>` +
+          "</Relationships>",
+      ),
+    );
+    zip.file(
+      "[Content_Types].xml",
+      contentTypes.replace(
+        "</Types>",
+        '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' +
+          '<Override PartName="/word/header.txt" ContentType="text/plain"/></Types>',
+      ),
+    );
+    zip.file("word/header1.xml", `<w:hdr xmlns:w="${W}" xmlns:r="${R}">${CHUNK}</w:hdr>`);
+    zip.file(
+      "word/_rels/header1.xml.rels",
+      `<Relationships xmlns="${PACKAGE_RELATIONSHIPS}">` +
+        `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="header.txt"/>` +
+        "</Relationships>",
+    );
+    zip.file("word/header.txt", largeText);
+    const parsed = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+      preloadFonts: false,
+    });
+    expect(
+      parsed.package.document.content.find(({ type }) => type === "preservedBlock"),
+    ).toMatchObject({
+      type: "preservedBlock",
+      readerText: largeText,
+    });
+    expect(parsed.package.headers?.get("rIdHeader")?.content.at(0)).toMatchObject({
+      type: "preservedBlock",
+      xml: CHUNK,
+    });
+    expect(parsed.package.headers?.get("rIdHeader")?.content.at(0)).not.toHaveProperty(
+      "readerText",
     );
   });
 

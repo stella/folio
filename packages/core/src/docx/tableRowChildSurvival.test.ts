@@ -83,6 +83,40 @@ describe("a table row keeps the children folio does not model", () => {
     );
   });
 
+  test("empty customXml wrappers retain their cell position across saves", () => {
+    const wrappers = [
+      '<w:customXml w:element="empty"/>',
+      '<w:customXml w:element="empty"></w:customXml>',
+      '<w:customXml w:element="empty"><w:customXmlPr/></w:customXml>',
+      '<w:customXml w:element="empty"><w:proofErr w:type="spellStart"/></w:customXml>',
+    ] as const;
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...wrappers),
+        fc.integer({ min: 0, max: 2 }),
+        (wrapper, index) => {
+          const expected =
+            wrapper === '<w:customXml w:element="empty"></w:customXml>'
+              ? '<w:customXml w:element="empty"/>'
+              : wrapper;
+          const children = [CELL, CELL];
+          children.splice(index, 0, wrapper);
+          const saved = roundTrip(children.join(""));
+          const savedAgain = roundTrip(
+            saved.slice(saved.indexOf("<w:tr>") + 6, saved.indexOf("</w:tr>")),
+          );
+          for (const output of [saved, savedAgain]) {
+            expect(output).toContain(expected);
+            expect(output.split('<w:customXml w:element="empty"').length - 1).toBe(1);
+            const cellsBefore = output.slice(0, output.indexOf(expected)).match(/<w:tc>/gu) ?? [];
+            expect(cellsBefore).toHaveLength(index);
+          }
+        },
+      ),
+      propertyConfig({ numRuns: 100, seed: 1486206489 }),
+    );
+  });
+
   test("a capture before every cell comes back before every cell", () => {
     const saved = roundTrip(`<w:permStart w:id="7"/>${CELL}`);
     expect(saved).toContain('<w:permStart w:id="7"/>');

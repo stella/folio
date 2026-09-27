@@ -94,7 +94,7 @@ const makeDocx = async (body: string, chunkText = SENTINEL): Promise<ArrayBuffer
     `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body}<w:sectPr/></w:body></w:document>`,
   );
   if (body.includes("<w:altChunk")) {
-    zip.file("word/chunk.html", `<html><body><p>${chunkText}</p></body></html>`);
+    zip.file("word/chunk.txt", chunkText);
     const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
     const contentTypes = await zip.file("[Content_Types].xml")?.async("text");
     if (!rels || !contentTypes) {
@@ -104,14 +104,15 @@ const makeDocx = async (body: string, chunkText = SENTINEL): Promise<ArrayBuffer
       "word/_rels/document.xml.rels",
       rels.replace(
         "</Relationships>",
-        `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="chunk.html"/></Relationships>`,
+        `<Relationship Id="rIdChunk" Type="${R}/aFChunk" Target="chunk.txt"/></Relationships>`,
       ),
     );
     zip.file(
       "[Content_Types].xml",
       contentTypes.replace(
         "</Types>",
-        '<Override PartName="/word/chunk.html" ContentType="text/html"/></Types>',
+        '<Default Extension="txt" ContentType="text/html"/>' +
+          '<Override PartName="/word/chunk.txt" ContentType="text/plain"/></Types>',
       ),
     );
   }

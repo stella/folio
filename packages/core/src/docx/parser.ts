@@ -60,6 +60,7 @@ import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
 import {
   assignHeaderFooterVerbatimXml,
+  canReplayHeaderFooterVerbatim,
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
 import {
@@ -214,6 +215,7 @@ const contentTypeOf = (contentTypesXml: string | null, partPath: string): string
     return undefined;
   }
   const extension = partPath.slice(partPath.lastIndexOf(".") + 1).toLowerCase();
+  let defaultContentType: string | undefined;
   for (const child of getChildElements(root)) {
     if (child.namespaceUri !== CONTENT_TYPES_NAMESPACE_URI) {
       continue;
@@ -224,16 +226,17 @@ const contentTypeOf = (contentTypesXml: string | null, partPath: string): string
       return contentType ?? undefined;
     }
     if (name === "Default" && getAttribute(child, null, "Extension")?.toLowerCase() === extension) {
-      return contentType ?? undefined;
+      defaultContentType = contentType ?? undefined;
     }
   }
-  return undefined;
+  return defaultContentType;
 };
 
 type AltChunkTextContext = {
   relationships: RelationshipMap;
+  relationshipsPath: string;
   raw: RawDocxContent;
-  remainingBytes: number;
+  budget: { remainingBytes: number };
 };
 
 const extractAltChunkPlainText = async (
@@ -251,7 +254,7 @@ const extractAltChunkPlainText = async (
   ) {
     return undefined;
   }
-  const partPath = resolveRelativePath("word/_rels/document.xml.rels", relationship.target);
+  const partPath = resolveRelativePath(context.relationshipsPath, relationship.target);
   if (
     contentTypeOf(context.raw.contentTypesXml, partPath)?.split(";")[0]?.trim().toLowerCase() !==
     "text/plain"
@@ -263,12 +266,12 @@ const extractAltChunkPlainText = async (
     return undefined;
   }
   const declaredSize = getEntryUncompressedSize(file);
-  if (declaredSize === null || declaredSize > context.remainingBytes) return undefined;
+  if (declaredSize === null || declaredSize > context.budget.remainingBytes) return undefined;
   const bytes = await file.async("uint8array");
-  if (bytes.byteLength > context.remainingBytes) {
+  if (bytes.byteLength > context.budget.remainingBytes) {
     return undefined;
   }
-  context.remainingBytes -= bytes.byteLength;
+  context.budget.remainingBytes -= bytes.byteLength;
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
@@ -750,11 +753,53 @@ export async function parseDocxWithPreviewBudget(
       ...(templateVariables !== undefined ? { templateVariables } : {}),
       ...(requiredFonts.length > 0 ? { requiredFonts } : {}),
     };
+    const altChunkBudget = { remainingBytes: ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES };
     await attachAltChunkPlainText(pkg.document.content, {
       relationships: rels,
+      relationshipsPath: DOCUMENT_RELATIONSHIPS_PATH,
       raw,
-      remainingBytes: ALT_CHUNK_PLAIN_TEXT_LIMIT_BYTES,
+      budget: altChunkBudget,
     });
+    const altChunkContextForPart = (partPath: string): AltChunkTextContext => {
+      const relationshipsPath = getRelationshipsPathForPart(partPath);
+      const relationshipsXml = getMapCaseInsensitive(raw.allXml, relationshipsPath);
+      return {
+        relationships: relationshipsXml ? parseRelationships(relationshipsXml) : new Map(),
+        relationshipsPath,
+        raw,
+        budget: altChunkBudget,
+      };
+    };
+    for (const [rId, header] of pkg.headers ?? []) {
+      const relationship = rels.get(rId);
+      if (relationship?.target) {
+        const replayable = canReplayHeaderFooterVerbatim(header);
+        await attachAltChunkPlainText(
+          header.content,
+          altChunkContextForPart(getRelationshipPartPath(relationship.target)),
+        );
+        if (replayable) refreshHeaderFooterVerbatimFingerprint(header);
+      }
+    }
+    for (const [rId, footer] of pkg.footers ?? []) {
+      const relationship = rels.get(rId);
+      if (relationship?.target) {
+        const replayable = canReplayHeaderFooterVerbatim(footer);
+        await attachAltChunkPlainText(
+          footer.content,
+          altChunkContextForPart(getRelationshipPartPath(relationship.target)),
+        );
+        if (replayable) refreshHeaderFooterVerbatimFingerprint(footer);
+      }
+    }
+    const footnoteContext = altChunkContextForPart("word/footnotes.xml");
+    for (const footnote of pkg.footnotes ?? []) {
+      await attachAltChunkPlainText(footnote.content, footnoteContext);
+    }
+    const endnoteContext = altChunkContextForPart("word/endnotes.xml");
+    for (const endnote of pkg.endnotes ?? []) {
+      await attachAltChunkPlainText(endnote.content, endnoteContext);
+    }
     const altChunkCount =
       countAltChunks(pkg.document.content) +
       [...(pkg.headers?.values() ?? [])].reduce(
