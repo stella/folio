@@ -14,7 +14,7 @@ import type {
 import type { ListKind } from "../docx/listNumberingInstances";
 import type { BreakContent, OutlineLevel, ParagraphAlignment } from "../types/document";
 
-export type FolioAIBlockKind = FolioContentParagraphKind;
+export type FolioAIBlockKind = FolioContentParagraphKind | "diagnostic";
 
 /** Boolean run properties supported by snapshots and range-formatting mutations. */
 export type FolioAIInlineBooleanProperty = FolioContentInlineBooleanProperty;
@@ -68,6 +68,8 @@ export type FolioAIBlockTableLocation = FolioContentTableLocation;
 
 export type FolioAIBlock = FolioContentBlock<FolioAIBlockKind> & {
   structuralBoundaries?: readonly FolioAIBlockStructuralBoundary[];
+  /** Present on a read-only block that reports preserved content Folio cannot interpret. */
+  diagnostic?: { type: "opaqueCarrier"; carrier: string };
 };
 
 /**

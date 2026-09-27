@@ -33,6 +33,12 @@ import {
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
 import { recreateProseNodeWithParagraphPropertySource } from "../docx/paragraphPropertySource";
+import { isAltChunkMarkup } from "../docx/altChunk";
+import {
+  OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+  isOpaqueNestedRowMarkup,
+  opaqueRevisionCarrierName,
+} from "../docx/opaqueCarrier";
 import type { TextFormatting } from "../types/document";
 import { deriveBlankBlockId, deriveBlockId, type FolioBlockId } from "../types/block-id";
 import { splitsSurrogatePair } from "./character-boundaries";
@@ -706,7 +712,7 @@ const createFolioAIEditSnapshotInternal = (
     : createNoteReferenceLabeler();
   const draftBlocks: {
     block: FolioAIBlock;
-    anchor: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
+    anchor?: Omit<FolioAIBlockAnchor, "hashOccurrenceCount">;
   }[] = [];
   const hashCounts = new Map<string, number>();
   const usedBlockIds = new Set<string>();
@@ -730,6 +736,56 @@ const createFolioAIEditSnapshotInternal = (
     if (!node.isTextblock) {
       const disposition = classifyNonTextblockStoryTableNode(node);
       if (disposition === STORY_TABLE_HIDDEN_SUBTREE) {
+        return false;
+      }
+      const preserved = node.attrs["_preserved"];
+      const preservedChildren =
+        preserved !== null && typeof preserved === "object" && "children" in preserved
+          ? preserved.children
+          : undefined;
+      if (Array.isArray(preservedChildren)) {
+        for (const [carrierIndex, child] of preservedChildren.entries()) {
+          if (child === null || typeof child !== "object" || !("xml" in child)) {
+            continue;
+          }
+          const xml = child.xml;
+          if (typeof xml !== "string") {
+            continue;
+          }
+          const diagnostic = getOpaqueCarrierDiagnostic(xml);
+          if (diagnostic === undefined) {
+            continue;
+          }
+          draftBlocks.push({
+            block: {
+              id: `opaque-${String(pos)}-${String(carrierIndex)}`,
+              kind: "diagnostic",
+              text: diagnostic.text,
+              diagnostic: { type: "opaqueCarrier", carrier: diagnostic.carrier },
+            },
+          });
+        }
+      }
+      if (node.type.name === "preservedBlock") {
+        const xml: unknown = node.attrs["xml"];
+        if (typeof xml === "string") {
+          const readerText: unknown = node.attrs["readerText"];
+          const diagnostic = getOpaqueCarrierDiagnostic(
+            xml,
+            typeof readerText === "string" ? readerText : undefined,
+          );
+          if (diagnostic !== undefined) {
+            const id = `opaque-${String(pos)}`;
+            draftBlocks.push({
+              block: {
+                id,
+                kind: "diagnostic",
+                text: diagnostic.text,
+                diagnostic: { type: "opaqueCarrier", carrier: diagnostic.carrier },
+              },
+            });
+          }
+        }
         return false;
       }
       if (disposition === STORY_TABLE) {
@@ -848,6 +904,9 @@ const createFolioAIEditSnapshotInternal = (
   const anchors: Record<string, FolioAIBlockAnchor> = {};
   for (const draft of draftBlocks) {
     blocks.push(draft.block);
+    if (draft.anchor === undefined) {
+      continue;
+    }
     anchors[draft.block.id] = {
       ...draft.anchor,
       hashOccurrenceCount: hashCounts.get(draft.anchor.textHash) ?? 0,
@@ -862,6 +921,31 @@ const createFolioAIEditSnapshotInternal = (
     storyTables: tables,
   });
   return snapshot;
+};
+
+const getOpaqueCarrierDiagnostic = (
+  xml: string,
+  readerText?: string,
+): { carrier: string; text: string } | undefined => {
+  if (isAltChunkMarkup(xml)) {
+    return {
+      carrier: "w:altChunk",
+      text:
+        readerText === undefined
+          ? "[Unsupported w:altChunk content]"
+          : `[Unsupported w:altChunk content] ${readerText}`,
+    };
+  }
+  const elementName = opaqueRevisionCarrierName(xml);
+  if (elementName !== undefined) {
+    return {
+      carrier: elementName,
+      text: OPAQUE_REVISION_CARRIER_READER_DIAGNOSTIC,
+    };
+  }
+  return isOpaqueNestedRowMarkup(xml)
+    ? { carrier: "w:tr", text: "[Unsupported nested w:tr content]" }
+    : undefined;
 };
 
 export const createFolioAIEditSnapshot = (doc: PMNode): FolioAIEditSnapshot =>
