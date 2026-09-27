@@ -5492,14 +5492,21 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         lastLayoutInputSignatureRef.current = layoutInputSignature;
         return;
       }
-      const view = hiddenPMRef.current?.getView();
-      if (view) {
+      // Until the hidden view is created the pages show the precomputed initial
+      // state, which is the last state laid out; an input change must relayout
+      // that state too, or the pages keep the old inputs until the view exists.
+      const state =
+        hiddenPMRef.current?.getView()?.state ??
+        (preHiddenInitialLayoutDoneRef.current && precomputedInitialDocumentRef.current === document
+          ? layoutSessionRef.current.lastEditorState
+          : null);
+      if (state) {
         const layoutInputsChanged = lastLayoutInputSignatureRef.current !== layoutInputSignature;
         lastLayoutInputSignatureRef.current = layoutInputSignature;
-        if (!layoutInputsChanged && view.state.doc === layoutSessionRef.current.lastPmDoc) {
+        if (!layoutInputsChanged && state.doc === layoutSessionRef.current.lastPmDoc) {
           return;
         }
-        runLayoutPipelineRef.current(view.state, { reason: "layout-input" });
+        runLayoutPipelineRef.current(state, { reason: "layout-input" });
       }
     }, [document, layoutInputSignature]);
 
