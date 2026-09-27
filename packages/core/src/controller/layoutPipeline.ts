@@ -55,7 +55,14 @@ import {
   measureSingleBlockWithoutFloatingZones,
 } from "../layout-engine/measure/measureBlocks";
 import { collectRequestedHyphenationDictionaries } from "../layout-engine/measure/hyphenationDictionaries";
-import { installCanvasMeasureProvider } from "../layout-engine/measure/measureContainer";
+import {
+  labelMeasureCachesFontSet,
+  syncMeasureCachesToFontSet,
+} from "../layout-engine/measure/cache";
+import {
+  installCanvasMeasureProvider,
+  resetCanvasContext,
+} from "../layout-engine/measure/measureContainer";
 import { resolveEffectiveParagraphSpacingTree } from "../layout-engine/paragraphSpacing";
 import type {
   FlowBlock,
@@ -128,7 +135,7 @@ const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs
   left.theme === right.theme &&
   left.defaultTabStop === right.defaultTabStop &&
   left.pageContentHeight === right.pageContentHeight &&
-  left.fontsLoaded === right.fontsLoaded &&
+  left.fontSet === right.fontSet &&
   left.fontAlternates.size === right.fontAlternates.size &&
   [...left.fontAlternates].every(
     ([name, alternate]) => right.fontAlternates.get(name) === alternate,
@@ -246,7 +253,8 @@ export type LayoutPipelineDeps<THfPMs> = {
     metrics: HeaderFooterMetrics,
     options: ConvertHeaderFooterOptions,
   ) => Map<string, HeaderFooterContent> | undefined;
-  documentFontsAreLoaded: () => boolean;
+  /** Names the faces measurement can use now (`fontReadiness.readFontSetSignature`). */
+  readFontSetSignature: () => string;
   buildFootnoteRenderItems: (
     pageFootnoteMap: Map<number, number[]>,
     footnoteContentMap: Map<number, FootnoteContent>,
@@ -434,7 +442,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     session,
     renderHfFromContentOrPm,
     renderHeaderFooterContentByRId,
-    documentFontsAreLoaded,
+    readFontSetSignature,
     buildFootnoteRenderItems,
     describeInvalidHighlightMarks,
     pageRenderer = PAGE_RENDERER.legacy,
@@ -451,6 +459,13 @@ function runLayoutPipelineMeasured<THfPMs>(
   // before any layout/measure runs. Idempotent; the engine measures
   // through the pure provider seam, which throws until a backend is set.
   installCanvasMeasureProvider();
+  // The font set this run measures in. Cached widths and the previous run's
+  // measures taken in another one (a subset has loaded since) are unusable:
+  // they hold fallback advances for glyphs the loaded face now draws.
+  const fontSet = readFontSetSignature();
+  if (syncMeasureCachesToFontSet(fontSet)) {
+    resetCanvasContext();
+  }
   const reason = options.reason ?? "manual";
   const recordPhaseDuration = (phase: LayoutPhase, startedAt: number): void => {
     recordLayoutPhase(reason, phase, performance.now() - startedAt);
@@ -473,7 +488,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       theme: _theme,
       defaultTabStop,
       pageContentHeight,
-      fontsLoaded: documentFontsAreLoaded(),
+      fontSet,
       fontAlternates,
     };
     const flowOpts: ToFlowBlocksOptions = {
@@ -1396,12 +1411,15 @@ function runLayoutPipelineMeasured<THfPMs>(
     // paint throw is caught below and keeps the previous visible layout; marking
     // the doc as laid out here would make the next run skip a needed rerun and
     // leave stale pages.
+    // Read the font set after measuring: a family this run measured first
+    // joins the signature now, with the faces it measured in.
+    const measuredFontSet = readFontSetSignature();
+    labelMeasureCachesFontSet(measuredFontSet);
     session.artifacts = pendingArtifacts;
     session.lastTemplatePreview = pendingTemplatePreview;
     session.lastEditorState = state;
     session.lastPmDoc = state.doc;
-    session.lastMeasureInputs = measureInputs;
-    session.usedLoadedFonts = measureInputs.fontsLoaded;
+    session.lastMeasureInputs = { ...measureInputs, fontSet: measuredFontSet };
     recordLayoutComplete(reason);
   } catch (error) {
     const invalidHighlights = describeInvalidHighlightMarks(state.doc);

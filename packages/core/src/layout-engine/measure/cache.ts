@@ -464,6 +464,12 @@ export function getParagraphCacheSize(): number {
 // =============================================================================
 
 /**
+ * The font set (a `readFontSetSignature` value) every cached measurement was
+ * taken in; `null` once the caches are cleared and before anything measures.
+ */
+let cachedFontSet: string | null = null;
+
+/**
  * Clear all measurement caches
  * Call when fonts change, page width changes, or for testing
  */
@@ -472,6 +478,35 @@ export function clearAllCaches(): void {
   clearFontMetricsCache();
   clearParagraphMeasureCache();
   clearFontResolvedCache();
+  cachedFontSet = null;
+}
+
+/**
+ * Bind the caches to the font set the next measurements are taken in. When a
+ * face has loaded (or been added or removed) since the cached entries were
+ * measured, they are dropped: a width measured in a fallback cannot be served
+ * once the face it stood in for is available. Entries measured before the
+ * caches were first bound are dropped too: nothing records their font set.
+ * Returns whether it cleared.
+ */
+export function syncMeasureCachesToFontSet(fontSet: string): boolean {
+  if (cachedFontSet === fontSet) {
+    return false;
+  }
+  clearAllCaches();
+  cachedFontSet = fontSet;
+  return true;
+}
+
+/**
+ * Rename the font set the cached entries were measured in, without dropping
+ * them: for a layout run that has just measured, whose signature now also
+ * names the families it measured first. Only valid within the run that bound
+ * the caches with {@link syncMeasureCachesToFontSet}, since no face can load
+ * during a synchronous run.
+ */
+export function labelMeasureCachesFontSet(fontSet: string): void {
+  cachedFontSet = fontSet;
 }
 
 /**

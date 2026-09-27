@@ -59,9 +59,9 @@ import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOpti
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import {
-  documentFontsAreLoaded,
-  getDocumentFontSet,
+  readFontSetSignature,
   waitForInitialLayoutFonts,
+  watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
 import {
@@ -909,8 +909,6 @@ function stableJsonStringify(value: unknown): string {
   });
 }
 
-const INITIAL_FONT_READY_SUPPRESSION_MS = 250;
-
 function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
   const invalidHighlights: string[] = [];
   const validHighlightColors = new Set([
@@ -1455,7 +1453,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const pendingHiddenEditorSelectionRef = useRef<PendingHiddenEditorSelection | null>(null);
     const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>([]);
     const pendingInitialFontReadyLayoutRef = useRef(false);
-    const suppressFontReadyUntilRef = useRef(0);
     const [isFocused, setIsFocused] = useState(false);
     const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
     const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(null);
@@ -1893,7 +1890,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             session: layoutSessionRef.current,
             renderHfFromContentOrPm,
             renderHeaderFooterContentByRId,
-            documentFontsAreLoaded,
+            readFontSetSignature,
             buildFootnoteRenderItems,
             describeInvalidHighlightMarks,
             emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
@@ -5103,7 +5100,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       let cancelled = false;
       pendingInitialFontReadyLayoutRef.current = true;
       const fontWaitStartedAt = performance.now();
-      const runAfterFontWait = (fontsLoaded: boolean) => {
+      const runAfterFontWait = () => {
         if (cancelled) {
           return;
         }
@@ -5117,14 +5114,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateSelectionOverlay(initialState);
         updateAnonymizationOverlay();
         updateDirectivesOverlay();
-        if (fontsLoaded) {
-          layoutSessionRef.current.usedLoadedFonts = true;
-          suppressFontReadyUntilRef.current = performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
-        }
       };
 
-      void waitForInitialLayoutFonts(document, initialState.doc).then(runAfterFontWait, () =>
-        runAfterFontWait(false),
+      void waitForInitialLayoutFonts(document, initialState.doc).then(
+        runAfterFontWait,
+        runAfterFontWait,
       );
 
       return () => {
@@ -5218,7 +5212,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         pendingInitialFontReadyLayoutRef.current = true;
         const fontWaitStartedAt = performance.now();
-        const runAfterFontWait = (fontsLoaded: boolean) => {
+        const runAfterFontWait = () => {
           pendingInitialFontReadyLayoutRef.current = false;
           const currentView = hiddenPMRef.current?.getView();
           if (currentView !== view) {
@@ -5228,14 +5222,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           resetCanvasContext();
           clearAllCaches();
           runInitialLayout(currentView);
-          if (fontsLoaded) {
-            layoutSessionRef.current.usedLoadedFonts = true;
-            suppressFontReadyUntilRef.current =
-              performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
-          }
         };
-        void waitForInitialLayoutFonts(document, view.state.doc).then(runAfterFontWait, () =>
-          runAfterFontWait(false),
+        void waitForInitialLayoutFonts(document, view.state.doc).then(
+          runAfterFontWait,
+          runAfterFontWait,
         );
 
         // Auto-focus the editor so the user can start typing immediately
@@ -5332,59 +5322,42 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       updateAutocompleteOverlay();
     }, [updateAutocompleteOverlay]);
 
-    // Re-layout when web fonts finish loading to fix measurements that were
-    // computed against fallback fonts during initial render.
-    // Uses FontFaceSet.onloadingdone to detect when new fonts complete loading.
-    useEffect(() => {
-      const fontSet = getDocumentFontSet();
-      if (!fontSet) {
-        return undefined;
-      }
-
-      const handleFontsLoading = () => {
-        if (performance.now() < suppressFontReadyUntilRef.current) {
-          return;
-        }
-        layoutSessionRef.current.usedLoadedFonts = false;
-      };
-
-      const handleFontsLoaded = () => {
-        if (
-          pendingInitialFontReadyLayoutRef.current ||
-          performance.now() < suppressFontReadyUntilRef.current ||
-          layoutSessionRef.current.usedLoadedFonts
-        ) {
-          return;
-        }
-
-        const view = hiddenPMRef.current?.getView();
-        if (view) {
-          // Clear all cached measurements — font metrics have changed
-          resetCanvasContext();
-          clearAllCaches();
-          runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-          updateSelectionOverlayRef.current(view.state);
-        }
-      };
-
-      // Listen for font loading completion events
-      fontSet.addEventListener("loading", handleFontsLoading);
-      fontSet.addEventListener("loadingdone", handleFontsLoaded);
-      fontSet.addEventListener("loadingerror", handleFontsLoaded);
-      return () => {
-        fontSet.removeEventListener("loading", handleFontsLoading);
-        fontSet.removeEventListener("loadingdone", handleFontsLoaded);
-        fontSet.removeEventListener("loadingerror", handleFontsLoaded);
-      };
-    }, []);
+    // Re-layout when a face loads that the committed layout measured without:
+    // a `unicode-range` subset fetched once painted text first needed it, or
+    // any face the initial wait timed out on. The pipeline drops measurements
+    // taken in the previous font set itself.
+    useEffect(
+      () =>
+        watchLayoutFontLoads({
+          measuredFontSet: () => layoutSessionRef.current.lastMeasureInputs?.fontSet ?? null,
+          relayout: () => {
+            // The initial layout still to come measures in the current set.
+            if (pendingInitialFontReadyLayoutRef.current) {
+              return;
+            }
+            // Before the hidden view exists the pages come from a pre-view
+            // layout; re-run that state, as the hyphenation follow-up does.
+            const view = hiddenPMRef.current?.getView();
+            const state = view?.state ?? layoutSessionRef.current.lastEditorState;
+            if (!state) {
+              return;
+            }
+            runLayoutPipelineRef.current(state, { reason: "font-ready" });
+            if (view) {
+              updateSelectionOverlayRef.current(view.state);
+            }
+          },
+        }),
+      [],
+    );
 
     // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
     // `@font-face`s so text renders in its authored fonts instead of fallbacks,
     // then re-layout once they load so glyph advances use the real metrics. Keyed
     // on the source buffer: registration happens per loaded document, and the
     // cleanup unregisters the faces so one document's family cannot bleed into the
-    // next. The 250ms font-ready suppression window can swallow the shared
-    // loadingdone re-layout, so this path relays out explicitly.
+    // next. These faces are added already loaded, which fires no `loadingdone`,
+    // and they change how families resolve, so this path relays out explicitly.
     const embeddedFontBuffer = document?.originalBuffer ?? null;
     useEffect(() => {
       if (!embeddedFontBuffer) {

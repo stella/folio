@@ -3,10 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { toProseDoc } from "../prosemirror";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
+import { ScriptedFontSet } from "./__tests__/scriptedFontSet";
 import {
   collectInitialLayoutFontFaces,
   collectInitialLayoutFontFamilies,
-  documentFontsAreLoaded,
+  readFontSetSignature,
+  waitForInitialLayoutFonts,
 } from "./fontReadiness";
 
 describe("initial layout font loading", () => {
@@ -151,11 +153,13 @@ describe("initial layout font loading", () => {
     expect(faces).toContain("Noto Sans Arabic|italic|400");
   });
 
-  test("reports fonts loaded when the document font set is unavailable (SSR/headless)", () => {
+  test("needs no fonts when the document font set is unavailable (SSR/headless)", async () => {
     // Under the bun runner `document` is undefined, so getDocumentFontSet()
-    // returns null and the gate must resolve to "loaded" rather than block the
-    // first layout forever in a non-browser host.
-    expect(documentFontsAreLoaded()).toBe(true);
+    // returns null: the gate must resolve rather than block the first layout
+    // forever in a non-browser host, and the font set never changes.
+    const document = createEmptyDocument({ initialText: "Hello" });
+    expect(await waitForInitialLayoutFonts(document, toProseDoc(document))).toBe(true);
+    expect(readFontSetSignature()).toBe(readFontSetSignature());
   });
 
   // Word writes the Arabic and Hebrew face into `w:cs` and the CJK face into
@@ -215,6 +219,45 @@ describe("initial layout font loading", () => {
     expect(families).toContain("Foo, Bar");
     expect(families).not.toContain("Foo");
     expect(families).not.toContain("Bar");
+  });
+
+  // A bundled face is a set of `unicode-range` subsets and `FontFaceSet.load`
+  // fetches only those covering the text it is given: loading without the
+  // document's characters fetched the Latin subset alone, so the first layout
+  // measured Czech, Greek and Cyrillic in a fallback.
+  test("waits for every subset the text of each story needs", async () => {
+    const storyParagraph = (text: string) => {
+      const [paragraph] = createEmptyDocument({ initialText: text }).package.document.content;
+      if (!paragraph) {
+        throw new Error("Expected a paragraph");
+      }
+      return paragraph;
+    };
+    const document = createEmptyDocument({ initialText: "Dodavatel dodá zboží" });
+    document.package.headers = new Map([
+      ["rIdHeader", { type: "header", hdrFtrType: "default", content: [storyParagraph("Αγαθά")] }],
+    ]);
+    document.package.footnotes = [
+      { type: "footnote", id: 1, content: [storyParagraph("Поставщик")] },
+    ];
+    const fontSet = new ScriptedFontSet();
+
+    const settled = waitForInitialLayoutFonts(document, toProseDoc(document), fontSet);
+    for (const face of fontSet.pending()) {
+      fontSet.complete(face);
+    }
+
+    expect(await settled).toBe(true);
+    const loadedTinos = fontSet.faces
+      .filter(
+        (face) =>
+          face.family === "Tinos" &&
+          face.style === "normal" &&
+          face.weight === 400 &&
+          face.status === "loaded",
+      )
+      .map((face) => face.subset);
+    expect(loadedTinos.toSorted()).toEqual(["cyrillic", "greek", "latin", "latin-ext"]);
   });
 
   test("always includes the default layout font family for a null document model", () => {

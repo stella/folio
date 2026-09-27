@@ -33,7 +33,11 @@ export type LayoutMeasureInputs = {
   theme: Theme | null | undefined;
   defaultTabStop: number | undefined;
   pageContentHeight: number;
-  fontsLoaded: boolean;
+  /**
+   * The font set (`readFontSetSignature`) the measures were taken in. A face
+   * that loads afterwards changes it, so fallback measures are never reused.
+   */
+  fontSet: string;
   fontAlternates: FontAlternates;
 };
 
@@ -45,7 +49,6 @@ export type LayoutSession = {
   lastEditorState: EditorState | null;
   lastPmDoc: EditorState["doc"] | null;
   lastMeasureInputs: LayoutMeasureInputs | null;
-  usedLoadedFonts: boolean;
   lastTemplatePreview: LayoutTemplatePreview;
 };
 
@@ -54,6 +57,5 @@ export const createLayoutSession = (): LayoutSession => ({
   lastEditorState: null,
   lastPmDoc: null,
   lastMeasureInputs: null,
-  usedLoadedFonts: false,
   lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
 });

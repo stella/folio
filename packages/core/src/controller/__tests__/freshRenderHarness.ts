@@ -286,8 +286,14 @@ export type FreshRenderRig<TExt> = {
   updateExt: (update: (ext: TExt) => TExt) => void;
   /** The adapters' layout-input effect: lay out again when inputs or the document changed. */
   rerender: () => void;
-  /** The adapters' font-ready tail: drop cached metrics and lay out the current state. */
+  /**
+   * The adapters' font-load follow-up (`watchLayoutFontLoads`'s relayout): lay
+   * out the current state. The pipeline itself drops measurements taken in
+   * another font set.
+   */
   fontsChanged: () => void;
+  /** The font set the committed layout was measured in (`watchLayoutFontLoads`). */
+  readonly measuredFontSet: string | null;
   pauseFrames: () => void;
   resumeFrames: () => void;
   tick: (ms: number) => void;
@@ -384,7 +390,8 @@ export const createFreshRenderRig = <TExt>(
       session: layoutSession,
       renderHfFromContentOrPm: () => undefined,
       renderHeaderFooterContentByRId: () => undefined,
-      documentFontsAreLoaded: () => true,
+      // No font set to load: a rig whose `ext` models one supplies it here.
+      readFontSetSignature: () => "none",
       buildFootnoteRenderItems: () => new Map(),
       describeInvalidHighlightMarks: () => "",
       emptyTemplatePreviewEntries: [],
@@ -502,9 +509,10 @@ export const createFreshRenderRig = <TExt>(
     },
     rerender,
     fontsChanged: () => {
-      resetCanvasContext();
-      clearAllCaches();
       runPass(state, { reason: "font-ready" });
+    },
+    get measuredFontSet() {
+      return session.lastMeasureInputs?.fontSet ?? null;
     },
     pauseFrames: time.pauseFrames,
     resumeFrames: time.resumeFrames,

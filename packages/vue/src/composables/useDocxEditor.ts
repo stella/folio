@@ -66,6 +66,10 @@ import { runLayoutPipeline as runLayoutPipelineCompute } from "@stll/folio-core/
 import type { LayoutOutcome } from "@stll/folio-core/controller/layoutPipeline";
 import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
+import {
+  readFontSetSignature,
+  watchLayoutFontLoads,
+} from "@stll/folio-core/controller/fontReadiness";
 import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
@@ -303,14 +307,6 @@ function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
   };
   visit(doc, "doc");
   return invalidHighlights.join("; ");
-}
-
-/** Whether the browser's document FontFaceSet has settled. */
-function documentFontsAreLoaded(): boolean {
-  if (typeof document === "undefined" || !("fonts" in document)) {
-    return true;
-  }
-  return document.fonts.status === "loaded";
 }
 
 // ============================================================================
@@ -607,6 +603,20 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     onError: (error) => onError?.(error),
   });
   onScopeDispose(hyphenationReadiness.cancel);
+  // Re-layout when a face loads that the committed layout measured without,
+  // such as a `unicode-range` subset fetched once painted text first needed
+  // it. Mirrors React's PagedEditor.
+  onScopeDispose(
+    watchLayoutFontLoads({
+      measuredFontSet: () => session.lastMeasureInputs?.fontSet ?? null,
+      relayout: () => {
+        const state = editorView.value?.state ?? session.lastEditorState;
+        if (state) {
+          runLayoutPipeline(state, { reason: "font-ready" });
+        }
+      },
+    }),
+  );
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
@@ -740,7 +750,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           session,
           renderHfFromContentOrPm,
           renderHeaderFooterContentByRId,
-          documentFontsAreLoaded,
+          readFontSetSignature,
           buildFootnoteRenderItems,
           describeInvalidHighlightMarks,
           emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,

@@ -477,7 +477,7 @@ const makeDeps = (
   session,
   renderHfFromContentOrPm: () => undefined,
   renderHeaderFooterContentByRId: () => undefined,
-  documentFontsAreLoaded: () => true,
+  readFontSetSignature: () => "test-fonts",
   buildFootnoteRenderItems: () => new Map(),
   describeInvalidHighlightMarks: () => "",
   emptyTemplatePreviewEntries: [],
@@ -545,7 +545,7 @@ describe("runLayoutPipeline", () => {
     expect(session.artifacts?.measures.length ?? 0).toBeGreaterThan(0);
     expect(session.lastEditorState).toBe(state);
     expect(session.lastPmDoc).toBe(state.doc);
-    expect(session.usedLoadedFonts).toBe(true);
+    expect(session.lastMeasureInputs?.fontSet).toBe("test-fonts");
     expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
     expect(layoutCompletes).toHaveLength(1);
@@ -1449,7 +1449,6 @@ describe("runLayoutPipeline", () => {
     expect(session.lastEditorState).toBeNull();
     expect(session.lastPmDoc).toBeNull();
     expect(session.lastMeasureInputs).toBeNull();
-    expect(session.usedLoadedFonts).toBe(false);
     expect(session.lastTemplatePreview).toEqual({ entries: [], hidden: [], mode: "plain" });
 
     // The error recorder ran; no completion was recorded.
@@ -1465,7 +1464,6 @@ describe("createLayoutSession", () => {
       lastEditorState: null,
       lastPmDoc: null,
       lastMeasureInputs: null,
-      usedLoadedFonts: false,
       lastTemplatePreview: { entries: [], hidden: [], mode: "plain" },
     });
   });
