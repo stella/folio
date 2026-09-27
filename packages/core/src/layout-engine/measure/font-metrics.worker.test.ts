@@ -186,6 +186,20 @@ describe("handleMeasureRequest", () => {
     },
   );
 
+  test("rejects a small subset mismatch inside a long run", () => {
+    const text = `${"a".repeat(2_000)}ش`;
+    const reply = handleMeasureRequest(
+      req([
+        entry({
+          text,
+          fontFingerprintText: text,
+          fontFingerprintWidth: text.length * 6 + 1,
+        }),
+      ]),
+    );
+    expect(reply.ok && reply.entries).toEqual([]);
+  });
+
   test("returns ok:false when OffscreenCanvas is absent", () => {
     // Wipe the module-scoped ctx the previous test populated, then
     // remove the global. The worker must re-check and report failure.

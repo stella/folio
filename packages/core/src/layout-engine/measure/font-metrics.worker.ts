@@ -70,8 +70,7 @@ function measureEntry(entry: MeasureRequestEntry): MeasureResponseEntry | null {
   context.font = entry.font;
   context.fontKerning = entry.fontKerning;
   const actualFingerprintWidth = context.measureText(entry.fontFingerprintText).width;
-  const tolerance = Math.max(FONT_FINGERPRINT_EPSILON, entry.fontFingerprintWidth * 0.0001);
-  if (Math.abs(actualFingerprintWidth - entry.fontFingerprintWidth) > tolerance) {
+  if (Math.abs(actualFingerprintWidth - entry.fontFingerprintWidth) > FONT_FINGERPRINT_EPSILON) {
     return null;
   }
   const raw = context.measureText(entry.text).width;
