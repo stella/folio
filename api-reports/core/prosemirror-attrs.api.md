@@ -12,6 +12,9 @@ import { ShadingProperties } from '@stll/docx-core/model';
 import { SpacingExplicit } from '@stll/docx-core/model';
 
 // @public (undocumented)
+export const expectBlockCustomXmlAttrs: (node: Node_2) => BlockCustomXmlAttrs;
+
+// @public (undocumented)
 export const expectBlockSdtAttrs: (node: Node_2) => BlockSdtAttrs;
 
 // @public (undocumented)
@@ -148,6 +151,9 @@ export type ProseMirrorAttrIssue = {
     readonly path: string;
     readonly message: string;
 };
+
+// @public (undocumented)
+export const readBlockCustomXmlAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<BlockCustomXmlAttrs>;
 
 // @public (undocumented)
 export const readBlockSdtAttrs: (node: Node_2) => ReadProseMirrorAttrsResult<BlockSdtAttrs>;

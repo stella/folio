@@ -15,6 +15,13 @@ import { ShadingProperties } from '@stll/docx-core/model';
 import { SpacingExplicit } from '@stll/docx-core/model';
 
 // @public
+export type BlockCustomXmlAttrs = {
+    openingXml: string;
+    closingXml: string;
+    _originallyEmpty: boolean;
+};
+
+// @public
 export type BlockSdtAttrs = {
     sdtType: import__stll_docx_core_model.SdtType;
     alias?: string;

@@ -28,7 +28,15 @@ export const BIDI_CONTROLS: {
 export type BidiControl = (typeof BIDI_CONTROLS)[keyof typeof BIDI_CONTROLS];
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock | BookmarkStart | BookmarkEnd;
+export type BlockContent = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock | BookmarkStart | BookmarkEnd;
+
+// @public
+export type BlockCustomXml = {
+    type: "blockCustomXml";
+    openingXml: string;
+    closingXml: string;
+    content: BlockContent[];
+};
 
 // @public
 export type BlockSdt = {

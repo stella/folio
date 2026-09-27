@@ -17,7 +17,7 @@ export type Autofix = {
 };
 
 // @public
-export type BlockContent = Paragraph | Table | BlockSdt | PreservedBlock | BookmarkStart | BookmarkEnd;
+export type BlockContent = Paragraph | Table | BlockSdt | BlockCustomXml | PreservedBlock | BookmarkStart | BookmarkEnd;
 
 // @public
 export type BreakContent = {
