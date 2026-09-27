@@ -1,8 +1,7 @@
 /**
  * The open issues and unfiled findings, each as the smallest public-API
- * scenario that shows it. Every one runs as an expected failure: when a fix
- * lands, its scenario passes, the expected failure fails, and the marker comes
- * off so the scenario guards the fix.
+ * scenario that shows it. Open defects run as expected failures; after a fix,
+ * the scenario stays as a passing regression without that marker.
  */
 
 import assert from "node:assert/strict";

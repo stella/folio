@@ -79,6 +79,16 @@ for (const [seed, steps] of [
     runFlow(seed, steps, "random", { generation: "legacy" }));
 }
 
+// Fixed reader-stability failures after inserting a table: the live cell
+// paragraphs must expose the same preview formatting as a reopened package.
+for (const { seed, kind } of [
+  { seed: 20_260_935, kind: "random" },
+  { seed: 20_260_932, kind: "collisions" },
+] as const) {
+  test(`fixed ${kind} flow with seed ${seed} keeps live block fields across save`, () =>
+    runFlow(seed, 10, kind, { generation: "targeted" }));
+}
+
 // Collision flows that once rewrote a paragraph pending deletion into the one
 // after it (1088), and read a deleted pending insertion back as a deletion
 // alone after a save (1185); kept as fixed seeds on the generation that

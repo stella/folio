@@ -25,7 +25,11 @@ import { readOutlineLevelAttr } from "../prosemirror/outlineLevelAttr";
 import { directParagraphAlignment } from "../prosemirror/paragraphAlignment";
 import { directParagraphIndentation } from "../prosemirror/paragraphIndentation";
 import { directParagraphSpacing } from "../prosemirror/paragraphSpacing";
-import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
+import {
+  paragraphRunStyleContext,
+  resolveParagraphBodyRunFormatting,
+  type RunStyleResolver,
+} from "../prosemirror/runStyleFormatting";
 import { runFormattingInlineAtomCleanText } from "../prosemirror/runFormattingInlineCarriers";
 import { authoredRunFormattingFromAttrs } from "../prosemirror/runFormattingProvenance";
 import {
@@ -1093,7 +1097,7 @@ const getPreviewRuns = ({
   styleResolver,
 }: GetPreviewRunsOptions): FolioAIBlockPreviewRun[] | undefined => {
   const runs: FolioAIBlockPreviewRun[] = [];
-  const defaultStyle = getDefaultPreviewRunStyle(node);
+  const defaultStyle = getDefaultPreviewRunStyle(node, styleResolver);
   let paragraphStyleContext: ReturnType<typeof paragraphRunStyleContext> | undefined;
   let cleanOffset = 0;
 
@@ -1178,8 +1182,20 @@ const getPreviewRuns = ({
   return runs;
 };
 
-const getDefaultPreviewRunStyle = (node: PMNode): PreviewRunStyle => {
-  const formatting: unknown = node.attrs["defaultTextFormatting"];
+const getDefaultPreviewRunStyle = (
+  node: PMNode,
+  styleResolver: RunStyleResolver | null,
+): PreviewRunStyle => {
+  const attrs = expectParagraphAttrs(node);
+  // Newly created paragraphs can have no baked defaults until a package
+  // round-trip. Resolve the same style cascade for live readers.
+  const formatting =
+    attrs.defaultTextFormatting ??
+    resolveParagraphBodyRunFormatting({
+      styleId: attrs.styleId,
+      tableRunFormatting: attrs._tableRunFormatting,
+      styleResolver,
+    }).defaultFormatting;
   if (typeof formatting !== "object" || formatting === null) {
     return {};
   }

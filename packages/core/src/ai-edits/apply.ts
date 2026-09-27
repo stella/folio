@@ -56,6 +56,7 @@ import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
+import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
   paragraphRunStyleContext,
   paragraphRunStyleContextAt,
@@ -4816,7 +4817,19 @@ const applyFolioAIEditOperationsInternal = ({
         // separator too, or it would cover two stretches.
         const spanningComments = commentsAcrossBlockBoundary(tr.doc, item.blockTo);
         const withSeparator = (transaction: Transaction): Transaction => {
-          let next = transaction.insertText(separator, insertAt);
+          const paragraph = transaction.doc.nodeAt(item.blockFrom);
+          const marks =
+            paragraph?.lastChild?.marks.filter(({ type }) =>
+              RUN_FORMATTING_MARK_NAMES.has(type.name),
+            ) ?? [];
+          // At a paragraph boundary insertText can take marks from an
+          // unrelated neighboring paragraph. The separator belongs to the
+          // paragraph whose mark is being merged.
+          let next = transaction.replaceWith(
+            insertAt,
+            insertAt,
+            view.state.schema.text(separator, marks),
+          );
           for (const comment of spanningComments) {
             next = next.addMark(insertAt, insertAt + separator.length, comment);
           }
