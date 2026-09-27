@@ -35,6 +35,7 @@
 
     <Popover
       :open="isOpen"
+      :close-on-scroll="false"
       placement="bottom-right"
       @update:open="(v: boolean) => (isOpen = v)"
       @close="isOpen = false"

@@ -2,4 +2,4 @@
 "@stll/folio-vue": patch
 ---
 
-Keep open popovers visible when unrelated document content scrolls.
+Keep the Vue review display menu open while document and window scroll events run during layout.
