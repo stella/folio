@@ -11,9 +11,10 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
 // condition and nothing to scope.
-const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset"]);
+const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "ci-result"]);
 const AREA_OUTPUT = /^\$\{\{ fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
-const GATE = /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'$/u;
+const GATE =
+  /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 
 type Job = { needs?: unknown; if?: unknown; outputs?: Record<string, unknown> };
 
