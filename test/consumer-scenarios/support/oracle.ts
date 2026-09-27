@@ -372,20 +372,26 @@ const untouchedText = (row: ModelRow): boolean =>
 type Expect = (model: Model, operation: Operation) => void;
 
 /**
+ * A text box's paragraphs belong to the paragraph it is drawn in, which a
+ * reader lists just before them: a block inserted after that paragraph
+ * follows them.
+ */
+const pastTextBoxes = (model: Model, row: ModelRow): ModelRow => {
+  const boxed = (candidate: ModelRow | undefined) =>
+    candidate?.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
+  if (boxed(row)) return row;
+  let index = model.rows.indexOf(row);
+  while (boxed(model.rows[index + 1])) index += 1;
+  return model.rows[index] ?? row;
+};
+
+/**
  * Where a block inserted next to `row` goes: next to the row itself, or, for
  * a row inside a table, next to the outermost table (the documented rule:
  * an insertion anchored in a cell lands beside the table, not in the cell).
  */
 const insertionAnchor = (model: Model, row: ModelRow, position: "before" | "after"): ModelRow => {
-  const boxed = (candidate: ModelRow | undefined) =>
-    candidate?.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
-  if (position === "after" && !boxed(row)) {
-    // A text box's paragraphs belong to the paragraph it is drawn in: a
-    // block inserted after that paragraph follows them.
-    let index = model.rows.indexOf(row);
-    while (boxed(model.rows[index + 1])) index += 1;
-    row = model.rows[index] ?? row;
-  }
+  if (position === "after") row = pastTextBoxes(model, row);
   const table = row.pre?.table;
   if (!table) return row;
   const rows = model.rows.filter(
@@ -537,13 +543,13 @@ export const EXPECTATIONS = {
     row.checks.push(...checks);
   },
   insertTable: (model, operation) => {
-    const anchor = target(model, operation["blockId"], { adjacent: true });
+    const position = operation["position"] === "before" ? "before" : "after";
+    const named = target(model, operation["blockId"], { adjacent: true });
+    const anchor = position === "after" ? pastTextBoxes(model, named) : named;
     const rows = operation["rows"] as string[][];
     // A cell's line break starts a paragraph there; a blank one stays blank.
     const texts = rows.flatMap((cells) => cells.flatMap((cell) => cell.split(/\r\n|\r|\n/u)));
-    gapOf(model, anchor, operation["position"] === "before" ? "before" : "after").push(
-      ...texts.map((text) => modelRow(text)),
-    );
+    gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
   },
   deleteTable: (model, operation) => {
     const { tableIndex } = tableOf(target(model, operation["blockId"]));
