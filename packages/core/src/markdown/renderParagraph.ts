@@ -13,9 +13,7 @@
  */
 
 import { isQuoteStyle, resolveHeadingLevel } from "../docx/builtInStyles";
-import { paragraphNumberingReference } from "../docx/numberingReference";
-import { listRenderingAttrPatch } from "../prosemirror/listRenderingAttrs";
-import { paragraphNumberingAttr } from "../prosemirror/numberingAttr";
+import { listLabelAttrsFromRendering } from "../prosemirror/listLabels";
 import type { ParagraphAttrs } from "../prosemirror/schema/nodes";
 import type { DocxPackage, ListRendering, Paragraph } from "../types/document";
 import { renderParagraphInline } from "./renderRuns";
@@ -106,17 +104,7 @@ const UNNUMBERED: ParagraphAttrs = Object.freeze({});
  */
 function listLabelAttrs(para: Paragraph): ParagraphAttrs {
   const list = para.listRendering;
-  if (!list) {
-    return UNNUMBERED;
-  }
-  const fromStyle = para.formatting?.numPrFromStyle;
-  return {
-    numPr: paragraphNumberingAttr(
-      paragraphNumberingReference({ numId: list.numId, ilvl: list.level }),
-    ),
-    ...(fromStyle ? { numPrFromStyle: paragraphNumberingAttr(fromStyle) } : {}),
-    ...listRenderingAttrPatch(list),
-  };
+  return list ? listLabelAttrsFromRendering(list, para.formatting?.numPrFromStyle) : UNNUMBERED;
 }
 
 /**
