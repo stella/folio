@@ -97,6 +97,25 @@ test("a tracked merge separator uses its owning paragraph's run style", async ()
   );
 });
 
+test("a direct merge after a tracked replacement reads the same run formatting after save", async () => {
+  const reviewer = await open("# Price Schedule\n\nThe prices below apply.\n\nTaxes are extra.");
+  const heading = blockId(reviewer, "Price Schedule");
+  reviewer.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "tracked-changes",
+    operations: [
+      { id: "replace-heading", type: "replaceBlock", blockId: heading, text: "Delivery notice." },
+    ],
+  });
+  const merged = reviewer.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "direct",
+    operations: [{ id: "merge", type: "mergeBlockWithNext", blockId: heading, separator: " " }],
+  });
+  expect(merged.applied).toHaveLength(1);
+  expect(reviewer.getContent()).toEqual((await reopen(reviewer)).getContent());
+});
+
 test("a later tracked merge does not borrow formatting from a resolved heading", async () => {
   const reviewer = await open(
     "# Service Agreement\n\nThis agreement is made between the parties named below.\n\nThe Supplier delivers the goods on time and in good order.\n\nThe Buyer pays each invoice within thirty days.\n\nSigned in two copies.",

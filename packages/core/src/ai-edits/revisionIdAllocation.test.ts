@@ -238,8 +238,8 @@ const paragraphState = (doc: PMNode) =>
 
 describe("unstamped revision id allocation", () => {
   test.each([
-    { label: "without a background revision", highlight: undefined, expectedIds: [10, 11, 12] },
-    { label: "with a background revision", highlight: "yellow", expectedIds: [10, 11, 12, 13] },
+    { label: "without a background revision", highlight: undefined, expectedIds: [10, 11, 12, 13] },
+    { label: "with a background revision", highlight: "yellow", expectedIds: [10, 11, 12, 13, 14] },
   ] as const)(
     "a block replacement owns exactly its serialized revisions $label",
     ({ highlight, expectedIds }) => {
@@ -289,8 +289,9 @@ describe("unstamped revision id allocation", () => {
       expect(receiptIds).toEqual(expectedIds);
       expect(serializedIds).toEqual(expectedIds);
       expect(outcome.nextRevisionId).toBe((expectedIds.at(-1) ?? 9) + 1);
+      // The changed paragraph style also preserves formatting on its deleted run.
       expect(serializedChanges.filter(({ type }) => type === "formatting")).toHaveLength(
-        highlight === undefined ? 0 : 1,
+        highlight === undefined ? 1 : 2,
       );
     },
   );

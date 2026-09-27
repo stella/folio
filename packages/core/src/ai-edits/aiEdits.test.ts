@@ -2769,7 +2769,7 @@ describe("Folio AI edit operations", () => {
       }
     });
     expect(runs).toEqual([
-      { text: "Date:", marks: ["bold"] },
+      { text: "Date:", marks: ["bold", "runFormattingOverride"] },
       { text: " 2026", marks: [] },
     ]);
   });

@@ -1071,6 +1071,7 @@ type RebaseParagraphRunsOptions = {
   tr: Transaction;
   position: number;
   previous: PMNode;
+  target?: PMNode;
   styleResolver: ReturnType<typeof getDocumentStyleResolver>;
 };
 
@@ -1079,12 +1080,13 @@ const rebaseParagraphRuns = ({
   tr,
   position,
   previous,
+  target,
   styleResolver,
 }: RebaseParagraphRunsOptions): Transaction => {
   const paragraph = tr.doc.nodeAt(position);
   if (!paragraph) return tr;
   const sourceContext = paragraphRunStyleContext(previous, styleResolver);
-  const targetContext = paragraphRunStyleContext(paragraph, styleResolver);
+  const targetContext = paragraphRunStyleContext(target ?? paragraph, styleResolver);
   const representations = selectRunFormattingCarrierRepresentations({
     doc: tr.doc,
     from: position + 1,
@@ -4818,10 +4820,24 @@ const applyFolioAIEditOperationsInternal = ({
         const spanningComments = commentsAcrossBlockBoundary(tr.doc, item.blockTo);
         const withSeparator = (transaction: Transaction): Transaction => {
           const paragraph = transaction.doc.nodeAt(item.blockFrom);
-          const marks =
+          const sourceMarks =
             paragraph?.lastChild?.marks.filter(({ type }) =>
               RUN_FORMATTING_MARK_NAMES.has(type.name),
             ) ?? [];
+          const sourceNode = view.state.schema.text(separator, sourceMarks);
+          const context = paragraph && paragraphRunStyleContext(paragraph, styleResolver);
+          const marks = context
+            ? reconcileRunFormattingMarks({
+                authoredFormatting: readAuthoredRunFormatting({
+                  context,
+                  marks: sourceMarks,
+                  styleResolver,
+                }),
+                context,
+                node: sourceNode,
+                styleResolver,
+              })
+            : sourceMarks;
           // At a paragraph boundary insertText can take marks from an
           // unrelated neighboring paragraph. The separator belongs to the
           // paragraph whose mark is being merged.
@@ -4838,6 +4854,18 @@ const applyFolioAIEditOperationsInternal = ({
         if (mode === "direct") {
           if (separator.length > 0) {
             tr = withSeparator(tr);
+          }
+          const nextPosition = item.blockTo + separator.length;
+          const next = tr.doc.nodeAt(nextPosition);
+          const paragraph = tr.doc.nodeAt(item.blockFrom);
+          if (next && paragraph) {
+            tr = rebaseParagraphRuns({
+              tr,
+              position: nextPosition,
+              previous: next,
+              target: paragraph,
+              styleResolver,
+            });
           }
           tr = tr.join(item.blockTo + separator.length);
           // The merge removes the first paragraph's mark, and the joined
