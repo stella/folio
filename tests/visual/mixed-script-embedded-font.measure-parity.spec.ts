@@ -35,11 +35,40 @@ for (const host of EDITOR_HOSTS) {
       if (message.type() === "error") {
         consoleErrors.push(message.text().slice(0, 300));
       }
-      if (message.type() === "info" && message.text().startsWith("[vue-load-stage] ")) {
+      if (
+        message.type() === "info" &&
+        (message.text().startsWith("[vue-load-stage] ") ||
+          message.text().startsWith("[font-load] ") ||
+          message.text().startsWith("[font-wait] "))
+      ) {
         loadStages.push(message.text().slice(0, 120));
       }
     });
     const diagnostics = host.name === "Vue" ? "&__vueLoadDiagnostics=1" : "";
+    await page.addInitScript(() => {
+      const fontSet = document.fonts;
+      const originalLoad = fontSet.load.bind(fontSet);
+      let loadCount = 0;
+      fontSet.load = (...args) => {
+        const currentLoad = ++loadCount;
+        if (currentLoad <= 16) {
+          console.info(`[font-load] enter #${currentLoad} ${args[0]}`);
+        }
+        const result = originalLoad(...args);
+        if (currentLoad <= 16) {
+          console.info(`[font-load] returned #${currentLoad}`);
+        }
+        return result;
+      };
+      window.setTimeout = new Proxy(window.setTimeout, {
+        apply(target, thisArg, args) {
+          if (args[1] === 2_000) {
+            console.info("[font-wait] 2000ms fallback timer scheduled");
+          }
+          return Reflect.apply(target, thisArg, args);
+        },
+      });
+    });
     await page.goto(`${host.url}/?file=${FIXTURE}${diagnostics}`);
     try {
       await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
