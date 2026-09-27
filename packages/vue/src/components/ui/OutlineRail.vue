@@ -61,9 +61,11 @@ const height = ref(0);
 const focusIndex = ref(0);
 const focusWithin = ref(false);
 const activeIndex = computed(() => props.items.findIndex((item) => item.id === props.activeId));
-const minLevel = computed(() =>
-  props.items.reduce((minimum, item) => Math.min(minimum, item.level), Infinity),
-);
+const minLevel = computed(() => {
+  let minimum = Infinity;
+  for (const item of props.items) minimum = Math.min(minimum, item.level);
+  return minimum;
+});
 
 const itemClass = (item: OutlineItem) => {
   if (props.presentation === "rail") {

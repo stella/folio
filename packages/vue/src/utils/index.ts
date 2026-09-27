@@ -11,7 +11,6 @@ export * from "./fontOptions";
 export * from "./listState";
 export * from "./reportIssue";
 export * from "./selectionHighlight";
-export * from "./sidebarConstants";
 export * from "./stylePreview";
 export * from "./textSelection";
 export {

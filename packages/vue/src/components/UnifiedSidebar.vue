@@ -332,7 +332,12 @@ const minHeightPx = computed(() => {
 // edge so a reserved comments track, zoom, and horizontal scrolling all use
 // the same position that the user sees.
 const measuredLeft = ref<number | null>(null);
-const drawerBox = ref({ top: 0, width: PANEL_METRICS.drawerWidth, height: 0 });
+const initialDrawerBox: { top: number; width: number; height: number } = {
+  top: 0,
+  width: PANEL_METRICS.drawerWidth,
+  height: 0,
+};
+const drawerBox = ref(initialDrawerBox);
 
 function updatePanelGeometry() {
   const root = rootRef.value;
