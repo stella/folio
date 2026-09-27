@@ -950,6 +950,56 @@ const paragraphRanges = (xml: string, wordPrefix: string): ParagraphOffsets[] =>
   return ranges;
 };
 
+const OPENING_PARA_ID = /^<[^>]*?\sw14:paraId="(?<id>[^"]*)"/u;
+
+const openingParaId = (paragraph: string): string | undefined =>
+  OPENING_PARA_ID.exec(paragraph)?.groups?.["id"];
+
+/** A note's XML outside its paragraphs, one entry per gap between them. */
+const noteGaps = (note: string, ranges: readonly ParagraphOffsets[]): string[] => {
+  const gaps: string[] = [];
+  let cursor = 0;
+  for (const range of ranges) {
+    gaps.push(note.slice(cursor, range.start));
+    cursor = range.end;
+  }
+  gaps.push(note.slice(cursor));
+  return gaps;
+};
+
+/**
+ * Whether a note's block structure differs between two serializations of it:
+ * a paragraph added, removed or replaced by another, or anything written
+ * between paragraphs changed — a table, a row, a cell's properties, a
+ * row-level revision. Paragraph-by-paragraph splicing pairs paragraphs by
+ * ordinal, so it is only faithful when neither happened; a note whose shape
+ * changed is rewritten whole. A paragraph the baseline has no id for pairs
+ * with any id, because that id was minted after reading, not changed.
+ */
+const noteShapeChanged = (
+  baseline: { note: string; prefix: string },
+  current: { note: string; prefix: string },
+): boolean => {
+  const baselineRanges = paragraphRanges(baseline.note, baseline.prefix);
+  const currentRanges = paragraphRanges(current.note, current.prefix);
+  if (baselineRanges.length !== currentRanges.length) {
+    return true;
+  }
+  const currentGaps = noteGaps(current.note, currentRanges);
+  if (noteGaps(baseline.note, baselineRanges).some((gap, index) => gap !== currentGaps[index])) {
+    return true;
+  }
+  return baselineRanges.some((range, index) => {
+    const baselineId = openingParaId(baseline.note.slice(range.start, range.end));
+    // SAFETY: both range lists have the same length, checked above.
+    const currentRange = currentRanges[index]!;
+    return (
+      baselineId !== undefined &&
+      baselineId !== openingParaId(current.note.slice(currentRange.start, currentRange.end))
+    );
+  });
+};
+
 export const collectChangedNoteParaIds = (baselineXml: string, currentXml: string): Set<string> => {
   const changed = new Set<string>();
   const baselineIds = collectParaIds(baselineXml);
@@ -1026,6 +1076,7 @@ export function buildPatchedNotePartXml({
   changedParaIds,
 }: BuildPatchedNotePartXmlOptions): NotePartPatch {
   const currentElements = collectNoteElementSyntax(serializedXml, elementName);
+  const baselineElements = collectNoteElementSyntax(baselineXml, elementName);
   const originalElements = collectNoteElementSyntax(originalXml, elementName);
   const replacementElements = collectNoteElementSyntax(replacementXml, elementName);
   const replacementXmlnsDeclarations = collectXmlnsFromOpeningTag(replacementXml);
@@ -1068,7 +1119,24 @@ export function buildPatchedNotePartXml({
     const noteChangedParaIds = [...collectParaIds(currentNote).keys()].filter((paraId) =>
       unroutedChangedParaIds.has(paraId),
     );
-    if (noteChangedParaIds.length === 0) {
+    // A deleted paragraph, row or table leaves no changed paragraph behind to
+    // route, and a row-level revision sits outside every paragraph: the note's
+    // shape is the only record that it was edited.
+    const baselineSyntaxEntries = baselineElements.get(id);
+    const baselineSyntax =
+      baselineSyntaxEntries?.length === 1 ? baselineSyntaxEntries[0] : undefined;
+    const baselineNote = baselineSyntax
+      ? extractNoteElement(baselineXml, baselineSyntax, id)
+      : null;
+    const reshaped =
+      baselineSyntax !== undefined &&
+      baselineNote !== null &&
+      baselineNote !== currentNote &&
+      noteShapeChanged(
+        { note: baselineNote, prefix: baselineSyntax.elementPrefix },
+        { note: currentNote, prefix: currentSyntax.elementPrefix },
+      );
+    if (noteChangedParaIds.length === 0 && !reshaped) {
       continue;
     }
     const wholeNoteSplice: XmlSplice = {
@@ -1082,6 +1150,7 @@ export function buildPatchedNotePartXml({
     };
     noteSplices.push(wholeNoteSplice);
     if (
+      reshaped ||
       currentParagraphs.length !== originalParagraphs.length ||
       currentParagraphs.length !== replacementParagraphs.length
     ) {
