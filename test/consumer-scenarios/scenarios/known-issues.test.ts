@@ -213,7 +213,14 @@ describe("findings not yet filed", () => {
     },
   );
 
-  for (const { seed, steps, finding, kind = "random", generation, relation } of KNOWN_FAILING_FLOWS) {
+  for (const {
+    seed,
+    steps,
+    finding,
+    kind = "random",
+    generation,
+    relation,
+  } of KNOWN_FAILING_FLOWS) {
     if (relation && !ENABLED_RELATIONS.has(relation)) continue;
     expectedFailure(
       finding,

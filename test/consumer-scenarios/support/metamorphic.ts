@@ -47,6 +47,7 @@ import { toMarkdown } from "@stll/folio-core/markdown";
 import {
   createFolioAITextRangeHandle,
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  type FolioDocumentStoryHandle,
 } from "@stll/folio-core/server";
 
 import { openReviewer } from "./documents.ts";
@@ -54,11 +55,14 @@ import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
 import { createRandom, type Random } from "./random.ts";
+import { blocksOfStory } from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type Batch = Parameters<Reviewer["applyDocumentOperations"]>[0];
 type Result = ReturnType<Reviewer["applyDocumentOperations"]>;
 type AnyOperation = { id: string; type: string } & Record<string, unknown>;
+type Story = FolioDocumentStoryHandle;
+const MAIN: Story = { type: "main" };
 
 export const RELATIONS = [
   "directTracked",
@@ -160,10 +164,14 @@ const settledView = (state: { rows: readonly Row[]; comments: readonly Comment[]
 });
 
 /** `bytes` with every change resolved one way, saved and reopened. */
-const resolvedView = async (bytes: Uint8Array, resolution: "accept" | "reject") =>
-  settledView(await resolvedState(bytes, resolution));
+const resolvedView = async (
+  bytes: Uint8Array,
+  resolution: "accept" | "reject",
+  story: Story = MAIN,
+) => settledView(await resolvedState(bytes, resolution, story));
 
-const rowsOf = (reviewer: Reviewer): Row[] => reviewer.getContent() as unknown as Row[];
+const rowsOf = (reviewer: Reviewer, story: Story = MAIN): Row[] =>
+  blocksOfStory(reviewer, story) as unknown as Row[];
 const commentsOf = (reviewer: Reviewer): Comment[] =>
   reviewer
     .getComments()
@@ -173,6 +181,10 @@ const commentsOf = (reviewer: Reviewer): Comment[] =>
 const exactState = (reviewer: Reviewer): string =>
   JSON.stringify({
     content: reviewer.getContent(),
+    stories: reviewer.listStories().map(({ handle }) => ({
+      handle,
+      snapshot: reviewer.snapshotStory(handle),
+    })),
     comments: reviewer.getComments(),
     changes: reviewer.getChanges(),
     notes: reviewer.getNotesAsText(),
@@ -533,20 +545,20 @@ const types = (operations: readonly AnyOperation[]): string =>
   operations.map((operation) => operation.type).join(", ");
 
 /** What a batch left, as the relation compares it in `mode`. */
-const outcomeView = async (reviewer: Reviewer, mode: Mode) => {
+const outcomeView = async (reviewer: Reviewer, mode: Mode, story: Story) => {
   if (mode === "suggested")
-    return settledView({ rows: rowsOf(reviewer), comments: commentsOf(reviewer) });
+    return settledView({ rows: rowsOf(reviewer, story), comments: commentsOf(reviewer) });
   const bytes = await save(reviewer);
-  if (mode !== "direct") return resolvedView(bytes, "accept");
+  if (mode !== "direct") return resolvedView(bytes, "accept", story);
   const reopened = await openReviewer(bytes);
-  return settledView({ rows: rowsOf(reopened), comments: commentsOf(reopened) });
+  return settledView({ rows: rowsOf(reopened, story), comments: commentsOf(reopened) });
 };
 
 // ---------------------------------------------------------------------------
 // Direct ≡ tracked, reject-all ≡ original: replays of a flow's batches
 // ---------------------------------------------------------------------------
 
-type View = Awaited<ReturnType<typeof resolvedView>>;
+type TraceEntry = { story: Story; operations: AnyOperation[] };
 
 type Shadows = {
   direct: Reviewer;
@@ -555,7 +567,7 @@ type Shadows = {
   /** Where direct first refused what tracked applied; the two part there. */
   parted: string | null;
   /** Every batch replayed that tracked applied something of, as sent. */
-  trace: AnyOperation[][];
+  trace: TraceEntry[];
 };
 
 const openShadows = async (fixture: Uint8Array, suggested: boolean): Promise<Shadows> => ({
@@ -570,8 +582,8 @@ const contractBatch = (mode: Mode, operations: readonly AnyOperation[]): Batch =
   ({ version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, mode, operations }) as unknown as Batch;
 
 /** What an operation names reads as in `reviewer`: its block, and the next one a merge pulls in. */
-const targetText = (reviewer: Reviewer, operation: AnyOperation): string => {
-  const blocks = reviewer.getContent();
+const targetText = (reviewer: Reviewer, story: Story, operation: AnyOperation): string => {
+  const blocks = rowsOf(reviewer, story);
   const index = blocks.findIndex((block) => block.id === blockIdOf(operation));
   if (index === -1) return "(absent)";
   const next = operation.type === "mergeBlockWithNext" ? `\u0000${blocks[index + 1]?.text}` : "";
@@ -582,21 +594,26 @@ const targetText = (reviewer: Reviewer, operation: AnyOperation): string => {
  * Replay one batch: tracked (and suggested) as sent, direct with only what
  * tracked applied. Whether tracked applied anything.
  */
-const replayInto = (shadows: Shadows, operations: AnyOperation[], context: string): boolean => {
+const replayInto = (shadows: Shadows, entry: TraceEntry, context: string): boolean => {
+  const { story, operations } = entry;
   // An operation means the same in both documents only while what it names
   // reads the same in both: tracked, a merged paragraph reads apart from the
   // next one until the join is accepted, directly it has joined already.
   const targetsBefore = (reviewer: Reviewer) =>
-    operations.map((operation) => targetText(reviewer, operation));
+    operations.map((operation) => targetText(reviewer, story, operation));
   const directTargets = shadows.parted === null ? targetsBefore(shadows.direct) : [];
   const trackedTargets = shadows.parted === null ? targetsBefore(shadows.tracked) : [];
-  const tracked = shadows.tracked.applyDocumentOperations(
-    contractBatch("tracked-changes", operations),
-  );
-  shadows.suggested?.applyDocumentOperations(contractBatch("suggested", operations));
+  const apply = (reviewer: Reviewer, mode: Mode, selected: readonly AnyOperation[]): Result => {
+    const batch = contractBatch(mode, selected);
+    return story.type === "main"
+      ? reviewer.applyDocumentOperations(batch)
+      : reviewer.applyDocumentOperationsToStory({ story, batch });
+  };
+  const tracked = apply(shadows.tracked, "tracked-changes", operations);
+  if (shadows.suggested) apply(shadows.suggested, "suggested", operations);
   const applied = appliedIds(tracked);
   if (applied.size === 0) return false;
-  shadows.trace.push(operations);
+  shadows.trace.push(entry);
   if (shadows.parted === null) {
     const differing = operations.filter(
       (operation, index) =>
@@ -606,11 +623,10 @@ const replayInto = (shadows: Shadows, operations: AnyOperation[], context: strin
       shadows.parted = `${context}: ${differing.map(({ id }) => id).join(", ")} name blocks that read otherwise`;
       return true;
     }
-    const direct = shadows.direct.applyDocumentOperations(
-      contractBatch(
-        "direct",
-        operations.filter((operation) => applied.has(operation.id)),
-      ),
+    const direct = apply(
+      shadows.direct,
+      "direct",
+      operations.filter((operation) => applied.has(operation.id)),
     );
     const refused = direct.skipped.filter(({ id }) => applied.has(id));
     if (refused.length > 0) {
@@ -630,46 +646,55 @@ type ShadowCheck = "directTracked" | "rejectTracked" | "rejectSuggested";
 const shadowProblems = async (
   shadows: Shadows,
   check: ShadowCheck,
-  fixtureRejected: View,
+  fixture: Uint8Array,
 ): Promise<string[] | null> => {
-  switch (check) {
-    case "directTracked":
-      if (shadows.parted !== null) return null;
-      return tolerantDifferences<BlocksView>(
-        await resolvedView(await save(shadows.direct), "accept"),
-        await resolvedView(await save(shadows.tracked), "accept"),
-        [ACCEPTED_LAST_PARAGRAPH],
-      );
-    case "rejectTracked":
-      return tolerantDifferences<BlocksView>(
-        { blocks: fixtureRejected.blocks },
-        { blocks: (await resolvedView(await save(shadows.tracked), "reject")).blocks },
-        [REJECTED_LAST_PARAGRAPH],
-      );
-    case "rejectSuggested": {
-      const suggested = shadows.suggested;
-      if (suggested === null) return [];
-      suggested.rejectAll();
-      return tolerantDifferences<BlocksView>(
-        { blocks: fixtureRejected.blocks },
-        { blocks: (await resolvedView(await save(suggested), "accept")).blocks },
-        [REJECTED_LAST_PARAGRAPH],
-      );
+  if (check === "directTracked" && shadows.parted !== null) return null;
+  const suggested = shadows.suggested;
+  if (check === "rejectSuggested" && suggested === null) return [];
+  if (check === "rejectSuggested") suggested?.rejectAll();
+  const stories = new Map(shadows.trace.map(({ story }) => [JSON.stringify(story), story]));
+  const problems: string[] = [];
+  for (const [name, story] of stories) {
+    let found: string[];
+    switch (check) {
+      case "directTracked":
+        found = tolerantDifferences<BlocksView>(
+          await resolvedView(await save(shadows.direct), "accept", story),
+          await resolvedView(await save(shadows.tracked), "accept", story),
+          story.type === "main" ? [ACCEPTED_LAST_PARAGRAPH] : [],
+        );
+        break;
+      case "rejectTracked":
+        found = tolerantDifferences<BlocksView>(
+          { blocks: (await resolvedView(fixture, "reject", story)).blocks },
+          { blocks: (await resolvedView(await save(shadows.tracked), "reject", story)).blocks },
+          story.type === "main" ? [REJECTED_LAST_PARAGRAPH] : [],
+        );
+        break;
+      case "rejectSuggested":
+        if (!suggested) return [];
+        found = tolerantDifferences<BlocksView>(
+          { blocks: (await resolvedView(fixture, "reject", story)).blocks },
+          { blocks: (await resolvedView(await save(suggested), "accept", story)).blocks },
+          story.type === "main" ? [REJECTED_LAST_PARAGRAPH] : [],
+        );
+        break;
     }
+    problems.push(...found.map((difference) => `${name}: ${difference}`));
   }
+  return problems;
 };
 
 /** The fewest batches and operations of `trace` that still break `check`. */
 const minimizeTrace = async (
   fixture: Uint8Array,
-  trace: readonly AnyOperation[][],
+  trace: readonly TraceEntry[],
   check: ShadowCheck,
-  fixtureRejected: View,
-): Promise<AnyOperation[][]> => {
-  const fails = async (candidate: readonly AnyOperation[][]): Promise<boolean> => {
+): Promise<TraceEntry[]> => {
+  const fails = async (candidate: readonly TraceEntry[]): Promise<boolean> => {
     const shadows = await openShadows(fixture, check === "rejectSuggested");
-    for (const operations of candidate) replayInto(shadows, operations, "minimizing");
-    const problems = await shadowProblems(shadows, check, fixtureRejected);
+    for (const entry of candidate) replayInto(shadows, entry, "minimizing");
+    const problems = await shadowProblems(shadows, check, fixture);
     return problems !== null && problems.length > 0;
   };
   let current = [...trace];
@@ -678,10 +703,17 @@ const minimizeTrace = async (
     if (await fails(candidate)) current = candidate;
   }
   for (let index = current.length - 1; index >= 0; index -= 1) {
-    for (let operation = (current[index]?.length ?? 0) - 1; operation >= 0; operation -= 1) {
-      const batch = current[index] as AnyOperation[];
-      if (batch.length < 2) break;
-      const candidate = current.with(index, batch.toSpliced(operation, 1));
+    for (
+      let operation = (current[index]?.operations.length ?? 0) - 1;
+      operation >= 0;
+      operation -= 1
+    ) {
+      const entry = current[index];
+      if (!entry || entry.operations.length < 2) break;
+      const candidate = current.with(index, {
+        ...entry,
+        operations: entry.operations.toSpliced(operation, 1),
+      });
       if (await fails(candidate)) current = candidate;
     }
   }
@@ -692,7 +724,51 @@ const minimizeTrace = async (
 // One flow
 // ---------------------------------------------------------------------------
 
-type Recorded = { batch: Batch; result: Result };
+/**
+ * A live pre-batch copy, including pending suggestions that a DOCX save drops.
+ * Applying a no-op transaction gives each copy its own editor and plugin
+ * state. Mutable reviewer collections are copied too. The recorder's own
+ * method wrappers are omitted, leaving the prototype's operation methods.
+ */
+const cloneReviewer = (reviewer: Reviewer): Reviewer => {
+  // SAFETY: this test-only clone retains FolioDocxReviewer's prototype and
+  // every own field. Its EditorState copies have independent plugin state.
+  const copy = Object.create(Object.getPrototypeOf(reviewer)) as Reviewer;
+  for (const key of Reflect.ownKeys(reviewer)) {
+    if (key === "applyDocumentOperations" || key === "applyDocumentOperationsToStory") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(reviewer, key);
+    if (!descriptor) continue;
+    const value = descriptor.value;
+    const cloned =
+      key === "state"
+        ? value.apply(value.tr)
+        : key === "secondaryStoryStates"
+          ? new Map(
+              [...value].map(([storyKey, entry]) => [
+                storyKey,
+                {
+                  ...entry,
+                  state: entry.state.apply(entry.state.tr),
+                  initialState: entry.initialState.apply(entry.initialState.tr),
+                },
+              ]),
+            )
+          : value instanceof Map
+            ? new Map(value)
+            : value instanceof Set
+              ? new Set(value)
+              : Array.isArray(value)
+                ? [...value]
+                : value;
+    Object.defineProperty(copy, key, {
+      ...descriptor,
+      value: cloned,
+    });
+  }
+  return copy;
+};
+
+type Recorded = { story: Story; batch: Batch; result: Result; pre: Reviewer };
 
 export type FlowRelations = {
   /**
@@ -713,7 +789,7 @@ export type FlowRelations = {
  * `reviewer` was opened from), in the flow's `mode`. Every batch applied to
  * the flow's reviewer is recorded as it applies (the reviewer's own
  * `applyDocumentOperations`, which `suggest_changes` reaches through the
- * bridge) and checked at the step's end.
+ * bridge, or `applyDocumentOperationsToStory`) and checked at the step's end.
  */
 export const startRelations = async ({
   fixture,
@@ -736,23 +812,32 @@ export const startRelations = async ({
     instrumented.add(target);
     const apply = target.applyDocumentOperations.bind(target);
     target.applyDocumentOperations = (batch, options) => {
+      const pre = cloneReviewer(target);
       const result = apply(batch, options);
-      recorded.push({ batch: structuredClone(batch), result });
+      recorded.push({ story: MAIN, batch: structuredClone(batch), result, pre });
+      return result;
+    };
+    const applyToStory = target.applyDocumentOperationsToStory.bind(target);
+    target.applyDocumentOperationsToStory = (options) => {
+      const pre = cloneReviewer(target);
+      const result = applyToStory(options);
+      recorded.push({
+        story: structuredClone(options.story),
+        batch: structuredClone(options.batch),
+        result,
+        pre,
+      });
       return result;
     };
   };
   instrument(reviewer);
-  let before = fixture;
 
   // The replays of `directTracked` and `rejectAll`.
   const shadows =
     on("directTracked") || on("rejectAll") ? await openShadows(fixture, on("rejectAll")) : null;
-  let fixtureRejected: View | null = null;
-  const rejectedFixture = async () => (fixtureRejected ??= await resolvedView(fixture, "reject"));
-
   const check = async (relation: Relation, which: ShadowCheck, context: string, what: string) => {
     if (!shadows) return;
-    const problems = await shadowProblems(shadows, which, await rejectedFixture());
+    const problems = await shadowProblems(shadows, which, fixture);
     if (problems === null) {
       skipped(relation, "the direct and tracked replays parted");
       return;
@@ -761,9 +846,9 @@ export const startRelations = async ({
       checked(relation);
       return;
     }
-    const minimal = await minimizeTrace(fixture, shadows.trace, which, await rejectedFixture());
+    const minimal = await minimizeTrace(fixture, shadows.trace, which);
     throw new Error(
-      `${context}: [${relation}] ${what}:\n    ${problems.join("\n    ")}\n  minimal replay on the flow's fixture (one batch per line):\n    ${minimal.map((operations) => JSON.stringify(operations)).join("\n    ")}`,
+      `${context}: [${relation}] ${what}:\n    ${problems.join("\n    ")}\n  minimal replay on the flow's fixture (one batch per line):\n    ${minimal.map((entry) => JSON.stringify(entry)).join("\n    ")}`,
     );
   };
 
@@ -787,34 +872,33 @@ export const startRelations = async ({
     }
   };
 
-  const replay = async ({ batch }: Recorded, context: string): Promise<void> => {
+  const replay = async ({ story, batch }: Recorded, context: string): Promise<void> => {
     if (!shadows) return;
-    if (replayInto(shadows, operationsOf(batch), context) && FULL) await compareShadows(context);
+    if (replayInto(shadows, { story, operations: operationsOf(batch) }, context) && FULL)
+      await compareShadows(context);
   };
 
   /** `undo` and `batchSequential` on copies of the document before the batch. */
-  const onCopies = async ({ batch, result }: Recorded, pre: Uint8Array, context: string) => {
+  const onCopies = async ({ story, batch, result, pre }: Recorded, context: string) => {
     const sequential = on("batchSequential") && (FULL || random.chance(SEQUENTIAL_SHARE));
     if (!on("undo") && !sequential) return;
     const batchMode = (batch.mode ?? "tracked-changes") as Mode;
-    const copy = await openReviewer(pre);
-    const preRows = rowsOf(copy);
+    const copy = cloneReviewer(pre);
+    const preRows = rowsOf(copy, story);
     const preState = exactState(copy);
-    const again = copy.applyDocumentOperations(structuredClone(batch));
+    const apply = (reviewer: Reviewer, operations: Batch): Result =>
+      story.type === "main"
+        ? reviewer.applyDocumentOperations(operations)
+        : reviewer.applyDocumentOperationsToStory({ story, batch: operations });
+    const again = apply(copy, structuredClone(batch));
     const applied = operationsOf(batch).filter((operation) => appliedIds(again).has(operation.id));
-    if (
-      batchMode !== "suggested" &&
-      JSON.stringify([...appliedIds(again)].sort()) !==
-        JSON.stringify([...appliedIds(result)].sort())
-    ) {
-      // The reopened package answers the batch otherwise than the live
-      // reviewer did: not a relation this module states; noted.
-      skipped("batchSequential", "the reopened document answered the batch differently");
-      skipped("undo", "the reopened document answered the batch differently");
-      return;
-    }
+    assert.deepEqual(
+      [...appliedIds(again)].sort(),
+      [...appliedIds(result)].sort(),
+      `${context}: the live pre-batch copy answered differently than the flow reviewer`,
+    );
     const batchOutcome =
-      sequential && applied.length >= 2 ? await outcomeView(copy, batchMode) : null;
+      sequential && applied.length >= 2 ? await outcomeView(copy, batchMode, story) : null;
 
     if (on("undo")) {
       if (again.undoHandle === null) {
@@ -840,10 +924,11 @@ export const startRelations = async ({
       skipped("batchSequential", "fewer than two operations applied");
       return;
     }
-    const oneByOne = await openReviewer(pre);
+    const oneByOne = cloneReviewer(pre);
     const problems: string[] = [];
     for (const group of sequentialGroups(applied, preRows)) {
-      const snapshot = oneByOne.snapshot();
+      const snapshot = story.type === "main" ? oneByOne.snapshot() : oneByOne.snapshotStory(story);
+      if (!snapshot) throw new Error(`${context}: the story disappeared before sequential replay`);
       const rows = snapshot.blocks as unknown as Row[];
       const textHashOf = (blockId: string) => snapshot.anchors[blockId]?.textHash;
       const restated = group.map((operation) => restate(operation, preRows, rows, textHashOf));
@@ -851,14 +936,12 @@ export const startRelations = async ({
         skipped("batchSequential", "an operation does not re-resolve one at a time");
         return;
       }
-      const alone = oneByOne.applyDocumentOperations(
-        batchOf(batch, batchMode, restated as AnyOperation[]),
-      );
+      const alone = apply(oneByOne, batchOf(batch, batchMode, restated as AnyOperation[]));
       for (const { id, reason } of alone.skipped) {
         if (reason !== "noopOperation") problems.push(`${id} refused one at a time: ${reason}`);
       }
     }
-    const sequentialOutcome = await outcomeView(oneByOne, batchMode);
+    const sequentialOutcome = await outcomeView(oneByOne, batchMode, story);
     if (problems.length === 0) {
       problems.push(
         ...differences(batchOutcome, sequentialOutcome).map((d) => `batch → one at a time ${d}`),
@@ -877,15 +960,12 @@ export const startRelations = async ({
       getContent: target.getContent() as unknown,
       snapshot: createReviewerBridge(target).snapshot() as unknown,
       toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())) as unknown,
-      // Which kinds of change by whom. Revision ids are renumbered on save,
-      // and how a reader groups revision sites into entries (a nested
-      // `w:ins > w:del`, a range split by a comment mark, a column's cells
-      // folded into one entry) is not what a save keeps, so neither the
-      // entries' texts nor their blocks compare; `directTracked` and
-      // `rejectAll` check what the changes resolve to.
-      getChanges: [
-        ...new Set(target.getChanges().map((change) => `${change.type} by ${change.author}`)),
-      ].sort(),
+      // Revision ids and dates can change on save. Keep every entry's kind,
+      // author, content and containing block, including duplicate entries.
+      getChanges: target
+        .getChanges()
+        .map(({ type, author, text, blockId }) => ({ type, author, text, blockId }))
+        .toSorted((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
       getComments: target.getComments() as unknown,
     });
     const tolerances: Record<keyof ReturnType<typeof views>, Tolerance<unknown>[]> = {
@@ -911,17 +991,11 @@ export const startRelations = async ({
   return {
     afterStep: async (live, saved, context) => {
       const batches = recorded.splice(0);
-      const pre = before;
-      before = saved.bytes;
       instrument(live);
       const pending = mode === "suggested" && live.getChanges().length > 0;
-      for (const [index, entry] of batches.entries()) {
+      for (const entry of batches) {
         await replay(entry, context);
-        if (index === 0) await onCopies(entry, pre, context);
-        else {
-          skipped("undo", "second batch in one step");
-          skipped("batchSequential", "second batch in one step");
-        }
+        await onCopies(entry, context);
       }
       if (on("saveIdempotent")) {
         const difference = partDifference(saved.bytes, await save(saved.reopened));

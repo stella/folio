@@ -17,7 +17,7 @@ import { after, test } from "node:test";
 
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
 import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
-import { relationSummary } from "../support/metamorphic.ts";
+import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
 
 const integer = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -36,7 +36,8 @@ const flowTest = (kind: FlowKind, run: number, seed: number) => {
       flow.seed === seed &&
       flow.steps === STEPS &&
       (flow.kind ?? "random") === kind &&
-      (flow.generation ?? "targeted") === "targeted",
+      (flow.generation ?? "targeted") === "targeted" &&
+      (flow.relation === undefined || ENABLED_RELATIONS.has(flow.relation)),
   );
   const runs =
     kind === "random"
@@ -83,6 +84,17 @@ for (const [seed, steps] of [
 // alone after a save (1185); kept as fixed seeds on the generation that
 // found them.
 for (const seed of [1088, 1185]) {
-  test(`collision flow with seed ${seed} (10 steps) does what it asked and saves it`, () =>
-    runFlow(seed, 10, "collisions", { generation: "legacy" }));
+  const known = KNOWN_FAILING_FLOWS.find(
+    (flow) =>
+      flow.seed === seed &&
+      flow.steps === 10 &&
+      flow.kind === "collisions" &&
+      flow.generation === "legacy" &&
+      (flow.relation === undefined || ENABLED_RELATIONS.has(flow.relation)),
+  );
+  test(
+    `collision flow with seed ${seed} (10 steps) does what it asked and saves it`,
+    known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
+    () => runFlow(seed, 10, "collisions", { generation: "legacy" }),
+  );
 }
