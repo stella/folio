@@ -8,9 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-export const OPEN_ISSUES = {
-  1103: "operations accept a numbering.numId the package does not define",
-} as const;
+export const OPEN_ISSUES = {} as const;
 
 /**
  * Found by these scenarios and not yet filed or fixed; each has a minimal
