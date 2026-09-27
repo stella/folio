@@ -371,11 +371,8 @@ describe("a style an operation names is a paragraph style of the saved package, 
 });
 
 describe("findings the oracle pins", () => {
-  expectedFailure(
-    "SAME_BLOCK_PROPERTIES_FIRST_WINS",
-    "two paragraph-property operations on one block in one direct batch: the later one holds",
-    FINDING_SYMPTOMS.SAME_BLOCK_PROPERTIES_FIRST_WINS,
-    async () => {
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    test(`two paragraph-property operations on one block in one batch: the later one is refused (${mode})`, async () => {
       const reviewer = await openReviewer(await plainDocument());
       const block = blocksOf(reviewer).at(-1) as Block;
       const align = (alignment: string): Operation => ({
@@ -383,9 +380,16 @@ describe("findings the oracle pins", () => {
         blockId: block.id,
         properties: { alignment },
       });
-      await applyChecked(reviewer, [align("center"), align("right")], "direct", "alignment twice");
-    },
-  );
+      const { applied, issues } = await applyChecked(
+        reviewer,
+        [align("center"), align("right")],
+        mode,
+        `alignment twice (${mode})`,
+      );
+      assert.deepEqual(applied, ["op-1"]);
+      assert.deepEqual(issues, ["op-2: overlappingOperation"]);
+    });
+  }
 
   expectedFailure(
     "READER_KEEPS_INSERTION_IN_DELETED_ROW",

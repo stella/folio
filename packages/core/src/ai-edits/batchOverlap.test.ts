@@ -577,6 +577,29 @@ const operationArbitrary: fc.Arbitrary<GeneratedOperation> = fc.oneof(
   fc.nat({ max: BLOCK_COUNT - 2 }).map((block) => ({ kind: "mergeBlockWithNext" as const, block })),
 );
 
+describe("two paragraph-property operations on one block", () => {
+  test.each(MODES)("refuse the later one and keep the earlier one's values (%s)", async (mode) => {
+    const session = await freshSession();
+    const blockId = session.snapshot().blocks[1]?.id ?? "";
+    const align = (id: string, alignment: "center" | "right"): FolioDocumentOperation => ({
+      id,
+      type: "setBlockParagraphProperties",
+      blockId,
+      properties: { alignment },
+    });
+    const result = session.apply(mode, [align("center", "center"), align("right", "right")]);
+    expect(result.applied.map(({ id }) => id)).toEqual(["center"]);
+    expect(result.skipped).toEqual([
+      {
+        id: "right",
+        reason: "overlappingOperation",
+        message: 'operation "center", earlier in this batch, already claims its target.',
+      },
+    ]);
+    expect(session.state.doc.child(1).attrs["alignment"]).toBe("center");
+  });
+});
+
 describe("a random batch with overlapping, nested and duplicate targets", () => {
   test("refuses each conflict and applies the rest as one at a time would", async () => {
     await fc.assert(

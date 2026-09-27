@@ -754,9 +754,12 @@ describe("paragraph spacing comparison", () => {
     expect(
       mappedBatch.skipped.toSorted(({ id: left }, { id: right }) => left.localeCompare(right)),
     ).toEqual([
+      // A second paragraph-property edit of one block in one batch.
       {
         id: "mapped-second-replacement-style",
-        reason: "pendingParagraphPropertyChange",
+        reason: "overlappingOperation",
+        message:
+          'operation "mapped-second-spacing", earlier in this batch, already claims its target.',
       },
       { id: "mapped-second-spacing", reason: "pendingParagraphPropertyChange" },
     ]);

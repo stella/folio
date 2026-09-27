@@ -189,8 +189,11 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
       // Its text, its own break and its own merge (a chain) survive either way.
       return right.kind === "paragraphProperties" && left.joinsNow;
     case "paragraphProperties":
-      // Two property edits compose: each reads the paragraph as it stands.
-      return right.kind === "split";
+      // Two property edits of one paragraph run from the end backwards, so the
+      // earlier one would land last and override the later one; tracked, the
+      // first to land leaves a pending property change the other cannot stack
+      // on. The later one is refused, in either mode.
+      return right.kind === "split" || right.kind === "paragraphProperties";
     case "split":
     case "text":
     case "annotation": {
