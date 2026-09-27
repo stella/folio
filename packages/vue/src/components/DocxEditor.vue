@@ -1479,18 +1479,9 @@ const { exposed } = useDocxEditorRefApi({
     passageHighlightRange.value = range;
   },
   author: () => props.author,
-  // Mirror React's applyAIEditOperations comment closure: mint the comment,
-  // append it to the thread list, and hand back its id for the tracked-change
-  // mark that references it. `author` is the resolved per-call operation
-  // author (useDocxEditorRefApi's `operationAuthor`, defaulting to
-  // `props.author`) — without threading it through, every AI-edit comment
-  // would always be attributed to `props.author`, ignoring a caller-supplied
-  // override.
-  createAIEditComment: (text, author) => {
-    const comment = commentManagement.createComment(text, undefined, author);
-    commentManagement.pushComment(comment);
-    return comment.id;
-  },
+  // Mint during the held operation, then publish applied comments after commit.
+  createAIEditComment: (text, author) => commentManagement.createComment(text, undefined, author),
+  publishAIEditComments: commentManagement.appendComments,
   getComments: () => commentManagement.comments.value,
   setComments: commentManagement.setComments,
   focus: () => activeEditorView.value?.focus(),

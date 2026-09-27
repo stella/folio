@@ -98,6 +98,33 @@ type LiveDocumentOperationUndoEntry = {
 
 let documentOperationUndoHandleCursor = Date.now();
 
+type StagedOperationCommentsOptions<Result extends { applied: readonly { commentId?: number }[] }> =
+  {
+    createComment: (text: string) => Comment;
+    publishComments: (comments: Comment[]) => void;
+    apply: (createCommentId: (text: string) => number) => Result;
+  };
+
+/** Publish only committed operations' comments, after the applier returns. */
+export const applyWithStagedOperationComments = <
+  Result extends { applied: readonly { commentId?: number }[] },
+>({
+  createComment,
+  publishComments,
+  apply,
+}: StagedOperationCommentsOptions<Result>): Result => {
+  const created: Comment[] = [];
+  const result = apply((text) => {
+    const comment = createComment(text);
+    created.push(comment);
+    return comment.id;
+  });
+  const appliedIds = new Set(result.applied.map(({ commentId }) => commentId));
+  const accepted = created.filter(({ id }) => appliedIds.has(id));
+  if (accepted.length > 0) publishComments(accepted);
+  return result;
+};
+
 export type UseDocxEditorRefApiOptions = {
   /** Headless controller handle (imperative API + events; Seam 6). */
   editor: FolioEditor;
@@ -148,14 +175,12 @@ export type UseDocxEditorRefApiOptions = {
   /** Editor author, used as the default operation author for AI edits. */
   author: () => string;
   /**
-   * Mint a comment for an AI-edit operation that carries comment text, append
-   * it to the thread list, and return its id (mirrors React's `createCommentId`
-   * closure over the comment manager). Wired from useCommentManagement. The
-   * optional `author` lets each call site attribute the comment to the
-   * resolved per-call `operationAuthor` rather than always the editor's
-   * default author.
+   * Mint a comment without publishing it. The optional author attributes it
+   * to the operation rather than the editor's default author.
    */
-  createAIEditComment: (text: string, author?: string) => number;
+  createAIEditComment: (text: string, author?: string) => Comment;
+  /** Publish committed operation comments in one host notification. */
+  publishAIEditComments: (comments: Comment[]) => void;
   /** Read and replace the current comment array for transactional undo. */
   getComments: () => Comment[];
   setComments: (comments: Comment[]) => void;
@@ -203,20 +228,6 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   exposed: DocxEditorRef;
 } {
   const documentOperationUndoEntries: LiveDocumentOperationUndoEntry[] = [];
-  /**
-   * A run whose result the save-time check refused allocated comments that
-   * nothing in the document names; only the applied operations' stay.
-   */
-  function dropRefusedOperationComments(
-    createdCommentIds: readonly number[],
-    applied: readonly { commentId?: number }[],
-  ): void {
-    const appliedIds = new Set(applied.map(({ commentId }) => commentId));
-    const refused = new Set(createdCommentIds.filter((id) => !appliedIds.has(id)));
-    if (refused.size > 0) {
-      opts.setComments(opts.getComments().filter((comment) => !refused.has(comment.id)));
-    }
-  }
   function print(): void {
     opts.onPrint?.();
     window.print();
@@ -479,23 +490,22 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           operationView.state = view.state;
         },
       };
-      const createdCommentIds: number[] = [];
-      const result = applyFolioDocumentOperations({
-        view: operationView,
-        snapshot,
-        batch,
-        author: operationAuthor,
-        createCommentId: (text) => {
-          const id = opts.createAIEditComment(text, operationAuthor);
-          createdCommentIds.push(id);
-          return id;
-        },
-        createUndoHandle: () => ({
-          type: "documentOperationUndo",
-          id: `vue-${String(documentOperationUndoHandleCursor++)}`,
-        }),
+      const result = applyWithStagedOperationComments({
+        createComment: (text) => opts.createAIEditComment(text, operationAuthor),
+        publishComments: opts.publishAIEditComments,
+        apply: (createCommentId) =>
+          applyFolioDocumentOperations({
+            view: operationView,
+            snapshot,
+            batch,
+            author: operationAuthor,
+            createCommentId,
+            createUndoHandle: () => ({
+              type: "documentOperationUndo",
+              id: `vue-${String(documentOperationUndoHandleCursor++)}`,
+            }),
+          }),
       });
-      dropRefusedOperationComments(createdCommentIds, result.applied);
       if (result.undoHandle !== null) {
         documentOperationUndoEntries.push({
           undoHandle: result.undoHandle,
@@ -552,19 +562,18 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       }
       // Through the document-operation applier, like the batch path, so a
       // result the save-time check refuses never reaches the editor.
-      const createdCommentIds: number[] = [];
-      const { applied, skipped } = applyFolioDocumentOperations({
-        view,
-        snapshot,
-        batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
-        author: operationAuthor,
-        createCommentId: (text) => {
-          const id = opts.createAIEditComment(text, operationAuthor);
-          createdCommentIds.push(id);
-          return id;
-        },
+      const { applied, skipped } = applyWithStagedOperationComments({
+        createComment: (text) => opts.createAIEditComment(text, operationAuthor),
+        publishComments: opts.publishAIEditComments,
+        apply: (createCommentId) =>
+          applyFolioDocumentOperations({
+            view,
+            snapshot,
+            batch: { version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION, operations, mode },
+            author: operationAuthor,
+            createCommentId,
+          }),
       });
-      dropRefusedOperationComments(createdCommentIds, applied);
       return { applied, skipped };
     },
     acceptAIEditOperation: (revisionIds) => {
