@@ -56,7 +56,8 @@ save/reopen, reject-all, package-part locality and Open XML SDK validity against
 the original. A child process has a two-minute document deadline. Findings are
 reduced to replay cases; new signatures fail against
 `corpus/edit-fuzz-baseline.json`. The workflow publishes a summary and JSON
-artifact. Replay a case with
+artifact. Timeouts are reported as incomplete coverage; a crashed worker fails
+the gate. Replay a case with
 `bun scripts/corpus-edit-fuzz.ts replay --report edit-fuzz.json --case 0`.
 For a local sample, add `--sample 12`; `--skip-sdk` is available when .NET 8 is
 not installed.

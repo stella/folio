@@ -382,5 +382,18 @@ export const replayEditCase = async (
   skipSdk: boolean,
 ): Promise<EditFailure | null> => {
   const original = new Uint8Array(await Bun.file(pathToDocx).arrayBuffer());
-  return runSteps(original, steps, skipSdk ? null : sdkErrors(original));
+  if (skipSdk) return runSteps(original, steps, null);
+  let originalSdk: string[];
+  try {
+    originalSdk = sdkErrors(original);
+  } catch (error) {
+    return failure(
+      "sdk-original",
+      "document",
+      "Open XML SDK validates the original package",
+      messageOf(error),
+      [],
+    );
+  }
+  return runSteps(original, steps, originalSdk);
 };

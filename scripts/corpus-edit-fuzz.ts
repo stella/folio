@@ -17,6 +17,13 @@ import {
 } from "./lib/corpus-edit-fuzz-worker.ts";
 
 type Case = EditFailure & { document: string; sha256: string; seed: number };
+type Incomplete = {
+  document: string;
+  sha256: string;
+  seed: number;
+  reason: "timeout" | "worker";
+  detail: string;
+};
 type Report = {
   schemaVersion: 1;
   lockDigest: string;
@@ -27,6 +34,7 @@ type Report = {
   attempts: number;
   counts: Record<string, number>;
   cases: Case[];
+  incomplete: Incomplete[];
 };
 type Baseline = { schemaVersion: 1; lockDigest: string; signatures: string[] };
 
@@ -75,6 +83,10 @@ const check = async (reports: readonly Report[]): Promise<void> => {
     process.stderr.write(
       `edit fuzz baseline mismatch: new ${JSON.stringify(introduced)}, resolved ${JSON.stringify(resolved)}\n`,
     );
+    process.exitCode = 1;
+  }
+  if (reports.some(({ incomplete }) => incomplete.some(({ reason }) => reason === "worker"))) {
+    process.stderr.write("edit fuzz: one or more workers exited without a verdict\n");
     process.exitCode = 1;
   }
 };
@@ -126,6 +138,10 @@ const main = async (): Promise<void> => {
     const lines = [
       "## Corpus edit fuzz",
       `Documents: ${reports.reduce((sum, report) => sum + report.documents, 0)}; parsed: ${reports.reduce((sum, report) => sum + report.parsed, 0)}; attempted edits: ${reports.reduce((sum, report) => sum + report.attempts, 0)}`,
+      ...["timeout", "worker"].map(
+        (reason) =>
+          `- ${reason}: ${reports.reduce((sum, report) => sum + report.incomplete.filter((item) => item.reason === reason).length, 0)}`,
+      ),
       ...[...counts]
         .sort(([left], [right]) => left.localeCompare(right))
         .map(([kind, count]) => `- ${kind}: ${count}`),
@@ -161,6 +177,17 @@ const main = async (): Promise<void> => {
     throw new Error("--shard expects k/n with 1 <= k <= n");
   if (shard && limit) throw new Error("--shard and --sample cannot be combined");
   const timeout = positive(option("--timeout"), DEFAULT_TIMEOUT);
+  if (!process.argv.includes("--skip-sdk")) {
+    const dll = path.join(
+      REPOSITORY_ROOT,
+      "packages/core/scripts/differential/dotnet/bin/Release/net8.0/OpenXmlProjector.dll",
+    );
+    if (!Bun.which("dotnet") || !(await Bun.file(dll).exists())) {
+      throw new Error(
+        "Open XML SDK projector is unavailable; build it with dotnet 8 or use --skip-sdk for a local sample",
+      );
+    }
+  }
   const cache = corpusCacheRoot();
   const fullLock = await loadCorpusLock();
   const lock = selectTiers(fullLock, [1]);
@@ -198,6 +225,7 @@ const main = async (): Promise<void> => {
     attempts: 0,
     counts: {},
     cases: [],
+    incomplete: [],
   };
   for (const [index, entry] of selected.entries()) {
     if (!(await Bun.file(entry.path).exists()))
@@ -222,21 +250,16 @@ const main = async (): Promise<void> => {
     );
     let result: EditWorkerResult;
     if (child.exitCode !== 0 || child.exitedDueToTimeout) {
-      result = {
-        status: "unparsed",
-        attempts: 0,
-        failures: [
-          {
-            class: child.exitedDueToTimeout ? "timeout" : "worker",
-            signature: child.exitedDueToTimeout ? "timeout:document" : "worker:document",
-            expected: "worker completes within the document budget",
-            observed: child.exitedDueToTimeout
-              ? `${timeout}ms deadline`
-              : `worker stderr SHA-256 ${createHash("sha256").update(child.stderr).digest("hex")}`,
-            operations: [],
-          },
-        ],
-      };
+      report.incomplete.push({
+        document: entry.id,
+        sha256: entry.sha256,
+        seed,
+        reason: child.exitedDueToTimeout ? "timeout" : "worker",
+        detail: child.exitedDueToTimeout
+          ? `${timeout}ms deadline`
+          : `stderr SHA-256 ${createHash("sha256").update(child.stderr).digest("hex")}`,
+      });
+      continue;
     } else {
       try {
         result = JSON.parse(new TextDecoder().decode(child.stdout));
@@ -261,6 +284,7 @@ const main = async (): Promise<void> => {
   const summary = [
     "## Corpus edit fuzz",
     `Documents: ${report.documents}; parsed: ${report.parsed}; attempted edits: ${report.attempts}`,
+    `Incomplete: ${report.incomplete.length} (${report.incomplete.filter(({ reason }) => reason === "timeout").length} timed out)`,
     ...Object.entries(report.counts)
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([kind, count]) => `- ${kind}: ${count}`),
