@@ -214,25 +214,38 @@ export const harnessManager = (): ExtensionManager => {
 export const parseShapeDocument = (bytes: Uint8Array): Promise<Document> =>
   parseDocx(bytes.slice().buffer, { preloadFonts: false, detectVariables: false });
 
+/**
+ * The plugins a mounted editor holds for `document`: the editor's hidden-state
+ * assembly (controller/hiddenEditorManager), which tests outside the controller
+ * may not import. Host plugins first, then the extension runtime, then the
+ * document's styles and numbering.
+ */
+export const createHarnessPlugins = (
+  document: Document,
+  mode: EditorMode,
+  extraPlugins: readonly Plugin[] = [],
+): Plugin[] => [
+  ...extraPlugins,
+  createSuggestionModePlugin(mode === "suggesting", HARNESS_AUTHOR),
+  ...harnessManager().getPlugins(),
+  createDocumentStylesPlugin(document.package.styles),
+  createDocumentNumberingPlugin(document.package.numbering),
+];
+
+/** The document a mounted editor would open for `document`. */
+export const createHarnessDoc = (document: Document): PMNode =>
+  ensureParaIdsInDoc(toProseDoc(document));
+
 /** The editor state a mounted editor would hold for `document`. */
 export const createHarnessState = (
   document: Document,
   mode: EditorMode,
   extraPlugins: readonly Plugin[] = [],
 ): EditorState =>
-  // The editor's hidden-state assembly (controller/hiddenEditorManager), which
-  // tests outside the controller may not import: host plugins first, then the
-  // extension runtime, then the document's styles and numbering.
   ensureBaseDirectionInState(
     PMEditorState.create({
-      doc: ensureParaIdsInDoc(toProseDoc(document)),
-      plugins: [
-        ...extraPlugins,
-        createSuggestionModePlugin(mode === "suggesting", HARNESS_AUTHOR),
-        ...harnessManager().getPlugins(),
-        createDocumentStylesPlugin(document.package.styles),
-        createDocumentNumberingPlugin(document.package.numbering),
-      ],
+      doc: createHarnessDoc(document),
+      plugins: createHarnessPlugins(document, mode, extraPlugins),
     }),
   );
 

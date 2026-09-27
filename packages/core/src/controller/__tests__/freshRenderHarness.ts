@@ -282,8 +282,12 @@ export type FreshRenderRig<TExt> = {
   loadDocument: (doc: PMNode, options: { layout: LoadLayout; document?: Document }) => void;
   /** Change layout inputs (a prop change); the adapter re-renders at once. */
   setInputs: (patch: Partial<FreshRenderInputs>) => void;
-  /** Change extension state that is a layout input (a markup view); re-renders at once. */
-  updateExt: (update: (ext: TExt) => TExt) => void;
+  /**
+   * Change extension state that is a layout input (a markup view). The adapter
+   * re-renders at once, or on a later render: a pass already scheduled then
+   * runs with the new input before the layout-input effect does.
+   */
+  updateExt: (update: (ext: TExt) => TExt, layout?: LoadLayout) => void;
   /** The adapters' layout-input effect: lay out again when inputs or the document changed. */
   rerender: () => void;
   /**
@@ -306,8 +310,19 @@ export type FreshRenderRig<TExt> = {
   readonly staleCommits: readonly StaleCommit[];
   /** The committed layout, as painted. */
   committed: () => LaidOutPage[] | null;
-  /** A from-scratch layout of the current inputs, with cold caches. */
-  fresh: () => LaidOutPage[];
+  /** The committed blocks, measures and layout, for oracles that read positions. */
+  committedArtifacts: () => LayoutArtifactsView | null;
+  /**
+   * A from-scratch layout of the current inputs, with cold caches; or of
+   * another state and deps, for an oracle that materialises what the inputs
+   * should read as (a review view's resolved document, say).
+   */
+  fresh: (override?: FreshLayoutOverride) => LaidOutPage[];
+};
+
+export type FreshLayoutOverride = {
+  state?: EditorState;
+  deps?: Partial<LayoutPipelineDeps<null>>;
 };
 
 const PAGE_SIZE = { w: 816, h: 1056 };
@@ -397,6 +412,7 @@ export const createFreshRenderRig = <TExt>(
       emptyTemplatePreviewEntries: [],
       emptyTemplatePreviewHidden: [],
       hyphenationReadiness: { track: () => undefined, cancel: () => undefined },
+      markupView: "all-markup",
       ...options.extraDeps?.(rig),
     };
   };
@@ -503,9 +519,12 @@ export const createFreshRenderRig = <TExt>(
       inputs = { ...inputs, ...patch };
       rerender();
     },
-    updateExt: (update) => {
+    updateExt: (update, layout = LOAD_LAYOUT.immediate) => {
       rig.ext = update(rig.ext);
-      rerender();
+      pendingRender = true;
+      if (layout === LOAD_LAYOUT.immediate) {
+        rerender();
+      }
     },
     rerender,
     fontsChanged: () => {
@@ -530,11 +549,15 @@ export const createFreshRenderRig = <TExt>(
       }
     },
     committed: () => (committed ? projectLayout(committed) : null),
-    fresh: () => {
+    committedArtifacts: () => committed,
+    fresh: (override = {}) => {
       resetCanvasContext();
       clearAllCaches();
-      const deps = buildDeps({ layoutSession: createLayoutSession(), previousLayout: null });
-      const outcome = runLayoutPipeline(deps, state, { reason: "initial" });
+      const deps = {
+        ...buildDeps({ layoutSession: createLayoutSession(), previousLayout: null }),
+        ...override.deps,
+      };
+      const outcome = runLayoutPipeline(deps, override.state ?? state, { reason: "initial" });
       if (!outcome.layout || !outcome.blocks || !outcome.measures) {
         return panic("fresh layout produced no layout");
       }
