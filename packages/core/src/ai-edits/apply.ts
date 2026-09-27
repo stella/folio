@@ -83,7 +83,7 @@ import {
 import {
   addCarriedMarks,
   annotatedReplacement,
-  commentsAcrossParagraphBoundary,
+  commentsAcrossBlockBoundary,
   commentsForTrackedInsertion,
   hasReplacedAnnotations,
   inheritedReplacementMarks,
@@ -2176,11 +2176,7 @@ const insertBlocksInsideComments = (
   at: number,
   blocks: PMNode | readonly PMNode[],
 ): Transaction => {
-  const $at = tr.doc.resolve(at);
-  const spanning =
-    $at.nodeBefore && $at.nodeAfter
-      ? commentsAcrossParagraphBoundary($at.nodeBefore, $at.nodeAfter)
-      : [];
+  const spanning = commentsAcrossBlockBoundary(tr.doc, at);
   const fragment = Fragment.from(blocks as PMNode | PMNode[]);
   let next = tr.insert(at, fragment);
   for (const comment of spanning) {
@@ -4674,10 +4670,7 @@ const applyFolioAIEditOperationsInternal = ({
         const insertAt = item.blockTo - 1;
         // A comment running from one paragraph into the next runs across the
         // separator too, or it would cover two stretches.
-        const first = tr.doc.nodeAt(item.blockFrom);
-        const second = tr.doc.nodeAt(item.blockTo);
-        const spanningComments =
-          first && second ? commentsAcrossParagraphBoundary(first, second) : [];
+        const spanningComments = commentsAcrossBlockBoundary(tr.doc, item.blockTo);
         const withSeparator = (transaction: Transaction): Transaction => {
           let next = transaction.insertText(separator, insertAt);
           for (const comment of spanningComments) {

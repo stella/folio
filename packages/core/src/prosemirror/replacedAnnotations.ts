@@ -233,16 +233,48 @@ export const addCarriedMarks = (
  * every comment stays one stretch.
  */
 
-/** The first (`1`) or last (`-1`) child of `paragraph` that is not a zero-width anchor. */
-const edgeContent = (paragraph: PMNode, direction: -1 | 1): PMNode | null => {
+/**
+ * The first (`1`) or last (`-1`) inline content inside `node` that is not a
+ * zero-width anchor, descending through every container.
+ */
+const innermostEdge = (node: PMNode, direction: -1 | 1): PMNode | null => {
+  if (node.isInline) {
+    return isZeroWidthAnchor(node) ? null : node;
+  }
   for (
-    let index = direction === 1 ? 0 : paragraph.childCount - 1;
-    index >= 0 && index < paragraph.childCount;
+    let index = direction === 1 ? 0 : node.childCount - 1;
+    index >= 0 && index < node.childCount;
     index += direction
   ) {
-    const child = paragraph.child(index);
-    if (!isZeroWidthAnchor(child)) {
-      return child;
+    const found = innermostEdge(node.child(index), direction);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+};
+
+/**
+ * The inline content nearest the block boundary `at` on one side, in document
+ * order: past empty paragraphs, and into and out of tables, the way a saved
+ * range's two points read it.
+ */
+const contentBesideBoundary = (doc: PMNode, at: number, direction: -1 | 1): PMNode | null => {
+  const $at = doc.resolve(at);
+  for (let depth = $at.depth; depth >= 0; depth--) {
+    const parent = $at.node(depth);
+    const index = $at.index(depth);
+    // At the boundary's own depth `index` is the child after it; above it, the
+    // child that contains the boundary, which lies on neither side.
+    let child = index + direction;
+    if (depth === $at.depth) {
+      child = direction === 1 ? index : index - 1;
+    }
+    for (; child >= 0 && child < parent.childCount; child += direction) {
+      const found = innermostEdge(parent.child(child), direction);
+      if (found) {
+        return found;
+      }
     }
   }
   return null;
@@ -415,12 +447,14 @@ export const placeTrackedInsertion = (
 };
 
 /**
- * The comments text inserted between the end of `first` and the start of
- * `next` must carry: those covering both sides. A merge's separator lands
- * there.
+ * The comments content inserted at the block boundary `at` must carry: those
+ * covering the content on both sides of it. A comment range is two points in
+ * document order, so what lands between them is covered whether the range
+ * crosses paragraphs, empty paragraphs or a table edge, and the saved package
+ * reopens exactly so. A merge's separator lands on such a boundary too.
  */
-export const commentsAcrossParagraphBoundary = (first: PMNode, next: PMNode): Mark[] =>
-  commentsAround(edgeContent(first, -1), edgeContent(next, 1));
+export const commentsAcrossBlockBoundary = (doc: PMNode, at: number): Mark[] =>
+  commentsAround(contentBesideBoundary(doc, at, -1), contentBesideBoundary(doc, at, 1));
 
 const withCarriedMarks = (node: PMNode, carried: readonly Mark[]): PMNode =>
   node.mark(addCarriedMarks(node.marks, carried));
