@@ -13,8 +13,6 @@ import { fromMarkdown } from "@stll/folio-core/markdown";
 import {
   FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
   generateRedlineDocx,
-  paragraph,
-  run,
 } from "@stll/folio-core/server";
 
 import {
@@ -137,27 +135,6 @@ describe("findings not yet filed", () => {
         await labelsOf(new Uint8Array(await reviewer.toBuffer())),
         ["· Intro.", "• new bullet", "· Outro."],
         "the inserted list item lost its bullet",
-      );
-    },
-  );
-
-  expectedFailure(
-    "NOTE_REFERENCE_TEXT",
-    "a note reference reads as the number the page shows, not its w:id",
-    /note reference/u,
-    async () => {
-      const document = fromMarkdown("Intro.");
-      document.package.footnotes = [
-        { type: "footnote", id: 7, content: [paragraph("First note.")] },
-      ];
-      document.package.document.content.push(
-        paragraph([run("Referenced."), { type: "run", content: [{ type: "footnoteRef", id: 7 }] }]),
-      );
-      const reviewer = await openReviewer(await packDocument(document));
-      assert.equal(
-        reviewer.getContent().at(-1)?.text,
-        "Referenced.1",
-        "the note reference reads as its id",
       );
     },
   );

@@ -8,7 +8,7 @@ import { describe, test } from "node:test";
 
 import { createReviewerBridge } from "@stll/folio-agents";
 import { fromMarkdown, toMarkdown } from "@stll/folio-core/markdown";
-import { docxToMarkdown, parseDocx } from "@stll/folio-core/server";
+import { docxToMarkdown, paragraph, parseDocx, run } from "@stll/folio-core/server";
 
 import {
   FIXTURE_NAMES,
@@ -94,6 +94,16 @@ describe("synthetic documents", () => {
         ["heading", "2."],
       ],
     );
+  });
+
+  test("a note reference reads as its reading-order marker, not its w:id", async () => {
+    const document = fromMarkdown("Intro.");
+    document.package.footnotes = [{ type: "footnote", id: 7, content: [paragraph("First note.")] }];
+    document.package.document.content.push(
+      paragraph([run("Referenced."), { type: "run", content: [{ type: "footnoteRef", id: 7 }] }]),
+    );
+    const reviewer = await openReviewer(await packDocument(document));
+    assert.equal(reviewer.getContent().at(-1)?.text, "Referenced.[^1]");
   });
 });
 
