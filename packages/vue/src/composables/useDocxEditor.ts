@@ -38,6 +38,7 @@ import {
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
@@ -328,6 +329,11 @@ export type UseDocxEditorOptions = {
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */
   pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
+  /**
+   * The review view the body is laid out for (`all-markup` by default). A view
+   * other than All Markup lays out the text it shows. Reactive.
+   */
+  markupView?: MaybeRefOrGetter<DisplayMode>;
   showMarginGuides?: MaybeRefOrGetter<boolean | undefined>;
   /** CSS color used for margin guides. Reactive. */
   marginGuideColor?: MaybeRefOrGetter<string | undefined>;
@@ -479,6 +485,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     readOnly = false,
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
+    markupView = "all-markup",
     showMarginGuides,
     marginGuideColor,
     password,
@@ -756,6 +763,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
           emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
           emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
           hyphenationReadiness,
+          markupView: toValue(markupView),
         },
         state,
         runOptions,
@@ -1306,7 +1314,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   watch(
-    [() => toValue(showMarginGuides), () => toValue(marginGuideColor), () => toValue(pageRenderer)],
+    [
+      () => toValue(showMarginGuides),
+      () => toValue(marginGuideColor),
+      () => toValue(pageRenderer),
+      () => toValue(markupView),
+    ],
     () => reLayout(),
   );
 

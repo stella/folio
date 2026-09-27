@@ -743,6 +743,7 @@ const {
   author: () => props.author,
   password: () => props.password,
   pageRenderer: () => props.pageRenderer,
+  markupView: displayMode,
   showMarginGuides: () => props.showMarginGuides,
   marginGuideColor: () => props.marginGuideColor,
   externalPlugins,
@@ -866,6 +867,7 @@ const selectionSync = useSelectionSync({
   hiddenContainer: hiddenPmRef,
   pagesRef,
   zoom,
+  markupView: displayMode,
   selectedImage,
   syncCoordinator,
   imageInteracting,
@@ -1693,6 +1695,11 @@ defineExpose(exposed);
   No Markup: hide change styling, show final result
   Original: hide insertions, show deletions as normal text
   Simple Markup: hide inline marks, show clean text
+
+  The body's pages are laid out from the text each view shows (the layout
+  pipeline's `markupView`), so its painted runs carry no change classes in
+  these views. The rules still apply to the hidden editor's change spans and
+  to the header, footer and note stories, painted from their authored text.
 -->
 <style>
 .docx-editor-vue .layout-paragraph[data-tracked-changes="true"] {

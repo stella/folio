@@ -653,6 +653,12 @@ export type ParagraphBlock = {
    * the innermost group and draws boundary chrome per outer→inner level.
    */
   sdtGroups?: SdtGroup[];
+  /**
+   * Set by a review view that lays out resolved text (Simple Markup) on a
+   * paragraph whose authored text carries a revision the view resolved: the
+   * painter marks it with the change bar its runs no longer show.
+   */
+  reviewIndicator?: "change-bar";
 };
 
 /**

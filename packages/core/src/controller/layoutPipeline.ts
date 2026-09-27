@@ -34,6 +34,7 @@ import type {
   ConvertHeaderFooterOptions,
   HeaderFooterMetrics,
 } from "../layout-bridge/convert/headerFooterLayout";
+import { remapMarkupViewBlocks } from "../layout-bridge/convert/markupViewFlow";
 import { applyTemplatePreviewToBlocks } from "../layout-bridge/convert/templatePreviewFlow";
 import { toFlowBlocks, WORD_UNSPECIFIED_FONT_SIZE } from "../layout-bridge/convert/toFlowBlocks";
 import type { ToFlowBlocksOptions } from "../layout-bridge/convert/toFlowBlocks";
@@ -48,6 +49,7 @@ import {
   recordLayoutError,
   recordLayoutPhase,
   recordLayoutStart,
+  recordMarkupViewIncomplete,
 } from "../layout-engine/layoutInstrumentation";
 import type { LayoutPhase } from "../layout-engine/layoutInstrumentation";
 import {
@@ -95,6 +97,8 @@ import {
   getPageSize,
   twipsToPixels,
 } from "../paged-layout/sectionGeometry";
+import type { DisplayMode } from "../managers/EditorModeManager";
+import { projectMarkupView } from "../prosemirror/markupViewProjection";
 import { templatePreviewValuesKey } from "../prosemirror/plugins/templatePreviewValues";
 import type {
   TemplatePreviewEntry,
@@ -139,7 +143,8 @@ const sameMeasureInputs = (left: LayoutMeasureInputs, right: LayoutMeasureInputs
   left.fontAlternates.size === right.fontAlternates.size &&
   [...left.fontAlternates].every(
     ([name, alternate]) => right.fontAlternates.get(name) === alternate,
-  );
+  ) &&
+  left.markupView === right.markupView;
 
 type IncrementalDirtyRangeOptions = {
   session: LayoutSession;
@@ -277,6 +282,12 @@ export type LayoutPipelineDeps<THfPMs> = {
   emptyTemplatePreviewHidden: readonly TemplatePreviewHiddenRange[];
   /** Follows up on the hyphenation dictionaries a run lacked (relayout or error). */
   hyphenationReadiness: HyphenationReadiness;
+  /**
+   * The review view the body is laid out for. A view other than All Markup
+   * lays out the text it shows (every revision accepted or rejected), not the
+   * authored text with runs hidden afterwards.
+   */
+  markupView: DisplayMode;
 };
 
 type BodyMarginClearanceOptions = {
@@ -448,6 +459,7 @@ function runLayoutPipelineMeasured<THfPMs>(
     pageRenderer = PAGE_RENDERER.legacy,
     emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
     emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
+    markupView,
   } = deps;
   // Reassigned to {} in the catch so a failed run returns no outcome (the
   // adapter then keeps the previously painted layout instead of advancing React
@@ -490,6 +502,7 @@ function runLayoutPipelineMeasured<THfPMs>(
       pageContentHeight,
       fontSet,
       fontAlternates,
+      markupView,
     };
     const flowOpts: ToFlowBlocksOptions = {
       pageContentHeight,
@@ -557,18 +570,30 @@ function runLayoutPipelineMeasured<THfPMs>(
     if (bodyTrailingEndnoteIds.size > 0) {
       flowOpts.trailingEndnoteIds = bodyTrailingEndnoteIds;
     }
+    // The view reads the document with its revisions resolved; the editor
+    // state keeps the authored document, so the blocks are re-addressed in
+    // its positions before anything downstream (template preview ranges,
+    // dirty ranges, caret and selection) reads them.
+    const projection = projectMarkupView(state, markupView);
+    if (projection.type === "resolved" && projection.completeness === "partial") {
+      recordMarkupViewIncomplete(markupView);
+    }
+    const viewDoc = projection.type === "resolved" ? projection.doc : state.doc;
     const flowDoc =
       document === null
-        ? state.doc.type.create(
+        ? viewDoc.type.create(
             {
-              ...state.doc.attrs,
+              ...viewDoc.attrs,
               _finalSectionStart: sectionProperties?.sectionStart ?? null,
             },
-            state.doc.content,
-            state.doc.marks,
+            viewDoc.content,
+            viewDoc.marks,
           )
-        : state.doc;
+        : viewDoc;
     let newBlocks = toFlowBlocks(flowDoc, flowOpts);
+    if (projection.type === "resolved") {
+      newBlocks = remapMarkupViewBlocks(newBlocks, projection);
+    }
     // Template fill preview: substitute each matched {{marker}} range
     // with its typed value at the flow-block level so the pages lay out
     // (wrap, paginate) as if the value were the document text, and drop the

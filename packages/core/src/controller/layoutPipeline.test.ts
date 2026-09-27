@@ -482,6 +482,7 @@ const makeDeps = (
   describeInvalidHighlightMarks: () => "",
   emptyTemplatePreviewEntries: [],
   emptyTemplatePreviewHidden: [],
+  markupView: "all-markup",
   hyphenationReadiness: { track: () => undefined, cancel: () => undefined },
   ...overrides,
 });

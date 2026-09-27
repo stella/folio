@@ -39,6 +39,11 @@ import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterP
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import {
+  projectMarkupView,
+  visibleCaretPosition,
+} from "@stll/folio-core/prosemirror/markupViewProjection";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
@@ -296,6 +301,11 @@ export type PagedEditorProps = {
   zoom?: number;
   /** Show the effective body-content boundary for each page. */
   pageRenderer?: PageRendererName;
+  /**
+   * The review view the body is laid out for: All Markup lays out the authored
+   * text, the other views the text they show (see `projectMarkupView`).
+   */
+  markupView: DisplayMode;
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
@@ -854,6 +864,7 @@ function renderHeaderFooterContentByRId(
 
 type LayoutInputSignatureOptions = {
   columns: ColumnLayout | undefined;
+  markupView: DisplayMode;
   contentWidth: number;
   defaultTabStop: number | undefined;
   mirrorMargins: boolean;
@@ -1314,6 +1325,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       pageGap = DEFAULT_PAGE_GAP,
       zoom = 1,
       pageRenderer,
+      markupView,
       showMarginGuides = false,
       marginGuideColor,
       onDocumentChange,
@@ -1765,6 +1777,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       () =>
         buildLayoutInputSignature({
           columns,
+          markupView,
           contentWidth,
           defaultTabStop,
           mirrorMargins,
@@ -1786,6 +1799,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }),
       [
         columns,
+        markupView,
         contentWidth,
         defaultTabStop,
         mirrorMargins,
@@ -1896,6 +1910,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
             emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
             hyphenationReadiness,
+            markupView,
           },
           state,
           options,
@@ -1956,6 +1971,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         defaultTabStop,
         mirrorMargins,
         styles,
+        markupView,
       ],
     );
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
@@ -2096,7 +2112,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }
 
       const { selection } = view.state;
-      const domCaret = selection.empty ? getCaretFromDom(selection.head, zoom) : null;
+      const domCaret = selection.empty
+        ? getCaretFromDom(
+            visibleCaretPosition(projectMarkupView(view.state, markupView), selection.head),
+            zoom,
+          )
+        : null;
       const overlay = pagesContainerRef.current?.parentElement?.querySelector(
         '[data-testid="selection-overlay"]',
       );
@@ -2112,7 +2133,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               }
             : null,
       });
-    }, [getCaretFromDom, zoom]);
+    }, [getCaretFromDom, zoom, markupView]);
 
     /**
      * Update selection overlay from PM selection.
@@ -2205,8 +2226,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         // Collapsed selection - show caret
         if (from === to) {
+          // A caret in text the markup view does not show paints at the
+          // nearest place the view shows.
+          const caretPos = visibleCaretPosition(projectMarkupView(state, markupView), from);
           // Use DOM-based caret positioning for accuracy
-          const domCaret = getCaretFromDom(from, zoom);
+          const domCaret = getCaretFromDom(caretPos, zoom);
           if (domCaret) {
             setCaretPosition(domCaret);
             const overlay = pagesContainerRef.current?.parentElement?.querySelector(
@@ -2240,7 +2264,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                     return undefined;
                   }
 
-                  const caret = getCaretPosition(layout, blocks, measures, from);
+                  const caret = getCaretPosition(layout, blocks, measures, caretPos);
                   if (caret) {
                     const fallbackCaret = {
                       ...caret,
@@ -2358,7 +2382,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           setCaretPosition(null);
         }
       },
-      [layout, blocks, measures, getCaretFromDom, selectionOverlayRequestGate, zoom],
+      [layout, blocks, measures, getCaretFromDom, selectionOverlayRequestGate, zoom, markupView],
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
     const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
@@ -5182,7 +5206,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           });
         };
 
-        if (layoutSessionRef.current.lastPmDoc?.eq(view.state.doc)) {
+        if (
+          layoutSessionRef.current.lastPmDoc?.eq(view.state.doc) &&
+          layoutSessionRef.current.lastMeasureInputs?.markupView === markupView
+        ) {
           // The doc is already laid out, but the painted pages may carry a
           // fill preview the fresh view's plugin no longer holds (or vice
           // versa) — the substituted values live in the flow blocks, so a
@@ -5242,6 +5269,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateAutocompleteOverlay,
         readOnly,
         refreshBodyImeCaretAnchor,
+        markupView,
       ],
     );
 

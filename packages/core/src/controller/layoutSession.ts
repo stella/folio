@@ -1,6 +1,7 @@
 import type { EditorState } from "prosemirror-state";
 
 import type { FlowBlock, Measure } from "../layout-engine/types";
+import type { DisplayMode } from "../managers/EditorModeManager";
 import type {
   TemplatePreviewEntry,
   TemplatePreviewHiddenRange,
@@ -39,6 +40,8 @@ export type LayoutMeasureInputs = {
    */
   fontSet: string;
   fontAlternates: FontAlternates;
+  /** The review view: each lays out different text, so a measure is reusable only within one. */
+  markupView: DisplayMode;
 };
 
 // Controller-owned memory for the incremental layout loop: the previous run's

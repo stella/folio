@@ -637,6 +637,12 @@
  * No Markup: hide change styling, show final result
  * Original: hide insertions, show deletions as normal text
  * Simple Markup: hide inline marks, show left border on changed paragraphs
+ *
+ * The body's pages are laid out from the text each view shows (the layout
+ * pipeline's `markupView`), so its painted runs carry no change classes in
+ * these views. The rules below still apply to the hidden editor's change
+ * spans and to the header, footer and note stories, which are painted from
+ * their authored text.
  * ============================================================================ */
 
 /* --- No Markup: show accepted result without change marks --- */

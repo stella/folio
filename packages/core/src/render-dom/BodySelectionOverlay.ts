@@ -13,6 +13,8 @@ import {
 } from "../layout-bridge/dom/clickToPositionDom";
 import { findBodyPmAnchor } from "../layout-bridge/dom/findBodyPmSpans";
 import { findImageElement } from "../layout-painter/imageLayout";
+import type { DisplayMode } from "../managers/EditorModeManager";
+import { projectMarkupView, visibleCaretPosition } from "../prosemirror/markupViewProjection";
 
 const CARET_CLASS = "folio-body-selection-caret";
 const RANGE_CLASS = "folio-body-selection-rect";
@@ -25,6 +27,8 @@ export type BodySelectionOverlayResult =
 export type SyncBodySelectionOverlayOptions = {
   pagesContainer: HTMLElement;
   state: EditorState;
+  /** The review view the pages were laid out for; a caret in text it hides paints at its edge. */
+  markupView: DisplayMode;
   zoom: number;
   zIndex?: number;
   caretColor?: string;
@@ -54,6 +58,7 @@ export class BodySelectionOverlay {
   sync({
     pagesContainer,
     state,
+    markupView,
     zoom,
     zIndex = 10,
     caretColor = "var(--doc-caret, #000)",
@@ -74,7 +79,7 @@ export class BodySelectionOverlay {
     if (selection.empty) {
       const caret = getCaretPositionFromDom(
         pagesContainer,
-        selection.from,
+        visibleCaretPosition(projectMarkupView(state, markupView), selection.from),
         pagesContainer.getBoundingClientRect(),
       );
       if (!caret) {
