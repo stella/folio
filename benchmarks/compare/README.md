@@ -70,6 +70,9 @@ in the setup the stage timings exclude.
 ## What it asserts
 
 Timings mean nothing without these, so a failing invariant fails the run.
+`generated-roundtrip.test.ts` checks the same invariants, untimed, over the
+`s` size of every class and every variant that applies to it, so pull-request
+CI catches a regression in any one family without running the benchmark.
 
 - **`reject-returns-base` / `accept-returns-target`** — the round-trip algebra,
   stated as a comparison rather than a text equality: comparing the base with

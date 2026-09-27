@@ -492,8 +492,10 @@ jobs:
       - name: Build Open XML SDK differential projector
         run: dotnet build packages/core/scripts/differential/dotnet -c Release
 
-      - name: Validate generated compare fixtures
-        run: bun test benchmarks/compare/documents.test.ts
+      # The generated round trip also runs in the test job, where there is no
+      # .NET validator; here its redlines are schema-checked as well.
+      - name: Validate generated compare fixtures and redlines
+        run: bun test benchmarks/compare/documents.test.ts benchmarks/compare/generated-roundtrip.test.ts
 
       # DIFFERENTIAL_REQUIRED turns a missing reference into a failure rather
       # than a skip, so the full-corpus parity gate cannot silently pass.
