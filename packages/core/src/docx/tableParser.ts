@@ -1836,6 +1836,7 @@ export const ROW_CONTENT_HANDLERS = {
     recordCustomXmlWrapper(walk.row.cells.slice(firstWrapped), wrapper);
     recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
     recordCustomXmlWrapper(walk.bookmarks.slice(firstBookmark), wrapper);
+    return undefined;
   },
 
   // A bookmark that selects whole rows opens and closes here, between
@@ -2196,6 +2197,7 @@ export const TABLE_CONTENT_HANDLERS = {
     recordCustomXmlWrapper(walk.table.rows.slice(firstWrapped), wrapper);
     recordCustomXmlWrapper(walk.preservedChildren.slice(firstCaptured), wrapper);
     recordCustomXmlWrapper(walk.bookmarks.slice(firstBookmark), wrapper);
+    return undefined;
   },
 
   ...TABLE_CHILD_OWNERS,
