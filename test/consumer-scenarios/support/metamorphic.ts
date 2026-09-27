@@ -720,8 +720,9 @@ const cloneReviewer = (reviewer: Reviewer): Reviewer => {
     if (!descriptor) continue;
     const value = descriptor.value;
     let cloned = value;
-    if (key === "state") cloned = value.apply(value.tr);
-    else if (key === "secondaryStoryStates") {
+    if (key === "state") {
+      cloned = value.apply(value.tr);
+    } else if (key === "secondaryStoryStates") {
       cloned = new Map(
         [...value].map(([storyKey, entry]) => [
           storyKey,
@@ -732,9 +733,13 @@ const cloneReviewer = (reviewer: Reviewer): Reviewer => {
           },
         ]),
       );
-    } else if (value instanceof Map) cloned = new Map(value);
-    else if (value instanceof Set) cloned = new Set(value);
-    else if (Array.isArray(value)) cloned = [...value];
+    } else if (value instanceof Map) {
+      cloned = new Map(value);
+    } else if (value instanceof Set) {
+      cloned = new Set(value);
+    } else if (Array.isArray(value)) {
+      cloned = [...value];
+    }
     Object.defineProperty(copy, key, {
       ...descriptor,
       value: cloned,
@@ -861,11 +866,11 @@ export const startRelations = async ({
     const copy = cloneReviewer(pre);
     const preRows = rowsOf(copy, story);
     const preState = exactState(copy);
-    const apply = (candidateReviewer: Reviewer, operations: Batch): Result =>
+    const applyToCopy = (target: Reviewer, operations: Batch): Result =>
       story.type === "main"
-        ? candidateReviewer.applyDocumentOperations(operations)
-        : candidateReviewer.applyDocumentOperationsToStory({ story, batch: operations });
-    const again = apply(copy, structuredClone(batch));
+        ? target.applyDocumentOperations(operations)
+        : target.applyDocumentOperationsToStory({ story, batch: operations });
+    const again = applyToCopy(copy, structuredClone(batch));
     const applied = operationsOf(batch).filter((operation) => appliedIds(again).has(operation.id));
     assert.deepEqual(
       [...appliedIds(again)].sort(),
@@ -911,7 +916,7 @@ export const startRelations = async ({
         skipped("batchSequential", "an operation does not re-resolve one at a time");
         return;
       }
-      const alone = apply(oneByOne, batchOf(batch, batchMode, restated as AnyOperation[]));
+      const alone = applyToCopy(oneByOne, batchOf(batch, batchMode, restated as AnyOperation[]));
       for (const { id, reason } of alone.skipped) {
         if (reason !== "noopOperation") problems.push(`${id} refused one at a time: ${reason}`);
       }
