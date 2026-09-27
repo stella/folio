@@ -13,7 +13,7 @@ import {
 import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
 
-import { propertyTestTimeout } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock } from "../../ai-edits/types";
@@ -552,7 +552,7 @@ describe("headless bulk revision resolution equivalence", () => {
           expect(bulkTracker).toEqual(legacyTracker);
         }
       }),
-      { seed: 2_609_090, numRuns: 24, verbose: true },
+      propertyConfig({ seed: 2_609_090, numRuns: 24 }),
     );
   });
 

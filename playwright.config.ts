@@ -4,6 +4,8 @@ const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200
 
 export default defineConfig({
   testDir: "./tests/visual",
+  // A stray test.only must fail CI instead of silently running one test.
+  forbidOnly: !!process.env["CI"],
   timeout: 30_000,
   expect: {
     toHaveScreenshot: {
