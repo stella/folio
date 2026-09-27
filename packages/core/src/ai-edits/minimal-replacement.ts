@@ -435,9 +435,10 @@ const keptPositions = (source: string, changes: readonly TextChange[]): Map<numb
  * A redline's changes are cut for a reader and may swallow a field whose
  * displayed text the replacement repeats; rewriting it deletes the field and
  * inserts its text as plain text, which the direct edit, keeping the field,
- * never does. Cutting the change around the field keeps it in both modes.
- * Where the field's text does not stand in the change's new text exactly
- * where `kept` puts it, the change is left whole.
+ * never does. Cutting the change around the field keeps it in both modes,
+ * and a piece of the cut that no longer changes anything is dropped. Where
+ * the field's text does not stand in the change's new text exactly where
+ * `kept` puts it, the change is left whole.
  */
 export const keepAtomicSpans = (
   source: string,
@@ -481,7 +482,12 @@ export const keepAtomicSpans = (
     }
     cut.push({ start: sourceCursor, end: change.end, text: change.text.slice(textCursor) });
   }
-  const pieces = cut.filter(({ start, end, text }) => start < end || text.length > 0);
+  // A piece left rewriting its source to itself is no change: the word the
+  // redline rewrote ran into the field, and past it nothing differs. Marking
+  // it would strike text through only to insert it again.
+  const pieces = cut.filter(
+    ({ start, end, text }) => (start < end || text.length > 0) && source.slice(start, end) !== text,
+  );
   return applyTextChanges(source, pieces) === replacement ? pieces : [...changes];
 };
 
