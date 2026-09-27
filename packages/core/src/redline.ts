@@ -22,6 +22,7 @@ import {
 import { createFolioAITextRangeHandle, trailingBodyBlockId } from "./ai-edits/snapshot";
 import type {
   FolioAIBlock,
+  FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
   FolioAIEditOperation,
   FolioAIEditSkippedOperation,
@@ -184,6 +185,7 @@ const buildRedlineOperations = ({
   // anchored there escapes to the table's boundary with no mark able to
   // express the break it added.
   const lastBaseBlockId = trailingBodyBlockId(baseSnapshot);
+  const baseBlocksById = new Map(baseSnapshot.blocks.map((block) => [block.id, block]));
 
   events.forEach((event, eventIndex) => {
     if (event.type === "pair") {
@@ -223,7 +225,7 @@ const buildRedlineOperations = ({
       type: "insertBeforeBlock",
       blockId: anchorId,
       text: event.block.text,
-      ...insertedParagraphProperties(event.block),
+      ...insertedParagraphProperties(event.block, baseBlocksById.get(anchorId)),
     });
   });
 
@@ -236,7 +238,10 @@ const buildRedlineOperations = ({
       type: "insertAfterBlock",
       blockId: lastBaseBlockId ?? "redline-unanchored",
       text: addition.text,
-      ...insertedParagraphProperties(addition),
+      ...insertedParagraphProperties(
+        addition,
+        lastBaseBlockId === null ? undefined : baseBlocksById.get(lastBaseBlockId),
+      ),
     });
   }
 
@@ -246,19 +251,46 @@ const buildRedlineOperations = ({
 type InsertedListReference = { numId: number; level: number };
 
 /**
- * The paragraph properties an inserted block states, every one explicit,
- * `null` included: an insertion that says nothing takes the properties of its
- * anchor, which is whichever base block happens to follow it. A list item
- * keeps its numbering, and a plain paragraph beside a list item stays plain.
+ * The revised value, or `null` to clear one the anchor would pass on, or
+ * `undefined` when neither has one: an explicit `null` costs a restyle pass.
  */
-const insertedParagraphProperties = (block: FolioAIBlock) => ({
-  styleId: block.styleId ?? null,
-  listLevel: block.listLevel ?? null,
-  numbering: block.listReference ?? null,
-  alignment: block.directAlignment ?? null,
-  spacing: block.directSpacing ?? null,
-  indentation: block.directIndentation ?? null,
-});
+const statedOrCleared = <Value>(
+  revised: Value | undefined,
+  anchor: Value | undefined,
+): Value | null | undefined => revised ?? (anchor === undefined ? undefined : null);
+
+/**
+ * The paragraph properties an inserted block states. An insertion that says
+ * nothing takes the properties of its anchor, which is whichever base block
+ * happens to follow it, so whatever the anchor states and the revised block
+ * does not is cleared: a list item keeps its numbering, and a plain paragraph
+ * beside a list item stays plain.
+ */
+const insertedParagraphProperties = (
+  block: FolioAIBlock,
+  anchor: FolioAIBlock | undefined,
+): FolioAIBlockParagraphProperties => {
+  const properties: FolioAIBlockParagraphProperties = {};
+  const styleId = statedOrCleared(block.styleId, anchor?.styleId);
+  if (styleId !== undefined) properties.styleId = styleId;
+  const alignment = statedOrCleared(block.directAlignment, anchor?.directAlignment);
+  if (alignment !== undefined) properties.alignment = alignment;
+  const spacing = statedOrCleared(block.directSpacing, anchor?.directSpacing);
+  if (spacing !== undefined) properties.spacing = spacing;
+  const indentation = statedOrCleared(block.directIndentation, anchor?.directIndentation);
+  if (indentation !== undefined) properties.indentation = indentation;
+  if (
+    block.listReference !== undefined ||
+    anchor?.listReference !== undefined ||
+    anchor?.listLevel !== undefined
+  ) {
+    properties.numbering = block.listReference ?? null;
+    properties.listLevel = block.listLevel ?? null;
+  } else if (block.listLevel !== undefined) {
+    properties.listLevel = block.listLevel;
+  }
+  return properties;
+};
 
 const insertedNumbering = (operation: FolioAIEditOperation): InsertedListReference | null => {
   if (operation.type !== "insertBeforeBlock" && operation.type !== "insertAfterBlock") {
