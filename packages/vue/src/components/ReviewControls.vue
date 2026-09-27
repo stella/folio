@@ -33,9 +33,11 @@
       }}</span>
     </button>
 
+    <!-- Layout scrolls can arrive while the menu opens; keep the choice available. -->
     <Popover
       :open="isOpen"
       placement="bottom-right"
+      :close-on-scroll="false"
       @update:open="(v: boolean) => (isOpen = v)"
       @close="isOpen = false"
     >
