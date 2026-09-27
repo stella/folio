@@ -1053,7 +1053,7 @@ const applyBlockParagraphProperties = ({
   const styled = bridgeResult.tr.setNodeMarkup(position, undefined, nextAttrs);
   return {
     tr:
-      (attrs.styleId ?? null) === (nextAttrs.styleId ?? null)
+      (attrs.styleId ?? null) === (nextStyleId ?? null)
         ? styled
         : rebaseParagraphRuns({
             tr: styled,
