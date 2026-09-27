@@ -25,8 +25,6 @@ export const FINDINGS = {
     'getContent(), the snapshot and read_document render a footnote/endnote reference as its w:id ("7"), while the page shows its number ("1", or "i" for an endnote)',
   COMPARE_INSERTED_LIST_ITEMS:
     "generateRedlineDocx inserts a paragraph the revised version has as a list item as a plain paragraph (the insertion carries only its style), so accepting the redline loses the bullet or number",
-  REJECT_SPLIT_AROUND_INSERTED_TABLE:
-    "rejecting every change leaves a tracked split in place when a tracked table was inserted after the split's first half (the join is attempted while the table still stands between the halves)",
   SUGGESTED_ACCEPT_ALL_LOSES_INSERTS:
     "after a run of suggested edits that includes a table column and list inserts, acceptAll keeps the inserted paragraphs in the reviewer but the save drops them (found by fuzz; no smaller repro yet)",
   UNMARKED_LIST_ITEM_KIND:

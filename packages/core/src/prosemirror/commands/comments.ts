@@ -588,6 +588,79 @@ function resolveChange(
         }
       }
 
+      // Invariant: table rows and cells resolve BEFORE paragraph marks. A join
+      // must see the sibling the resolved document has, so a table this
+      // resolution removes cannot stand between a break and the paragraph it
+      // joins (a rejected split around a rejected inserted table).
+      tableRowStructuralOps.sort((left, right) => right.rowPos - left.rowPos);
+      let resolvedTableRowStructure = false;
+      for (const op of tableRowStructuralOps) {
+        const mappedPos = tr.mapping.map(op.rowPos);
+        const row = tr.doc.nodeAt(mappedPos);
+        if (!row || row.type.name !== "tableRow") {
+          continue;
+        }
+        if (op.action === "clear") {
+          tr.setNodeAttribute(mappedPos, op.attrName, null);
+          // The row keeps its content, so the run-level half of the same
+          // revision has to go with the row attribute: `keepType` is exactly
+          // the mark kind whose row marker resolves by clearing.
+          clearTableRowContentMarks({
+            tr,
+            rowPos: mappedPos,
+            markType: keepType,
+            revision: op.revision,
+          });
+          resolvedTableRowStructure = true;
+          continue;
+        }
+        deleteTableRowAt(tr, mappedPos);
+        resolvedTableRowStructure = true;
+      }
+      if (resolvedTableRowStructure) {
+        markStructuralChange(tr);
+      }
+
+      tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
+      let resolvedTableCellStructure = false;
+      let failedTableCellMergeResolution = false;
+      const emptiedTables: EmptiedTable[] = [];
+      for (const op of tableCellStructuralOps) {
+        const mappedPos = tr.mapping.map(op.cellPos);
+        const cell = tr.doc.nodeAt(mappedPos);
+        if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
+          continue;
+        }
+        if (op.type === "merge") {
+          const resolved =
+            op.source === "collapsed"
+              ? resolveCollapsedTableCellMerge(tr, mappedPos, op.mode, op.revisionSet)
+              : resolveVisibleTableCellMerge(tr, mappedPos, op.mode);
+          if (!resolved) {
+            failedTableCellMergeResolution = true;
+            break;
+          }
+          resolvedTableCellStructure ||= resolved;
+          continue;
+        }
+        if (op.action === "clear") {
+          tr.setNodeAttribute(mappedPos, "cellMarker", null);
+          resolvedTableCellStructure = true;
+          continue;
+        }
+        deleteTableCellAt(tr, mappedPos, emptiedTables);
+        resolvedTableCellStructure = true;
+      }
+      if (failedTableCellMergeResolution) {
+        return false;
+      }
+      for (const { position, mapFrom } of emptiedTables) {
+        removeRowsWithoutCells(tr, tr.mapping.slice(mapFrom).map(position));
+      }
+      if (resolvedTableCellStructure) {
+        markStructuralChange(tr);
+      }
+
       // Process paragraph-mark ops from end → start so earlier positions stay
       // valid as later paragraphs collapse. Map every position through the
       // accumulated transaction so the inline deletes above don't desync the
@@ -672,75 +745,6 @@ function resolveChange(
           // compatible (e.g. paragraph followed by a table). Leaving the
           // marker is the safe fallback.
         }
-      }
-
-      tableRowStructuralOps.sort((left, right) => right.rowPos - left.rowPos);
-      let resolvedTableRowStructure = false;
-      for (const op of tableRowStructuralOps) {
-        const mappedPos = tr.mapping.map(op.rowPos);
-        const row = tr.doc.nodeAt(mappedPos);
-        if (!row || row.type.name !== "tableRow") {
-          continue;
-        }
-        if (op.action === "clear") {
-          tr.setNodeAttribute(mappedPos, op.attrName, null);
-          // The row keeps its content, so the run-level half of the same
-          // revision has to go with the row attribute: `keepType` is exactly
-          // the mark kind whose row marker resolves by clearing.
-          clearTableRowContentMarks({
-            tr,
-            rowPos: mappedPos,
-            markType: keepType,
-            revision: op.revision,
-          });
-          resolvedTableRowStructure = true;
-          continue;
-        }
-        deleteTableRowAt(tr, mappedPos);
-        resolvedTableRowStructure = true;
-      }
-      if (resolvedTableRowStructure) {
-        markStructuralChange(tr);
-      }
-
-      tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
-      let resolvedTableCellStructure = false;
-      let failedTableCellMergeResolution = false;
-      const emptiedTables: EmptiedTable[] = [];
-      for (const op of tableCellStructuralOps) {
-        const mappedPos = tr.mapping.map(op.cellPos);
-        const cell = tr.doc.nodeAt(mappedPos);
-        if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
-          continue;
-        }
-        if (op.type === "merge") {
-          const resolved =
-            op.source === "collapsed"
-              ? resolveCollapsedTableCellMerge(tr, mappedPos, op.mode, op.revisionSet)
-              : resolveVisibleTableCellMerge(tr, mappedPos, op.mode);
-          if (!resolved) {
-            failedTableCellMergeResolution = true;
-            break;
-          }
-          resolvedTableCellStructure ||= resolved;
-          continue;
-        }
-        if (op.action === "clear") {
-          tr.setNodeAttribute(mappedPos, "cellMarker", null);
-          resolvedTableCellStructure = true;
-          continue;
-        }
-        deleteTableCellAt(tr, mappedPos, emptiedTables);
-        resolvedTableCellStructure = true;
-      }
-      if (failedTableCellMergeResolution) {
-        return false;
-      }
-      for (const { position, mapFrom } of emptiedTables) {
-        removeRowsWithoutCells(tr, tr.mapping.slice(mapFrom).map(position));
-      }
-      if (resolvedTableCellStructure) {
-        markStructuralChange(tr);
       }
 
       if (bulkInlineChangeTracking) {

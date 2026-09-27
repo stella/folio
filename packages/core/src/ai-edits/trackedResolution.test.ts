@@ -115,3 +115,19 @@ describe("a tracked merge of a break that is itself a pending insertion", () => 
     expect(texts(reviewer)).toEqual(ORIGINAL);
   });
 });
+
+describe("rejecting a split with an inserted table after its first half", () => {
+  test("joins the halves again once the table is gone", async () => {
+    const reviewer = await open();
+    const apply = applier(reviewer);
+    apply({ type: "splitBlock", blockId: idOf(reviewer, "The Supplier"), offset: 47 });
+    apply({
+      type: "insertTable",
+      blockId: idOf(reviewer, "The Supplier"),
+      rows: [["Term", "Value"]],
+    });
+    expect(texts(reviewer)).toContain("Term");
+    reviewer.rejectAll();
+    expect(texts(reviewer)).toEqual(ORIGINAL);
+  });
+});

@@ -69,21 +69,20 @@ describe("applyDocumentOperations", () => {
           reviewer.acceptAll();
         }
         const { bytes: after } = await assertHealthy(reviewer, `${name} / ${mode} final`);
-        // Resolving lands on the same words. Block boundaries are left out:
+        // Rejecting gives the document back, block for block. Accepting lands
+        // on the words a reader saw; block boundaries are left out there, as
         // a reader shows a pending join or split as the blocks it has now,
-        // and rejecting a split that has a table inserted after its first
-        // half leaves it split (REJECT_SPLIT_AROUND_INSERTED_TABLE).
-        // Whitespace is left out too: a merge's separator belongs to neither
-        // block until the join is accepted.
+        // and so is whitespace: a merge's separator belongs to neither block
+        // until the join is accepted.
         const words = (blocks: string[]) =>
           blocks
             .map((block) => block.replace(/^\w+: /u, ""))
             .join("")
             .replace(/\s+/gu, "");
         if (mode === "tracked-changes") {
-          assert.equal(
-            words(await resolvedText(after, "reject")),
-            words(await resolvedText(before, "reject")),
+          assert.deepEqual(
+            await resolvedText(after, "reject"),
+            await resolvedText(before, "reject"),
             `${name} / ${mode}: rejecting every change does not give the document back`,
           );
         }
@@ -129,6 +128,7 @@ describe("a batch that splits a block and deletes it", () => {
 });
 
 describe("resolving tracked edits that build on pending ones", () => {
+  const SUPPLIER = "The Supplier delivers the goods on time and in good order.";
   const tracked = async () => {
     const reviewer = await openReviewer(await plainDocument());
     const apply = (operation: Record<string, unknown>) =>
@@ -152,6 +152,18 @@ describe("resolving tracked edits that build on pending ones", () => {
     apply({ type: "insertAfterBlock", blockId: block("Signed").id, text: "Inserted clause." });
     apply({ type: "splitBlock", blockId: block("Signed").id, offset: "Signed in ".length });
     apply({ type: "mergeBlockWithNext", blockId: block("two copies").id, separator: " " });
+    reviewer.rejectAll();
+    assert.deepEqual(
+      reviewer.getContent().map(({ text }) => text),
+      await originalText(),
+    );
+  });
+
+  test("rejecting a split with a table inserted between its halves joins them again", async () => {
+    const { reviewer, apply, block } = await tracked();
+    const target = block("The Supplier");
+    apply({ type: "splitBlock", blockId: target.id, offset: SUPPLIER.indexOf("good order") });
+    apply({ type: "insertTable", blockId: target.id, rows: [["Term", "Value"]] });
     reviewer.rejectAll();
     assert.deepEqual(
       reviewer.getContent().map(({ text }) => text),

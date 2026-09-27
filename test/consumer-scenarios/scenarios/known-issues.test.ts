@@ -225,42 +225,6 @@ describe("findings not yet filed", () => {
   );
 
   expectedFailure(
-    "REJECT_SPLIT_AROUND_INSERTED_TABLE",
-    "rejecting a split with a table inserted between its halves joins them again",
-    /split/u,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const text = "The Supplier delivers the goods on time and in good order.";
-      const target = reviewer.getContent().find((block) => block.text === text);
-      assert.ok(target);
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          {
-            id: "split",
-            type: "splitBlock",
-            blockId: target.id,
-            offset: text.indexOf("good order"),
-          },
-        ],
-      });
-      reviewer.applyDocumentOperations({
-        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
-        mode: "tracked-changes",
-        operations: [
-          { id: "table", type: "insertTable", blockId: target.id, rows: [["Term", "Value"]] },
-        ],
-      });
-      reviewer.rejectAll();
-      assert.ok(
-        reviewer.getContent().some((block) => block.text === text),
-        "the split is still there after rejecting every change",
-      );
-    },
-  );
-
-  expectedFailure(
     "NOTE_REFERENCE_TEXT",
     "a note reference reads as the number the page shows, not its w:id",
     /note reference/u,
