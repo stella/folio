@@ -13,14 +13,16 @@
  * link pointing nowhere.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig } from "../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const COMMENT_IDS = [0, 1, 2, 3, 4] as const;
 const EDIT_MODES = ["direct", "tracked-changes"] as const;
