@@ -348,16 +348,16 @@
     "changes": "3d0bd4ce2885e6bc4373462ea80d298760f812f2f37a4aecc698817e67a3cf22"
   },
   "notes/l/churn": {
-    "buffer": "d7b2f7b09e2ccc50cc2bcb62909ae7b09a4b1c679c604dbddb7701c1544da59a",
-    "changes": "e68451a7f694b4219561b0c5c942d5dfa01ffe9bdc5a631f336524ab5b3fd799"
+    "buffer": "082f746618035585740fa3efd7472a55b32d4758108c6390697ba19df28b0dfb",
+    "changes": "22c0b1c1389ebe430e83d5d6004e8038ada0b67cd7107a209316f48d42415d52"
   },
   "notes/l/everywhere": {
     "buffer": "fe4e9b644a01f82d5dfee75de42ae9d50e4ea0265e8d733121e09111278c9610",
-    "changes": "6ee50637c6784d6cfc6da888e9becfe9a28feb0e8f8aba850e5912909bf9fac1"
+    "changes": "5ea9933f30cb211e7ce2d7b344477805dfceb89c331e9a3d9eb002c03404639d"
   },
   "notes/l/heavy": {
     "buffer": "d3994eea7f73ee7af6c7d198ced42d09739fb90dcd527d08461d0d6924860b02",
-    "changes": "39172edbf980134c3e15a5ff00a078974af42d98a519594d7309034f5d91cadb"
+    "changes": "f94a00f1d560341cd03f1226e883f232226c1ce45219b6739bd5c47cf5f0b88a"
   },
   "notes/l/identical": {
     "buffer": "036188858b4736a9c1290c057a7276d17869ae1b431834bf88c7caa5ae50850e",
@@ -365,35 +365,39 @@
   },
   "notes/l/light": {
     "buffer": "6ec59c9e552fd425c89c79a8c96d405ad03b05cd7262638cafca088e2dd49f20",
-    "changes": "984c0ab72c5aa2d46409ec38a554482e3fae900152acc43aa05f72ad311080da"
+    "changes": "cf671441c683df0a8d1325aada2414905aba604c385fd57282f363817f3c51ce"
   },
   "notes/l/notes": {
     "buffer": "38e3a33fe2374ebd7214dc3e1fce468edd22c62f4b3f38a13d9c830d81714496",
     "changes": "9ffe302a9b261df2859cd37dc75ef615f4fcdfce4aab1f17f056fea841132ffc"
   },
+  "notes/l/references": {
+    "buffer": "23abf322e0b66b0c0c975d1de77010b1bd58202d31602683c6d8651220de85b2",
+    "changes": "f8534da5b14b65d621163d8349e03dede23839f49f2f3dcd64deb6455d8f79b5"
+  },
   "notes/l/reorder": {
-    "buffer": "04830a4e835c463a1561abdc1b2edb9a66e931527b0d59b9bdce687d68940ff8",
-    "changes": "6d49211b70bf6d8e63e2cda03b2f1d9abf06b98d3aac047a3434df75b1fcbd15"
+    "buffer": "fb0cd9290023a71468016f929eb5a5376080a6e0a1f3aba1e9fb765c106ad084",
+    "changes": "c9ebe5a619342409a298029c7b9073aa4d3635172cf7c63efa0b67ab181ce655"
   },
   "notes/l/rewrite": {
-    "buffer": "a2a20dde423803257f9f634f48dd74ca789c0e2c30f005d828c4d4e59993d1dc",
-    "changes": "917310f30505564e49b9b69f9c71fbbbdeffa0bba69314af61da49cd5ab43486"
+    "buffer": "00052bda72b0484b3f3dc34591323aca7c8938e1d6d37623143291640f045cba",
+    "changes": "771e314aeb80657475c5585b318beb8ee95df4401db2595788e5b03d36dd02a6"
   },
   "notes/l/structural": {
-    "buffer": "0dec0c4a09dc32a1ee68b02c49481e4784737cbdd32cb176fcab8fe47a6ea90d",
-    "changes": "c02a46ec9d754150d620ff6d2eb26fdb4b5f7a160e891c5a3f588cb857dc86a4"
+    "buffer": "fa0911aa16aae0f16f2dab835e25b9dfb4879fe442ddd70d2d77fb68e9b7bd6b",
+    "changes": "98fbfc74979bfe2f5b7f4ff31c2d9b0837537846bc469296d83c1483388d364f"
   },
   "notes/m/churn": {
-    "buffer": "b09e5b0b54be3985a352b72a46a16eeb9186ad26004bdf2f17f2c7727e8fd7fa",
-    "changes": "18bd97c39cbfd969985e927e7117a6de8e4752d210450216d06b9c9d5eaa027d"
+    "buffer": "0742b9822eb7c7fc74b93efdfcd7589f9907cbf008596f43f865b3ed1bef98f1",
+    "changes": "b8387a214a5e7735661d54713ecfb1e5b95e2870bc79fcb8f9d58ff3149496c1"
   },
   "notes/m/everywhere": {
     "buffer": "e09cd5e11239b9f14bdb6ad0b4d9b8b7d03aa0780b5ca947ba6b8f4ca92aeefe",
-    "changes": "aec851444c45e5567ed112e3d54f7c2863db68aafcb8d6f190830808f6b3b45b"
+    "changes": "bfa705dca7f9f379c43a700063428c753e6574c3e2382f3aff61e33bb932f774"
   },
   "notes/m/heavy": {
     "buffer": "0d44a07a86f17aa630aee557a7002c04d61e220ea50f3deb6394b8c88f57e3a7",
-    "changes": "7e73b89e5c5c9d1f9f633b3b81392884032e75480bfef2e508348e9aba04833e"
+    "changes": "66a0ef9d7a632b1db2177541110efd47a34a7536a3e67d249ae3e1b3794aeea7"
   },
   "notes/m/identical": {
     "buffer": "d3f3a72ce2a32fae3047c14270e69ca77eb7a35cb9b70592ee32b6444e35f1f0",
@@ -401,35 +405,39 @@
   },
   "notes/m/light": {
     "buffer": "c5414944be3c7890284550fe4f8bd2702a4e06e3ddf88283ccf15e8c48ddd6e7",
-    "changes": "98ef543df95a3c6caed73a16bc7bd9cb768447387b601ca9b5168184a6d2f5a6"
+    "changes": "e2b0cce568616373ef6b7089d3eeaa554f67666d1e3c8dc4585a339f04fdb602"
   },
   "notes/m/notes": {
     "buffer": "7af837af8035bc93e29e417a7a4cb6f7fc5009ec06a972b40464f05134c35def",
     "changes": "d0b6caef62acf5826056793774cad08539797301f00b7f98f938cf821c9e14da"
   },
+  "notes/m/references": {
+    "buffer": "1229a39e74ac8ad11244ce33f0e8271f76eb244cef8e1cc8c9b202d3a08e3a6e",
+    "changes": "42cdebf50e32ca7fe34d3f18df76d81ce50558625601309e3b30ead40130bca7"
+  },
   "notes/m/reorder": {
-    "buffer": "fb21b6b9cded807c2b59175a0bdc5801250023fe93d0310d6a523896295895f8",
-    "changes": "43ad99e123d077f48d99982b7fdfee255ab9ad9287cc7a78bdc5b3d17457b9a4"
+    "buffer": "da9621574a2ec8ea5b58dcfd64f21f6d2a3c4a7294e6f4767ccc374805c4406f",
+    "changes": "dfeaa0d5cc8929e437c01a90806de6705b45208ca89e46d9c522d8b87f2f2396"
   },
   "notes/m/rewrite": {
-    "buffer": "5871f486b06d03aacc665edb0091a6ae630c2067eb7e153bcdd89b9b13420e7c",
-    "changes": "5f1b6bbce2eb2cee2f3c72c2d82b0896deb7e59cfc326e8ec3e28ddb18d37902"
+    "buffer": "524b9d03e0268c2d09f93e2653e2d3ebc75e3897abde881604bc0df5c1c97427",
+    "changes": "3286fcf7b8306c9ece2d9fc8867f0bf98d6fc0e9f42124342a88d544c30a6e06"
   },
   "notes/m/structural": {
-    "buffer": "02834ca164e4bda1862e913175feaec92170c72976a3d75664472f5647afb88c",
-    "changes": "f5c1a6484d8636e0acbfd85f343ceeaea0b04d59e44d6b12cb3cef8b9f2b6870"
+    "buffer": "d5c8dd2391f785d1304d75bb6d05b94cd6afa84601ebf884c219c256e2cd76b2",
+    "changes": "fdee5b2c8898f8174968a78ca3a4cba9be75127eadd380a377719bd280777fb5"
   },
   "notes/s/churn": {
-    "buffer": "a31ad847c633f53f72d8c4ec873806a525fc115bb73ba6c26f55ed7284baf462",
-    "changes": "e12970f57ab2fa22a9dc4beb59b722a9d5db2a9abb3b6d0df4d6a427d61a912d"
+    "buffer": "2337a137de7bf6a46898db06fbe9ac30219833e80c358379d8c87f4d6a79e79d",
+    "changes": "b4c0b40949ce6efe23a8a4ca4972e7d8b4e36be134923a95bb6f3a1912269f14"
   },
   "notes/s/everywhere": {
     "buffer": "a8919e918e2a8996af0511598acd8ccebf861ebdb134de0de7049df5f65a255f",
-    "changes": "63082bfeb8f62ca447a94be36648e4478e0490f482100914bd2cc8e907f6518d"
+    "changes": "ea80c40d75451dd8b7cdf19a95f3f1e14e285bf6f30d50f277e0df1bdcaa52ae"
   },
   "notes/s/heavy": {
     "buffer": "4489e61bf3e96b8536790b05ab0466ecac20dabbcba05c32a70d537570fdd7b0",
-    "changes": "c90258a012e876f9877ada73e9b632dc8b5385cadc470379a20dfb7e42eb6564"
+    "changes": "d768837063b86533bf92df56afb1e1449c86dbf1df7080439f07c26c31b7a82d"
   },
   "notes/s/identical": {
     "buffer": "61db2c0e09a1c89e954d8e71dff940371e1adee473a51ae6c03c1020a6fbf058",
@@ -437,23 +445,27 @@
   },
   "notes/s/light": {
     "buffer": "e1dfbc80b950679f1e019198ca15485e319cc680304fa97694b0163c70731012",
-    "changes": "74ddf0136f7c04d764bfc19ef9da3625808035192852378e191f9daca7d3c83b"
+    "changes": "37d9d477f2429001a6f0525300c057da4ea1ea944577b5ae2201dba325f20597"
   },
   "notes/s/notes": {
     "buffer": "a182e57df57db283c34d931a9a6d2b48f3d8c6e2ee5d204aff474bb200eed6bb",
     "changes": "17953a14335bf912b9e7b5d63b12e5ca560c6a591998ee8f449ce1a49dfb99f1"
   },
+  "notes/s/references": {
+    "buffer": "11040acd201fa3866c16ac6051be5c2030fa063aa8213bc74198b8a103cb705c",
+    "changes": "064b595785e7ca70ec7d7bde35e9778ff28612ae4936453a84e9c6b4aad052de"
+  },
   "notes/s/reorder": {
-    "buffer": "8a6c103bda5c5f65d6aa8b75b7d1ed0da289404bf52d99b5633b69ea7dfdc70a",
-    "changes": "12ef276c9a5b33e1084bf9dde9721d90f94074e6551033ee3bbe67b3eaa7c3ee"
+    "buffer": "d90d2ea7011986c2ee3af5bf69f2f777acd1eb4b699431813fc90f4815a26a35",
+    "changes": "a85a18bd5a72b7b49632e96ab282805e5ee3df497b6e340b587743bc82a552f3"
   },
   "notes/s/rewrite": {
-    "buffer": "37b69c723e9be4b2fddac0c86a1533404fd00975d6cf7d16c38fffba79b2f9e8",
-    "changes": "04189a0a2f1983874989d11a4b082921dece36ed461fdb21512aad392716d6e1"
+    "buffer": "1d371e062a8a6e6f850ec775c660259952e6c825b033c2f6c8405f733ca20ca7",
+    "changes": "7c8e991a79e4fd43b87665b8e8fb42253323cda165ced4399261d5de17672ef9"
   },
   "notes/s/structural": {
-    "buffer": "d1efa12e43921e7e7e2fb9c233fdfb28574c15d7f1e043621fbd510913a7d087",
-    "changes": "ef12888511c664e79855ded43c1df98547055fbb7b3c570761106af454764fda"
+    "buffer": "b78839e5d10ddb0b30a159fb73640371b46df1e446d57c25bb70bfd990398d89",
+    "changes": "ba00cefb94fd4e662c85b5dc66cc9a6764970f7f015431e3b28c0f25b396637a"
   },
   "prose/l/churn": {
     "buffer": "4beee8f0e0c0ac3d6c421c300723b1e00c110b40e843e23343a2a094d0c1ce2b",
