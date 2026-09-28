@@ -423,15 +423,25 @@ describe("a comment on words a tracked replacement removes", () => {
   });
 });
 
-describe("accepting every suggestion", () => {
-  test("keeps an insertion after a deleted final paragraph beside a later insertion", async () => {
+describe("resolving suggested paragraphs", () => {
+  test("keeps two insertions staged around a deleted final paragraph", async () => {
     const reviewer = await open();
     const signedId = idOf(reviewer, "Signed");
     const headingId = idOf(reviewer, "Service Agreement");
     const apply = applier(reviewer, "suggested");
-    apply({ type: "insertAfterBlock", blockId: signedId, text: "Inserted clause." });
-    apply({ type: "deleteBlock", blockId: signedId });
-    apply({ type: "insertAfterBlock", blockId: headingId, text: "Inserted clause." });
+    apply({
+      type: "insertAfterBlock",
+      blockId: signedId,
+      text: "Inserted clause.",
+      suggestionId: "last-insertion",
+    });
+    apply({ type: "deleteBlock", blockId: signedId, suggestionId: "signed-deletion" });
+    apply({
+      type: "insertAfterBlock",
+      blockId: headingId,
+      text: "Inserted clause.",
+      suggestionId: "heading-insertion",
+    });
 
     const direct = await open();
     const directSignedId = idOf(direct, "Signed");
@@ -441,8 +451,11 @@ describe("accepting every suggestion", () => {
     applyDirect({ type: "deleteBlock", blockId: directSignedId });
     applyDirect({ type: "insertAfterBlock", blockId: directHeadingId, text: "Inserted clause." });
 
-    reviewer.acceptAll();
-    expect(texts(reviewer)).toEqual(texts(direct));
+    const staged = texts(reviewer);
+    expect(staged.filter((text) => text !== "")).toEqual(texts(direct));
+    expect(reviewer.acceptAll()).toBe(0);
+    expect(texts(reviewer)).toEqual(staged);
+    expect(texts(await reopen(reviewer))).toEqual(ORIGINAL);
   });
 
   test("keeps each suggested paragraph when one of them cannot become a tracked change", async () => {
