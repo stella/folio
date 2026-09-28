@@ -597,6 +597,50 @@ const PINNED_SCENARIOS: MarkupViewScenario[] = [
     leadingFrame: false,
     events: [{ kind: "rerender", apply: (rig) => rig.rerender() }],
   },
+  // Seed -442636085 (path 6:1:1:1:1:1:1:3:3:3:3:5:5:5:5:5:5:5:5:5:5:0:1:0:2):
+  // two adjacent deleted paragraph marks with a deleted-only paragraph between them.
+  {
+    document: {
+      paragraphs: [
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "plain",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "deletion", text: "the " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+      ],
+      move: null,
+      table: null,
+    },
+    mode: "editing",
+    initialView: "all-markup",
+    leadingFrame: false,
+    events: [
+      {
+        kind: "markupView",
+        apply: (rig) => rig.updateExt(() => ({ view: "no-markup" }), LOAD_LAYOUT.immediate),
+      },
+      { kind: "visible", apply: (rig) => rig.pauseFrames() },
+    ],
+  },
 ];
 
 describe("markup views lay out the text they show", () => {
