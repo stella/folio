@@ -70,5 +70,19 @@
       "note": "#1127: upstream-complex-styles.docx",
       "date": "2026-09-27"
     }
+  ],
+  "packages/core/src/internal/revisionResolutionStep.integration.test.ts::bulk resolution JSON replay and undo match its cached result": [
+    {
+      "seed": 260926,
+      "path": "42:0:0:2",
+      "note": "adjacent replacement and removal after rejecting an inserted table row and paragraph",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": 260926,
+      "path": "60:4:3:3:3:3:3",
+      "note": "revision resolution map with an inserted first paragraph and table cell",
+      "date": "2026-09-28"
+    }
   ]
 }

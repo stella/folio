@@ -4,7 +4,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { acceptAllChanges, rejectAllChanges } from "../prosemirror/commands/comments";
 import { schema } from "../prosemirror/schema";
 import { RevisionResolutionStep } from "./revisionResolutionStep";
@@ -96,7 +96,7 @@ const table = (rowMarker: "none" | "trIns" | "trDel", cellMarker: "none" | "ins"
 test(
   "bulk resolution JSON replay and undo match its cached result",
   () => {
-    const result = fc.check(
+    assertProperty(
       fc.property(
         fc.array(
           fc.record({
@@ -151,12 +151,11 @@ test(
               if (oldEnd > oldStart) {
                 const removedAfter = step.getMap().mapResult(oldStart, 1).deletedAfter;
                 const removedBefore = step.getMap().mapResult(oldEnd, -1).deletedBefore;
-                expect({ oldStart, oldEnd, removedAfter, removedBefore }).toEqual({
-                  oldStart,
-                  oldEnd,
-                  removedAfter: true,
-                  removedBefore: true,
-                });
+                if (!removedAfter || !removedBefore) {
+                  throw new Error(
+                    `Invalid ${mode} map: ${JSON.stringify({ oldStart, oldEnd, removedAfter, removedBefore, mapRanges: step.toJSON().mapRanges })}`,
+                  );
+                }
               }
             });
             const replayed = Step.fromJSON(schema, step.toJSON()).apply(doc);
@@ -181,11 +180,8 @@ test(
           }
         },
       ),
-      propertyConfig({ seed: 260926, numRuns: 32, verbose: true }),
+      { seed: 260926, numRuns: 32, verbose: true },
     );
-    if (result.failed) {
-      throw result.errorInstance;
-    }
   },
   propertyTestTimeout(30_000),
 );

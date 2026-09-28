@@ -218,25 +218,27 @@ const structuralReplacementMap = ({
   const flush = (): void => {
     const map = groupMap(group);
     map.forEach((oldStart, oldEnd, newStart, newEnd) => {
-      // Consecutive removals (the marks of two deleted paragraphs in a row)
-      // are one removal. Left as two ranges, a StepMap reads their shared
-      // boundary against the first range only and reports the position as
-      // kept on its right, though the second range removes what follows it.
+      // An adjacent removal and replacement belong to one change. A StepMap
+      // reads their shared boundary against the first range only and otherwise
+      // misses the change on the other side.
       const last = ranges.length - 3;
       const previousStart = ranges.at(last);
       const previousOldSize = ranges.at(last + 1);
+      const previousNewSize = ranges.at(last + 2);
+      const newSize = newEnd - newStart;
       if (
         last >= 0 &&
         previousStart !== undefined &&
         previousOldSize !== undefined &&
-        ranges.at(last + 2) === 0 &&
-        newEnd === newStart &&
+        previousNewSize !== undefined &&
+        (previousNewSize === 0 || newSize === 0) &&
         previousStart + previousOldSize === oldStart
       ) {
         ranges[last + 1] = previousOldSize + oldEnd - oldStart;
+        ranges[last + 2] = previousNewSize + newSize;
         return;
       }
-      ranges.push(oldStart, oldEnd - oldStart, newEnd - newStart);
+      ranges.push(oldStart, oldEnd - oldStart, newSize);
     });
   };
   for (const replacement of replacements) {
