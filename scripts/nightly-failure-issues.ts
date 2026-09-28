@@ -386,9 +386,12 @@ const main = async (): Promise<void> => {
   await $`gh label create ${label.name} --color ${label.color} --description ${label.description} --force`
     .quiet()
     .nothrow();
-  const open = JSON.parse(
-    await $`gh issue list --label ${label.name} --state open --limit 200 --json number,title`.text(),
-  ) as { number: number; title: string }[];
+  const issueEndpoint = `repos/{owner}/{repo}/issues?state=open&labels=${label.name}&per_page=100`;
+  const openPages = JSON.parse(await $`gh api --paginate --slurp ${issueEndpoint}`.text()) as {
+    number: number;
+    title: string;
+  }[][];
+  const open = openPages.flat();
   for (const failure of shown) {
     const title = issueTitle(options.kind, failure);
     const existing = open.find((issue) => issue.title === title);
