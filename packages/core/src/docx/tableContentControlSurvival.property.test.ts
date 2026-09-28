@@ -22,6 +22,8 @@
  *   a record carried by an index rather than by the row would drift.
  */
 
+import assert from "node:assert/strict";
+
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
@@ -246,6 +248,38 @@ const insideFirstControl = (xml: string): string => {
 };
 
 describe("a table content control keeps its wrapper", () => {
+  test("a date control inside a cell keeps its captured properties after both saves", async () => {
+    const properties =
+      '<w:sdtPr><w:alias w:val="date"/><w:id w:val="42"/>' +
+      '<w:dataBinding w:prefixMappings="" w:xpath="/record/date" w:storeItemID="{00000000-0000-0000-0000-000000000001}"/>' +
+      '<w:date w:fullDate="2026-01-02T00:00:00Z">\n' +
+      '<w:dateFormat w:val="d MMMM yyyy"/>\n<w:lid w:val="en-GB"/>\n' +
+      '<w:calendar w:val="gregorian"/></w:date></w:sdtPr>';
+    const body =
+      `<w:tbl><w:tblPr/>${GRID}<w:tr><w:tc><w:tcPr/>` +
+      `<w:sdt>${properties}<w:sdtContent><w:p><w:r><w:t>2 January 2026</w:t></w:r></w:p></w:sdtContent></w:sdt>` +
+      "<w:p/></w:tc></w:tr></w:tbl>";
+    const captured = (document: Document) => {
+      const table = document.package.document.content.find((block) => block.type === "table");
+      assert.ok(table);
+      const cellControl = table.rows
+        .at(0)
+        ?.cells.at(0)
+        ?.content.find((block) => block.type === "blockSdt");
+      assert.ok(cellControl);
+      return cellControl.properties.preserved?.children?.map(({ xml }) => xml);
+    };
+    const parsed = await parseDocx(await buildDocx(body), { preloadFonts: false });
+    const before = captured(parsed);
+    expect(before?.length).toBeGreaterThan(0);
+
+    for (const document of [parsed, fromProseDoc(toProseDoc(parsed), parsed)]) {
+      const saved = await repackDocx(document, { updateModifiedDate: false });
+      const reopened = await parseDocx(saved, { preloadFonts: false });
+      expect(captured(reopened)).toEqual(before);
+    }
+  }, 60_000);
+
   test("a row-level control survives every declared sibling, on every leg", async () => {
     await fc.assert(
       fc.asyncProperty(

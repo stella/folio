@@ -54,6 +54,20 @@ describe("withModelledControlState — checkbox state", () => {
 });
 
 describe("withModelledControlState — date", () => {
+  test("keeps an authored date element when its modeled state is unchanged", () => {
+    const xml =
+      '<w:date w:fullDate="2026-01-02T00:00:00Z">\n' +
+      '<w:dateFormat w:val="d MMMM yyyy"/>\n<w:lid w:val="en-GB"/>\n' +
+      '<w:calendar w:val="gregorian"/></w:date>';
+    expect(
+      withModelledControlState(xml, {
+        sdtType: "date",
+        dateValueISO: "2026-01-02T00:00:00Z",
+        dateFormat: "d MMMM yyyy",
+      }),
+    ).toBe(xml);
+  });
+
   test("replaces an expanded-empty dateFormat element on round-trip", () => {
     // A producer that writes `<w:dateFormat …></w:dateFormat>` instead of
     // self-closing would otherwise leave a stale sibling beside the fresh

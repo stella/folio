@@ -16,6 +16,7 @@
 import { escapeXmlAttribute } from "@stll/docx-core";
 
 import type { SdtProperties } from "../types/document";
+import { findChild, getAttribute, OOXML_NAMESPACE_SCOPE, parseXml } from "./xmlParser";
 
 /**
  * Drop one attribute by local name (any namespace prefix, or unprefixed) from
@@ -99,6 +100,14 @@ const withDateState = (xml: string, props: SdtProperties): string => {
   const fullDate = props.dateValueISO;
   const format = props.dateFormat;
   if (fullDate === undefined && format === undefined) {
+    return xml;
+  }
+  const capturedDate = parseXml(xml, OOXML_NAMESPACE_SCOPE).elements?.at(0);
+  if (
+    (fullDate === undefined || getAttribute(capturedDate, "w", "fullDate") === fullDate) &&
+    (format === undefined ||
+      getAttribute(findChild(capturedDate, "w", "dateFormat"), "w", "val") === format)
+  ) {
     return xml;
   }
   // Written under the element's own prefix rather than a hard-coded `w`: a
