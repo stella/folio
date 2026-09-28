@@ -89,18 +89,19 @@ export type EmphasisMarkAttrs = {
     type?: Exclude<import__stll_docx_core_model.EmphasisMark, "none">;
 };
 
-// @public
-export type FieldAttrs = {
-    fieldType: import__stll_docx_core_model.FieldType;
-    instruction: string;
-    displayText: string;
-    _numberedRefBaseline?: string;
-    fieldKind: "simple" | "complex";
-    fldLock?: boolean;
-    dirty?: boolean;
+// @public (undocumented)
+export type FieldAttrs = CommonFieldAttrs & ({
+    fieldKind: "simple";
+    fieldResultIsFallback?: never;
+    _docxFieldCode?: never;
+} | {
+    fieldKind: "complex";
     fieldResultIsFallback?: boolean;
-    _docxEmptyResultRuns?: import__stll_docx_core_model.Run[];
-};
+    _docxFieldCode?: {
+        instruction: string;
+        runs: import__stll_docx_core_model.Run[];
+    };
+});
 
 // @public
 export type FontFamilyAttrs = {
