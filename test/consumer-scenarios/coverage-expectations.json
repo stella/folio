@@ -461,7 +461,9 @@
       "cell": { "step": "newReviewer", "mode": "suggested" },
       "why": "every session in every mode"
     },
-    { "cell": { "step": "newReviewer", "story": "header" }, "why": "every session in a header" }
+    { "cell": { "step": "newReviewer", "story": "header" }, "why": "every session in a header" },
+    { "cell": { "op": "mergeTableCells" }, "why": "the deterministic merge scenario" },
+    { "cell": { "op": "splitTableCell" }, "why": "the deterministic split scenario" }
   ],
   "unreachable": [
     {
@@ -482,14 +484,6 @@
     },
     {
       "cell": { "op": "deleteTableColumn" },
-      "reason": "no generator yet (support/operations.ts GENERATORS); the oracle and the operation contract know the type"
-    },
-    {
-      "cell": { "op": "mergeTableCells" },
-      "reason": "no generator yet (support/operations.ts GENERATORS); the oracle and the operation contract know the type"
-    },
-    {
-      "cell": { "op": "splitTableCell" },
       "reason": "no generator yet (support/operations.ts GENERATORS); the oracle and the operation contract know the type"
     }
   ],
