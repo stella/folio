@@ -904,35 +904,54 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
   return problems;
 };
 
-/** Prove that every possible placement of an anchor in its original block was removed. */
-const removedAnchor = (model: Model, entry: Comment): boolean => {
-  if (entry.blockId === null) return false;
+type AnchorDisposition = "kept" | "removed" | "ambiguous";
+
+/** Decide whether the model removed the anchor, accounting for repeated text. */
+const anchorDisposition = (model: Model, entry: Comment): AnchorDisposition => {
+  if (entry.blockId === null) return "kept";
   const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
   const explicitlyDeleted = model.deletedBlockIds.has(entry.blockId);
   if (explicitlyDeleted || (row?.removed && !row.pendingJoin)) {
     const liveText = model.liveTextById.get(entry.blockId);
-    return entry.anchor === "" || (liveText !== undefined && liveText.includes(entry.anchor));
+    return entry.anchor === "" || (liveText !== undefined && liveText.includes(entry.anchor))
+      ? "removed"
+      : "kept";
   }
   // A pending join is already absent from the accepted pre-state; its live
   // block has not been removed by this batch.
-  if (!row?.pre || row.removed) return false;
-  if (entry.anchor === "") return false;
+  if (!row?.pre || row.removed || entry.anchor === "") return "kept";
   const starts: number[] = [];
   for (let start = 0; start <= row.pre.text.length - entry.anchor.length; start += 1) {
     if (row.pre.text.startsWith(entry.anchor, start)) starts.push(start);
   }
-  if (starts.length === 0) return false;
+  if (starts.length === 0) return "kept";
   const removed = [
     ...row.edits
       .filter(({ replace }) => replace.length === 0)
       .map(({ start, end }) => ({ start, end })),
     ...row.splits.map(({ offset, consumed }) => ({ start: offset, end: offset + consumed })),
   ];
-  return starts.every((start) =>
+  const removedPlacements = starts.map((start) =>
     Array.from({ length: entry.anchor.length }, (_, index) => start + index).every((offset) =>
       removed.some((cut) => cut.start <= offset && offset < cut.end),
     ),
   );
+  if (removedPlacements.every(Boolean)) return "removed";
+  return removedPlacements.some(Boolean) ? "ambiguous" : "kept";
+};
+
+/** A full-block anchor has an exact replacement when one edit rewrites the block. */
+const expectedKeptAnchor = (model: Model, entry: Comment): string | undefined => {
+  const row = model.rows.find((candidate) => candidate.pre?.id === entry.blockId);
+  if (!row?.pre || row.removed || row.pendingJoin || row.splits.length > 0) return undefined;
+  if (entry.anchor === "" || entry.anchor !== row.pre.text || row.edits.length !== 1) {
+    return undefined;
+  }
+  const edit = row.edits[0];
+  if (!edit || edit.start !== 0 || edit.end !== row.pre.text.length || edit.replace === "") {
+    return undefined;
+  }
+  return edit.replace.includes("\n") ? undefined : edit.replace;
 };
 
 export const compareComments = (
@@ -948,22 +967,32 @@ export const compareComments = (
   const gone: Comment[] = [];
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
-    if (mode !== "suggested" && removedAnchor(model, live ?? entry)) gone.push(entry);
-    else kept.push(entry);
+    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, live ?? entry);
+    if (disposition === "removed") gone.push(entry);
+    else if (disposition === "kept") kept.push(entry);
   }
   for (const comment of kept) {
-    const index = remaining.findIndex(({ id, text }) => id === comment.id && text === comment.text);
+    const anchor = expectedKeptAnchor(model, comment);
+    const index = remaining.findIndex(
+      ({ id, text, anchor: actualAnchor }) =>
+        id === comment.id &&
+        text === comment.text &&
+        (anchor === undefined || actualAnchor === anchor),
+    );
     if (index === -1) {
       problems.push(`no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`);
     } else {
       remaining.splice(index, 1);
     }
   }
+  const beforeIds = new Set(before.map(({ id }) => id));
   for (const comment of model.comments) {
     const anchor = comment.anchor?.();
     const index = remaining.findIndex(
       (candidate) =>
-        candidate.text === comment.text && (anchor === undefined || candidate.anchor === anchor),
+        !beforeIds.has(candidate.id) &&
+        candidate.text === comment.text &&
+        (anchor === undefined || candidate.anchor === anchor),
     );
     if (index === -1) {
       problems.push(

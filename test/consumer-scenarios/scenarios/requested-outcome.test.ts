@@ -171,17 +171,51 @@ describe("the requested-outcome oracle", () => {
     assert.equal(compareComments(elsewhere, [comment], []).length, 1);
   });
 
+  test("does not guess which repeated quote a comment anchored", () => {
+    const comment = { id: 1, text: "review", anchor: "foo", blockId: "b" };
+    const model = modelOf([row("b", "foo foo")]);
+    expectOperation(model, {
+      type: "replaceRange",
+      range: { blockId: "b", startOffset: 0, endOffset: 3 },
+      replace: "",
+    });
+    assert.deepEqual(compareComments(model, [comment], []), []);
+    assert.deepEqual(compareComments(model, [comment], [comment]), []);
+  });
+
   test("a nonempty replacement carries a comment, while an empty one removes it", () => {
     const comment = { id: 1, text: "review", anchor: "Signed", blockId: "b" };
     const replaced = modelOf([row("b", "Signed")]);
     expectOperation(replaced, { type: "replaceBlock", blockId: "b", text: "Written" });
     assert.deepEqual(compareComments(replaced, [comment], [{ ...comment, anchor: "Written" }]), []);
+    assert.match(
+      compareComments(replaced, [comment], [{ ...comment, anchor: "Unrelated" }]).join("\n"),
+      /no comment/u,
+    );
     assert.equal(compareComments(replaced, [comment], []).length, 1);
 
     const emptied = modelOf([row("b", "Signed")]);
     expectOperation(emptied, { type: "replaceBlock", blockId: "b", text: "" });
     assert.deepEqual(compareComments(emptied, [comment], []), []);
     assert.equal(compareComments(emptied, [comment], [comment]).length, 1);
+  });
+
+  test("a deleted comment cannot satisfy a new comment with the same text", () => {
+    const old = { id: 1, text: "same note", anchor: "Old", blockId: "a" };
+    const model = modelOf([row("a", "Old"), row("b", "New")]);
+    expectOperation(model, { type: "deleteBlock", blockId: "a" });
+    expectOperation(model, {
+      type: "commentOnBlock",
+      blockId: "b",
+      comment: { text: "same note" },
+    });
+    assert.deepEqual(
+      compareComments(model, [old], [{ id: 2, text: "same note", anchor: "New", blockId: "b" }]),
+      [],
+    );
+    const problems = compareComments(model, [old], [{ ...old, anchor: "New", blockId: "b" }]);
+    assert.match(problems.join("\n"), /no comment/u);
+    assert.match(problems.join("\n"), /outlived the block it anchored/u);
   });
 
   test("uses live anchors and ids when an accepted pending join moves one of three equal comments", () => {
