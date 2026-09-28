@@ -99,11 +99,26 @@ for (const seed of [1088, 1185]) {
   );
 }
 
+test("collision flow with seed 7310028 keeps comment ranges stable on save", () =>
+  runFlow(7_310_028, 10, "collisions", { generation: "legacy" }));
+
 // Deleting a block does not remove a suggested comment or a comment whose
 // anchor continues into a surviving block.
 for (const { seed, kind } of [
   { seed: 20_260_933, kind: "collisions" },
   { seed: 20_260_937, kind: "random" },
 ] as const) {
-  test(`${kind} flow with seed ${seed} keeps surviving comments`, () => runFlow(seed, 10, kind));
+  const known = KNOWN_FAILING_FLOWS.find(
+    (flow) =>
+      flow.seed === seed &&
+      flow.steps === 10 &&
+      (flow.kind ?? "random") === kind &&
+      (flow.generation ?? "targeted") === "targeted" &&
+      (flow.relation === undefined || ENABLED_RELATIONS.has(flow.relation)),
+  );
+  test(
+    `${kind} flow with seed ${seed} keeps surviving comments`,
+    known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
+    () => runFlow(seed, 10, kind),
+  );
 }

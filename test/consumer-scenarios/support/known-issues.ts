@@ -34,10 +34,8 @@ export const FINDINGS = {
     "the live reviewer does not re-resolve what a paragraph's style gives it after an edit: a restyled paragraph keeps its old style's previewRuns, a paragraph inserted after a bold heading previews bold despite its direct bold off, and a paragraph inserted with a numbered heading style has no directIndentation; the saved package reopens with other values",
   LIVE_REPLY_RANGES:
     "a reply added with replyTo has no comment range in the live document, while the saved package anchors it on its parent's range, so toMarkdown(toDocument()) reads otherwise across a save",
-  BATCH_ROW_INSERT_DELETE:
-    "one direct batch that inserts a row after a table row and deletes the row below it: both report applied, but the row to delete stays",
-  SAVE_REORDERS_COMMENT_RANGES:
-    "after replies across several steps, saving the reopened package writes co-located commentRangeStart elements in another order than the save it was opened from",
+  LIVE_GET_CHANGES_STALE:
+    "after a legacy collision flow, getChanges() reads different change text, locations, or kinds before and after saving and reopening",
   TRACKED_TABLE_AFTER_SPLIT_DELETE:
     "a tracked split followed by deleting the new block and inserting a table differs from the equivalent direct edits after accepting changes",
 } as const;
@@ -75,12 +73,20 @@ export const KNOWN_FAILING_FLOWS: readonly {
 }[] = [
   // From a 300-flow sweep (FOLIO_SCENARIO_SEED=7310000, 100 collision runs).
   {
-    seed: 7_310_028,
+    seed: 1088,
     steps: 10,
     kind: "collisions",
     generation: "legacy",
-    finding: "SAVE_REORDERS_COMMENT_RANGES",
-    relation: "saveIdempotent",
+    finding: "LIVE_GET_CHANGES_STALE",
+    relation: "readerStability",
+  },
+  {
+    seed: 1185,
+    steps: 10,
+    kind: "collisions",
+    generation: "legacy",
+    finding: "LIVE_GET_CHANGES_STALE",
+    relation: "readerStability",
   },
   {
     seed: 20_260_937,
@@ -99,8 +105,7 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TEXT_BOX_RESOLVE_MALFORMED_XML: /malformed markup/u,
   LIVE_STALE_BLOCK_FIELDS: /previewRuns|directIndentation/u,
   LIVE_REPLY_RANGES: /\[readerStability\] toMarkdown/u,
-  BATCH_ROW_INSERT_DELETE: /not what was asked \(deleteTableRow, insertTableRow\)/u,
-  SAVE_REORDERS_COMMENT_RANGES: /\[saveIdempotent\][^\n]*\n?[^\n]*commentRange/u,
+  LIVE_GET_CHANGES_STALE: /\[readerStability\] getChanges/u,
   TRACKED_TABLE_AFTER_SPLIT_DELETE: /\[directTracked\]/u,
 };
 
