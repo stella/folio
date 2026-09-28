@@ -98,6 +98,7 @@ describe("deleting the paragraph that ends a section", () => {
         text: mode === "suggested" ? SECTIONS_FIXTURE_TEXT.oneCloses : "",
         endsSection: true,
       });
+      if (mode === "suggested") expect(reviewer.acceptSuggestion("delete")).toBe(true);
       reviewer.acceptAll();
       expect(sectionsOf(await open(await reviewer.toBuffer()))).toEqual(expected);
     }

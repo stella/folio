@@ -2,9 +2,9 @@
  * `FolioDocxReviewer.applyDocumentOperations` over every fixture, in every
  * mode, one operation type at a time: each batch applies or refuses with an
  * issue, an applied one did what it asked (support/oracle.ts), the result
- * saves and reopens, every reader agrees, and resolving the
+ * saves and reopens, every reader agrees, and resolving ordinary tracked
  * changes lands where it should (reject-all: the document before; accept-all:
- * the document a reader saw).
+ * the document a reader saw). Suggested edits stay in the host store.
  */
 
 import assert from "node:assert/strict";
@@ -62,7 +62,10 @@ describe("applyDocumentOperations", () => {
           const operation = GENERATORS[type]?.(blocksOf(reviewer), random);
           if (!operation) continue;
           const pre = await capture(reviewer, mode);
-          const result = reviewer.applyDocumentOperations(coreBatch([operation], mode) as never);
+          // These are separate batches; keep their proposal ids distinct across the run.
+          const result = reviewer.applyDocumentOperations(
+            coreBatch([{ ...operation, id: `op-${type}` }], mode) as never,
+          );
           const outcome =
             result.applied.length > 0
               ? "applied"
@@ -90,14 +93,16 @@ describe("applyDocumentOperations", () => {
         );
 
         if (mode === "suggested") {
-          // Each proposal needs explicit acceptance before it reaches the package.
-          for (const { suggestionId } of reviewer.exportPendingSuggestions()) {
-            assert.equal(reviewer.acceptSuggestion(suggestionId), true);
-          }
+          assert.ok(reviewer.exportPendingSuggestions().length > 0);
         }
-        const { bytes: after } = await assertHealthy(reviewer, `${name} / ${mode} final`);
-        // Rejecting gives the document back, block for block. Accepting lands
-        // on the words a reader saw; block boundaries are left out there, as
+        const { bytes: after } = await assertHealthy(
+          reviewer,
+          `${name} / ${mode} final`,
+          persisted,
+        );
+        // For ordinary tracked changes, rejecting gives the document back,
+        // block for block. Accepting lands on the words a reader saw; block
+        // boundaries are left out there, as
         // a reader shows a pending join or split as the blocks it has now,
         // and so is whitespace: a merge's separator belongs to neither block
         // until the join is accepted.
@@ -113,11 +118,13 @@ describe("applyDocumentOperations", () => {
             `${name} / ${mode}: rejecting every change does not give the document back`,
           );
         }
-        assert.equal(
-          words(await resolvedText(after, "accept")),
-          words(settledText(await openReviewer(after))),
-          `${name} / ${mode}: accepting every change does not give what readers showed`,
-        );
+        if (mode !== "suggested") {
+          assert.equal(
+            words(await resolvedText(after, "accept")),
+            words(settledText(await openReviewer(after))),
+            `${name} / ${mode}: accepting every change does not give what readers showed`,
+          );
+        }
       });
     }
   }

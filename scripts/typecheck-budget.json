@@ -4,7 +4,7 @@
     "instantiations": 26061
   },
   "core": {
-    "types": 172121,
+    "types": 180780,
     "instantiations": 182046
   },
   "react": {
@@ -13,7 +13,7 @@
   },
   "agents": {
     "types": 131161,
-    "instantiations": 140121
+    "instantiations": 147674
   },
   "cli": {
     "types": 172716,

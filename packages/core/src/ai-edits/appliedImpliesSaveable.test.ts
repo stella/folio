@@ -290,6 +290,16 @@ const apply = (reviewer: FolioDocxReviewer, testCase: Case, mode: FolioAIEditApp
   return { applied: applied.length > 0, expected };
 };
 
+const acceptApplied = (reviewer: FolioDocxReviewer, mode: FolioAIEditApplyMode): void => {
+  if (mode === "suggested") {
+    const ids = new Set(
+      reviewer.exportPendingSuggestions().map(({ suggestionId }) => suggestionId),
+    );
+    for (const id of ids) expect(reviewer.acceptSuggestion(id)).toBe(true);
+  }
+  reviewer.acceptAll();
+};
+
 describe("an applied operation saves as requested", () => {
   test("the fixture has three sections, two of them ended by paragraphs", () => {
     expect(
@@ -321,7 +331,7 @@ describe("an applied operation saves as requested", () => {
           // A suggestion stays out of the package until someone accepts it.
           expect(project(await saveAndReopen(reviewer))).toEqual(original);
         }
-        reviewer.acceptAll();
+        acceptApplied(reviewer, mode);
         expect(project(await saveAndReopen(reviewer))).toEqual(expected);
       });
 
@@ -329,7 +339,7 @@ describe("an applied operation saves as requested", () => {
         const reviewer = await open();
         const { applied, expected } = apply(reviewer, testCase, mode);
         if (!applied) return;
-        reviewer.acceptAll();
+        acceptApplied(reviewer, mode);
         const [first] = reviewer.getContent();
         if (!first) throw new Error("no first block");
         const later = reviewer.applyDocumentOperations({
