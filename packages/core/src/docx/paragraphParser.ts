@@ -980,8 +980,8 @@ const hasRunPayload = ({ run, runElement, rels, media }: HasRunPayloadOptions): 
  * the assembled field, and one that reaches the editor's inline converter on
  * its own is dropped. So a `w:fldChar` whose field this paragraph never closed,
  * or one with no `begin` before it, loses the editor round trip — and the
- * model holds nothing of its `w:ffData` either, so the save loses a legacy form
- * field's name, macros, help text and checkbox state as well.
+ * orphan field has no owning `ComplexField` to hold its `w:ffData`, so dropping
+ * this run would also lose its name, macros, help text and checkbox state.
  *
  * `preservedXml` is the run's own capture member: the editor carries it as an
  * opaque atom and the serializer replays the source bytes, `w:ffData` included.
@@ -1022,11 +1022,17 @@ type LegacyFormCheckboxDisplay = {
   fontSize?: number;
 };
 
+const beginFieldCharOf = (runElement: XmlElement): XmlElement | undefined =>
+  findChildrenByNamespaceUri(runElement, WORDPROCESSINGML_NAMESPACE_URIS, "fldChar").find(
+    (fieldChar) => {
+      const charType = getAttribute(fieldChar, "w", "fldCharType");
+      return charType !== "separate" && charType !== "end";
+    },
+  );
+
 function getLegacyFormCheckboxDisplay(
-  runElement: XmlElement,
+  fieldData: XmlElement | null,
 ): LegacyFormCheckboxDisplay | undefined {
-  const fieldChar = findChild(runElement, "w", "fldChar");
-  const fieldData = fieldChar ? findChild(fieldChar, "w", "ffData") : null;
   const checkBox = fieldData ? findChild(fieldData, "w", "checkBox") : null;
   if (!checkBox) {
     return undefined;
@@ -1147,6 +1153,7 @@ type ComplexFieldScan = {
   complexFieldOpenRuns: Run[];
   afterSeparator: boolean;
   complexFieldState: FieldState;
+  complexFieldDataXml: string | undefined;
   complexFieldFallbackDisplay: LegacyFormCheckboxDisplay | undefined;
   // Run formatting (w:rPr) carried on the field's structural runs, used as a
   // fallback when the field has no separate result run (eigenpal/docx-editor#909).
@@ -1383,7 +1390,8 @@ const PARAGRAPH_CONTENT_HANDLERS = {
     // Look for field characters
     let hasFieldBegin = false;
     let beginFieldState: FieldState = {};
-    const beginFallbackDisplay = getLegacyFormCheckboxDisplay(runElement);
+    const beginFieldData = findWordprocessingChild(beginFieldCharOf(runElement), "ffData");
+    const beginFallbackDisplay = getLegacyFormCheckboxDisplay(beginFieldData);
     let hasFieldSeparate = false;
     let hasFieldEnd = false;
     let endOriginalValue: string | undefined;
@@ -1448,6 +1456,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       scan.complexFieldOpenRuns = [];
       // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
       scan.complexFieldState = beginFieldState;
+      scan.complexFieldDataXml = beginFieldData ? captureVerbatimXml(beginFieldData) : undefined;
       scan.complexFieldFallbackDisplay = beginFallbackDisplay;
       // The structural run carrying `begin` often holds the field's run
       // formatting (e.g. a footer PAGE field collapsed into one run).
@@ -1578,6 +1587,9 @@ const PARAGRAPH_CONTENT_HANDLERS = {
           fieldResult: resultRuns,
           ...scan.complexFieldState,
         };
+        if (scan.complexFieldDataXml !== undefined) {
+          complexField.formFieldDataXml = scan.complexFieldDataXml;
+        }
         if (resultIsFallback) {
           complexField.fieldResultIsFallback = true;
         }
@@ -1882,6 +1894,7 @@ function parseParagraphContents(
     complexFieldOpenRuns: [],
     afterSeparator: false,
     complexFieldState: {},
+    complexFieldDataXml: undefined,
     complexFieldFallbackDisplay: undefined,
     complexFieldFormatting: undefined,
     container: paraElement,

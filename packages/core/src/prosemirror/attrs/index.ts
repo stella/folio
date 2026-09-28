@@ -1087,6 +1087,7 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
   optionalBoolean(attrs, "fldLock", "field.attrs.fldLock", issues);
   optionalBoolean(attrs, "dirty", "field.attrs.dirty", issues);
   optionalBoolean(attrs, "fieldResultIsFallback", "field.attrs.fieldResultIsFallback", issues);
+  optionalString(attrs, "formFieldDataXml", "field.attrs.formFieldDataXml", issues);
   const emptyResultRuns = attrs["_docxEmptyResultRuns"];
   if (emptyResultRuns !== undefined && emptyResultRuns !== null) {
     validateEmptyFieldResultRuns(emptyResultRuns, issues);

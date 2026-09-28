@@ -599,11 +599,13 @@ function serializeSimpleField(field: SimpleField): string {
   return `<w:fldSimple ${attrs.join(" ")}>${contentXml}</w:fldSimple>`;
 }
 
-/**
- * Serialize a complex field
- * Complex fields are represented by multiple runs with fldChar elements,
- * so we convert them back to that structure
- */
+const replayableFormFieldDataXml = createCapturedXmlSanitizer({
+  allowedLocalNames: new Set(["ffData"]),
+  allowedNamespaceUris: WORDPROCESSINGML_NAMESPACE,
+  inheritedNamespaceScope: OOXML_NAMESPACE_SCOPE,
+});
+
+/** Serialize a complex field as structural fldChar runs and its content runs. */
 function serializeComplexField(field: ComplexField): string {
   const parts: string[] = [];
 
@@ -626,7 +628,11 @@ function serializeComplexField(field: ComplexField): string {
   // it makes consumers recompute the field on open (and may discard result
   // run formatting), which is what a generated TOC wants and nothing else.
   const beginAttrs: string[] = ['w:fldCharType="begin"', ...fieldStateAttributes(field)];
-  parts.push(`<w:r>${rPrXml}<w:fldChar ${beginAttrs.join(" ")}/></w:r>`);
+  const formFieldDataXml = replayableFormFieldDataXml(field.formFieldDataXml);
+  const begin = formFieldDataXml
+    ? `<w:fldChar ${beginAttrs.join(" ")}>${formFieldDataXml}</w:fldChar>`
+    : `<w:fldChar ${beginAttrs.join(" ")}/>`;
+  parts.push(`<w:r>${rPrXml}${begin}</w:r>`);
 
   // Field code (instrText)
   if (field.fieldCode.length > 0) {
@@ -646,11 +652,9 @@ function serializeComplexField(field: ComplexField): string {
   // Separate field character
   parts.push(`<w:r>${rPrXml}<w:fldChar w:fldCharType="separate"/></w:r>`);
 
-  // Field result. A fallback result is a display-only invention (see
-  // `fieldResultIsFallback` on `ComplexField`) — omit it so an unedited field
-  // keeps its original, resultless bytes instead of gaining a run the source
-  // never had.
-  if (!field.fieldResultIsFallback) {
+  // A synthesized result can be omitted only when the begin character keeps
+  // the form data from which the parser will rebuild it on the next open.
+  if (!field.fieldResultIsFallback || !formFieldDataXml) {
     parts.push(...field.fieldResult.map((run) => serializeRun(run)));
   }
 

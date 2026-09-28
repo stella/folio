@@ -30,6 +30,7 @@ const createFieldAttrs = () => ({
   // Whether `displayText` is a rendering fallback folio synthesized rather
   // than authored content (see `ComplexField.fieldResultIsFallback`).
   fieldResultIsFallback: { default: null },
+  formFieldDataXml: { default: null },
   _docxEmptyResultRuns: { default: null },
   _docxFieldCode: { default: null },
 });
@@ -69,6 +70,7 @@ const readFieldDomAttrs = (dom: HTMLElement) => {
     fldLock: statedFlag(dom.dataset["fldLock"]),
     dirty: statedFlag(dom.dataset["dirty"]),
     fieldResultIsFallback: statedFlag(dom.dataset["fieldResultIsFallback"]),
+    formFieldDataXml: dom.dataset["formFieldDataXml"] ?? null,
     _docxEmptyResultRuns: emptyResultRuns,
     _docxFieldCode: readFieldCode(dom.dataset["fieldCode"]),
   };
@@ -82,6 +84,7 @@ const getFieldDomAttrs = (node: PMNode) => {
     fldLock,
     dirty,
     fieldResultIsFallback,
+    formFieldDataXml,
     _docxEmptyResultRuns,
     _docxFieldCode,
   } = expectFieldAttrs(node);
@@ -95,6 +98,7 @@ const getFieldDomAttrs = (node: PMNode) => {
     ...(fieldResultIsFallback === undefined
       ? {}
       : { "data-field-result-is-fallback": String(fieldResultIsFallback) }),
+    ...(formFieldDataXml === undefined ? {} : { "data-form-field-data-xml": formFieldDataXml }),
     ...(_docxEmptyResultRuns === undefined
       ? {}
       : { "data-empty-result-runs": JSON.stringify(_docxEmptyResultRuns) }),

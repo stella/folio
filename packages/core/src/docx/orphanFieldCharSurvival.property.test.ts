@@ -178,3 +178,24 @@ describe("a field character with no field keeps itself and its run", () => {
     }
   });
 });
+
+describe("an assembled form field keeps its begin field data", () => {
+  test.each(FF_DATA_CHILDREN)(
+    "preserves %s through save and editor projection",
+    async (childName) => {
+      const markup = FF_DATA_CHILD_MARKUP[childName];
+      expect(markup).toBeDefined();
+      const body =
+        "<w:p>" +
+        fieldCharRun("begin", `<w:ffData>${markup ?? ""}</w:ffData>`) +
+        "<w:r><w:instrText> FORMCHECKBOX </w:instrText></w:r>" +
+        fieldCharRun("separate", "") +
+        fieldCharRun("end", "") +
+        "</w:p>";
+      const { saved, projected } = await savedAndProjected(body);
+      for (const part of [saved, projected]) {
+        expect(part).toContain(markup);
+      }
+    },
+  );
+});

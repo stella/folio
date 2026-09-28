@@ -4170,6 +4170,9 @@ function createFieldFromNode(
     if (attrs.fieldResultIsFallback !== undefined) {
       complex.fieldResultIsFallback = attrs.fieldResultIsFallback;
     }
+    if (attrs.formFieldDataXml !== undefined) {
+      complex.formFieldDataXml = attrs.formFieldDataXml;
+    }
     return complex;
   }
 

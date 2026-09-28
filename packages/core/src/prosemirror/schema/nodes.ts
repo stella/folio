@@ -696,11 +696,18 @@ type CommonFieldAttrs = {
 
 export type FieldAttrs = CommonFieldAttrs &
   (
-    | { fieldKind: "simple"; fieldResultIsFallback?: never; _docxFieldCode?: never }
+    | {
+        fieldKind: "simple";
+        fieldResultIsFallback?: never;
+        formFieldDataXml?: never;
+        _docxFieldCode?: never;
+      }
     | {
         fieldKind: "complex";
         /** Synthesized display text that must not become an authored result run. */
         fieldResultIsFallback?: boolean;
+        /** Captured `w:ffData` on a complex field's begin character. */
+        formFieldDataXml?: string;
         /** Source code runs; valid only while the instruction still matches. */
         _docxFieldCode?: { instruction: string; runs: Run[] };
       }

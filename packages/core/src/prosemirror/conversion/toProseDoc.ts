@@ -3174,6 +3174,7 @@ function convertField(
       dirty: field.dirty ?? null,
       fieldResultIsFallback:
         field.type === "complexField" ? (field.fieldResultIsFallback ?? null) : null,
+      formFieldDataXml: field.type === "complexField" ? (field.formFieldDataXml ?? null) : null,
       _docxEmptyResultRuns: emptyResultRuns ?? null,
       _docxFieldCode:
         field.type === "complexField" && field.fieldCode.length > 0

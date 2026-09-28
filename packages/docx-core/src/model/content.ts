@@ -523,9 +523,11 @@ export type ComplexField = {
   fldLock?: boolean;
   /** `@w:dirty`: absent states nothing, `false` explicitly forbids a recompute. */
   dirty?: boolean;
+  /** Captured `w:ffData` on the begin field character, including form state. */
+  formFieldDataXml?: string;
   /**
    * `fieldResult` is a display fallback the reader synthesized (e.g. a legacy
-   * `FORMCHECKBOX` with no cached `w:ffData` result run), not content this
+   * `FORMCHECKBOX` with no cached result run), not content this
    * field's source ever authored. A serializer honoring this leaves the
    * result out, so an unedited field keeps its original, resultless bytes
    * instead of gaining a run the source never had.
