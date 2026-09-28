@@ -108,6 +108,7 @@ jobs:
       container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
       docx_kernel_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
       interactions_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).interactions }}
+      browser_fuzzer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).browser_fuzzer }}
       differential_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).differential }}
       consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
       packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
@@ -551,37 +552,10 @@ jobs:
       - name: Run editor-web webview check
         run: bun --filter @stll/folio-editor-web test:e2e
 
-  browser-fuzzer-scope:
-    name: Detect editor changes for browser fuzzer
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      editor_changed: ${{ steps.scope.outputs.editor_changed }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Check changed paths
-        id: scope
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          changed_files="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
-          if printf '%s\n' "$changed_files" | rg -q '^(packages/(docx-core|core|react|vue|playground|playground-vue)/src/|tests/visual/|playwright\.config\.ts$)'; then
-            echo "editor_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "editor_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
   browser-fuzzer-smoke:
     name: Browser input fuzzer (PR seeds)
-    if: needs.browser-fuzzer-scope.outputs.editor_changed == 'true'
-    needs: browser-fuzzer-scope
+    if: needs.ci-plan.outputs.browser_fuzzer_required == 'true'
+    needs: ci-plan
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -745,6 +719,7 @@ jobs:
       - container-contract
       - docx-kernel
       - interactions
+      - browser-fuzzer-smoke
       - differential
       - consumer-scenarios
       - packaged-consumer
@@ -770,6 +745,7 @@ jobs:
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "interactions":{"area":"interactions_required","depth":"full"},
+            "browser-fuzzer-smoke":{"area":"browser_fuzzer_required"},
             "differential":{"area":"differential_required","depth":"full"},
             "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},
             "packaged-consumer":{"area":"packaged_consumer_required","depth":"full"}}

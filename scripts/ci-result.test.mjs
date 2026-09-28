@@ -17,6 +17,7 @@ const needsFor = (depth, event, codeRequired = "true") => {
     container_contract_required: "true",
     docx_kernel_required: "true",
     interactions_required: "true",
+    browser_fuzzer_required: "true",
     differential_required: "true",
     consumer_scenarios_required: "true",
     packaged_consumer_required: "true",
