@@ -115,14 +115,23 @@ const knownSectionParts = (doc: PMNode): KnownSectionParts => {
   return { headers, footers };
 };
 
-const windowErrors = (
-  doc: PMNode,
-  from: number,
-  to: number,
-  context: FolioOperationResultValidationContext,
-  knownParts?: KnownSectionParts,
-  knownCommentIds?: ReadonlySet<number>,
-): ValidateDocumentModelIssue[] => {
+type WindowErrorsOptions = {
+  doc: PMNode;
+  from: number;
+  to: number;
+  context: FolioOperationResultValidationContext;
+  knownParts?: KnownSectionParts;
+  knownCommentIds?: ReadonlySet<number>;
+};
+
+const windowErrors = ({
+  doc,
+  from,
+  to,
+  context,
+  knownParts,
+  knownCommentIds,
+}: WindowErrorsOptions): ValidateDocumentModelIssue[] => {
   if (to <= from) {
     return [];
   }
@@ -188,7 +197,7 @@ export const findIntroducedModelErrors = (
   if (window === null) {
     return [];
   }
-  let afterErrors = windowErrors(after, window.from, window.afterTo, context);
+  let afterErrors = windowErrors({ doc: after, from: window.from, to: window.afterTo, context });
   // The host owns section parts and comments outside the changed window. Use
   // only references already present before the batch; new dangling ones fail.
   let parts: KnownSectionParts | undefined;
@@ -202,24 +211,28 @@ export const findIntroducedModelErrors = (
     knownCommentIds = anchoredCommentIdsInProseDoc(before);
   }
   if (parts || knownCommentIds) {
-    afterErrors = windowErrors(after, window.from, window.afterTo, context, parts, knownCommentIds);
+    afterErrors = windowErrors({
+      doc: after,
+      from: window.from,
+      to: window.afterTo,
+      context,
+      knownParts: parts,
+      knownCommentIds,
+    });
   }
   if (afterErrors.length === 0) {
     return afterErrors;
   }
   // The story before the batch held none of the batch's comments.
   const known = new Map<string, number>();
-  for (const { message } of windowErrors(
-    before,
-    window.from,
-    window.beforeTo,
-    {
-      ...context,
-      createdCommentIds: [],
-    },
-    parts,
+  for (const { message } of windowErrors({
+    doc: before,
+    from: window.from,
+    to: window.beforeTo,
+    context: { ...context, createdCommentIds: [] },
+    knownParts: parts,
     knownCommentIds,
-  )) {
+  })) {
     known.set(message, (known.get(message) ?? 0) + 1);
   }
   return afterErrors.filter(({ message }) => {
