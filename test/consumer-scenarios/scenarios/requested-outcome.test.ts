@@ -223,6 +223,16 @@ describe("the requested-outcome oracle", () => {
       compareComments(
         model,
         [comment],
+        [{ ...comment, anchor: "NewOld" }],
+        [comment],
+        "suggested",
+      ).join("\n"),
+      /no comment/u,
+    );
+    assert.match(
+      compareComments(
+        model,
+        [comment],
         [{ ...comment, anchor: "OldNew" }],
         [comment],
         "direct",
@@ -232,6 +242,20 @@ describe("the requested-outcome oracle", () => {
     assert.match(
       compareComments(model, [comment], [], [comment], "suggested").join("\n"),
       /no comment/u,
+    );
+
+    const shared = { id: 2, text: "review", anchor: "The Buyer", blockId: "c" };
+    const sharedModel = modelOf([row("c", "The Buyer")]);
+    expectOperation(sharedModel, { type: "replaceBlock", blockId: "c", text: "The Seller" });
+    assert.deepEqual(
+      compareComments(
+        sharedModel,
+        [shared],
+        [{ ...shared, anchor: "The BuyerSeller" }],
+        [shared],
+        "suggested",
+      ),
+      [],
     );
   });
 

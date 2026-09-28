@@ -965,6 +965,16 @@ const containsInOrder = (text: string, expected: string): boolean => {
   return true;
 };
 
+const pendingAnchorMatches = (actual: string, old: string, replacement: string): boolean => {
+  if (!containsInOrder(actual, old) || !containsInOrder(actual, replacement)) return false;
+  // A retained character can serve both texts. With disjoint characters, the
+  // deleted text must precede the insertion in the live tracked range.
+  const replacementCharacters = new Set(replacement);
+  return [...old].some((character) => replacementCharacters.has(character))
+    ? true
+    : containsInOrder(actual, old + replacement);
+};
+
 export const compareComments = (
   model: Model,
   before: readonly Comment[],
@@ -990,7 +1000,7 @@ export const compareComments = (
         text === comment.text &&
         (anchor === undefined ||
           (mode === "suggested"
-            ? containsInOrder(actualAnchor, comment.anchor) && containsInOrder(actualAnchor, anchor)
+            ? pendingAnchorMatches(actualAnchor, comment.anchor, anchor)
             : actualAnchor === anchor)),
     );
     if (index === -1) {
