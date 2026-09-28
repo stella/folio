@@ -120,7 +120,7 @@ export const computePanelLayout = (input: PanelLayoutInput): PanelLayout => {
   const outline = ((): OutlinePresentation => {
     if (input.outline === "absent") return "none";
     const beside = page + commentsGutter;
-    if (availableWidth >= beside + PANEL_METRICS.outlineColumnWidth) return "column";
+    if (availableWidth >= thresholds.wide) return "column";
     if (availableWidth >= beside + PANEL_METRICS.outlineRailWidth) return "rail";
     return "drawer";
   })();
