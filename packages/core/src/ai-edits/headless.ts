@@ -1444,6 +1444,10 @@ export class FolioDocxReviewer {
     return this.pendingSuggestions.loadPendingSuggestions({
       records,
       snapshotForStory: (story) => this.snapshotStory(story),
+      sourceSnapshotForStory: (story, commentIds) => {
+        const state = this.getEditableStoryState(story);
+        return state ? createPendingSuggestionSourceSnapshot(state, commentIds) : null;
+      },
       apply: (record, snapshot) => {
         const result = this.applyDocumentOperationsInternal({
           story: record.story,

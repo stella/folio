@@ -3417,6 +3417,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
             const view = pagedEditorRef.current?.getView();
             return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
           },
+          sourceSnapshotForStory: (story, commentIds) => {
+            const view = pagedEditorRef.current?.getView();
+            return story.type === "main" && view
+              ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+              : null;
+          },
           apply: (record, snapshot) => {
             const view = pagedEditorRef.current?.getView();
             if (!view) return { applied: [], skipped: [] };
@@ -3436,8 +3442,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                 return comment.id;
               },
             });
-            if (createdComments.length > 0) {
-              updateComments((currentComments) => [...currentComments, ...createdComments]);
+            const appliedComments = appliedOperationComments(createdComments, result.applied);
+            if (appliedComments.length > 0) {
+              updateComments((currentComments) => [...currentComments, ...appliedComments]);
             }
             return { applied: result.applied, skipped: result.skipped };
           },

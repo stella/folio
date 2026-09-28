@@ -749,6 +749,12 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
           const view = opts.editorView.value;
           return story.type === "main" && view ? createFolioAIEditSnapshot(view.state.doc) : null;
         },
+        sourceSnapshotForStory: (story, commentIds) => {
+          const view = opts.editorView.value;
+          return story.type === "main" && view
+            ? createPendingSuggestionSourceSnapshot(view.state, commentIds)
+            : null;
+        },
         apply: (record, snapshot) =>
           applyAIEditOperations({
             snapshot,

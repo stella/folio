@@ -82,6 +82,10 @@ type ReplaceRestagedStoryOptions = {
 type LoadPendingSuggestionsOptions = {
   records: readonly unknown[];
   snapshotForStory: (story: FolioDocumentStoryHandle) => FolioAIEditSnapshot | null;
+  sourceSnapshotForStory: (
+    story: FolioDocumentStoryHandle,
+    commentIds: ReadonlySet<number>,
+  ) => FolioAIEditSnapshot | null;
   apply: (
     record: FolioPendingSuggestionRecord,
     snapshot: FolioAIEditSnapshot,
@@ -388,6 +392,7 @@ export class FolioPendingSuggestionRegistry {
   loadPendingSuggestions({
     records,
     snapshotForStory,
+    sourceSnapshotForStory,
     apply,
     activeSuggestionIds,
   }: LoadPendingSuggestionsOptions): FolioPendingSuggestionLoadResult[] {
@@ -416,12 +421,26 @@ export class FolioPendingSuggestionRegistry {
       const storyKey = canonicalJson(record.story);
       if (!baselines.has(storyKey)) {
         const snapshot = snapshotForStory(record.story);
+        const active = activeSuggestionIds();
+        const commentIds = new Set<number>();
+        for (const existingRecord of this.records.values()) {
+          if (
+            canonicalJson(existingRecord.story) === storyKey &&
+            active.has(existingRecord.suggestionId) &&
+            existingRecord.commentId !== undefined
+          ) {
+            commentIds.add(existingRecord.commentId);
+          }
+        }
+        // Fingerprints describe the saved story; anchors describe the live
+        // story, where earlier records may already have been restaged.
+        const source = sourceSnapshotForStory(record.story, commentIds);
         baselines.set(
           storyKey,
-          snapshot
+          snapshot && source
             ? {
                 snapshot,
-                fingerprint: fingerprintOf(snapshot, record.story),
+                fingerprint: fingerprintOf(source, record.story),
               }
             : null,
         );
@@ -458,11 +477,21 @@ export class FolioPendingSuggestionRegistry {
         return { status: "stale", suggestionId, reason: "documentChanged" };
       }
       const outcome = apply(record, snapshot);
-      if (!outcome.applied.some((entry) => entry.id === record.operation.id)) {
+      const applied = outcome.applied.find((entry) => entry.id === record.operation.id);
+      if (!applied) {
         return { status: "stale", suggestionId, reason: "applyFailed" };
       }
       this.sourceFingerprints.set(storyKey, record.sourceDocumentFingerprint);
-      if (!this.records.has(key)) this.records.set(key, structuredClone(record));
+      if (!this.records.has(key)) {
+        const { commentId: _oldCommentId, ...rest } = record;
+        this.records.set(
+          key,
+          structuredClone({
+            ...rest,
+            ...(applied.commentId !== undefined && { commentId: applied.commentId }),
+          }),
+        );
+      }
       changedStories.add(storyKey);
       return { status: "restaged", suggestionId: record.suggestionId };
     });

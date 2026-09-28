@@ -181,6 +181,61 @@ describe("host-persisted pending suggestions", () => {
       { status: "restaged", suggestionId: "second-proposal" },
     ]);
     expect(projection(reopened)).toEqual(before);
+    const loadedInBatches = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(loadedInBatches.loadPendingSuggestions(records.slice(0, 1))).toEqual([
+      { status: "restaged", suggestionId: "first-proposal" },
+    ]);
+    expect(loadedInBatches.loadPendingSuggestions(records.slice(1))).toEqual([
+      { status: "restaged", suggestionId: "second-proposal" },
+    ]);
+    expect(projection(loadedInBatches)).toEqual(before);
+  });
+
+  test("replay records the comment id allocated by the host", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await documentBytes("Second clause."));
+    expect(
+      reviewer.applyOperations(
+        [
+          {
+            id: "commented-proposal",
+            type: "replaceInBlock",
+            blockId: SECOND_ID,
+            find: "Second",
+            replace: "Revised",
+            comment: { text: "Review this edit." },
+          },
+        ],
+        { mode: "suggested" },
+      ).applied,
+    ).toHaveLength(1);
+    const records = reviewer.exportPendingSuggestions();
+    expect(records.at(0)?.commentId).toBeDefined();
+    const source = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const snapshot = source.snapshot();
+    const registry = new FolioPendingSuggestionRegistry();
+    let active = false;
+    expect(
+      registry.loadPendingSuggestions({
+        records,
+        snapshotForStory: () => snapshot,
+        sourceSnapshotForStory: () => snapshot,
+        apply: (record) => {
+          active = true;
+          return {
+            applied: [
+              { id: record.operation.id, suggestionId: record.suggestionId, commentId: 999 },
+            ],
+            skipped: [],
+          };
+        },
+        activeSuggestionIds: () => new Set(active ? ["commented-proposal"] : []),
+      }),
+    ).toEqual([{ status: "restaged", suggestionId: "commented-proposal" }]);
+    const replayed = registry.exportPendingSuggestions({
+      activeSuggestionIds: new Set(["commented-proposal"]),
+      snapshotForStory: () => snapshot,
+    });
+    expect(replayed.at(0)?.commentId).toBe(999);
   });
 
   test("a formatting-only document change invalidates a saved proposal", async () => {
@@ -322,6 +377,7 @@ describe("host-persisted pending suggestions", () => {
       registry.loadPendingSuggestions({
         records,
         snapshotForStory: () => snapshot,
+        sourceSnapshotForStory: () => snapshot,
         apply: () => {
           applied = true;
           return { applied: [], skipped: [] };

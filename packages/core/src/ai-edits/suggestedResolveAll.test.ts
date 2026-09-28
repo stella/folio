@@ -75,6 +75,28 @@ describe("resolving every suggestion headlessly", () => {
     expect(await savedTexts(reviewer)).toEqual(["Signed in two copies."]);
   });
 
+  test("a suggested deletion cannot retract an ordinary tracked split", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), { author: "AI" });
+    const target = reviewer.getContent().find(({ text }) => text === "Signed in two copies.");
+    if (!target) throw new Error("fixture paragraph missing");
+    const split = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "split", type: "splitBlock", blockId: target.id, offset: 10 }],
+    });
+    expect(split.applied).toHaveLength(1);
+    const firstHalf = reviewer.getContent().find(({ text }) => text === "Signed in ");
+    if (!firstHalf) throw new Error("split paragraph missing");
+    const deletion = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "suggested",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: firstHalf.id }],
+    });
+    expect(deletion.applied).toEqual([]);
+    expect(deletion.skipped).toEqual([{ id: "delete", reason: "unsupportedMode" }]);
+    expect(await savedTexts(reviewer)).toEqual(["First clause.", "Signed in ", "two copies."]);
+  });
+
   test("acceptAll leaves suggested edits staged and out of the saved package", async () => {
     const reviewer = await suggest();
     const before = reviewer.getChanges();

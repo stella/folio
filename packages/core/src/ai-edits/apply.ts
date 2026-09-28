@@ -788,6 +788,14 @@ const hasOrdinaryTextRevision = (block: PMNode): boolean => {
   return found;
 };
 
+const hasOrdinaryParagraphMarkRevision = (block: PMNode): boolean => {
+  const mark: unknown = block.attrs["pPrMark"];
+  if (typeof mark !== "object" || mark === null || !("info" in mark)) return false;
+  const info: unknown = mark.info;
+  if (typeof info !== "object" || info === null) return false;
+  return !("provenance" in info) || info.provenance !== "suggested";
+};
+
 /**
  * Strip insertion and deletion marks from the zero-width anchors the batch
  * touched.
@@ -4495,10 +4503,13 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "deleteBlock": {
-        if (isSuggested && hasOrdinaryTextRevision(item.blockNode)) {
-          // A whole-block deletion uses the same mark types as its existing
-          // revisions. Staging it would replace their marks and lose the
-          // original text when the proposal is rejected or saved.
+        if (
+          isSuggested &&
+          (hasOrdinaryTextRevision(item.blockNode) ||
+            hasOrdinaryParagraphMarkRevision(item.blockNode))
+        ) {
+          // A whole-block deletion can replace ordinary text revisions or
+          // retract an inserted paragraph break before the proposal is accepted.
           skipped.push({ id: item.operation.id, reason: "unsupportedMode" });
           continue;
         }
