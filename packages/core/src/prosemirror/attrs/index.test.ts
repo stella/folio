@@ -718,6 +718,21 @@ describe("ProseMirror attr readers", () => {
     }
   });
 
+  test("rejects complex-field metadata on a simple field", () => {
+    const field = schema.nodes.field.create({
+      fieldType: "FORMCHECKBOX",
+      instruction: " FORMCHECKBOX ",
+      displayText: "",
+      fieldKind: "simple",
+      formFieldDataXml: "<w:ffData/>",
+    });
+    const result = readFieldAttrs(field);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map(({ path }) => path)).toContain("field.attrs.formFieldDataXml");
+    }
+  });
+
   test("rejects malformed hard break attrs", () => {
     const node = schema.nodes.hardBreak.create({
       breakType: "page",
