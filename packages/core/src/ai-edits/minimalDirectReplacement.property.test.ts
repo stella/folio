@@ -336,17 +336,17 @@ const editContract = (
     .filter(({ offset, length }) => offset >= start && offset + length <= end)
     .map(({ offset, length }) => ({ offset: offset - start, length }));
   let cursor = 0;
-  let prose = "";
+  const prose: string[] = [];
   for (const { offset, length } of spans) {
     const at = replace.indexOf(find.slice(offset, offset + length), cursor);
     if (at === -1) {
       return { refusal: "protectedReference" };
     }
-    prose += replace.slice(cursor, at);
+    prose.push(replace.slice(cursor, at));
     cursor = at + length;
   }
-  prose += replace.slice(cursor);
-  return /\[\^e?[1-9]\d*\]/u.test(prose)
+  prose.push(replace.slice(cursor));
+  return prose.some((piece) => /\[\^e?[1-9]\d*\]/u.test(piece))
     ? { refusal: "protectedReference" }
     : { refusal: null, spans };
 };
@@ -684,20 +684,36 @@ type TrackedReplacementCase = [
  * Counterexamples the property once found, replayed first on every run.
  * Seed -449189980 (path 350:1:1:1:1:1:11:10:10:10:11:1:1:1:1:1:1:1:1:5:6:6:4:5:5
  * at ten times the runs): ` and` inserted before a kept `3.6` field (#1117).
+ * Seed -1730907865 (path 36:0:1:1:10:10:10:10:10:11:4:4): prose on either
+ * side of a kept note reference only resembles another marker when joined.
  */
 const PINNED_TRACKED_REPLACEMENTS: TrackedReplacementCase[] = (
   ["replaceInBlock", "replaceRange"] as const
-).map((type) => [
-  [{ kind: "field", result: "3.6" }, { kind: "tab" }],
-  {
-    whole: false,
-    sliceStart: 0,
-    sliceLength: 0.5,
-    mutations: [{ at: 0, remove: 0, insert: " and" }],
-  },
-  "tracked-changes",
-  "word",
-  type,
+).flatMap((type): TrackedReplacementCase[] => [
+  [
+    [{ kind: "field", result: "3.6" }, { kind: "tab" }],
+    {
+      whole: false,
+      sliceStart: 0,
+      sliceLength: 0.5,
+      mutations: [{ at: 0, remove: 0, insert: " and" }],
+    },
+    "tracked-changes",
+    "word",
+    type,
+  ],
+  [
+    [{ kind: "noteReference" }],
+    {
+      whole: true,
+      sliceStart: 0,
+      sliceLength: 0,
+      mutations: [{ at: 0.25, remove: 0, insert: "[^1]" }],
+    },
+    "tracked-changes",
+    "word",
+    type,
+  ],
 ]);
 
 describe("a tracked or suggested replacement redlines only the characters it changes", () => {
