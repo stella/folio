@@ -397,6 +397,7 @@ export type Table = {
     rows: TableRow[];
     preserved?: TablePreservedMarkup;
     bookmarks?: PositionedBookmarkMarker[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public
@@ -408,6 +409,7 @@ export type TableCell = {
     structuralChange?: TableStructuralChangeInfo;
     content: TableCellBlock[];
     contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public
@@ -423,6 +425,7 @@ export type TableRow = {
     preservedAttributes?: PreservedAttribute[];
     bookmarks?: PositionedBookmarkMarker[];
     contentControls?: SdtProperties[];
+    carrierStack?: TableContentCarrier[];
 };
 
 // @public

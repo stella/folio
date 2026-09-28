@@ -1127,6 +1127,9 @@ export const PARSE_WARNING_CODES: {
     readonly styleSetDuplicateStyleId: "style-set-duplicate-style-id";
     readonly styleSetInitialStyleMissing: "style-set-initial-style-missing";
     readonly pageBreakProjectionApproximated: "page-break-projection-approximated";
+    readonly altChunkUnsupported: "alt-chunk-unsupported";
+    readonly revisionCarrierOpaque: "revision-carrier-opaque";
+    readonly nestedRowOpaque: "nested-row-opaque";
 };
 
 // @public (undocumented)
