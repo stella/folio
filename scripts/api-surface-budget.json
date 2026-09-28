@@ -20,8 +20,8 @@
   "agents": {
     "reportBytes": 13275,
     "reportLines": 395,
-    "declarationBytes": 64617,
-    "declarationLines": 1325
+    "declarationBytes": 66793,
+    "declarationLines": 1392
   },
   "cli": {
     "reportBytes": 4536,

@@ -46,8 +46,6 @@ export const FINDINGS = {
     "one direct batch that inserts a row after a table row and deletes the row below it: both report applied, but the row to delete stays",
   SAVE_REORDERS_COMMENT_RANGES:
     "after replies across several steps, saving the reopened package writes co-located commentRangeStart elements in another order than the save it was opened from",
-  LIVE_GET_CHANGES_STALE:
-    "after a legacy collision flow, getChanges() reads different change text, locations, or kinds before and after saving and reopening",
   TRACKED_TABLE_AFTER_SPLIT_DELETE:
     "a tracked split followed by deleting the new block and inserting a table differs from the equivalent direct edits after accepting changes",
 } as const;
@@ -100,22 +98,6 @@ export const KNOWN_FAILING_FLOWS: readonly {
     finding: "BATCH_ROW_INSERT_DELETE",
   },
   {
-    seed: 1088,
-    steps: 10,
-    kind: "collisions",
-    generation: "legacy",
-    finding: "LIVE_GET_CHANGES_STALE",
-    relation: "readerStability",
-  },
-  {
-    seed: 1185,
-    steps: 10,
-    kind: "collisions",
-    generation: "legacy",
-    finding: "LIVE_GET_CHANGES_STALE",
-    relation: "readerStability",
-  },
-  {
     seed: 20_260_937,
     steps: 10,
     finding: "TRACKED_TABLE_AFTER_SPLIT_DELETE",
@@ -138,7 +120,6 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   COMMENT_ANCHOR_REPLACED_BLOCK: /\[directTracked\]/u,
   BATCH_ROW_INSERT_DELETE: /not what was asked \(deleteTableRow, insertTableRow\)/u,
   SAVE_REORDERS_COMMENT_RANGES: /\[saveIdempotent\][^\n]*\n?[^\n]*commentRange/u,
-  LIVE_GET_CHANGES_STALE: /\[readerStability\] getChanges/u,
   TRACKED_TABLE_AFTER_SPLIT_DELETE: /\[directTracked\]/u,
 };
 
