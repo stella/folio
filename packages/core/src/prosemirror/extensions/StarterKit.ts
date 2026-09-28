@@ -136,7 +136,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("pageBreak", PageBreakExtension());
   add("pageBreakRun", PageBreakRunExtension());
   add("renderedPageBreak", RenderedPageBreakExtension());
-  add("field", FieldExtension());
+  add("field", FieldExtension({ getInternalClipboardToken }));
   add("field", StructuredFieldExtension({ getInternalClipboardToken }));
   add("sdt", SdtExtension());
   add("blockSdt", BlockSdtExtension());

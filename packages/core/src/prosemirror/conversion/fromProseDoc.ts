@@ -4154,7 +4154,8 @@ function createFieldFromNode(
       type: "complexField",
       instruction: attrs.instruction,
       fieldType: attrs.fieldType,
-      fieldCode: [],
+      fieldCode:
+        attrs._docxFieldCode?.instruction === attrs.instruction ? attrs._docxFieldCode.runs : [],
       fieldResult:
         fieldContent.length > 0
           ? fieldContent.filter((content): content is Run => content.type === "run")

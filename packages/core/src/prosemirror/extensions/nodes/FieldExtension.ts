@@ -10,10 +10,10 @@
 import type { Node as PMNode } from "prosemirror-model";
 
 import { parseFieldInstruction } from "../../../docx/fieldParser";
-import { expectFieldAttrs, isValidEmptyFieldResultRuns } from "../../attrs";
+import { expectFieldAttrs, isValidEmptyFieldResultRuns, isValidFieldCode } from "../../attrs";
 import { createNodeExtension } from "../create";
 
-type StructuredFieldOptions = {
+type FieldOptions = {
   getInternalClipboardToken?: () => string;
 };
 
@@ -31,6 +31,7 @@ const createFieldAttrs = () => ({
   // than authored content (see `ComplexField.fieldResultIsFallback`).
   fieldResultIsFallback: { default: null },
   _docxEmptyResultRuns: { default: null },
+  _docxFieldCode: { default: null },
 });
 
 /** A `data-` flag a pasted field carried: absent states nothing. */
@@ -42,6 +43,16 @@ const readEmptyResultRuns = (value: string | undefined) => {
   try {
     const parsed: unknown = JSON.parse(value);
     return isValidEmptyFieldResultRuns(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const readFieldCode = (value: string | undefined) => {
+  if (value === undefined) return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isValidFieldCode(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -59,6 +70,7 @@ const readFieldDomAttrs = (dom: HTMLElement) => {
     dirty: statedFlag(dom.dataset["dirty"]),
     fieldResultIsFallback: statedFlag(dom.dataset["fieldResultIsFallback"]),
     _docxEmptyResultRuns: emptyResultRuns,
+    _docxFieldCode: readFieldCode(dom.dataset["fieldCode"]),
   };
 };
 
@@ -71,6 +83,7 @@ const getFieldDomAttrs = (node: PMNode) => {
     dirty,
     fieldResultIsFallback,
     _docxEmptyResultRuns,
+    _docxFieldCode,
   } = expectFieldAttrs(node);
   return {
     class: `docx-field docx-field-${fieldType.toLowerCase()}`,
@@ -85,6 +98,7 @@ const getFieldDomAttrs = (node: PMNode) => {
     ...(_docxEmptyResultRuns === undefined
       ? {}
       : { "data-empty-result-runs": JSON.stringify(_docxEmptyResultRuns) }),
+    ...(_docxFieldCode === undefined ? {} : { "data-field-code": JSON.stringify(_docxFieldCode) }),
     style:
       "outline: 1px solid var(--doc-field-outline, rgba(200,200,200,0.4)); padding: 0 1px; border-radius: 2px;",
   };
@@ -112,10 +126,10 @@ const getFieldVisibleText = (node: PMNode): string => {
   }
 };
 
-export const FieldExtension = createNodeExtension({
+export const FieldExtension = createNodeExtension<FieldOptions>({
   name: "field",
   schemaNodeName: "field",
-  nodeSpec: {
+  nodeSpec: (options) => ({
     inline: true,
     group: "inline",
     atom: true,
@@ -134,15 +148,18 @@ export const FieldExtension = createNodeExtension({
         "span",
         {
           ...getFieldDomAttrs(node),
+          ...(options.getInternalClipboardToken
+            ? { "data-docx-internal-clipboard": options.getInternalClipboardToken() }
+            : {}),
           ...(_docxEmptyResultRuns ? { "data-display-text": displayText } : {}),
         },
         getFieldVisibleText(node),
       ];
     },
-  },
+  }),
 });
 
-export const StructuredFieldExtension = createNodeExtension<StructuredFieldOptions>({
+export const StructuredFieldExtension = createNodeExtension<FieldOptions>({
   name: "structuredField",
   schemaNodeName: "structuredField",
   nodeSpec: (options) => ({

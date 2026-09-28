@@ -162,6 +162,14 @@ describe("cleanPastedHtml — Office cruft removal", () => {
 });
 
 describe("cleanPastedHtml — safety and robustness", () => {
+  test("keeps field-code metadata only for an internal clipboard slice", () => {
+    const html =
+      '<span class="docx-field" data-field-code="source" data-docx-internal-clipboard="token">Result</span>';
+    expect(cleanPastedHtml(html)).not.toContain("data-field-code");
+    expect(cleanPastedHtml(html, { internalClipboardToken: "token" })).toContain(
+      'data-field-code="source"',
+    );
+  });
   test("leaves non-Office HTML essentially untouched", () => {
     const html = "<p>Plain <strong>bold</strong> text</p>";
     expect(cleanPastedHtml(html)).toBe(html);

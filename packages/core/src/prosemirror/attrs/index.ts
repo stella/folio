@@ -1011,6 +1011,69 @@ export const isValidEmptyFieldResultRuns = (
   return issues.length === 0;
 };
 
+const isFieldCodeContent = (value: unknown): boolean => {
+  if (!isRecord(value)) return false;
+  switch (value["type"]) {
+    case "text":
+    case "instrText":
+      return typeof value["text"] === "string";
+    case "fieldChar":
+      return (
+        value["charType"] === "begin" ||
+        value["charType"] === "separate" ||
+        value["charType"] === "end"
+      );
+    case "preservedXml":
+      return (
+        typeof value["xml"] === "string" &&
+        isSafePreservedChildXml(value["xml"]) &&
+        typeof value["text"] === "string"
+      );
+    case "symbol":
+      return typeof value["font"] === "string" && typeof value["char"] === "string";
+    case "footnoteRef":
+    case "endnoteRef":
+      return typeof value["id"] === "number";
+    case "drawing":
+      return isRecord(value["image"]);
+    case "shape":
+      return isRecord(value["shape"]);
+    case "tab":
+    case "break":
+    case "softHyphen":
+    case "noBreakHyphen":
+    case "renderedPageBreak":
+      return true;
+    default:
+      return false;
+  }
+};
+
+export const isValidFieldCode = (
+  value: unknown,
+): value is NonNullable<FieldAttrs["_docxFieldCode"]> => {
+  if (!isRecord(value) || typeof value["instruction"] !== "string") return false;
+  const runs = value["runs"];
+  if (!Array.isArray(runs) || runs.length === 0) return false;
+  const issues: ProseMirrorAttrIssue[] = [];
+  for (const [index, run] of runs.entries()) {
+    if (!isRecord(run) || run["type"] !== "run" || !Array.isArray(run["content"])) {
+      return false;
+    }
+    if (!run["content"].every(isFieldCodeContent)) return false;
+    const path = `field.attrs._docxFieldCode.runs[${index}]`;
+    if (run["formatting"] !== undefined) {
+      if (!isRecord(run["formatting"])) return false;
+      validateTextFormatting(run["formatting"], `${path}.formatting`, issues);
+    }
+    optionalPropertyChanges(run, "propertyChanges", `${path}.propertyChanges`, issues, [
+      "runPropertyChange",
+    ]);
+    optionalPreservedAttributes(run, "preservedAttributes", `${path}.preservedAttributes`, issues);
+  }
+  return issues.length === 0;
+};
+
 export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAttrs> => {
   const attrs = attrsRecord(node.attrs);
   const issues: ProseMirrorAttrIssue[] = [];
@@ -1027,6 +1090,13 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
   const emptyResultRuns = attrs["_docxEmptyResultRuns"];
   if (emptyResultRuns !== undefined && emptyResultRuns !== null) {
     validateEmptyFieldResultRuns(emptyResultRuns, issues);
+  }
+  const fieldCode = attrs["_docxFieldCode"];
+  if (fieldCode !== undefined && fieldCode !== null && !isValidFieldCode(fieldCode)) {
+    issues.push({
+      path: "field.attrs._docxFieldCode",
+      message: "Expected source field code runs.",
+    });
   }
 
   return attrsResult(attrs, issues);

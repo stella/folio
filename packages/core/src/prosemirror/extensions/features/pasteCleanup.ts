@@ -196,6 +196,7 @@ const RANGE_ANCHOR_ATTR = /\s+data-docx-range-anchor(?:="[^"]*"|='[^']*'|=[^\s>]
 const MOVE_RANGE_BOUNDARY_ATTR =
   /\s+data-docx-move-range-boundary(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
 const STRUCTURED_FIELD_ATTR = /\s+data-field-structured(?:="[^"]*"|='[^']*'|=[^\s>]+)?/gi;
+const FIELD_CODE_ATTR = /\s+data-field-code(?:="[^"]*"|'[^']*'|=[^\s>]+)?/gi;
 
 /**
  * Treat reconstruction attributes as internal only when the HTML carries the
@@ -240,7 +241,7 @@ function stripForeignStructuredFields(html: string, internal: boolean): string {
   if (internal) {
     return html;
   }
-  return html.replace(STRUCTURED_FIELD_ATTR, "");
+  return html.replace(STRUCTURED_FIELD_ATTR, "").replace(FIELD_CODE_ATTR, "");
 }
 
 /**

@@ -699,6 +699,8 @@ export type FieldAttrs = {
   fieldResultIsFallback?: boolean;
   /** Authored empty result runs, which have no visible ProseMirror children. */
   _docxEmptyResultRuns?: Run[];
+  /** Source code runs; valid only while the field instruction still matches. */
+  _docxFieldCode?: { instruction: string; runs: Run[] };
 };
 
 /**

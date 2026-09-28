@@ -3175,6 +3175,10 @@ function convertField(
       fieldResultIsFallback:
         field.type === "complexField" ? (field.fieldResultIsFallback ?? null) : null,
       _docxEmptyResultRuns: emptyResultRuns ?? null,
+      _docxFieldCode:
+        field.type === "complexField" && field.fieldCode.length > 0
+          ? { instruction: field.instruction, runs: field.fieldCode }
+          : null,
     },
     createStructuredField ? inlineNodes : undefined,
     marks,
