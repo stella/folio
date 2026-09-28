@@ -123,11 +123,12 @@ export const waitForPanels = async (page: Page, review: PanelLayoutReview): Prom
 };
 
 type Interval = { left: number; right: number };
+type PanelBox = Interval & { layoutWidth: number };
 
 type PanelBoxes = {
   pages: Interval[];
-  outline: Interval | null;
-  comments: Interval | null;
+  outline: PanelBox | null;
+  comments: PanelBox | null;
   cards: Interval[];
   viewport: Interval;
   horizontalOverflow: number;
@@ -140,17 +141,23 @@ const readPanelBoxes = (page: Page): Promise<PanelBoxes> =>
       const { left, right, width } = element.getBoundingClientRect();
       return width > 0 ? { left, right } : null;
     };
+    const panelBox = (element: HTMLElement | null): PanelBox | null => {
+      const bounds = interval(element);
+      return bounds ? { ...bounds, layoutWidth: element.offsetWidth } : null;
+    };
     const present = <T>(value: T | null): value is T => value !== null;
     const scroll = document.querySelector<HTMLElement>("[data-folio-scroll]");
     const scrollBox = scroll?.getBoundingClientRect();
     return {
       pages: [...document.querySelectorAll(".layout-page")].map(interval).filter(present),
-      outline: interval(
-        document.querySelector(
+      outline: panelBox(
+        document.querySelector<HTMLElement>(
           '[data-testid="folio-outline"]:not([data-folio-outline-surface="drawer"])',
         ),
       ),
-      comments: interval(document.querySelector('[data-folio-comments-surface="column"]')),
+      comments: panelBox(
+        document.querySelector<HTMLElement>('[data-folio-comments-surface="column"]'),
+      ),
       cards: [
         ...document.querySelectorAll('[data-folio-comments-surface="column"] .docx-comment-card'),
       ]
@@ -190,10 +197,10 @@ export const expectPanelsDoNotOverlap = async (page: Page, state: PanelState): P
   if (boxes.outline) {
     const width =
       state.outline === "rail" ? PANEL_METRICS.outlineRailWidth : PANEL_METRICS.outlineColumnWidth;
-    expect(boxes.outline.right - boxes.outline.left).toBeCloseTo(width, 0);
+    expect(boxes.outline.layoutWidth).toBeCloseTo(width, 0);
   }
   if (boxes.comments) {
-    expect(boxes.comments.right - boxes.comments.left).toBeCloseTo(PANEL_METRICS.commentsWidth, 0);
+    expect(boxes.comments.layoutWidth).toBeCloseTo(PANEL_METRICS.commentsWidth, 0);
   }
 
   for (const [name, panel] of panels) {
@@ -260,7 +267,11 @@ export const expectDrawerCycle = async (
   const drawerBox = await drawer.boundingBox();
   const scrimBox = await scrim.boundingBox();
   if (!drawerBox || !scrimBox) throw new Error("drawer or scrim has no box");
-  expect(drawerBox.width).toBeLessThanOrEqual(PANEL_METRICS.drawerWidth + EPSILON);
+  const drawerLayoutWidth = await drawer.evaluate((element) =>
+    element instanceof HTMLElement ? element.offsetWidth : null,
+  );
+  if (drawerLayoutWidth === null) throw new Error("drawer has no layout width");
+  expect(drawerLayoutWidth).toBeLessThanOrEqual(PANEL_METRICS.drawerWidth + EPSILON);
   // Press the scrim on the side the drawer does not cover.
   const drawerOnLeft =
     drawerBox.x - scrimBox.x < scrimBox.x + scrimBox.width - (drawerBox.x + drawerBox.width);
