@@ -181,6 +181,50 @@ describe("inserting after a deleted final paragraph", () => {
   });
 });
 
+describe("successive trailing paragraph deletions", () => {
+  for (const count of [2, 3, 4]) {
+    for (const batching of ["separate", "together"] as const) {
+      test(`${count} adjacent deletions ${batching} resolve like direct edits`, async () => {
+        const targets = ORIGINAL.slice(-count);
+        const runChain = async (mode: FolioDocumentOperationMode) => {
+          const reviewer = await open();
+          if (batching === "separate") {
+            const apply = applier(reviewer, mode);
+            for (const text of targets) {
+              apply({ type: "deleteBlock", blockId: idOf(reviewer, text) });
+            }
+          } else {
+            const result = reviewer.applyDocumentOperations({
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: targets.map(
+                (text, index) =>
+                  ({
+                    id: String(index),
+                    type: "deleteBlock",
+                    blockId: idOf(reviewer, text),
+                  }) as const,
+              ),
+            });
+            expect(result.applied).toHaveLength(count);
+          }
+          return reviewer;
+        };
+
+        const direct = await runChain("direct");
+        const tracked = await runChain("tracked-changes");
+        const rejecting = await reopen(tracked);
+        rejecting.rejectAll();
+        expect(texts(rejecting)).toEqual(ORIGINAL);
+
+        tracked.acceptAll();
+        expect(texts(tracked)).toEqual(texts(direct));
+        expect(texts(await reopen(tracked))).toEqual(texts(direct));
+      });
+    }
+  }
+});
+
 describe("rejecting a split with an inserted table after its first half", () => {
   test("joins the halves again once the table is gone", async () => {
     const reviewer = await open();

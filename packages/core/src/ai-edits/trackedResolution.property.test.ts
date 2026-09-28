@@ -379,6 +379,7 @@ describe("resolving random tracked work", () => {
     });
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 2055257210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -1401551044 }));
+    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -304239210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100 }));
     // The direct comparison must not pass vacuously.
     expect(comparedWithDirect).toBeGreaterThan(0);

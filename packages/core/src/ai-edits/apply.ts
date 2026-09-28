@@ -2432,8 +2432,9 @@ type RetiredFinalParagraphs = {
  * deleted, and accepting runs that paragraph into the emptied one, keeping
  * its own properties since it holds the words.
  *
- * A paragraph with a break pending deletion already runs into this one;
- * another final-break revision there would depend on batch boundaries.
+ * A paragraph with a break pending deletion already runs into this one. If
+ * its content is also wholly deleted, look past it for the surviving carrier;
+ * otherwise another final-break revision would depend on batch boundaries.
  * A preceding break that is itself a pending insertion is
  * retracted instead of deleted: the paragraph joins the emptied one now, and
  * records the emptied one's properties as `w:pPrChange` where they differ,
@@ -2494,8 +2495,10 @@ const withRetiredFinalParagraphs = ({
         break;
       }
       if (isPlainDeletedPPrMark(mark)) {
-        // Its break is already owned by a deletion. A later deletion of that
-        // paragraph must leave the same final carrier as separate batches.
+        // A wholly deleted paragraph joins the final carrier when accepted.
+        // Retire the earlier surviving paragraph's break as well, so a chain
+        // of deleted trailing paragraphs leaves no empty final paragraph.
+        if (holdsOnlyDeletedContent(previous)) continue;
         break;
       }
       if (isInsertedPPrMark(mark)) {
