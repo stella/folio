@@ -47,13 +47,12 @@ globalThis.__folioFeatureFlags = { workerFontMetrics: true };
 // fails to spawn/execute (bad URL, module throws on load) fires the proxy's
 // `error` handler, marks the proxy dead, and this never resolves a width.
 //
-// `sans-serif` (not a bundled web font) is measured identically by the
-// main-thread 2D canvas and the worker's OffscreenCanvas, so the worker's
-// font-fingerprint guard passes and the entry is not skipped. A unique probe
-// text + cache key guarantees the read reflects THIS round-trip, not a warm
-// cache from the editor's own layout.
+// `sans-serif` (not a bundled web font) and matching kerning settings keep the
+// main-thread canvas and the worker's OffscreenCanvas measurements aligned.
+// A unique probe text and cache key keep this read distinct from editor layout.
 async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
   const font = "16px sans-serif";
+  const fontKerning = "none";
   const letterSpacing = 0;
   const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const fontCacheKey = `folio-smoke|${font}|${nonce}`;
@@ -65,6 +64,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     return { width: -1, alive: canPrefetchMeasurement() };
   }
   ctx.font = font;
+  ctx.fontKerning = fontKerning;
   const fontFingerprintWidth = ctx.measureText(text).width;
 
   prefetchMeasurement({
@@ -75,7 +75,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     fontCacheKey,
     fontFingerprintText: text,
     fontFingerprintWidth,
-    fontKerning: "none",
+    fontKerning,
   });
 
   const deadline = Date.now() + 8000;
