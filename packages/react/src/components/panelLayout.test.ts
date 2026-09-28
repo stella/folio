@@ -55,8 +55,10 @@ describe("computePanelLayout", () => {
   });
 
   test("more width never demotes a panel", () => {
-    fc.assert(
-      fc.property(input, fc.integer({ min: 0, max: 2000 }), (layoutInput, extra) => {
+    const monotonicLayout = fc.property(
+      input,
+      fc.integer({ min: 0, max: 2000 }),
+      (layoutInput, extra) => {
         const narrower = computePanelLayout(layoutInput);
         const wider = computePanelLayout({
           ...layoutInput,
@@ -66,8 +68,13 @@ describe("computePanelLayout", () => {
         expect(COMMENTS_RANK[wider.comments]).toBeGreaterThanOrEqual(
           COMMENTS_RANK[narrower.comments],
         );
-      }),
+      },
     );
+    fc.assert(monotonicLayout, {
+      seed: -448549325,
+      path: "66:5:0:0:0:0:1:0:6:1:3:4:4:4:4:3",
+    });
+    fc.assert(monotonicLayout);
   });
 
   test("the tier names the presentation", () => {
