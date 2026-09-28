@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   COMMENTS_TRACK_WIDTH,
@@ -9,6 +10,8 @@ import {
   type OutlinePresentation,
   type PanelLayoutInput,
 } from "./panel-layout";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const input = fc.record({
   availableWidth: fc.integer({ min: 0, max: 4000 }),
@@ -41,6 +44,7 @@ describe("computePanelLayout", () => {
         expect(!anyTrack || taken <= layoutInput.availableWidth).toBe(true);
         expect(layout.commentsGutter).toBe(layout.comments === "column" ? COMMENTS_TRACK_WIDTH : 0);
       }),
+      propertyConfig(),
     );
   });
 
@@ -51,6 +55,7 @@ describe("computePanelLayout", () => {
         expect(layout.outline === "none").toBe(layoutInput.outline === "absent");
         expect(layout.comments === "hidden").toBe(layoutInput.comments === "closed");
       }),
+      propertyConfig(),
     );
   });
 
@@ -70,11 +75,14 @@ describe("computePanelLayout", () => {
         );
       },
     );
-    fc.assert(monotonicLayout, {
-      seed: -448549325,
-      path: "66:5:0:0:0:0:1:0:6:1:3:4:4:4:4:3",
-    });
-    fc.assert(monotonicLayout);
+    fc.assert(
+      monotonicLayout,
+      propertyConfig({
+        seed: -448549325,
+        path: "66:5:0:0:0:0:1:0:6:1:3:4:4:4:4:3",
+      }),
+    );
+    fc.assert(monotonicLayout, propertyConfig());
   });
 
   test("the tier names the presentation", () => {
@@ -96,6 +104,7 @@ describe("computePanelLayout", () => {
         });
         expect(atWide.tier).toBe("wide");
       }),
+      propertyConfig(),
     );
   });
 });
