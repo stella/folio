@@ -8,7 +8,7 @@
  * was.
  *
  * The model keeps block texts and requested properties in reading order, plus
- * an independent cell grid and links on unchanged paragraphs. A batch
+ * an independent cell grid and main-story links on unchanged paragraphs. A batch
  * resolves every operation against the document as it was read (see the
  * batch-claims contract), so a batch's expectations compose in order over
  * the same pre-state, and an operation the engine refused contributes
