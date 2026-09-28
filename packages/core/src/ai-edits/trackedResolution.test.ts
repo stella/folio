@@ -182,6 +182,26 @@ describe("inserting after a deleted final paragraph", () => {
 });
 
 describe("successive trailing paragraph deletions", () => {
+  test("an earlier insertion keeps the accepted trailing deletion chain compact", async () => {
+    const runSequence = async (mode: FolioDocumentOperationMode) => {
+      const reviewer = await open();
+      const apply = applier(reviewer, mode);
+      apply({ type: "deleteBlock", blockId: idOf(reviewer, "Signed") });
+      apply({ type: "deleteBlock", blockId: idOf(reviewer, "The Buyer") });
+      apply({
+        type: "insertAfterBlock",
+        blockId: idOf(reviewer, "Service Agreement"),
+        text: "Inserted clause.",
+      });
+      return reviewer;
+    };
+
+    const direct = await runSequence("direct");
+    const tracked = await runSequence("tracked-changes");
+    tracked.acceptAll();
+    expect(texts(tracked)).toEqual(texts(direct));
+  });
+
   for (const count of [2, 3, 4]) {
     for (const batching of ["separate", "together"] as const) {
       test(`${count} adjacent deletions ${batching} resolve like direct edits`, async () => {

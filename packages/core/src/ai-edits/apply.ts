@@ -2351,6 +2351,38 @@ const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
 const isPlainDeletedPPrMark = (value: unknown): boolean =>
   typeof value === "object" && value !== null && "kind" in value && value.kind === "del";
 
+/** An emptied paragraph still carries deleted content, rather than being an original blank. */
+const hasDeletedContent = (paragraph: PMNode): boolean => {
+  let found = false;
+  paragraph.descendants((node) => {
+    if (node.isInline && node.marks.some((mark) => mark.type.name === "deletion")) {
+      found = true;
+      return false;
+    }
+    return !found;
+  });
+  return found;
+};
+
+/** The final paragraph reached by a chain of wholly deleted paragraphs. */
+const deletedFinalParagraphAfter = (at: ResolvedPos, paragraphTypeName: string): number | null => {
+  let position = at.pos;
+  for (let index = at.index(); index < at.parent.childCount; index++) {
+    const paragraph = at.parent.child(index);
+    if (paragraph.type.name !== paragraphTypeName || !holdsOnlyDeletedContent(paragraph)) {
+      return null;
+    }
+    if (index === at.parent.childCount - 1) {
+      return paragraph.attrs["pPrMark"] == null && hasDeletedContent(paragraph) ? position : null;
+    }
+    if (!isPlainDeletedPPrMark(paragraph.attrs["pPrMark"])) {
+      return null;
+    }
+    position += paragraph.nodeSize;
+  }
+  return null;
+};
+
 /**
  * Where the added break of the final paragraph at `at` rotates to: the free
  * mark `addedBreakCarrierBefore` finds, or else a paragraph the batch deletes
@@ -4365,6 +4397,27 @@ const applyFolioAIEditOperationsInternal = ({
               mappedFrom: tr.mapping.maps.length,
               revisionExtras: trackedRevisionExtras,
             });
+          } else if (
+            deleted &&
+            !isPairedMove(item.operation.moveId) &&
+            isPlainDeletedPPrMark(deleted.attrs["pPrMark"]) &&
+            holdsOnlyDeletedContent(deleted)
+          ) {
+            // A later batch deleted the paragraph whose break an earlier
+            // final-paragraph deletion already retired. Extend that chain to
+            // the preceding survivor, regardless of deletion order.
+            const finalPosition = deletedFinalParagraphAfter(
+              tr.doc.resolve(markPosition),
+              deleted.type.name,
+            );
+            if (finalPosition !== null) {
+              deletedFinalParagraphs.push({
+                operationId: item.operation.id,
+                position: finalPosition,
+                mappedFrom: tr.mapping.maps.length,
+                revisionExtras: trackedRevisionExtras,
+              });
+            }
           }
         }
         if (commentMark) {
