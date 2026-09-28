@@ -346,7 +346,8 @@ const editContract = (
     cursor = at + length;
   }
   prose.push(replace.slice(cursor));
-  return prose.some((piece) => /\[\^e?[1-9]\d*\]/u.test(piece))
+  // Prose on opposite sides of a kept marker can join into a second marker.
+  return /\[\^e?[1-9]\d*\]/u.test(prose.join(""))
     ? { refusal: "protectedReference" }
     : { refusal: null, spans };
 };
