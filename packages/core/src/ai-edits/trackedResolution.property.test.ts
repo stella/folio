@@ -377,6 +377,7 @@ describe("resolving random tracked work", () => {
         expect(read(reopened)).toEqual(accepted);
       }
     });
+    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -425480671 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 2055257210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -1401551044 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -304239210 }));

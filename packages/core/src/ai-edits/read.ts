@@ -461,7 +461,7 @@ export const getTrackedChangeStatsFromDoc = (
 /**
  * The comment anchors present in the body, read from the `comment` mark the
  * editor renders. Each entry carries the anchored text and containing block id;
- * runs of one comment id within the body fold into a single anchor.
+ * ranges for one comment id within the body fold into a single anchor.
  */
 export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
   const commentType = doc.type.schema.marks["comment"];
@@ -469,10 +469,13 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
     return [];
   }
   const blockStarts = blockStartIdsFromDoc(doc);
-  const anchors = new Map<number, FolioCommentAnchor>();
+  const ranges = new Map<number, { blockId: string | null; start: number; end: number }>();
   const noteReferences = collectNoteReferenceLabels(doc);
   let currentBlockId: string | null = null;
+  let bodyText = "";
 
+  // OOXML stores one continuous range per comment id, including unmarked
+  // tracked runs and paragraphs between its first and last marked text.
   doc.descendants((node, pos) => {
     if (node.isTextblock) {
       currentBlockId = blockStarts.get(pos) ?? null;
@@ -482,21 +485,27 @@ export const getCommentAnchorsFromDoc = (doc: PMNode): FolioCommentAnchor[] => {
       return undefined;
     }
     const text = readerTextOf(node, noteReferences);
+    const end = bodyText.length + text.length;
     for (const mark of node.marks) {
       if (mark.type !== commentType || typeof mark.attrs["commentId"] !== "number") {
         continue;
       }
       const commentId = mark.attrs["commentId"];
-      const existing = anchors.get(commentId);
-      if (!existing) {
-        anchors.set(commentId, { commentId, blockId: currentBlockId, quote: text });
-        continue;
+      const range = ranges.get(commentId);
+      if (range) {
+        range.end = end;
+        range.blockId ??= currentBlockId;
+      } else {
+        ranges.set(commentId, { blockId: currentBlockId, start: bodyText.length, end });
       }
-      existing.quote += text;
-      existing.blockId ??= currentBlockId;
     }
+    bodyText += text;
     return undefined;
   });
 
-  return [...anchors.values()];
+  return [...ranges].map(([commentId, { blockId, start, end }]) => ({
+    commentId,
+    blockId,
+    quote: bodyText.slice(start, end),
+  }));
 };
