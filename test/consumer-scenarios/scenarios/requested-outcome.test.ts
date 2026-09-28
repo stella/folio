@@ -28,6 +28,7 @@ import {
 import { type Block, COLLISIONS, MODES, type Mode, type Operation } from "../support/operations.ts";
 import {
   applyChecked,
+  compareComments,
   compareWithModel,
   EXPECTATIONS,
   expectOperation,
