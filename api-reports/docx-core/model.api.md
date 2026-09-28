@@ -172,6 +172,7 @@ export type ComplexField = {
     formatting?: TextFormatting;
     fldLock?: boolean;
     dirty?: boolean;
+    formFieldDataXml?: string;
     fieldResultIsFallback?: boolean;
 };
 

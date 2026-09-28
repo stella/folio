@@ -93,10 +93,12 @@ export type EmphasisMarkAttrs = {
 export type FieldAttrs = CommonFieldAttrs & ({
     fieldKind: "simple";
     fieldResultIsFallback?: never;
+    formFieldDataXml?: never;
     _docxFieldCode?: never;
 } | {
     fieldKind: "complex";
     fieldResultIsFallback?: boolean;
+    formFieldDataXml?: string;
     _docxFieldCode?: {
         instruction: string;
         runs: import__stll_docx_core_model.Run[];
