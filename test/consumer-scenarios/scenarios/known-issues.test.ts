@@ -372,36 +372,31 @@ describe("findings of the metamorphic relations (support/metamorphic.ts) and the
     );
   });
 
-  expectedFailure(
-    "COMMENT_ANCHOR_REPLACED_BLOCK",
-    "comments on a replaced paragraph anchor alike directly and tracked-then-accepted",
-    /\[directTracked\]/u,
-    async () => {
-      const anchors: Record<string, (string | undefined)[]> = {};
-      for (const mode of ["direct", "tracked-changes"] as const) {
-        const reviewer = await openReviewer(await plainDocument());
-        const text = "This agreement is made between the parties named below.";
-        const id = blockId(reviewer, text);
-        const range = (startOffset: number, endOffset: number) =>
-          createFolioAITextRangeHandle({ blockId: id, text, startOffset, endOffset });
-        apply(reviewer, mode, [
-          { type: "commentOnRange", range: range(0, 4), comment: { text: "a" } },
-        ]);
-        apply(reviewer, mode, [
-          { type: "commentOnRange", range: range(31, 34), comment: { text: "b" } },
-        ]);
-        apply(reviewer, mode, [{ type: "replaceBlock", blockId: id, text: "New clause text." }]);
-        const saved = await reopen(reviewer);
-        saved.acceptAll();
-        anchors[mode] = (await reopen(saved)).getComments().map((comment) => comment.anchoredText);
-      }
-      assert.deepEqual(
-        anchors["tracked-changes"],
-        anchors["direct"],
-        "[directTracked] anchors tracked and accepted (actual) vs direct (expected)",
-      );
-    },
-  );
+  test("comments on a replaced paragraph anchor alike directly and tracked-then-accepted", async () => {
+    const anchors: Record<string, (string | undefined)[]> = {};
+    for (const mode of ["direct", "tracked-changes"] as const) {
+      const reviewer = await openReviewer(await plainDocument());
+      const text = "This agreement is made between the parties named below.";
+      const id = blockId(reviewer, text);
+      const range = (startOffset: number, endOffset: number) =>
+        createFolioAITextRangeHandle({ blockId: id, text, startOffset, endOffset });
+      apply(reviewer, mode, [
+        { type: "commentOnRange", range: range(0, 4), comment: { text: "a" } },
+      ]);
+      apply(reviewer, mode, [
+        { type: "commentOnRange", range: range(31, 34), comment: { text: "b" } },
+      ]);
+      apply(reviewer, mode, [{ type: "replaceBlock", blockId: id, text: "New clause text." }]);
+      const saved = await reopen(reviewer);
+      saved.acceptAll();
+      anchors[mode] = (await reopen(saved)).getComments().map((comment) => comment.anchoredText);
+    }
+    assert.deepEqual(
+      anchors["tracked-changes"],
+      anchors["direct"],
+      "[directTracked] anchors tracked and accepted (actual) vs direct (expected)",
+    );
+  });
 
   test("a batch that inserts a row and deletes the row below it deletes that row", async () => {
     const reviewer = await openReviewer(await tableDocument());
