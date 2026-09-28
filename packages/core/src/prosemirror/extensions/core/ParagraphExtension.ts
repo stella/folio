@@ -374,7 +374,7 @@ const paragraphNodeSpec: NodeSpec = {
     indentFirstLine: { default: null },
     hangingIndent: { default: false },
     numPr: { default: null },
-    _pastedHtmlList: { default: null },
+    _pastedHtmlList: { default: undefined },
     numPrFromStyle: { default: null },
     listNumFmt: { default: null },
     listIsBullet: { default: null },

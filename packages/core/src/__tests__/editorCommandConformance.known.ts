@@ -137,6 +137,15 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     placements: ["cross-paragraph", "document"],
     kinds: ["readback-blocks", "readback-painted", "readback-markdown", "reject-mismatch"],
   },
+  {
+    reason:
+      "Modified Backspace at the start of a list item joins the next item's text directly, so rejecting its suggestion does not restore the original text",
+    operations: ["key:Mod-Backspace", "key:Shift-Backspace"],
+    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
+    placements: ["caret-start"],
+    modes: ["suggesting"],
+    kinds: ["reject-mismatch"],
+  },
 
   // ---------------------------------------------------- suggesting mode --
   {

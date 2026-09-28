@@ -137,7 +137,7 @@ export const numberPastedHtmlLists = (slice: Slice, view: EditorView): Slice => 
         }
         result = node.type.create(
           listItemAttrs(
-            { ...attrs, _pastedHtmlList: null },
+            { ...attrs, _pastedHtmlList: undefined },
             { numId: group.numId, ilvl: hint.level },
             numbering,
           ),
