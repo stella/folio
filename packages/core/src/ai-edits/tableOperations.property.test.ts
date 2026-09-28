@@ -245,7 +245,7 @@ const buildOperation = (
     return block.id;
   };
   const blockId = blockIdAt(anchor.tableIndex, anchor.cell);
-  const values = Array.from({ length: plan.valueCount ?? 0 }, (_, index) => `v${index}v`);
+  const values = Array.from({ length: plan.valueCount ?? 0 }, (_, index) => `${id}v${index}v`);
   const planned = (operation: FolioDocumentOperation, supplied: string[] = []) => ({
     operation,
     values: supplied,
@@ -277,10 +277,14 @@ const buildOperation = (
         blockId,
         endBlockId: blockIdAt(anchor.tableIndex, other),
       });
-    case "replaceBlock":
-      return planned({ id, type: plan.kind, blockId, text: "replacedv" }, ["replacedv"]);
-    case "insertAfterBlock":
-      return planned({ id, type: plan.kind, blockId, text: "insertedv" }, ["insertedv"]);
+    case "replaceBlock": {
+      const text = `${id}replacedv`;
+      return planned({ id, type: plan.kind, blockId, text }, [text]);
+    }
+    case "insertAfterBlock": {
+      const text = `${id}insertedv`;
+      return planned({ id, type: plan.kind, blockId, text }, [text]);
+    }
   }
 };
 
@@ -459,18 +463,36 @@ const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Prom
           trackedRefusalIsExpected(planned, plan),
       }).toMatchObject({ expected: true });
     }
-    return;
   }
   if (trackedApplied.size === 0) {
-    expect(direct.result.skipped.map(({ reason }) => reason)).toEqual(
-      tracked.result.skipped.map(({ reason }) => reason),
-    );
+    if (disagreeing.length === 0) {
+      expect(direct.result.skipped.map(({ reason }) => reason)).toEqual(
+        tracked.result.skipped.map(({ reason }) => reason),
+      );
+    }
     return;
   }
   const accepted = await resolve(tracked.reviewer, "accept");
   expect(tableReadingProblems(accepted)).toEqual([]);
-  // (b) Accepting the tracked result is the direct result.
-  expect(visible(accepted)).toEqual(visible(directReading));
+  // (b) Accepting the tracked result is the direct result for the operations
+  // both modes applied, even when tracked mode refused another operation.
+  if (disagreeing.length === 0) {
+    expect(visible(accepted)).toEqual(visible(directReading));
+    return;
+  }
+  const shared = await open(base);
+  const sharedOperations = direct.planned
+    .filter(({ operation }) => trackedApplied.has(operation.id))
+    .map(({ operation }) => operation);
+  const sharedResult = shared.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "direct",
+    operations: sharedOperations,
+  });
+  expect(new Set(sharedResult.applied.map(({ id }) => id))).toEqual(trackedApplied);
+  const sharedReading = await readTablesAt("direct shared", shared);
+  expect(tableReadingProblems(sharedReading)).toEqual([]);
+  expect(visible(accepted)).toEqual(visible(sharedReading));
 };
 
 describe("table operations on merged tables", () => {

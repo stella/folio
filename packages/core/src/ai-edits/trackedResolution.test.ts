@@ -149,6 +149,50 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
   });
 });
 
+test("a blank final paragraph deletes like a direct edit and rejects to the blank source", async () => {
+  const lastBlockId = (reviewer: FolioDocxReviewer): string => {
+    const last = reviewer.getContent().at(-1);
+    if (!last) throw new Error("no last block");
+    return last.id;
+  };
+  const source = await open();
+  const lastId = idOf(source, "Signed");
+  const blanked = source.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "direct",
+    operations: [{ id: "blank", type: "replaceBlock", blockId: lastId, text: "" }],
+  });
+  expect(blanked.applied).toHaveLength(1);
+  const blankSource = await source.toBuffer();
+
+  const direct = await open(blankSource);
+  const tracked = await open(blankSource);
+  const directResult = direct.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "direct",
+    operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(direct) }],
+  });
+  const trackedResult = tracked.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "tracked-changes",
+    operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(tracked) }],
+  });
+  expect(directResult.applied).toHaveLength(1);
+  expect(trackedResult.applied).toHaveLength(1);
+  tracked.acceptAll();
+  expect(texts(await reopen(tracked))).toEqual(texts(await reopen(direct)));
+
+  const rejecting = await open(blankSource);
+  const rejected = rejecting.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "tracked-changes",
+    operations: [{ id: "delete", type: "deleteBlock", blockId: lastBlockId(rejecting) }],
+  });
+  expect(rejected.applied).toHaveLength(1);
+  rejecting.rejectAll();
+  expect(texts(await reopen(rejecting))).toEqual(texts(await open(blankSource)));
+});
+
 describe("inserting after a deleted final paragraph", () => {
   test("rejecting a later insertion after the deleted paragraph restores the source", async () => {
     const reviewer = await open();

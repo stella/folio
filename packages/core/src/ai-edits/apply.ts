@@ -2447,6 +2447,7 @@ type RetireFinalParagraphsOptions = {
 
 type RetiredFinalParagraphs = {
   nextRevisionId: number;
+  resolvedOperationIds: ReadonlySet<string>;
   /** Revisions written for an operation after it ran. */
   addedRevisions: { operationId: string; revisionId: number }[];
   /** Batch revisions a retracted inserted break took out of the document. */
@@ -2488,6 +2489,7 @@ const withRetiredFinalParagraphs = ({
   let nextRevisionId = revisionSeed;
   const addedRevisions: RetiredFinalParagraphs["addedRevisions"] = [];
   const retractedRevisionIds: number[] = [];
+  const resolvedOperationIds = new Set<string>();
   const located = deletions
     .filter(({ operationId }) => appliedIds.has(operationId))
     .map((deletion) => ({
@@ -2523,6 +2525,7 @@ const withRetiredFinalParagraphs = ({
           kind: "del",
           info: { id: revisionId, author, date, ...revisionExtras },
         });
+        resolvedOperationIds.add(operationId);
         addedRevisions.push({ operationId, revisionId });
         break;
       }
@@ -2548,6 +2551,7 @@ const withRetiredFinalParagraphs = ({
           break;
         }
         joinAtParagraphMark({ tr, paragraphPos: position, paragraph: previous, next: following });
+        resolvedOperationIds.add(operationId);
         const retracted = addedBreakRevisionId(mark);
         if (retracted !== null) {
           retractedRevisionIds.push(retracted);
@@ -2574,7 +2578,7 @@ const withRetiredFinalParagraphs = ({
       break;
     }
   }
-  return { nextRevisionId, addedRevisions, retractedRevisionIds };
+  return { nextRevisionId, resolvedOperationIds, addedRevisions, retractedRevisionIds };
 };
 
 /**
@@ -3429,6 +3433,7 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedTextBoxAnchorIds = new Set<string>();
   /** Container-ending paragraphs a tracked `deleteBlock` emptied: see `withRetiredFinalParagraphs`. */
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
+  const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
   let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor;
   /**
@@ -4803,8 +4808,13 @@ const applyFolioAIEditOperationsInternal = ({
     // edge case where the comment mark is missing. Treat any op
     // that emitted zero transaction steps as a no-op skip.
     if (tr.steps.length === stepsBefore) {
-      skipped.push({ id: item.operation.id, reason: "noopOperation" });
-      continue;
+      if (!deletedFinalParagraphs.some(({ operationId }) => operationId === item.operation.id)) {
+        skipped.push({ id: item.operation.id, reason: "noopOperation" });
+        continue;
+      }
+      // A blank final paragraph has no inline step. Its preceding mark is
+      // retired after the batch, when the preceding paragraph is settled.
+      deferredNoopFinalDeletions.add(item.operation.id);
     }
 
     let committedCommentId: number | undefined;
@@ -4855,7 +4865,7 @@ const applyFolioAIEditOperationsInternal = ({
     });
   }
 
-  if (tr.docChanged) {
+  if (tr.docChanged || deferredNoopFinalDeletions.size > 0) {
     const batchRevisionIds = new Set(applied.flatMap(({ revisionIds }) => revisionIds ?? []));
     tr = withoutRevisionsOnZeroWidthAnchors(tr, batchRevisionIds, deletedTextBoxAnchorIds);
     // A text box goes with the paragraph content it is drawn in.
@@ -4883,6 +4893,12 @@ const applyFolioAIEditOperationsInternal = ({
       date,
     });
     revisionSeed = retired.nextRevisionId;
+    for (const operationId of deferredNoopFinalDeletions) {
+      if (retired.resolvedOperationIds.has(operationId)) continue;
+      const receiptIndex = applied.findIndex(({ id }) => id === operationId);
+      if (receiptIndex >= 0) applied.splice(receiptIndex, 1);
+      skipped.push({ id: operationId, reason: "noopOperation" });
+    }
     const receiptIndexByRevisionId = new Map<number, number>();
     for (const [receiptIndex, receipt] of applied.entries()) {
       for (const revisionId of receipt.revisionIds ?? []) {
@@ -4950,7 +4966,7 @@ const applyFolioAIEditOperationsInternal = ({
       // derived from the stamp too.
       requestDeterministicParaIds(tr, `${revisionStamp.date}:${String(revisionStamp.idSeed)}`);
     }
-    view.dispatch(tr);
+    if (tr.docChanged) view.dispatch(tr);
   }
 
   return {
