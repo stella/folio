@@ -249,25 +249,32 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     }
 
     const parentRect = offsetParent.getBoundingClientRect();
+    // DOM rectangles include CSS zoom and transforms; style.left uses the
+    // offset parent's unscaled CSS pixels. Keep every measured X in that space.
+    const parentScale = offsetParent.clientWidth ? parentRect.width / offsetParent.clientWidth : 1;
+    const parentX = (viewportX: number) => (viewportX - parentRect.left) / parentScale;
     if (isDrawer) {
       // Pinned to the end edge of the visible viewport, whatever the scroll,
       // and reaching up over the sticky ruler to the top of the scroll content.
       const scrollRect = scrollEl.getBoundingClientRect();
-      const top = -Math.round(parentRect.top - scrollRect.top + scrollEl.scrollTop);
+      const top = -Math.round((parentRect.top - scrollRect.top) / parentScale + scrollEl.scrollTop);
       const width = Math.min(PANEL_METRICS.drawerWidth, scrollEl.clientWidth - 16);
       const height = scrollEl.clientHeight;
-      const viewportEnd = scrollRect.left + scrollEl.clientWidth;
+      const scrollScale = scrollEl.offsetWidth
+        ? scrollRect.width / scrollEl.offsetWidth
+        : parentScale;
+      const viewportEnd = scrollRect.left + scrollEl.clientWidth * scrollScale;
       setDrawerBox((box) =>
         box.top === top && box.width === width && box.height === height
           ? box
           : { top, width, height },
       );
-      setMeasuredLeft(viewportEnd - parentRect.left - width);
+      setMeasuredLeft(parentX(viewportEnd) - width);
       return;
     }
     const pageRect = pageEl.getBoundingClientRect();
-    const rawLeft = pageRect.right - parentRect.left + PANEL_METRICS.commentsGap;
-    const maxVisibleLeft = Math.max(8, parentRect.width - SIDEBAR_WIDTH - 8);
+    const rawLeft = parentX(pageRect.right) + PANEL_METRICS.commentsGap;
+    const maxVisibleLeft = Math.max(8, offsetParent.clientWidth - SIDEBAR_WIDTH - 8);
     setMeasuredLeft(Math.max(8, Math.min(rawLeft, maxVisibleLeft)));
   }, [editorContainerRef, isDrawer]);
 

@@ -106,16 +106,17 @@ export const readPanelState = (page: Page): Promise<ReportedPanelState | null> =
   }, PANELS_ROW);
 
 /**
- * Wait until the editor has settled the loaded document's panels: headings
- * collected (the outline is offered) and, for a reviewed document, the
- * comments auto-opened.
+ * Wait for a painted page as well as panel state. Heading collection and
+ * the host's loaded signal can precede the initial font-ready layout.
+ * Reviewed documents also wait for their comments to auto-open.
  */
 export const waitForPanels = async (page: Page, review: PanelLayoutReview): Promise<void> => {
+  await expect(page.locator(".layout-page").first()).toBeVisible();
   await expect
     .poll(async () => {
       const state = await readPanelState(page);
       if (!state || state.outline === "none") return false;
-      return review === "none" || state.comments !== "hidden";
+      return review !== "comment-and-changes" || state.comments !== "hidden";
     })
     .toBe(true);
 };
