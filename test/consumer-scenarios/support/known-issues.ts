@@ -26,12 +26,6 @@ export const FINDINGS = {
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
-  // Found by the metamorphic relations (support/metamorphic.ts) and the
-  // flows they run in. A relation tolerates the frequent ones through
-  // `tolerate(<entry>, …)`, so deleting a fixed entry here makes its
-  // tolerance fail to compile until it is deleted too.
-  TRACKED_TABLE_AFTER_SPLIT_DELETE:
-    "a tracked split followed by deleting the new block and inserting a table differs from the equivalent direct edits after accepting changes",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -64,15 +58,7 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [
-  // From a 300-flow sweep (FOLIO_SCENARIO_SEED=7310000, 100 collision runs).
-  {
-    seed: 20_260_937,
-    steps: 10,
-    finding: "TRACKED_TABLE_AFTER_SPLIT_DELETE",
-    relation: "directTracked",
-  },
-];
+}[] = [];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
@@ -81,7 +67,6 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TRACKED_MERGE_INTO_DELETED_BLOCK: /applied a merge into a block the batch deletes/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   TEXT_BOX_RESOLVE_MALFORMED_XML: /malformed markup/u,
-  TRACKED_TABLE_AFTER_SPLIT_DELETE: /\[directTracked\]/u,
 };
 
 /**

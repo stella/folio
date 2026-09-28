@@ -305,6 +305,55 @@ describe("rejecting a split with an inserted table after its first half", () => 
   });
 });
 
+test("accepting a split paragraph deletion before a table matches direct editing", async () => {
+  const results: string[][] = [];
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    const reviewer = await open();
+    applier(
+      reviewer,
+      mode,
+    )({
+      type: "splitBlock",
+      blockId: idOf(reviewer, "The Supplier"),
+      offset: 20,
+    });
+    const blockId = idOf(reviewer, "The Supplier");
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [
+        { id: "delete", type: "deleteBlock", blockId },
+        { id: "table", type: "insertTable", blockId, rows: [["Term", "Value"]] },
+      ],
+    });
+    expect(result.applied).toHaveLength(2);
+    expect(result.skipped).toEqual([]);
+    const saved = await reopen(reviewer);
+    if (mode === "tracked-changes") {
+      const rejecting = await reopen(saved);
+      rejecting.rejectAll();
+      expect(texts(await reopen(rejecting))).toEqual(ORIGINAL);
+      saved.acceptAll();
+    }
+    results.push(texts(await reopen(saved)));
+  }
+  expect(results[1]).toEqual(results[0]);
+});
+
+test("clearing a split paragraph's text before a table keeps its break", async () => {
+  const reviewer = await open();
+  applier(reviewer)({
+    type: "splitBlock",
+    blockId: idOf(reviewer, "The Supplier"),
+    offset: 20,
+  });
+  const blockId = idOf(reviewer, "The Supplier");
+  applier(reviewer)({ type: "replaceBlock", blockId, text: "" });
+  applier(reviewer)({ type: "insertTable", blockId, rows: [["Term", "Value"]] });
+  reviewer.acceptAll();
+  expect(texts(await reopen(reviewer))).toContain("");
+});
+
 const anchorsOf = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getComments().map(({ anchoredText }) => anchoredText);
 

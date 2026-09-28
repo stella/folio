@@ -2253,12 +2253,20 @@ type RotatedAddedFinalBreaks = {
  * Insert blocks at the boundary `at`. A comment that runs across the boundary
  * runs across what is inserted there too: a comment covers one stretch.
  */
-const insertBlocksInsideComments = (
-  tr: Transaction,
-  at: number,
-  blocks: PMNode | readonly PMNode[],
-): Transaction => {
-  const spanning = commentsAcrossBlockBoundary(tr.doc, at);
+type InsertBlocksInsideCommentsOptions = {
+  tr: Transaction;
+  at: number;
+  blocks: PMNode | readonly PMNode[];
+  carriedComments?: readonly Mark[];
+};
+
+const insertBlocksInsideComments = ({
+  tr,
+  at,
+  blocks,
+  carriedComments,
+}: InsertBlocksInsideCommentsOptions): Transaction => {
+  const spanning = carriedComments ?? commentsAcrossBlockBoundary(tr.doc, at);
   const fragment = Fragment.from(blocks as PMNode | PMNode[]);
   let next = tr.insert(at, fragment);
   for (const comment of spanning) {
@@ -3594,6 +3602,35 @@ const applyFolioAIEditOperationsInternal = ({
   const date = revisionStamp?.date ?? new Date().toISOString();
   const insertedColumnCounts = new Map<string, number>();
 
+  // A tracked deletion can retract a split's inserted paragraph mark while
+  // the split halves are adjacent. If this batch also places a table after
+  // the deleted half, do the retraction first, then place the table before
+  // the joined paragraph. The table would otherwise sit between the halves
+  // and leave an empty paragraph when the deletion is accepted.
+  const tableAfterDeletedSplit = new Map<number, Mark[]>();
+  if (mode === "tracked-changes") {
+    const afterTables = new Map<number, Set<number>>();
+    for (const item of executableResolved) {
+      if (item.operation.type !== "insertTable" || item.operation.position === "before") continue;
+      const boundaries = afterTables.get(item.blockFrom) ?? new Set<number>();
+      boundaries.add(item.from);
+      afterTables.set(item.blockFrom, boundaries);
+    }
+    for (const item of executableResolved) {
+      if (item.operation.type !== "deleteBlock") continue;
+      if (!isInsertedPPrMark(item.blockNode.attrs["pPrMark"])) continue;
+      const at = view.state.doc.resolve(item.blockFrom);
+      const continuation = at.parent.maybeChild(at.index() + 1);
+      if (continuation?.type !== item.blockNode.type) continue;
+      if (afterTables.get(item.blockFrom)?.has(item.blockTo)) {
+        tableAfterDeletedSplit.set(
+          item.blockFrom,
+          commentsAcrossBlockBoundary(view.state.doc, item.blockTo),
+        );
+      }
+    }
+  }
+
   // Sort right-to-left so each tr.insert / tr.delete leaves earlier
   // positions intact. Column insertions run before deletions at the
   // same snapshot coordinate; the deletion path accounts for those
@@ -3606,6 +3643,20 @@ const applyFolioAIEditOperationsInternal = ({
   // carries it like any mark around it, rather than the annotation landing on
   // positions the edit already moved (see `batch-claims.ts`).
   const executionOrder = executableResolved.toSorted((left, right) => {
+    if (left.blockFrom === right.blockFrom && tableAfterDeletedSplit.has(left.blockFrom)) {
+      if (
+        left.operation.type === "deleteBlock" &&
+        right.operation.type === "insertTable" &&
+        right.from === left.blockTo
+      )
+        return -1;
+      if (
+        left.operation.type === "insertTable" &&
+        right.operation.type === "deleteBlock" &&
+        left.from === right.blockTo
+      )
+        return 1;
+    }
     const leftAnnotates = ANNOTATION_OPERATION_TYPES.has(left.operation.type);
     const rightAnnotates = ANNOTATION_OPERATION_TYPES.has(right.operation.type);
     if (leftAnnotates !== rightAnnotates) {
@@ -4145,7 +4196,7 @@ const applyFolioAIEditOperationsInternal = ({
         if (built.revisionIds.length > 0) {
           appliedRevisionIds = built.revisionIds;
         }
-        tr = insertBlocksInsideComments(tr, item.from, built.nodes);
+        tr = insertBlocksInsideComments({ tr, at: item.from, blocks: built.nodes });
         break;
       }
       case "insertSignatureTable": {
@@ -4600,7 +4651,15 @@ const applyFolioAIEditOperationsInternal = ({
         if (producesTrackedChanges) {
           appliedRevisionIds = [operationRevisionSeed++];
         }
-        tr = insertBlocksInsideComments(tr, item.from, table);
+        const carriedComments = tableAfterDeletedSplit.get(item.blockFrom);
+        const usesRetractedSplit = carriedComments !== undefined && item.from === item.blockTo;
+        const at = usesRetractedSplit ? tr.mapping.map(item.blockFrom, -1) : item.from;
+        tr = insertBlocksInsideComments({
+          tr,
+          at,
+          blocks: table,
+          ...(usesRetractedSplit && { carriedComments }),
+        });
         markStructuralChange(tr);
         break;
       }
