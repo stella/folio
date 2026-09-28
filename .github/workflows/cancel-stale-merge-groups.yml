@@ -17,7 +17,8 @@ on:
         default: true
 
 concurrency:
-  group: cancel-stale-merge-groups
+  # A manual dry run gets its own group so it never cancels a real clean-up.
+  group: cancel-stale-merge-groups-${{ inputs.dry-run == true && 'dry-run' || 'apply' }}
   cancel-in-progress: true
 
 permissions: {}
