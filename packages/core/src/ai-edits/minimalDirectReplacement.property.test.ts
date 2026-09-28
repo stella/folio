@@ -672,6 +672,34 @@ const touchedHighlight = (
   return touched;
 };
 
+type TrackedReplacementCase = [
+  Item[],
+  Edit,
+  ReviewMode,
+  WordDiffGranularity,
+  "replaceInBlock" | "replaceRange",
+];
+
+/**
+ * Counterexamples the property once found, replayed first on every run.
+ * Seed -449189980 (path 350:1:1:1:1:1:11:10:10:10:11:1:1:1:1:1:1:1:1:5:6:6:4:5:5
+ * at ten times the runs): ` and` inserted before a kept `3.6` field (#1117).
+ */
+const PINNED_TRACKED_REPLACEMENTS: TrackedReplacementCase[] = (
+  ["replaceInBlock", "replaceRange"] as const
+).map((type) => [
+  [{ kind: "field", result: "3.6" }, { kind: "tab" }],
+  {
+    whole: false,
+    sliceStart: 0,
+    sliceLength: 0.5,
+    mutations: [{ at: 0, remove: 0, insert: " and" }],
+  },
+  "tracked-changes",
+  "word",
+  type,
+]);
+
 describe("a tracked or suggested replacement redlines only the characters it changes", () => {
   test("over generated paragraphs and edits, accepted and rejected", async () => {
     await fc.assert(
@@ -869,7 +897,7 @@ describe("a tracked or suggested replacement redlines only the characters it cha
           }
         },
       ),
-      propertyConfig({ numRuns: 60 }),
+      propertyConfig({ numRuns: 60, examples: PINNED_TRACKED_REPLACEMENTS }),
     );
   }, 240_000);
 });

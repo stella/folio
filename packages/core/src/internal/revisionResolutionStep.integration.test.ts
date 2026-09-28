@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Transaction } from "prosemirror-state";
 import { Step } from "prosemirror-transform";
 
@@ -13,8 +14,16 @@ const revision = (id: number) => ({ revisionId: id, author: "Reviewer", date: "2
 const paragraph = (
   index: number,
   mark: "none" | "ins" | "del",
-  inline: "plain" | "ins" | "del" | "format",
+  inline: "plain" | "ins" | "del" | "format" | "ins-only" | "del-only",
 ) => {
+  // A paragraph holding only a revision empties when it is resolved away, so
+  // the paragraph marks either side of it join with nothing between them.
+  if (inline === "ins-only" || inline === "del-only") {
+    const type = inline === "ins-only" ? schema.marks.insertion : schema.marks.deletion;
+    return paragraphNode(index, mark, [
+      schema.text(`change${index}`, [type.create(revision(index * 10 + 1))]),
+    ]);
+  }
   const content = [schema.text(`start${index}`)];
   if (inline === "ins" || inline === "del") {
     const type = inline === "ins" ? schema.marks.insertion : schema.marks.deletion;
@@ -37,7 +46,11 @@ const paragraph = (
       ]),
     );
   }
-  return schema.node(
+  return paragraphNode(index, mark, content);
+};
+
+const paragraphNode = (index: number, mark: "none" | "ins" | "del", content: PMNode[]) =>
+  schema.node(
     "paragraph",
     {
       paraId: index.toString(16).padStart(8, "0"),
@@ -65,7 +78,6 @@ const paragraph = (
     },
     content,
   );
-};
 
 const table = (rowMarker: "none" | "trIns" | "trDel", cellMarker: "none" | "ins" | "del") =>
   schema.node("table", null, [
@@ -89,7 +101,7 @@ test(
         fc.array(
           fc.record({
             mark: fc.constantFrom("none", "ins", "del"),
-            inline: fc.constantFrom("plain", "ins", "del", "format"),
+            inline: fc.constantFrom("plain", "ins", "del", "format", "ins-only", "del-only"),
           }),
           { minLength: 2, maxLength: 5 },
         ),
@@ -133,6 +145,19 @@ test(
               expect(oldEnd).toBeLessThanOrEqual(doc.content.size);
               expect(newStart).toBeGreaterThanOrEqual(0);
               expect(newEnd).toBeLessThanOrEqual(resolved.content.size);
+              // A removed range reads as removed from both of its edges. Two
+              // removals left adjacent in one map break this: the map reads
+              // their shared boundary against the first only.
+              if (oldEnd > oldStart) {
+                const removedAfter = step.getMap().mapResult(oldStart, 1).deletedAfter;
+                const removedBefore = step.getMap().mapResult(oldEnd, -1).deletedBefore;
+                expect({ oldStart, oldEnd, removedAfter, removedBefore }).toEqual({
+                  oldStart,
+                  oldEnd,
+                  removedAfter: true,
+                  removedBefore: true,
+                });
+              }
             });
             const replayed = Step.fromJSON(schema, step.toJSON()).apply(doc);
             if (!replayed.doc?.eq(resolved)) {
