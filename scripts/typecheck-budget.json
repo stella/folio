@@ -8,7 +8,7 @@
     "instantiations": 182046
   },
   "react": {
-    "types": 189057,
+    "types": 198533,
     "instantiations": 366919
   },
   "agents": {
@@ -21,10 +21,10 @@
   },
   "editor-web": {
     "types": 196858,
-    "instantiations": 266286
+    "instantiations": 277660
   },
   "vue": {
-    "types": 208942,
+    "types": 218903,
     "instantiations": 920985
   },
   "nuxt": {
@@ -33,10 +33,10 @@
   },
   "playground": {
     "types": 198525,
-    "instantiations": 268977
+    "instantiations": 280391
   },
   "playground-vue": {
-    "types": 206701,
+    "types": 216352,
     "instantiations": 910970
   },
   "parity": {
