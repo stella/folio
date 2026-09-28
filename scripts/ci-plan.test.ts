@@ -64,7 +64,16 @@ describe("CI plan", () => {
     expect(fullDepth).toBe("scoped");
   });
 
-  for (const file of ["benchmarks.yml", "oracle-mutation-check.yml", "vscode-extension.yml"]) {
+  // CodSpeed rejects merge_group events, so benchmarks keep their own
+  // pull-request, main-push and nightly triggers.
+  test("benchmarks never run on merge groups", () => {
+    const triggers = readWorkflow("benchmarks.yml")["on"];
+    if (!isRecord(triggers)) throw new Error("benchmarks.yml is missing triggers");
+    expect(Object.keys(triggers)).not.toContain("merge_group");
+    expect(Object.keys(triggers)).toContain("push");
+  });
+
+  for (const file of ["oracle-mutation-check.yml", "vscode-extension.yml"]) {
     test(`${file} runs heavy jobs only for merge groups`, () => {
       const workflow = readWorkflow(file);
       const triggers = workflow["on"];
