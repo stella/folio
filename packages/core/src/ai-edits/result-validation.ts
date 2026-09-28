@@ -216,8 +216,8 @@ export const findIntroducedModelErrors = (
       from: window.from,
       to: window.afterTo,
       context,
-      knownParts: parts,
-      knownCommentIds,
+      ...(parts !== undefined && { knownParts: parts }),
+      ...(knownCommentIds !== undefined && { knownCommentIds }),
     });
   }
   if (afterErrors.length === 0) {
@@ -230,8 +230,8 @@ export const findIntroducedModelErrors = (
     from: window.from,
     to: window.beforeTo,
     context: { ...context, createdCommentIds: [] },
-    knownParts: parts,
-    knownCommentIds,
+    ...(parts !== undefined && { knownParts: parts }),
+    ...(knownCommentIds !== undefined && { knownCommentIds }),
   })) {
     known.set(message, (known.get(message) ?? 0) + 1);
   }

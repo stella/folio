@@ -4668,6 +4668,7 @@ const applyFolioAIEditOperationsInternal = ({
       case "mergeBlockWithNext": {
         const separator = item.operation.separator ?? "";
         const insertAt = item.blockTo - 1;
+        const second = tr.doc.nodeAt(item.blockTo);
         // A comment running from one paragraph into the next runs across the
         // separator too, or it would cover two stretches.
         const spanningComments = commentsAcrossBlockBoundary(tr.doc, item.blockTo);
