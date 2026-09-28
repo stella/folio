@@ -116,7 +116,7 @@ test.describe("side panel layout", () => {
             ),
         )
         .toBeGreaterThan(1000);
-      const expected = { tier: "narrow", outline: "column", comments: "drawer" } as const;
+      const expected = { tier: "narrow", outline: "rail", comments: "drawer" } as const;
       await expect.poll(() => readPanelState(page)).toEqual(expected);
       await expectPanelsDoNotOverlap(page, expected);
     });
