@@ -76,9 +76,9 @@ const sourceOf = (model: TableModel, blockId: unknown): Source => {
 
 const tableInsertIndex = (model: TableModel, blockId: unknown, position: "before" | "after") => {
   const rowIndex = model.rows.findIndex((row) => row.id === blockId);
-  if (rowIndex < 0) unsupported(`the insertion anchor ${String(blockId)} is absent`);
+  if (rowIndex < 0) return unsupported(`the insertion anchor ${String(blockId)} is absent`);
   const anchor = model.rows[rowIndex];
-  if (!anchor) unsupported("the insertion anchor is absent");
+  if (!anchor) return unsupported("the insertion anchor is absent");
   if (anchor.table) {
     // A table insertion anchored in a nested cell is adjacent to its outermost table.
     const outerRow = model.rows.find(
@@ -154,7 +154,7 @@ const merge = (model: TableModel, operation: Operation): void => {
     unsupported("the merge cuts an existing merged cell");
   const origin = covered[0];
   if (!origin || origin.row !== top || origin.column !== left || covered.length < 2) {
-    unsupported("the merge has no distinct top-left cell");
+    return unsupported("the merge has no distinct top-left cell");
   }
   // The direct mutator drops a row when the merge consumes every cell in it.
   // Such a row changes row numbering and needs a larger model.
