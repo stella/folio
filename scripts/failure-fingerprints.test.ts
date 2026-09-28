@@ -42,6 +42,11 @@ describe("failure fingerprints", () => {
     expect(missingComment.fingerprint).not.toBe(changedReader.fingerprint);
   });
 
+  test("a non-error cause does not replace the error message", () => {
+    const failure = new Error("step 1: no comment", { cause: "request context" });
+    expect(marker(1, failure).assertion).toBe("no comment");
+  });
+
   test("extracts CI-prefixed markers and classifies known fingerprints", () => {
     const first = marker(1, new Error("step 1: no comment"));
     const second = marker(2, new Error("step 2: no comment"));

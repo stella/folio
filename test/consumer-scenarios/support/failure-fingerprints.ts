@@ -14,7 +14,7 @@ export const shellQuote = (value: string): string => `'${value.replaceAll("'", `
 const deepestMessage = (failure: unknown): string => {
   let current = failure;
   const seen = new Set<unknown>();
-  while (current instanceof Error && current.cause !== undefined && !seen.has(current.cause)) {
+  while (current instanceof Error && current.cause instanceof Error && !seen.has(current.cause)) {
     seen.add(current);
     current = current.cause;
   }
