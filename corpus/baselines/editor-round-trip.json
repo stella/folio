@@ -47,27 +47,14 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[blockSdt].content[paragraph].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 20,
+      "files": 4,
       "producers": {
-        "word/15": 6,
-        "word/16": 5,
-        "word/12": 6,
-        "word/14": 3
+        "word/12": 3,
+        "word/14": 1
       }
     },
     {
@@ -75,10 +62,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
-      "files": 11,
+      "files": 12,
       "producers": {
         "word/15": 6,
-        "word/16": 4,
+        "word/16": 5,
         "word/14": 1
       }
     },
@@ -118,24 +105,20 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 257,
+      "files": 85,
       "producers": {
-        "word/12": 49,
-        "outlook/12": 4,
-        "word/14": 35,
-        "no-extended-properties": 3,
-        "unnamed": 2,
-        "word/16": 51,
-        "word/15": 70,
+        "word/12": 12,
+        "outlook/12": 3,
+        "word/14": 11,
+        "no-extended-properties": 2,
+        "unnamed": 1,
+        "word/16": 18,
+        "word/15": 6,
         "word-mac/15": 9,
-        "libreoffice/6": 5,
-        "libreoffice/7": 7,
+        "libreoffice/6": 3,
+        "libreoffice/7": 6,
         "wps-office/11": 5,
-        "word": 5,
-        "libreoffice/25": 2,
-        "onlyoffice/9": 2,
-        "word-mac/14": 2,
-        "libreoffice/4": 1,
+        "word": 4,
         "word/0": 1,
         "libreoffice/24": 1,
         "libreoffice/5": 2,
@@ -197,11 +180,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[]: length changed",
       "frame": "-",
-      "files": 15,
+      "files": 17,
       "producers": {
         "word/16": 9,
-        "word/12": 3,
-        "word/14": 3
+        "word/12": 4,
+        "word/14": 4
       }
     },
     {
@@ -344,9 +327,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
       "frame": "-",
-      "files": 26,
+      "files": 25,
       "producers": {
-        "word/12": 2,
+        "word/12": 1,
         "word/16": 10,
         "word/14": 7,
         "word/15": 7
@@ -418,13 +401,23 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 23,
+      "files": 24,
       "producers": {
         "word/12": 6,
         "word/16": 7,
         "word/15": 4,
-        "word/14": 5,
+        "word/14": 6,
         "word/13": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].formatting.bold: absent became true | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[complexField].formatting.bold: absent became true",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
       }
     },
     {
@@ -443,10 +436,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].formatting.boldCs: absent became true",
       "frame": "-",
-      "files": 2,
+      "files": 3,
       "producers": {
         "word/12": 1,
-        "word/16": 1
+        "word/16": 1,
+        "word/14": 1
       }
     },
     {
@@ -560,6 +554,16 @@
       }
     },
     {
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].formatting.language: absent became object | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.content[paragraph].content[complexField].formatting.language: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
+      }
+    },
+    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[complexField].formatting.noProof: absent became true | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].formatting.noProof: absent became true",
@@ -617,14 +621,14 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 18,
+      "files": 19,
       "producers": {
         "word/14": 5,
         "libreoffice/5": 1,
         "word/16": 6,
         "libreoffice/7": 2,
         "outlook/12": 2,
-        "word/12": 2
+        "word/12": 3
       }
     },
     {
@@ -814,24 +818,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].anchor: \"<string>\" became absent",
       "frame": "-",
-      "files": 9,
+      "files": 6,
       "producers": {
-        "word/14": 4,
-        "word/16": 3,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].children: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].children: array became absent",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
+        "word/14": 3,
+        "word/16": 3
       }
     },
     {
@@ -839,10 +829,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
-      "files": 14,
+      "files": 15,
       "producers": {
         "word/14": 1,
-        "word/16": 5,
+        "word/16": 6,
         "word/12": 7,
         "word/13": 1
       }
@@ -859,122 +849,13 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].content: absent became array",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].formatting: absent became object",
-      "frame": "-",
-      "files": 11,
-      "producers": {
-        "word/14": 6,
-        "word/16": 3,
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].history: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].history: true became absent",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].href: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].href: \"<string>\" became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].href: \"<url>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].href: \"<url>\" became absent",
-      "frame": "-",
-      "files": 15,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 4
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].rId: \"<id>\" became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].rId: \"<id>\" became absent",
       "frame": "-",
-      "files": 18,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 7
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].target: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].target: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].tooltip: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].tooltip: \"<string>\" became absent",
-      "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\"",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
+        "word/12": 2
       }
     },
     {
@@ -982,9 +863,8 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[inlineSdt].content[]: length changed",
       "frame": "-",
-      "files": 3,
+      "files": 1,
       "producers": {
-        "word/14": 2,
         "word/12": 1
       }
     },
@@ -1039,17 +919,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[inlineSdt].content[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[inlineSdt].content[run].formatting: absent became object",
-      "frame": "-",
-      "files": 11,
-      "producers": {
-        "word/15": 8,
-        "word/16": 3
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[inlineWrapper].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[inlineWrapper].content[]: length changed",
@@ -1064,10 +933,8 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[]: length changed",
       "frame": "-",
-      "files": 4,
+      "files": 1,
       "producers": {
-        "word/15": 2,
-        "word/16": 1,
         "word/12": 1
       }
     },
@@ -1173,103 +1040,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[insertion].content[run].content[]: length changed",
@@ -1322,183 +1092,19 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].info.author: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].info.author: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].info.date: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].info.date: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].info.id: N became N | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[insertion].info.id: N became N",
       "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[insertion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[insertion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].content: array became absent",
-      "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "word/15": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].formatting: object became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].propertyChanges: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].text: absent became \"b\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].text: absent became \"b\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].info: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].propertyChanges: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].propertyChanges: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[insertion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].info.id: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[]: length changed",
+      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent",
       "frame": "-",
       "files": 2,
       "producers": {
@@ -1506,98 +1112,22 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveFrom].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent",
+      "message": "editor round trip changed package.document.content[paragraph].content[moveFrom].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].info.id: N became N",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].anchor: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].anchor: absent became \"<string>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
         "word/15": 2
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].children: absent became array | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].children: absent became array",
+      "message": "editor round trip changed package.document.content[paragraph].content[moveTo].content[deletion].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 19,
+      "files": 2,
       "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
         "word/15": 2
       }
     },
@@ -1606,13 +1136,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].content: array became absent",
       "frame": "-",
-      "files": 20,
+      "files": 1,
       "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "wps-office/11": 1,
-        "word/12": 5,
-        "word/15": 2
+        "wps-office/11": 1
       }
     },
     {
@@ -1620,15 +1146,15 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].content[]: length changed",
       "frame": "-",
-      "files": 25,
+      "files": 17,
       "producers": {
-        "word/12": 10,
-        "word/14": 5,
-        "word/15": 2,
+        "word/12": 6,
+        "word/14": 4,
+        "word/15": 1,
         "libreoffice/25": 1,
         "no-extended-properties": 2,
-        "libreoffice/7": 2,
-        "word/16": 3
+        "libreoffice/7": 1,
+        "word/16": 2
       }
     },
     {
@@ -1719,83 +1245,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<path A>\" became \"<path B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<path A>\" became \"<path B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<path>\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<path>\" became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 20,
-      "producers": {
-        "word/16": 7,
-        "word/15": 1,
-        "word/12": 9,
-        "word/14": 2,
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string>\" became \"<path>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string>\" became \"<path>\"",
-      "frame": "-",
-      "files": 6,
-      "producers": {
-        "word/16": 2,
-        "word/14": 2,
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<url>\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].text: \"<url>\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].content[text].type: \"text\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].content[text].type: \"text\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.bold: absent became false | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.bold: absent became false",
@@ -1804,76 +1253,6 @@
       "producers": {
         "word/12": 3,
         "word/14": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.bold: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.bold: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.bold: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.bold: true became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.boldCs: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.boldCs: absent became true",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.boldCs: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.boldCs: true became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.fontFamily.hint: \"eastAsia\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.fontFamily.hint: \"eastAsia\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.fontSize: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.fontSize: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.fontSizeCs: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.fontSizeCs: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
       }
     },
     {
@@ -1887,16 +1266,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.language: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.language: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.scale: N became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.scale: N became absent",
@@ -1904,16 +1273,6 @@
       "files": 1,
       "producers": {
         "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.styleId: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.styleId: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
       }
     },
     {
@@ -1930,89 +1289,19 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting.vertAlign: \"superscript\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting.vertAlign: \"superscript\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].formatting: absent became object",
-      "frame": "-",
-      "files": 76,
-      "producers": {
-        "word/12": 11,
-        "word/15": 52,
-        "word/14": 10,
-        "word/16": 2,
-        "word-mac/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 154,
+      "files": 70,
       "producers": {
-        "word/16": 44,
-        "libreoffice/7": 13,
-        "libreoffice/24": 6,
-        "word/14": 16,
-        "unnamed": 3,
-        "word/15": 15,
-        "libreoffice/5": 7,
-        "libreoffice/6": 15,
-        "libreoffice/25": 5,
+        "word/16": 37,
+        "word/14": 9,
+        "word/15": 12,
         "wps-office/11": 1,
-        "word": 10,
-        "word/12": 13,
-        "libreoffice/4": 1,
+        "word/12": 8,
         "outlook/12": 2,
-        "no-extended-properties": 1,
-        "libreoffice/3": 1,
         "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].history: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].history: absent became true",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].href: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].href: absent became \"<string>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].href: absent became \"<url>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].href: absent became \"<url>\"",
-      "frame": "-",
-      "files": 15,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 4
       }
     },
     {
@@ -2040,79 +1329,12 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 51,
+      "files": 32,
       "producers": {
-        "word/14": 10,
-        "word/15": 4,
-        "word/16": 29,
-        "word/12": 8
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].preservedAttributes[].name: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes[].name: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].preservedAttributes[].value: \"<hex A>\" became \"<hex B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes[].value: \"<hex A>\" became \"<hex B>\"",
-      "frame": "-",
-      "files": 7,
-      "producers": {
-        "word/16": 5,
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].preservedAttributes[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].preservedAttributes[]: length changed",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/16": 2,
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].rId: absent became \"<id>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].rId: absent became \"<id>\"",
-      "frame": "-",
-      "files": 16,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 5
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].target: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].target: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].tooltip: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].tooltip: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
+        "word/14": 4,
+        "word/15": 2,
+        "word/16": 23,
+        "word/12": 3
       }
     },
     {
@@ -2123,19 +1345,6 @@
       "files": 1,
       "producers": {
         "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].content[run].type: \"<string>\" became \"hyperlink\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].content[run].type: \"<string>\" became \"hyperlink\"",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
       }
     },
     {
@@ -2158,20 +1367,6 @@
         "word/12": 5,
         "word/16": 1,
         "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[paragraph].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[paragraph].formatting: object became absent",
-      "frame": "-",
-      "files": 17,
-      "producers": {
-        "word/16": 8,
-        "word/14": 4,
-        "word/12": 3,
-        "outlook/12": 1,
-        "libreoffice/7": 1
       }
     },
     {
@@ -2235,21 +1430,19 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 52,
+      "files": 35,
       "producers": {
-        "word/14": 6,
-        "word/15": 6,
-        "word/16": 20,
+        "word/14": 2,
+        "word/15": 5,
+        "word/16": 14,
         "word-mac/14": 3,
         "word": 2,
         "libreoffice/24": 1,
-        "word/12": 3,
-        "outlook/12": 2,
+        "word/12": 2,
+        "outlook/12": 1,
         "word-mac/15": 3,
         "libreoffice/5": 1,
-        "docx4j/4": 1,
-        "other": 3,
-        "word/13": 1
+        "docx4j/4": 1
       }
     },
     {
@@ -2257,11 +1450,12 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[]: length changed",
       "frame": "-",
-      "files": 4,
+      "files": 6,
       "producers": {
         "word/12": 1,
-        "word/14": 1,
-        "word/16": 2
+        "word/14": 2,
+        "word/16": 2,
+        "word/15": 1
       }
     },
     {
@@ -2310,9 +1504,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
       "frame": "-",
-      "files": 5,
+      "files": 4,
       "producers": {
-        "word/12": 3,
+        "word/12": 2,
         "word/14": 1,
         "word/15": 1
       }
@@ -2356,9 +1550,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 2,
+      "files": 3,
       "producers": {
-        "word/14": 2
+        "word/14": 3
       }
     },
     {
@@ -2366,9 +1560,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting.bold: absent became true",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
+        "word/14": 2
       }
     },
     {
@@ -2376,9 +1570,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting.boldCs: absent became true",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
+        "word/14": 2
       }
     },
     {
@@ -2406,9 +1600,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting.language: absent became object",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
+        "word/14": 2
       }
     },
     {
@@ -2437,115 +1631,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 3,
+      "files": 4,
       "producers": {
-        "word/16": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].content: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].history: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].history: true became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].href: \"<url>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].href: \"<url>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].rId: \"<id>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].rId: \"<id>\" became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].target: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].target: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
+        "word/16": 3,
+        "word/15": 1
       }
     },
     {
@@ -2569,139 +1658,9 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].info.id: N became N",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent",
       "frame": "-",
       "files": 2,
       "producers": {
@@ -2719,127 +1678,13 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].info.id: N became N",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].children: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].children: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed",
       "frame": "-",
-      "files": 5,
+      "files": 2,
       "producers": {
-        "word/14": 2,
-        "libreoffice/7": 1,
-        "word/12": 1,
+        "word/14": 1,
         "word/15": 1
       }
     },
@@ -2888,17 +1733,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "libreoffice/7": 1,
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting.italic: absent became false | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting.italic: absent became false",
@@ -2923,37 +1757,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 29,
+      "files": 5,
       "producers": {
-        "libreoffice/7": 5,
-        "libreoffice/5": 4,
-        "word/16": 5,
-        "word": 5,
-        "word/15": 2,
-        "libreoffice/6": 2,
-        "libreoffice/25": 3,
-        "word/12": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].history: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].history: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].href: absent became \"<url>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].href: absent became \"<url>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
+        "word/16": 4,
+        "word/15": 1
       }
     },
     {
@@ -2961,43 +1768,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/16": 2,
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].rId: absent became \"<id>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].rId: absent became \"<id>\"",
-      "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].target: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].target: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
+        "word/16": 2
       }
     },
     {
@@ -3008,26 +1781,6 @@
       "files": 1,
       "producers": {
         "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "libreoffice/25": 1
       }
     },
     {
@@ -3068,27 +1821,14 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[blockSdt].content[blockSdt].content[paragraph].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 1,
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 20,
+      "files": 4,
       "producers": {
-        "word/15": 6,
-        "word/16": 5,
-        "word/12": 6,
-        "word/14": 3
+        "word/12": 3,
+        "word/14": 1
       }
     },
     {
@@ -3096,10 +1836,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[blockSdt].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
-      "files": 11,
+      "files": 12,
       "producers": {
         "word/15": 6,
-        "word/16": 4,
+        "word/16": 5,
         "word/14": 1
       }
     },
@@ -3139,24 +1879,20 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 257,
+      "files": 85,
       "producers": {
-        "word/12": 49,
-        "outlook/12": 4,
-        "word/14": 35,
-        "no-extended-properties": 3,
-        "unnamed": 2,
-        "word/16": 51,
-        "word/15": 70,
+        "word/12": 12,
+        "outlook/12": 3,
+        "word/14": 11,
+        "no-extended-properties": 2,
+        "unnamed": 1,
+        "word/16": 18,
+        "word/15": 6,
         "word-mac/15": 9,
-        "libreoffice/6": 5,
-        "libreoffice/7": 7,
+        "libreoffice/6": 3,
+        "libreoffice/7": 6,
         "wps-office/11": 5,
-        "word": 5,
-        "libreoffice/25": 2,
-        "onlyoffice/9": 2,
-        "word-mac/14": 2,
-        "libreoffice/4": 1,
+        "word": 4,
         "word/0": 1,
         "libreoffice/24": 1,
         "libreoffice/5": 2,
@@ -3218,11 +1954,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[]: length changed",
       "frame": "-",
-      "files": 15,
+      "files": 17,
       "producers": {
         "word/16": 9,
-        "word/12": 3,
-        "word/14": 3
+        "word/12": 4,
+        "word/14": 4
       }
     },
     {
@@ -3258,16 +1994,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.cs: absent became \"<string>\" | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.cs: absent became \"<string>\"",
@@ -3281,26 +2007,6 @@
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.eastAsia: absent became \"<string>\" | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.eastAsia: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hint: absent became \"eastAsia\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting.fontFamily.hint: absent became \"eastAsia\"",
       "frame": "-",
       "files": 1,
       "producers": {
@@ -3365,9 +2071,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
       "frame": "-",
-      "files": 26,
+      "files": 25,
       "producers": {
-        "word/12": 2,
+        "word/12": 1,
         "word/16": 10,
         "word/14": 7,
         "word/15": 7
@@ -3439,13 +2145,23 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 23,
+      "files": 24,
       "producers": {
         "word/12": 6,
         "word/16": 7,
         "word/15": 4,
-        "word/14": 5,
+        "word/14": 6,
         "word/13": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.bold: absent became true | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.bold: absent became true",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
       }
     },
     {
@@ -3464,10 +2180,11 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.boldCs: absent became true",
       "frame": "-",
-      "files": 2,
+      "files": 3,
       "producers": {
         "word/12": 1,
-        "word/16": 1
+        "word/16": 1,
+        "word/14": 1
       }
     },
     {
@@ -3491,16 +2208,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.ascii: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.cs: absent became \"<string>\" | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.cs: absent became \"<string>\"",
@@ -3514,26 +2221,6 @@
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.eastAsia: absent became \"<string>\" | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.eastAsia: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hAnsi: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hint: absent became \"eastAsia\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.fontFamily.hint: absent became \"eastAsia\"",
       "frame": "-",
       "files": 1,
       "producers": {
@@ -3578,6 +2265,16 @@
       "files": 1,
       "producers": {
         "word/12": 1
+      }
+    },
+    {
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.language: absent became object | -",
+      "invariant": "editor-round-trip",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting.language: absent became object",
+      "frame": "-",
+      "files": 1,
+      "producers": {
+        "word/14": 1
       }
     },
     {
@@ -3638,14 +2335,14 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 18,
+      "files": 19,
       "producers": {
         "word/14": 5,
         "libreoffice/5": 1,
         "word/16": 6,
         "libreoffice/7": 2,
         "outlook/12": 2,
-        "word/12": 2
+        "word/12": 3
       }
     },
     {
@@ -3825,9 +2522,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].anchor: \"<path>\" became absent",
       "frame": "-",
-      "files": 1,
+      "files": 3,
       "producers": {
-        "word/16": 1
+        "word/16": 3
       }
     },
     {
@@ -3835,24 +2532,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].anchor: \"<string>\" became absent",
       "frame": "-",
-      "files": 9,
+      "files": 6,
       "producers": {
-        "word/14": 4,
-        "word/16": 3,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].children: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].children: array became absent",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
+        "word/14": 3,
+        "word/16": 3
       }
     },
     {
@@ -3860,10 +2543,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].children[]: length changed",
       "frame": "-",
-      "files": 14,
+      "files": 15,
       "producers": {
         "word/14": 1,
-        "word/16": 5,
+        "word/16": 6,
         "word/12": 7,
         "word/13": 1
       }
@@ -3880,122 +2563,13 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].content: absent became array",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].formatting: absent became object",
-      "frame": "-",
-      "files": 11,
-      "producers": {
-        "word/14": 6,
-        "word/16": 3,
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].history: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].history: true became absent",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].href: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].href: \"<string>\" became absent",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].href: \"<url>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].href: \"<url>\" became absent",
-      "frame": "-",
-      "files": 15,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 4
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].rId: \"<id>\" became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].rId: \"<id>\" became absent",
       "frame": "-",
-      "files": 18,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 7
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].target: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].target: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].tooltip: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].tooltip: \"<string>\" became absent",
-      "frame": "-",
       "files": 2,
       "producers": {
-        "word/16": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\"",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
+        "word/12": 2
       }
     },
     {
@@ -4003,9 +2577,8 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[]: length changed",
       "frame": "-",
-      "files": 3,
+      "files": 1,
       "producers": {
-        "word/14": 2,
         "word/12": 1
       }
     },
@@ -4060,17 +2633,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[inlineSdt].content[run].formatting: absent became object",
-      "frame": "-",
-      "files": 11,
-      "producers": {
-        "word/15": 8,
-        "word/16": 3
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[inlineWrapper].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[inlineWrapper].content[]: length changed",
@@ -4085,10 +2647,8 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[]: length changed",
       "frame": "-",
-      "files": 4,
+      "files": 1,
       "producers": {
-        "word/15": 2,
-        "word/16": 1,
         "word/12": 1
       }
     },
@@ -4194,103 +2754,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/15": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].content[run].content[]: length changed",
@@ -4343,183 +2806,19 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.author: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.author: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.date: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.date: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.id: N became N | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].info.id: N became N",
       "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[insertion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[insertion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 1,
-        "word/16": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].content: array became absent",
-      "frame": "-",
       "files": 1,
       "producers": {
-        "word/14": 1
+        "word/15": 1
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].formatting: object became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].propertyChanges: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].propertyChanges: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].text: absent became \"b\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].text: absent became \"b\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].info: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].propertyChanges: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].propertyChanges: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[insertion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].info.id: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[]: length changed",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent",
       "frame": "-",
       "files": 2,
       "producers": {
@@ -4527,98 +2826,22 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveFrom].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].info.id: N became N",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/15": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].anchor: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].anchor: absent became \"<string>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
         "word/15": 2
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].children: absent became array | -",
+      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].children: absent became array",
+      "message": "editor round trip changed package.document.sections[].content[paragraph].content[moveTo].content[deletion].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 19,
+      "files": 2,
       "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
         "word/15": 2
       }
     },
@@ -4627,13 +2850,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content: array became absent",
       "frame": "-",
-      "files": 20,
+      "files": 1,
       "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "wps-office/11": 1,
-        "word/12": 5,
-        "word/15": 2
+        "wps-office/11": 1
       }
     },
     {
@@ -4641,15 +2860,15 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[]: length changed",
       "frame": "-",
-      "files": 25,
+      "files": 17,
       "producers": {
-        "word/12": 10,
-        "word/14": 5,
-        "word/15": 2,
+        "word/12": 6,
+        "word/14": 4,
+        "word/15": 1,
         "libreoffice/25": 1,
         "no-extended-properties": 2,
-        "libreoffice/7": 2,
-        "word/16": 3
+        "libreoffice/7": 1,
+        "word/16": 2
       }
     },
     {
@@ -4740,72 +2959,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<path A>\" became \"<path B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<path A>\" became \"<path B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/12": 1,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/16": 6,
-        "word/15": 1,
-        "word/12": 9,
-        "word/14": 2,
-        "libreoffice/7": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string>\" became \"<path>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string>\" became \"<path>\"",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/14": 2,
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<url>\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].text: \"<url>\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].type: \"text\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].content[text].type: \"text\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.bold: absent became false | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.bold: absent became false",
@@ -4817,36 +2970,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.fontFamily.hint: \"eastAsia\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.fontFamily.hint: \"eastAsia\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.fontSize: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.fontSize: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.fontSizeCs: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.fontSizeCs: N became N",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.italic: absent became false | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.italic: absent became false",
@@ -4854,16 +2977,6 @@
       "files": 1,
       "producers": {
         "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.language: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.language: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/16": 1
       }
     },
     {
@@ -4890,89 +3003,19 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.vertAlign: \"superscript\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting.vertAlign: \"superscript\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting: absent became object",
-      "frame": "-",
-      "files": 76,
-      "producers": {
-        "word/12": 11,
-        "word/15": 52,
-        "word/14": 10,
-        "word/16": 2,
-        "word-mac/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 154,
+      "files": 70,
       "producers": {
-        "word/16": 44,
-        "libreoffice/7": 13,
-        "libreoffice/24": 6,
-        "word/14": 16,
-        "unnamed": 3,
-        "word/15": 15,
-        "libreoffice/5": 7,
-        "libreoffice/6": 15,
-        "libreoffice/25": 5,
+        "word/16": 37,
+        "word/14": 9,
+        "word/15": 12,
         "wps-office/11": 1,
-        "word": 10,
-        "word/12": 13,
-        "libreoffice/4": 1,
+        "word/12": 8,
         "outlook/12": 2,
-        "no-extended-properties": 1,
-        "libreoffice/3": 1,
         "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].history: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].history: absent became true",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].href: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].href: absent became \"<string>\"",
-      "frame": "-",
-      "files": 3,
-      "producers": {
-        "word/14": 1,
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].href: absent became \"<url>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].href: absent became \"<url>\"",
-      "frame": "-",
-      "files": 15,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 4
       }
     },
     {
@@ -5000,78 +3043,12 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 51,
+      "files": 32,
       "producers": {
-        "word/14": 10,
-        "word/15": 4,
-        "word/16": 29,
-        "word/12": 8
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes[].name: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes[].name: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes[].value: \"<hex A>\" became \"<hex B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes[].value: \"<hex A>\" became \"<hex B>\"",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/16": 3,
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].preservedAttributes[]: length changed",
-      "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/16": 2,
-        "word/12": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].rId: absent became \"<id>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].rId: absent became \"<id>\"",
-      "frame": "-",
-      "files": 16,
-      "producers": {
-        "word/14": 5,
-        "word/16": 6,
-        "word/12": 5
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].target: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].target: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].tooltip: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].tooltip: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
+        "word/14": 4,
+        "word/15": 2,
+        "word/16": 23,
+        "word/12": 3
       }
     },
     {
@@ -5082,19 +3059,6 @@
       "files": 1,
       "producers": {
         "wps-office/11": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\"",
-      "frame": "-",
-      "files": 19,
-      "producers": {
-        "word/14": 6,
-        "word/16": 6,
-        "word/12": 5,
-        "word/15": 2
       }
     },
     {
@@ -5117,20 +3081,6 @@
         "word/12": 5,
         "word/16": 1,
         "word/13": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[paragraph].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[paragraph].formatting: object became absent",
-      "frame": "-",
-      "files": 17,
-      "producers": {
-        "word/16": 8,
-        "word/14": 4,
-        "word/12": 3,
-        "outlook/12": 1,
-        "libreoffice/7": 1
       }
     },
     {
@@ -5194,21 +3144,19 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed",
       "frame": "-",
-      "files": 50,
+      "files": 35,
       "producers": {
-        "word/14": 6,
-        "word/15": 6,
-        "word/16": 18,
+        "word/14": 2,
+        "word/15": 5,
+        "word/16": 14,
         "word-mac/14": 3,
         "word": 2,
         "libreoffice/24": 1,
-        "word/12": 3,
-        "outlook/12": 2,
+        "word/12": 2,
+        "outlook/12": 1,
         "word-mac/15": 3,
         "libreoffice/5": 1,
-        "docx4j/4": 1,
-        "other": 3,
-        "word/13": 1
+        "docx4j/4": 1
       }
     },
     {
@@ -5216,11 +3164,12 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[]: length changed",
       "frame": "-",
-      "files": 4,
+      "files": 6,
       "producers": {
         "word/12": 1,
-        "word/14": 1,
-        "word/16": 2
+        "word/14": 2,
+        "word/16": 2,
+        "word/15": 1
       }
     },
     {
@@ -5269,9 +3218,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldCode[run].formatting: absent became object",
       "frame": "-",
-      "files": 5,
+      "files": 4,
       "producers": {
-        "word/12": 3,
+        "word/12": 2,
         "word/14": 1,
         "word/15": 1
       }
@@ -5315,9 +3264,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 2,
+      "files": 3,
       "producers": {
-        "word/14": 2
+        "word/14": 3
       }
     },
     {
@@ -5325,9 +3274,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting.bold: absent became true",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
+        "word/14": 2
       }
     },
     {
@@ -5335,9 +3284,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting.boldCs: absent became true",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
+        "word/14": 2
       }
     },
     {
@@ -5365,9 +3314,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting.language: absent became object",
       "frame": "-",
-      "files": 1,
+      "files": 2,
       "producers": {
-        "word/14": 1
+        "word/14": 2
       }
     },
     {
@@ -5396,115 +3345,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].formatting: object became absent",
       "frame": "-",
-      "files": 3,
+      "files": 4,
       "producers": {
-        "word/16": 3
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].content: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].history: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].history: true became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].href: \"<url>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].href: \"<url>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].rId: \"<id>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].rId: \"<id>\" became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].target: \"<string>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].target: \"<string>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
+        "word/16": 3,
+        "word/15": 1
       }
     },
     {
@@ -5528,139 +3372,9 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].info.id: N became N",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveFrom].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[]: length changed",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].content: array became absent",
       "frame": "-",
       "files": 2,
       "producers": {
@@ -5678,127 +3392,13 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].text: absent became \"<string>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].content[run].type: \"<string>\" became \"text\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].formatting: absent became object",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].info: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].info: object became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].content[deletion].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].info.id: N became N | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].info.id: N became N",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[moveTo].type: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/15": 2
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].children: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].children: absent became array",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content: array became absent",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[]: length changed",
       "frame": "-",
-      "files": 5,
+      "files": 2,
       "producers": {
-        "word/14": 2,
-        "libreoffice/7": 1,
-        "word/12": 1,
+        "word/14": 1,
         "word/15": 1
       }
     },
@@ -5847,17 +3447,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content[text].text: \"<string A>\" became \"<string B>\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "libreoffice/7": 1,
-        "word/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting.italic: absent became false | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting.italic: absent became false",
@@ -5882,37 +3471,10 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
       "frame": "-",
-      "files": 29,
+      "files": 5,
       "producers": {
-        "libreoffice/7": 5,
-        "libreoffice/5": 4,
-        "word/16": 5,
-        "word": 5,
-        "word/15": 2,
-        "libreoffice/6": 2,
-        "libreoffice/25": 3,
-        "word/12": 2,
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].history: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].history: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].href: absent became \"<url>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].href: absent became \"<url>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
+        "word/16": 4,
+        "word/15": 1
       }
     },
     {
@@ -5920,43 +3482,9 @@
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent",
       "frame": "-",
-      "files": 4,
-      "producers": {
-        "word/16": 2,
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].rId: absent became \"<id>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].rId: absent became \"<id>\"",
-      "frame": "-",
       "files": 2,
       "producers": {
-        "word/14": 1,
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].target: absent became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].target: absent became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\"",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/14": 1,
-        "word/12": 1
+        "word/16": 2
       }
     },
     {
@@ -5967,26 +3495,6 @@
       "files": 1,
       "producers": {
         "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[]: length changed",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "word/14": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.document.sections[].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "libreoffice/25": 1
       }
     },
     {
@@ -6092,66 +3600,6 @@
       }
     },
     {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].rId: \"<id>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].rId: \"<id>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].children: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].children: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].content: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].history: absent became true | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].history: absent became true",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].href: absent became \"<url>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].href: absent became \"<url>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].rId: absent became \"<id>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].rId: absent became \"<id>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
       "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[]: length changed | -",
       "invariant": "editor-round-trip",
       "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[complexField].fieldResult[]: length changed",
@@ -6179,116 +3627,6 @@
       "files": 1,
       "producers": {
         "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].children: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].content: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].content: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].formatting: absent became object | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].formatting: absent became object",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].history: true became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].history: true became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].href: \"<url>\" became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].href: \"<url>\" became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].preservedAttributes: absent became array | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].preservedAttributes: absent became array",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[hyperlink].type: \"hyperlink\" became \"<string>\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].formatting: object became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].preservedAttributes: array became absent",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\" | -",
-      "invariant": "editor-round-trip",
-      "message": "editor round trip changed package.….rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[table].rows[tableRow].cells[tableCell].content[paragraph].content[run].type: \"<string>\" became \"hyperlink\"",
-      "frame": "-",
-      "files": 1,
-      "producers": {
-        "outlook/12": 1
-      }
-    },
-    {
-      "signature": "editor-round-trip | …and N more differences past the reporting cap | -",
-      "invariant": "editor-round-trip",
-      "message": "…and N more differences past the reporting cap",
-      "frame": "-",
-      "files": 2,
-      "producers": {
-        "word/16": 2
       }
     }
   ]

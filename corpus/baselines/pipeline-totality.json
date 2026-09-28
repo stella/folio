@@ -15,17 +15,6 @@
       "producers": {
         "word-mac/14": 1
       }
-    },
-    {
-      "signature": "pipeline-totality | compare-self: CompareDocxSerializeError: The compared document could not be serialized: Resolved document story did not persist to the serialized DOCX. | -",
-      "invariant": "pipeline-totality",
-      "message": "compare-self: CompareDocxSerializeError: The compared document could not be serialized: Resolved document story did not persist to the serialized DOCX.",
-      "frame": "-",
-      "files": 5,
-      "producers": {
-        "word/12": 2,
-        "word/15": 3
-      }
     }
   ]
 }
