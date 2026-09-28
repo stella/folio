@@ -611,6 +611,7 @@ describe("body revision enumeration", () => {
     const changes = getTrackedChangesFromDoc(doc);
 
     expect(changes.map(({ id, type, text }) => ({ id, type, text }))).toEqual(expectedChanges);
+    expect(getTrackedChangesFromDoc(toProseDoc(fromProseDoc(doc)))).toEqual(changes);
     expect(
       changes.every(({ author, date, blockId }) => author === AUTHOR && date === DATE && blockId),
     ).toBe(true);
