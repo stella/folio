@@ -79,14 +79,15 @@ for (const [seed, steps] of [
     runFlow(seed, steps, "random", { generation: "legacy" }));
 }
 
-// Fixed reader-stability failures after table insertion or a paragraph merge:
-// live preview formatting must match the reopened package.
+// Fixed reader-stability failures after table insertion, paragraph merging,
+// or tracked-change serialization: live readers must match the reopened package.
 for (const { seed, kind, steps } of [
   { seed: 20_260_935, kind: "random", steps: 10 },
   { seed: 20_260_932, kind: "collisions", steps: 10 },
   { seed: 20_260_931, kind: "random", steps: 4 },
+  { seed: 1_250_352_735, kind: "random", steps: 10 },
 ] as const) {
-  test(`fixed ${kind} flow with seed ${seed} keeps live block fields across save`, () =>
+  test(`fixed ${kind} flow with seed ${seed} keeps live readers stable across save`, () =>
     runFlow(seed, steps, kind, { generation: "targeted" }));
 }
 

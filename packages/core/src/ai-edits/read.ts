@@ -178,6 +178,8 @@ const getTrackedChangesFromProjectedDoc = (
   const rowRevisionScopes: RowRevisionScope[] = [];
   const derivedFormattingRepresentationPositions = new Set<number>();
   const noteReferences = collectNoteReferenceLabels(doc);
+  const blockPositions = new Map<string, number>();
+  blockStarts?.forEach((blockId, pos) => blockPositions.set(blockId, pos));
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
@@ -424,7 +426,22 @@ const getTrackedChangesFromProjectedDoc = (
     return undefined;
   });
 
-  return [...grouped.values()];
+  return [...grouped.values()].sort((changeA, changeB) => {
+    const positionA = blockPositions.get(changeA.blockId ?? "") ?? Number.POSITIVE_INFINITY;
+    const positionB = blockPositions.get(changeB.blockId ?? "") ?? Number.POSITIVE_INFINITY;
+    if (positionA !== positionB) return positionA < positionB ? -1 : 1;
+    if (changeA.id !== changeB.id) return changeA.id - changeB.id;
+    if (changeA.type !== changeB.type) return changeA.type < changeB.type ? -1 : 1;
+    if (changeA.author !== changeB.author) return changeA.author < changeB.author ? -1 : 1;
+    if (changeA.date !== changeB.date) {
+      return (changeA.date ?? "") < (changeB.date ?? "") ? -1 : 1;
+    }
+    if (changeA.blockId !== changeB.blockId) {
+      return (changeA.blockId ?? "") < (changeB.blockId ?? "") ? -1 : 1;
+    }
+    if (changeA.text !== changeB.text) return changeA.text < changeB.text ? -1 : 1;
+    return 0;
+  });
 };
 
 /** Read revisions from the exact immutable document that produced a snapshot. */
