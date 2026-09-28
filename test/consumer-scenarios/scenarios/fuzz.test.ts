@@ -118,6 +118,8 @@ test("collision flow with seed 7310028 keeps comment ranges stable on save", () 
 for (const { seed, kind } of [
   { seed: 20_260_933, kind: "collisions" },
   { seed: 20_260_937, kind: "random" },
+  { seed: 1_250_352_731, kind: "random" },
+  { seed: 1_250_352_731, kind: "collisions" },
 ] as const) {
   const known = KNOWN_FAILING_FLOWS.find(
     (flow) =>

@@ -200,6 +200,41 @@ describe("the requested-outcome oracle", () => {
     assert.equal(compareComments(emptied, [comment], [comment]).length, 1);
   });
 
+  test("a pending replacement may anchor both the old text and its insertion", () => {
+    const comment = { id: 1, text: "review", anchor: "Old", blockId: "b" };
+    const model = modelOf([row("b", "Old")]);
+    expectOperation(model, { type: "replaceBlock", blockId: "b", text: "New" });
+
+    assert.deepEqual(
+      compareComments(model, [comment], [{ ...comment, anchor: "OldNew" }], [comment], "suggested"),
+      [],
+    );
+    assert.match(
+      compareComments(
+        model,
+        [comment],
+        [{ ...comment, anchor: "New" }],
+        [comment],
+        "suggested",
+      ).join("\n"),
+      /no comment/u,
+    );
+    assert.match(
+      compareComments(
+        model,
+        [comment],
+        [{ ...comment, anchor: "OldNew" }],
+        [comment],
+        "direct",
+      ).join("\n"),
+      /no comment/u,
+    );
+    assert.match(
+      compareComments(model, [comment], [], [comment], "suggested").join("\n"),
+      /no comment/u,
+    );
+  });
+
   test("a deleted comment cannot satisfy a new comment with the same text", () => {
     const old = { id: 1, text: "same note", anchor: "Old", blockId: "a" };
     const model = modelOf([row("a", "Old"), row("b", "New")]);

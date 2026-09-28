@@ -954,6 +954,17 @@ const expectedKeptAnchor = (model: Model, entry: Comment): string | undefined =>
   return edit.replace.includes("\n") ? undefined : edit.replace;
 };
 
+/** Pending markup may interleave the old text and insertion in one range. */
+const containsInOrder = (text: string, expected: string): boolean => {
+  let offset = 0;
+  for (const character of expected) {
+    const index = text.indexOf(character, offset);
+    if (index === -1) return false;
+    offset = index + character.length;
+  }
+  return true;
+};
+
 export const compareComments = (
   model: Model,
   before: readonly Comment[],
@@ -977,7 +988,10 @@ export const compareComments = (
       ({ id, text, anchor: actualAnchor }) =>
         id === comment.id &&
         text === comment.text &&
-        (anchor === undefined || actualAnchor === anchor),
+        (anchor === undefined ||
+          (mode === "suggested"
+            ? containsInOrder(actualAnchor, comment.anchor) && containsInOrder(actualAnchor, anchor)
+            : actualAnchor === anchor)),
     );
     if (index === -1) {
       problems.push(`no comment ${JSON.stringify(comment)} among ${JSON.stringify(after)}`);
