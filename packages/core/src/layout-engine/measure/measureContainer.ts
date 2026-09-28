@@ -51,7 +51,6 @@ import { canPrefetchMeasurement, prefetchMeasurement } from "./measureWorker";
 import { countCodePoints } from "./measureWorkerProtocol";
 import { SMALL_CAPS_SCALE, smallCapsMask, smallCapsSegments } from "./smallCapsCasing";
 import { getFontKerningMode } from "./textMeasurementPolicy";
-import type { FontKerningMode } from "./textMeasurementPolicy";
 
 // Default typography ratios
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing (line=240)
@@ -266,14 +265,10 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
 
   const fontFingerprintText = measuredText;
   const fontFingerprintWidth = metrics.width;
-  // Cache miss just cost a main-thread `measureText`. Ask the worker to
-  // pre-warm:
-  //   1) this exact entry (helps future re-layouts after font-ready,
-  //      page-resize, suggestion-mode toggles)
-  //   2) the next few binary-search probe points the line-break loop
-  //      is about to make (helps the *current* layout pass — the
-  //      worker races the main thread and lands hits ahead of the
-  //      probes).
+  // Cache miss just cost a main-thread `measureText`. Only enqueue that
+  // exact text: its width is the worker's font fingerprint. A full-text
+  // width cannot validate shorter binary-search probes, whose glyphs may
+  // use a different font subset or shaping path.
   //
   // No-op when the worker flag is OFF or the host lacks
   // `OffscreenCanvas`/`Worker`. See `measureWorker.ts`.
@@ -285,16 +280,6 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
     fontCacheKey,
     fontFingerprintText,
     fontFingerprintWidth,
-    fontKerning,
-  });
-  prefetchBinarySearchProbes({
-    text: measuredText,
-    font,
-    fontCacheKey,
-    fontFingerprintText,
-    fontFingerprintWidth,
-    letterSpacing,
-    horizontalScale,
     fontKerning,
   });
   return scaledWidth;
@@ -431,62 +416,6 @@ function measureSmallCapsWidth(measuredText: string, style: FontStyle): number {
     }
   }
   return width * horizontalScale;
-}
-
-/**
- * Speculatively enqueue the slice lengths that a subsequent
- * `findMaxFittingLength` binary search is likely to probe. We pick the
- * geometric series (full, half, quarter, eighth) which covers the
- * majority of probe points the binary search uses, without flooding
- * the worker for runs that will never trigger a line break.
- *
- * The worker is racing the main thread here: if the main thread asks
- * for slice(0, n/2) before the worker has answered, the cache miss
- * pays the main-thread cost as usual. When the worker wins, that probe
- * lands on a hit.
- */
-type PrefetchBinarySearchProbesOptions = {
-  text: string;
-  font: string;
-  fontCacheKey: string;
-  fontFingerprintText: string;
-  fontFingerprintWidth: number;
-  letterSpacing: number;
-  horizontalScale: number;
-  fontKerning: FontKerningMode;
-};
-
-function prefetchBinarySearchProbes({
-  text,
-  font,
-  fontCacheKey,
-  fontFingerprintText,
-  fontFingerprintWidth,
-  letterSpacing,
-  horizontalScale,
-  fontKerning,
-}: PrefetchBinarySearchProbesOptions): void {
-  if (text.length < 4) {
-    return;
-  }
-  // Skip the full-length entry — we just filled it. Probe the
-  // half/quarter/eighth slice lengths.
-  for (let denom = 2; denom <= 8; denom *= 2) {
-    const len = Math.floor(text.length / denom);
-    if (len < 2) {
-      break;
-    }
-    prefetchMeasurement({
-      text: text.slice(0, len),
-      font,
-      letterSpacing,
-      horizontalScale,
-      fontCacheKey,
-      fontFingerprintText,
-      fontFingerprintWidth,
-      fontKerning,
-    });
-  }
 }
 
 /**

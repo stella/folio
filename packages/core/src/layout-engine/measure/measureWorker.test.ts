@@ -440,8 +440,8 @@ describe("integration with measureTextWidth", () => {
     expect(entry.fontFingerprintWidth).toBe(value);
   });
 
-  test.each(["Latin العربية", "Latin 漢字", "Latin Кириллица", "Latin हिन्दी"])(
-    "fingerprints the measured script in %s for every speculative request",
+  test.each(["Latin العربية", "Latin 漢字", "Latin Кириллица", "Latin हिन्दी", "office ffi fl"])(
+    "only prefetches directly measured text for %s",
     (text) => {
       installFakeDocument();
       setFolioMeasurementFlags({ workerFontMetrics: true });
@@ -452,11 +452,10 @@ describe("integration with measureTextWidth", () => {
       __flushMeasureQueueForTests();
 
       const entries = transport.posted.flatMap((message) => message.entries);
-      expect(entries.length).toBeGreaterThan(1);
-      for (const entry of entries) {
-        expect(entry.fontFingerprintText).toBe(text);
-        expect(entry.fontFingerprintWidth).toBe(text.length * 7);
-      }
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.text).toBe(text);
+      expect(entries[0]?.fontFingerprintText).toBe(text);
+      expect(entries[0]?.fontFingerprintWidth).toBe(text.length * 7);
     },
   );
 
