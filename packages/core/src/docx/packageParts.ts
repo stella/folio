@@ -115,7 +115,15 @@ const relationshipTarget = (element: string, relsPath: string): string | null =>
     return null;
   }
   const target = TARGET_ATTRIBUTE.exec(element)?.groups?.["value"];
-  return target === undefined ? null : resolveRelativePath(relsPath, target);
+  if (target === undefined) {
+    return null;
+  }
+  const fragment = target.indexOf("#");
+  // A fragment-only URI names a location in the owning part, not a ZIP entry.
+  if (fragment === 0) {
+    return owningPartPath(relsPath) ?? "";
+  }
+  return resolveRelativePath(relsPath, fragment > 0 ? target.slice(0, fragment) : target);
 };
 
 /** What reconciliation removed to make the package internally consistent. */

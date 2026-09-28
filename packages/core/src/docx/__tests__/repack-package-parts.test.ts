@@ -352,6 +352,66 @@ describe("a relationship pruned for a missing target loses its r:id reference to
   });
 });
 
+describe("internal relationship fragments", () => {
+  test.each(["#", "#section", "styles.xml#section"])(
+    "keeps a link to an existing part through %s",
+    async (target) => {
+      const zip = await JSZip.loadAsync(await buildPackage());
+      zip.file(
+        "word/_rels/document.xml.rels",
+        `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rIdBookmark" Type="${OFFICE_RELATIONSHIP}/hyperlink" Target="${target}"/></Relationships>`,
+      );
+      zip.file(
+        "word/document.xml",
+        DOCUMENT_XML.replace(
+          '<w:p w14:paraId="60000001"><w:r><w:t>Hello world</w:t></w:r></w:p>',
+          '<w:p w14:paraId="60000001"><w:bookmarkStart w:id="1" w:name="section"/><w:hyperlink r:id="rIdBookmark"><w:r><w:t>Hello world</w:t></w:r></w:hyperlink><w:bookmarkEnd w:id="1"/></w:p>',
+        ),
+      );
+
+      expect(await checkPackageIntegrity(zip)).toEqual({
+        unresolvedReferences: [],
+        danglingRelationshipTargets: [],
+      });
+      expect(await reconcilePackageReferences(zip, 6)).toEqual({
+        danglingRelationships: [],
+        danglingOverrides: [],
+        orphanedIdReferences: [],
+      });
+      expect(await zip.file("word/document.xml")?.async("text")).toContain('r:id="rIdBookmark"');
+      expect(await zip.file("word/_rels/document.xml.rels")?.async("text")).toContain(
+        `Target="${target}"`,
+      );
+
+      const saved = await repack(await zip.generateAsync({ type: "arraybuffer" }));
+      expect(await checkPackageIntegrity(saved)).toEqual({
+        unresolvedReferences: [],
+        danglingRelationshipTargets: [],
+      });
+      expect(await saved.file("word/document.xml")?.async("text")).toContain('r:id="rIdBookmark"');
+      expect(await saved.file("word/_rels/document.xml.rels")?.async("text")).toContain(
+        `Target="${target}"`,
+      );
+    },
+  );
+
+  test("still removes a relationship whose part is missing before the fragment", async () => {
+    const zip = await JSZip.loadAsync(await buildPackage());
+    zip.file(
+      "word/_rels/document.xml.rels",
+      `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rIdMissing" Type="${OFFICE_RELATIONSHIP}/hyperlink" Target="missing.xml#section"/></Relationships>`,
+    );
+
+    expect(await checkPackageIntegrity(zip)).toEqual({
+      unresolvedReferences: [],
+      danglingRelationshipTargets: ["word/_rels/document.xml.rels|word/missing.xml"],
+    });
+    expect((await reconcilePackageReferences(zip, 6)).danglingRelationships).toEqual([
+      "word/missing.xml",
+    ]);
+  });
+});
+
 describe("a repacked package needs no further repair", () => {
   const extensionArb = fc.constantFrom("bin", "xlsx", "docx", "emf", "dat", "vml");
   const partArb = fc
