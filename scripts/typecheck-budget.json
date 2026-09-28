@@ -20,7 +20,7 @@
     "instantiations": 238404
   },
   "editor-web": {
-    "types": 187458,
+    "types": 196858,
     "instantiations": 266286
   },
   "vue": {
@@ -32,7 +32,7 @@
     "instantiations": 174564
   },
   "playground": {
-    "types": 189064,
+    "types": 198525,
     "instantiations": 268977
   },
   "playground-vue": {
