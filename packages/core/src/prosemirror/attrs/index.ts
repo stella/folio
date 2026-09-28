@@ -1098,6 +1098,20 @@ export const readFieldAttrs = (node: PMNode): ReadProseMirrorAttrsResult<FieldAt
       message: "Expected source field code runs.",
     });
   }
+  if (attrs["fieldKind"] === "simple") {
+    if (fieldCode !== undefined && fieldCode !== null) {
+      issues.push({
+        path: "field.attrs._docxFieldCode",
+        message: "Simple fields cannot carry complex-field code runs.",
+      });
+    }
+    if (attrs["fieldResultIsFallback"] !== undefined && attrs["fieldResultIsFallback"] !== null) {
+      issues.push({
+        path: "field.attrs.fieldResultIsFallback",
+        message: "Simple fields cannot have a synthesized complex-field result.",
+      });
+    }
+  }
 
   return attrsResult(attrs, issues);
 };

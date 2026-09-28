@@ -5,6 +5,7 @@ import { DOMParser, DOMSerializer, Fragment, Slice, type Node as PMNode } from "
 
 import type { ComplexField, Document } from "../../types/document";
 import { schema } from "../schema";
+import { readFieldAttrs } from "../attrs";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -71,6 +72,21 @@ const findComplexField = (document: Document) => {
 };
 
 describe("complex field code metadata", () => {
+  test("rejects retained code runs on a simple field", () => {
+    const field = schema.nodes.field.create({
+      fieldType: "REF",
+      instruction: " REF target \\h",
+      displayText: "Target",
+      fieldKind: "simple",
+      _docxFieldCode: { instruction: " REF target \\h", runs: fieldCode },
+    });
+    const result = readFieldAttrs(field);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues.map(({ path }) => path)).toContain("field.attrs._docxFieldCode");
+    }
+  });
+
   test("preserves all authored code runs inside a table cell", () => {
     const result = fromProseDoc(toProseDoc(documentWithField()));
 

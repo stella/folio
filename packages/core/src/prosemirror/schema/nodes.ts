@@ -675,7 +675,7 @@ export type ImageAttrs = {
 /**
  * Field node attributes
  */
-export type FieldAttrs = {
+type CommonFieldAttrs = {
   /** Field type: PAGE, NUMPAGES, DATE, MERGEFIELD, etc. */
   fieldType: FieldType;
   /** Full field instruction (e.g. "PAGE \\* MERGEFORMAT") */
@@ -684,24 +684,25 @@ export type FieldAttrs = {
   displayText: string;
   /** Imported cache that proved numbered REF resolution for this field. */
   _numberedRefBaseline?: string;
-  /** Whether the field came from w:fldSimple or a complex fldChar range */
-  fieldKind: "simple" | "complex";
   /** Field is locked */
   fldLock?: boolean;
   /** Field is dirty and should be recalculated by the host application */
   dirty?: boolean;
-  /**
-   * `displayText` is a rendering fallback folio synthesized (e.g. a legacy
-   * `FORMCHECKBOX` with no cached result run), not authored content. A save
-   * omits it from the field's result so an unedited field keeps its
-   * original, resultless bytes. See `ComplexField.fieldResultIsFallback`.
-   */
-  fieldResultIsFallback?: boolean;
   /** Authored empty result runs, which have no visible ProseMirror children. */
   _docxEmptyResultRuns?: Run[];
-  /** Source code runs; valid only while the field instruction still matches. */
-  _docxFieldCode?: { instruction: string; runs: Run[] };
 };
+
+export type FieldAttrs = CommonFieldAttrs &
+  (
+    | { fieldKind: "simple"; fieldResultIsFallback?: never; _docxFieldCode?: never }
+    | {
+        fieldKind: "complex";
+        /** Synthesized display text that must not become an authored result run. */
+        fieldResultIsFallback?: boolean;
+        /** Source code runs; valid only while the instruction still matches. */
+        _docxFieldCode?: { instruction: string; runs: Run[] };
+      }
+  );
 
 /**
  * Math equation node attributes
