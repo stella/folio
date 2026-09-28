@@ -203,6 +203,24 @@ describe("pinned regression seeds", () => {
     expect(runs).toBe(2 * 2);
   });
 
+  test("explicit examples do not shift a pinned replay path", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({
+      [`${FILE}::explicit examples do not shift a pinned replay path`]: [
+        { ...entry(101), path: "0" },
+      ],
+    });
+    const seen: number[] = [];
+    assertProperty(
+      fc.property(fc.nat({ max: 10 }), (value) => {
+        seen.push(value);
+      }),
+      { numRuns: 2, seed: 5, examples: [[99]] },
+    );
+    expect(seen.at(0)).toBe(fc.sample(fc.nat({ max: 10 }), { seed: 101, numRuns: 1 }).at(0));
+    expect(seen).toContain(99);
+  });
+
   test("refuse a property with pinned seeds that bypasses assertProperty", () => {
     withEnv({});
     overridePinnedSeedsForTesting({

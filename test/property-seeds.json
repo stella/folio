@@ -35,6 +35,11 @@
       "path": "7:3:2:2:1:1:1:1:1:1:1:2:2:2:3:3:3",
       "note": "#1117: seed sweep",
       "date": "2026-09-27"
+    },
+    {
+      "seed": -1368426772,
+      "note": "the oracle joined prose across a retained note reference and predicted a false refusal",
+      "date": "2026-09-28"
     }
   ],
   "packages/core/src/ai-edits/batchOverlap.test.ts::refuses each conflict and applies the rest as one at a time would": [

@@ -754,6 +754,11 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             // reference names text no run holds, and a reference is not text
             // a replacement may drop or write: the operation contract refuses
             // it before any change.
+            if (result.skipped.length === 0) {
+              throw new Error(
+                `Edit refusal mismatch: ${JSON.stringify({ picked, boundaries: cleanBefore.structuralBoundaries, refusal: contract.refusal, result })}`,
+              );
+            }
             expect(result.skipped).toEqual([{ id: "edit", reason: contract.refusal }]);
             expect(firstParagraph(reviewer).node.eq(before.node)).toBe(true);
             return;

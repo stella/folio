@@ -465,7 +465,9 @@ export function assertProperty<Ts>(
 ): Promise<void> | void {
   const identity = identify();
   const pinned = pinnedFor(identity.key);
-  const replays = pinned.map((entry) => buildConfig(params, identity, entry));
+  // Examples run in the generated pass; including them in a pinned replay
+  // shifts fast-check's path indices away from the recorded counterexample.
+  const replays = pinned.map((entry) => buildConfig({ ...params, examples: [] }, identity, entry));
   const generated = configFor(params, identity, true);
   if (property.isAsync()) {
     return (async () => {
