@@ -16,6 +16,8 @@ const AREA_OUTPUT =
   /^\$\{\{ github\.event_name == 'merge_group' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
 const GATE =
   /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
+const PROPERTY_AREAS_CONDITION =
+  "github.event_name == 'pull_request' && github.event.pull_request.draft != true && ";
 
 type Job = { needs?: unknown; if?: unknown; outputs?: Record<string, unknown> };
 
@@ -108,7 +110,17 @@ describe("CI plan", () => {
     for (const [id, job] of Object.entries(jobs)) {
       if (UNPLANNED_JOBS.has(id)) continue;
       expect([id, job.needs]).toEqual([id, PLAN_JOB]);
-      const gate = typeof job.if === "string" ? GATE.exec(job.if) : null;
+      const condition = job.if;
+      if (id === "property-areas") {
+        expect(
+          typeof condition === "string" && condition.startsWith(PROPERTY_AREAS_CONDITION),
+        ).toBe(true);
+      }
+      const areaGate =
+        id === "property-areas" && typeof condition === "string"
+          ? condition.slice(PROPERTY_AREAS_CONDITION.length)
+          : condition;
+      const gate = typeof areaGate === "string" ? GATE.exec(areaGate) : null;
       expect([id, gate !== null]).toEqual([id, true]);
       const output = gate?.[1] ?? "";
       expect([id, output in planOutputs]).toEqual([id, true]);
