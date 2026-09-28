@@ -454,7 +454,8 @@ export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): Fo
 /**
  * The tracked changes present in the body, read from inline marks and
  * structural node attributes. Runs of one inline revision within a block fold
- * into a single entry.
+ * into a single entry. Results follow document block order; revisions within
+ * one block sort by id so changes in that block remain stable across saves.
  *
  * A tracked row insertion or deletion marks the row AND every run in its
  * cells, the way Word writes it. Both halves are one change, so the run marks

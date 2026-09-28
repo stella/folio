@@ -617,6 +617,37 @@ describe("body revision enumeration", () => {
     ).toBe(true);
   });
 
+  test("keeps changes in document order when a comment splits revision runs", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(revisionDocument()), {
+      author: AUTHOR,
+    });
+    const snapshot = reviewer.snapshot();
+    const target = snapshot.blocks.find(({ text }) => text.includes("Stable <&>"));
+    if (!target) throw new Error("revision fixture is missing its first paragraph");
+
+    const before = reviewer.getChanges();
+    const result = reviewer.applyDocumentOperationsToStory({
+      story: { type: "main" },
+      snapshot,
+      batch: {
+        version: 1,
+        mode: "direct",
+        operations: [
+          {
+            id: "comment-revision-runs",
+            type: "commentOnBlock",
+            blockId: target.id,
+            comment: { text: "Review the tracked text together." },
+          },
+        ],
+      },
+    });
+    expect(result.status).toBe("committed");
+
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    expect(reopened.getChanges()).toEqual(before);
+  });
+
   test.each(["accept", "reject"] as const)(
     "%s resolves each enumerated carrier without consuming the others",
     (mode) => {
