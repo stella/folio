@@ -23,7 +23,10 @@ import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   hasCanonicalWordprocessingPrefixes,
+  matchCloseTag,
+  matchOpenTag,
   PARAGRAPH_SCAN_NAMES,
+  resolveSelectiveScanPrefixes,
   splicesAsCanonical,
 } from "./wordprocessingPrefixes";
 
@@ -213,17 +216,7 @@ export type ScannedParagraph = ParagraphOffsets & {
   container: ParagraphContainer;
 };
 
-/** The containers {@link scanParagraphs} tracks, by the literal tag the part writes. */
-const TRACKED_CONTAINERS = (
-  [
-    { name: "mc:Fallback", key: "fallback" },
-    { name: "mc:AlternateContent", key: "alternateContent" },
-    { name: "w:txbxContent", key: "textBox" },
-    { name: "w:tc", key: "tableCell" },
-  ] as const
-).map(({ name, key }) => ({ key, open: `<${name}`, close: `</${name}>` }));
-
-type TrackedContainerKey = (typeof TRACKED_CONTAINERS)[number]["key"];
+type TrackedContainerKey = "fallback" | "alternateContent" | "textBox" | "tableCell";
 
 /**
  * Every `<w:p>` element of `xml`, in the document order of its opening tags,
@@ -239,6 +232,8 @@ type TrackedContainerKey = (typeof TRACKED_CONTAINERS)[number]["key"];
  * no splice can be built from it.
  */
 export function scanParagraphs(xml: string): ScannedParagraph[] {
+  const resolution = resolveSelectiveScanPrefixes(xml);
+  const mcPrefixes = resolution.type === "resolved" ? resolution.prefixes.mc : ["mc"];
   const paragraphs: ScannedParagraph[] = [];
   const open: number[] = [];
   const depth: Record<TrackedContainerKey, number> = {
@@ -247,6 +242,12 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
     textBox: 0,
     tableCell: 0,
   };
+  const containers = [
+    { key: "fallback", prefixes: mcPrefixes, name: "Fallback" },
+    { key: "alternateContent", prefixes: mcPrefixes, name: "AlternateContent" },
+    { key: "textBox", prefixes: ["w"], name: "txbxContent" },
+    { key: "tableCell", prefixes: ["w"], name: "tc" },
+  ] as const;
   let pos = 0;
 
   scan: while (pos < xml.length) {
@@ -266,16 +267,14 @@ export function scanParagraphs(xml: string): ScannedParagraph[] {
       continue;
     }
 
-    for (const { key, open: openLiteral, close } of TRACKED_CONTAINERS) {
-      if (xml.startsWith(close, tagStart)) {
+    for (const { key, prefixes, name } of containers) {
+      const closeLength = matchCloseTag(xml, tagStart, prefixes, name);
+      if (closeLength !== -1) {
         depth[key] = Math.max(0, depth[key] - 1);
-        pos = tagStart + close.length;
+        pos = tagStart + closeLength;
         continue scan;
       }
-      if (
-        xml.startsWith(openLiteral, tagStart) &&
-        isXmlNameBoundary(xml[tagStart + openLiteral.length])
-      ) {
+      if (matchOpenTag(xml, tagStart, prefixes, name) !== -1) {
         const tagEnd = xml.indexOf(">", tagStart);
         if (tagEnd === -1) {
           break scan;
@@ -389,9 +388,7 @@ const withoutMintedIds = (paragraphXml: string, sourceOpenTag: string): string =
 };
 
 /** Where each changed paragraph's re-serialized XML goes, or why it cannot. */
-type ParagraphRouting =
-  | { type: "routed"; splices: XmlSplice[] }
-  | { type: "refused"; reason: string };
+type ParagraphRouting = { type: "routed"; xml: string } | { type: "refused"; reason: string };
 
 /** An ordinal space of one part; see {@link ParagraphContainer}. */
 type Story = "main" | "text-box";
@@ -610,7 +607,11 @@ const routeChangedParagraphs = (
     });
   }
 
-  return { type: "routed", splices };
+  const candidate = spliceXml(originalXml, splices);
+  if (candidate === null || !splicesAsCanonical(candidate, PARAGRAPH_SCAN_NAMES)) {
+    return { type: "refused", reason: "replacement-namespace-conflict" };
+  }
+  return { type: "routed", xml: candidate };
 };
 
 /**
@@ -655,7 +656,7 @@ export function buildPatchedDocumentXml(
     return originalXml;
   }
   const routing = routeChangedParagraphs(originalXml, serializedXml, changedIds);
-  return routing.type === "refused" ? null : spliceXml(originalXml, routing.splices);
+  return routing.type === "refused" ? null : routing.xml;
 }
 
 /**
@@ -1699,6 +1700,14 @@ export const patchNumberingDefinitions = ({
 }: PatchNumberingDefinitionsOptions): string | null => {
   const changed = collectChangedNumberingDefs(baselineXml, currentXml);
   const added = collectAddedNumberingDefs(baselineXml, currentXml);
+  if (
+    changed.abstractNums.size === 0 &&
+    changed.nums.size === 0 &&
+    added.abstractNums.size === 0 &&
+    added.nums.size === 0
+  ) {
+    return originalXml;
+  }
   const original = parseXmlDocument(originalXml);
   if (
     !original ||

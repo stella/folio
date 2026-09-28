@@ -12,13 +12,20 @@
  * {@link resolveWordprocessingPrefixes} is the one place those patchers ask
  * how a part spells WordprocessingML, the `w14` extensions and
  * markup compatibility (`mc`). A patcher either scans with every prefix the
- * part binds, or refuses a part that is not {@link WordprocessingPrefixes.canonical}.
- * A binding it cannot follow with a string scan — a nested element that
- * rebinds a prefix the scan relies on, or binds one of these namespaces
- * under a prefix of its own — is reported as unsupported rather than guessed.
+ * part binds, or checks the names its literal scan needs in their namespace
+ * scope. A prefix conflict on one of those names is refused.
  */
 
-import { NAMESPACES, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
+import {
+  getLocalName,
+  getNamespacePrefix,
+  getNamespaceUri,
+  NAMESPACES,
+  parseXmlDocument,
+  resolveAttributeNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "./xmlParser";
 
 /** How one part spells the namespaces a string-level patcher scans for. */
 export type WordprocessingPrefixes = {
@@ -144,6 +151,8 @@ const W14_URI: string = NAMESPACES.w14;
 const MC_URI: string = NAMESPACES.mc;
 
 type NamespaceSlot = "main" | "w14" | "mc";
+const NESTED_BINDINGS = { strict: "strict", scoped: "scoped" } as const;
+type NestedBindings = (typeof NESTED_BINDINGS)[keyof typeof NESTED_BINDINGS];
 
 const slotOf = (uri: string): NamespaceSlot | null => {
   if (MAIN_URIS.has(uri)) return "main";
@@ -163,7 +172,10 @@ const CONVENTIONAL_PREFIX: Record<NamespaceSlot, string> = { main: "w", w14: "w1
  * uses; anything else changes what a literal tag means partway through the
  * part and is reported as unsupported.
  */
-export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefixResolution => {
+const resolvePrefixes = (
+  xml: string,
+  nestedBindings: NestedBindings,
+): WordprocessingPrefixResolution => {
   const bound: Record<NamespaceSlot, string[]> = { main: [], w14: [], mc: [] };
   const rootPrefixes = new Map<string, string>();
   const nested: Declaration[] = [];
@@ -220,7 +232,7 @@ export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefix
       inUse.set(prefix, slot);
     }
   }
-  for (const { prefix, uri } of nested) {
+  for (const { prefix, uri } of nestedBindings === NESTED_BINDINGS.strict ? nested : []) {
     const slot = slotOf(uri);
     const spelling = prefix === "" ? "the default namespace" : `prefix ${prefix}`;
     if (slot !== null) {
@@ -259,6 +271,13 @@ export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefix
   };
 };
 
+export const resolveWordprocessingPrefixes = (xml: string): WordprocessingPrefixResolution =>
+  resolvePrefixes(xml, NESTED_BINDINGS.strict);
+
+/** Root spelling for a selective scan whose relevant nested names are checked separately. */
+export const resolveSelectiveScanPrefixes = (xml: string): WordprocessingPrefixResolution =>
+  resolvePrefixes(xml, NESTED_BINDINGS.scoped);
+
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 
 /**
@@ -266,16 +285,16 @@ const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\
  * for in `xml`, and may splice the serializer's `w:` markup into it.
  *
  * True for the canonical spelling. Also true when the part binds
- * WordprocessingML under an extra prefix besides `w` (folio keeps a source's
- * alias binding, and verbatim-preserved markup keeps using it) but never
- * spells any of `localNames` — the elements and attributes the patcher scans
- * for — under that alias.
+ * WordprocessingML under an extra prefix besides `w` but never spells the
+ * names the patcher scans under that alias, or binds markup compatibility
+ * under another prefix. Relevant nested names are checked in their own scope.
  */
 export const splicesAsCanonical = (xml: string, localNames: readonly string[]): boolean => {
   const resolution = resolveWordprocessingPrefixes(xml);
-  if (resolution.type !== "resolved") return false;
-  const { prefixes } = resolution;
-  if (prefixes.canonical) return true;
+  if (resolution.type === "resolved" && resolution.prefixes.canonical) return true;
+  const relaxed = resolveSelectiveScanPrefixes(xml);
+  if (relaxed.type !== "resolved") return false;
+  const { prefixes } = relaxed;
   const only = (list: readonly string[], prefix: string): boolean =>
     list.length === 1 && list[0] === prefix;
   const aliases = prefixes.main.filter((prefix) => prefix !== "w");
@@ -283,14 +302,55 @@ export const splicesAsCanonical = (xml: string, localNames: readonly string[]): 
     !prefixes.main.includes("w") ||
     aliases.includes("") ||
     !only(prefixes.w14, "w14") ||
-    !only(prefixes.mc, "mc")
+    prefixes.mc.length === 0
   ) {
     return false;
   }
   const names = localNames.map(escapeRegExp).join("|");
-  return aliases.every(
-    (alias) => !new RegExp(`[<\\s/]${escapeRegExp(alias)}:(?:${names})[\\s/>=]`, "u").test(xml),
-  );
+  if (
+    !aliases.every(
+      (alias) => !new RegExp(`[<\\s/]${escapeRegExp(alias)}:(?:${names})[\\s/>=]`, "u").test(xml),
+    )
+  ) {
+    return false;
+  }
+
+  // A nested rebind matters only when one of the literal names the splice
+  // scans occurs under it. Resolve those names in their actual XML scope.
+  const root = parseXmlDocument(xml);
+  if (!root) return false;
+  const mainNames = new Set(localNames.filter((name) => name !== "paraId" && name !== "textId"));
+  const idNames = new Set(["paraId", "textId"]);
+  const mcNames = new Set(["Fallback", "AlternateContent"]);
+  const visit = (element: XmlElement): boolean => {
+    if (element.type !== "element") return true;
+    const name = element.name ?? "";
+    const local = getLocalName(name);
+    const prefix = getNamespacePrefix(name) ?? "";
+    const uri = getNamespaceUri(element) ?? "";
+    if (
+      (prefix === "mc" && uri !== MC_URI) ||
+      (mainNames.has(local) && WORDPROCESSINGML_NAMESPACE_URIS.has(uri) !== (prefix === "w")) ||
+      (mcNames.has(local) && (uri === MC_URI) !== prefixes.mc.includes(prefix))
+    ) {
+      return false;
+    }
+    for (const attribute of Object.keys(element.attributes ?? {})) {
+      const attributePrefix = getNamespacePrefix(attribute);
+      if (attributePrefix === "mc" && resolveAttributeNamespaceUri(element, attribute) !== MC_URI) {
+        return false;
+      }
+      if (!idNames.has(getLocalName(attribute))) continue;
+      if (
+        (resolveAttributeNamespaceUri(element, attribute) === W14_URI) !==
+        (attributePrefix === "w14")
+      ) {
+        return false;
+      }
+    }
+    return (element.elements ?? []).every(visit);
+  };
+  return visit(root);
 };
 
 /** The names the paragraph splices scan for: paragraphs, their containers and ids. */

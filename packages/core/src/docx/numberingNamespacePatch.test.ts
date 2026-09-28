@@ -18,6 +18,22 @@ const current = baseline
     '<w:abstractNum w:abstractNumId="2"/><w:num w:numId="3"><w:abstractNumId w:val="2"/></w:num></w:numbering>',
   );
 
+test("unchanged definitions keep an aliased markup-compatibility part byte-exact", () => {
+  const original = baseline
+    .replace(
+      "<w:numbering ",
+      `<w:numbering xmlns:ve="http://schemas.openxmlformats.org/markup-compatibility/2006" `,
+    )
+    .replace("<w:abstractNum", "<!-- retained -->\n<w:abstractNum");
+  expect(
+    patchNumberingDefinitions({
+      originalXml: original,
+      baselineXml: baseline,
+      currentXml: baseline,
+    }),
+  ).toBe(original);
+});
+
 for (const prefix of ["w", "n", ""] as const) {
   test(`numbering changes preserve bindings and definition order with prefix '${prefix}'`, () => {
     const original =

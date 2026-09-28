@@ -12,6 +12,7 @@ import {
   buildPatchedDocumentXml,
   buildPatchedNotePartXml,
   countParagraphElements,
+  scanParagraphs,
   type NotePartPatch,
 } from "./selectiveXmlPatch";
 
@@ -42,6 +43,14 @@ const DOC_WITH_MC = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:p w14:paraId="NORMAL1" w14:textId="T2"><w:r><w:t>Normal paragraph</w:t></w:r></w:p>
 </w:body>
 </w:document>`;
+
+const MC_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const W_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const W14_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
+const veDocument = (body: string): string =>
+  `<w:document xmlns:w="${W_URI}" xmlns:w14="${W14_URI}" xmlns:ve="${MC_URI}"><w:body>${body}</w:body></w:document>`;
+const canonicalDocument = (body: string): string =>
+  `<w:document xmlns:w="${W_URI}" xmlns:w14="${W14_URI}" xmlns:mc="${MC_URI}"><w:body>${body}</w:body></w:document>`;
 
 const DOC_WITH_DUPLICATE_ID = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml">
@@ -556,6 +565,72 @@ describe("selective patch routes each changed paragraph locally", () => {
     const serialized = routingDoc(para("A0000001", "a!").replace("</w:p>", ""));
 
     expect(refusalOf(original, serialized, "A0000001")).toBe("unterminated-paragraph: A0000001");
+  });
+});
+
+describe("selective paragraph splices with aliased markup compatibility", () => {
+  test("edits one character while keeping ve-bound fallback paragraphs out of routing", () => {
+    const first = '<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>';
+    const choice = '<w:p w14:paraId="B0000002"><w:r><w:t>Choice</w:t></w:r></w:p>';
+    const fallback = '<w:p w14:paraId="B0000002"><w:r><w:t>Fallback</w:t></w:r></w:p>';
+    const last = '<w:p w14:paraId="C0000003"><w:r><w:t>Beta</w:t></w:r></w:p>';
+    const original = veDocument(
+      `${first}<ve:AlternateContent><ve:Choice Requires="w14">${choice}</ve:Choice><ve:Fallback>${fallback}</ve:Fallback></ve:AlternateContent>${last}`,
+    );
+    const serialized = canonicalDocument(
+      `${first}<mc:AlternateContent><mc:Choice Requires="w14">${choice}</mc:Choice><mc:Fallback>${fallback}</mc:Fallback></mc:AlternateContent>${last.replace("Beta", "Beto")}`,
+    );
+
+    const scanned = scanParagraphs(original);
+    expect(scanned.map(({ container }) => container.inFallback)).toEqual([
+      false,
+      false,
+      true,
+      false,
+    ]);
+    expect(scanned.map(({ container }) => container.inAlternateContent)).toEqual([
+      false,
+      true,
+      true,
+      false,
+    ]);
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["C0000003"]))).toBe(
+      original.replace("Beta", "Beto"),
+    );
+  });
+
+  test("an unrelated nested w14 and ve rebinding leaves the one-character edit local", () => {
+    const first =
+      '<w:p w14:paraId="A0000001"><w:r xmlns:w14="urn:other" xmlns:ve="urn:other"><w:t>Alpha</w:t></w:r></w:p>';
+    const last = '<w:p w14:paraId="B0000002"><w:r><w:t>Beta</w:t></w:r></w:p>';
+    const original = veDocument(first + last);
+    const serialized = canonicalDocument(first + last.replace("Beta", "Beto"));
+
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["B0000002"]))).toBe(
+      original.replace("Beta", "Beto"),
+    );
+  });
+
+  test("refuses a nested binding that changes the meaning of a scanned prefix", () => {
+    const original = veDocument(
+      '<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>' +
+        '<ve:Fallback xmlns:ve="urn:other"><w:p w14:paraId="B0000002"><w:r><w:t>Beta</w:t></w:r></w:p></ve:Fallback>',
+    );
+    const serialized = canonicalDocument(
+      '<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>' +
+        '<w:p w14:paraId="B0000002"><w:r><w:t>Beto</w:t></w:r></w:p>',
+    );
+
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["B0000002"]))).toBeNull();
+  });
+
+  test("refuses serializer mc markup when the source binds only ve", () => {
+    const original = veDocument('<w:p w14:paraId="A0000001"><w:r><w:t>Alpha</w:t></w:r></w:p>');
+    const serialized = canonicalDocument(
+      '<w:p w14:paraId="A0000001"><w:r><mc:AlternateContent><mc:Choice Requires="w14"><w:t>Alpho</w:t></mc:Choice></mc:AlternateContent></w:r></w:p>',
+    );
+
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).toBeNull();
   });
 });
 
