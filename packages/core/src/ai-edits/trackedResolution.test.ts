@@ -194,6 +194,70 @@ test("a blank final paragraph deletes like a direct edit and rejects to the blan
 });
 
 describe("inserting after a deleted final paragraph", () => {
+  for (const { deleted, anchor } of [
+    { deleted: ["Signed"], anchor: "The Buyer" },
+    { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
+  ] as const) {
+    test(`${deleted.length} deleted final paragraph(s) before a table resolve like direct editing`, async () => {
+      const results: string[][] = [];
+      for (const mode of ["direct", "tracked-changes"] as const) {
+        const reviewer = await open();
+        const apply = applier(reviewer, mode);
+        for (const target of deleted) {
+          apply({ type: "deleteBlock", blockId: idOf(reviewer, target) });
+        }
+        apply({ type: "insertTable", blockId: idOf(reviewer, anchor), rows: [["Term", "Value"]] });
+        if (mode === "tracked-changes") {
+          const rejecting = await reopen(reviewer);
+          rejecting.rejectAll();
+          expect(texts(await reopen(rejecting))).toEqual(ORIGINAL);
+          reviewer.acceptAll();
+        }
+        results.push(texts(await reopen(reviewer)));
+      }
+      expect(results[1]).toEqual(results[0]);
+    });
+  }
+
+  for (const { deleted, anchor } of [
+    { deleted: ["Signed"], anchor: "The Buyer" },
+    { deleted: ["Signed", "The Buyer"], anchor: "The Supplier" },
+  ] as const) {
+    test(`${deleted.length} final deletion(s) and a table in one batch resolve like direct editing`, async () => {
+      const results: string[][] = [];
+      for (const mode of ["direct", "tracked-changes"] as const) {
+        const reviewer = await open();
+        const result = reviewer.applyDocumentOperations({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [
+            ...deleted.map((target, index) => ({
+              id: `delete-${index}`,
+              type: "deleteBlock" as const,
+              blockId: idOf(reviewer, target),
+            })),
+            {
+              id: "table",
+              type: "insertTable",
+              blockId: idOf(reviewer, anchor),
+              rows: [["Term", "Value"]],
+            },
+          ],
+        });
+        expect(result.applied).toHaveLength(deleted.length + 1);
+        if (mode === "tracked-changes") {
+          expect(result.applied.find(({ id }) => id === "delete-0")?.revisionIds).toHaveLength(2);
+          const rejecting = await reopen(reviewer);
+          rejecting.rejectAll();
+          expect(texts(await reopen(rejecting))).toEqual(ORIGINAL);
+          reviewer.acceptAll();
+        }
+        results.push(texts(await reopen(reviewer)));
+      }
+      expect(results[1]).toEqual(results[0]);
+    });
+  }
+
   test("rejecting a later insertion after the deleted paragraph restores the source", async () => {
     const reviewer = await open();
     const signedId = idOf(reviewer, "Signed");

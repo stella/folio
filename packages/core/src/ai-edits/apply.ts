@@ -4653,12 +4653,68 @@ const applyFolioAIEditOperationsInternal = ({
         }
         const carriedComments = tableAfterDeletedSplit.get(item.blockFrom);
         const usesRetractedSplit = carriedComments !== undefined && item.from === item.blockTo;
-        const at = usesRetractedSplit ? tr.mapping.map(item.blockFrom, -1) : item.from;
+        let at = usesRetractedSplit ? tr.mapping.map(item.blockFrom, -1) : item.from;
+        let insertionComments = carriedComments;
+        if (!usesRetractedSplit) {
+          const boundary = tr.doc.resolve(at);
+          const before = boundary.nodeBefore;
+          const finalDeleted = deletedFinalParagraphAfter(boundary, "paragraph");
+          const mapping = tr.mapping;
+          const pendingIndex =
+            finalDeleted === null
+              ? -1
+              : deletedFinalParagraphs.findIndex(
+                  ({ position, mappedFrom }) =>
+                    mapping.slice(mappedFrom).map(position) === finalDeleted,
+                );
+          const pending = pendingIndex < 0 ? undefined : deletedFinalParagraphs.at(pendingIndex);
+          if (
+            before?.type.name === "paragraph" &&
+            finalDeleted !== null &&
+            (pending !== undefined ||
+              (isPlainDeletedPPrMark(before.attrs["pPrMark"]) && !holdsOnlyDeletedContent(before)))
+          ) {
+            // The table follows the deleted tail in the tracked document, so
+            // accepting removes that tail and leaves the table at its anchor.
+            insertionComments = commentsAcrossBlockBoundary(tr.doc, at);
+            const final = tr.doc.nodeAt(finalDeleted);
+            if (!final) {
+              panic("A deleted final paragraph vanished before table insertion", { finalDeleted });
+            }
+            if (pending) {
+              // A deletion in this batch has not retired the final break yet.
+              const receiptIndex = applied.findIndex(({ id }) => id === pending.operationId);
+              const receipt = receiptIndex < 0 ? undefined : applied.at(receiptIndex);
+              if (receipt === undefined) {
+                panic("A deleted final paragraph lost its operation receipt", {
+                  operationId: pending.operationId,
+                });
+              }
+              const revisionId = operationRevisionSeed++;
+              tr.setNodeAttribute(finalDeleted, "pPrMark", {
+                kind: "del",
+                info: { id: revisionId, author, date, ...pending.revisionExtras },
+              });
+              applied[receiptIndex] = {
+                ...receipt,
+                revisionId: receipt.revisionId ?? revisionId,
+                revisionIds: [...(receipt.revisionIds ?? []), revisionId],
+              };
+              deletedFinalParagraphs.splice(pendingIndex, 1);
+              deferredNoopFinalDeletions.delete(pending.operationId);
+            } else {
+              // An earlier batch retired the break onto its surviving predecessor.
+              tr.setNodeAttribute(at - before.nodeSize, "pPrMark", null);
+              tr.setNodeAttribute(finalDeleted, "pPrMark", before.attrs["pPrMark"]);
+            }
+            at = finalDeleted + final.nodeSize;
+          }
+        }
         tr = insertBlocksInsideComments({
           tr,
           at,
           blocks: table,
-          ...(usesRetractedSplit && { carriedComments }),
+          ...(insertionComments !== undefined && { carriedComments: insertionComments }),
         });
         markStructuralChange(tr);
         break;

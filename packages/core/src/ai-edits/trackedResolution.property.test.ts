@@ -380,6 +380,11 @@ describe("resolving random tracked work", () => {
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -425480671 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 2055257210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -1401551044 }));
+    // 2026-09-28: a table before a pending deletion of the story's last paragraph.
+    await fc.assert(
+      resolutionProperty,
+      propertyConfig({ numRuns: 100, seed: -1401551044, path: "414:2:3:9:9:9" }),
+    );
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -304239210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100 }));
     // The direct comparison must not pass vacuously.
