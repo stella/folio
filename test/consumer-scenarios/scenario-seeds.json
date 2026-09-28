@@ -1,0 +1,114 @@
+{
+  "$comment": "Pinned consumer scenario flows in replay order.",
+  "flows": [
+    {
+      "seed": 20260933,
+      "steps": 10,
+      "kind": "random",
+      "generation": "legacy",
+      "title": "saves what the reviewer shows"
+    },
+    {
+      "seed": 99,
+      "steps": 15,
+      "kind": "random",
+      "generation": "legacy",
+      "title": "saves what the reviewer shows"
+    },
+    {
+      "seed": 101,
+      "steps": 15,
+      "kind": "random",
+      "generation": "legacy",
+      "title": "saves what the reviewer shows"
+    },
+    {
+      "seed": 20260935,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "keeps live block fields across save"
+    },
+    {
+      "seed": 20260932,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps live block fields across save"
+    },
+    {
+      "seed": 20260931,
+      "steps": 4,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "keeps live block fields across save"
+    },
+    {
+      "seed": 1088,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "legacy",
+      "skipKnownIssue": true,
+      "title": "does what it asked and saves it"
+    },
+    {
+      "seed": 1185,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "legacy",
+      "skipKnownIssue": true,
+      "title": "does what it asked and saves it"
+    },
+    {
+      "seed": 7310028,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "legacy",
+      "title": "keeps comment ranges stable on save"
+    },
+    {
+      "seed": 20260933,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "skipKnownIssue": true,
+      "title": "keeps surviving comments"
+    },
+    {
+      "seed": 20260937,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "skipKnownIssue": true,
+      "title": "keeps surviving comments"
+    },
+    {
+      "seed": 1250352726,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "merge-group base"
+    },
+    {
+      "seed": 1250352731,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1191 random flow"
+    },
+    {
+      "seed": 1250352731,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "#1191 collision flow"
+    },
+    {
+      "seed": 1250352735,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "#1192 random flow"
+    }
+  ]
+}

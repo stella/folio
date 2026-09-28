@@ -160,6 +160,17 @@ describe("failure reporting", () => {
       pinned: false,
     });
     expect(report["seed"]).toBeNumber();
+    const markerLine = logged.find((entry) => entry.startsWith("FOLIO_FAILURE "));
+    const marker = JSON.parse((markerLine as string).slice("FOLIO_FAILURE ".length)) as Record<
+      string,
+      unknown
+    >;
+    expect(marker).toMatchObject({
+      test: "scripts/property-seeds.test.ts::under CI a failure also logs one machine-readable line",
+      assertion: "Property failed by returning false",
+    });
+    expect(marker["seed"]).toBe(report["seed"]);
+    expect(marker["repro"]).toBe(report["replay"]);
   });
 });
 

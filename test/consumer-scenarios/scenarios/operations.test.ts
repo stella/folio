@@ -25,6 +25,7 @@ import {
   unusedNumberingDocument,
 } from "../support/documents.ts";
 import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
+import { reportScenarioFailure, shellQuote } from "../support/failure-fingerprints.ts";
 import { assertRequestedOutcome, capture } from "../support/oracle.ts";
 import { type Block, coreBatch, GENERATORS, MODES, supports } from "../support/operations.ts";
 import { createRandom } from "../support/random.ts";
@@ -39,6 +40,16 @@ type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
 const blocksOf = (reviewer: Reviewer): Block[] => reviewer.getContent() as Block[];
 
+const matrixSeed = (fallback: number): number => {
+  const raw = process.env["FOLIO_OPERATION_MATRIX_SEED"];
+  if (raw === undefined) return fallback;
+  const seed = Number(raw);
+  if (!Number.isSafeInteger(seed)) throw new Error(`Invalid operation matrix seed: ${raw}`);
+  return seed;
+};
+
+const testPattern = (title: string): string => `^${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`;
+
 describe("applyDocumentOperations", () => {
   for (const name of FIXTURE_NAMES) {
     for (const mode of MODES) {
@@ -46,16 +57,34 @@ describe("applyDocumentOperations", () => {
         (run) => run.fixture === name && run.mode === mode,
       );
       const title = `${name} / ${mode}: every operation type applies or refuses, and the result saves`;
-      const register = (body: () => Promise<void>) =>
-        known
-          ? expectedFailure(known.finding, title, FINDING_SYMPTOMS[known.finding], body)
-          : test(title, body);
+      const seed = matrixSeed(name.length * 31 + mode.length);
+      const repro = `FOLIO_OPERATION_MATRIX_SEED=${seed} bun scripts/consumer-scenarios.ts --only ${shellQuote(testPattern(title))}`;
+      const register = (body: () => Promise<void>) => {
+        const run = async () => {
+          try {
+            await body();
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (known && FINDING_SYMPTOMS[known.finding].test(message)) throw error;
+            reportScenarioFailure({
+              test: `operation matrix ${name} / ${mode}`,
+              seed,
+              repro,
+              failure: error,
+            });
+          }
+        };
+        if (known) {
+          return expectedFailure(known.finding, title, FINDING_SYMPTOMS[known.finding], run);
+        }
+        return test(title, run);
+      };
       register(async () => {
         const before = await FIXTURES[name]();
         const reviewer = await openReviewer(before);
         // `"suggested"` edits stay out of the saved package until accepted.
         const persisted = mode === "suggested" ? { persisted: visibleState(reviewer) } : {};
-        const random = createRandom(name.length * 31 + mode.length);
+        const random = createRandom(seed);
         const log: string[] = [];
         for (const type of Object.keys(GENERATORS)) {
           if (!supports(type, mode)) continue;

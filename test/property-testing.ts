@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { commitSeed } from "./commit-seed";
+import { failureMarker, logFailureMarker } from "./consumer-scenarios/support/failure-fingerprints";
 
 /**
  * Shared fast-check configuration for the repo's property tests. Every
@@ -349,6 +350,15 @@ const replayReporter =
       );
     }
     if (isCi()) {
+      logFailureMarker(
+        failureMarker({
+          test: identity.key ?? identity.title ?? "property",
+          seed: details.seed,
+          path: counterexamplePath,
+          repro: replay,
+          failure: details.errorInstance,
+        }),
+      );
       console.error(
         `PROPERTY_FAILURE ${JSON.stringify({
           file: identity.site?.file ?? null,
