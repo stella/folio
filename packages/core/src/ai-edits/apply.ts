@@ -6060,13 +6060,19 @@ const applyMinimalTrackedReplacement = ({
     }
     // The later run first, so the earlier positions stay put.
     for (const run of runs.toReversed()) {
-      // Inherited or carried, a comment only goes on when its range continues.
-      const pieceMarks = commentsForTrackedInsertion(
-        nextTr.doc,
-        run.at,
-        run.pieces.map((node) => node.marks),
-      );
-      const nodes = run.pieces.map((node, index) => node.mark(pieceMarks[index] ?? node.marks));
+      // A replacement keeps the old text only until acceptance. Its inserted
+      // pieces must retain the direct edit's comments even when separate
+      // deleted comment stretches cannot all meet at one insertion position.
+      // Pure insertions have no deleted stretch to join them after acceptance.
+      let nodes = run.pieces;
+      if (removedFrom === null) {
+        const pieceMarks = commentsForTrackedInsertion(
+          nextTr.doc,
+          run.at,
+          run.pieces.map((node) => node.marks),
+        );
+        nodes = run.pieces.map((node, index) => node.mark(pieceMarks[index] ?? node.marks));
+      }
       nextTr = nextTr.insert(run.at, nodes);
       const end = run.at + Fragment.fromArray(nodes).size;
       nextTr = nextTr.addMark(run.at, end, insertion);

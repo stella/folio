@@ -387,7 +387,10 @@ export const placeTrackedInsertion = (
         return { start, end: position };
       }
     }
-    return { start, end: Math.max(...own.map(([, stretch]) => stretch.end)) };
+    // Disjoint comments have no position adjacent to every stretch. Put the
+    // replacement before the earliest reference; accepting the deletions then
+    // leaves each comment on the new text with its reference after that text.
+    return { start, end: Math.min(...own.map(([, stretch]) => stretch.end)) };
   };
   const anchored = pieces.map(stretchOf);
   const positions: number[] = [];

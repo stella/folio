@@ -27,6 +27,7 @@ import {
   reopened,
   reopenedAccepted,
   reviewComment,
+  reviewerPresentation,
   textRun,
 } from "../__tests__/operationBatchDocuments";
 import { createDocx } from "../docx/rezip";
@@ -357,6 +358,44 @@ const replacedSpan = (
 };
 
 describe("an edit applied directly and the same edit accepted", () => {
+  test("carries disjoint comments across a saved tracked replacement", async () => {
+    const { content, comments } = paragraphOf([
+      { kind: "comment", text: "Seller " },
+      { kind: "field", result: "12" },
+      { kind: "comment", text: "Seller " },
+      { kind: "run", text: "Seller ", bold: false, italic: false },
+    ]);
+    const buffer = await paragraphsDocx([content], comments);
+    const direct = await openReviewer(buffer.slice(0));
+    const tracked = await openReviewer(buffer.slice(0));
+    const operation = {
+      id: "edit",
+      type: "replaceBlock",
+      blockId: direct.snapshot().blocks[0]?.id ?? "",
+      text: "s12Seller Seller ",
+    } as const;
+    for (const [mode, reviewer] of [
+      ["direct", direct],
+      ["tracked-changes", tracked],
+    ] as const) {
+      expect(
+        reviewer.applyDocumentOperations({
+          version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+          mode,
+          operations: [operation],
+        }).skipped,
+      ).toEqual([]);
+    }
+    const pending = await reopened(tracked);
+    expect(pending.getComments()).toHaveLength(2);
+    for (const comment of pending.getComments()) {
+      expect(comment.anchoredText).toContain("s12Seller");
+    }
+    expect(reviewerPresentation(await reopenedAccepted(tracked))).toEqual(
+      reviewerPresentation(await reopened(direct)),
+    );
+  });
+
   test("leave the same text, formatting, links and comments", async () => {
     const equivalenceProperty = fc.asyncProperty(
       fc.array(itemArbitrary, { minLength: 1, maxLength: 7 }),
@@ -399,6 +438,7 @@ describe("an edit applied directly and the same edit accepted", () => {
       },
     );
     await fc.assert(equivalenceProperty, propertyConfig({ numRuns: 150, seed: 1383974287 }));
+    await fc.assert(equivalenceProperty, propertyConfig({ numRuns: 150, seed: 1938427620 }));
     await fc.assert(equivalenceProperty, propertyConfig({ numRuns: 150 }));
   }, 300_000);
 });
