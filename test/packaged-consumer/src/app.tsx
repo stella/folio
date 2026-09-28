@@ -49,15 +49,16 @@ globalThis.__folioFeatureFlags = { workerFontMetrics: true };
 //
 // `sans-serif` (not a bundled web font) is measured identically by the
 // main-thread 2D canvas and the worker's OffscreenCanvas, so the worker's
-// font-fingerprint guard passes and the entry is not skipped. A unique probe
-// text + cache key guarantees the read reflects THIS round-trip, not a warm
-// cache from the editor's own layout.
+// font-fingerprint guard passes and the entry is not skipped. The probe text
+// exercises kerning; a unique cache key guarantees this read reflects THIS
+// round-trip, not a warm cache from the editor's own layout.
 async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
   const font = "16px sans-serif";
+  const fontKerning = "none";
   const letterSpacing = 0;
   const nonce = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const fontCacheKey = `folio-smoke|${font}|${nonce}`;
-  const text = `folio-smoke-probe-${nonce}`;
+  const text = "AVATAR To Wa Yo";
 
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
@@ -65,6 +66,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     return { width: -1, alive: canPrefetchMeasurement() };
   }
   ctx.font = font;
+  ctx.fontKerning = fontKerning;
   const fontFingerprintWidth = ctx.measureText(text).width;
 
   prefetchMeasurement({
@@ -75,7 +77,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     fontCacheKey,
     fontFingerprintText: text,
     fontFingerprintWidth,
-    fontKerning: "none",
+    fontKerning,
   });
 
   const deadline = Date.now() + 8000;
@@ -92,7 +94,7 @@ async function measureRoundTrip(): Promise<{ width: number; alive: boolean }> {
     }
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
-  return { width: -1, alive: canPrefetchMeasurement() };
+  throw new Error("Worker did not return a width for the smoke probe within 8 seconds");
 }
 
 declare global {
