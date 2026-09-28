@@ -253,12 +253,6 @@ type Tolerance<T> = { name: ToleranceName; apply: (value: T) => T };
 /** Every tolerance, with how many comparisons it let pass that would have failed without it. */
 const ABSORBED = new Map<ToleranceName, number>();
 
-const tolerate = <T>(finding: Finding, what: string, apply: (value: T) => T): Tolerance<T> => {
-  const name = { finding, what };
-  ABSORBED.set(name, 0);
-  return { name, apply };
-};
-
 /**
  * Where `a` and `b` differ once `tolerances` are applied to both. A pair the
  * tolerances reconcile is counted against each tolerance it needed (every
