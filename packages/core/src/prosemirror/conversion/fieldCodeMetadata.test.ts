@@ -95,9 +95,16 @@ describe("complex field code metadata", () => {
 
   test("keeps code runs through field DOM serialization", () => {
     const pmDoc = toProseDoc(documentWithField());
+    let field: PMNode | undefined;
+    pmDoc.descendants((node) => {
+      if (node.type.name !== "field") return true;
+      field = node;
+      return false;
+    });
+    if (!field) throw new Error("Expected ProseMirror field");
     const window = new Window();
     const document = window.document as unknown as globalThis.Document;
-    const fragment = DOMSerializer.fromSchema(schema).serializeFragment(pmDoc.content, {
+    const fragment = DOMSerializer.fromSchema(schema).serializeFragment(Fragment.from(field), {
       document,
     });
     const host = document.createElement("div");
@@ -111,7 +118,11 @@ describe("complex field code metadata", () => {
     );
 
     const parsed = DOMParser.fromSchema(schema).parse(host);
-    expect(findComplexField(fromProseDoc(parsed)).fieldCode).toEqual(fieldCode);
+    const paragraph = fromProseDoc(parsed).package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") throw new Error("Expected parsed paragraph");
+    const restored = paragraph.content.at(0);
+    if (restored?.type !== "complexField") throw new Error("Expected parsed complex field");
+    expect(restored.fieldCode).toEqual(fieldCode);
   });
 
   test("drops authored code runs when the ProseMirror instruction changes", () => {

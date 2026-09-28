@@ -213,12 +213,19 @@ const documentFactAttrs = (node: PMNode): Record<string, unknown> => {
   // written as field-character runs, whose parsed fieldKind is "complex" even
   // though its instruction, cached result, state and formatting are unchanged.
   // A synthesized fallback result is different: it was never authored.
-  if (
-    node.type.name === "field" &&
-    (node.attrs["fieldKind"] === "simple" || node.attrs["fieldKind"] === "complex") &&
-    node.attrs["fieldResultIsFallback"] == null
-  ) {
-    return Object.fromEntries(Object.entries(node.attrs).filter(([name]) => name !== "fieldKind"));
+  if (node.type.name === "field" || node.type.name === "structuredField") {
+    const equivalentFieldForms =
+      node.type.name === "field" &&
+      (node.attrs["fieldKind"] === "simple" || node.attrs["fieldKind"] === "complex") &&
+      node.attrs["fieldResultIsFallback"] == null;
+    // Source code runs are an editor round-trip carrier. The instruction is
+    // the field's semantic identity; tracked simple fields become complex
+    // fields with newly authored code runs on save.
+    return Object.fromEntries(
+      Object.entries(node.attrs).filter(
+        ([name]) => name !== "_docxFieldCode" && (!equivalentFieldForms || name !== "fieldKind"),
+      ),
+    );
   }
   if (node.type.name === "image") {
     return Object.fromEntries(

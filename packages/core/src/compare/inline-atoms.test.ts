@@ -76,6 +76,15 @@ describe("matchInlineAtoms", () => {
     const simple = field();
     const complex = simple.type.create({ ...simple.attrs, fieldKind: "complex" });
     expect(sameInlineAtoms(documentWith([simple]), documentWith([complex]))).toBe(true);
+    const withCode = complex.type.create({
+      ...complex.attrs,
+      _docxFieldCode: {
+        instruction: " NUMPAGES ",
+        runs: [{ type: "run", content: [{ type: "instrText", text: " NUMPAGES " }] }],
+      },
+    });
+    expect(sameInlineAtoms(documentWith([simple]), documentWith([withCode]))).toBe(true);
+    expect(sameInlineAtoms(documentWith([complex]), documentWith([withCode]))).toBe(true);
     expect(
       sameInlineAtoms(
         documentWith([simple]),
