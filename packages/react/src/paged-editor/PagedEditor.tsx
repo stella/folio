@@ -39,6 +39,11 @@ import type { HiddenHeaderFooterPMsRef } from "../components/HiddenHeaderFooterP
 import { NoteStoryEditor } from "../components/NoteStoryEditor";
 import type { NoteStoryEditorRef } from "../components/NoteStoryEditor";
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
+import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
+import {
+  projectMarkupView,
+  visibleCaretPosition,
+} from "@stll/folio-core/prosemirror/markupViewProjection";
 import type { AISuggestion } from "@stll/folio-core/ai-suggestions/types";
 import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
@@ -55,12 +60,13 @@ import {
   createLayoutScheduler,
   type LayoutScheduler,
 } from "@stll/folio-core/controller/layoutScheduler";
+import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOptions";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import {
-  documentFontsAreLoaded,
-  getDocumentFontSet,
+  readFontSetSignature,
   waitForInitialLayoutFonts,
+  watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
 import {
@@ -113,7 +119,6 @@ import { setEmbeddedFontFamilyMap } from "@stll/folio-core/utils/fontResolver";
 // Layout engine
 import { resolveSectionHeaderFooterRefs, type ColumnLayout } from "@stll/folio-core/layout-engine";
 import { recordLayoutPhase } from "@stll/folio-core/layout-engine/layoutInstrumentation";
-import type { LayoutRunReason } from "@stll/folio-core/layout-engine/layoutInstrumentation";
 import type {
   Layout,
   FlowBlock,
@@ -134,7 +139,6 @@ import type {
   HeaderFooterContent,
   FootnoteRenderItem,
 } from "@stll/folio-core/layout-painter/renderPage";
-import type { DirtyRange } from "@stll/folio-core/paged-layout/incrementalMeasure";
 import {
   onPaintedLayoutChange,
   readBlockRects,
@@ -170,7 +174,6 @@ import {
 } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { resizeColumnPair } from "@stll/folio-core/paged-layout/tableColumnResize";
 import { tableInsertButtonOffset } from "@stll/folio-core/paged-layout/tableInsertButtonGeometry";
-import { getTransactionsDirtyRange } from "@stll/folio-core/paged-layout/transactionDirtyRange";
 // Table commands (for quick-action insert buttons)
 import { addRowBelow, addColumnRight } from "@stll/folio-core/prosemirror";
 import { findStartPosForParaId } from "@stll/folio-core/prosemirror/utils/findParagraphByParaId";
@@ -298,6 +301,11 @@ export type PagedEditorProps = {
   zoom?: number;
   /** Show the effective body-content boundary for each page. */
   pageRenderer?: PageRendererName;
+  /**
+   * The review view the body is laid out for: All Markup lays out the authored
+   * text, the other views the text they show (see `projectMarkupView`).
+   */
+  markupView: DisplayMode;
   showMarginGuides?: boolean;
   /** CSS color used for margin guides. */
   marginGuideColor?: string;
@@ -357,8 +365,8 @@ export type PagedEditorProps = {
   className?: string;
   /** Custom styles. */
   style?: CSSProperties;
-  /** Whether comments sidebar is open (shifts document left). */
-  commentsSidebarOpen?: boolean;
+  /** Width reserved after the page for the comments column; the page centres in what is left. */
+  pageEndGutter?: number;
   /** Sidebar overlay rendered inside the scroll container (scrolls with document). */
   sidebarOverlay?: React.ReactNode;
   /** Ref callback for the scroll container element. */
@@ -492,7 +500,6 @@ type EnsureHiddenEditorViewOptions = {
 // =============================================================================
 
 export const DEFAULT_PAGE_GAP = 24;
-export const COMMENTS_SIDEBAR_SCROLL_GUTTER = 304;
 
 /** Distance in px from a row/column boundary that triggers the insert button */
 /** Distance in px from the table edge where boundary detection is active */
@@ -856,6 +863,7 @@ function renderHeaderFooterContentByRId(
 
 type LayoutInputSignatureOptions = {
   columns: ColumnLayout | undefined;
+  markupView: DisplayMode;
   contentWidth: number;
   defaultTabStop: number | undefined;
   mirrorMargins: boolean;
@@ -910,8 +918,6 @@ function stableJsonStringify(value: unknown): string {
     return nestedValue;
   });
 }
-
-const INITIAL_FONT_READY_SUPPRESSION_MS = 250;
 
 function describeInvalidHighlightMarks(doc: EditorState["doc"]): string {
   const invalidHighlights: string[] = [];
@@ -1318,6 +1324,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       pageGap = DEFAULT_PAGE_GAP,
       zoom = 1,
       pageRenderer,
+      markupView,
       showMarginGuides = false,
       marginGuideColor,
       onDocumentChange,
@@ -1341,7 +1348,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       onBodyClick,
       className,
       style,
-      commentsSidebarOpen = false,
+      pageEndGutter = 0,
       sidebarOverlay,
       scrollContainerRef: scrollContainerRefProp,
       onHyperlinkClick,
@@ -1457,7 +1464,6 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const pendingHiddenEditorSelectionRef = useRef<PendingHiddenEditorSelection | null>(null);
     const queuedInputBeforeHiddenEditorRef = useRef<QueuedHiddenEditorInput[]>([]);
     const pendingInitialFontReadyLayoutRef = useRef(false);
-    const suppressFontReadyUntilRef = useRef(0);
     const [isFocused, setIsFocused] = useState(false);
     const [selectionRects, setSelectionRects] = useState<SelectionRect[]>([]);
     const [caretPosition, setCaretPosition] = useState<CaretPosition | null>(null);
@@ -1770,6 +1776,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       () =>
         buildLayoutInputSignature({
           columns,
+          markupView,
           contentWidth,
           defaultTabStop,
           mirrorMargins,
@@ -1791,6 +1798,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }),
       [
         columns,
+        markupView,
         contentWidth,
         defaultTabStop,
         mirrorMargins,
@@ -1861,14 +1869,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useEffect(() => hyphenationReadiness.cancel, [hyphenationReadiness]);
 
     const runLayoutPipeline = useCallback(
-      (
-        state: EditorState,
-        options: {
-          dirtyRange?: DirtyRange;
-          forceFull?: boolean;
-          reason?: LayoutRunReason;
-        } = {},
-      ) => {
+      (state: EditorState, options: LayoutRunOptions = {}) => {
         const outcome = runLayoutPipelineCompute(
           {
             contentWidth,
@@ -1902,12 +1903,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             session: layoutSessionRef.current,
             renderHfFromContentOrPm,
             renderHeaderFooterContentByRId,
-            documentFontsAreLoaded,
+            readFontSetSignature,
             buildFootnoteRenderItems,
             describeInvalidHighlightMarks,
             emptyTemplatePreviewEntries: EMPTY_TEMPLATE_PREVIEW_ENTRIES,
             emptyTemplatePreviewHidden: EMPTY_TEMPLATE_PREVIEW_HIDDEN,
             hyphenationReadiness,
+            markupView,
           },
           state,
           options,
@@ -1968,6 +1970,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         defaultTabStop,
         mirrorMargins,
         styles,
+        markupView,
       ],
     );
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
@@ -2018,9 +2021,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // The "when to lay out" policy (coalesce a typing burst into one pass, with a
     // latency cap) lives in the framework-agnostic layout scheduler; this adapter
     // just feeds it transactions and points it at runLayoutPipeline.
-    const layoutSchedulerRef = useRef<LayoutScheduler<EditorState> | null>(null);
+    const layoutSchedulerRef = useRef<LayoutScheduler | null>(null);
     if (layoutSchedulerRef.current === null) {
-      layoutSchedulerRef.current = createLayoutScheduler<EditorState>({
+      layoutSchedulerRef.current = createLayoutScheduler({
+        // The pass lays out the state the editor holds when it runs, never the
+        // one a transaction produced before a document load replaced it.
+        readState: () => hiddenPMRef.current?.getState() ?? precomputedInitialStateRef.current,
         runLayout: (state, options) => runLayoutPipelineRef.current(state, options),
         debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
         leadingFrame: true,
@@ -2055,9 +2061,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     }, [flushDocumentChangeNotification]);
 
     // Thin adapter over the framework-agnostic scheduler. Repeated calls in the
-    // coalescing window merge dirty ranges and paint once for the burst.
-    const scheduleLayout = useCallback((state: EditorState, dirtyRange: DirtyRange | null) => {
-      layoutSchedulerRef.current?.schedule(state, dirtyRange);
+    // coalescing window paint once for the burst.
+    const scheduleLayout = useCallback(() => {
+      layoutSchedulerRef.current?.schedule();
     }, []);
 
     // Clean up the pending layout pass and the doc-change timer on unmount.
@@ -2105,7 +2111,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }
 
       const { selection } = view.state;
-      const domCaret = selection.empty ? getCaretFromDom(selection.head, zoom) : null;
+      const domCaret = selection.empty
+        ? getCaretFromDom(
+            visibleCaretPosition(projectMarkupView(view.state, markupView), selection.head),
+            zoom,
+          )
+        : null;
       const overlay = pagesContainerRef.current?.parentElement?.querySelector(
         '[data-testid="selection-overlay"]',
       );
@@ -2121,7 +2132,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
               }
             : null,
       });
-    }, [getCaretFromDom, zoom]);
+    }, [getCaretFromDom, zoom, markupView]);
 
     /**
      * Update selection overlay from PM selection.
@@ -2214,8 +2225,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         // Collapsed selection - show caret
         if (from === to) {
+          // A caret in text the markup view does not show paints at the
+          // nearest place the view shows.
+          const caretPos = visibleCaretPosition(projectMarkupView(state, markupView), from);
           // Use DOM-based caret positioning for accuracy
-          const domCaret = getCaretFromDom(from, zoom);
+          const domCaret = getCaretFromDom(caretPos, zoom);
           if (domCaret) {
             setCaretPosition(domCaret);
             const overlay = pagesContainerRef.current?.parentElement?.querySelector(
@@ -2249,7 +2263,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
                     return undefined;
                   }
 
-                  const caret = getCaretPosition(layout, blocks, measures, from);
+                  const caret = getCaretPosition(layout, blocks, measures, caretPos);
                   if (caret) {
                     const fallbackCaret = {
                       ...caret,
@@ -2367,7 +2381,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           setCaretPosition(null);
         }
       },
-      [layout, blocks, measures, getCaretFromDom, selectionOverlayRequestGate, zoom],
+      [layout, blocks, measures, getCaretFromDom, selectionOverlayRequestGate, zoom, markupView],
       // NOTE: onSelectionChange removed from dependencies - accessed via ref to prevent infinite loops
     );
     const updateSelectionOverlayRef = useRef(updateSelectionOverlay);
@@ -2771,7 +2785,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      ({ transactions, newState, docChanged }: HiddenEditorTransactionUpdate) => {
+      ({ newState, docChanged }: HiddenEditorTransactionUpdate) => {
         // Keep the anonymization match list mirrored in a ref so the
         // overlay recompute reads the latest set without depending on
         // a state setter inside its useCallback closure. We pull off
@@ -2833,18 +2847,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             hidden: nextPreviewHidden,
             mode: nextPreviewMode,
           };
-          if (!docChanged) {
-            if (nextPreviewMode !== previousPreview.mode) {
-              scheduleLayout(newState, null);
-            } else {
-              const previewDirty = templatePreviewDirtyRange(
-                previousPreview,
-                templatePreviewRef.current,
-              );
-              if (previewDirty) {
-                scheduleLayout(newState, previewDirty);
-              }
-            }
+          if (
+            !docChanged &&
+            (nextPreviewMode !== previousPreview.mode ||
+              templatePreviewDirtyRange(previousPreview, templatePreviewRef.current) !== null)
+          ) {
+            scheduleLayout();
           }
         }
 
@@ -2882,7 +2890,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           hideSelectionOverlayDuringInput(newState);
 
           // Content changed - schedule layout (coalesced via rAF)
-          scheduleLayout(newState, getTransactionsDirtyRange(transactions));
+          scheduleLayout();
 
           // Convert back to the Folio document model off the keypress path.
           scheduleDocumentChangeNotification();
@@ -2955,23 +2963,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // user enters HF editing first (a doc opened without
           // collaboration that hasn't been clicked into yet). The HF PMs
           // are mounted unconditionally so an HF transaction can fire
-          // before any body view exists; without a bodyState
-          // `scheduleLayout` was a no-op and the painter never repainted
-          // the in-flight HF edit (Codex #487 P1: 21:59 review). Use the
-          // precomputed initial state when present, otherwise force-create
-          // the view via `ensureHiddenEditorView` so the next read returns
-          // a state.
-          let bodyState = hiddenPMRef.current?.getState();
-          if (!bodyState && precomputedInitialStateRef.current) {
-            bodyState = precomputedInitialStateRef.current;
-          }
-          if (!bodyState) {
+          // before any body view exists; without a body state the scheduled
+          // pass has nothing to lay out and the painter never repainted
+          // the in-flight HF edit (Codex #487 P1: 21:59 review). The pass
+          // reads the precomputed initial state when present; otherwise
+          // force-create the view via `ensureHiddenEditorView` so it reads
+          // the view's state.
+          if (!hiddenPMRef.current?.getState() && !precomputedInitialStateRef.current) {
             ensureHiddenEditorView({ sync: true });
-            bodyState = hiddenPMRef.current?.getState();
           }
-          if (bodyState) {
-            scheduleLayout(bodyState, null);
-          }
+          scheduleLayout();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;
@@ -2999,8 +3000,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const handleNoteStoryTransaction = useCallback(
       (view: EditorView, docChanged: boolean, selectionChanged: boolean) => {
         if (docChanged) {
-          const bodyState = hiddenPMRef.current?.getState();
-          if (bodyState) scheduleLayout(bodyState, null);
+          scheduleLayout();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;
@@ -5123,7 +5123,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       let cancelled = false;
       pendingInitialFontReadyLayoutRef.current = true;
       const fontWaitStartedAt = performance.now();
-      const runAfterFontWait = (fontsLoaded: boolean) => {
+      const runAfterFontWait = () => {
         if (cancelled) {
           return;
         }
@@ -5137,14 +5137,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateSelectionOverlay(initialState);
         updateAnonymizationOverlay();
         updateDirectivesOverlay();
-        if (fontsLoaded) {
-          layoutSessionRef.current.usedLoadedFonts = true;
-          suppressFontReadyUntilRef.current = performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
-        }
       };
 
-      void waitForInitialLayoutFonts(document, initialState.doc).then(runAfterFontWait, () =>
-        runAfterFontWait(false),
+      void waitForInitialLayoutFonts(document, initialState.doc).then(
+        runAfterFontWait,
+        runAfterFontWait,
       );
 
       return () => {
@@ -5208,7 +5205,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           });
         };
 
-        if (layoutSessionRef.current.lastPmDoc?.eq(view.state.doc)) {
+        if (
+          layoutSessionRef.current.lastPmDoc?.eq(view.state.doc) &&
+          layoutSessionRef.current.lastMeasureInputs?.markupView === markupView
+        ) {
           // The doc is already laid out, but the painted pages may carry a
           // fill preview the fresh view's plugin no longer holds (or vice
           // versa) — the substituted values live in the flow blocks, so a
@@ -5238,7 +5238,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
         pendingInitialFontReadyLayoutRef.current = true;
         const fontWaitStartedAt = performance.now();
-        const runAfterFontWait = (fontsLoaded: boolean) => {
+        const runAfterFontWait = () => {
           pendingInitialFontReadyLayoutRef.current = false;
           const currentView = hiddenPMRef.current?.getView();
           if (currentView !== view) {
@@ -5248,14 +5248,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           resetCanvasContext();
           clearAllCaches();
           runInitialLayout(currentView);
-          if (fontsLoaded) {
-            layoutSessionRef.current.usedLoadedFonts = true;
-            suppressFontReadyUntilRef.current =
-              performance.now() + INITIAL_FONT_READY_SUPPRESSION_MS;
-          }
         };
-        void waitForInitialLayoutFonts(document, view.state.doc).then(runAfterFontWait, () =>
-          runAfterFontWait(false),
+        void waitForInitialLayoutFonts(document, view.state.doc).then(
+          runAfterFontWait,
+          runAfterFontWait,
         );
 
         // Auto-focus the editor so the user can start typing immediately
@@ -5272,6 +5268,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateAutocompleteOverlay,
         readOnly,
         refreshBodyImeCaretAnchor,
+        markupView,
       ],
     );
 
@@ -5352,59 +5349,42 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       updateAutocompleteOverlay();
     }, [updateAutocompleteOverlay]);
 
-    // Re-layout when web fonts finish loading to fix measurements that were
-    // computed against fallback fonts during initial render.
-    // Uses FontFaceSet.onloadingdone to detect when new fonts complete loading.
-    useEffect(() => {
-      const fontSet = getDocumentFontSet();
-      if (!fontSet) {
-        return undefined;
-      }
-
-      const handleFontsLoading = () => {
-        if (performance.now() < suppressFontReadyUntilRef.current) {
-          return;
-        }
-        layoutSessionRef.current.usedLoadedFonts = false;
-      };
-
-      const handleFontsLoaded = () => {
-        if (
-          pendingInitialFontReadyLayoutRef.current ||
-          performance.now() < suppressFontReadyUntilRef.current ||
-          layoutSessionRef.current.usedLoadedFonts
-        ) {
-          return;
-        }
-
-        const view = hiddenPMRef.current?.getView();
-        if (view) {
-          // Clear all cached measurements — font metrics have changed
-          resetCanvasContext();
-          clearAllCaches();
-          runLayoutPipelineRef.current(view.state, { reason: "font-ready" });
-          updateSelectionOverlayRef.current(view.state);
-        }
-      };
-
-      // Listen for font loading completion events
-      fontSet.addEventListener("loading", handleFontsLoading);
-      fontSet.addEventListener("loadingdone", handleFontsLoaded);
-      fontSet.addEventListener("loadingerror", handleFontsLoaded);
-      return () => {
-        fontSet.removeEventListener("loading", handleFontsLoading);
-        fontSet.removeEventListener("loadingdone", handleFontsLoaded);
-        fontSet.removeEventListener("loadingerror", handleFontsLoaded);
-      };
-    }, []);
+    // Re-layout when a face loads that the committed layout measured without:
+    // a `unicode-range` subset fetched once painted text first needed it, or
+    // any face the initial wait timed out on. The pipeline drops measurements
+    // taken in the previous font set itself.
+    useEffect(
+      () =>
+        watchLayoutFontLoads({
+          measuredFontSet: () => layoutSessionRef.current.lastMeasureInputs?.fontSet ?? null,
+          relayout: () => {
+            // The initial layout still to come measures in the current set.
+            if (pendingInitialFontReadyLayoutRef.current) {
+              return;
+            }
+            // Before the hidden view exists the pages come from a pre-view
+            // layout; re-run that state, as the hyphenation follow-up does.
+            const view = hiddenPMRef.current?.getView();
+            const state = view?.state ?? layoutSessionRef.current.lastEditorState;
+            if (!state) {
+              return;
+            }
+            runLayoutPipelineRef.current(state, { reason: "font-ready" });
+            if (view) {
+              updateSelectionOverlayRef.current(view.state);
+            }
+          },
+        }),
+      [],
+    );
 
     // Register the document's embedded fonts (obfuscated `word/fonts/*.odttf`) as
     // `@font-face`s so text renders in its authored fonts instead of fallbacks,
     // then re-layout once they load so glyph advances use the real metrics. Keyed
     // on the source buffer: registration happens per loaded document, and the
     // cleanup unregisters the faces so one document's family cannot bleed into the
-    // next. The 250ms font-ready suppression window can swallow the shared
-    // loadingdone re-layout, so this path relays out explicitly.
+    // next. These faces are added already loaded, which fires no `loadingdone`,
+    // and they change how families resolve, so this path relays out explicitly.
     const embeddedFontBuffer = document?.originalBuffer ?? null;
     useEffect(() => {
       if (!embeddedFontBuffer) {
@@ -5511,14 +5491,21 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         lastLayoutInputSignatureRef.current = layoutInputSignature;
         return;
       }
-      const view = hiddenPMRef.current?.getView();
-      if (view) {
+      // Until the hidden view is created the pages show the precomputed initial
+      // state, which is the last state laid out; an input change must relayout
+      // that state too, or the pages keep the old inputs until the view exists.
+      const state =
+        hiddenPMRef.current?.getView()?.state ??
+        (preHiddenInitialLayoutDoneRef.current && precomputedInitialDocumentRef.current === document
+          ? layoutSessionRef.current.lastEditorState
+          : null);
+      if (state) {
         const layoutInputsChanged = lastLayoutInputSignatureRef.current !== layoutInputSignature;
         lastLayoutInputSignatureRef.current = layoutInputSignature;
-        if (!layoutInputsChanged && view.state.doc === layoutSessionRef.current.lastPmDoc) {
+        if (!layoutInputsChanged && state.doc === layoutSessionRef.current.lastPmDoc) {
           return;
         }
-        runLayoutPipelineRef.current(view.state, { reason: "layout-input" });
+        runLayoutPipelineRef.current(state, { reason: "layout-input" });
       }
     }, [document, layoutInputSignature]);
 
@@ -5807,10 +5794,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       return numPages * pageSize.h + (numPages - 1) * pageGap + 48;
     }, [layout, pageSize.h, pageGap]);
     const scaledViewportHeight = Math.max(1, totalHeight * zoom);
-    const scaledViewportWidth = Math.max(
-      1,
-      pageSize.w * zoom + (commentsSidebarOpen ? COMMENTS_SIDEBAR_SCROLL_GUTTER : 0),
-    );
+    let widestPageWidth = layout?.pages.length ? 0 : pageSize.w;
+    for (const page of layout?.pages ?? []) {
+      widestPageWidth = Math.max(widestPageWidth, page.size.w);
+    }
+    const scaledViewportWidth = Math.max(1, widestPageWidth * zoom + pageEndGutter);
     const viewportExtentStyle: CSSProperties = {
       position: "relative",
       width: `max(100%, ${String(scaledViewportWidth)}px)`,
@@ -5829,7 +5817,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       position: "absolute",
       top: 0,
       left: `max(0px, calc((100% - ${String(scaledViewportWidth)}px) / 2))`,
-      width: pageSize.w,
+      width: widestPageWidth,
       minHeight: totalHeight,
       transform: (() => {
         const parts: string[] = [];

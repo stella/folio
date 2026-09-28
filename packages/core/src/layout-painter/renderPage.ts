@@ -2643,6 +2643,10 @@ function collectContentFingerprint(block: FlowBlock, parts: string[]): void {
     if (block.attrs?.alignment) {
       parts.push(`p:al:${block.attrs.alignment}`);
     }
+    if (block.reviewIndicator) {
+      // Switching to or from Simple Markup can change only the change bar.
+      parts.push(`p:ri:${block.reviewIndicator}`);
+    }
     for (let index = 0; index < block.runs.length; index++) {
       const run = block.runs[index];
       if (!run) {

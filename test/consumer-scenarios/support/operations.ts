@@ -356,6 +356,16 @@ export const MISTAKES: Record<
       ],
     };
   },
+  undefinedNumId: (blocks, random) => ({
+    operations: [
+      {
+        type: "insertAfterBlock",
+        blockId: blocks.length > 0 ? random.pick(blocks).id : "00000000",
+        text: "x",
+        numbering: undefinedNumbering(blocks),
+      },
+    ],
+  }),
 };
 
 /**
@@ -365,6 +375,7 @@ export const MISTAKES: Record<
  */
 export const REFUSED_MISTAKES: Readonly<Partial<Record<keyof typeof MISTAKES, string>>> = {
   styleThatDoesNotExist: "missingStyle",
+  undefinedNumId: "missingNumbering",
 };
 
 /** A numbering reference to an instance the package does not define (#1103). */

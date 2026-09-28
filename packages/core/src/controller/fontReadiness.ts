@@ -1,12 +1,14 @@
 /**
- * Font-readiness helpers for the initial layout pass.
+ * Font readiness for layout.
  *
  * Framework-neutral so both adapters share one implementation: collecting the
- * font faces a document needs (from its model + ProseMirror content), gating
- * the first layout on those faces having loaded, and reporting whether the
- * browser's font set is settled. Browser globals (`document.fonts`, `window`)
- * are only touched at call time, so importing this module in a non-browser host
- * is safe (mirrors the `browserClock` precedent in `layoutScheduler.ts`).
+ * font faces and the characters a document needs (from its model + ProseMirror
+ * content), gating the first layout on those faces having loaded, naming the
+ * font set a layout was measured in, and re-running layout when a face that
+ * can change a measured width loads afterwards. Browser globals
+ * (`document.fonts`, `window`) are only touched at call time, so importing this
+ * module in a non-browser host is safe (mirrors the `browserClock` precedent in
+ * `layoutScheduler.ts`).
  */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
@@ -17,10 +19,27 @@ import {
   getFontAlternate,
   type FontAlternates,
 } from "../fonts/fontAlternates";
+import { blockPlainText } from "../docx/blockPlainText";
 import { expectFontFamilyMarkAttrs, expectParagraphAttrs } from "../prosemirror/attrs";
-import { DEFAULT_FONT_FAMILY } from "../layout-engine/measure/measureHelpers";
+import { DEFAULT_FONT_FAMILY, isLayoutFontFamily } from "../layout-engine/measure/measureHelpers";
 import { parseFontFamilyList, resolveFontFamily } from "../utils/fontResolver";
 import type { Document, TextFormatting } from "../types/document";
+
+/** The parts of a `FontFace` layout readiness reads. */
+export type LayoutFontSetFace = Pick<FontFace, "family" | "status">;
+
+type LayoutFontSetListener = (event: { fontfaces: readonly LayoutFontSetFace[] }) => void;
+
+/**
+ * The parts of a `FontFaceSet` layout readiness uses; `document.fonts` in a
+ * browser, a scripted stand-in in tests.
+ */
+export type LayoutFontSet = Iterable<LayoutFontSetFace> & {
+  load: (font: string, text?: string) => Promise<unknown>;
+  readonly ready: Promise<unknown>;
+  addEventListener: (type: "loadingdone", listener: LayoutFontSetListener) => void;
+  removeEventListener: (type: "loadingdone", listener: LayoutFontSetListener) => void;
+};
 
 export function getDocumentFontSet(): FontFaceSet | null {
   if (typeof document === "undefined" || !("fonts" in document)) {
@@ -29,9 +48,89 @@ export function getDocumentFontSet(): FontFaceSet | null {
   return document.fonts;
 }
 
-export function documentFontsAreLoaded(): boolean {
-  const fontSet = getDocumentFontSet();
-  return !fontSet || fontSet.status === "loaded";
+/**
+ * Names the faces available to measurement: which faces of the families
+ * measured stacks name have loaded. Equal signatures mean every measured glyph
+ * resolves to the same face, so a measurement taken under one is valid under
+ * the other; a host UI face loading leaves it unchanged.
+ *
+ * Counted over loaded faces only (a face never unloads, and a failed one adds
+ * no glyphs) with a per-face identity sum, so a removal replaced by an addition
+ * still changes it: a new face's id exceeds every earlier one. The family set
+ * only grows, and a family joins it when first measured, so read it after
+ * measuring to name what a layout measured in. Without a font set (a server or
+ * headless host) there is nothing to load and the signature is constant.
+ */
+export function readFontSetSignature(fontSet: LayoutFontSet | null = getDocumentFontSet()): string {
+  if (!fontSet) {
+    return NO_FONT_SET_SIGNATURE;
+  }
+  let loadedFaces = 0;
+  let loadedFaceIdSum = 0;
+  for (const face of fontSet) {
+    if (face.status !== "loaded" || !isLayoutFontFamily(face.family)) {
+      continue;
+    }
+    loadedFaces += 1;
+    loadedFaceIdSum += fontFaceId(face);
+  }
+  return `${loadedFaces}:${loadedFaceIdSum}`;
+}
+
+const NO_FONT_SET_SIGNATURE = "none";
+const fontFaceIds = new WeakMap<LayoutFontSetFace, number>();
+let nextFontFaceId = 1;
+
+const fontFaceId = (face: LayoutFontSetFace): number => {
+  const known = fontFaceIds.get(face);
+  if (known !== undefined) {
+    return known;
+  }
+  const id = nextFontFaceId;
+  nextFontFaceId += 1;
+  fontFaceIds.set(face, id);
+  return id;
+};
+
+export type WatchLayoutFontLoadsOptions = {
+  /**
+   * The font-set signature the committed layout was measured in, or `null`
+   * before one is committed (the first layout measures whatever has loaded).
+   */
+  measuredFontSet: () => string | null;
+  relayout: () => void;
+  fontSet?: LayoutFontSet | null;
+};
+
+/**
+ * Re-run layout whenever a face that can change a measured width finishes
+ * loading after the committed layout measured without it.
+ *
+ * Tied to what loaded, never to a time window: fontsource splits each face
+ * into `unicode-range` subsets the browser fetches when painted text first
+ * needs them, so a subset can land at any moment after the first layout. A
+ * load the committed layout already saw (its event can arrive after the layout
+ * ran) leaves the signature unchanged and relays nothing, as does a face of a
+ * family no measured stack names (a host UI font). Returns the unsubscribe
+ * function.
+ */
+export function watchLayoutFontLoads({
+  measuredFontSet,
+  relayout,
+  fontSet = getDocumentFontSet(),
+}: WatchLayoutFontLoadsOptions): () => void {
+  if (!fontSet) {
+    return () => undefined;
+  }
+  const handleLoadingDone: LayoutFontSetListener = () => {
+    const measured = measuredFontSet();
+    if (measured === null || measured === readFontSetSignature(fontSet)) {
+      return;
+    }
+    relayout();
+  };
+  fontSet.addEventListener("loadingdone", handleLoadingDone);
+  return () => fontSet.removeEventListener("loadingdone", handleLoadingDone);
 }
 
 const INITIAL_LAYOUT_FONT_TIMEOUT_MS = 2000;
@@ -57,29 +156,82 @@ export type LayoutFontFace = {
   weight: (typeof LAYOUT_FONT_DESCRIPTORS)[number]["weight"];
 };
 
+/**
+ * Resolve once every face the first layout will measure has loaded (`true`),
+ * or after a timeout (`false`), so the first layout does not measure fallbacks.
+ *
+ * Each face is loaded for the document's own characters. A bundled face is a
+ * set of `unicode-range` subsets, and `FontFaceSet.load` fetches only the
+ * subsets covering the text it is given; without text it takes a single space
+ * and loads only the Latin subset, so Czech, Polish, Greek and Cyrillic were
+ * measured in a fallback.
+ */
 export function waitForInitialLayoutFonts(
   documentModel: Document | null,
   pmDoc: EditorState["doc"],
+  fontSet: LayoutFontSet | null = getDocumentFontSet(),
 ): Promise<boolean> {
-  const fontSet = getDocumentFontSet();
   if (!fontSet) {
     return Promise.resolve(true);
   }
 
+  const text = collectLayoutText(documentModel, pmDoc);
   const loadChecks: string[] = [];
   for (const face of collectInitialLayoutFontFaces(documentModel, pmDoc)) {
     loadChecks.push(`${face.style} ${face.weight} 16px "${escapeCssFontFamily(face.family)}"`);
   }
 
-  const loadFonts = Promise.allSettled(loadChecks.map((check) => fontSet.load(check)))
+  let timeout: ReturnType<typeof globalThis.setTimeout> | undefined;
+  const loadFonts = Promise.allSettled(loadChecks.map((check) => fontSet.load(check, text)))
     .then(() => fontSet.ready)
     .then(() => true);
   return Promise.race([
     loadFonts,
     new Promise<boolean>((resolve) => {
-      globalThis.setTimeout(() => resolve(false), INITIAL_LAYOUT_FONT_TIMEOUT_MS);
+      timeout = globalThis.setTimeout(() => resolve(false), INITIAL_LAYOUT_FONT_TIMEOUT_MS);
     }),
-  ]);
+  ]).finally(() => globalThis.clearTimeout(timeout));
+}
+
+/**
+ * Every distinct character the layout will measure, as one string: the body
+ * text (tracked deletions included, since All Markup paints them), list
+ * markers, headers, footers and notes. Always carries a space, which every
+ * line measures.
+ */
+export function collectLayoutText(
+  documentModel: Document | null,
+  pmDoc: EditorState["doc"],
+): string {
+  const characters = new Set<string>([" "]);
+  const addText = (text: string) => {
+    for (const character of text) {
+      if (character >= " ") {
+        characters.add(character);
+      }
+    }
+  };
+
+  pmDoc.descendants((node) => {
+    if (node.isText) {
+      addText(node.text ?? "");
+    } else if (node.type.name === "paragraph") {
+      addText(expectParagraphAttrs(node).listMarker ?? "");
+    }
+    return true;
+  });
+
+  const documentPackage = documentModel?.package;
+  for (const story of [
+    ...(documentPackage?.headers?.values() ?? []),
+    ...(documentPackage?.footers?.values() ?? []),
+    ...(documentPackage?.footnotes ?? []),
+    ...(documentPackage?.endnotes ?? []),
+  ]) {
+    addText(blockPlainText(story.content));
+  }
+
+  return Array.from(characters).join("");
 }
 
 export function collectInitialLayoutFontFamilies(

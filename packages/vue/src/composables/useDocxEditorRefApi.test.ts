@@ -1,6 +1,45 @@
 import { describe, expect, mock, test } from "bun:test";
 
-import { saveDocumentForHost } from "./useDocxEditorRefApi";
+import { applyWithStagedOperationComments, saveDocumentForHost } from "./useDocxEditorRefApi";
+
+describe("applyWithStagedOperationComments", () => {
+  test("publishes only applied comments after the document commits", () => {
+    const events: string[] = [];
+    let nextId = 0;
+    const result = applyWithStagedOperationComments({
+      createComment: (text) => {
+        const id = ++nextId;
+        events.push(`mint:${text}`);
+        return { id, author: "Reviewer", content: [] };
+      },
+      publishComments: (comments) => {
+        events.push(`publish:${comments.map(({ id }) => id).join(",")}`);
+      },
+      apply: (createCommentId) => {
+        createCommentId("refused");
+        const accepted = createCommentId("accepted");
+        events.push("commit");
+        return { applied: [{ commentId: accepted }] };
+      },
+    });
+
+    expect(result.applied).toEqual([{ commentId: 2 }]);
+    expect(events).toEqual(["mint:refused", "mint:accepted", "commit", "publish:2"]);
+  });
+
+  test("does not notify the host when every operation is refused", () => {
+    const publishComments = mock(() => {});
+    applyWithStagedOperationComments({
+      createComment: () => ({ id: 1, author: "Reviewer", content: [] }),
+      publishComments,
+      apply: (createCommentId) => {
+        createCommentId("refused");
+        return { applied: [] };
+      },
+    });
+    expect(publishComments).not.toHaveBeenCalled();
+  });
+});
 
 describe("saveDocumentForHost", () => {
   test("runs host-facing effects only after serialization succeeds", async () => {

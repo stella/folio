@@ -1,12 +1,40 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { defineConfig, type Plugin, type PreviewServer, type ViteDevServer } from "vite";
+import {
+  defineConfig,
+  searchForWorkspaceRoot,
+  type Plugin,
+  type PreviewServer,
+  type ViteDevServer,
+} from "vite";
 
 const playgroundRoot = import.meta.dirname;
 const repoRoot = path.resolve(playgroundRoot, "../..");
 const fixturesDir = path.join(repoRoot, "tests/visual/fixtures");
+
+const reactPackageJsonPath = path.join(repoRoot, "packages/react/package.json");
+
+/**
+ * The real directories of the fontsource packages `@stll/folio-react` bundles.
+ *
+ * Bun's isolated global store keeps package files outside the checkout, and
+ * the dev server refuses to serve anything outside the workspace, so every
+ * bundled face failed to load (status `error`) and the playground measured and
+ * painted in system fallbacks. Derived from the adapter's dependencies so a
+ * new bundled face is served without editing this list.
+ */
+function bundledFontPackageDirs(): string[] {
+  const reactPackage: { dependencies?: Record<string, string> } = JSON.parse(
+    fs.readFileSync(reactPackageJsonPath, "utf8"),
+  );
+  const requireFromReact = createRequire(reactPackageJsonPath);
+  return Object.keys(reactPackage.dependencies ?? {})
+    .filter((name) => name.startsWith("@fontsource/"))
+    .map((name) => path.dirname(fs.realpathSync(requireFromReact.resolve(`${name}/package.json`))));
+}
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const FIXTURE_PREFIX = "/fixtures/";
@@ -89,6 +117,9 @@ export default defineConfig({
     port: Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200,
     strictPort: true,
     open: false,
+    fs: {
+      allow: [searchForWorkspaceRoot(playgroundRoot), ...bundledFontPackageDirs()],
+    },
   },
   build: {
     outDir: "dist",

@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Úpravy",
       "editingDescription": "Upravovat dokument přímo",
+      "outlineTitle": "Osnova",
       "showDocumentOutline": "Osnova dokumentu",
       "suggesting": "Návrhy",
       "suggestingDescription": "Úpravy se převedou na sledované návrhy",

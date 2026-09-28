@@ -169,6 +169,12 @@ export type FolioParityBridge = {
    * through `getEditorRef().getPageNumberForPmPos`. 0 with no live view/layout.
    */
   getPageNumberForSelection: () => number;
+  /**
+   * Type `marker` at the selection, then in the same task load the document as
+   * it was before the keystroke through `loadDocument`, as a host applying a
+   * new revision while the user types does. False without a live view.
+   */
+  typeThenReloadDocument: (marker: string) => boolean;
 };
 
 function buildParityBridge(
@@ -546,6 +552,17 @@ function buildParityBridge(
         return 0;
       }
       return pagedRef.getPageNumberForPmPos(view.state.selection.from) ?? 0;
+    },
+    typeThenReloadDocument: (marker) => {
+      const ref = getRef();
+      const view = liveView();
+      const before = ref?.getDocument();
+      if (!ref || !view || !before) {
+        return false;
+      }
+      view.dispatch(view.state.tr.insertText(marker, view.state.selection.from));
+      ref.loadDocument(before);
+      return true;
     },
   };
 }

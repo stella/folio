@@ -23,7 +23,12 @@ import {
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { isValidHexId } from "@stll/folio-core/utils/hexId";
-import { PENDING_COMMENT_ID, getCommentAuthorKey, getCommentParentId } from "./commentsHelpers";
+import {
+  PENDING_COMMENT_ID,
+  countOpenCommentThreads,
+  getCommentAuthorKey,
+  getCommentParentId,
+} from "./commentsHelpers";
 
 /**
  * Sanitize a `paraId`/`textId`-bearing paragraph: drop either field when it
@@ -169,7 +174,8 @@ export function useFolioComments({
       setComments(bodyComments);
       setVisibleCommentAuthors(null);
       setActiveCommentId(null);
-      if (autoOpenReviewSidebar) {
+      // Open only when the sidebar has a card to show, never on an empty panel.
+      if (autoOpenReviewSidebar && countOpenCommentThreads(bodyComments) > 0) {
         setShowCommentsSidebar(true);
       }
       commentsLoadedRef.current = true;

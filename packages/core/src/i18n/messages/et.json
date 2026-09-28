@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Redigeerimine",
       "editingDescription": "Redigeerige dokumenti otse",
+      "outlineTitle": "Liigendus",
       "showDocumentOutline": "Dokumendi liigendus",
       "suggesting": "Soovitamine",
       "suggestingDescription": "Muudatused muutuvad jälitatud soovitusteks",

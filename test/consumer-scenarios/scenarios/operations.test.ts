@@ -22,6 +22,7 @@ import {
   listDocument,
   openReviewer,
   plainDocument,
+  unusedNumberingDocument,
 } from "../support/documents.ts";
 import { assertHealthy, saveAndReopen, visibleState } from "../support/invariants.ts";
 import { assertRequestedOutcome, capture } from "../support/oracle.ts";
@@ -357,5 +358,63 @@ describe("an operation naming a paragraph style the package does not define", ()
     const heading = reopened.getContent().find((block) => block.text === "Signed in two copies.");
     assert.equal(heading?.kind, "heading");
     assert.equal(heading?.headingLevel, 2);
+  });
+});
+
+describe("an operation naming a numbering instance the package does not define (#1103)", () => {
+  for (const mode of MODES) {
+    test(`insertAfterBlock with an undefined numId is refused, not saved broken (${mode})`, async () => {
+      const reviewer = await openReviewer(await unusedNumberingDocument());
+      const anchor = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+      assert.ok(anchor);
+      const result = reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [
+          {
+            id: "1",
+            type: "insertAfterBlock",
+            blockId: anchor.id,
+            text: "An inserted clause.",
+            numbering: { numId: 1, level: 0 },
+          },
+        ],
+      });
+      assert.deepEqual(result.applied, []);
+      assert.deepEqual(
+        result.skipped.map(({ reason }) => reason),
+        ["missingNumbering"],
+      );
+      if (mode === "suggested") {
+        // Nothing was applied, so there is nothing to accept; the package
+        // must still save and reopen unchanged.
+        reviewer.acceptAll();
+      }
+      await assertHealthy(reviewer, `undefined numId (${mode})`);
+    });
+  }
+
+  test("setBlockParagraphProperties with an undefined numId is refused, not saved broken", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const target = reviewer.getContent().find((block) => block.text === "Signed in two copies.");
+    assert.ok(target);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [
+        {
+          id: "1",
+          type: "setBlockParagraphProperties",
+          blockId: target.id,
+          properties: { numbering: { numId: 3, level: 0 } },
+        },
+      ],
+    });
+    assert.deepEqual(result.applied, []);
+    assert.deepEqual(
+      result.skipped.map(({ reason }) => reason),
+      ["missingNumbering"],
+    );
+    await assertHealthy(reviewer, "setBlockParagraphProperties undefined numId");
   });
 });

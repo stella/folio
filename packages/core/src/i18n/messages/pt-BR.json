@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Editando",
       "editingDescription": "Edite o documento diretamente",
+      "outlineTitle": "Estrutura de tópicos",
       "showDocumentOutline": "Estrutura de tópicos do documento",
       "suggesting": "Sugerindo",
       "suggestingDescription": "As edições se tornam sugestões controladas",

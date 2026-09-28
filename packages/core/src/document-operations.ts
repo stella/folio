@@ -1,6 +1,8 @@
 import { TaggedError } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
+import type { Transaction } from "prosemirror-state";
 
-import { sanitizeXmlCharacters } from "@stll/docx-core";
+import { sanitizeXmlCharacters, type ValidateDocumentModelIssue } from "@stll/docx-core";
 
 import { LIST_KINDS, type ListKind } from "./docx/listNumberingInstances";
 import { isNumberingReference } from "./docx/numberingReference";
@@ -14,8 +16,11 @@ import {
   type FolioUndefinedStylePolicy,
   type FolioWordDiffOptions,
   type FolioRevisionStamp,
-  previewFolioAIEditOperations,
+  previewFolioAIEditOperationsWithResult,
 } from "./ai-edits/apply";
+import { describeModelError, findIntroducedModelErrors } from "./ai-edits/result-validation";
+import { completeNumberingForDoc } from "./prosemirror/listInstanceReferences";
+import { getStatedDocumentNumbering } from "./prosemirror/plugins/documentNumbering";
 import type {
   FolioAIBlockParagraphProperties,
   FolioAIEditAppliedOperation,
@@ -1740,6 +1745,8 @@ const recoveryByReason = {
   splitsCharacter: "changeTarget",
   protectedReference: "narrowMatch",
   missingStyle: "refreshDocument",
+  missingNumbering: "refreshDocument",
+  invalidResult: "refreshDocument",
   pendingDeletion: "resolveTrackedChange",
 } as const satisfies Record<FolioAIEditSkippedOperation["reason"], FolioDocumentOperationRecovery>;
 
@@ -1768,7 +1775,10 @@ export const getFolioDocumentOperationIssues = (
         // can succeed.
         reason !== "payloadDoesNotFit" &&
         // A marker-cutting edit stays blocked until the match is narrowed.
-        reason !== "protectedReference",
+        reason !== "protectedReference" &&
+        // The same operation against the same document produces the same
+        // unsaveable result; only a changed operation can succeed.
+        reason !== "invalidResult",
       recovery: recoveryByReason[reason],
       ...(message !== undefined && { message }),
     };
@@ -1997,10 +2007,34 @@ export type ApplyFolioDocumentOperationsOptions = {
   undefinedStyles?: FolioUndefinedStylePolicy;
 };
 
-type ApplyParsedDocumentOperationBatchOptions = {
-  targetView: FolioAIEditView;
-  targetCreateCommentId?: (text: string) => number;
-  preview?: boolean;
+/** One run of the applier whose result has not reached the caller's view yet. */
+type BatchAttempt = {
+  outcome: FolioAIEditApplyOutcome;
+  /** The story the run would leave, or `null` when it changed nothing. */
+  doc: PMNode | null;
+  /** Comment ids the run allocated, provisional ones included. */
+  commentIds: readonly number[];
+  /** Hand the run's transaction to the caller's view; a no-op for a preview. */
+  commit: () => void;
+};
+
+/** An attempt after the result check: what to report and what to commit. */
+type GuardedBatch = {
+  outcome: FolioAIEditApplyOutcome;
+  commit: () => void;
+};
+
+const NO_COMMIT = (): void => {};
+
+/** Skips reported in the order of the operations they belong to. */
+const inOperationOrder = (
+  operations: readonly FolioDocumentOperation[],
+  skipped: readonly FolioAIEditSkippedOperation[],
+): FolioAIEditSkippedOperation[] => {
+  const indexById = new Map(operations.map(({ id }, index) => [id, index]));
+  return [...skipped].sort(
+    (left, right) => (indexById.get(left.id) ?? -1) - (indexById.get(right.id) ?? -1),
+  );
 };
 
 export const applyFolioDocumentOperations = ({
@@ -2018,28 +2052,214 @@ export const applyFolioDocumentOperations = ({
   undefinedStyles,
 }: ApplyFolioDocumentOperationsOptions): FolioDocumentOperationResult => {
   const parsedBatch = parseFolioDocumentOperationBatch(batch);
-  const apply = ({
-    targetView,
-    targetCreateCommentId = createCommentId,
-    preview = false,
-  }: ApplyParsedDocumentOperationBatchOptions) => {
-    const applyOperations = preview ? previewFolioAIEditOperations : applyFolioAIEditOperations;
-    return applyOperations({
-      view: targetView,
+  const isAtomic = parsedBatch.atomic === true;
+  const beforeDoc = view.state.doc;
+  // The package's own definitions, before the batch. A run's result can carry
+  // a reference to an instance only its own paragraphs define (a "start new
+  // list" request mints one), so the check completes this against each run's
+  // own doc rather than holding one map for every run.
+  const packageNumbering = getStatedDocumentNumbering(view.state);
+
+  const attempt = (
+    operations: readonly FolioDocumentOperation[],
+    preview: boolean,
+  ): BatchAttempt => {
+    const common = {
       snapshot,
-      operations: parsedBatch.operations,
+      operations,
       mode: parsedBatch.mode ?? "tracked-changes",
       ...(author !== undefined && { author }),
-      ...(targetCreateCommentId !== undefined && { createCommentId: targetCreateCommentId }),
       ...(revisionStamp !== undefined && { revisionStamp }),
       ...(wordDiff !== undefined && { wordDiff }),
       ...(tableTemplates !== undefined && { tableTemplates }),
       ...(replacementBackground !== undefined && { replacementBackground }),
       ...(undefinedStyles !== undefined && { undefinedStyles }),
+    } as const;
+    if (preview) {
+      const previewed = previewFolioAIEditOperationsWithResult({
+        ...common,
+        view,
+        ...(createCommentId !== undefined && { createCommentId }),
+      });
+      return { ...previewed, commit: NO_COMMIT };
+    }
+    // The run dispatches into a holding view, not the caller's: its result is
+    // checked first, and a refused result must never reach a live editor.
+    const held: { transaction?: Transaction } = {};
+    const commentIds: number[] = [];
+    const outcome = applyFolioAIEditOperations({
+      ...common,
+      view: {
+        state: view.state,
+        dispatch: (transaction) => {
+          held.transaction = transaction;
+        },
+      },
+      ...(createCommentId !== undefined && {
+        createCommentId: (text: string) => {
+          const id = createCommentId(text);
+          commentIds.push(id);
+          return id;
+        },
+      }),
+    });
+    return {
+      outcome,
+      doc: held.transaction?.doc ?? null,
+      commentIds,
+      commit: () => {
+        if (held.transaction !== undefined) {
+          view.dispatch(held.transaction);
+        }
+      },
+    };
+  };
+
+  const introducedErrors = (run: BatchAttempt) => {
+    if (run.doc === null || run.outcome.applied.length === 0) {
+      return [];
+    }
+    // `undefined` still means the state cannot say (no numbering plugin);
+    // otherwise complete the package's definitions against this run's own
+    // doc, so an instance a "start new list" request just minted validates.
+    const numbering =
+      packageNumbering === undefined
+        ? undefined
+        : (completeNumberingForDoc(packageNumbering ?? undefined, run.doc) ?? null);
+    return findIntroducedModelErrors(beforeDoc, run.doc, {
+      numbering,
+      createdCommentIds: run.commentIds,
+      ...(author !== undefined && { commentAuthor: author }),
     });
   };
 
-  const preview = () => apply({ targetView: view, preview: true });
+  /**
+   * An attempt on the refusal path, where the applier runs on subsets of the
+   * batch it was not asked to apply: a throw there is one more reason to
+   * refuse, never a reason to fail a batch the first run could apply.
+   */
+  const checkedAttempt = (
+    operations: readonly FolioDocumentOperation[],
+    preview: boolean,
+  ): { run: BatchAttempt | null; error: ValidateDocumentModelIssue | undefined } => {
+    try {
+      const run = attempt(operations, preview);
+      return { run, error: introducedErrors(run)[0] };
+    } catch (error) {
+      return {
+        run: null,
+        error: {
+          path: "package.document",
+          message: `the operation could not be applied (${
+            error instanceof Error ? error.message : String(error)
+          }).`,
+          severity: "error",
+        },
+      };
+    }
+  };
+
+  /**
+   * Which applied operations produced the unsaveable result: each one is
+   * previewed alone against the unchanged story. When none fails alone, the
+   * failure is their combination, and every one of them is refused.
+   */
+  const refuseInvalidResult = (
+    run: BatchAttempt,
+    firstError: ValidateDocumentModelIssue,
+  ): FolioAIEditSkippedOperation[] => {
+    const operationsById = new Map(
+      parsedBatch.operations.map((operation) => [operation.id, operation]),
+    );
+    const refused: FolioAIEditSkippedOperation[] = [];
+    for (const { id } of run.outcome.applied) {
+      const operation = operationsById.get(id);
+      if (operation === undefined) {
+        continue;
+      }
+      const alone = checkedAttempt([operation], true).error;
+      if (alone !== undefined) {
+        refused.push({ id, reason: "invalidResult", message: describeModelError(alone) });
+      }
+    }
+    if (refused.length > 0) {
+      return refused;
+    }
+    return run.outcome.applied.map(({ id }) => ({
+      id,
+      reason: "invalidResult",
+      message: describeModelError(firstError),
+    }));
+  };
+
+  /**
+   * Apply (or preview) the batch and check the result with the save-time
+   * validator before anything reaches the caller. Operations whose result would
+   * not save are skipped with `invalidResult`; in a best-effort batch the rest
+   * is applied again without them, in an atomic one nothing is.
+   */
+  const guardedAttempt = (preview: boolean): GuardedBatch => {
+    const first = attempt(parsedBatch.operations, preview);
+    const [firstError] = introducedErrors(first);
+    if (firstError === undefined) {
+      return { outcome: first.outcome, commit: first.commit };
+    }
+    const refused = refuseInvalidResult(first, firstError);
+    const refusedIds = new Set(refused.map(({ id }) => id));
+    if (isAtomic) {
+      // Only the refused operations name a reason of their own; the atomic
+      // result reports every other one as rejected with the batch.
+      return {
+        outcome: {
+          ...first.outcome,
+          applied: [],
+          skipped: inOperationOrder(parsedBatch.operations, [...first.outcome.skipped, ...refused]),
+        },
+        commit: NO_COMMIT,
+      };
+    }
+    const second = checkedAttempt(
+      parsedBatch.operations.filter(({ id }) => !refusedIds.has(id)),
+      preview,
+    );
+    if (second.run === null || second.error !== undefined) {
+      // The rest still fails without the operations that failed alone: an
+      // interaction the per-operation check cannot pin down. Refuse it all.
+      const reported = second.run?.outcome ?? first.outcome;
+      return {
+        outcome: {
+          ...reported,
+          applied: [],
+          skipped: inOperationOrder(parsedBatch.operations, [
+            ...reported.skipped.filter(({ id }) => !refusedIds.has(id)),
+            ...refused,
+            ...reported.applied
+              .filter(({ id }) => !refusedIds.has(id))
+              .map(
+                ({ id }): FolioAIEditSkippedOperation => ({
+                  id,
+                  reason: "invalidResult",
+                  message: describeModelError(second.error ?? firstError),
+                }),
+              ),
+          ]),
+        },
+        commit: NO_COMMIT,
+      };
+    }
+    return {
+      outcome: {
+        ...second.run.outcome,
+        skipped: inOperationOrder(parsedBatch.operations, [
+          ...second.run.outcome.skipped,
+          ...refused,
+        ]),
+      },
+      commit: second.run.commit,
+    };
+  };
+
+  const preview = () => guardedAttempt(true).outcome;
 
   const atomicResult = (
     previewResult: FolioAIEditApplyOutcome,
@@ -2069,7 +2289,7 @@ export const applyFolioDocumentOperations = ({
 
   if (parsedBatch.dryRun === true) {
     const previewResult = preview();
-    if (parsedBatch.atomic === true && previewResult.skipped.length > 0) {
+    if (isAtomic && previewResult.skipped.length > 0) {
       return atomicResult(previewResult, "previewed");
     }
     return {
@@ -2091,14 +2311,19 @@ export const applyFolioDocumentOperations = ({
     };
   }
 
-  if (parsedBatch.atomic === true) {
+  if (isAtomic) {
     const previewResult = preview();
     if (previewResult.skipped.length > 0) {
       return atomicResult(previewResult, "rejected");
     }
   }
 
-  const result = apply({ targetView: view });
+  const guarded = guardedAttempt(false);
+  const result = guarded.outcome;
+  if (isAtomic && result.skipped.some(({ reason }) => reason === "invalidResult")) {
+    return atomicResult(result, "rejected");
+  }
+  guarded.commit();
   return {
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     status: "committed",

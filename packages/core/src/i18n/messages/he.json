@@ -337,6 +337,7 @@
     "editor": {
       "editing": "עריכה",
       "editingDescription": "ערוך את המסמך ישירות",
+      "outlineTitle": "ניווט",
       "showDocumentOutline": "חלונית הניווט במסמך",
       "suggesting": "הצעות",
       "suggestingDescription": "עריכות הופכות להצעות במעקב",

@@ -309,11 +309,23 @@ export type OutlineItem = {
 };
 
 /**
+ * How the editor lays out the outline it hands to the rail: `panel` is a list
+ * of headings filling the outline column or drawer, `rail` a slim strip of
+ * heading ticks beside the page (the editor's `medium` width tier).
+ */
+export type OutlineRailPresentation = "panel" | "rail";
+
+/**
  * The OutlineRail prop subset folio's chrome relies on. The rail resolves each
  * item's vertical position via `resolvePct` and navigates via `onJump` (both
  * receive the resolved scroll container). `activeId` controls the highlighted
  * entry. The design-system rail accepts a superset so it stays assignable as an
  * override.
+ *
+ * The editor owns where the outline sits: it mounts the rail inside the
+ * outline column, rail or drawer (with the header and toggles around it), so a
+ * rail fills its parent rather than positioning itself. `topOffset` is 0 and
+ * `panelWidth` is the width of that container.
  */
 export type FolioOutlineRailProps = {
   items: OutlineItem[];
@@ -324,6 +336,8 @@ export type FolioOutlineRailProps = {
   topOffset?: number;
   panelWidth?: number;
   ariaLabel?: string;
+  /** How the editor lays the outline out (default `panel`). */
+  presentation?: OutlineRailPresentation;
 };
 
 // ============================================================================

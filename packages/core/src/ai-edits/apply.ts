@@ -40,7 +40,10 @@ import {
   getDocumentStyleDefinitions,
   getDocumentStyleResolver,
 } from "../prosemirror/plugins/documentStyles";
-import { getDocumentNumbering } from "../prosemirror/plugins/documentNumbering";
+import {
+  getDocumentNumbering,
+  getDocumentNumberingInstanceIds,
+} from "../prosemirror/plugins/documentNumbering";
 import { concreteListReference, resolveNewListOperations } from "./newListNumbering";
 import {
   readAuthoredRunFormatting,
@@ -2827,6 +2830,15 @@ const applyFolioAIEditOperationsInternal = ({
   // from: an operation that removes an earlier reference must not renumber the
   // markers a later operation in the same batch matched against.
   const noteReferences = collectNoteReferenceLabels(view.state.doc);
+  // Sourced from `numbering` (post new-list resolution), not `view.state`
+  // directly: a `"start": "new"` request mints an instance nothing in the
+  // state carries yet, and its resolved reference must not read as undefined.
+  // `null` only when the state carries no numbering plugin at all, the one
+  // case that still cannot say what is defined.
+  const numberingInstanceIds =
+    getDocumentNumberingInstanceIds(view.state) === null
+      ? null
+      : new Set(numbering?.definitions.nums.map(({ numId }) => numId) ?? []);
 
   for (const [index, operation] of operations.entries()) {
     const commentText = getOperationCommentText(operation);
@@ -2861,6 +2873,15 @@ const applyFolioAIEditOperationsInternal = ({
         id: operation.id,
         reason: "missingStyle",
         message: describeUndefinedParagraphStyle(undefinedStyle, styleDefinitions),
+      });
+      continue;
+    }
+    const undefinedNumbering = findUndefinedNumberingReference(operation, numberingInstanceIds);
+    if (undefinedNumbering !== undefined) {
+      skipped.push({
+        id: operation.id,
+        reason: "missingNumbering",
+        message: describeUndefinedNumbering(undefinedNumbering, numberingInstanceIds),
       });
       continue;
     }
@@ -4440,9 +4461,19 @@ export const applyFolioAIEditOperations = (
 
 export const previewFolioAIEditOperations = (
   options: ApplyFolioAIEditOperationsOptions,
-): FolioAIEditApplyOutcome => {
+): FolioAIEditApplyOutcome => previewFolioAIEditOperationsWithResult(options).outcome;
+
+/**
+ * A preview together with the document it would leave and the provisional
+ * comment ids it placed, for a caller that checks the result before reporting
+ * it. Internal: not re-exported from the package entry points.
+ */
+export const previewFolioAIEditOperationsWithResult = (
+  options: ApplyFolioAIEditOperationsOptions,
+): { outcome: FolioAIEditApplyOutcome; doc: PMNode; commentIds: readonly number[] } => {
   const { view, createCommentId, ...applyOptions } = options;
   let previewCommentId = -1;
+  const commentIds: number[] = [];
   const previewView: FolioAIEditView = {
     state: view.state,
     dispatch: (transaction) => {
@@ -4453,18 +4484,26 @@ export const previewFolioAIEditOperations = (
     ...applyOptions,
     view: previewView,
     ...(createCommentId !== undefined && {
-      createCommentId: () => previewCommentId--,
+      createCommentId: () => {
+        const id = previewCommentId--;
+        commentIds.push(id);
+        return id;
+      },
     }),
     revisionIdSeed: -1_000_000_000,
     wordDiffMode: "coarse",
   });
   return {
-    applied: result.applied.map(({ id }) => ({ id })),
-    skipped: result.skipped,
-    ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
-    // A preview allocates from a sentinel range and commits nothing, so the
-    // next id is still the one the batch would have started from.
-    nextRevisionId: options.revisionStamp?.idSeed ?? revisionIdCursor,
+    outcome: {
+      applied: result.applied.map(({ id }) => ({ id })),
+      skipped: result.skipped,
+      ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
+      // A preview allocates from a sentinel range and commits nothing, so the
+      // next id is still the one the batch would have started from.
+      nextRevisionId: options.revisionStamp?.idSeed ?? revisionIdCursor,
+    },
+    doc: previewView.state.doc,
+    commentIds,
   };
 };
 
@@ -6517,6 +6556,92 @@ const describeUndefinedParagraphStyle = (
       ? "names no style in this document"
       : `names a ${definedAs} style, not a paragraph style`;
   return `${path} "${styleId}" ${names} (${available}).`;
+};
+
+type UndefinedNumberingReference = { path: string; numId: number };
+
+/** The `w:num` id a stated numbering names, when it names one. */
+const statedNumberingInstance = (numbering: object | null | undefined): number | undefined => {
+  if (numbering === null || numbering === undefined) {
+    return undefined;
+  }
+  const numId: unknown = Reflect.get(numbering, "numId");
+  return typeof numId === "number" ? numId : undefined;
+};
+
+/**
+ * Every numbering instance an operation names, with the field that names it.
+ * `listLevel` is not among them: it keeps the instance the paragraph or its
+ * anchor already references, which the document holds by construction.
+ */
+const operationNumberingReferences = (
+  operation: FolioAIEditOperation,
+): { path: string; numbering: object | null | undefined }[] => {
+  switch (operation.type) {
+    case "insertAfterBlock":
+    case "insertBeforeBlock":
+      return [{ path: "numbering", numbering: operation.numbering }];
+    case "setBlockParagraphProperties":
+      return [{ path: "properties.numbering", numbering: operation.properties.numbering }];
+    case "splitBlock":
+      return [
+        {
+          path: "firstParagraphProperties.numbering",
+          numbering: operation.firstParagraphProperties?.numbering,
+        },
+        {
+          path: "secondParagraphProperties.numbering",
+          numbering: operation.secondParagraphProperties?.numbering,
+        },
+      ];
+    case "mergeBlockWithNext":
+      return [
+        {
+          path: "mergedParagraphProperties.numbering",
+          numbering: operation.mergedParagraphProperties?.numbering,
+        },
+      ];
+    default:
+      return [];
+  }
+};
+
+/**
+ * The first numbering instance the operation names that the document does not
+ * define. A paragraph referencing a missing `w:num` is a model no save can
+ * write, so it is refused here, before anything is applied, the way a block id
+ * naming no block is. `null` instance ids (a state without the numbering
+ * plugin) cannot say what is defined, and check nothing.
+ */
+const findUndefinedNumberingReference = (
+  operation: FolioAIEditOperation,
+  instanceIds: ReadonlySet<number> | null,
+): UndefinedNumberingReference | undefined => {
+  if (instanceIds === null) {
+    return undefined;
+  }
+  for (const { path, numbering } of operationNumberingReferences(operation)) {
+    const numId = statedNumberingInstance(numbering);
+    if (numId !== undefined && !instanceIds.has(numId)) {
+      return { path, numId };
+    }
+  }
+  return undefined;
+};
+
+const MAX_LISTED_NUMBERING_INSTANCES = 12;
+
+const describeUndefinedNumbering = (
+  { path, numId }: UndefinedNumberingReference,
+  instanceIds: ReadonlySet<number> | null,
+): string => {
+  const defined = [...(instanceIds ?? [])].sort((left, right) => left - right);
+  let available = "it defines none";
+  if (defined.length > 0) {
+    const listed = defined.slice(0, MAX_LISTED_NUMBERING_INSTANCES).join(", ");
+    available = `it defines ${listed}${defined.length > MAX_LISTED_NUMBERING_INSTANCES ? ", …" : ""}`;
+  }
+  return `${path}.numId ${String(numId)} names no numbering instance in this document (${available}).`;
 };
 
 const getOperationQuote = (operation: FolioAIEditOperation): string | undefined => {

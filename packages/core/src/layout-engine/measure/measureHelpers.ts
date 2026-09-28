@@ -8,7 +8,7 @@
  * Script sizing: eigenpal/docx-editor@585413d0 (Apache-2.0), modified for Folio.
  */
 
-import { resolveFontFamily } from "../../utils/fontResolver";
+import { parseFontFamilyList, resolveFontFamily } from "../../utils/fontResolver";
 import { DOCX_BOLD_FONT_WEIGHT } from "../../utils/fontWeights";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { eastAsiaHintApplies } from "../../utils/scriptSegments";
@@ -134,8 +134,37 @@ export function getResolvedData(
       singleLineRatio: resolved.singleLineRatio,
     };
     fontResolvedCache.set(cacheKey, cached);
+    for (const family of parseFontFamilyList(resolved.cssFallback)) {
+      layoutFontFamilies.add(normalizeFontFamilyName(family));
+    }
   }
   return cached;
+}
+
+/**
+ * Every family a measured font stack has named on this page, normalized.
+ *
+ * Recorded where measurement resolves its stacks, so it is exactly the set of
+ * families whose faces can change a measured width: a face of any other family
+ * loading (the host's UI font, say) cannot. Never cleared, because a family
+ * stays relevant for as long as a cached or committed measurement may hold it,
+ * and the set is bounded by the families the page's documents name.
+ */
+const layoutFontFamilies = new Set<string>();
+
+/** CSS family names match ASCII case-insensitively, quotes aside. */
+const normalizeFontFamilyName = (family: string): string =>
+  family
+    .trim()
+    .replace(/^(["'])(.*)\1$/u, "$2")
+    .toLowerCase();
+
+/**
+ * Whether a face of `family` (a `FontFace.family`, possibly quoted) can change
+ * a width this page has measured.
+ */
+export function isLayoutFontFamily(family: string): boolean {
+  return layoutFontFamilies.has(normalizeFontFamilyName(family));
 }
 
 /**

@@ -340,6 +340,7 @@ type Messages = {
     "editor": {
       "editing": "Editing";
       "editingDescription": "Edit the document directly";
+      "outlineTitle": "Outline";
       "showDocumentOutline": "Document outline";
       "suggesting": "Suggesting";
       "suggestingDescription": "Edits become tracked suggestions";

@@ -7,7 +7,7 @@
 import type { Mark, MarkType, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { resolveWholeStory } from "../../internal/wholeStoryRevisionResolution";
+import { resolveStateStory } from "../markupViewProjection";
 import { finalRevisionParagraphRanges } from "../../internal/revisionResolutionTracking";
 import { RevisionResolutionStep } from "../../internal/revisionResolutionStep";
 import { Mapping } from "prosemirror-transform";
@@ -1317,12 +1317,7 @@ const resolveAllChanges =
   (mode: ResolveMode): Command =>
   (state, dispatch) => {
     if (!dispatch) return true;
-    const result = resolveWholeStory({
-      doc: state.doc,
-      mode,
-      styleResolver: getDocumentStyleResolver(state),
-      numbering: getDocumentNumbering(state),
-    });
+    const result = resolveStateStory(state, mode);
     if (result.failed) return false;
     if (result.resolved.eq(state.doc)) return true;
     const tr = state.tr.step(

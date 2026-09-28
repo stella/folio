@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
 const reactPlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
+const vuePlaygroundPort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
 
 export default defineConfig({
   testDir: "./tests/visual",
@@ -55,9 +56,9 @@ export default defineConfig({
     {
       command: "bun --filter @stll/playground-vue dev",
       env: {
-        FOLIO_PLAYGROUND_PORT: "4201",
+        FOLIO_PLAYGROUND_PORT: String(vuePlaygroundPort),
       },
-      url: "http://localhost:4201",
+      url: `http://localhost:${vuePlaygroundPort}`,
       reuseExistingServer: true,
       timeout: 120_000,
     },

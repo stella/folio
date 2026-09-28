@@ -337,6 +337,7 @@
     "editor": {
       "editing": "Edición",
       "editingDescription": "Editar el documento directamente",
+      "outlineTitle": "Esquema",
       "showDocumentOutline": "Esquema del documento",
       "suggesting": "Sugerencias",
       "suggestingDescription": "Las ediciones se convierten en sugerencias con seguimiento",

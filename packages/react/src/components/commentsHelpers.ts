@@ -119,6 +119,22 @@ export function getCommentParentId(comment: Comment): number | null | undefined 
   return runtimeComment.parentId;
 }
 
+/**
+ * Threads the comments sidebar shows a card for: top-level comments not yet
+ * resolved. Tracked changes are painted inline and have no card, so a
+ * document with only tracked changes has none.
+ */
+export function countOpenCommentThreads(comments: readonly Comment[]): number {
+  let count = 0;
+  for (const comment of comments) {
+    const parentId = getCommentParentId(comment);
+    if ((parentId === null || parentId === undefined) && !comment.done) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export function applyCommentMarkRange(
   view: EditorView,
   range: CommentMarkRange,
