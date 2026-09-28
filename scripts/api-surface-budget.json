@@ -26,8 +26,8 @@
   "cli": {
     "reportBytes": 4536,
     "reportLines": 170,
-    "declarationBytes": 44835,
-    "declarationLines": 1002
+    "declarationBytes": 47439,
+    "declarationLines": 1053
   },
   "vue": {
     "reportBytes": 55713,
