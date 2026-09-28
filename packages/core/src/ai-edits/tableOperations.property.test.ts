@@ -420,6 +420,14 @@ const checkCase = async (spec: TableSpec, plans: readonly OperationPlan[]): Prom
   const directApplied = appliedIds(direct);
   const trackedApplied = appliedIds(tracked);
 
+  const operationIds = direct.planned.map(({ operation }) => operation.id);
+  for (const { result } of [direct, tracked]) {
+    const skippedIds = new Set(result.skipped.map(({ id }) => id));
+    expect(result.skipped.map(({ id }) => id)).toEqual(
+      operationIds.filter((id) => skippedIds.has(id)),
+    );
+  }
+
   const directReading = await readTablesAt("direct", direct.reviewer);
   expect(tableReadingProblems(directReading)).toEqual([]);
   if (directApplied.size > 0) {
@@ -506,6 +514,15 @@ describe("table operations on merged tables", () => {
       await fc.assert(
         fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
         propertyConfig({ numRuns: 150, seed: 58022172 }),
+      );
+      // A refused column insertion and a no-op deletion were reported in opposite orders.
+      await fc.assert(
+        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
+        propertyConfig({
+          numRuns: 150,
+          seed: 58022172,
+          path: "282:1:0:1:0:0:0:0:0:1:1:5:5:5:6:6:6",
+        }),
       );
       await fc.assert(
         fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),

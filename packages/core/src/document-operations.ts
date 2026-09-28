@@ -2209,7 +2209,13 @@ export const applyFolioDocumentOperations = ({
     const first = attempt(parsedBatch.operations, preview);
     const [firstError] = introducedErrors(first);
     if (firstError === undefined) {
-      return { outcome: first.outcome, commit: first.commit };
+      return {
+        outcome: {
+          ...first.outcome,
+          skipped: inOperationOrder(parsedBatch.operations, first.outcome.skipped),
+        },
+        commit: first.commit,
+      };
     }
     const refused = refuseInvalidResult(first, firstError);
     const refusedIds = new Set(refused.map(({ id }) => id));
