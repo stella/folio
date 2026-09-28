@@ -399,6 +399,12 @@ export type ParagraphAttrs = {
     indentFirstLine?: number;
     hangingIndent?: boolean;
     numPr?: ParagraphNumberingAttr;
+    _pastedHtmlList?: {
+        group: number;
+        level: number;
+        kind: "bullet" | "numbered";
+        start?: number;
+    };
     numPrFromStyle?: ParagraphNumberingAttr;
     listNumFmt?: import__stll_docx_core_model.CounterFormat;
     listIsBullet?: boolean;
