@@ -16,10 +16,9 @@ on:
         type: boolean
         default: true
 
-concurrency:
-  # A manual dry run gets its own group so it never cancels a real clean-up.
-  group: cancel-stale-merge-groups-${{ inputs.dry-run == true && 'dry-run' || 'apply' }}
-  cancel-in-progress: true
+# No concurrency group: the queue deletes several branches at once, and each
+# run is idempotent (a cancel that loses a race only warns), so runs overlap
+# instead of cancelling each other.
 
 permissions: {}
 
