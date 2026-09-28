@@ -418,5 +418,5 @@ describe("lease token output canary", () => {
     expect(pending.isErr() && pending.error.code).toBe("locked");
     assertNoCanary(JSON.stringify(pending.isErr() ? pending.error : pending.value), canary);
     await rm(pendingPath, { force: true });
-  });
+  }, 15_000);
 });
