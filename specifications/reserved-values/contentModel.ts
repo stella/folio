@@ -318,6 +318,7 @@ export const COMPLEX_FIELD_RESERVED = {
   fieldType: NO_RESERVED_VALUE,
   fieldCode: NO_RESERVED_VALUE,
   fieldResult: NO_RESERVED_VALUE,
+  formFieldDataXml: NO_RESERVED_VALUE,
   formatting: NO_RESERVED_VALUE,
   fldLock: toggle("w:fldChar@fldLock"),
   dirty: toggle("w:fldChar@dirty"),
