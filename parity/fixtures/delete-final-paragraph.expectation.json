@@ -1,0 +1,28 @@
+{
+  "script": "delete-final-paragraph",
+  "seedSha256": "cb05822f13f46de021c35df9decd02c9e523010c9e981cd011b7476c4372dccd",
+  "structure": {
+    "package": {
+      "paragraphs": 2,
+      "sections": 1,
+      "fields": 0,
+      "noteReferences": 0
+    },
+    "blocks": [
+      {
+        "kind": "heading",
+        "text": "Final paragraph heading 11",
+        "label": "Heading1",
+        "headingLevel": 1
+      },
+      {
+        "kind": "paragraph",
+        "text": "First paragraph Alpha 23."
+      }
+    ],
+    "cells": [],
+    "revisions": [],
+    "comments": [],
+    "notes": []
+  }
+}

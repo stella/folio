@@ -19,7 +19,6 @@ import { TaggedError } from "better-result";
 
 import {
   countCodePoints,
-  WORKER_FONT_FINGERPRINT_TEXT,
   type MeasureRequestEntry,
   type MeasureResponseEntry,
   type MeasureWorkerRequest,
@@ -66,17 +65,12 @@ function getCtx(): WorkerCanvasContext {
   return ctx;
 }
 
-function isFontFingerprintMatch(context: WorkerCanvasContext, expectedWidth: number): boolean {
-  const actualWidth = context.measureText(WORKER_FONT_FINGERPRINT_TEXT).width;
-  const tolerance = Math.max(FONT_FINGERPRINT_EPSILON, expectedWidth * 0.0001);
-  return Math.abs(actualWidth - expectedWidth) <= tolerance;
-}
-
 function measureEntry(entry: MeasureRequestEntry): MeasureResponseEntry | null {
   const context = getCtx();
   context.font = entry.font;
   context.fontKerning = entry.fontKerning;
-  if (!isFontFingerprintMatch(context, entry.fontFingerprintWidth)) {
+  const actualFingerprintWidth = context.measureText(entry.fontFingerprintText).width;
+  if (Math.abs(actualFingerprintWidth - entry.fontFingerprintWidth) > FONT_FINGERPRINT_EPSILON) {
     return null;
   }
   const raw = context.measureText(entry.text).width;

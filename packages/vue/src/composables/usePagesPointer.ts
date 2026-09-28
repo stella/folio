@@ -79,6 +79,7 @@ export type UsePagesPointerOptions = {
   editorView: Ref<EditorView | null>;
   pagesRef: Ref<HTMLElement | null>;
   pagesViewportRef: Ref<HTMLElement | null>;
+  scrollRootRef: Ref<HTMLElement | null>;
   selectedImage: ShallowRef<ImageSelectionInfo | null>;
   imageInteracting: Ref<boolean>;
   hyperlinkPopupData: Ref<HyperlinkPopupData | null>;
@@ -267,7 +268,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function scrollVisiblePositionIntoView(pmPos: number) {
-    scrollVisiblePositionIntoViewImpl(opts.pagesRef.value, opts.pagesViewportRef.value, pmPos);
+    scrollVisiblePositionIntoViewImpl(opts.pagesRef.value, opts.scrollRootRef.value, pmPos);
   }
 
   function selectWord(pos: number) {
@@ -702,7 +703,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleViewportScroll() {
-    const container = opts.pagesViewportRef.value;
+    const container = opts.scrollRootRef.value;
     const lay = opts.layout.value;
     if (!container || !lay || lay.pages.length === 0) return;
 
@@ -738,7 +739,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   onMounted(() => {
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-    opts.pagesViewportRef.value?.addEventListener("scroll", handleViewportScroll, {
+    opts.scrollRootRef.value?.addEventListener("scroll", handleViewportScroll, {
       passive: true,
     });
   });
@@ -747,7 +748,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     clearTableInsertTimer();
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
-    opts.pagesViewportRef.value?.removeEventListener("scroll", handleViewportScroll);
+    opts.scrollRootRef.value?.removeEventListener("scroll", handleViewportScroll);
     if (scrollFadeTimer) clearTimeout(scrollFadeTimer);
   });
 

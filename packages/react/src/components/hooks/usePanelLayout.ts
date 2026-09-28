@@ -12,7 +12,7 @@ import {
   type PanelLayout,
   type PanelLayoutInput,
   type PanelOverlay,
-} from "../panelLayout";
+} from "@stll/folio-core/panel-layout";
 
 type UsePanelLayoutOptions = Omit<PanelLayoutInput, "availableWidth"> & {
   /** The editor's scroll container; its vertical scrollbar is not page room. */

@@ -6,7 +6,7 @@
  * failures as `error:` / `hint:` lines on stderr.
  */
 
-import type { FolioCliError, FolioCliErrorCode } from "./errors";
+import type { FolioCliError, FolioCliErrorCode, PublicErrorDetails } from "./errors";
 
 export const OUTPUT_FORMATS = ["json", "text"] as const;
 
@@ -19,7 +19,7 @@ export type FailureBody = {
   code: FolioCliErrorCode;
   message: string;
   hint?: string;
-  details?: unknown;
+  details?: PublicErrorDetails;
 };
 
 export type Envelope = { ok: true; data: unknown } | { ok: false; error: FailureBody };

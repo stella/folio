@@ -7,6 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Relation } from "./metamorphic.ts";
 
 export const OPEN_ISSUES = {} as const;
 
@@ -27,6 +28,28 @@ export const FINDINGS = {
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
+  // Found by the metamorphic relations (support/metamorphic.ts) and the
+  // flows they run in. A relation tolerates the frequent ones through
+  // `tolerate(<entry>, …)`, so deleting a fixed entry here makes its
+  // tolerance fail to compile until it is deleted too.
+  LIVE_STALE_BLOCK_FIELDS:
+    "the live reviewer does not re-resolve what a paragraph's style gives it after an edit: a restyled paragraph keeps its old style's previewRuns, a paragraph inserted after a bold heading previews bold despite its direct bold off, and a paragraph inserted with a numbered heading style has no directIndentation; the saved package reopens with other values",
+  LIVE_REPLY_RANGES:
+    "a reply added with replyTo has no comment range in the live document, while the saved package anchors it on its parent's range, so toMarkdown(toDocument()) reads otherwise across a save",
+  TRACKED_DELETE_LAST_PARAGRAPH:
+    "deleteBlock of the story's last paragraph: applied directly it removes the paragraph, tracked and accepted it leaves an empty paragraph",
+  TRACKED_LAST_PARAGRAPH_REJECT:
+    "one tracked batch that deletes the story's last paragraph and inserts a paragraph after it: rejecting every change leaves an extra empty paragraph (a list item when the insertion started a list)",
+  COMMENT_ANCHOR_REPLACED_BLOCK:
+    "two comments on one paragraph, then replaceBlock: applied directly both comments anchor on the new text, tracked and accepted the first one's anchor is left empty",
+  BATCH_ROW_INSERT_DELETE:
+    "one direct batch that inserts a row after a table row and deletes the row below it: both report applied, but the row to delete stays",
+  SAVE_REORDERS_COMMENT_RANGES:
+    "after replies across several steps, saving the reopened package writes co-located commentRangeStart elements in another order than the save it was opened from",
+  LIVE_GET_CHANGES_STALE:
+    "after a legacy collision flow, getChanges() reads different change text, locations, or kinds before and after saving and reopening",
+  TRACKED_TABLE_AFTER_SPLIT_DELETE:
+    "a tracked split followed by deleting the new block and inserting a table differs from the equivalent direct edits after accepting changes",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -57,7 +80,48 @@ export const KNOWN_FAILING_FLOWS: readonly {
   kind?: "random" | "collisions";
   /** The generation (support/fuzz.ts); `"targeted"` when absent. */
   generation?: "targeted" | "legacy";
-}[] = [];
+  /** Required relation for a finding; the scenario is omitted when disabled. */
+  relation?: Relation;
+}[] = [
+  // From a 300-flow sweep (FOLIO_SCENARIO_SEED=7310000, 100 collision runs).
+  {
+    seed: 7_310_028,
+    steps: 10,
+    kind: "collisions",
+    generation: "legacy",
+    finding: "SAVE_REORDERS_COMMENT_RANGES",
+    relation: "saveIdempotent",
+  },
+  {
+    seed: 7_310_042,
+    steps: 10,
+    kind: "collisions",
+    generation: "legacy",
+    finding: "BATCH_ROW_INSERT_DELETE",
+  },
+  {
+    seed: 1088,
+    steps: 10,
+    kind: "collisions",
+    generation: "legacy",
+    finding: "LIVE_GET_CHANGES_STALE",
+    relation: "readerStability",
+  },
+  {
+    seed: 1185,
+    steps: 10,
+    kind: "collisions",
+    generation: "legacy",
+    finding: "LIVE_GET_CHANGES_STALE",
+    relation: "readerStability",
+  },
+  {
+    seed: 20_260_937,
+    steps: 10,
+    finding: "TRACKED_TABLE_AFTER_SPLIT_DELETE",
+    relation: "directTracked",
+  },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
@@ -67,6 +131,15 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TRACKED_MERGE_INTO_DELETED_BLOCK: /applied a merge into a block the batch deletes/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   TEXT_BOX_RESOLVE_MALFORMED_XML: /malformed markup/u,
+  LIVE_STALE_BLOCK_FIELDS: /previewRuns|directIndentation/u,
+  LIVE_REPLY_RANGES: /\[readerStability\] toMarkdown/u,
+  TRACKED_DELETE_LAST_PARAGRAPH: /\[directTracked\]/u,
+  TRACKED_LAST_PARAGRAPH_REJECT: /\[rejectAll\]/u,
+  COMMENT_ANCHOR_REPLACED_BLOCK: /\[directTracked\]/u,
+  BATCH_ROW_INSERT_DELETE: /not what was asked \(deleteTableRow, insertTableRow\)/u,
+  SAVE_REORDERS_COMMENT_RANGES: /\[saveIdempotent\][^\n]*\n?[^\n]*commentRange/u,
+  LIVE_GET_CHANGES_STALE: /\[readerStability\] getChanges/u,
+  TRACKED_TABLE_AFTER_SPLIT_DELETE: /\[directTracked\]/u,
 };
 
 /**

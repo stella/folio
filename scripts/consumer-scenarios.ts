@@ -27,7 +27,10 @@
 // explore; always printed), FOLIO_SCENARIO_FUZZ_RUNS / FOLIO_SCENARIO_FUZZ_STEPS
 // (fuzz size; 12 runs of 10 steps by default), FOLIO_SCENARIO_COLLISION_RUNS
 // (collision flows; 8 by default), FOLIO_ORACLE_GAPS=1 (print the operations
-// the requested-outcome oracle could not model).
+// the requested-outcome oracle could not model), FOLIO_SCENARIO_RELATIONS
+// (metamorphic relations checked in the fuzz flows: `all` by default, `none`,
+// or a comma-separated list) and FOLIO_SCENARIO_RELATIONS_DEPTH=full (check
+// the sampled relations on every batch; for sweeps).
 // Exits non-zero on any failure, including missing required or hit unreachable coverage cells. Run via `bun run test:consumer-scenarios`.
 
 import { panic } from "better-result";

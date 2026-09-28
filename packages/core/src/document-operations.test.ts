@@ -211,7 +211,25 @@ describe("document operation contract", () => {
     expect(batch.operations.at(0)).toMatchObject(operation);
     expect(parseFolioDocumentOperationBatch(batch)).toBe(batch);
 
-    for (const outlineLevel of [{ kind: "heading", level: 9 }, { kind: "unknown" }]) {
+    for (const outlineLevel of [
+      { kind: "heading", level: 9 },
+      { kind: "unknown" },
+      { kind: "bodyText", level: 3 },
+      { kind: "bodyText", level: undefined },
+    ]) {
+      for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+        expect(() =>
+          parseFolioDocumentOperationBatch({
+            version: 1,
+            operations: [{ id: "outline", type, blockId: "0304003A", text: "New", outlineLevel }],
+          }),
+        ).toThrow(
+          expect.objectContaining({
+            _tag: "InvalidFolioDocumentOperationBatchError",
+            path: "$.operations[0].outlineLevel",
+          }),
+        );
+      }
       expect(() =>
         parseFolioDocumentOperationBatch({
           version: 1,

@@ -1,0 +1,22 @@
+{
+  "script": "accept-deleted-paragraph-boundary",
+  "seedSha256": "36b11d1eb69da4339b8c8f6da76c87730c3faba24c4020e1efe4aec151fa8a7d",
+  "structure": {
+    "package": {
+      "paragraphs": 1,
+      "sections": 1,
+      "fields": 0,
+      "noteReferences": 0
+    },
+    "blocks": [
+      {
+        "kind": "paragraph",
+        "text": "Paragraph before boundary Cedar 19.Paragraph after boundary Maple 38."
+      }
+    ],
+    "cells": [],
+    "revisions": [],
+    "comments": [],
+    "notes": []
+  }
+}

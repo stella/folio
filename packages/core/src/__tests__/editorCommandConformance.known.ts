@@ -223,27 +223,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   // -------------------------------------------------------------- other --
   {
     reason:
-      "Removing a section break leaves a model the full repack refuses (DocxPackageFidelityError: would drop section properties)",
-    operations: [
-      "command:removeSectionBreak",
-      "key:Delete",
-      "key:Mod-Backspace",
-      "key:Shift-Backspace",
-    ],
-    shapes: ["sections"],
-    kinds: ["invalid-model"],
-  },
-  {
-    reason:
-      "Replacing a range that holds a section break leaves a model the full repack refuses (DocxPackageFidelityError: would drop section properties)",
-    operations: REPLACING_OPERATIONS,
-    shapes: ["sections"],
-    placements: ["cross-paragraph", "document"],
-    kinds: ["invalid-model"],
-    tier: "full",
-  },
-  {
-    reason:
       "Paragraphs a paste or a structural command creates carry no resolved style attributes (spacing, run defaults) until the document is reopened",
     operations: [
       "paste:paragraphs",

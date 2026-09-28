@@ -391,6 +391,31 @@ describe("a batch result the save validator refuses is not committed", () => {
 });
 
 describe("findIntroducedModelErrors", () => {
+  test("recognizes existing section part references outside the changed window", () => {
+    const known = { headerReferences: [{ type: "default", rId: "rIdKnown" }] } as const;
+    const before = schema.node("doc", null, [
+      schema.node("paragraph", { _sectionProperties: known }, [schema.text("Alpha")]),
+    ]);
+    const state = EditorState.create({ schema, doc: before });
+    const added = schema.node("paragraph", { _sectionProperties: known }, [schema.text("Lead")]);
+    const after = state.tr.insert(0, added).doc;
+    const context = { numbering: undefined, createdCommentIds: [] };
+    expect(findIntroducedModelErrors(before, after, context)).toEqual([]);
+
+    const dangling = schema.node("paragraph", {
+      _sectionProperties: {
+        headerReferences: [{ type: "default", rId: "rIdMissing" }],
+      },
+    });
+    expect(findIntroducedModelErrors(before, state.tr.insert(0, dangling).doc, context)).toEqual([
+      {
+        path: "package.document.content[0].sectionProperties.headerReferences[0].rId",
+        message: "Section references missing header rIdMissing.",
+        severity: "error",
+      },
+    ]);
+  });
+
   const numbered = (numId: number) => {
     const model = fromMarkdown("Alpha.\n\nBeta.\n\nGamma.");
     model.package.numbering = UNUSED_901;

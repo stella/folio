@@ -20,11 +20,7 @@ import {
   prefetchMeasurement,
   type MeasureWorkerTransport,
 } from "./measureWorker";
-import {
-  WORKER_FONT_FINGERPRINT_TEXT,
-  type MeasureWorkerRequest,
-  type MeasureWorkerResponse,
-} from "./measureWorkerProtocol";
+import type { MeasureWorkerRequest, MeasureWorkerResponse } from "./measureWorkerProtocol";
 
 type FakeTransport = MeasureWorkerTransport & {
   posted: MeasureWorkerRequest[];
@@ -51,6 +47,7 @@ function prefetchForTest(
     letterSpacing,
     horizontalScale,
     fontCacheKey: makeFontCacheKey(font, horizontalScale),
+    fontFingerprintText: text,
     fontFingerprintWidth: TEST_FONT_FINGERPRINT_WIDTH,
     fontKerning: "none",
   });
@@ -195,6 +192,7 @@ describe("prefetchMeasurement (flag gating)", () => {
         text: "hello",
         font: "11px Arial",
         fontCacheKey: "11px Arial|scale:1",
+        fontFingerprintText: "hello",
         fontFingerprintWidth: TEST_FONT_FINGERPRINT_WIDTH,
         letterSpacing: 0,
         horizontalScale: 1,
@@ -214,6 +212,7 @@ describe("prefetchMeasurement (flag gating)", () => {
       letterSpacing: 0,
       horizontalScale: 1,
       fontCacheKey: "11px Arial|kerning:normal|scale:1",
+      fontFingerprintText: "hello",
       fontFingerprintWidth: TEST_FONT_FINGERPRINT_WIDTH,
       fontKerning: "normal",
     });
@@ -415,7 +414,7 @@ describe("integration with measureTextWidth", () => {
     const again = measureTextWidth("hello", { fontFamily: "Arial" });
     expect(again).toBe(baseline);
     expect(transport.posted).toHaveLength(0);
-    expect(measuredTexts).not.toContain(WORKER_FONT_FINGERPRINT_TEXT);
+    expect(measuredTexts).toEqual(["hello", "hello"]);
   });
 
   test("measureTextWidth pre-warms the worker on cache miss when the flag is ON", () => {
@@ -437,7 +436,28 @@ describe("integration with measureTextWidth", () => {
     expect(entry.text).toBe("hello");
     expect(entry.font).not.toContain("|scale:");
     expect(entry.fontCacheKey).toBe(`${entry.font}|scale:1`);
+    expect(entry.fontFingerprintText).toBe("hello");
+    expect(entry.fontFingerprintWidth).toBe(value);
   });
+
+  test.each(["Latin العربية", "Latin 漢字", "Latin Кириллица", "Latin हिन्दी", "office ffi fl"])(
+    "only prefetches directly measured text for %s",
+    (text) => {
+      installFakeDocument();
+      setFolioMeasurementFlags({ workerFontMetrics: true });
+      const transport = makeFakeTransport();
+      __setMeasureWorkerTransport(() => transport);
+
+      measureTextWidth(text, { fontFamily: "Arial" });
+      __flushMeasureQueueForTests();
+
+      const entries = transport.posted.flatMap((message) => message.entries);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.text).toBe(text);
+      expect(entries[0]?.fontFingerprintText).toBe(text);
+      expect(entries[0]?.fontFingerprintWidth).toBe(text.length * 7);
+    },
+  );
 
   test("measureTextWidth cache hit does not enqueue (no main-thread cost, no worker cost)", () => {
     installFakeDocument();

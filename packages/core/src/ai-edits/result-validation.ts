@@ -28,7 +28,8 @@ import type { ValidateDocumentModelIssue } from "@stll/docx-core";
 
 import { validateFolioDocumentModel } from "../docx/modelValidation";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
-import type { Comment, Document, NumberingDefinitions } from "../types/document";
+import type { Comment, Document, HeaderFooter, NumberingDefinitions } from "../types/document";
+import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 
 /** What the story's package knows that the story itself does not. */
 export type FolioOperationResultValidationContext = {
@@ -90,11 +91,35 @@ const rebasePath = (path: string, offset: number): string =>
 
 const syntheticComment = (id: number, author: string): Comment => ({ id, author, content: [] });
 
+type KnownSectionParts = {
+  headers: Map<string, HeaderFooter>;
+  footers: Map<string, HeaderFooter>;
+};
+
+/** A story can identify its existing references even though the host owns the parts. */
+const knownSectionParts = (doc: PMNode): KnownSectionParts => {
+  const headers = new Map<string, HeaderFooter>();
+  const footers = new Map<string, HeaderFooter>();
+  doc.descendants((node) => {
+    if (node.type.name !== "paragraph") return true;
+    const section = sectionPropertiesOf(node);
+    for (const { rId, type } of section?.headerReferences ?? []) {
+      headers.set(rId, { type: "header", hdrFtrType: type, content: [] });
+    }
+    for (const { rId, type } of section?.footerReferences ?? []) {
+      footers.set(rId, { type: "footer", hdrFtrType: type, content: [] });
+    }
+    return false;
+  });
+  return { headers, footers };
+};
+
 const windowErrors = (
   doc: PMNode,
   from: number,
   to: number,
   context: FolioOperationResultValidationContext,
+  knownParts?: KnownSectionParts,
 ): ValidateDocumentModelIssue[] => {
   if (to <= from) {
     return [];
@@ -130,6 +155,7 @@ const windowErrors = (
       },
       ...(context.numbering !== null &&
         context.numbering !== undefined && { numbering: context.numbering }),
+      ...(knownParts && { headers: knownParts.headers, footers: knownParts.footers }),
     },
   };
   return validateFolioDocumentModel(document)
@@ -157,16 +183,31 @@ export const findIntroducedModelErrors = (
   if (window === null) {
     return [];
   }
-  const afterErrors = windowErrors(after, window.from, window.afterTo, context);
+  let afterErrors = windowErrors(after, window.from, window.afterTo, context);
+  // A newly changed window can include a section record that was already in
+  // the story. Its header/footer parts live in the host, outside this window.
+  // Supply only references known before the batch, so a new dangling rId
+  // still fails validation.
+  let parts: KnownSectionParts | undefined;
+  if (afterErrors.some(({ message }) => message.startsWith("Section references missing "))) {
+    parts = knownSectionParts(before);
+    afterErrors = windowErrors(after, window.from, window.afterTo, context, parts);
+  }
   if (afterErrors.length === 0) {
     return afterErrors;
   }
   // The story before the batch held none of the batch's comments.
   const known = new Map<string, number>();
-  for (const { message } of windowErrors(before, window.from, window.beforeTo, {
-    ...context,
-    createdCommentIds: [],
-  })) {
+  for (const { message } of windowErrors(
+    before,
+    window.from,
+    window.beforeTo,
+    {
+      ...context,
+      createdCommentIds: [],
+    },
+    parts,
+  )) {
     known.set(message, (known.get(message) ?? 0) + 1);
   }
   return afterErrors.filter(({ message }) => {

@@ -1,162 +1,233 @@
-<!--
-  Vue document outline panel — mirrors React's `<DocumentOutline>`
-  (DocumentOutline.tsx). Slides in from the left edge of the viewport,
-  overlays the editor without consuming layout space, uses the same
-  240px width / arrow_back icon / title text / empty-state copy as
-  React so the two adapters look identical.
--->
 <template>
   <nav
-    v-if="isOpen"
-    class="doc-outline"
-    :style="{ left: leftOffset + 'px', top: topPx + 'px' }"
-    role="navigation"
-    aria-label="Document outline"
-    @mousedown.stop
+    v-if="headings.length >= 2"
+    ref="navRef"
+    :aria-label="outlineLabel"
+    class="folio-outline"
+    :class="'folio-outline--' + surface"
+    :data-folio-outline-surface="surface"
+    data-testid="folio-outline"
+    :style="{ width: surfaceWidth + 'px' }"
+    :tabindex="surface === 'drawer' ? -1 : undefined"
   >
-    <div class="doc-outline__header">
+    <button
+      v-if="surface === 'rail'"
+      type="button"
+      class="folio-outline-icon-button"
+      data-testid="folio-outline-expand"
+      :aria-label="outlineLabel"
+      :aria-expanded="expanded"
+      :title="outlineLabel"
+      @click="emit('expand')"
+    >
+      <MaterialSymbol name="view_column" :size="16" aria-hidden="true" />
+    </button>
+    <div v-else class="folio-outline-header">
+      <span class="folio-outline-title">{{ t("editor.outlineTitle") }}</span>
       <button
-        class="doc-outline__back"
-        :title="'Close outline'"
-        :aria-label="'Close outline'"
-        @click="$emit('close')"
+        v-if="surface === 'drawer'"
+        type="button"
+        class="folio-outline-icon-button"
+        :aria-label="t('common.closeDialog')"
+        :title="t('common.closeDialog')"
+        @click="emit('close')"
       >
-        <MaterialSymbol name="arrow_back" :size="20" />
+        <MaterialSymbol name="close" :size="16" aria-hidden="true" />
       </button>
-      <span class="doc-outline__title">Document Outline</span>
     </div>
-    <div class="doc-outline__body">
-      <div v-if="headings.length === 0" class="doc-outline__empty">No headings found</div>
-      <OutlineRail
-        v-else
-        :items="items"
-        :get-scroll-container="getScrollContainer ?? (() => null)"
-        :on-jump="handleJump"
-        aria-label="Document outline"
-      />
-    </div>
+    <OutlineRail
+      :items="items"
+      :get-scroll-container="getScrollContainer"
+      :resolve-pct="resolvePct"
+      :on-jump="handleJump"
+      :active-id="activeId"
+      :presentation="surface === 'rail' ? 'rail' : 'panel'"
+      :panel-width="surfaceWidth"
+      :top-offset="0"
+      :aria-label="outlineLabel"
+    />
   </nav>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
-import MaterialSymbol from "./ui/MaterialSymbol.vue";
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
+import { useTranslation } from "../i18n";
 import type { OutlineItem } from "../ui/folio-ui";
 import { useFolioUI } from "../ui/folio-ui";
+import MaterialSymbol from "./ui/MaterialSymbol.vue";
+
+type OutlineSurface = "column" | "rail" | "drawer";
+
+const SURFACE_WIDTH = {
+  column: PANEL_METRICS.outlineColumnWidth,
+  rail: PANEL_METRICS.outlineRailWidth,
+  drawer: PANEL_METRICS.drawerWidth,
+} as const satisfies Record<OutlineSurface, number>;
 
 const props = withDefaults(
   defineProps<{
-    isOpen: boolean;
     headings: HeadingInfo[];
-    /** Left anchor (px); host bumps it past the vertical ruler when shown. */
-    leftOffset?: number;
-    /** Top anchor (px); host bumps it past the sticky ruler row when shown. */
-    topPx?: number;
-    /** Getter for the scroll container, forwarded to the injected OutlineRail's
-     *  `onJump` callback; DocxEditor.vue passes `() => pagesRef` (the same
-     *  getter idiom `DecorationLayer.vue`'s `getPagesContainer` uses — Vue's
-     *  template compiler auto-unwraps a bare ref, even inside an inline arrow
-     *  function, so the getter reads the current element at click-time
-     *  instead of passing the ref object across the prop boundary). Optional
-     *  so the component still renders standalone. */
-    getScrollContainer?: () => HTMLElement | null;
+    getScrollContainer: () => HTMLElement | null;
+    docSize: number;
+    activeId: string | null;
+    surface: OutlineSurface;
+    expanded?: boolean;
   }>(),
-  { leftOffset: 12, topPx: 24 },
-);
-
-const { OutlineRail } = useFolioUI();
-
-// Indent relative to the shallowest heading present (mirrors React) so a doc
-// whose top sections are Heading 2 doesn't carry a phantom first-level indent.
-const minLevel = computed(() =>
-  props.headings.length ? Math.min(...props.headings.map((h) => h.level)) : 0,
-);
-
-const items = computed<OutlineItem[]>(() =>
-  props.headings.map((h) => ({
-    id: String(h.pmPos),
-    label: h.text || "(untitled)",
-    level: h.level - minLevel.value,
-  })),
+  { expanded: false },
 );
 
 const emit = defineEmits<{
-  (e: "close"): void;
-  (e: "navigate", pmPos: number): void;
+  navigate: [pmPos: number];
+  expand: [];
+  close: [];
 }>();
 
-function handleJump(id: string) {
+const { t } = useTranslation();
+const { OutlineRail } = useFolioUI();
+const navRef = ref<HTMLElement | null>(null);
+const outlineLabel = computed(() => t("editor.showDocumentOutline"));
+const surfaceWidth = computed(() => SURFACE_WIDTH[props.surface]);
+const items = computed<OutlineItem[]>(() =>
+  props.headings.map((heading) => ({
+    id: String(heading.pmPos),
+    label: heading.text,
+    level: heading.level,
+    ...(typeof heading.pageNumber === "number" ? { meta: String(heading.pageNumber) } : {}),
+  })),
+);
+const pctById = computed(() => {
+  const positions = new Map<string, number>();
+  if (props.docSize > 0) {
+    for (const heading of props.headings) {
+      positions.set(
+        String(heading.pmPos),
+        Math.min(99, Math.max(1, (heading.pmPos / props.docSize) * 100)),
+      );
+    }
+  }
+  return positions;
+});
+
+const resolvePct = (id: string) => pctById.value.get(id) ?? null;
+const handleJump = (id: string) => {
   emit("navigate", Number(id));
-}
+  if (props.surface === "drawer") emit("close");
+};
+
+watch(
+  () => props.surface === "drawer" && props.headings.length >= 2,
+  async (open, _wasOpen, onCleanup) => {
+    if (!open || typeof document === "undefined") return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    let active = true;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      emit("close");
+    };
+    onCleanup(() => {
+      active = false;
+      document.removeEventListener("keydown", onKeyDown);
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    });
+    await nextTick();
+    if (!active) return;
+    const nav = navRef.value;
+    const target =
+      nav?.querySelector<HTMLElement>('[aria-current="true"]') ??
+      nav?.querySelector<HTMLElement>('ol button:not([tabindex="-1"])') ??
+      nav?.querySelector<HTMLElement>("button") ??
+      nav;
+    target?.focus({ preventScroll: true });
+    document.addEventListener("keydown", onKeyDown);
+  },
+  { immediate: true, flush: "post" },
+);
 </script>
 
 <style scoped>
-/* Matches React DocumentOutline.tsx: position: absolute against the
-   editor host, anchored 12px from the left (= the collapsed toggle's
-   offset so the back arrow lands where the toggle was), 240px wide,
-   full height. The wrapping `__editor-area` has position: relative so
-   this lands on top of the page area without consuming flex space. The
-   slide-in uses transform so it doesn't trigger layout. */
-.doc-outline {
-  position: absolute;
-  /* `left` and `top` are set inline by the host: `left` via the leftOffset prop
-     (page left anchor, bumped when the vertical ruler is shown), `top` at the
-     page top edge, bumped past the sticky ruler row when one is shown. */
-  bottom: 0;
-  width: 240px;
+.folio-outline {
   display: flex;
   flex-direction: column;
-  font-family: "Google Sans", Roboto, Arial, sans-serif;
-  z-index: 40;
-  animation: docOutlineIn 0.15s ease-out;
+  box-sizing: border-box;
+  min-height: 0;
+  background: var(--doc-page, white);
+  color: var(--doc-text);
+  font-size: 0.8125rem;
 }
-@keyframes docOutlineIn {
-  /* Large enough to fully hide the 240px panel at any left anchor (12 or,
-     when the vertical ruler is shown, 32 → right edge 272). */
-  from {
-    transform: translateX(-300px);
-  }
-  to {
-    transform: translateX(0);
-  }
+.folio-outline--column {
+  flex: none;
+  border-inline-end: 1px solid var(--doc-border);
 }
-/* No left padding so the back arrow sits at the nav anchor (= the
-   collapsed toggle's position). */
-.doc-outline__header {
-  display: flex;
+.folio-outline--rail {
+  position: relative;
+  z-index: 30;
+  flex: none;
   align-items: center;
-  gap: 8px;
-  padding: 16px 16px 12px 0;
+  padding-block: 4px 8px;
+  border-inline-end: 1px solid var(--doc-border);
 }
-.doc-outline__back {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 50%;
+.folio-outline--drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: 46;
+  max-width: calc(100% - 16px);
+  border-inline-end: 1px solid var(--doc-border);
+  box-shadow: 0 8px 28px var(--doc-shadow-md);
+}
+.folio-outline-header {
   display: flex;
+  flex: none;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-height: 2.25rem;
+  padding-block: 0.25rem;
+  padding-inline: 0.75rem 0.375rem;
+  border-bottom: 1px solid var(--doc-border);
+}
+.folio-outline-title {
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--doc-text-muted);
 }
-.doc-outline__back:hover {
-  background: var(--doc-shadow-subtle);
+.folio-outline-icon-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--doc-text-muted);
+  cursor: pointer;
 }
-.doc-outline__title {
-  font-weight: 400;
-  font-size: 14px;
+.folio-outline-icon-button:hover,
+.folio-outline-icon-button[aria-expanded="true"] {
+  background: var(--doc-bg-hover);
   color: var(--doc-text);
-  letter-spacing: 0.01em;
 }
-.doc-outline__body {
-  flex: 1;
-  overflow-y: auto;
-  padding-left: 4px;
+.folio-outline-icon-button:focus-visible {
+  outline: 2px solid var(--ring, var(--doc-primary));
+  outline-offset: -2px;
 }
-.doc-outline__empty {
-  padding: 8px 16px;
-  color: var(--doc-text-subtle);
-  font-size: 13px;
-  line-height: 20px;
+@media (prefers-reduced-motion: no-preference) {
+  .folio-outline--drawer {
+    animation: folio-outline-fade-in 0.16s ease-out;
+  }
+}
+@keyframes folio-outline-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 </style>

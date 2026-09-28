@@ -19,6 +19,16 @@ export const INVARIANTS = Object.freeze([
   "reject-returns-base",
   /** Accepting every generated revision returns the target. */
   "accept-returns-target",
+  /**
+   * Rejecting leaves every block the kind, heading level and style the base
+   * gives it, as the document reader classifies them. The round trip above
+   * asks the comparison whether two documents differ, so a property the
+   * comparison cannot see passes it however wrong it comes out; this asks the
+   * reader instead.
+   */
+  "reject-keeps-base-classification",
+  /** Accepting leaves every block the kind, heading level and style of the target. */
+  "accept-keeps-target-classification",
   /** Comparing a document with itself invents nothing. */
   "self-compare-is-empty",
   /** Two runs over the same inputs produce the same bytes. */
@@ -111,20 +121,29 @@ const isNumberingAliasChange = (change: CompareChange): boolean =>
   Object.keys(change.properties).length === 1 &&
   Object.hasOwn(change.properties, "numbering");
 
+type ResolvedCheckOptions = {
+  /** The document the resolved view has to match: the base or the target. */
+  original: ArrayBuffer;
+  /** The redline with every revision accepted or rejected. */
+  resolved: ArrayBuffer;
+  view: ResolveView;
+};
+
+type RoundTripOptions = ResolvedCheckOptions & { options: CompareDocxOptions };
+
 /**
  * The round-trip algebra, as a comparison rather than a text equality: the two
  * documents are the same document exactly when comparing them reports nothing.
  * Stating it that way also exercises the engine on its own output, which is
  * where a redline that reads plausibly and is wrong shows up.
  */
-const checkRoundTrip = async (
-  original: ArrayBuffer,
-  redlined: ArrayBuffer,
-  view: ResolveView,
-  options: CompareDocxOptions,
-): Promise<InvariantOutcome> => {
+const checkRoundTrip = async ({
+  original,
+  resolved,
+  view,
+  options,
+}: RoundTripOptions): Promise<InvariantOutcome> => {
   const invariant: Invariant = view === "accept" ? "accept-returns-target" : "reject-returns-base";
-  const resolved = await resolvedBufferOf(redlined, view);
   const outcome = await changeCountBetween(original, resolved, options);
   if ("error" in outcome) {
     return { invariant, status: "failed", detail: outcome.error };
@@ -142,6 +161,51 @@ const checkRoundTrip = async (
         invariant,
         status: "failed",
         detail: `${String(remaining)} changes remain after ${view}All`,
+      };
+};
+
+/** How the reader classifies one main-story block, pending revisions accepted. */
+const classificationsOf = async (buffer: ArrayBuffer): Promise<string[]> => {
+  const reviewer = await FolioDocxReviewer.fromBuffer(buffer);
+  // Both sides compared as accepted views: a base that already carries
+  // revisions keeps them through a reject, as the comparison compares them.
+  reviewer.acceptAll();
+  return reviewer
+    .getContent()
+    .map(({ kind, headingLevel, styleId }) =>
+      [kind, headingLevel === undefined ? "-" : String(headingLevel), styleId ?? "-"].join(" "),
+    );
+};
+
+/**
+ * The resolved redline read back by the document reader, block by block,
+ * against the document it has to reproduce. Independent of the comparison: a
+ * paragraph that comes out a heading because of a property the comparison
+ * does not project is a heading to the reader all the same.
+ */
+const checkClassification = async ({
+  original,
+  resolved,
+  view,
+}: ResolvedCheckOptions): Promise<InvariantOutcome> => {
+  const invariant: Invariant =
+    view === "accept" ? "accept-keeps-target-classification" : "reject-keeps-base-classification";
+  const expected = await classificationsOf(original);
+  const actual = await classificationsOf(resolved);
+  if (actual.length !== expected.length) {
+    return {
+      invariant,
+      status: "failed",
+      detail: `${String(actual.length)} blocks against ${String(expected.length)}`,
+    };
+  }
+  const index = expected.findIndex((entry, position) => entry !== actual[position]);
+  return index === -1
+    ? { invariant, status: "passed" }
+    : {
+        invariant,
+        status: "failed",
+        detail: `block ${String(index)} reads as "${actual[index] ?? ""}" where "${expected[index] ?? ""}" is expected`,
       };
 };
 
@@ -253,9 +317,13 @@ export const checkInvariants = async ({
   options,
   validate,
 }: CheckInvariantsOptions): Promise<InvariantReport> => {
+  const rejected = await resolvedBufferOf(redlined, "reject");
+  const accepted = await resolvedBufferOf(redlined, "accept");
   const outcomes: InvariantOutcome[] = [
-    await checkRoundTrip(base, redlined, "reject", options),
-    await checkRoundTrip(target, redlined, "accept", options),
+    await checkRoundTrip({ original: base, resolved: rejected, view: "reject", options }),
+    await checkRoundTrip({ original: target, resolved: accepted, view: "accept", options }),
+    await checkClassification({ original: base, resolved: rejected, view: "reject" }),
+    await checkClassification({ original: target, resolved: accepted, view: "accept" }),
   ];
 
   outcomes.push(differenceIsReported({ expectation, changes, unsupported }));

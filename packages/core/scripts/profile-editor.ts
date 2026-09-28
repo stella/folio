@@ -184,7 +184,7 @@ const scenarioCatalog = {
   mixedScript: {
     minimumPages: 1,
     name: "open generated mixed-script embedded-font DOCX",
-    path: "/?file=performance-mixed-script-embedded-font.docx",
+    path: "/?file=mixed-script-font-sample.docx",
   },
   podily: {
     minimumPages: 1,

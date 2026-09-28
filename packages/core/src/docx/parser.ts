@@ -62,6 +62,7 @@ import {
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
 import {
+  assignHeaderFooterRoles,
   DANGLING_FOOTER_REFERENCE_WARNING,
   DANGLING_HEADER_REFERENCE_WARNING,
   normalizeHeaderFooterReferences,
@@ -449,6 +450,11 @@ export async function parseDocxWithPreviewBudget(
         count: headerFooterReferenceNormalization.removedDanglingFooterReferences,
       });
     }
+    assignHeaderFooterRoles({
+      documentBody,
+      ...(headers !== undefined ? { headers } : {}),
+      ...(footers !== undefined ? { footers } : {}),
+    });
     const numberingReferenceNormalization = normalizeNumberingReferences({
       documentBody,
       numbering,
@@ -889,7 +895,7 @@ function parseHeadersAndFooters(
 
         const header = parseHeader(
           headerXml,
-          "default", // We'll update this based on sectPr references
+          "default", // The role is the section reference's: `assignHeaderFooterRoles`.
           styles,
           theme,
           numbering,
@@ -936,7 +942,7 @@ function parseHeadersAndFooters(
 
         const footer = parseFooter(
           footerXml,
-          "default",
+          "default", // The role is the section reference's: `assignHeaderFooterRoles`.
           styles,
           theme,
           numbering,

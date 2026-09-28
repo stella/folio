@@ -65,6 +65,7 @@ import {
   listLevelAttrPatch,
 } from "../prosemirror/styles/resolvedStyleAttrs";
 import { isStyleSourcedParagraphNumbering } from "../internal/paragraphFormattingSerialization";
+import { sectionPropertiesOf } from "../prosemirror/sectionCarrier";
 import { markStructuralChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { requestDeterministicParaIds } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
 import {
@@ -2602,9 +2603,13 @@ const buildInsertedParagraphs = ({
         attrs["outlineLevel"] = original?.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
       }
     }
+    if (formatsParagraph && operation.outlineLevel !== undefined) {
+      attrs["outlineLevel"] = operation.outlineLevel ?? formattingFromStyle?.outlineLevel ?? null;
+    }
     if (
       formatsParagraph &&
       (operation.styleId !== undefined ||
+        operation.outlineLevel !== undefined ||
         operation.alignment !== undefined ||
         operation.spacing !== undefined ||
         operation.indentation !== undefined)
@@ -2644,6 +2649,14 @@ const buildInsertedParagraphs = ({
           Reflect.deleteProperty(originalFormatting, "styleId");
         } else {
           originalFormatting.styleId = operation.styleId;
+        }
+      }
+      if (operation.outlineLevel !== undefined) {
+        originalFormatting ??= {};
+        if (operation.outlineLevel === null) {
+          Reflect.deleteProperty(originalFormatting, "outlineLevel");
+        } else {
+          originalFormatting.outlineLevel = operation.outlineLevel;
         }
       }
       if (operation.alignment !== undefined || inheritedDirectAlignment !== undefined) {
@@ -4238,6 +4251,17 @@ const applyFolioAIEditOperationsInternal = ({
             tr = withSeparator(tr);
           }
           tr = tr.join(item.blockTo + separator.length);
+          // The merge removes the first paragraph's mark, and the joined
+          // paragraph ends with the second one's. A section break lives on
+          // the mark (ECMA-376 Part 1 §17.6.18), so the joined paragraph ends
+          // the section the second one ended, and a break the first one held
+          // goes: its section runs on into the next, as accepting the same
+          // merge tracked leaves it. `join` keeps the first node's attrs.
+          const secondSection = second ? sectionPropertiesOf(second) : null;
+          const joined = tr.doc.nodeAt(item.blockFrom);
+          if (joined && sectionPropertiesOf(joined) !== secondSection) {
+            tr = tr.setNodeAttribute(item.blockFrom, "_sectionProperties", secondSection);
+          }
         } else {
           const revisionIdMark = operationRevisionSeed++;
           appliedRevisionIds = [revisionIdMark];

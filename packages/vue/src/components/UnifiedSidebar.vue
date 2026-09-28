@@ -20,11 +20,17 @@
   <aside
     v-if="isOpen"
     ref="rootRef"
-    class="unified-sidebar"
+    :class="['unified-sidebar', { 'unified-sidebar--drawer': isDrawer }]"
+    :data-folio-comments-surface="surface ?? 'column'"
+    data-testid="folio-comments"
+    :tabindex="isDrawer ? -1 : undefined"
     :style="asideStyle"
     @mousedown="onSidebarMouseDown"
   >
-    <div class="unified-sidebar__inner" :style="{ minHeight: minHeightPx + 'px' }">
+    <div
+      class="unified-sidebar__inner"
+      :style="isDrawer ? drawerInnerStyle : { minHeight: minHeightPx + 'px' }"
+    >
       <!-- Every item — add-comment input, comments, tracked changes —
            flows through the same `items` list and the shared
            `resolveItemPositions` collision pass (mirrors React's
@@ -91,16 +97,16 @@ import type { Comment } from "@stll/folio-core/types/content";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
 import { createRenderedDomContext } from "@stll/folio-core/render-dom/RenderedDomContext";
 import { resolveSidebarItemPositions } from "@stll/folio-core/render-dom/resolveSidebarItemPositions";
+import { PANEL_METRICS } from "@stll/folio-core/panel-layout";
 import CommentCard from "./sidebar/CommentCard.vue";
 import ResolvedCommentMarker from "./sidebar/ResolvedCommentMarker.vue";
 import TrackedChangeCard from "./sidebar/TrackedChangeCard.vue";
 import AddCommentCard from "./sidebar/AddCommentCard.vue";
 import { useCommentSidebarItems } from "../composables/useCommentSidebarItems";
 
-import { SIDEBAR_DOCUMENT_SHIFT, SIDEBAR_WIDTH } from "../utils/sidebarConstants";
-
 const props = defineProps<{
   isOpen: boolean;
+  surface?: "column" | "drawer";
   comments: Comment[];
   trackedChanges: TrackedChangeEntry[];
   isAddingComment?: boolean;
@@ -121,6 +127,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "close"): void;
+  (e: "dismiss"): void;
   (e: "add-comment", text: string): void;
   (e: "cancel-add-comment"): void;
   (e: "comment-reply", commentId: number, text: string): void;
@@ -135,6 +142,8 @@ const emit = defineEmits<{
   (e: "tracked-change-reply", revisionId: number, text: string): void;
   (e: "update:activeItemId", id: string | null): void;
 }>();
+
+const isDrawer = computed(() => props.surface === "drawer");
 
 // Local fallback for uncontrolled use; when `activeItemId` is bound
 // from the parent (DocxEditor) the prop wins and toggleExpanded
@@ -212,6 +221,11 @@ function syncCardObservers() {
 }
 
 function computePositions() {
+  updatePanelGeometry();
+  if (isDrawer.value) {
+    resolvedY.value = new Map();
+    return;
+  }
   const container = props.pagesContainer;
   const list = items.value;
   if (!container || list.length === 0) {
@@ -314,18 +328,55 @@ const minHeightPx = computed(() => {
   return max + 200; // headroom for the bottom card
 });
 
-// Sidebar lives inside the pages-viewport but is a SIBLING of the
-// scaled `__pages` container — so it is NOT itself scaled. The page
-// renders at its visible (post-zoom) width, AND the page is shifted
-// left by SIDEBAR_DOCUMENT_SHIFT whenever the sidebar is open
-// (DocxEditor applies translateX on `__pages`). The sidebar must
-// sit at `50% - SIDEBAR_DOCUMENT_SHIFT + visibleHalfPage + gap` so
-// it tracks the shifted page right-edge — using `50% + halfPage` (the
-// stale calc) put the rail ~352px past the page edge whenever the
-// shift was active.
-const SIDEBAR_GAP = 16;
-// SIDEBAR_WIDTH is imported from the util layer (340) so React and Vue rails
-// match and stay consistent with SIDEBAR_DOCUMENT_SHIFT (also derived from it).
+// The page and sidebar share the pages viewport. Measure the painted page
+// edge so a reserved comments track, zoom, and horizontal scrolling all use
+// the same position that the user sees.
+const measuredLeft = ref<number | null>(null);
+const initialDrawerBox: { top: number; width: number; height: number } = {
+  top: 0,
+  width: PANEL_METRICS.drawerWidth,
+  height: 0,
+};
+const drawerBox = ref(initialDrawerBox);
+
+function updatePanelGeometry() {
+  const root = rootRef.value;
+  const parent = root?.offsetParent;
+  const scroll = findScrollParent(props.pagesContainer);
+  if (!(parent instanceof HTMLElement) || !scroll) return;
+
+  const parentRect = parent.getBoundingClientRect();
+  const scrollRect = scroll.getBoundingClientRect();
+  if (isDrawer.value) {
+    const width = Math.max(0, Math.min(PANEL_METRICS.drawerWidth, scroll.clientWidth - 16));
+    drawerBox.value = {
+      top: scrollRect.top - parentRect.top,
+      width,
+      height: scroll.clientHeight,
+    };
+    measuredLeft.value = scrollRect.left + scroll.clientWidth - parentRect.left - width;
+    return;
+  }
+
+  const page = props.pagesContainer?.querySelector<HTMLElement>(".layout-page");
+  if (!page) {
+    measuredLeft.value = null;
+    return;
+  }
+  const rawLeft = page.getBoundingClientRect().right - parentRect.left + PANEL_METRICS.commentsGap;
+  const maxVisibleLeft = Math.max(8, parent.clientWidth - PANEL_METRICS.commentsWidth - 8);
+  measuredLeft.value = Math.max(8, Math.min(rawLeft, maxVisibleLeft));
+}
+
+const drawerInnerStyle = computed<CSSProperties>(() => ({
+  position: "sticky",
+  top: 0,
+  maxHeight: drawerBox.value.height || undefined,
+  overflowY: "auto",
+  paddingBlock: PANEL_METRICS.commentsGap + "px",
+  boxSizing: "border-box",
+}));
+
 // Dynamic CSS boost for the expanded item. Mirrors React
 // DocxEditor.tsx:5029-5044: brighten the comment-anchor highlight
 // (yellow) for the focused comment, and the tracked-change
@@ -352,28 +403,27 @@ const expandedHighlightCss = computed(() => {
 });
 
 const asideStyle = computed<CSSProperties>(() => {
-  // `props.pageWidthPx` is already post-zoom (twipsToPixels * zoom).
-  // Sidebar sits outside the page transform, so half-visible-page is
-  // just pageWidthPx / 2. Subtract SIDEBAR_DOCUMENT_SHIFT because the
-  // page itself is translated left by that amount when the sidebar is
-  // open — without the subtraction, the rail floats `2 *
-  // SIDEBAR_DOCUMENT_SHIFT` (~352px) beyond the visible right edge.
-  const halfPageVisible = props.pageWidthPx / 2;
-  const offset = halfPageVisible + SIDEBAR_GAP - SIDEBAR_DOCUMENT_SHIFT;
-  // Mirrors React UnifiedSidebar.tsx:202 — opacity 1 only once any
-  // card position has resolved, so the rail fades in cleanly
-  // instead of blinking blank.
-  const hasPositions = resolvedY.value.size > 0 || items.value.length === 0;
+  const drawer = isDrawer.value;
+  const hasPositions = drawer
+    ? measuredLeft.value !== null
+    : resolvedY.value.size > 0 || items.value.length === 0;
   return {
     position: "absolute",
-    top: "0",
-    left: `calc(50% + ${offset}px)`,
-    width: SIDEBAR_WIDTH + "px",
+    top: drawer ? drawerBox.value.top + "px" : "0",
+    left:
+      measuredLeft.value === null
+        ? `calc(50% + ${props.pageWidthPx / 2 + PANEL_METRICS.commentsGap}px)`
+        : measuredLeft.value + "px",
+    width: (drawer ? drawerBox.value.width : PANEL_METRICS.commentsWidth) + "px",
+    paddingInline: drawer ? PANEL_METRICS.commentsGap + "px" : undefined,
+    bottom: drawer ? undefined : 0,
     opacity: hasPositions ? 1 : 0,
+    pointerEvents: hasPositions ? "auto" : "none",
   };
 });
 
 function cardSlotStyle(id: string): CSSProperties {
+  if (isDrawer.value) return { position: "relative", marginBottom: "8px" };
   const y = resolvedY.value.get(id);
   if (y == null) {
     // Fall back to stacked layout: card flows naturally below the
@@ -417,6 +467,8 @@ watch(
     props.zoom,
     props.isAddingComment,
     props.addCommentYPosition,
+    props.surface,
+    props.isOpen,
   ],
   () => recompute(),
   { immediate: true },
@@ -443,6 +495,7 @@ function bindScrollListener() {
   scrollParent = findScrollParent(props.pagesContainer);
   if (scrollParent) {
     scrollParent.addEventListener("scroll", recompute, { passive: true });
+    resizeObserver?.observe(scrollParent);
   }
 }
 
@@ -457,6 +510,7 @@ onMounted(() => {
     resizeObserver.observe(props.pagesContainer);
     bindScrollListener();
   }
+  window.addEventListener("resize", recompute);
 });
 
 watch(
@@ -467,8 +521,9 @@ watch(
     if (el) {
       resizeObserver = new ResizeObserver(() => recompute());
       resizeObserver.observe(el);
-      bindScrollListener();
     }
+    bindScrollListener();
+    recompute();
   },
 );
 
@@ -476,23 +531,51 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   cardResizeObserver?.disconnect();
   if (scrollParent) scrollParent.removeEventListener("scroll", recompute);
+  window.removeEventListener("resize", recompute);
 });
+
+watch(
+  () => props.isOpen && isDrawer.value,
+  (active, _previous, onCleanup) => {
+    if (!active || typeof document === "undefined") return;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    rootRef.value?.focus({ preventScroll: true });
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      emit("dismiss");
+    };
+    document.addEventListener("keydown", onKeyDown);
+    onCleanup(() => {
+      document.removeEventListener("keydown", onKeyDown);
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
+    });
+  },
+  { immediate: true, flush: "post" },
+);
 </script>
 
 <style scoped>
 .unified-sidebar {
-  /* width / left / position set inline via asideStyle so they can
-     react to pageWidthPx changes (zoom, page-setup edits). React's
-     UnifiedSidebar fades in via opacity (no slide), so match that
-     here — the slide-from-right animation was a Vue-only addition. */
   background: transparent;
   font-family: "Google Sans", Roboto, Arial, sans-serif;
   pointer-events: auto;
   z-index: 5;
   transition: opacity 0.15s ease;
 }
+.unified-sidebar--drawer {
+  box-sizing: border-box;
+  background: var(--doc-canvas-surface, var(--doc-page, white));
+  border-inline-start: 1px solid var(--doc-border);
+  box-shadow: 0 8px 28px var(--doc-shadow-md);
+  outline: none;
+  z-index: 46;
+}
 .unified-sidebar__inner {
   position: relative;
-  padding: 0 8px;
+}
+.unified-sidebar:not(.unified-sidebar--drawer) .unified-sidebar__inner {
+  padding-inline: 0;
 }
 </style>

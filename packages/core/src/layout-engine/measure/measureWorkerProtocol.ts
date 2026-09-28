@@ -29,23 +29,21 @@ import type { FontKerningMode } from "./textMeasurementPolicy";
  * `fontCacheKey` is the main-thread cache identity. It intentionally
  * differs from `font` when scale metadata is appended.
  *
- * `fontFingerprintWidth` is the main-thread width for
- * `WORKER_FONT_FINGERPRINT_TEXT` in the same `font`. The worker checks
- * the same sentinel before measuring and skips entries whose font
- * metrics do not match, which prevents worker fallback fonts from
- * poisoning the main-thread cache.
+ * `fontFingerprintText` is text already measured on the main thread in
+ * this font. The worker checks its unscaled width against
+ * `fontFingerprintWidth` before caching a result. This covers the actual
+ * glyphs and font subsets used by the request, including non-Latin text.
  */
 export type MeasureRequestEntry = {
   text: string;
   font: string;
   fontCacheKey: string;
+  fontFingerprintText: string;
   fontFingerprintWidth: number;
   letterSpacing: number;
   horizontalScale: number;
   fontKerning: FontKerningMode;
 };
-
-export const WORKER_FONT_FINGERPRINT_TEXT = "HAMBURGEFONTS ivwqy 0123456789";
 
 /**
  * Count whole code points (not UTF-16 units) so letter spacing is applied once

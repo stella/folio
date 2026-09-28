@@ -657,6 +657,41 @@ describe("document operation contract JSON schema conformance", () => {
   });
 
   test.each([
+    { label: "an out-of-range heading", outlineLevel: { kind: "heading", level: 9 } },
+    { label: "an unknown kind", outlineLevel: { kind: "unknown" } },
+    { label: "a body-text heading level", outlineLevel: { kind: "bodyText", level: 3 } },
+    { label: "an undefined body-text level", outlineLevel: { kind: "bodyText", level: undefined } },
+  ] as const)(
+    "rejects $label in both the parser and schema for every outline operation",
+    ({ outlineLevel }) => {
+      for (const type of ["insertBeforeBlock", "insertAfterBlock"] as const) {
+        const operation = {
+          id: "invalid-outline",
+          type,
+          blockId: "0304003A",
+          text: "New",
+          outlineLevel,
+        };
+        expect(
+          () => parseFolioDocumentOperationBatch({ version: 1, operations: [operation] }),
+          type,
+        ).toThrow(InvalidFolioDocumentOperationBatchError);
+        expect(admits(OPERATION_SCHEMA, operation), type).toBe(false);
+      }
+      const operation = {
+        id: "invalid-outline",
+        type: "setBlockParagraphProperties",
+        blockId: "0304003A",
+        properties: { outlineLevel },
+      };
+      expect(() =>
+        parseFolioDocumentOperationBatch({ version: 1, operations: [operation] }),
+      ).toThrow(InvalidFolioDocumentOperationBatchError);
+      expect(admits(OPERATION_SCHEMA, operation)).toBe(false);
+    },
+  );
+
+  test.each([
     { label: "an unknown list kind", numbering: { start: "new", kind: "roman" } },
     { label: "a level past the ninth", numbering: { start: "new", kind: "bullet", level: 9 } },
     {

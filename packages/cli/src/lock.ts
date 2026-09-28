@@ -51,6 +51,27 @@ export type LockHolder = {
   acceptsFlush?: true;
 };
 
+/** Holder metadata safe to return to a caller that does not own the lease. */
+export type PublicLockHolder = Omit<LockHolder, "token"> & { token?: never };
+
+export const publicLockHolder = ({
+  owner,
+  pid,
+  host,
+  txId,
+  acquiredAt,
+  expiresAt,
+  acceptsFlush,
+}: LockHolder): PublicLockHolder => ({
+  owner,
+  pid,
+  host,
+  txId,
+  acquiredAt,
+  expiresAt,
+  ...(acceptsFlush === true && { acceptsFlush }),
+});
+
 export const lockPathFor = (documentPath: string): string =>
   path.join(path.dirname(documentPath), `.${path.basename(documentPath)}.folio-lock`);
 
@@ -162,7 +183,7 @@ const lockedError = (documentPath: string, state: LeaseState): FolioCliError =>
         : ""
     }.`,
     hint: "Retry after it finishes, or pass --force to take the lease over.",
-    details: state.type === "held" ? { holder: state.holder } : undefined,
+    ...(state.type === "held" && { details: { holder: publicLockHolder(state.holder) } }),
   });
 
 const lostError = (documentPath: string): FolioCliError =>
@@ -323,7 +344,7 @@ export const adoptLease = async (
         code: FOLIO_CLI_ERROR_CODES.locked,
         message: `${documentPath} is not held under that lease token.`,
         hint: "The lease expired or was taken over; acquire it again and retry.",
-        details: current.type === "held" ? { holder: current.holder } : undefined,
+        ...(current.type === "held" && { details: { holder: publicLockHolder(current.holder) } }),
       }),
     );
   }

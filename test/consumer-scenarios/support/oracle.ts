@@ -7,14 +7,15 @@
  * document before back). A refused operation must leave the document as it
  * was.
  *
- * The model is deliberately small: block texts in reading order, and for the
- * blocks an operation touched, the few properties it asked for. A batch
+ * The model keeps block texts and requested properties in reading order, plus
+ * an independent cell grid and main-story links on unchanged paragraphs. A batch
  * resolves every operation against the document as it was read (see the
  * batch-claims contract), so a batch's expectations compose in order over
  * the same pre-state, and an operation the engine refused contributes
  * nothing. An operation the model cannot predict (a type marked `null` in
  * `EXPECTATIONS`, or a target it cannot place) leaves that batch's text
- * uncompared; FOLIO_ORACLE_GAPS=1 prints each such gap.
+ * uncompared; supported geometry and links are still checked.
+ * FOLIO_ORACLE_GAPS=1 prints each gap.
  */
 
 import assert from "node:assert/strict";
@@ -28,7 +29,15 @@ import {
 
 import { recordHit, type StepKind } from "./coverage.ts";
 import { openReviewer, toArrayBuffer } from "./documents.ts";
+import { captureLinks, comparePreservedLinks, type LinkSnapshot } from "./link-oracle.ts";
 import { coreBatch, type Mode, type Operation } from "./operations.ts";
+import {
+  applyTableOperation,
+  compareTableGeometry,
+  modelFromRows,
+  UnsupportedTableExpectation,
+  type TableModel,
+} from "./table-oracle.ts";
 import {
   blocksOfStory,
   type Feature,
@@ -51,7 +60,13 @@ type TableLocation = {
   rowSpan: number;
 };
 
-type Run = { text: string; bold?: boolean; italic?: boolean; underline?: boolean };
+type Run = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  directFormatting?: Record<string, unknown>;
+};
 
 /** One block as a reader sees it, with the fields the oracle compares. */
 export type Row = {
@@ -94,13 +109,18 @@ export const resolvedState = async (
   bytes: Uint8Array,
   resolution: "accept" | "reject",
   story: Story = MAIN,
-): Promise<{ rows: Row[]; bytes: Uint8Array; comments: Comment[] }> => {
+): Promise<{ rows: Row[]; bytes: Uint8Array; comments: Comment[]; links: LinkSnapshot }> => {
   const reviewer = await openReviewer(bytes);
   if (resolution === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
   const saved = await save(reviewer);
   const reopened = await openReviewer(saved);
-  return { rows: rowsOf(reopened, story), bytes: saved, comments: commentsOf(reopened) };
+  return {
+    rows: rowsOf(reopened, story),
+    bytes: saved,
+    comments: commentsOf(reopened),
+    links: captureLinks(reopened),
+  };
 };
 
 type Comment = { text: string; anchor: string };
@@ -149,6 +169,11 @@ type ModelRow = {
 
 export type Model = {
   rows: ModelRow[];
+  mode: Mode;
+  tables: TableModel;
+  tableGaps: string[];
+  /** Existing paragraphs reveal style-derived kind, levels and effective run formatting. */
+  styleExamples: Map<string, Row>;
   /** Paragraph style ids the saved package must define. */
   styles: Set<string>;
   /** Comments that must exist, with their anchored text when it is known. */
@@ -187,6 +212,14 @@ const modelRow = (text: string, fields: Fields = {}, pre?: Row): ModelRow => ({
 export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Model => {
   const model: Model = {
     rows: rows.map((row) => modelRow(row.text, fieldsOf(row), row)),
+    mode: "direct",
+    tables: modelFromRows(rows),
+    tableGaps: [],
+    styleExamples: new Map(
+      rows.flatMap((row) =>
+        row.styleId !== undefined && row.text.length > 0 ? [[row.styleId, row] as const] : [],
+      ),
+    ),
     styles: new Set(),
     comments: [],
     unmodelled: [],
@@ -259,14 +292,18 @@ const paragraphsOf = (text: string): string[] =>
  */
 const styleFields = (model: Model, styleId: string | null, pre: Row | undefined): Fields => {
   if (styleId !== null) model.styles.add(styleId);
+  const example = styleId === null ? undefined : model.styleExamples.get(styleId);
   const heading =
     styleId === null ? undefined : /^Heading(?<level>[1-9])$/u.exec(styleId)?.groups?.["level"];
   const plain = pre !== undefined && pre.kind !== "heading";
+  let headingLevel: Fields["headingLevel"] = ANY;
+  if (example && pre?.headingLevel === undefined) headingLevel = example.headingLevel;
+  else if (heading && plain) headingLevel = Number(heading);
   return {
     styleId: styleId ?? undefined,
-    kind: heading ? "heading" : ANY,
-    headingLevel: heading && plain ? Number(heading) : ANY,
-    listLevel: ANY,
+    kind: example?.kind ?? (heading ? "heading" : ANY),
+    headingLevel,
+    listLevel: example && pre?.listReference === undefined ? example.listLevel : ANY,
   };
 };
 
@@ -284,7 +321,27 @@ const paragraphRequest = (
   const fields: Fields = {};
   const checks: ModelRow["checks"] = [];
   if ("styleId" in request) {
-    Object.assign(fields, styleFields(model, request["styleId"] as string | null, pre));
+    const styleId = request["styleId"] as string | null;
+    Object.assign(fields, styleFields(model, styleId, pre));
+    const example = styleId === null ? undefined : model.styleExamples.get(styleId);
+    if (
+      model.mode !== "suggested" &&
+      example &&
+      !example.previewRuns?.some((run) => run.directFormatting !== undefined) &&
+      !pre?.previewRuns?.some((run) => run.directFormatting !== undefined)
+    ) {
+      for (const property of ["bold", "italic", "underline"] as const) {
+        const flags = formattingAt(example, property) ?? Array(example.text.length).fill(false);
+        if (!flags.every((flag) => flag === flags[0])) continue;
+        const expected = flags[0] === true;
+        checks.push((row) => {
+          const actual = formattingAt(row, property) ?? Array(row.text.length).fill(false);
+          return actual.every((flag) => flag === expected)
+            ? null
+            : `effective ${property} differs from style ${styleId}`;
+        });
+      }
+    }
   }
   if ("alignment" in request) {
     fields.directAlignment = (request["alignment"] as string | null) ?? undefined;
@@ -444,10 +501,9 @@ const rangeOf = (operation: Operation): { blockId: string; start: number; end: n
 };
 
 /**
- * One expectation per public operation type. `null` names a type the oracle
- * does not model yet: its receipts are still checked for a saved, healthy
- * document, not for what it did. A new operation type fails the completeness
- * scenario until someone decides which it is.
+ * One block-text expectation per public operation type. `null` leaves text
+ * unmodelled for that type; the separate table model still checks its grid.
+ * A new operation type fails the completeness scenario until it is classified.
  */
 export const EXPECTATIONS = {
   replaceInBlock: (model, operation) => {
@@ -614,7 +670,27 @@ export const EXPECTATIONS = {
       if (row.pre?.table?.gridColumnIndex === anchor.gridColumnIndex) row.removed = true;
     }
   },
-  insertSignatureTable: null,
+  insertSignatureTable: (model, operation) => {
+    const position = operation["position"] === "before" ? "before" : "after";
+    const anchor = insertionAnchor(
+      model,
+      target(model, operation["blockId"], { adjacent: true }),
+      position,
+    );
+    const parties = operation["parties"] as {
+      name: string;
+      signatory?: string;
+      title?: string;
+    }[];
+    const texts = parties.flatMap(({ name, signatory, title }) => {
+      const lines = [name, "", "", "_".repeat(28)];
+      if (signatory) lines.push(signatory);
+      if (title) lines.push(title);
+      return lines;
+    });
+    gapOf(model, anchor, position).push(...texts.map((text) => modelRow(text)));
+    addComment(model, operation);
+  },
   mergeTableCells: null,
   splitTableCell: null,
 } as const satisfies Record<FolioDocumentOperationType, Expect | null>;
@@ -624,12 +700,28 @@ export const OPERATION_TYPES: readonly string[] = FOLIO_DOCUMENT_OPERATION_TYPES
 
 /** Apply one applied operation's expectation to `model`. */
 export const expectOperation = (model: Model, operation: Operation): void => {
+  if (
+    model.mode === "suggested" &&
+    ["deleteTable", "deleteTableRow", "deleteTableColumn"].includes(operation.type)
+  ) {
+    model.tableGaps.push(`${operation.type}: a pending deletion remains in the live grid`);
+  } else if (model.tableGaps.length === 0) {
+    try {
+      applyTableOperation(model.tables, operation);
+    } catch (error) {
+      if (error instanceof UnsupportedTableExpectation) {
+        model.tableGaps.push(`${operation.type}: ${error.message}`);
+      } else {
+        throw error;
+      }
+    }
+  }
   const expectation = (EXPECTATIONS as Record<string, Expect | null | undefined>)[operation.type];
   if (expectation === undefined) {
     throw new Error(`the oracle has no entry for operation type ${operation.type}`);
   }
   if (expectation === null) {
-    model.unmodelled.push(`${operation.type}: no expectation yet`);
+    model.unmodelled.push(`${operation.type}: no block-text expectation yet`);
     return;
   }
   try {
@@ -706,6 +798,11 @@ const materialize = (model: Model): Expected[] => {
   const emit = (row: ModelRow) => {
     for (const inserted of row.before) emit(inserted);
     const gone = row.removed || (row.pendingDeletion === true && row.edits.length === 0);
+    if (gone && joinNext !== undefined) {
+      const previous = out.at(-1);
+      if (previous) previous.text += joinNext;
+      joinNext = undefined;
+    }
     if (!gone) {
       const segments = applyEdits(row.text, row.edits, row.splits);
       const whole = untouchedText(row);
@@ -849,6 +946,7 @@ export type Pre = {
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
   comments: Comment[];
+  links: LinkSnapshot;
   rejected?: Row[];
   /** The story the operations target; the body by default. */
   story: Story;
@@ -868,7 +966,64 @@ const liveState = (reviewer: Reviewer, story: Story = MAIN): string =>
   });
 
 const project = (rows: readonly Row[]) =>
-  visible(rows).map(({ text, kind, styleId, listLevel }) => ({ text, kind, styleId, listLevel }));
+  visible(rows).map(({ text, kind, styleId, headingLevel, listLevel }) => ({
+    text,
+    kind,
+    styleId,
+    headingLevel,
+    listLevel,
+  }));
+
+/** Per-character effective formatting survives a pending paragraph join. */
+const inlineProject = (rows: readonly Row[]) =>
+  visible(rows).flatMap((row) =>
+    (row.previewRuns ?? [{ text: row.text }]).flatMap((run) =>
+      Array.from(run.text, (character) => ({
+        character,
+        bold: run.bold === true,
+        italic: run.italic === true,
+        underline: run.underline === true,
+      })),
+    ),
+  );
+
+/** Authored run properties survive style inheritance changes on acceptance. */
+const authoredInlineProject = (rows: readonly Row[]) =>
+  visible(rows).flatMap((row) =>
+    (row.previewRuns ?? [{ text: row.text }]).flatMap((run) =>
+      Array.from(run.text, (character) => ({
+        character,
+        directFormatting: run.directFormatting,
+      })),
+    ),
+  );
+
+/** Reader-visible paragraph, table and effective run properties, without unstable ids. */
+const fullProject = (rows: readonly Row[]) =>
+  visible(rows).map((row) => ({
+    text: row.text,
+    kind: row.kind,
+    styleId: row.styleId,
+    headingLevel: row.headingLevel,
+    listLevel: row.listLevel,
+    directAlignment: row.directAlignment,
+    directSpacing: row.directSpacing,
+    table: row.table,
+    runs: inlineProject([row]),
+  }));
+
+const suggestedProject = (rows: readonly Row[]) =>
+  visible(rows).map((row) => ({
+    text: row.text,
+    kind: row.kind,
+    styleId: row.styleId,
+    headingLevel: row.headingLevel,
+    listLevel: row.listLevel,
+    directAlignment: row.directAlignment,
+    directSpacing: row.directSpacing,
+    table: row.table,
+    runs: authoredInlineProject([row]),
+  }));
 
 /** Capture what the oracle needs before an apply. */
 export const capture = async (
@@ -880,7 +1035,15 @@ export const capture = async (
   const context = { story, step, targets: featureIndex(reviewer, story) };
   if (mode === "suggested") {
     const rows = rowsOf(reviewer, story);
-    return { mode, live, rows, liveRows: rows, comments: commentsOf(reviewer), ...context };
+    return {
+      mode,
+      live,
+      rows,
+      liveRows: rows,
+      comments: commentsOf(reviewer),
+      links: captureLinks(reviewer),
+      ...context,
+    };
   }
   const bytes = await save(reviewer);
   const accepted = await resolvedState(bytes, "accept", story);
@@ -890,6 +1053,7 @@ export const capture = async (
     rows: accepted.rows,
     liveRows: rowsOf(reviewer, story),
     comments: accepted.comments,
+    links: accepted.links,
     ...(mode === "tracked-changes"
       ? { rejected: (await resolvedState(bytes, "reject", story)).rows }
       : {}),
@@ -975,6 +1139,7 @@ export const assertRequestedOutcome = async (
   }
   const model = modelOf(pre.rows, pre.liveRows);
   model.inTextBox = pre.targets.inTextBox;
+  model.mode = pre.mode;
   for (const operation of outcome.applied) expectOperation(model, operation);
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.
@@ -982,14 +1147,16 @@ export const assertRequestedOutcome = async (
 
   let rows: Row[];
   let comments: Comment[];
+  let links: LinkSnapshot;
   let bytes: Uint8Array | null = null;
   if (pre.mode === "suggested") {
     rows = rowsOf(reviewer, pre.story);
     comments = commentsOf(reviewer);
+    links = captureLinks(reviewer);
   } else {
     const saved = await save(reviewer);
     const accepted = await resolvedState(saved, "accept", pre.story);
-    ({ rows, comments, bytes } = accepted);
+    ({ rows, comments, bytes, links } = accepted);
     if (pre.rejected) {
       assert.deepEqual(
         project((await resolvedState(saved, "reject", pre.story)).rows),
@@ -1000,11 +1167,13 @@ export const assertRequestedOutcome = async (
   }
   const problems = [
     ...(predictable ? compareWithModel(model, rows) : []),
+    ...(model.tableGaps.length === 0 ? compareTableGeometry(model.tables, rows) : []),
+    ...comparePreservedLinks({ before: pre.links, after: links, afterRows: rows }).problems,
     ...compareComments(model, pre.comments, comments),
     ...(bytes ? await compareStyles(model, bytes) : []),
   ];
-  if (process.env["FOLIO_ORACLE_GAPS"] && !predictable) {
-    console.log(`oracle gap: ${context}: ${model.unmodelled.join("; ")}`);
+  if (process.env["FOLIO_ORACLE_GAPS"] && (!predictable || model.tableGaps.length > 0)) {
+    console.log(`oracle gap: ${context}: ${[...model.unmodelled, ...model.tableGaps].join("; ")}`);
   }
   if (problems.length > 0) {
     throw new Error(
@@ -1013,7 +1182,7 @@ export const assertRequestedOutcome = async (
         .join(", ")}):\n  ${problems.join("\n  ")}`,
     );
   }
-  return model.unmodelled;
+  return [...model.unmodelled, ...model.tableGaps];
 };
 
 /** What resolving every change must leave, and whether block boundaries are known. */
@@ -1042,10 +1211,8 @@ export const applyChecked = async (
 
 /**
  * What resolving every change must leave: the accepted (or rejected) view
- * of the saved package. Accepting `"suggested"` edits, which the package
- * does not hold yet, must leave the words the reviewer shows; its blocks
- * are not a prediction, as a reader shows a paragraph whose mark is pending
- * deletion as the block it still is.
+ * of the saved package. A pending paragraph-mark deletion can join two live
+ * blocks on acceptance, so a suggested live view may not predict boundaries.
  */
 export const captureResolution = async (
   reviewer: Reviewer,
@@ -1065,12 +1232,14 @@ export const assertResolvedTo = async (
   const rows = rowsOf(await openReviewer(await save(reviewer)));
   const message = `${context}: resolving every change does not leave what the reviewer showed`;
   if (expected.boundaries) {
-    assert.deepEqual(project(rows), project(expected.rows), message);
+    assert.deepEqual(fullProject(rows), fullProject(expected.rows), message);
   } else {
-    const words = (from: readonly Row[]) =>
-      visible(from)
-        .map((row) => row.text)
-        .join("");
-    assert.equal(words(rows), words(expected.rows), message);
+    assert.deepEqual(authoredInlineProject(rows), authoredInlineProject(expected.rows), message);
+    if (
+      JSON.stringify(visible(rows).map((row) => row.text)) ===
+      JSON.stringify(visible(expected.rows).map((row) => row.text))
+    ) {
+      assert.deepEqual(suggestedProject(rows), suggestedProject(expected.rows), message);
+    }
   }
 };

@@ -1016,6 +1016,7 @@ const OPERATION_KEY_DECISIONS = {
     pageBreakBefore: true,
     hardPageBreak: true,
     styleId: true,
+    outlineLevel: true,
     comment: true,
   },
   insertBeforeBlock: {
@@ -1033,6 +1034,7 @@ const OPERATION_KEY_DECISIONS = {
     pageBreakBefore: true,
     hardPageBreak: true,
     styleId: true,
+    outlineLevel: true,
     comment: true,
   },
   replaceBlock: {
@@ -1296,6 +1298,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     const pageBreakBefore = readOptionalBoolean(value, "pageBreakBefore", path);
     const hardPageBreak = readOptionalHardPageBreak(value, path);
     const styleId = value["styleId"] === null ? null : readOptionalString(value, "styleId", path);
+    const outlineLevel = readClearableOutlineLevel(value, path);
     const moveId = readOptionalString(value, "moveId", path);
     const listLevel = readClearableNonNegativeInteger(value, "listLevel", path);
     const numbering = readClearableNumbering({ value, key: "numbering", path });
@@ -1326,7 +1329,10 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
     }
     const text = readString(value, "text", path);
     if (hardPageBreak !== undefined && text.length > 0) {
-      return invalidBatch(`${path}.text`, "expected empty text with hardPageBreak");
+      return invalidBatch(
+        `${path}.text`,
+        'omit hardPageBreak to insert text, or set text to "" to insert a hard page break',
+      );
     }
     if (hardPageBreak !== undefined && pageBreakBefore !== undefined) {
       return invalidBatch(
@@ -1358,6 +1364,7 @@ const parseDocumentOperation = (value: unknown, index: number): FolioDocumentOpe
       ...(pageBreakBefore !== undefined && { pageBreakBefore }),
       ...(hardPageBreak !== undefined && { hardPageBreak }),
       ...(styleId !== undefined && { styleId }),
+      ...(outlineLevel !== undefined && { outlineLevel }),
       ...(comment !== undefined && { comment }),
     };
   }

@@ -30,7 +30,6 @@ import { getHorizontalScaleFactor } from "../../utils/horizontalScale";
 import {
   getCachedFontMetrics,
   getCachedTextWidth,
-  getTextWidthCacheGeneration,
   setCachedFontMetrics,
   setCachedTextWidth,
 } from "./cache";
@@ -49,10 +48,9 @@ import { setMeasureProvider } from "./measureProvider";
 import type { MeasureProvider } from "./measureProvider";
 import type { FontMetrics, FontStyle, RunMeasurement, TextMeasurement } from "./measureTypes";
 import { canPrefetchMeasurement, prefetchMeasurement } from "./measureWorker";
-import { countCodePoints, WORKER_FONT_FINGERPRINT_TEXT } from "./measureWorkerProtocol";
+import { countCodePoints } from "./measureWorkerProtocol";
 import { SMALL_CAPS_SCALE, smallCapsMask, smallCapsSegments } from "./smallCapsCasing";
 import { getFontKerningMode } from "./textMeasurementPolicy";
-import type { FontKerningMode } from "./textMeasurementPolicy";
 
 // Default typography ratios
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single spacing (line=240)
@@ -61,8 +59,6 @@ const DEFAULT_DESCENT_RATIO = 0.2;
 
 // Cached canvas context for text measurement
 let canvasContext: CanvasRenderingContext2D | null = null;
-
-const workerFontFingerprintCache = new Map<string, { generation: number; width: number }>();
 
 /**
  * Get or create a canvas 2D context for text measurement
@@ -90,25 +86,6 @@ export function getCanvasContext(): CanvasRenderingContext2D {
  */
 export function resetCanvasContext(): void {
   canvasContext = null;
-}
-
-function getWorkerFontFingerprintWidth(
-  ctx: CanvasRenderingContext2D,
-  font: string,
-  fontCacheKey: string,
-  fontKerning: FontKerningMode,
-): number {
-  const generation = getTextWidthCacheGeneration();
-  const cached = workerFontFingerprintCache.get(fontCacheKey);
-  if (cached?.generation === generation) {
-    return cached.width;
-  }
-
-  ctx.font = font;
-  ctx.fontKerning = fontKerning;
-  const width = ctx.measureText(WORKER_FONT_FINGERPRINT_TEXT).width;
-  workerFontFingerprintCache.set(fontCacheKey, { generation, width });
-  return width;
 }
 
 /**
@@ -286,15 +263,12 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
     return scaledWidth;
   }
 
-  const fontFingerprintWidth = getWorkerFontFingerprintWidth(ctx, font, fontCacheKey, fontKerning);
-  // Cache miss just cost a main-thread `measureText`. Ask the worker to
-  // pre-warm:
-  //   1) this exact entry (helps future re-layouts after font-ready,
-  //      page-resize, suggestion-mode toggles)
-  //   2) the next few binary-search probe points the line-break loop
-  //      is about to make (helps the *current* layout pass — the
-  //      worker races the main thread and lands hits ahead of the
-  //      probes).
+  const fontFingerprintText = measuredText;
+  const fontFingerprintWidth = metrics.width;
+  // Cache miss just cost a main-thread `measureText`. Only enqueue that
+  // exact text: its width is the worker's font fingerprint. A full-text
+  // width cannot validate shorter binary-search probes, whose glyphs may
+  // use a different font subset or shaping path.
   //
   // No-op when the worker flag is OFF or the host lacks
   // `OffscreenCanvas`/`Worker`. See `measureWorker.ts`.
@@ -304,18 +278,10 @@ function canvasMeasureTextWidth(text: string, sourceStyle: FontStyle): number {
     letterSpacing,
     horizontalScale,
     fontCacheKey,
+    fontFingerprintText,
     fontFingerprintWidth,
     fontKerning,
   });
-  prefetchBinarySearchProbes(
-    measuredText,
-    font,
-    fontCacheKey,
-    fontFingerprintWidth,
-    letterSpacing,
-    horizontalScale,
-    fontKerning,
-  );
   return scaledWidth;
 }
 
@@ -450,49 +416,6 @@ function measureSmallCapsWidth(measuredText: string, style: FontStyle): number {
     }
   }
   return width * horizontalScale;
-}
-
-/**
- * Speculatively enqueue the slice lengths that a subsequent
- * `findMaxFittingLength` binary search is likely to probe. We pick the
- * geometric series (full, half, quarter, eighth) which covers the
- * majority of probe points the binary search uses, without flooding
- * the worker for runs that will never trigger a line break.
- *
- * The worker is racing the main thread here: if the main thread asks
- * for slice(0, n/2) before the worker has answered, the cache miss
- * pays the main-thread cost as usual. When the worker wins, that probe
- * lands on a hit.
- */
-function prefetchBinarySearchProbes(
-  text: string,
-  font: string,
-  fontCacheKey: string,
-  fontFingerprintWidth: number,
-  letterSpacing: number,
-  horizontalScale: number,
-  fontKerning: FontKerningMode,
-): void {
-  if (text.length < 4) {
-    return;
-  }
-  // Skip the full-length entry — we just filled it. Probe the
-  // half/quarter/eighth slice lengths.
-  for (let denom = 2; denom <= 8; denom *= 2) {
-    const len = Math.floor(text.length / denom);
-    if (len < 2) {
-      break;
-    }
-    prefetchMeasurement({
-      text: text.slice(0, len),
-      font,
-      letterSpacing,
-      horizontalScale,
-      fontCacheKey,
-      fontFingerprintWidth,
-      fontKerning,
-    });
-  }
 }
 
 /**

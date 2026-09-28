@@ -527,6 +527,122 @@ const runScenario = async (
   return verdict;
 };
 
+/**
+ * Counterexamples the property once found, replayed first on every run.
+ * Seed 860847627 (path 133:213:0:0:1:1 at ten times the runs): two deleted
+ * paragraph marks in a row around a paragraph holding only deleted text, so
+ * the accepted story removes both joins back to back and No Markup addressed
+ * the last paragraph's text from before the second join.
+ */
+const PINNED_SCENARIOS: MarkupViewScenario[] = [
+  {
+    document: {
+      paragraphs: [
+        {
+          segments: [
+            {
+              kind: "format-change",
+              text: "Supplier business shall goods notice kupujícího writing ",
+            },
+            { kind: "plain", text: "goods deliver Supplier in in Dodavatel " },
+          ],
+          mark: "plain",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [
+            { kind: "insertion", text: "ten business ten ten notice confirmation " },
+            { kind: "insertion", text: "zboží goods business business days the of goods " },
+          ],
+          mark: "plain",
+          justified: false,
+          alignmentChange: true,
+        },
+        {
+          segments: [
+            { kind: "plain", text: "confirmation notice shall days deliver ten of " },
+            {
+              kind: "plain",
+              text: "confirmation writing writing Supplier confirmation deliver in of goods Supplier ",
+            },
+          ],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [
+            {
+              kind: "deletion",
+              text: "business the ten deliver Dodavatel zboží ten Dodavatel business shall ",
+            },
+          ],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: true,
+        },
+        {
+          segments: [{ kind: "insertion", text: "days ten shall notice business goods " }],
+          mark: "inserted",
+          justified: true,
+          alignmentChange: false,
+        },
+      ],
+      move: null,
+      table: null,
+    },
+    mode: "editing",
+    initialView: "no-markup",
+    leadingFrame: false,
+    events: [{ kind: "rerender", apply: (rig) => rig.rerender() }],
+  },
+  // Seed -442636085 (path 6:1:1:1:1:1:1:3:3:3:3:5:5:5:5:5:5:5:5:5:5:0:1:0:2):
+  // two adjacent deleted paragraph marks with a deleted-only paragraph between them.
+  {
+    document: {
+      paragraphs: [
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "plain",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "deletion", text: "the " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+        {
+          segments: [{ kind: "plain", text: "the " }],
+          mark: "deleted",
+          justified: false,
+          alignmentChange: false,
+        },
+      ],
+      move: null,
+      table: null,
+    },
+    mode: "editing",
+    initialView: "all-markup",
+    leadingFrame: false,
+    events: [
+      {
+        kind: "markupView",
+        apply: (rig) => rig.updateExt(() => ({ view: "no-markup" }), LOAD_LAYOUT.immediate),
+      },
+      { kind: "visible", apply: (rig) => rig.pauseFrames() },
+    ],
+  },
+];
+
 describe("markup views lay out the text they show", () => {
   test("addressing oracle rejects a text run whose editor span is too short", () => {
     const doc = schema.nodes.doc.create(null, [
@@ -555,7 +671,7 @@ describe("markup views lay out the text they show", () => {
         expect(verdict.unpaintable).toEqual([]);
         expect(verdict.misplacedBars).toEqual([]);
       }),
-      propertyConfig({ numRuns: 40 }),
+      propertyConfig({ numRuns: 40, examples: PINNED_SCENARIOS.map((scenario) => [scenario]) }),
     );
   });
 

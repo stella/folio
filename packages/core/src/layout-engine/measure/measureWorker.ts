@@ -206,9 +206,8 @@ function ensureProxy(): ProxyState | null {
 
 /**
  * How long to wait before flushing the queue, in milliseconds. Short
- * enough to keep the worker warm and ahead of the binary-search probes,
- * long enough to amortise `postMessage` overhead across a typical
- * paragraph's worth of probes.
+ * enough to process measured entries promptly, long enough to amortise
+ * `postMessage` overhead across a typical paragraph's runs.
  */
 const FLUSH_INTERVAL_MS = 10;
 

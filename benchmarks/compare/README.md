@@ -45,6 +45,7 @@ itself composes, so the split cannot drift from the shipped pipeline.
 | `sections`    | Headers, footers and multiple sections.                                        |
 | `multiscript` | Right-to-left Arabic and Hebrew, CJK without spaces, and Latin interleaved.    |
 | `revised`     | A base that already carries someone else's tracked changes.                    |
+| `outline`     | Headings whose level the paragraph states itself, which a neighbour inherits.  |
 
 Sizes are block counts: `s` 40, `m` 320, `l` 2200.
 
@@ -57,7 +58,9 @@ paragraph in fifteen, the shape a review pass leaves), `heavy`, `churn`
 `tablecount` (a table removed and another appended), `numbering` (every list
 level's format, body byte-identical), `notes` (the note stories only, main
 story byte-identical), `references` (note references added to and removed
-from paragraphs that otherwise stay), `headers` (the header and footer stories only),
+from paragraphs that otherwise stay), `restyle` (paragraphs promoted to headings,
+headings demoted, and new and relocated paragraphs placed directly before a
+heading), `headers` (the header and footer stories only),
 `everywhere` (the body AND both sets of secondary stories, the only shape in
 which two stories can collide on a revision id), `rewrite` (every paragraph).
 A variant that would leave a class unchanged is skipped rather than reported
@@ -80,6 +83,11 @@ CI catches a regression in any one family without running the benchmark.
   the rejected redline, and the target with the accepted one, must both report
   nothing. This runs the engine over its own output, which is where a redline
   that reads plausibly and is wrong shows up.
+- **`reject-keeps-base-classification` / `accept-keeps-target-classification`** —
+  the resolved redline, read back by the document reader, gives every block the
+  kind, heading level and style the base or target gives it. The round trip
+  above asks the engine whether two documents differ, so a property the engine
+  does not see passes it however wrong it comes out; this asks the reader.
 - **`self-compare-is-empty`** — a document compared with itself invents nothing.
 - **`difference-is-reported`** — a pair the harness built to differ is reported
   as differing. Every other invariant here is satisfiable by seeing nothing, so

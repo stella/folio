@@ -9,6 +9,7 @@ import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
 
 import type { SectionProperties } from "../../types/document";
+import { markSectionBreakRemoval } from "../extensions/features/ParagraphChangeTrackerExtension";
 import {
   mintSectionProperties,
   sectionPropertiesOf,
@@ -233,7 +234,8 @@ const rewriteSelectedSectionRecords =
           );
         }
       }
-      dispatch(transaction.scrollIntoView());
+      // Removing a break is the command's purpose: the save is told so.
+      dispatch(markSectionBreakRemoval(transaction, state.doc).scrollIntoView());
     }
     return true;
   };

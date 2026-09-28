@@ -1337,7 +1337,7 @@
 
 /* ── Side panels: outline column, rail and drawer; drawer scrim ────────
    The editor lays the outline out beside the page (see
-   `components/panelLayout.ts`): a column in the wide tier, a rail of heading
+   `@stll/folio-core/panel-layout`): a column in the wide tier, a rail of heading
    ticks in the medium tier, a drawer over the page otherwise. The list inside
    comes from the OutlineRail seam; the default one is styled here too (see
    `ui/defaults/outline-rail.tsx`). */

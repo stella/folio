@@ -18,6 +18,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { collectLineParity, PER_RUN_TOLERANCE_PX } from "../support/lineParity";
 
 const FIXTURE = "font-subsets.docx";
+const EDITOR_HOSTS = [
+  { name: "React", url: "http://localhost:4200" },
+  { name: "Vue", url: "http://localhost:4201" },
+] as const;
 /** Lines in the fixture at this page width, as a floor against a vacuous pass. */
 const MIN_LINES = 18;
 /** No layout pass started for this long after the fonts settled: layout is done. */
@@ -104,54 +108,56 @@ async function expectMeasuredAsPainted(page: Page): Promise<void> {
   ).toEqual([]);
 }
 
-test.describe("bundled font subsets on a cold font set", () => {
-  test.beforeEach(async ({ page }) => {
-    await installLayoutLog(page);
-    await page.goto(`/?file=${FIXTURE}`);
-    await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
-  });
-
-  test("the first layout waits for every subset the text needs, and nothing relays out", async ({
-    page,
-  }) => {
-    const log = await settleLayout(page);
-
-    const initial = log.find((entry) => entry.reason === "initial");
-    expect(initial?.carlito).toMatchObject({
-      latin: "loaded",
-      "latin-ext": "loaded",
-      greek: "loaded",
-      cyrillic: "loaded",
+for (const host of EDITOR_HOSTS) {
+  test.describe(`${host.name} bundled font subsets on a cold font set`, () => {
+    test.beforeEach(async ({ page }) => {
+      await installLayoutLog(page);
+      await page.goto(`${host.url}/?file=${FIXTURE}`);
+      await page.waitForSelector(".layout-page .layout-line", { timeout: 30_000 });
     });
-    // The fixture has no Vietnamese letter; waiting for text, not for every
-    // face, leaves that subset alone.
-    expect(initial?.carlito["vietnamese"]).toBe("unloaded");
-    expect(log.filter((entry) => entry.reason === "font-ready")).toEqual([]);
-    await expectMeasuredAsPainted(page);
+
+    test("the first layout waits for every subset the text needs, and nothing relays out", async ({
+      page,
+    }) => {
+      const log = await settleLayout(page);
+
+      const initial = log.find((entry) => entry.reason === "initial");
+      expect(initial?.carlito).toMatchObject({
+        latin: "loaded",
+        "latin-ext": "loaded",
+        greek: "loaded",
+        cyrillic: "loaded",
+      });
+      // The fixture has no Vietnamese letter; waiting for text, not for every
+      // face, leaves that subset alone.
+      expect(initial?.carlito["vietnamese"]).toBe("unloaded");
+      expect(log.filter((entry) => entry.reason === "font-ready")).toEqual([]);
+      await expectMeasuredAsPainted(page);
+    });
+
+    test("a subset first needed after the first layout re-measures the lines that use it", async ({
+      page,
+    }) => {
+      await settleLayout(page);
+      expect(await page.evaluate(() => globalThis.__fontSubsetStatus?.()["vietnamese"])).toBe(
+        "unloaded",
+      );
+
+      await page.locator(".layout-paragraph").first().click();
+      await page.keyboard.press("End");
+      // Synthetic Vietnamese: the letters live only in Carlito's vietnamese
+      // subset. One insertion, so one layout pass measures it before the subset
+      // loads and no later keystroke re-measures it: only the font-load
+      // follow-up can.
+      await page.keyboard.insertText(
+        " Hợp đồng được ký kết giữa các bên và có hiệu lực kể từ ngày ký.",
+      );
+      await settleLayout(page);
+
+      expect(await page.evaluate(() => globalThis.__fontSubsetStatus?.()["vietnamese"])).toBe(
+        "loaded",
+      );
+      await expectMeasuredAsPainted(page);
+    });
   });
-
-  test("a subset first needed after the first layout re-measures the lines that use it", async ({
-    page,
-  }) => {
-    await settleLayout(page);
-    expect(await page.evaluate(() => globalThis.__fontSubsetStatus?.()["vietnamese"])).toBe(
-      "unloaded",
-    );
-
-    await page.locator(".layout-paragraph").first().click();
-    await page.keyboard.press("End");
-    // Synthetic Vietnamese: the letters live only in Carlito's vietnamese
-    // subset. One insertion, so one layout pass measures it before the subset
-    // loads and no later keystroke re-measures it: only the font-load
-    // follow-up can.
-    await page.keyboard.insertText(
-      " Hợp đồng được ký kết giữa các bên và có hiệu lực kể từ ngày ký.",
-    );
-    await settleLayout(page);
-
-    expect(await page.evaluate(() => globalThis.__fontSubsetStatus?.()["vietnamese"])).toBe(
-      "loaded",
-    );
-    await expectMeasuredAsPainted(page);
-  });
-});
+}

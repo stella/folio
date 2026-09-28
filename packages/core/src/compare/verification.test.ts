@@ -332,4 +332,22 @@ describe("classifyProjectionMismatch", () => {
       detail: "the direct paragraph spacing did not move at block 0/1 (1 blocks against 1)",
     });
   });
+
+  test("reports a heading classification that differs where every stated property agrees", () => {
+    // A heading reached through something the stated properties do not carry
+    // (a style's own outline level, say) is still a heading to a reader.
+    expect(
+      classifyProjectionMismatch({
+        invariant: "accept-reproduces-target",
+        story: { type: "main" },
+        actual: [{ ...projectedBlock(undefined, "same text"), kind: "heading", headingLevel: 2 }],
+        expected: [projectedBlock(undefined, "same text")],
+      }),
+    ).toEqual({
+      invariant: "accept-reproduces-target",
+      cause: "style",
+      story: { type: "main" },
+      detail: "the heading classification did not move at block 0/1 (1 blocks against 1)",
+    });
+  });
 });

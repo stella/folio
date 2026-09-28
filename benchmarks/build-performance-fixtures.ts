@@ -105,7 +105,7 @@ const buildLongTableDocument = (): Document => {
   return document;
 };
 
-const buildMixedScriptDocument = (): Document => {
+const buildMixedScriptDocument = (repetitions: number): Document => {
   const document = createEmptyDocument();
   const content: BodyBlock[] = [];
   const lines = [
@@ -116,7 +116,7 @@ const buildMixedScriptDocument = (): Document => {
     "Mixed: Contract סעיף 12 يتضمن شروطًا متعددة，並包含 multilingual text.",
   ] as const;
 
-  for (let index = 0; index < 250; index += 1) {
+  for (let index = 0; index < repetitions; index += 1) {
     for (const line of lines) {
       content.push(paragraph(`${index + 1}. ${line}`, "Arimo Embedded"));
     }
@@ -187,15 +187,16 @@ const writeDocument = async (name: string, document: Document): Promise<void> =>
   await writeFile(resolve(FIXTURES_DIR, name), new Uint8Array(normalized));
 };
 
+const writeMixedScriptDocument = async (name: string, repetitions: number): Promise<void> => {
+  const buffer = await createDocx(buildMixedScriptDocument(repetitions));
+  const withFont = await addEmbeddedFont(buffer);
+  await writeFile(resolve(FIXTURES_DIR, name), new Uint8Array(withFont));
+};
+
 await Promise.all([
   writeDocument("performance-1500-paragraphs.docx", buildParagraphDocument()),
   writeDocument("performance-long-split-table.docx", buildLongTableDocument()),
-  (async () => {
-    const buffer = await createDocx(buildMixedScriptDocument());
-    const withFont = await addEmbeddedFont(buffer);
-    await writeFile(
-      resolve(FIXTURES_DIR, "performance-mixed-script-embedded-font.docx"),
-      new Uint8Array(withFont),
-    );
-  })(),
+  writeMixedScriptDocument("mixed-script-font-sample.docx", 250),
+  // Font measurement covers every script with 50 paragraphs; the larger fixture stays for benchmarks.
+  writeMixedScriptDocument("mixed-script-font-measure.docx", 10),
 ]);

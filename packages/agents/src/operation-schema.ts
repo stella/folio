@@ -172,6 +172,31 @@ export const FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA = {
     "`w:numPr/w:ilvl`, zero-based; a number retains the paragraph or anchor's numbering instance (`numId`), while null removes paragraph numbering unless a concrete numbering instance is supplied, in which case it omits the direct level.",
 } as const satisfies FolioJsonSchema;
 
+/** Direct `w:outlineLvl`, or null to restore style inheritance. */
+export const FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA: FolioJsonSchema = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", enum: ["heading"] },
+        level: { type: "integer", minimum: 0, maximum: 8 },
+      },
+      required: ["kind", "level"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { kind: { type: "string", enum: ["bodyText"] } },
+      required: ["kind"],
+      additionalProperties: false,
+    },
+    { type: "null" },
+  ],
+  description:
+    "Direct outline level (`w:outlineLvl`): a heading level from 0 (top) to 8, or body text. " +
+    "null removes it and lets the paragraph style decide.",
+};
+
 /** Complete direct `w:ind` attributes, or null to restore style inheritance. */
 export const FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA = {
   oneOf: [
@@ -321,6 +346,7 @@ export const FOLIO_BLOCK_PARAGRAPH_PROPERTIES_JSON_SCHEMA = {
   description: "The paragraph properties to set; at least one.",
   properties: {
     styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+    outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
     listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
     numbering: FOLIO_CLEARABLE_NUMBERING_JSON_SCHEMA,
     indentation: FOLIO_CLEARABLE_PARAGRAPH_INDENTATION_JSON_SCHEMA,
@@ -441,6 +467,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description: "Start the inserted paragraph on a new page (`pageBreakBefore`).",
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+        outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
         listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
         alignment: {
           oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],
@@ -492,6 +519,7 @@ export const FOLIO_DOCUMENT_OPERATION_JSON_SCHEMA: FolioJsonSchema = {
           description: "Start the inserted paragraph on a new page (`pageBreakBefore`).",
         },
         styleId: FOLIO_CLEARABLE_PARAGRAPH_STYLE_ID_JSON_SCHEMA,
+        outlineLevel: FOLIO_CLEARABLE_OUTLINE_LEVEL_JSON_SCHEMA,
         listLevel: FOLIO_CLEARABLE_LIST_LEVEL_JSON_SCHEMA,
         alignment: {
           oneOf: [{ type: "string", enum: FOLIO_PARAGRAPH_ALIGNMENT_VALUES }, { type: "null" }],

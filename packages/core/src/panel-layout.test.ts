@@ -8,7 +8,7 @@ import {
   type CommentsPresentation,
   type OutlinePresentation,
   type PanelLayoutInput,
-} from "./panelLayout";
+} from "./panel-layout";
 
 const input = fc.record({
   availableWidth: fc.integer({ min: 0, max: 4000 }),

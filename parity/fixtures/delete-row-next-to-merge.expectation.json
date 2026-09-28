@@ -1,0 +1,63 @@
+{
+  "script": "delete-row-next-to-merge",
+  "seedSha256": "739609ddf3b04f06af811ec3df8f51f33b0ab4fbb872038a738e72f21253e951",
+  "structure": {
+    "package": {
+      "paragraphs": 4,
+      "sections": 1,
+      "fields": 0,
+      "noteReferences": 0
+    },
+    "blocks": [
+      {
+        "kind": "heading",
+        "text": "Merged table seed 16",
+        "label": "Heading1",
+        "headingLevel": 1
+      },
+      {
+        "kind": "paragraph",
+        "text": "",
+        "table": {
+          "index": 0,
+          "row": 0,
+          "column": 0
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "Gamma 73",
+        "table": {
+          "index": 0,
+          "row": 0,
+          "column": 1
+        }
+      },
+      {
+        "kind": "paragraph",
+        "text": "After table 79."
+      }
+    ],
+    "cells": [
+      {
+        "table": 0,
+        "row": 0,
+        "column": 0,
+        "rowSpan": 1,
+        "columnSpan": 1,
+        "text": ""
+      },
+      {
+        "table": 0,
+        "row": 0,
+        "column": 1,
+        "rowSpan": 1,
+        "columnSpan": 1,
+        "text": "Gamma 73"
+      }
+    ],
+    "revisions": [],
+    "comments": [],
+    "notes": []
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "script": "insert-continuing-numbering",
+  "seedSha256": "a5c863ab1325d8f86f1a77d435288ba905ea247d806ebf44b806b1be409d537a",
+  "structure": {
+    "package": {
+      "paragraphs": 6,
+      "sections": 1,
+      "fields": 0,
+      "noteReferences": 0
+    },
+    "blocks": [
+      {
+        "kind": "heading",
+        "text": "Numbering seed 13",
+        "label": "Heading1",
+        "headingLevel": 1
+      },
+      {
+        "kind": "listItem",
+        "text": "Primary numbered item 23.",
+        "label": "1."
+      },
+      {
+        "kind": "listItem",
+        "text": "Inserted primary item 29.",
+        "label": "2."
+      },
+      {
+        "kind": "listItem",
+        "text": "Second primary numbered item 34.",
+        "label": "3."
+      },
+      {
+        "kind": "listItem",
+        "text": "Nested numbered item 37.",
+        "label": "a)"
+      },
+      {
+        "kind": "listItem",
+        "text": "Following primary item 41.",
+        "label": "4."
+      }
+    ],
+    "cells": [],
+    "revisions": [],
+    "comments": [],
+    "notes": []
+  }
+}

@@ -1,5 +1,8 @@
 import { panic, TaggedError } from "better-result";
 
+import type { PublicFlushRequest } from "./editor-lease";
+import type { PublicLockHolder } from "./lock";
+
 /**
  * Process exit classes. The numbers match the stella command line's table so
  * a script driving both branches on one set of codes; folio uses the subset a
@@ -87,6 +90,15 @@ const ERROR_CODE_EXIT = {
 
 export const exitCodeForError = (code: FolioCliErrorCode): ExitCode => ERROR_CODE_EXIT[code];
 
+/** Public error context. Lease-bearing fields cannot accept internal records. */
+export type PublicErrorDetails = {
+  readonly [key: string]: unknown;
+  readonly holder?: PublicLockHolder;
+  readonly pending?: readonly PublicFlushRequest[];
+  readonly token?: never;
+  readonly leaseToken?: never;
+};
+
 /**
  * Every expected failure of a command or tool call. `hint` names the next
  * step (re-read, pass a flag); `details` carries structured context such as
@@ -96,14 +108,14 @@ export class FolioCliError extends TaggedError("FolioCliError")<{
   code: FolioCliErrorCode;
   message: string;
   hint?: string;
-  details?: unknown;
+  details?: PublicErrorDetails;
 }> {}
 
 type CliErrorOptions = {
   code: FolioCliErrorCode;
   message: string;
   hint?: string | undefined;
-  details?: unknown;
+  details?: PublicErrorDetails;
 };
 
 /** Build a {@link FolioCliError} without spelling absent optional fields. */

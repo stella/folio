@@ -7,6 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { makeTempDir } from "./__tests__/fixtures";
 import {
   acquireLease,
+  adoptLease,
   lockPathFor,
   lockSwapPathFor,
   readLease,
@@ -45,6 +46,23 @@ const writeHolder = async (holder: Partial<LockHolder>): Promise<void> => {
 };
 
 describe("acquireLease", () => {
+  test("refused acquisition and adoption never disclose the holder token", async () => {
+    const token = "lease-canary-never-publish-7d093be3";
+    await writeHolder({ token });
+
+    const refused = await acquireLease({ documentPath, txId: "tx-2", force: false });
+    const wrongToken = await adoptLease(documentPath, "wrong-token");
+
+    expect(refused.isErr()).toBe(true);
+    expect(wrongToken.isErr()).toBe(true);
+    if (refused.isErr() && wrongToken.isErr()) {
+      expect(refused.error.details).toMatchObject({ holder: { owner: "editor" } });
+      expect(wrongToken.error.details).toMatchObject({ holder: { owner: "editor" } });
+      expect(JSON.stringify(refused.error)).not.toContain(token);
+      expect(JSON.stringify(wrongToken.error)).not.toContain(token);
+    }
+  });
+
   test("holds the lease beside the document and releases only its own", async () => {
     const lease = (await acquireLease({ documentPath, txId: "tx-1", force: false })).unwrap();
 

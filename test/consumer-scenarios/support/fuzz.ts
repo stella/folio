@@ -24,6 +24,7 @@ import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
 import type { StepKind } from "./coverage.ts";
 import { COLLISION_FIXTURES, FIXTURES, openReviewer, STORY_FIXTURES } from "./documents.ts";
 import { assertReadersAgree, saveAndReopen, visibleState } from "./invariants.ts";
+import { startRelations } from "./metamorphic.ts";
 import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } from "./oracle.ts";
 import {
   type Block,
@@ -462,9 +463,9 @@ export const runFlow = async (
   const fixtures = flowFixtures(kind, generation);
   const fixture = random.pick(Object.keys(fixtures));
   const mode = random.pick(MODES);
-  const build = fixtures[fixture] as () => Promise<Uint8Array>;
+  const bytes = await (fixtures[fixture] as () => Promise<Uint8Array>)();
   const flow: Flow = {
-    reviewer: await openReviewer(await build()),
+    reviewer: await openReviewer(bytes),
     mode,
     random,
     seenIds: new Set(),
@@ -475,6 +476,16 @@ export const runFlow = async (
     session: "fresh",
   };
   const { log } = flow;
+  // Metamorphic relations (support/metamorphic.ts), checked after every step.
+  const relations = await startRelations({ fixture: bytes, reviewer: flow.reviewer, mode, seed });
+  const checks: StepCheck[] = [
+    ...STEP_CHECKS,
+    {
+      name: "metamorphic relations",
+      check: async ({ flow: current, saved, label }) =>
+        relations.afterStep(current.reviewer, await saved(), label),
+    },
+  ];
   try {
     for (let index = 0; index < steps; index += 1) {
       await step(flow);
@@ -486,8 +497,9 @@ export const runFlow = async (
         label,
         saved: () => (saved ??= saveAndReopen(flow.reviewer, label, saveOptions(flow))),
       };
-      for (const { check } of STEP_CHECKS) await check(context);
+      for (const { check } of checks) await check(context);
     }
+    await relations.finish();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(

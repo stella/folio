@@ -1,5 +1,40 @@
 # Synthetic parity fixtures
 
+## Edit expectation seeds
+
+`build-edit-expectation-fixtures.ts` creates six small synthetic DOCX inputs:
+
+- `edit-final-paragraph-seed.docx`: a target paragraph at the document end;
+- `edit-paragraph-boundary-seed.docx`: two adjacent paragraphs with distinct
+  text;
+- `edit-numbering-seed.docx`: a multilevel list with a nested item;
+- `edit-merged-table-seed.docx`: a table with a vertical merge;
+- `edit-comment-range-seed.docx`: a comment anchored to a range;
+- `edit-notes-fields-sections-seed.docx`: footnote and endnote references,
+  complex and simple fields, a section transition, and heading styles.
+
+The seeds use fixed ZIP timestamps and invented text. Rebuild or check them with:
+
+```sh
+bun run parity:build-edit-expectation-fixtures
+bun run parity:build-edit-expectation-fixtures --check
+```
+
+`edit-operation-scripts.ts` defines one saved edit per seed. The focused
+`editOperationScripts.test.ts` test runs every script and reads its saved
+structure: blocks and labels, table cells, revisions, comment anchors, note
+text, and package carrier counts. Reviewed structural expectations for the
+final-paragraph, paragraph-boundary, numbering, merged-table, and
+notes/fields/sections cases are pinned by `editStructuralExpectations.test.ts`.
+The comment-reply script retains a reproducible saved output while its
+expectation is being reviewed.
+
+Inspect a saved result and its structural view in the ignored `.cache` directory:
+
+```sh
+bun run parity:run-edit-case insert-continuing-numbering
+```
+
 ## Layout corpus
 
 The layout corpus provides three deterministic, generated fixtures:

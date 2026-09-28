@@ -162,6 +162,7 @@ export type FolioOutlineRailProps = {
     activeId?: string | null;
     topOffset?: number;
     panelWidth?: number;
+    presentation?: "panel" | "rail";
     ariaLabel?: string;
 };
 

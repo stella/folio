@@ -8,7 +8,12 @@
 import assert from "node:assert/strict";
 import { describe } from "node:test";
 
-import { createFolioAITextRangeHandle, docxToMarkdown } from "@stll/folio-core/server";
+import {
+  createFolioAITextRangeHandle,
+  docxToMarkdown,
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+} from "@stll/folio-core/server";
+import { toMarkdown } from "@stll/folio-core/markdown";
 
 import {
   notesDocument,
@@ -17,13 +22,16 @@ import {
   storiesDocument,
   TEXT_BOX_TEXT,
   toArrayBuffer,
+  styleNumberedDocument,
+  tableDocument,
 } from "../support/documents.ts";
 import { saveAndReopen } from "../support/invariants.ts";
 import { runFlow } from "../support/fuzz.ts";
 import { expectedFailure, FINDING_SYMPTOMS, KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
-import { coreBatch, type Mode, type Operation } from "../support/operations.ts";
-import { rowsOf } from "../support/oracle.ts";
+import { coreBatch, MODES, type Mode, type Operation } from "../support/operations.ts";
+import { applyChecked, rowsOf } from "../support/oracle.ts";
 import { MARKDOWN_READ_OPTIONS } from "../support/readers.ts";
+import { ENABLED_RELATIONS } from "../support/metamorphic.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type Story = Parameters<Reviewer["snapshotStory"]>[0];
@@ -205,7 +213,15 @@ describe("findings not yet filed", () => {
     },
   );
 
-  for (const { seed, steps, finding, kind = "random", generation } of KNOWN_FAILING_FLOWS) {
+  for (const {
+    seed,
+    steps,
+    finding,
+    kind = "random",
+    generation,
+    relation,
+  } of KNOWN_FAILING_FLOWS) {
+    if (relation && !ENABLED_RELATIONS.has(relation)) continue;
     expectedFailure(
       finding,
       `the ${kind} flow with seed ${seed} (${steps} steps) does what it asked and saves it`,
@@ -213,4 +229,205 @@ describe("findings not yet filed", () => {
       () => runFlow(seed, steps, kind, generation ? { generation } : {}),
     );
   }
+});
+
+describe("findings of the metamorphic relations (support/metamorphic.ts) and their sweeps", () => {
+  const apply = (
+    reviewer: Reviewer,
+    mode: (typeof MODES)[number],
+    operations: Record<string, unknown>[],
+  ) =>
+    reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: operations.map((operation, index) => ({ id: `op-${index + 1}`, ...operation })),
+    } as never);
+  const blockId = (reviewer: Reviewer, text: string): string => {
+    const block = reviewer.getContent().find((candidate) => candidate.text === text);
+    assert.ok(block, `no block "${text}"`);
+    return block.id;
+  };
+  const reopen = async (reviewer: Reviewer) =>
+    openReviewer(new Uint8Array(await reviewer.toBuffer()));
+
+  const assertFieldKept = async (
+    reviewer: Reviewer,
+    text: string,
+    field: "previewRuns" | "directIndentation",
+  ): Promise<void> => {
+    const pick = (from: Reviewer) =>
+      from.getContent().find((block) => block.text === text)?.[field];
+    assert.deepEqual(
+      pick(await reopen(reviewer)),
+      pick(reviewer),
+      `the live ${field} of "${text}" is not what the saved package reads`,
+    );
+  };
+
+  expectedFailure(
+    "LIVE_STALE_BLOCK_FIELDS",
+    "a restyled paragraph previews its new style before a save",
+    /previewRuns/u,
+    async () => {
+      const reviewer = await openReviewer(await plainDocument());
+      const text = "The Buyer pays each invoice within thirty days.";
+      apply(reviewer, "direct", [
+        {
+          type: "setBlockParagraphProperties",
+          blockId: blockId(reviewer, text),
+          properties: { styleId: "Heading2" },
+        },
+      ]);
+      await assertFieldKept(reviewer, text, "previewRuns");
+    },
+  );
+
+  expectedFailure(
+    "LIVE_STALE_BLOCK_FIELDS",
+    "a paragraph inserted after a bold heading previews its own direct bold off before a save",
+    /previewRuns/u,
+    async () => {
+      const reviewer = await openReviewer(await styleNumberedDocument());
+      apply(reviewer, "direct", [
+        { type: "insertAfterBlock", blockId: blockId(reviewer, "Definitions"), text: "Inserted." },
+      ]);
+      await assertFieldKept(reviewer, "Inserted.", "previewRuns");
+    },
+  );
+
+  expectedFailure(
+    "LIVE_STALE_BLOCK_FIELDS",
+    "a paragraph inserted with a numbered heading style reads its indentation before a save",
+    /directIndentation/u,
+    async () => {
+      const reviewer = await openReviewer(await styleNumberedDocument());
+      apply(reviewer, "direct", [
+        {
+          type: "insertAfterBlock",
+          blockId: blockId(reviewer, "The Buyer pays on delivery."),
+          text: "Inserted.",
+          styleId: "Heading2",
+        },
+      ]);
+      await assertFieldKept(reviewer, "Inserted.", "directIndentation");
+    },
+  );
+
+  expectedFailure(
+    "LIVE_REPLY_RANGES",
+    "a reply reads the same in toMarkdown before and after a save",
+    /toMarkdown/u,
+    async () => {
+      const reviewer = await openReviewer(await plainDocument());
+      apply(reviewer, "direct", [
+        {
+          type: "commentOnBlock",
+          blockId: blockId(reviewer, "The Buyer pays each invoice within thirty days."),
+          comment: { text: "Why thirty?" },
+        },
+      ]);
+      const [comment] = reviewer.getComments();
+      assert.ok(comment);
+      reviewer.replyTo(comment, { text: "Market standard." });
+      assert.equal(
+        toMarkdown((await reopen(reviewer)).toDocument()),
+        toMarkdown(reviewer.toDocument()),
+        "toMarkdown reads otherwise after the save",
+      );
+    },
+  );
+
+  expectedFailure(
+    "TRACKED_DELETE_LAST_PARAGRAPH",
+    "deleting the last paragraph tracked and accepting it leaves what deleting it directly does",
+    /\[directTracked\]/u,
+    async () => {
+      const texts: Record<string, string[]> = {};
+      for (const mode of ["direct", "tracked-changes"] as const) {
+        const reviewer = await openReviewer(await plainDocument());
+        apply(reviewer, mode, [
+          { type: "deleteBlock", blockId: blockId(reviewer, "Signed in two copies.") },
+        ]);
+        const saved = await reopen(reviewer);
+        saved.acceptAll();
+        texts[mode] = (await reopen(saved)).getContent().map((block) => block.text);
+      }
+      assert.deepEqual(
+        texts["tracked-changes"],
+        texts["direct"],
+        "[directTracked] deleted tracked and accepted (actual) vs deleted directly (expected)",
+      );
+    },
+  );
+
+  expectedFailure(
+    "TRACKED_LAST_PARAGRAPH_REJECT",
+    "rejecting a tracked replacement of the last paragraph gives the document back",
+    /\[rejectAll\]/u,
+    async () => {
+      const reviewer = await openReviewer(await plainDocument());
+      const before = reviewer.getContent().map((block) => block.text);
+      const last = blockId(reviewer, "Signed in two copies.");
+      apply(reviewer, "tracked-changes", [
+        { type: "deleteBlock", blockId: last },
+        { type: "insertAfterBlock", blockId: last, text: "Inserted." },
+      ]);
+      const saved = await reopen(reviewer);
+      saved.rejectAll();
+      assert.deepEqual(
+        (await reopen(saved)).getContent().map((block) => block.text),
+        before,
+        "[rejectAll] rejected (actual) vs the document before (expected)",
+      );
+    },
+  );
+
+  expectedFailure(
+    "COMMENT_ANCHOR_REPLACED_BLOCK",
+    "comments on a replaced paragraph anchor alike directly and tracked-then-accepted",
+    /\[directTracked\]/u,
+    async () => {
+      const anchors: Record<string, (string | undefined)[]> = {};
+      for (const mode of ["direct", "tracked-changes"] as const) {
+        const reviewer = await openReviewer(await plainDocument());
+        const text = "This agreement is made between the parties named below.";
+        const id = blockId(reviewer, text);
+        const range = (startOffset: number, endOffset: number) =>
+          createFolioAITextRangeHandle({ blockId: id, text, startOffset, endOffset });
+        apply(reviewer, mode, [
+          { type: "commentOnRange", range: range(0, 4), comment: { text: "a" } },
+        ]);
+        apply(reviewer, mode, [
+          { type: "commentOnRange", range: range(31, 34), comment: { text: "b" } },
+        ]);
+        apply(reviewer, mode, [{ type: "replaceBlock", blockId: id, text: "New clause text." }]);
+        const saved = await reopen(reviewer);
+        saved.acceptAll();
+        anchors[mode] = (await reopen(saved)).getComments().map((comment) => comment.anchoredText);
+      }
+      assert.deepEqual(
+        anchors["tracked-changes"],
+        anchors["direct"],
+        "[directTracked] anchors tracked and accepted (actual) vs direct (expected)",
+      );
+    },
+  );
+
+  expectedFailure(
+    "BATCH_ROW_INSERT_DELETE",
+    "a batch that inserts a row and deletes the row below it deletes that row",
+    /not what was asked \(deleteTableRow, insertTableRow\)/u,
+    async () => {
+      const reviewer = await openReviewer(await tableDocument());
+      await applyChecked(
+        reviewer,
+        [
+          { type: "deleteTableRow", blockId: blockId(reviewer, "Gadget") },
+          { type: "insertTableRow", blockId: blockId(reviewer, "Widget"), position: "after" },
+        ],
+        "direct",
+        "row insert and delete",
+      );
+    },
+  );
 });

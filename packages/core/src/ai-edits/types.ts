@@ -308,8 +308,8 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
         /**
          * Which paragraphs split from `text` receive the operation's
          * paragraph formatting: the inherited anchor formatting plus
-         * `styleId`, `listLevel`, `numbering`, `alignment`, `spacing` and
-         * `indentation`. `"firstParagraph"` (the default) formats the first
+         * `styleId`, `outlineLevel`, `listLevel`, `numbering`, `alignment`,
+         * `spacing` and `indentation`. `"firstParagraph"` (the default) formats the first
          * and leaves the rest as body paragraphs, for a heading followed by
          * its body. `"allParagraphs"` formats every paragraph alike, for
          * several list items in one operation. `pageBreakBefore` and
@@ -344,6 +344,13 @@ export type FolioAIEditOperation = FolioAIEditReviewMeta & {
          * inheritance alone cannot say.
          */
         styleId?: string | null;
+        /**
+         * Direct `w:outlineLvl` for the inserted block. Without it the
+         * inserted paragraph keeps the level the anchor states itself, so a
+         * body paragraph inserted beside a heading that states its level
+         * becomes a heading. `null` clears it and lets the style decide.
+         */
+        outlineLevel?: OutlineLevel | null;
         /**
          * Override `w:numPr/w:ilvl` on the inserted block, keeping the
          * anchor's `w:numId`. Without it the inserted paragraph takes the

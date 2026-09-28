@@ -10,8 +10,15 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
 import { hashFolioAIBlockText } from "@stll/folio-core/server";
+import { fromMarkdown } from "@stll/folio-core/markdown";
 
-import { COLLISION_FIXTURES, FIXTURES, openReviewer, plainDocument } from "../support/documents.ts";
+import {
+  COLLISION_FIXTURES,
+  FIXTURES,
+  openReviewer,
+  packDocument,
+  plainDocument,
+} from "../support/documents.ts";
 import { assertHealthy, saveAndReopen } from "../support/invariants.ts";
 import {
   expectedFailure,
@@ -28,6 +35,8 @@ import {
   OPERATION_TYPES,
   type Row,
 } from "../support/oracle.ts";
+import { captureLinks, comparePreservedLinks } from "../support/link-oracle.ts";
+import { compareTableGeometry } from "../support/table-oracle.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -99,6 +108,130 @@ describe("the requested-outcome oracle", () => {
       /styleId is undefined, expected "Heading2"/u,
     );
   });
+
+  test("notices a table merge that keeps the original grid", () => {
+    const cells = [
+      row("left", "Party", { table: location(0) }),
+      row("right", "Role", { table: location(1) }),
+    ];
+    const model = modelOf(cells);
+    expectOperation(model, { type: "mergeTableCells", blockId: "left", endBlockId: "right" });
+    assert.deepEqual(model.tableGaps, []);
+    assert.match(compareTableGeometry(model.tables, cells).join("\n"), /geometry/u);
+  });
+});
+
+test("a style edit preserves the target of an unchanged link", async () => {
+  const reviewer = await openReviewer(
+    await packDocument(
+      fromMarkdown("# Terms\n\nRead the [schedule](https://example.com/schedule)."),
+    ),
+  );
+  const block = blocksOf(reviewer).find((candidate) => candidate.text.includes("schedule"));
+  assert.ok(block);
+  assert.ok(captureLinks(reviewer).get(block.id)?.targets.includes("https://example.com/schedule"));
+  const { applied } = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "setBlockParagraphProperties",
+        blockId: block.id,
+        properties: { alignment: "center" },
+      },
+    ],
+    "direct",
+    "link after style edit",
+  );
+  assert.equal(applied.length, 1);
+});
+
+test("a missing saved link projection fails for an unchanged reader block", async () => {
+  const reviewer = await openReviewer(
+    await packDocument(fromMarkdown("Read the [schedule](https://example.com/schedule).")),
+  );
+  const before = captureLinks(reviewer);
+  const { reopened } = await saveAndReopen(reviewer, "link projection fixture");
+  const after = new Map(captureLinks(reopened));
+  const linked = [...before.keys()].at(0);
+  assert.ok(linked);
+  assert.ok(after.delete(linked));
+
+  const unchanged = comparePreservedLinks({ before, after, afterRows: blocksOf(reopened) });
+  assert.equal(unchanged.checked, 1);
+  assert.match(unchanged.problems.join("\n"), /has no matching link projection/u);
+
+  const editedRows = blocksOf(reopened).map(({ id, text }) => ({
+    id,
+    text: id === linked ? `${text} changed` : text,
+  }));
+  assert.deepEqual(comparePreservedLinks({ before, after, afterRows: editedRows }), {
+    problems: [],
+    checked: 0,
+  });
+});
+
+test("a signature table has one cell per party after save and reopen", async () => {
+  const reviewer = await openReviewer(await plainDocument());
+  const block = blocksOf(reviewer).find((candidate) => candidate.text === "Signed in two copies.");
+  assert.ok(block);
+  const { applied } = await applyChecked(
+    reviewer,
+    [
+      {
+        type: "insertSignatureTable",
+        blockId: block.id,
+        parties: [
+          { name: "Supplier", signatory: "A. Example" },
+          { name: "Buyer", title: "Director" },
+        ],
+      },
+    ],
+    "direct",
+    "signature table geometry",
+  );
+  assert.equal(applied.length, 1);
+});
+
+test("cell merge and split predict the saved grid", async () => {
+  const reviewer = await openReviewer(await ALL_FIXTURES.tables());
+  const left = blocksOf(reviewer).find((candidate) => candidate.text === "Item");
+  const right = blocksOf(reviewer).find((candidate) => candidate.text === "Price");
+  assert.ok(left);
+  assert.ok(right);
+  const merged = await applyChecked(
+    reviewer,
+    [{ type: "mergeTableCells", blockId: left.id, endBlockId: right.id }],
+    "direct",
+    "merge grid",
+  );
+  assert.equal(merged.applied.length, 1);
+  const split = await applyChecked(
+    reviewer,
+    [{ type: "splitTableCell", blockId: left.id }],
+    "direct",
+    "split grid",
+  );
+  assert.equal(split.applied.length, 1);
+});
+
+test("a deleted merge neighbor does not join the following table cell", async () => {
+  const reviewer = await openReviewer(await ALL_FIXTURES.tables());
+  const heading = blocksOf(reviewer).find((candidate) => candidate.text === "Price Schedule");
+  const neighbor = blocksOf(reviewer).find(
+    (candidate) => candidate.text === "The prices below apply.",
+  );
+  assert.ok(heading);
+  assert.ok(neighbor);
+  const { applied } = await applyChecked(
+    reviewer,
+    [
+      { type: "mergeBlockWithNext", blockId: heading.id, separator: " " },
+      { type: "deleteBlock", blockId: neighbor.id },
+    ],
+    "tracked-changes",
+    "join then remove neighbor",
+  );
+  assert.equal(applied.length, 2);
 });
 
 function location(cellIndex: number) {

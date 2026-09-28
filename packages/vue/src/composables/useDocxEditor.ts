@@ -69,9 +69,14 @@ import type { LayoutRunOptions } from "@stll/folio-core/controller/layoutRunOpti
 import { createHyphenationReadiness } from "@stll/folio-core/controller/hyphenationReadiness";
 import {
   readFontSetSignature,
+  waitForInitialLayoutFonts,
   watchLayoutFontLoads,
 } from "@stll/folio-core/controller/fontReadiness";
-import { browserClock, createLayoutScheduler } from "@stll/folio-core/controller/layoutScheduler";
+import {
+  browserClock,
+  createLayoutScheduler,
+  TRANSACTION_LAYOUT_TIMING,
+} from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
@@ -107,6 +112,7 @@ import {
   getChangedParagraphIds,
   hasStructuralChanges,
   hasUntrackedChanges,
+  repackWithEditorSectionRemovals,
 } from "@stll/folio-core/prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import type { HistoryShortcutOwner } from "@stll/folio-core/prosemirror/extensions/core/HistoryExtension";
 import { createStarterKit } from "@stll/folio-core/prosemirror/extensions/StarterKit";
@@ -139,10 +145,6 @@ import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter"
 // ============================================================================
 
 const DEFAULT_PAGE_GAP = 24;
-/** Quiet-window debounce before an interactive layout pass. */
-const TRANSACTION_LAYOUT_DEBOUNCE_MS = 32;
-/** Upper bound for how long visible layout can trail the hidden editor. */
-const TRANSACTION_LAYOUT_MAX_DELAY_MS = 96;
 /** Delay before converting PM state back to the Folio document model. */
 const DOCUMENT_CHANGE_NOTIFY_DELAY = 250;
 
@@ -518,6 +520,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // Per-load identity for the hidden-editor manager: advanced on every document
   // swap, unchanged across internal edits (not reactive; read at sync time).
   let loadSequence = 0;
+  let destroyed = false;
+  let initialFontWaitId = 0;
+  let initialFontWaitPending = false;
   const editorView = shallowRef<EditorView | null>(null);
   const editorState = shallowRef<EditorState | null>(null);
   const collaborationModules = shallowRef<CollaborationModules | null>(null);
@@ -617,6 +622,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     watchLayoutFontLoads({
       measuredFontSet: () => session.lastMeasureInputs?.fontSet ?? null,
       relayout: () => {
+        if (initialFontWaitPending) {
+          return;
+        }
         const state = editorView.value?.state ?? session.lastEditorState;
         if (state) {
           runLayoutPipeline(state, { reason: "font-ready" });
@@ -699,6 +707,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
    * plain inputs, matching the React adapter).
    */
   function runLayoutPipeline(state: EditorState, runOptions: LayoutRunOptions = {}): void {
+    if (initialFontWaitPending) {
+      return;
+    }
     const container = pagesContainer.value;
     // The pipeline paints into an HTMLDivElement; narrow without a cast so a
     // non-div host (or a not-yet-mounted ref) simply computes without painting.
@@ -782,8 +793,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // transaction produced before a document load replaced it.
     readState: () => editorView.value?.state ?? null,
     runLayout: (state, runOptions) => runLayoutPipeline(state, runOptions),
-    debounceMs: TRANSACTION_LAYOUT_DEBOUNCE_MS,
-    maxDelayMs: TRANSACTION_LAYOUT_MAX_DELAY_MS,
+    ...TRANSACTION_LAYOUT_TIMING,
     clock: browserClock,
   });
 
@@ -952,9 +962,22 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     editorState.value = view.state;
     isReady.value = true;
 
-    // Initial layout for the freshly mounted view.
-    runLayoutPipeline(view.state, { reason: "initial" });
-    syncCoordinator.requestRender();
+    const model = docModel.value;
+    const sequence = loadSequence;
+    const waitId = ++initialFontWaitId;
+    initialFontWaitPending = true;
+    const runInitialLayout = () => {
+      if (initialFontWaitId !== waitId) {
+        return;
+      }
+      initialFontWaitPending = false;
+      if (destroyed || loadSequence !== sequence || manager.getView() !== view) {
+        return;
+      }
+      runLayoutPipeline(view.state, { reason: "initial" });
+      syncCoordinator.requestRender();
+    };
+    void waitForInitialLayoutFonts(model, view.state.doc).then(runInitialLayout, runInitialLayout);
 
     // Apply the current editor mode to the mounted suggestion plugin.
     syncSuggestionMode(view);
@@ -1102,7 +1125,28 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         reason: "mount",
       });
       editorState.value = initialState;
-      runLayoutPipeline(initialState, { reason: "initial" });
+      const sequence = loadSequence;
+      const waitId = ++initialFontWaitId;
+      initialFontWaitPending = true;
+      const runInitialLayout = () => {
+        if (initialFontWaitId !== waitId) {
+          return;
+        }
+        initialFontWaitPending = false;
+        if (
+          destroyed ||
+          loadSequence !== sequence ||
+          docModel.value !== model ||
+          manager.getView()
+        ) {
+          return;
+        }
+        runLayoutPipeline(initialState, { reason: "initial" });
+      };
+      void waitForInitialLayoutFonts(model, initialState.doc).then(
+        runInitialLayout,
+        runInitialLayout,
+      );
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
@@ -1201,13 +1245,23 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     let buffer: ArrayBuffer | null = useSelectiveForSave ? selectiveBuffer : null;
     let fullBuffer: ArrayBuffer | null = null;
 
+    // A section the editor removed on purpose (its ending paragraph deleted,
+    // or that deletion accepted) is one the repack must be told about, or it
+    // refuses the smaller package.
+    const repackFull = () =>
+      repackWithEditorSectionRemovals({
+        state,
+        document: updatedDoc,
+        repack: () => repackDocx(updatedDoc),
+      });
+
     if (!buffer) {
       // No original buffer means a from-scratch document — build one via createDocx.
-      fullBuffer = baselineBuffer ? await repackDocx(updatedDoc) : await createDocx(updatedDoc);
+      fullBuffer = baselineBuffer ? await repackFull() : await createDocx(updatedDoc);
       buffer = fullBuffer;
     } else if (flags.selectiveSaveTripwire) {
       try {
-        fullBuffer = await repackDocx(updatedDoc);
+        fullBuffer = await repackFull();
       } catch {
         // Tripwire-only full repack failures must never poison a successful
         // selective save.
@@ -1324,6 +1378,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   );
 
   function destroy(): void {
+    destroyed = true;
+    initialFontWaitId += 1;
+    initialFontWaitPending = false;
     scheduler.dispose();
     if (docChangeTimer !== null) {
       window.clearTimeout(docChangeTimer);

@@ -13,11 +13,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { __resetWorkerCtxForTests, handleMeasureRequest } from "./font-metrics.worker";
-import {
-  WORKER_FONT_FINGERPRINT_TEXT,
-  type MeasureRequestEntry,
-  type MeasureWorkerRequest,
-} from "./measureWorkerProtocol";
+import type { MeasureRequestEntry, MeasureWorkerRequest } from "./measureWorkerProtocol";
 
 type CanvasStub = {
   font: string;
@@ -61,7 +57,8 @@ function entry(overrides: Partial<MeasureRequestEntry>): MeasureRequestEntry {
     text: overrides.text ?? "x",
     font,
     fontCacheKey: overrides.fontCacheKey ?? `${font}|scale:${horizontalScale}`,
-    fontFingerprintWidth: overrides.fontFingerprintWidth ?? WORKER_FONT_FINGERPRINT_TEXT.length * 6,
+    fontFingerprintText: overrides.fontFingerprintText ?? overrides.text ?? "x",
+    fontFingerprintWidth: overrides.fontFingerprintWidth ?? (overrides.text ?? "x").length * 6,
     letterSpacing: overrides.letterSpacing ?? 0,
     horizontalScale,
     fontKerning: overrides.fontKerning ?? "none",
@@ -97,7 +94,7 @@ describe("handleMeasureRequest", () => {
         entry({
           text: "AVAV",
           fontCacheKey: "11px Arial|kerning:normal|scale:1",
-          fontFingerprintWidth: WORKER_FONT_FINGERPRINT_TEXT.length * 6 - 1,
+          fontFingerprintWidth: "AVAV".length * 6 - 1,
           fontKerning: "normal",
         }),
       ]),
@@ -169,6 +166,38 @@ describe("handleMeasureRequest", () => {
     if (reply.ok) {
       expect(reply.entries).toEqual([]);
     }
+  });
+
+  test.each(["Žluť", "Ελληνικά", "Кириллица", "العربية", "हिन्दी", "漢字", "עברית"])(
+    "rejects a mismatched font subset in %s",
+    (text) => {
+      const reply = handleMeasureRequest(
+        req([
+          entry({
+            text,
+            fontFingerprintText: text,
+            // A main-thread font with a different subset width must not be
+            // replaced by this worker's Latin-only fallback measurement.
+            fontFingerprintWidth: text.length * 6 + 2,
+          }),
+        ]),
+      );
+      expect(reply.ok && reply.entries).toEqual([]);
+    },
+  );
+
+  test("rejects a small subset mismatch inside a long run", () => {
+    const text = `${"a".repeat(2_000)}ش`;
+    const reply = handleMeasureRequest(
+      req([
+        entry({
+          text,
+          fontFingerprintText: text,
+          fontFingerprintWidth: text.length * 6 + 1,
+        }),
+      ]),
+    );
+    expect(reply.ok && reply.entries).toEqual([]);
   });
 
   test("returns ok:false when OffscreenCanvas is absent", () => {

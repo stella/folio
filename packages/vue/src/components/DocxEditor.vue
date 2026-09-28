@@ -60,7 +60,10 @@
         :track-changes-on="trackChangesOn"
         :display-mode="displayMode"
         :read-only="readOnly"
-        :comments-sidebar-open="showSidebar"
+        :comments-sidebar-open="commentsSurface !== null"
+        :outline-drawer="panelLayout.outline === 'drawer'"
+        :outline-drawer-open="panelOverlay === 'outline'"
+        :comment-count="openCommentThreadCount"
         :image-context="imageToolbarContext"
         :theme="theme ?? null"
         v-bind="toolbarDynamicProps"
@@ -69,12 +72,12 @@
         @insert-symbol="showInsertSymbol = true"
         @insert-page-break="handleInsertPageBreakAction"
         @page-setup="showPageSetup = true"
-        @toggle-outline="outlineSidebar.handleToggleOutline"
+        @toggle-outline="toggleOutlineOverlay"
         @apply-style="handleApplyStyle"
         @zoom-in="zoomIn"
         @zoom-out="zoomOut"
         @zoom-set="setZoom"
-        @toggle-sidebar="showSidebar = !showSidebar"
+        @toggle-sidebar="toggleComments"
         @mode-change="setEditorMode"
         @toggle-track-changes="toggleTrackChanges"
         @update:display-mode="setDisplayMode"
@@ -141,267 +144,309 @@
     <div ref="hiddenPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-pm" />
     <div ref="hiddenHfPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm" />
 
-    <div ref="editorScrollRef" class="docx-editor-vue__editor-scroll" @scroll="handleEditorScroll">
-      <div class="docx-editor-vue__editor-area">
-        <!-- Horizontal ruler — sticky-top, centered over the page so it scrolls
+    <div
+      ref="panelsRowRef"
+      class="docx-editor-vue__panels-row"
+      :data-folio-panel-tier="panelLayout.tier"
+      :data-folio-outline="panelLayout.outline"
+      :data-folio-comments="panelLayout.comments"
+    >
+      <DocumentOutline
+        v-if="panelLayout.outline === 'column' || panelLayout.outline === 'rail'"
+        :headings="outlineHeadings"
+        :get-scroll-container="() => editorScrollRef"
+        :doc-size="editorView?.state.doc.content.size ?? 0"
+        :active-id="activeHeadingId"
+        :surface="panelLayout.outline"
+        :expanded="panelOverlay === 'outline'"
+        @expand="toggleOutlineOverlay"
+        @navigate="handleOutlineNavigate"
+      />
+      <div
+        ref="editorScrollRef"
+        class="docx-editor-vue__editor-scroll"
+        data-folio-scroll=""
+        @scroll="handleEditorScroll"
+      >
+        <div class="docx-editor-vue__editor-area" :style="editorAreaStyle">
+          <!-- Horizontal ruler — sticky-top, centered over the page so it scrolls
              horizontally with the document. Mirrors React's DocxEditor ruler
              placement; gated on `rulerVisible && !readOnly`. -->
-        <div v-if="rulerVisible && !readOnly" class="docx-editor-vue__ruler-h">
-          <HorizontalRuler
-            :section-props="currentSectionProps"
-            :zoom="zoom"
-            :unit="rulerUnit ?? 'inch'"
-            :editable="!readOnly"
-            :indent-left="paragraphIndent.indentLeft"
-            :indent-right="paragraphIndent.indentRight"
-            :first-line-indent="paragraphIndent.firstLineIndent"
-            :hanging-indent="paragraphIndent.hangingIndent"
-            :show-first-line-indent="true"
-            :tab-stops="paragraphIndent.tabs"
-            @left-margin-change="handleLeftMarginChange"
-            @right-margin-change="handleRightMarginChange"
-            @indent-left-change="handleIndentLeftChange"
-            @indent-right-change="handleIndentRightChange"
-            @first-line-indent-change="handleFirstLineIndentChange"
-            @tab-stop-remove="handleTabStopRemove"
-          />
-        </div>
-
-        <!-- Vertical ruler — far-left gutter, does not track page centering
-             (word-processor gutter convention). Mirrors React's placement. -->
-        <div v-if="rulerVisible && !readOnly" class="docx-editor-vue__ruler-v">
-          <VerticalRuler
-            :section-props="currentSectionProps"
-            :zoom="zoom"
-            :unit="rulerUnit ?? 'inch'"
-            :editable="!readOnly"
-            @top-margin-change="handleTopMarginChange"
-            @bottom-margin-change="handleBottomMarginChange"
-          />
-        </div>
-
-        <div
-          ref="pagesViewportRef"
-          class="docx-editor-vue__pages-viewport"
-          @wheel="handleWheelZoomGated"
-          @mousedown="handlePagesMouseDown"
-          @mousemove="handlePagesMouseMove"
-          @click="handlePagesClick"
-          @dblclick="handlePagesDoubleClick"
-          @contextmenu.prevent="handleContextMenu"
-        >
           <div
-            class="docx-editor-vue__editor-content-wrapper"
-            :style="{
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: '100%',
-            }"
+            v-if="rulerVisible && !readOnly"
+            class="docx-editor-vue__ruler-h"
+            data-testid="folio-horizontal-ruler"
+            :style="rulerStyle"
+          >
+            <HorizontalRuler
+              :section-props="currentSectionProps"
+              :zoom="zoom"
+              :unit="rulerUnit ?? 'inch'"
+              :editable="!readOnly"
+              :indent-left="paragraphIndent.indentLeft"
+              :indent-right="paragraphIndent.indentRight"
+              :first-line-indent="paragraphIndent.firstLineIndent"
+              :hanging-indent="paragraphIndent.hangingIndent"
+              :show-first-line-indent="true"
+              :tab-stops="paragraphIndent.tabs"
+              @left-margin-change="handleLeftMarginChange"
+              @right-margin-change="handleRightMarginChange"
+              @indent-left-change="handleIndentLeftChange"
+              @indent-right-change="handleIndentRightChange"
+              @first-line-indent-change="handleFirstLineIndentChange"
+              @tab-stop-remove="handleTabStopRemove"
+            />
+          </div>
+
+          <!-- Vertical ruler — far-left gutter, does not track page centering
+             (word-processor gutter convention). Mirrors React's placement. -->
+          <div v-if="rulerVisible && !readOnly" class="docx-editor-vue__ruler-v">
+            <VerticalRuler
+              :section-props="currentSectionProps"
+              :zoom="zoom"
+              :unit="rulerUnit ?? 'inch'"
+              :editable="!readOnly"
+              @top-margin-change="handleTopMarginChange"
+              @bottom-margin-change="handleBottomMarginChange"
+            />
+          </div>
+
+          <div
+            ref="pagesViewportRef"
+            class="docx-editor-vue__pages-viewport"
+            :style="pagesViewportStyle"
+            @wheel="handleWheelZoomGated"
+            @mousedown="handlePagesMouseDown"
+            @mousemove="handlePagesMouseMove"
+            @click="handlePagesClick"
+            @dblclick="handlePagesDoubleClick"
+            @contextmenu.prevent="handleContextMenu"
           >
             <div
-              ref="pagesRef"
-              :class="[
-                'docx-editor-vue__pages paged-editor__pages',
-                hfEdit ? `paged-editor--hf-editing paged-editor--editing-${hfEdit.position}` : '',
-              ]"
-              :style="pagesContainerStyle"
-            />
+              class="docx-editor-vue__editor-content-wrapper"
+              :style="{
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                minHeight: '100%',
+              }"
+            >
+              <div
+                ref="pagesRef"
+                :class="[
+                  'docx-editor-vue__pages paged-editor__pages',
+                  hfEdit ? `paged-editor--hf-editing paged-editor--editing-${hfEdit.position}` : '',
+                ]"
+                :style="pagesContainerStyle"
+              />
 
-            <HeaderFooterSelectionOverlay
-              :editor-view="getActiveHeaderFooterView()"
-              :hidden-container="hiddenHfPmRef"
-              :pages-container="pagesRef"
-              :selection="activeHeaderFooterSelection"
-              :zoom="zoom"
-            />
+              <HeaderFooterSelectionOverlay
+                :editor-view="getActiveHeaderFooterView()"
+                :hidden-container="hiddenHfPmRef"
+                :pages-container="pagesRef"
+                :selection="activeHeaderFooterSelection"
+                :zoom="zoom"
+              />
 
-            <!-- Decoration origin: the coordinate anchor core's range projection
+              <!-- Decoration origin: the coordinate anchor core's range projection
                  looks up (`[data-testid="selection-overlay"]`) and the container
                  the projected (unscaled) rects are painted into. Sibling of the
                  pages so the projection resolves it via `pagesContainer.parentElement`. -->
-            <div
-              data-testid="selection-overlay"
-              class="docx-editor-vue__decoration-origin"
-              aria-hidden="true"
-            >
-              <AnonymizationRectsOverlay
-                :get-view="() => editorView"
-                :get-pages-container="() => pagesRef"
-                :editor-state="editorState"
-                :zoom="zoom"
-                :layout="layout"
-                :blocks="blocks"
-                :measures="measures"
-                :on-term-click="props.onAnonymizationTermClick"
-                :selected-canonical="props.selectedAnonymizationCanonical"
-                :selection-seq="props.anonymizationSelectionSeq"
-              />
-              <!-- Passage highlight — a persistent translucent wash over the
+              <div
+                data-testid="selection-overlay"
+                class="docx-editor-vue__decoration-origin"
+                aria-hidden="true"
+              >
+                <AnonymizationRectsOverlay
+                  :get-view="() => editorView"
+                  :get-pages-container="() => pagesRef"
+                  :editor-state="editorState"
+                  :zoom="zoom"
+                  :layout="layout"
+                  :blocks="blocks"
+                  :measures="measures"
+                  :on-term-click="props.onAnonymizationTermClick"
+                  :selected-canonical="props.selectedAnonymizationCanonical"
+                  :selection-seq="props.anonymizationSelectionSeq"
+                />
+                <!-- Passage highlight — a persistent translucent wash over the
                    passage a consumer opened the document at (citation chip,
                    find-in-document, agent tool). Renders nothing until a range
                    is pushed in via the ref API. -->
-              <PassageHighlightOverlay
-                :range="passageHighlightRange"
-                :get-pages-container="() => pagesRef"
-                :zoom="zoom"
-                :layout="layout"
-                :blocks="blocks"
-                :measures="measures"
-              />
-              <TemplateDirectivesOverlay
-                v-if="props.showTemplateDirectives"
-                :get-view="() => editorView"
-                :get-pages-container="() => pagesRef"
-                :editor-state="editorState"
-                :zoom="zoom"
-                :layout="layout"
-                :blocks="blocks"
-                :measures="measures"
-              />
-              <AutocompleteSuggestionOverlay
-                :get-pages-container="() => pagesRef"
-                :editor-state="editorState"
-                :zoom="zoom"
-                :sync-coordinator="syncCoordinator"
-              />
-              <DecorationLayer
-                :get-view="() => editorView"
-                :get-pages-container="() => pagesRef"
-                :zoom="zoom"
-                :transaction-version="stateTick"
-                :sync-coordinator="syncCoordinator"
-              />
+                <PassageHighlightOverlay
+                  :range="passageHighlightRange"
+                  :get-pages-container="() => pagesRef"
+                  :zoom="zoom"
+                  :layout="layout"
+                  :blocks="blocks"
+                  :measures="measures"
+                />
+                <TemplateDirectivesOverlay
+                  v-if="props.showTemplateDirectives"
+                  :get-view="() => editorView"
+                  :get-pages-container="() => pagesRef"
+                  :editor-state="editorState"
+                  :zoom="zoom"
+                  :layout="layout"
+                  :blocks="blocks"
+                  :measures="measures"
+                />
+                <AutocompleteSuggestionOverlay
+                  :get-pages-container="() => pagesRef"
+                  :editor-state="editorState"
+                  :zoom="zoom"
+                  :sync-coordinator="syncCoordinator"
+                />
+                <DecorationLayer
+                  :get-view="() => editorView"
+                  :get-pages-container="() => pagesRef"
+                  :zoom="zoom"
+                  :transaction-version="stateTick"
+                  :sync-coordinator="syncCoordinator"
+                />
+              </div>
             </div>
+
+            <InlineHeaderFooterEditor
+              v-if="hfEdit"
+              :edit="hfEdit"
+              :get-view="getActiveHeaderFooterView"
+              @close="handleHfSave"
+              @remove="handleHfRemove"
+            />
+
+            <aside
+              v-show="activeNoteStory"
+              class="docx-editor-vue__note-editor"
+              :aria-label="activeNoteStoryLabel"
+              @keydown.esc.stop.prevent="closeNoteStory"
+            >
+              <header class="docx-editor-vue__note-editor-header">
+                <span>{{ activeNoteStoryLabel }}</span>
+                <button type="button" :aria-label="t('common.closeDialog')" @click="closeNoteStory">
+                  ×
+                </button>
+              </header>
+              <div ref="notePmRef" class="docx-editor-vue__note-editor-host" />
+            </aside>
+
+            <ImageSelectionOverlay
+              :image-info="selectedImage"
+              :zoom="zoom"
+              :view="activeEditorView"
+              @deselect="selectedImage = null"
+              @interact-start="imageInteracting = true"
+              @interact-end="imageInteracting = false"
+              @context-menu="handleSelectedImageContextMenu"
+            />
+
+            <HyperlinkPopup
+              :data="hyperlinkPopupData"
+              :read-only="readOnly"
+              @navigate="handleHyperlinkPopupNavigate"
+              @copy="handleHyperlinkPopupCopy"
+              @edit="handleHyperlinkPopupEdit"
+              @remove="handleHyperlinkPopupRemove"
+              @close="hyperlinkPopupData = null"
+            />
+
+            <button
+              v-if="tableInsertButton"
+              type="button"
+              class="docx-editor-vue__table-insert-btn"
+              :style="{ left: tableInsertButton.x + 'px', top: tableInsertButton.y + 'px' }"
+              :aria-label="tableInsertButton.type === 'row' ? 'Insert row' : 'Insert column'"
+              @mousedown="handleTableInsertClick"
+            >
+              +
+            </button>
+
+            <CommentMarginMarkers
+              :comments="comments"
+              :pages-container="pagesRef"
+              :zoom="zoom"
+              :page-width-px="pageWidthPx"
+              :sidebar-open="showSidebar"
+              :resolved-comment-ids="resolvedCommentIds"
+              @marker-click="() => {}"
+            />
+
+            <UnifiedSidebar
+              :is-open="commentsSurface !== null"
+              :surface="commentsSurface ?? 'column'"
+              :comments="comments"
+              :tracked-changes="trackedChanges"
+              :show-resolved="true"
+              :is-adding-comment="commentLifecycle.isAddingComment.value"
+              :add-comment-y-position="commentLifecycle.addCommentYPosition.value"
+              :pages-container="pagesRef"
+              :page-width-px="pageWidthPx"
+              :zoom="zoom"
+              :active-item-id="activeSidebarItem"
+              @close="dismissComments"
+              @dismiss="dismissComments"
+              @update:active-item-id="(id: string | null) => (activeSidebarItem = id)"
+              @add-comment="commentLifecycle.handleAddComment"
+              @cancel-add-comment="commentLifecycle.handleCancelAddComment"
+              @comment-reply="commentManagement.handleReply"
+              @comment-resolve="commentManagement.handleResolve"
+              @comment-unresolve="commentManagement.handleUnresolve"
+              @comment-delete="commentManagement.handleDelete"
+              @accept-change="commentManagement.handleAcceptChange"
+              @reject-change="commentManagement.handleRejectChange"
+              @accept-change-by-id="commentManagement.handleAcceptChangeById"
+              @reject-change-by-id="commentManagement.handleRejectChangeById"
+              @tracked-change-reply="commentManagement.handleTrackedChangeReply"
+            />
+
+            <button
+              v-if="commentLifecycle.floatingCommentButton.value && !readOnly"
+              type="button"
+              class="docx-editor-vue__add-comment-btn"
+              :style="{
+                top: commentLifecycle.floatingCommentButton.value.top + 'px',
+                left: commentLifecycle.floatingCommentButton.value.left + 'px',
+              }"
+              aria-label="Add comment"
+              title="Add comment"
+              @mousedown.prevent.stop="commentLifecycle.startAddComment"
+            >
+              <MaterialSymbol name="add_comment" :size="18" />
+            </button>
           </div>
 
-          <InlineHeaderFooterEditor
-            v-if="hfEdit"
-            :edit="hfEdit"
-            :get-view="getActiveHeaderFooterView"
-            @close="handleHfSave"
-            @remove="handleHfRemove"
+          <PageIndicator
+            v-if="scrollPageInfo.totalPages > 1"
+            :current-page="scrollPageInfo.currentPage"
+            :total-pages="scrollPageInfo.totalPages"
+            :visible="scrollPageInfo.visible"
           />
-
-          <aside
-            v-show="activeNoteStory"
-            class="docx-editor-vue__note-editor"
-            :aria-label="activeNoteStoryLabel"
-            @keydown.esc.stop.prevent="closeNoteStory"
-          >
-            <header class="docx-editor-vue__note-editor-header">
-              <span>{{ activeNoteStoryLabel }}</span>
-              <button type="button" :aria-label="t('common.closeDialog')" @click="closeNoteStory">
-                ×
-              </button>
-            </header>
-            <div ref="notePmRef" class="docx-editor-vue__note-editor-host" />
-          </aside>
-
-          <ImageSelectionOverlay
-            :image-info="selectedImage"
-            :zoom="zoom"
-            :view="activeEditorView"
-            @deselect="selectedImage = null"
-            @interact-start="imageInteracting = true"
-            @interact-end="imageInteracting = false"
-            @context-menu="handleSelectedImageContextMenu"
-          />
-
-          <HyperlinkPopup
-            :data="hyperlinkPopupData"
-            :read-only="readOnly"
-            @navigate="handleHyperlinkPopupNavigate"
-            @copy="handleHyperlinkPopupCopy"
-            @edit="handleHyperlinkPopupEdit"
-            @remove="handleHyperlinkPopupRemove"
-            @close="hyperlinkPopupData = null"
-          />
-
-          <button
-            v-if="tableInsertButton"
-            type="button"
-            class="docx-editor-vue__table-insert-btn"
-            :style="{ left: tableInsertButton.x + 'px', top: tableInsertButton.y + 'px' }"
-            :aria-label="tableInsertButton.type === 'row' ? 'Insert row' : 'Insert column'"
-            @mousedown="handleTableInsertClick"
-          >
-            +
-          </button>
-
-          <CommentMarginMarkers
-            :comments="comments"
-            :pages-container="pagesRef"
-            :zoom="zoom"
-            :page-width-px="pageWidthPx"
-            :sidebar-open="showSidebar"
-            :resolved-comment-ids="resolvedCommentIds"
-            @marker-click="() => {}"
-          />
-
-          <UnifiedSidebar
-            :is-open="showSidebar"
-            :comments="comments"
-            :tracked-changes="trackedChanges"
-            :show-resolved="true"
-            :is-adding-comment="commentLifecycle.isAddingComment.value"
-            :add-comment-y-position="commentLifecycle.addCommentYPosition.value"
-            :pages-container="pagesRef"
-            :page-width-px="pageWidthPx"
-            :zoom="zoom"
-            :active-item-id="activeSidebarItem"
-            @close="showSidebar = false"
-            @update:active-item-id="(id: string | null) => (activeSidebarItem = id)"
-            @add-comment="commentLifecycle.handleAddComment"
-            @cancel-add-comment="commentLifecycle.handleCancelAddComment"
-            @comment-reply="commentManagement.handleReply"
-            @comment-resolve="commentManagement.handleResolve"
-            @comment-unresolve="commentManagement.handleUnresolve"
-            @comment-delete="commentManagement.handleDelete"
-            @accept-change="commentManagement.handleAcceptChange"
-            @reject-change="commentManagement.handleRejectChange"
-            @accept-change-by-id="commentManagement.handleAcceptChangeById"
-            @reject-change-by-id="commentManagement.handleRejectChangeById"
-            @tracked-change-reply="commentManagement.handleTrackedChangeReply"
-          />
-
-          <button
-            v-if="commentLifecycle.floatingCommentButton.value && !readOnly"
-            type="button"
-            class="docx-editor-vue__add-comment-btn"
-            :style="{
-              top: commentLifecycle.floatingCommentButton.value.top + 'px',
-              left: commentLifecycle.floatingCommentButton.value.left + 'px',
-            }"
-            aria-label="Add comment"
-            title="Add comment"
-            @mousedown.prevent.stop="commentLifecycle.startAddComment"
-          >
-            <MaterialSymbol name="add_comment" :size="18" />
-          </button>
         </div>
-
-        <OutlineToggleButton
-          v-if="!showOutline"
-          :left-offset="12"
-          @toggle="outlineSidebar.handleToggleOutline"
-        />
-
-        <PageIndicator
-          v-if="scrollPageInfo.totalPages > 1"
-          :current-page="scrollPageInfo.currentPage"
-          :total-pages="scrollPageInfo.totalPages"
-          :visible="scrollPageInfo.visible"
-        />
-
-        <DocumentOutline
-          :is-open="showOutline"
-          :headings="outlineHeadings"
-          :get-scroll-container="() => pagesRef"
-          @close="showOutline = false"
-          @navigate="outlineSidebar.handleOutlineNavigate"
-        />
       </div>
+      <template v-if="panelOverlay === 'outline'">
+        <div
+          class="docx-editor-vue__panel-scrim"
+          data-testid="folio-panel-scrim"
+          aria-hidden="true"
+          @mousedown.prevent="panelOverlay = 'none'"
+        />
+        <DocumentOutline
+          :headings="outlineHeadings"
+          :get-scroll-container="() => editorScrollRef"
+          :doc-size="editorView?.state.doc.content.size ?? 0"
+          :active-id="activeHeadingId"
+          surface="drawer"
+          @close="panelOverlay = 'none'"
+          @navigate="handleOutlineNavigate"
+        />
+      </template>
+      <div
+        v-if="commentsSurface === 'drawer'"
+        class="docx-editor-vue__panel-scrim"
+        data-testid="folio-panel-scrim"
+        aria-hidden="true"
+        @mousedown.prevent="dismissComments"
+      />
     </div>
 
     <DocxEditorOverlays
@@ -452,6 +497,12 @@ import {
 } from "@stll/folio-core/layout-bridge/engine/measuring";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import {
+  computePanelLayout,
+  PANEL_METRICS,
+  type PanelOverlay,
+} from "@stll/folio-core/panel-layout";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document, SectionProperties, Style } from "@stll/folio-core/types/document";
 import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
@@ -481,7 +532,6 @@ import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import ImageSelectionOverlay from "./ImageSelectionOverlay.vue";
 import HeaderFooterSelectionOverlay from "./HeaderFooterSelectionOverlay.vue";
 import InlineHeaderFooterEditor from "./InlineHeaderFooterEditor.vue";
-import OutlineToggleButton from "./OutlineToggleButton.vue";
 import PageIndicator from "./PageIndicator.vue";
 import TemplateDirectivesOverlay from "./TemplateDirectivesOverlay.vue";
 import type { TrackedChangeEntry } from "./sidebar/sidebarUtils";
@@ -528,7 +578,8 @@ const props = withDefaults(defineProps<DocxEditorProps>(), {
   author: "User",
   mode: "editing",
   initialZoom: 1,
-  showOutline: false,
+  showOutline: true,
+  autoOpenReviewSidebar: true,
   className: "",
   showTableInsert: true,
   showHeaderFooterEditing: true,
@@ -640,6 +691,8 @@ const hiddenHfPmRef = ref<HTMLElement | null>(null);
 const pagesRef = ref<HTMLElement | null>(null);
 const pagesViewportRef = ref<HTMLElement | null>(null);
 const editorScrollRef = ref<HTMLElement | null>(null);
+const panelsRowRef = ref<HTMLElement | null>(null);
+const availablePanelWidth = ref(Number.POSITIVE_INFINITY);
 
 // Passage highlight — ephemeral view state pushed in via the ref API
 // (`highlightPassage` / `clearPassageHighlight`) and painted by
@@ -664,6 +717,7 @@ const showTableProperties = ref(false);
 const showWatermark = ref(false);
 const showOutline = ref(props.showOutline);
 const showSidebar = ref(false);
+const panelOverlay = ref<PanelOverlay>("none");
 const activeSidebarItem = ref<string | null>(null);
 const activeHeaderFooterRId = ref<string | null>(null);
 const notePmRef = ref<HTMLElement | null>(null);
@@ -909,6 +963,7 @@ const {
   editorView,
   pagesRef,
   pagesViewportRef,
+  scrollRootRef: editorScrollRef,
   selectedImage,
   imageInteracting,
   hyperlinkPopupData,
@@ -1093,6 +1148,121 @@ const toolbarDynamicProps = computed(() => {
 const pageWidthPx = computed(
   () => twipsToPixels(currentSectionProps.value?.pageWidth ?? 12240) * zoom.value,
 );
+
+const widestPageWidthPx = computed(() => {
+  const pages = layout.value?.pages;
+  if (!pages || pages.length === 0) return pageWidthPx.value;
+  let widest = 0;
+  for (const page of pages) widest = Math.max(widest, page.size.w);
+  return widest * zoom.value;
+});
+const panelLayout = computed(() =>
+  computePanelLayout({
+    availableWidth: availablePanelWidth.value,
+    pageWidth: widestPageWidthPx.value,
+    outline: showOutline.value && outlineHeadings.value.length > 1 ? "available" : "absent",
+    comments: showSidebar.value ? "open" : "closed",
+  }),
+);
+const commentsSurface = computed(() => {
+  if (panelLayout.value.comments === "column") return "column";
+  if (panelLayout.value.comments === "drawer" && panelOverlay.value === "comments") return "drawer";
+  return null;
+});
+const openCommentThreadCount = computed(
+  () => comments.value.filter((comment) => !comment.done && comment.parentId == null).length,
+);
+const editorAreaStyle = computed(() => ({
+  minWidth:
+    widestPageWidthPx.value +
+    2 * PANEL_METRICS.pageMargin +
+    panelLayout.value.commentsGutter +
+    "px",
+}));
+const pagesViewportStyle = computed(() => ({
+  paddingLeft: PANEL_METRICS.pageMargin + "px",
+  paddingRight: PANEL_METRICS.pageMargin + panelLayout.value.commentsGutter + "px",
+}));
+const rulerStyle = computed(() => ({
+  paddingLeft: PANEL_METRICS.pageMargin + "px",
+  paddingRight: PANEL_METRICS.pageMargin + panelLayout.value.commentsGutter + "px",
+  minWidth:
+    widestPageWidthPx.value +
+    2 * PANEL_METRICS.pageMargin +
+    panelLayout.value.commentsGutter +
+    "px",
+}));
+const activeHeadingId = ref<string | null>(null);
+let activeHeadingLockUntil = 0;
+
+function updateActiveHeading(): void {
+  const container = editorScrollRef.value;
+  if (!container || Date.now() < activeHeadingLockUntil) return;
+  const anchors = findBodyPmAnchors(container);
+  const top = container.getBoundingClientRect().top;
+  const threshold = container.scrollTop + container.clientHeight / 2;
+  const offsets = anchors
+    .map((el) => ({
+      pm: Number(el.dataset["pmStart"]),
+      top: el.getBoundingClientRect().top - top + container.scrollTop,
+    }))
+    .filter(({ pm }) => Number.isFinite(pm))
+    .sort((a, b) => a.pm - b.pm);
+  let next: string | null = null;
+  for (const heading of outlineHeadings.value) {
+    const candidate = offsets.find(({ pm }) => pm >= heading.pmPos);
+    if (candidate && candidate.top <= threshold) next = String(heading.pmPos);
+  }
+  activeHeadingId.value = next;
+}
+
+function dismissComments(): void {
+  if (commentLifecycle.isAddingComment.value) commentLifecycle.handleCancelAddComment();
+  showSidebar.value = false;
+  activeSidebarItem.value = null;
+  panelOverlay.value = "none";
+}
+
+function toggleComments(): void {
+  if (commentsSurface.value === "drawer") {
+    dismissComments();
+    return;
+  }
+  if (commentsSurface.value === "column") {
+    showSidebar.value = false;
+    activeSidebarItem.value = null;
+    return;
+  }
+  showSidebar.value = true;
+  if (
+    computePanelLayout({
+      availableWidth: availablePanelWidth.value,
+      pageWidth: widestPageWidthPx.value,
+      outline: showOutline.value && outlineHeadings.value.length > 1 ? "available" : "absent",
+      comments: "open",
+    }).comments === "drawer"
+  )
+    panelOverlay.value = "comments";
+}
+
+function toggleOutlineOverlay(): void {
+  panelOverlay.value = panelOverlay.value === "outline" ? "none" : "outline";
+}
+
+function handleOutlineNavigate(pmPos: number): void {
+  activeHeadingId.value = String(pmPos);
+  activeHeadingLockUntil = Date.now() + 900;
+  outlineSidebar.handleOutlineNavigate(pmPos);
+}
+
+watch(panelLayout, (next) => {
+  if (panelOverlay.value === "outline" && next.outline !== "rail" && next.outline !== "drawer")
+    panelOverlay.value = "none";
+  if (panelOverlay.value === "comments" && next.comments !== "drawer") panelOverlay.value = "none";
+});
+watch([() => commentLifecycle.isAddingComment.value, panelLayout], ([adding, next]) => {
+  if (adding && next.comments === "drawer") panelOverlay.value = "comments";
+});
 
 const resolvedCommentIds = computed(() => {
   const ids = new Set<number>();
@@ -1369,6 +1539,7 @@ function handleEditorScroll(event: Event): void {
   if (target instanceof HTMLElement) {
     props.onScrollTopChange?.(target.scrollTop);
   }
+  updateActiveHeading();
 }
 
 function applyInitialScrollTop(): void {
@@ -1415,24 +1586,32 @@ watch(isReady, (ready) => {
     props.onCompatibilityChange?.(inspectDocxCompatibility(doc));
   }
 
-  // Auto-open the review sidebar once per load when the document arrives with
-  // comments or tracked changes (default on). `sidebarAutoOpenedRef` is reset by
-  // useDocumentLifecycle on every swap. Mirrors React's autoOpenReviewSidebar.
-  if (
-    props.autoOpenReviewSidebar !== false &&
-    !sidebarAutoOpenedRef.value &&
-    (comments.value.length > 0 || trackedChanges.value.length > 0)
-  ) {
-    sidebarAutoOpenedRef.value = true;
-    showSidebar.value = true;
-  }
-
   applyInitialScrollTop();
   emit("ready");
 });
 
+// Seeding the comments and marking the document ready can settle in either
+// order. Watch both so an open thread auto-opens exactly once per load.
+watch([isReady, openCommentThreadCount], ([ready, count]) => {
+  if (!ready || count === 0 || props.autoOpenReviewSidebar === false || sidebarAutoOpenedRef.value)
+    return;
+  sidebarAutoOpenedRef.value = true;
+  showSidebar.value = true;
+});
+
 // Recompute chrome state on every selection / doc / layout event (Requirement 3).
 onMounted(() => {
+  const measurePanelWidth = () => {
+    const row = panelsRowRef.value;
+    const scroll = editorScrollRef.value;
+    if (!row) return;
+    const scrollbar = scroll ? scroll.offsetWidth - scroll.clientWidth : 0;
+    availablePanelWidth.value = Math.max(0, row.clientWidth - scrollbar);
+  };
+  const panelObserver = new ResizeObserver(measurePanelWidth);
+  if (panelsRowRef.value) panelObserver.observe(panelsRowRef.value);
+  if (editorScrollRef.value) panelObserver.observe(editorScrollRef.value);
+  measurePanelWidth();
   const offSelection = editor.on("selectionChange", () => {
     stateTick.value++;
     commentLifecycle.updateFloatingButton();
@@ -1443,6 +1622,7 @@ onMounted(() => {
   });
   const offLayout = editor.on("layoutComplete", () => {
     stateTick.value++;
+    requestAnimationFrame(updateActiveHeading);
   });
   // Global mousemove/mouseup listeners for table column/row/edge resize.
   const cleanupTableResize = tableResize.install();
@@ -1451,6 +1631,7 @@ onMounted(() => {
   // React; the font-name array is ignored, matching React's DocxEditor.
   const offFontsLoaded = onFontsLoaded(() => props.onFontsLoaded?.());
   onBeforeUnmount(() => {
+    panelObserver.disconnect();
     offSelection();
     offDoc();
     offLayout();
@@ -1519,20 +1700,36 @@ defineExpose(exposed);
   opacity: 0;
   pointer-events: none;
 }
+.docx-editor-vue__panels-row {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+.docx-editor-vue__panel-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  background: rgb(0 0 0 / 24%);
+}
 .docx-editor-vue__editor-scroll {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
+  position: relative;
 }
 .docx-editor-vue__editor-area {
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  width: 100%;
 }
 .docx-editor-vue__pages-viewport {
   position: relative;
   width: 100%;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1661,8 +1858,7 @@ defineExpose(exposed);
   justify-content: center;
   flex-shrink: 0;
   padding-block: 4px;
-  padding-inline: 20px;
-  background-color: hsl(var(--muted));
+  background-color: var(--doc-canvas-surface, var(--doc-page, white));
 }
 /* Vertical ruler — far-left gutter of the editor area; deliberately does not
    track page centering (word-processor gutter convention). */

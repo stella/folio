@@ -4,7 +4,6 @@ import type {
   BlockContent,
   DocumentBody,
   HeaderFooter,
-  Paragraph,
   SectionProperties,
   Table,
 } from "../types/document";
@@ -29,16 +28,10 @@ export const normalizeHeaderFooterReferences = ({
   headers,
   footers,
 }: NormalizeHeaderFooterReferencesInput): NormalizeHeaderFooterReferencesResult => {
-  const seenSectionProperties = new Set<SectionProperties>();
   let removedDanglingHeaderReferences = 0;
   let removedDanglingFooterReferences = 0;
 
-  const normalizeSectionProperties = (sectionProperties: SectionProperties | undefined): void => {
-    if (!sectionProperties || seenSectionProperties.has(sectionProperties)) {
-      return;
-    }
-    seenSectionProperties.add(sectionProperties);
-
+  const normalizeSectionProperties = (sectionProperties: SectionProperties): void => {
     const headerResult = removeDanglingReferences(sectionProperties.headerReferences, headers);
     if (headerResult.changed) {
       removedDanglingHeaderReferences += headerResult.removed;
@@ -60,49 +53,99 @@ export const normalizeHeaderFooterReferences = ({
     }
   };
 
-  const normalizeParagraph = (paragraph: Paragraph): void => {
-    normalizeSectionProperties(paragraph.sectionProperties);
-  };
-
-  const normalizeTable = (table: Table): void => {
-    for (const row of table.rows) {
-      for (const cell of row.cells) {
-        normalizeBlocks(cell.content);
-      }
-    }
-  };
-
-  const normalizeBlock = (block: BlockContent): void => {
-    if (block.type === "paragraph") {
-      normalizeParagraph(block);
-      return;
-    }
-    if (block.type === "table") {
-      normalizeTable(block);
-      return;
-    }
-    if (block.type !== "blockSdt" && block.type !== "blockCustomXml") {
-      return;
-    }
-    normalizeBlocks(block.content);
-  };
-
-  const normalizeBlocks = (blocks: BlockContent[]): void => {
-    for (const block of blocks) {
-      normalizeBlock(block);
-    }
-  };
-
-  normalizeBlocks(documentBody.content);
-  normalizeSectionProperties(documentBody.finalSectionProperties);
-  for (const section of documentBody.sections ?? []) {
-    normalizeSectionProperties(section.properties);
-  }
+  forEachSectionProperties(documentBody, normalizeSectionProperties);
 
   return {
     removedDanglingHeaderReferences,
     removedDanglingFooterReferences,
   };
+};
+
+/**
+ * Visit every distinct section record once, in section order: the paragraph
+ * carriers in document order, then the body's final `w:sectPr`.
+ */
+const forEachSectionProperties = (
+  documentBody: DocumentBody,
+  visit: (sectionProperties: SectionProperties) => void,
+): void => {
+  const seen = new Set<SectionProperties>();
+  const visitOnce = (sectionProperties: SectionProperties | undefined): void => {
+    if (!sectionProperties || seen.has(sectionProperties)) {
+      return;
+    }
+    seen.add(sectionProperties);
+    visit(sectionProperties);
+  };
+
+  const visitBlocks = (blocks: BlockContent[]): void => {
+    for (const block of blocks) {
+      if (block.type === "paragraph") {
+        visitOnce(block.sectionProperties);
+      } else if (block.type === "table") {
+        visitTable(block);
+      } else if (block.type === "blockSdt" || block.type === "blockCustomXml") {
+        visitBlocks(block.content);
+      }
+    }
+  };
+  const visitTable = (table: Table): void => {
+    for (const row of table.rows) {
+      for (const cell of row.cells) {
+        visitBlocks(cell.content);
+      }
+    }
+  };
+
+  visitBlocks(documentBody.content);
+  visitOnce(documentBody.finalSectionProperties);
+  for (const section of documentBody.sections ?? []) {
+    visitOnce(section.properties);
+  }
+};
+
+type AssignHeaderFooterRolesInput = {
+  documentBody: DocumentBody;
+  headers?: Map<string, HeaderFooter>;
+  footers?: Map<string, HeaderFooter>;
+};
+
+/**
+ * Give each header and footer part the role a section reference states for
+ * it.
+ *
+ * A part says nothing about which pages it serves: the `w:type` of the
+ * `w:headerReference` / `w:footerReference` naming it does (ECMA-376 Part 1
+ * §17.10.5, `ST_HdrFtr`). The parts are read from the document's
+ * relationships, before any section is consulted, so each is read as a
+ * default part and takes its role here, from the first section that
+ * references it. A part no section references stays default; one several
+ * sections reference in different roles keeps the first, and a reader that
+ * needs every role reads the section references themselves.
+ */
+export const assignHeaderFooterRoles = ({
+  documentBody,
+  headers,
+  footers,
+}: AssignHeaderFooterRolesInput): void => {
+  const assigned = new Set<HeaderFooter>();
+  const assign = (
+    references: readonly { type: HeaderFooter["hdrFtrType"]; rId: string }[] | undefined,
+    parts: Map<string, HeaderFooter> | undefined,
+  ): void => {
+    for (const { type, rId } of references ?? []) {
+      const part = parts?.get(rId);
+      if (!part || assigned.has(part)) {
+        continue;
+      }
+      assigned.add(part);
+      part.hdrFtrType = type;
+    }
+  };
+  forEachSectionProperties(documentBody, (sectionProperties) => {
+    assign(sectionProperties.headerReferences, headers);
+    assign(sectionProperties.footerReferences, footers);
+  });
 };
 
 type HeaderFooterReference = {

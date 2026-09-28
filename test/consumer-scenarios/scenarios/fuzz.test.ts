@@ -8,12 +8,16 @@
  * (support/fuzz.ts); seeds pinned before it existed replay on the legacy one.
  * A flow that reproduces a known finding runs in known-issues.test.ts
  * instead, as an expected failure.
+ * FOLIO_SCENARIO_RELATIONS / FOLIO_SCENARIO_RELATIONS_DEPTH pick the
+ * metamorphic relations checked after every step (support/metamorphic.ts);
+ * the run ends by printing which ran.
  */
 
-import { test } from "node:test";
+import { after, test } from "node:test";
 
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
 import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
+import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
 
 const integer = (value: string | undefined, fallback: number): number => {
   const parsed = Number(value);
@@ -32,7 +36,8 @@ const flowTest = (kind: FlowKind, run: number, seed: number) => {
       flow.seed === seed &&
       flow.steps === STEPS &&
       (flow.kind ?? "random") === kind &&
-      (flow.generation ?? "targeted") === "targeted",
+      (flow.generation ?? "targeted") === "targeted" &&
+      (flow.relation === undefined || ENABLED_RELATIONS.has(flow.relation)),
   );
   const runs =
     kind === "random"
@@ -55,6 +60,10 @@ const flowTest = (kind: FlowKind, run: number, seed: number) => {
   );
 };
 
+after(() => {
+  console.log(relationSummary());
+});
+
 for (let run = 0; run < RUNS; run += 1) flowTest("random", run, SEED + run);
 for (let run = 0; run < COLLISION_RUNS; run += 1) flowTest("collisions", run, SEED + run);
 
@@ -75,6 +84,17 @@ for (const [seed, steps] of [
 // alone after a save (1185); kept as fixed seeds on the generation that
 // found them.
 for (const seed of [1088, 1185]) {
-  test(`collision flow with seed ${seed} (10 steps) does what it asked and saves it`, () =>
-    runFlow(seed, 10, "collisions", { generation: "legacy" }));
+  const known = KNOWN_FAILING_FLOWS.find(
+    (flow) =>
+      flow.seed === seed &&
+      flow.steps === 10 &&
+      flow.kind === "collisions" &&
+      flow.generation === "legacy" &&
+      (flow.relation === undefined || ENABLED_RELATIONS.has(flow.relation)),
+  );
+  test(
+    `collision flow with seed ${seed} (10 steps) does what it asked and saves it`,
+    known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
+    () => runFlow(seed, 10, "collisions", { generation: "legacy" }),
+  );
 }
