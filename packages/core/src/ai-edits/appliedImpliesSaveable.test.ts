@@ -119,15 +119,19 @@ const paragraphAt = (blocks: readonly Projected[], index: number) => {
 /**
  * Removing a paragraph removes its mark, and with it any break it holds.
  *
- * The one exception is the story's last paragraph as a tracked change: its
- * mark cannot be marked deleted (there is no paragraph after it to join), so
- * accepting leaves it empty.
+ * A tracked deletion of the story's last paragraph retires the preceding
+ * paragraph's mark and joins into the emptied last paragraph. If no paragraph
+ * precedes it, accepting leaves that last paragraph empty.
  */
 const deleted =
   (text: string): Transform =>
   (blocks, mode) => {
     const index = indexOfText(blocks, text);
-    if (mode !== "direct" && index === blocks.length - 1) {
+    if (
+      mode !== "direct" &&
+      index === blocks.length - 1 &&
+      blocks.at(index - 1)?.kind !== "paragraph"
+    ) {
       return blocks.map((block, at) => (at === index ? { ...block, text: "" } : block));
     }
     return blocks.filter((_, at) => at !== index);
