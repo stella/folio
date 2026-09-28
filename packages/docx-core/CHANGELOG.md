@@ -1,5 +1,17 @@
 # @stll/docx-core
 
+## 0.28.1
+
+### Patch Changes
+
+- [#1120](https://github.com/stella/folio/pull/1120) [`225a53a`](https://github.com/stella/folio/commit/225a53ab432f1a5bbbb2ab31087b3683403c9c09) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose block-level custom XML content to readers, editing, and comparison while preserving its wrapper on save.
+
+- [#1125](https://github.com/stella/folio/pull/1125) [`b24b60a`](https://github.com/stella/folio/commit/b24b60aa87d65f7d29808df6df210c349dc24e8b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `compileMarkdownToContent` no longer drops a table, code block, or blockquote nested inside a list item; it keeps the content as a following block and reports the flattening on the new `MarkdownContent.warnings` field.
+
+- [#1137](https://github.com/stella/folio/pull/1137) [`1caa4ac`](https://github.com/stella/folio/commit/1caa4ac16c99b60bc223d59902eaef025ec7d635) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Expose content-bearing OOXML carriers to readers or report unsupported content explicitly during comparison.
+
+- [#1173](https://github.com/stella/folio/pull/1173) [`4170c13`](https://github.com/stella/folio/commit/4170c13372d5d4a7f541f1ef727ad1b88f7585ef) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve legacy form field data through document and editor round trips.
+
 ## 0.28.0
 
 ### Minor Changes
