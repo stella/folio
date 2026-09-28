@@ -1,23 +1,12 @@
 name: VS Code extension
 
-# Builds, tests, and packages plugins/vscode into a .vsix on pull requests that
-# can change it: the extension itself, and the CLI, engine, and editor it bundles.
+# Builds, tests, and packages the extension for merge groups.
 
 on:
   pull_request:
-    paths:
-      - plugins/vscode/**
-      - packages/cli/**
-      - packages/agents/src/**
-      - packages/core/src/**
-      - packages/docx-core/src/**
-      - packages/editor-web/**
-      - packages/react/src/**
-      - scripts/sync-plugin-cli-version*.ts
-      - parity/fixtures/layout-kitchen-sink.docx
-      - bun.lock
-      - .github/workflows/vscode-extension.yml
-  workflow_dispatch:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+    types: [checks_requested]
 
 concurrency:
   group: vscode-extension-${{ github.ref }}
@@ -28,6 +17,7 @@ permissions:
 
 jobs:
   package:
+    if: github.event_name == 'merge_group'
     name: Build and package the .vsix
     runs-on: ubuntu-latest
     timeout-minutes: 30

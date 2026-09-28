@@ -1,22 +1,16 @@
 name: Consumer Oracle Mutation Check
 
 on:
-  schedule:
-    - cron: "17 6 * * *"
-  workflow_dispatch:
+  merge_group:
+    types: [checks_requested]
   pull_request:
-    paths:
-      - "test/consumer-scenarios/**"
-      - "test/property-testing.ts"
-      - "scripts/oracle-mutation-check.ts"
-      - "scripts/consumer-scenarios.ts"
-      - "scripts/packaged-consumer-lib.ts"
-      - ".github/workflows/oracle-mutation-check.yml"
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions: {}
 
 jobs:
   oracle-mutations:
+    if: github.event_name == 'merge_group'
     name: Packed consumer mutation check
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -37,7 +31,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      # PRs probe three common failure classes; scheduled and dispatched runs
-      # probe the full set. All modes pack once, then repack only folio-core.
+      # Full-depth runs probe the complete set. The suite packs once, then
+      # repacks only folio-core.
       - name: Mutate packed core and require failing consumer scenarios
-        run: bun scripts/oracle-mutation-check.ts ${{ github.event_name == 'pull_request' && '--pr' || '' }}
+        run: bun scripts/oracle-mutation-check.ts

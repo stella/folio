@@ -26,7 +26,7 @@ permissions:
 jobs:
   changeset:
     name: Changeset present for published package src changes
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -88,29 +88,29 @@ jobs:
   # One scheduling wave decides what the run checks; every other job waits on
   # it and skips when its area is not selected. The planner is the shared
   # stella/.github ci-plan action; `.github/ci-plan.json` holds folio's areas.
-  # A pull request plans by changed path, unless labelled `ci:full`. Pushes,
-  # merge groups and manual runs select every area, and so does a change to a
-  # workflow, the plan, the lockfile or the root manifests. Drafts plan
-  # nothing; marking one ready for review runs it.
+  # Pull requests plan by changed path. Merge groups select every area.
+  # Suite depth depends only on the event; the shared planner supplies path
+  # scopes and trust. Drafts plan nothing until marked ready for review.
   ci-plan:
     if: github.event_name != 'pull_request' || github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-      # The live `ci:full` label, and the merge-group trust check.
+      # The shared planner reads PR metadata and checks merge-group trust.
       pull-requests: read
       actions: read
     outputs:
-      suite_depth: ${{ steps.plan.outputs.suite-depth }}
-      code_required: ${{ fromJSON(steps.plan.outputs.areas).code }}
-      typecheck_budget_required: ${{ fromJSON(steps.plan.outputs.areas).typecheck_budget }}
-      container_contract_required: ${{ fromJSON(steps.plan.outputs.areas).container_contract }}
-      docx_kernel_required: ${{ fromJSON(steps.plan.outputs.areas).docx_kernel }}
-      interactions_required: ${{ fromJSON(steps.plan.outputs.areas).interactions }}
-      differential_required: ${{ fromJSON(steps.plan.outputs.areas).differential }}
-      consumer_scenarios_required: ${{ fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
-      packaged_consumer_required: ${{ fromJSON(steps.plan.outputs.areas).packaged_consumer }}
+      suite_depth: ${{ github.event_name == 'merge_group' && 'full' || 'fast' }}
+      trusted: ${{ steps.plan.outputs.trusted }}
+      code_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).code }}
+      typecheck_budget_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).typecheck_budget }}
+      container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
+      docx_kernel_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
+      interactions_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).interactions }}
+      differential_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).differential }}
+      consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
+      packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
     steps:
       - name: Plan changed-path scopes
         id: plan
@@ -141,7 +141,7 @@ jobs:
         run: bun run format:check
 
   ci:
-    name: Lint, typecheck, test, build
+    name: Lint, typecheck, focused tests
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-latest
@@ -208,28 +208,34 @@ jobs:
       # Only the `shaping` profile: fetching every source would pull a 43 MB
       # specification archive and a git clone for two small UCD text files.
       - name: Fetch Unicode shaping sources
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run specifications:fetch --profile shaping
 
       - name: Unicode joining tables up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:joining-types:check
 
       - name: Strict value encodings up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:strict-value-encodings:check
 
       # The names ECMA-376 Part 1 spells by writing direction, derived from the
       # cited rename list and the committed graph.
       - name: Strict names up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:strict-names:check
 
       # The tolerance stays in the one reader that consults the table, so a
       # parser cannot grow a second, unmeasured copy of the same equivalence.
       - name: No reader hand-lists a Strict spelling
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:strict-name-tolerance
 
       # The theme-colour vocabularies. Two enumerations spell one colour
       # differently, so a hand-written union drifts silently and the token it
       # omits is dropped at parse time.
       - name: Theme colour enumerations up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:theme-colors:check
 
       # The model enumerations that stand for an OOXML simple type. A member
@@ -237,18 +243,21 @@ jobs:
       # never reaches the writer, so the lists are generated rather than kept
       # by hand.
       - name: OOXML enumerations up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:ooxml-enumerations:check
 
       # The dispatched containers' declared-child lists, which make each
       # handler map total: a schema refresh that adds a child fails here
       # rather than letting the child be dropped without a decision.
       - name: Container child lists up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:container-children:check
 
       # `ST_Border`, which `BorderSpec.style` is typed with. A schema refresh
       # that adds a member fails here rather than widening the union silently,
       # and the CSS rendering table is total over it at compile time.
       - name: Border styles up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:border-styles:check
 
       # `ST_PresetLineDashVal`, which `ShapeOutline.dash` is typed with. Each
@@ -256,6 +265,7 @@ jobs:
       # refresh that adds a member fails here rather than leaving one table
       # short of the vocabulary it resolves.
       - name: Preset line dashes up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:preset-line-dash:check
 
       # Both halves of the reserved-value contract. The registry is total over
@@ -263,9 +273,11 @@ jobs:
       # carry a reserved value is undecided) and the reader side (no new bare
       # comparison against a sentinel).
       - name: Reserved values covered over the schema graph
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:reserved-value-coverage
 
       - name: Bare reserved-value comparisons only shrink
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:reserved-values
 
       # The corpus gate itself is nightly: it downloads a hundred megabytes and
@@ -283,9 +295,11 @@ jobs:
       # derivation (it still matches the graph) and the reader side (no new
       # attribute identity resolved through a prefix).
       - name: Identity attributes up to date
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:identity-attributes:check
 
       - name: Prefix-resolved identity reads only shrink
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:identity-attributes
 
       - name: Adapter parity contract (React <-> Vue props/ref)
@@ -302,28 +316,24 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Test
+      - name: Focused unit tests
+        run: bun test scripts/ci-plan.test.ts scripts/ci-result.test.mjs packages/docx-core/src/ops/__tests__/contract.test.ts packages/docx-core/src/projection.test.ts
+
+      - name: Full test suite
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run test
 
       - name: Build
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run build
 
-      # The gate builds each package twice and compares the emitted JavaScript
-      # and declarations, which costs roughly two extra minutes across all six.
-      # A pull request pays it for the two that carry nearly all the declaration
-      # surface; every other event (push to main, the merge queue, a manual
-      # run) covers the adapters too. Either step leaves a freshly built dist
-      # behind for the steps below.
-      - name: Reproducible package builds
-        if: github.event_name == 'pull_request'
-        run: bun scripts/check-build-reproducibility.ts --packages core,docx-core
-
       - name: Reproducible package builds (all published packages)
-        if: github.event_name != 'pull_request'
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:build-reproducibility
 
       - name: API surface report
         id: api-surface-report
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: |
           bun scripts/api-surface-budget.ts --self-test
           bun run api:check
@@ -341,12 +351,13 @@ jobs:
           if-no-files-found: error
 
       - name: Validate dist
+        if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run validate-dist
 
   typecheck-budget:
     name: Typecheck cost budget
     needs: ci-plan
-    if: needs.ci-plan.outputs.typecheck_budget_required == 'true'
+    if: needs.ci-plan.outputs.typecheck_budget_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -368,7 +379,7 @@ jobs:
   container-contract:
     name: Container contract and survival census
     needs: ci-plan
-    if: needs.ci-plan.outputs.container_contract_required == 'true'
+    if: needs.ci-plan.outputs.container_contract_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -401,7 +412,7 @@ jobs:
   docx-kernel:
     name: DOCX kernel (Rust and WebAssembly)
     needs: ci-plan
-    if: needs.ci-plan.outputs.docx_kernel_required == 'true'
+    if: needs.ci-plan.outputs.docx_kernel_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     env:
       CARGO_NET_RETRY: "5"
@@ -499,7 +510,7 @@ jobs:
   interactions:
     name: Interaction e2e (playground)
     needs: ci-plan
-    if: needs.ci-plan.outputs.interactions_required == 'true'
+    if: needs.ci-plan.outputs.interactions_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -543,7 +554,7 @@ jobs:
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)
     needs: ci-plan
-    if: needs.ci-plan.outputs.differential_required == 'true'
+    if: needs.ci-plan.outputs.differential_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -581,7 +592,7 @@ jobs:
   consumer-scenarios:
     name: Consumer scenarios (tarballs)
     needs: ci-plan
-    if: needs.ci-plan.outputs.consumer_scenarios_required == 'true'
+    if: needs.ci-plan.outputs.consumer_scenarios_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -621,7 +632,7 @@ jobs:
   packaged-consumer:
     name: Packaged-consumer build (tarballs)
     needs: ci-plan
-    if: needs.ci-plan.outputs.packaged_consumer_required == 'true'
+    if: needs.ci-plan.outputs.packaged_consumer_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -657,3 +668,89 @@ jobs:
       # shipped runtime catalog (IntlError: MISSING_MESSAGE).
       - name: Runtime smoke over packed tarballs
         run: bun run test:packaged-consumer-smoke
+
+  # The ruleset requires this single check. It evaluates every planned job,
+  # including jobs GitHub skipped or cancelled before their first step.
+  ci-result:
+    name: ci-result
+    if: always()
+    needs:
+      - ci-plan
+      - changeset
+      - docs-format
+      - ci
+      - typecheck-budget
+      - container-contract
+      - docx-kernel
+      - interactions
+      - differential
+      - consumer-scenarios
+      - packaged-consumer
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - name: Evaluate CI outcome
+        env:
+          EVENT: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          NEEDS: ${{ toJSON(needs) }}
+          PLAN: ${{ toJSON(needs.ci-plan.outputs) }}
+          PLAN_RESULT: ${{ needs.ci-plan.result }}
+          JOB_SCOPES: >-
+            {"changeset":{"event":"pull_request"},
+            "docs-format":{"area":"code_required","value":"false"},
+            "ci":{"area":"code_required"},
+            "typecheck-budget":{"area":"typecheck_budget_required","depth":"full"},
+            "container-contract":{"area":"container_contract_required","depth":"full"},
+            "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
+            "interactions":{"area":"interactions_required","depth":"full"},
+            "differential":{"area":"differential_required","depth":"full"},
+            "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},
+            "packaged-consumer":{"area":"packaged_consumer_required","depth":"full"}}
+        run: |
+          if [[ "$PLAN_RESULT" == "skipped" ]]; then
+            if [[ "$EVENT" != "pull_request" ]]; then
+              echo "::error::CI plan skipped outside a pull request."
+              exit 1
+            fi
+            # Read the current state: a push can race with ready_for_review.
+            draft=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .draft)
+            if [[ "$draft" != "true" ]]; then
+              echo "::error::CI plan skipped but the pull request is ready."
+              exit 1
+            fi
+            exit 0
+          fi
+          if [[ "$PLAN_RESULT" != "success" ]]; then
+            echo "::error::CI plan did not succeed ($PLAN_RESULT)."
+            exit 1
+          fi
+          depth=$(jq -r .suite_depth <<< "$PLAN")
+          trusted=$(jq -r .trusted <<< "$PLAN")
+          expected_depth=fast
+          if [[ "$EVENT" == "merge_group" ]]; then
+            expected_depth=full
+          fi
+          if [[ "$trusted" != "true" || "$depth" != "$expected_depth" ]]; then
+            echo "::error::CI plan is untrusted or selects the wrong suite depth for $EVENT."
+            exit 1
+          fi
+          violations=$(jq -r --arg event "$EVENT" --arg depth "$depth" --argjson plan "$PLAN" --argjson scopes "$JOB_SCOPES" '
+            . as $needs | [$scopes | to_entries[] | .key as $job | .value as $scope
+              | $needs[$job].result as $result
+              | ($scope.event == $event or
+                 ($scope.area != null and $plan[$scope.area] == ($scope.value // "true") and
+                  ($scope.depth == null or $scope.depth == $depth))) as $selected
+              | if $selected and $result != "success" then "\($job) (selected, \($result // "missing"))"
+                elif ($selected | not) and $result != "success" and $result != "skipped" then
+                  "\($job) (unexpected \($result // "missing"))"
+                else empty end] | join(", ")' <<< "$NEEDS")
+          if [[ -n "$violations" ]]; then
+            echo "::error::CI checks did not succeed: $violations"
+            exit 1
+          fi
+          echo "CI checks succeeded."

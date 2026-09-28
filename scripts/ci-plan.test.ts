@@ -11,20 +11,28 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
 // The changeset gate runs beside the plan: it has its own pull-request-only
 // condition and nothing to scope.
-const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset"]);
-const AREA_OUTPUT = /^\$\{\{ fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
-const GATE = /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'$/u;
+const UNPLANNED_JOBS = new Set([PLAN_JOB, "changeset", "ci-result"]);
+const AREA_OUTPUT =
+  /^\$\{\{ github\.event_name == 'merge_group' \|\| fromJSON\(steps\.plan\.outputs\.areas\)\.([a-z][a-z0-9_]*) \}\}$/u;
+const GATE =
+  /^needs\.ci-plan\.outputs\.([a-z][a-z0-9_]*_required) == '(true|false)'(?: && needs\.ci-plan\.outputs\.suite_depth == 'full')?$/u;
 
 type Job = { needs?: unknown; if?: unknown; outputs?: Record<string, unknown> };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const readJobs = (): Record<string, Job> => {
+const readWorkflow = (file: string) => {
   const workflow: unknown = Bun.YAML.parse(
-    readFileSync(path.join(REPO_ROOT, ".github/workflows/ci.yml"), "utf8"),
+    readFileSync(path.join(REPO_ROOT, ".github/workflows", file), "utf8"),
   );
-  if (!isRecord(workflow) || !isRecord(workflow["jobs"])) throw new Error("ci.yml has no jobs");
+  if (!isRecord(workflow)) throw new Error(`${file} is not a mapping`);
+  return workflow;
+};
+
+const readJobs = (): Record<string, Job> => {
+  const workflow = readWorkflow("ci.yml");
+  if (!isRecord(workflow["jobs"])) throw new Error("ci.yml has no jobs");
   const jobs: Record<string, Job> = {};
   for (const [id, job] of Object.entries(workflow["jobs"])) {
     if (!isRecord(job)) throw new Error(`ci.yml job ${id} is not a mapping`);
@@ -34,18 +42,48 @@ const readJobs = (): Record<string, Job> => {
   return jobs;
 };
 
-const readAreas = (): string[] => {
+const readPolicy = () => {
   const policy: unknown = JSON.parse(
     readFileSync(path.join(REPO_ROOT, ".github/ci-plan.json"), "utf8"),
   );
   if (!isRecord(policy) || !isRecord(policy["areas"])) throw new Error("ci-plan.json has no areas");
-  return Object.keys(policy["areas"]);
+  return { areas: Object.keys(policy["areas"]), fullDepth: policy["fullDepth"] };
 };
 
 describe("CI plan", () => {
   const jobs = readJobs();
-  const areas = readAreas();
+  const { areas, fullDepth } = readPolicy();
   const planOutputs = jobs[PLAN_JOB]?.outputs ?? {};
+
+  // The shared planner's full-depth output can depend on labels or non-PR
+  // events. Neither may promote this workflow's depth or expand its path scopes.
+  test("only merge groups select full depth and bypass path scopes", () => {
+    expect(planOutputs["suite_depth"]).toBe(
+      "${{ github.event_name == 'merge_group' && 'full' || 'fast' }}",
+    );
+    expect(fullDepth).toBe("scoped");
+  });
+
+  for (const file of ["benchmarks.yml", "oracle-mutation-check.yml", "vscode-extension.yml"]) {
+    test(`${file} runs heavy jobs only for merge groups`, () => {
+      const workflow = readWorkflow(file);
+      const triggers = workflow["on"];
+      const heavyJobs = workflow["jobs"];
+      if (!isRecord(triggers) || !isRecord(heavyJobs)) {
+        throw new Error(`${file} is missing triggers or jobs`);
+      }
+      expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
+      expect(triggers["pull_request"]).toEqual({
+        types: ["opened", "synchronize", "reopened", "ready_for_review"],
+      });
+      expect(triggers["merge_group"]).toEqual({ types: ["checks_requested"] });
+      expect(Object.keys(heavyJobs).length).toBeGreaterThan(0);
+      for (const job of Object.values(heavyJobs)) {
+        if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
+        expect(job["if"]).toBe("github.event_name == 'merge_group'");
+      }
+    });
+  }
 
   test("every area is a plan output named after it, and every area output is an area", () => {
     const mapped = Object.entries(planOutputs).flatMap(([output, value]) => {
