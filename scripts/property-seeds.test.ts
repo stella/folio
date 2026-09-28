@@ -160,7 +160,9 @@ describe("failure reporting", () => {
       pinned: false,
     });
     expect(report["seed"]).toBeNumber();
-    const markerLine = logged.find((entry) => entry.startsWith("FOLIO_FAILURE "));
+    const markerLines = logged.filter((entry) => entry.startsWith("FOLIO_FAILURE "));
+    expect(markerLines).toHaveLength(1);
+    const markerLine = markerLines[0];
     const marker = JSON.parse((markerLine as string).slice("FOLIO_FAILURE ".length)) as Record<
       string,
       unknown

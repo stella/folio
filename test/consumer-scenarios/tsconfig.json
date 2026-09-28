@@ -5,6 +5,7 @@
     "lib": ["ES2023"],
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    "resolveJsonModule": true,
     "types": ["node"],
     "strict": true,
     "noEmit": true,

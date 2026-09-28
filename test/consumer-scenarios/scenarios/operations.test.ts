@@ -48,7 +48,7 @@ const matrixSeed = (fallback: number): number => {
   return seed;
 };
 
-const testPattern = (title: string): string => `^${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`;
+const testPattern = (title: string): string => `^${title.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`;
 
 describe("applyDocumentOperations", () => {
   for (const name of FIXTURE_NAMES) {
