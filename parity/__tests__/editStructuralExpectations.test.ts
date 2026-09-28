@@ -9,10 +9,14 @@ import { runEditOperationScript } from "../fixtures/run-edit-operation-script";
 
 const FIXTURES_DIR = path.join(import.meta.dir, "../fixtures");
 const expectationFiles = [...new Glob("*.expectation.json").scanSync({ cwd: FIXTURES_DIR })].sort();
+const pinnedScripts = EDIT_OPERATION_SCRIPTS.filter(({ expectation }) => expectation === "pinned");
 
 describe("saved edit structural expectations", () => {
   test("every reviewed expectation matches the saved operation result", async () => {
-    expect(expectationFiles.length).toBeGreaterThan(0);
+    expect(pinnedScripts.length).toBeGreaterThan(0);
+    expect(expectationFiles).toEqual(
+      pinnedScripts.map(({ id }) => `${id}.expectation.json`).toSorted(),
+    );
     const exercised = new Set<string>();
     for (const file of expectationFiles) {
       const fixture = await Bun.file(path.join(FIXTURES_DIR, file)).json();
@@ -27,6 +31,6 @@ describe("saved edit structural expectations", () => {
       const saved = await runEditOperationScript(seed, script);
       expect(await readEditStructure(saved)).toEqual(fixture.structure);
     }
-    expect(exercised.size).toBe(expectationFiles.length);
+    expect([...exercised].toSorted()).toEqual(pinnedScripts.map(({ id }) => id).toSorted());
   });
 });

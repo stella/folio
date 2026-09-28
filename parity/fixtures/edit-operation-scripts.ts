@@ -7,6 +7,7 @@ export const EDIT_OPERATION_SCRIPTS = [
     action: "deleteBlock",
     anchorText: "Target final paragraph Omega 47.",
     mode: "direct",
+    expectation: "pinned",
   },
   {
     id: "accept-deleted-paragraph-boundary",
@@ -15,6 +16,7 @@ export const EDIT_OPERATION_SCRIPTS = [
     anchorText: "Paragraph before boundary Cedar 19.",
     mode: "tracked-changes",
     resolution: "acceptAll",
+    expectation: "pinned",
   },
   {
     id: "insert-continuing-numbering",
@@ -23,6 +25,7 @@ export const EDIT_OPERATION_SCRIPTS = [
     anchorText: "Primary numbered item 23.",
     text: "Inserted primary item 29.",
     mode: "direct",
+    expectation: "pinned",
   },
   {
     id: "delete-row-next-to-merge",
@@ -30,6 +33,7 @@ export const EDIT_OPERATION_SCRIPTS = [
     action: "deleteTableRow",
     anchorText: "Beta 52",
     mode: "direct",
+    expectation: "pinned",
   },
   {
     id: "reply-on-comment-range",
@@ -37,6 +41,7 @@ export const EDIT_OPERATION_SCRIPTS = [
     action: "replyToComment",
     anchorText: "Review span 18 begins here.",
     text: "Synthetic reply 27.",
+    expectation: "pending",
   },
   {
     id: "edit-next-to-notes-fields-sections",
@@ -46,6 +51,7 @@ export const EDIT_OPERATION_SCRIPTS = [
     find: "61",
     replace: "62",
     mode: "direct",
+    expectation: "pinned",
   },
 ] as const;
 
