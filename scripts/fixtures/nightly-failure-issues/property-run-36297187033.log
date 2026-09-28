@@ -1,9 +1,9 @@
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:00.0210218Z @stll/folio-core test:property: (pass) headless reviewer invariants (full corpus) > selective save engages (attemptSelectiveSave returns non-null) and matches a full repack [283.29ms]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:00.7089903Z @stll/folio-core test:property: (pass) headless reviewer invariants (full corpus) > insertAfterBlock never leaves a block whose text contains a line break [687.99ms]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2356339Z @stll/folio-core test:property: (pass) headless reviewer invariants (full corpus) > revision ids stay unique across a multi-paragraph tracked insert followed by another apply [526.62ms]
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2357966Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2357966Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2358625Z @stll/folio-core test:property: ::endgroup::
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2358997Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2358997Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:01.2359526Z @stll/folio-core test:property: ::group::src/ai-edits/minimalDirectReplacement.property.test.ts:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:03.4931688Z @stll/folio-core test:property: (pass) a direct replacement changes only the characters it changes > over generated paragraphs and edits [2253.94ms]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6009385Z @stll/folio-core test:property: 2457 | 	return defaultReportMessageInternal(out, stringifySecond);
@@ -17,7 +17,7 @@ Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6016904Z
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6017906Z @stll/folio-core test:property: { seed: -449189980, path: "350:1:1:1:1:1:11:10:10:10:11:1:1:1:1:1:1:1:1:5:6:6:4:5:5", endOnFailure: true }
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6020021Z @stll/folio-core test:property: Counterexample: [[{"kind":"field","result":"3.6"},{"kind":"tab"}],{"whole":false,"sliceStart":0,"sliceLength":0.5,"mutations":[{"at":0,"remove":0,"insert":" and"}]},"tracked-changes","word"]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6021532Z @stll/folio-core test:property: Shrunk 24 time(s)
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6022089Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6022089Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6023070Z @stll/folio-core test:property: Encountered failures were:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6030977Z @stll/folio-core test:property: - [[{__proto__:null,"kind":"field","result":"12"},{__proto__:null,"kind":"control","runs":[{"text":"deliver ","properties":{__proto__:null,"bold":true,"italic":false,"size":null,"rsid":true,"highlight":false}},{"text":"the ","properties":{__proto__:null,"bold":false,"italic":true,"size":null,"rsid":true,"highlight":true}}]},{"kind":"field","result":"Clause 4"},{__proto__:null,"kind":"field","result":"3.6"},{__proto__:null,"kind":"run","text":"Seller deliver ","properties":{__proto__:null,"bold":false,"italic":false,"size":20,"rsid":true,"highlight":true}},{"kind":"bookmark","text"…
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6040595Z @stll/folio-core test:property: - [[{__proto__:null,"kind":"field","result":"3.6"},{__proto__:null,"kind":"run","text":"Seller deliver ","properties":{__proto__:null,"bold":false,"italic":false,"size":20,"rsid":true,"highlight":true}},{"kind":"bookmark","text":"the Seller goods "},{"kind":"tab"}],{"whole":true,"sliceStart":8.571595078412952e-139,"sliceLength":0.9999999999999986,"mutations":[{"at":9.71032220579996e-221,"remove":0,"insert":"‸"},{__proto__:null,"at":9.333178910003086e-231,"remove":1,"insert":" and"}]},"suggested","word"]
@@ -46,7 +46,7 @@ Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6106519Z
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6107692Z @stll/folio-core test:property: - [[{"kind":"field","result":"3.6"},{"kind":"tab"}],{"whole":false,"sliceStart":0,"sliceLength":0.5,"mutations":[{"at":0,"remove":0,"insert":" and"}]},"tracked-changes","word"]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6109293Z @stll/folio-core test:property:       at buildError (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:2462:16)
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6110509Z @stll/folio-core test:property:       at asyncThrowIfFailed (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:2474:8)
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6111282Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6111282Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6111625Z @stll/folio-core test:property: 624 |           expect(
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6112031Z @stll/folio-core test:property: 625 |             editedCharacters
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6112553Z @stll/folio-core test:property: 626 |               .filter((entry) => hasMark(entry.marks, "insertion"))
@@ -55,16 +55,16 @@ Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6113582Z
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6114083Z @stll/folio-core test:property: 629 |           ).toBe(changes.map((change) => change.text).join(""));
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6114560Z @stll/folio-core test:property:                   ^
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6114955Z @stll/folio-core test:property: error: expect(received).toBe(expected)
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6115334Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6115334Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6115623Z @stll/folio-core test:property: Expected: " and3.6"
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6115954Z @stll/folio-core test:property: Received: " and"
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6116253Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6116253Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6116925Z @stll/folio-core test:property:       at <anonymous> (/home/runner/work/folio/folio/packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts:629:13)
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6118035Z @stll/folio-core test:property:       at async run (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:1217:30)
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6119302Z @stll/folio-core test:property:       at async asyncRunIt (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:2516:30)
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6120034Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6120034Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6122318Z @stll/folio-core test:property: ::error file=packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts,line=629,col=13,title=error: expect(received).toBe(expected)::Expected: " and3.6"%0AReceived: " and"%0A%0A      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts:629:13)%0A      at async run (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js:1217:30)%0A      at async asyncRunIt (/home/runner/.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/…
-Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6124568Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6124568Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6158284Z @stll/folio-core test:property: ::error file=../../../.bun/install/cache/links/fast-check@4.9.0-ea1f5f9b504d3fee/node_modules/fast-check/lib/fast-check.js,line=2462,col=16,title=error: Property failed after 351 tests::Counterexample: [[{"kind":"field","result":"3.6"},{"kind":"tab"}],{"whole":false,"sliceStart":0,"sliceLength":0.5,"mutations":[{"at":0,"remove":0,"insert":" and"}]},"tracked-changes","word"]%0AShrunk 24 time(s)%0A%0AEncountered failures were:%0A- [[{__proto__:null,"kind":"field","result":"12"},{__proto__:null,"kind":"control","runs":[{"text":"deliver ","properties":{__proto__:null,"bold":true,"ital…
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6204355Z @stll/folio-core test:property: (fail) a tracked or suggested replacement redlines only the characters it changes > over generated paragraphs and edits, accepted and rejected [2108.14ms]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.6206425Z @stll/folio-core test:property: (pass) direct replacement examples > appending one character to a mixed paragraph changes nothing else [17.27ms]
@@ -82,17 +82,17 @@ Property tests (nightly budget)	Property test suite	2026-09-27T05:35:05.7458579Z
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.1927720Z @stll/folio-core test:property: (pass) the underline mark reader honours the `none` token > a mark exists for exactly the styles that paint something [4.67ms]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.1934542Z @stll/folio-core test:property: (pass) the underline mark reader honours the `none` token > typing in a paragraph whose defaults cancel the underline stays un-underlined [0.66ms]
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2465762Z @stll/folio-core test:property: (pass) the underline mark reader honours the `none` token > the stored-mark path agrees with document conversion over the whole enum [53.07ms]
-Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2467116Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2467116Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2467646Z @stll/folio-core test:property: ::endgroup::
-Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2468440Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2468440Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2469348Z @stll/folio-core test:property: ::group::src/prosemirror/extensions/marks/hyperlinkAnchorTarget.property.test.ts:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2729911Z @stll/folio-core test:property: (pass) hyperlink anchors (property) > keep allow-listed targets and clamp every other target to a safe context [25.03ms]
-Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2730707Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2730707Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2731412Z @stll/folio-core test:property: ::endgroup::
-Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2731730Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2731730Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2732021Z @stll/folio-core test:property: 1 tests failed:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2732953Z @stll/folio-core test:property: (fail) a tracked or suggested replacement redlines only the characters it changes > over generated paragraphs and edits, accepted and rejected [2108.14ms]
-Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2733717Z @stll/folio-core test:property: 
+Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2733717Z @stll/folio-core test:property:
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2733998Z @stll/folio-core test:property:  1132 pass
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2734301Z @stll/folio-core test:property:  1 fail
 Property tests (nightly budget)	Property test suite	2026-09-27T05:37:32.2734623Z @stll/folio-core test:property:  2679258 expect() calls
