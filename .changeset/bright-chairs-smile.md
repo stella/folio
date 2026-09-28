@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep tracked changes in stable document order after save and reopen.
+Keep split tracked changes together across comment and hyperlink boundaries.

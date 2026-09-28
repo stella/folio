@@ -649,6 +649,44 @@ describe("body revision enumeration", () => {
   });
 
   test.each(["accept", "reject"] as const)(
+    "%s resolves all physical fragments of an insertion across a hyperlink",
+    async (mode) => {
+      const document = createEmptyDocument();
+      document.package.document.content = [
+        {
+          type: "paragraph",
+          paraId: "A0000200",
+          content: [
+            {
+              type: "insertion",
+              info: revisionInfo(321),
+              content: [
+                { type: "run", content: [{ type: "text", text: "Before " }] },
+                {
+                  type: "hyperlink",
+                  href: "https://example.test/terms",
+                  children: [{ type: "run", content: [{ type: "text", text: "linked" }] }],
+                },
+                { type: "run", content: [{ type: "text", text: " after" }] },
+              ],
+            },
+          ],
+        },
+      ];
+      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+      expect(reviewer.getChanges().map(({ text }) => text)).toEqual(["Before linked after"]);
+      const selected = reviewer.getChanges().at(0);
+      if (!selected) throw new Error("the split insertion is missing");
+      expect(
+        mode === "accept" ? reviewer.acceptChange(selected) : reviewer.rejectChange(selected),
+      ).toBe(true);
+      expect(reviewer.getChanges()).toEqual([]);
+      const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+      expect(reopened.getChanges()).toEqual([]);
+    },
+  );
+
+  test.each(["accept", "reject"] as const)(
     "%s resolves each enumerated carrier without consuming the others",
     (mode) => {
       for (const selected of expectedChanges) {

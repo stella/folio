@@ -151,6 +151,7 @@ import {
 } from "./pending-suggestions";
 import {
   getCommentAnchorsFromDoc,
+  getTrackedChangeGroupIdsFromDoc,
   getTrackedChangeStatsFromDoc,
   getTrackedChangesFromDoc,
   getTrackedChangesFromSnapshot,
@@ -2370,6 +2371,7 @@ export class FolioDocxReviewer {
 
   private acceptChangeInternal(target: FolioReviewChange | number): boolean {
     const id = revisionIdOf(target);
+    const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
     // A suggested change first becomes an ordinary tracked change: a
     // suggested paragraph insert is flagged on its node, which accepting the
     // revision marks alone leaves behind, and a save drops a flagged node.
@@ -2377,7 +2379,10 @@ export class FolioDocxReviewer {
     if (suggestionId !== null) {
       this.runCommand(acceptSuggestion(suggestionId, { author: this.author }));
     }
-    const bodyChanged = this.runCommand(acceptAIEditRevision(id));
+    let bodyChanged = false;
+    for (const memberId of ids) {
+      bodyChanged = this.runCommand(acceptAIEditRevision(memberId)) || bodyChanged;
+    }
     const sectionChanged = this.resolveFinalSectionProperties("accept", id) > 0;
     return bodyChanged || sectionChanged;
   }
@@ -2392,12 +2397,16 @@ export class FolioDocxReviewer {
 
   private rejectChangeInternal(target: FolioReviewChange | number): boolean {
     const id = revisionIdOf(target);
+    const ids = getTrackedChangeGroupIdsFromDoc(this.state.doc, id);
     // A suggestion is rejected whole, node flags included.
     const suggestionId = suggestionIdOfRevision(this.state, id);
     if (suggestionId !== null && this.runCommand(rejectSuggestion(suggestionId))) {
       return true;
     }
-    const bodyChanged = this.runCommand(rejectAIEditRevision(id));
+    let bodyChanged = false;
+    for (const memberId of ids) {
+      bodyChanged = this.runCommand(rejectAIEditRevision(memberId)) || bodyChanged;
+    }
     const sectionChanged = this.resolveFinalSectionProperties("reject", id) > 0;
     return bodyChanged || sectionChanged;
   }

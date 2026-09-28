@@ -160,29 +160,53 @@ type RowRevisionScope = {
  */
 type RevisionInfo = { id: number; author: string; date: string | null };
 
+type InlineBoundary = { hyperlink: string | null; comment: number | null };
+
+type InlineChangeRange = {
+  start: number;
+  end: number;
+  firstBoundary: InlineBoundary;
+  lastBoundary: InlineBoundary;
+  contiguous: boolean;
+};
+
+type TrackedChangeGroup = { change: FolioReviewChange; ids: number[] };
+
 const belongsToRowRevision = (scope: RowRevisionScope, revision: RevisionInfo): boolean =>
   revision.id === scope.change.id ||
   (revision.author === scope.change.author && revision.date === scope.change.date);
 
 /** Shared revision interpreter; a null block map omits unrelated block-id projection. */
-const getTrackedChangesFromProjectedDoc = (
+const getTrackedChangeGroupsFromProjectedDoc = (
   doc: PMNode,
   blockStarts: ReadonlyMap<number, string> | null,
-): FolioReviewChange[] => {
+): TrackedChangeGroup[] => {
   const insertionType = doc.type.schema.marks["insertion"];
   const deletionType = doc.type.schema.marks["deletion"];
   const grouped = new Map<string, FolioReviewChange>();
+  const inlineRanges = new Map<string, InlineChangeRange>();
+  const transparentInlineEnds = new Map<number, number>();
+  const transparentGap = (start: number, end: number): boolean => {
+    let pos = start;
+    while (pos < end) {
+      const next = transparentInlineEnds.get(pos);
+      if (next === undefined) return false;
+      pos = next;
+    }
+    return pos === end;
+  };
   const structuralChangeCellPositions = new Map<string, Set<number>>();
   // Innermost enclosing marked row first: a table nested in a marked row can
   // carry a marked row of its own.
   const rowRevisionScopes: RowRevisionScope[] = [];
   const derivedFormattingRepresentationPositions = new Set<number>();
   const noteReferences = collectNoteReferenceLabels(doc);
-  const blockPositions = new Map<string, number>();
-  blockStarts?.forEach((blockId, pos) => blockPositions.set(blockId, pos));
   let currentBlockId: string | null = null;
 
   doc.descendants((node, pos) => {
+    if (node.type.name === "commentReference") {
+      transparentInlineEnds.set(pos, pos + node.nodeSize);
+    }
     while (pos >= (rowRevisionScopes.at(-1)?.end ?? Number.POSITIVE_INFINITY)) {
       rowRevisionScopes.pop();
     }
@@ -415,6 +439,27 @@ const getTrackedChangesFromProjectedDoc = (
           continue;
         }
         const key = `${currentBlockId ?? ""}:${layerKind}:${revision.id}`;
+        const hyperlink = node.marks.find((candidate) => candidate.type.name === "hyperlink");
+        const comment = node.marks.find((candidate) => candidate.type.name === "comment");
+        const commentId = comment?.attrs["commentId"];
+        const boundary: InlineBoundary = {
+          hyperlink: hyperlink ? String(hyperlink.attrs["href"] ?? "") : null,
+          comment: typeof commentId === "number" ? commentId : null,
+        };
+        const range = inlineRanges.get(key);
+        if (range) {
+          range.contiguous = range.contiguous && transparentGap(range.end, pos);
+          range.end = pos + node.nodeSize;
+          range.lastBoundary = boundary;
+        } else {
+          inlineRanges.set(key, {
+            start: pos,
+            end: pos + node.nodeSize,
+            firstBoundary: boundary,
+            lastBoundary: boundary,
+            contiguous: true,
+          });
+        }
         const existing = grouped.get(key);
         if (existing) {
           existing.text += text;
@@ -426,23 +471,47 @@ const getTrackedChangesFromProjectedDoc = (
     return undefined;
   });
 
-  return [...grouped.values()].sort((changeA, changeB) => {
-    const positionA = blockPositions.get(changeA.blockId ?? "") ?? Number.POSITIVE_INFINITY;
-    const positionB = blockPositions.get(changeB.blockId ?? "") ?? Number.POSITIVE_INFINITY;
-    if (positionA !== positionB) return positionA < positionB ? -1 : 1;
-    if (changeA.id !== changeB.id) return changeA.id - changeB.id;
-    if (changeA.type !== changeB.type) return changeA.type < changeB.type ? -1 : 1;
-    if (changeA.author !== changeB.author) return changeA.author < changeB.author ? -1 : 1;
-    if (changeA.date !== changeB.date) {
-      return (changeA.date ?? "") < (changeB.date ?? "") ? -1 : 1;
+  // OOXML assigns distinct physical ids when an inline revision crosses a
+  // hyperlink or comment boundary. Keep its contiguous fragments actionable
+  // as one logical change, without joining separate adjacent revisions.
+  const groups: TrackedChangeGroup[] = [];
+  let previousKey: string | null = null;
+  for (const [key, change] of grouped) {
+    const range = inlineRanges.get(key);
+    const previous = groups.at(-1);
+    const previousRange = previousKey === null ? undefined : inlineRanges.get(previousKey);
+    if (
+      previous &&
+      range?.contiguous &&
+      previousRange?.contiguous &&
+      previousRange.end <= range.start &&
+      transparentGap(previousRange.end, range.start) &&
+      (previousRange.lastBoundary.hyperlink !== range.firstBoundary.hyperlink ||
+        previousRange.lastBoundary.comment !== range.firstBoundary.comment ||
+        previousRange.end !== range.start) &&
+      (change.type === "insertion" || change.type === "deletion") &&
+      previous.change.type === change.type &&
+      previous.change.author === change.author &&
+      previous.change.date === change.date &&
+      previous.change.blockId === change.blockId
+    ) {
+      previous.change.text += change.text;
+      previous.ids.push(change.id);
+      previousRange.end = range.end;
+      previousRange.lastBoundary = range.lastBoundary;
+      continue;
     }
-    if (changeA.blockId !== changeB.blockId) {
-      return (changeA.blockId ?? "") < (changeB.blockId ?? "") ? -1 : 1;
-    }
-    if (changeA.text !== changeB.text) return changeA.text < changeB.text ? -1 : 1;
-    return 0;
-  });
+    groups.push({ change: { ...change }, ids: [change.id] });
+    previousKey = key;
+  }
+  return groups;
 };
+
+const getTrackedChangesFromProjectedDoc = (
+  doc: PMNode,
+  blockStarts: ReadonlyMap<number, string> | null,
+): FolioReviewChange[] =>
+  getTrackedChangeGroupsFromProjectedDoc(doc, blockStarts).map(({ change }) => change);
 
 /** Read revisions from the exact immutable document that produced a snapshot. */
 export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): FolioReviewChange[] =>
@@ -454,8 +523,7 @@ export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): Fo
 /**
  * The tracked changes present in the body, read from inline marks and
  * structural node attributes. Runs of one inline revision within a block fold
- * into a single entry. Results follow document block order; revisions within
- * one block sort by id so changes in that block remain stable across saves.
+ * into a single entry.
  *
  * A tracked row insertion or deletion marks the row AND every run in its
  * cells, the way Word writes it. Both halves are one change, so the run marks
@@ -464,16 +532,22 @@ export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): Fo
 export const getTrackedChangesFromDoc = (doc: PMNode): FolioReviewChange[] =>
   getTrackedChangesFromProjectedDoc(doc, blockStartIdsFromDoc(doc));
 
+/** Physical revision ids behind an inline change split by markup. */
+export const getTrackedChangeGroupIdsFromDoc = (doc: PMNode, id: number): number[] =>
+  getTrackedChangeGroupsFromProjectedDoc(doc, blockStartIdsFromDoc(doc)).find(({ ids }) =>
+    ids.includes(id),
+  )?.ids ?? [id];
+
 /** @internal Read revision statistics without paying for an unrelated block projection. */
 export const getTrackedChangeStatsFromDoc = (
   doc: PMNode,
 ): { highestId: number; present: boolean } => {
   let highestId = 0;
-  const changes = getTrackedChangesFromProjectedDoc(doc, null);
-  for (const change of changes) {
-    highestId = Math.max(highestId, change.id);
+  const groups = getTrackedChangeGroupsFromProjectedDoc(doc, null);
+  for (const { ids } of groups) {
+    for (const id of ids) highestId = Math.max(highestId, id);
   }
-  return { highestId, present: changes.length > 0 };
+  return { highestId, present: groups.length > 0 };
 };
 
 /**
