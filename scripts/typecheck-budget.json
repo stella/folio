@@ -5,14 +5,14 @@
   },
   "core": {
     "types": 172121,
-    "instantiations": 172945
+    "instantiations": 182046
   },
   "react": {
     "types": 189057,
     "instantiations": 366919
   },
   "agents": {
-    "types": 124770,
+    "types": 131161,
     "instantiations": 140121
   },
   "cli": {
