@@ -186,8 +186,9 @@ const results = reopened.loadPendingSuggestions(await loadRecords());
 ```
 
 Each result is `restaged` or `stale` with a reason. A stale record leaves the
-document untouched; the host should keep it for review. `acceptAll()` resolves
-ordinary tracked changes and leaves suggestions pending. Use
+document untouched; the host should keep it for review. The host must scope
+stored records to its document identity and authorized owner before loading them.
+`acceptAll()` resolves ordinary tracked changes and leaves suggestions pending. Use
 `acceptSuggestion(suggestionId)` to commit one explicitly.
 
 ## License
