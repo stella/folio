@@ -650,7 +650,9 @@ function rotateIntoFinalParagraph(
   // The paragraph that now ends the container carries the replaced one's
   // section, and no mark. Rejecting the pasted breaks closes every pasted
   // paragraph into it, the one whose break stays, so the change recorded here
-  // returns it to the replaced paragraph's formatting.
+  // returns it to the replaced paragraph's formatting. It is the paragraph's
+  // only one: a change the pasted paragraph brought records formatting the
+  // document never had here, and a paragraph holds one w:pPrChange.
   const $joined = tr.doc.resolve(replacedPos);
   const container = $joined.parent;
   let finalPos = replacedPos;
@@ -664,7 +666,6 @@ function rotateIntoFinalParagraph(
       pPrMark: null,
       ...(sectionProperties == null ? {} : { _sectionProperties: sectionProperties }),
       _propertyChanges: [
-        ...(expectParagraphAttrs(final)._propertyChanges ?? []),
         {
           type: "paragraphPropertyChange",
           info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },

@@ -26,7 +26,7 @@ import { FolioDocxReviewer } from "../ai-edits/headless";
 import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
 
-type Fixture = { body: string; footnotes?: string };
+type Fixture = { body: string; footnotes?: string; header?: string };
 const reference = JSON.parse(
   readFileSync(
     path.join(import.meta.dir, "__fixtures__", "revision-resolution-reference.json"),
@@ -48,11 +48,11 @@ const SEPARATORS =
   '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>' +
   '<w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>';
 
-const packageOf = async ({ body, footnotes }: Fixture): Promise<Uint8Array> => {
+const packageOf = async ({ body, footnotes, header }: Fixture): Promise<Uint8Array> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${MAIN}.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="${MAIN}.styles+xml"/><Override PartName="/word/settings.xml" ContentType="${MAIN}.settings+xml"/><Override PartName="/word/footnotes.xml" ContentType="${MAIN}.footnotes+xml"/></Types>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="${MAIN}.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="${MAIN}.styles+xml"/><Override PartName="/word/settings.xml" ContentType="${MAIN}.settings+xml"/><Override PartName="/word/footnotes.xml" ContentType="${MAIN}.footnotes+xml"/>${header === undefined ? "" : `<Override PartName="/word/header1.xml" ContentType="${MAIN}.header+xml"/>`}</Types>`,
   );
   zip.file(
     "_rels/.rels",
@@ -60,9 +60,16 @@ const packageOf = async ({ body, footnotes }: Fixture): Promise<Uint8Array> => {
   );
   zip.file(
     "word/_rels/document.xml.rels",
-    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/styles" Target="styles.xml"/><Relationship Id="rId3" Type="${RELATIONSHIPS}/settings" Target="settings.xml"/><Relationship Id="rId4" Type="${RELATIONSHIPS}/footnotes" Target="footnotes.xml"/></Relationships>`,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${RELATIONSHIPS}/styles" Target="styles.xml"/><Relationship Id="rId3" Type="${RELATIONSHIPS}/settings" Target="settings.xml"/><Relationship Id="rId4" Type="${RELATIONSHIPS}/footnotes" Target="footnotes.xml"/>${header === undefined ? "" : `<Relationship Id="rId5" Type="${RELATIONSHIPS}/header" Target="header1.xml"/>`}</Relationships>`,
   );
-  const withSection = body.includes("<w:sectPr") ? body : `${body}${reference.package.sectPr}`;
+  const sectioned = body.includes("<w:sectPr") ? body : `${body}${reference.package.sectPr}`;
+  const withSection =
+    header === undefined
+      ? sectioned
+      : sectioned.replace(
+          "<w:sectPr>",
+          '<w:sectPr><w:headerReference w:type="default" r:id="rId5"/>',
+        );
   zip.file(
     "word/document.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${NAMESPACES}><w:body>${withSection}</w:body></w:document>`,
@@ -73,6 +80,12 @@ const packageOf = async ({ body, footnotes }: Fixture): Promise<Uint8Array> => {
     "word/footnotes.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:footnotes ${NAMESPACES}>${SEPARATORS}${footnotes ?? ""}</w:footnotes>`,
   );
+  if (header !== undefined) {
+    zip.file(
+      "word/header1.xml",
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:hdr ${NAMESPACES}>${header}</w:hdr>`,
+    );
+  }
   return zip.generateAsync({ type: "uint8array" });
 };
 
@@ -127,7 +140,7 @@ describe("a note goes with its reference", () => {
     const rejected = resolve(state, "reject");
     const restored = noteReferencesRestored(state.doc, rejected.doc);
     expect(restored).toEqual(["footnote:1"]);
-    expect(noteState(restoreNotes(document, restored), 1)).toEqual({
+    expect(noteState(restoreNotes(document, restored, state.doc), 1)).toEqual({
       text: "The note text.",
       deleted: false,
     });
@@ -237,4 +250,67 @@ describe("a note goes with its reference", () => {
       );
     });
   }
+});
+
+describe("a note shared with other revisions and other stories", () => {
+  const fixture = reference.fixtures["authored-delete-footnote-reference"];
+  if (!fixture?.footnotes) throw new Error("missing the deleted reference fixture");
+  // Deleted earlier, by someone else: not part of the reference's deletion.
+  const struckEarlier =
+    '<w:del w:id="3" w:author="Other" w:date="2025-06-01T00:00:00Z"><w:r><w:delText xml:space="preserve"> Struck earlier.</w:delText></w:r></w:del></w:p></w:footnote>';
+  const withEarlierDeletion: Fixture = {
+    ...fixture,
+    footnotes: fixture.footnotes.replace("</w:p></w:footnote>", struckEarlier),
+  };
+
+  /** The note's text still pending deletion. */
+  const deletedText = (document: Document, id: number): string => {
+    const note = document.package.footnotes?.find((candidate) => candidate.id === id);
+    let text = "";
+    footnoteToProseDoc(note?.content ?? []).descendants((node) => {
+      if (node.isText && node.marks.some((mark) => mark.type.name === "deletion")) {
+        text += node.text ?? "";
+      }
+      return true;
+    });
+    return text.trim();
+  };
+
+  test("the reviewer rejecting the reference's deletion keeps the note's other deletion", async () => {
+    const bytes = await packageOf(withEarlierDeletion);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+    const state = createHarnessState(await open(withEarlierDeletion), "editing");
+    expect(reviewer.rejectChange(referenceDeletion(state.doc))).toBe(true);
+    const saved = await parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
+    expect(noteState(saved, 1)?.text).toBe("The note text. Struck earlier.");
+    expect(deletedText(saved, 1)).toBe("Struck earlier.");
+  });
+
+  test("an editor rejecting the reference's deletion keeps the note's other deletion", async () => {
+    const document = await open(withEarlierDeletion);
+    const deleted = createHarnessState(document, "editing");
+    const rejected = resolve(deleted, "reject");
+    const follower = createNoteReferenceFollower();
+    follower.noteBase(deleted.doc);
+    const restored = follower.reconcile(document, rejected.doc);
+    expect(noteState(restored, 1)?.text).toBe("The note text. Struck earlier.");
+    expect(deletedText(restored, 1)).toBe("Struck earlier.");
+    const keys = noteReferencesRestored(deleted.doc, rejected.doc);
+    expect(deletedText(restoreNotes(document, keys, deleted.doc), 1)).toBe("Struck earlier.");
+  });
+
+  test("accepting the body reference's deletion keeps a note a header still refers to", async () => {
+    const withHeader: Fixture = {
+      ...fixture,
+      header:
+        '<w:p w14:paraId="7A000007"><w:r><w:t>Header</w:t></w:r><w:r><w:rPr><w:vertAlign w:val="superscript"/></w:rPr><w:footnoteReference w:id="1"/></w:r></w:p>',
+    };
+    const bytes = await packageOf(withHeader);
+    const reviewer = await FolioDocxReviewer.fromBuffer(bytes.slice().buffer);
+    const state = createHarnessState(await open(withHeader), "editing");
+    expect(reviewer.acceptChange(referenceDeletion(state.doc))).toBe(true);
+    expect(reviewer.listStories().some(({ handle }) => handle.type === "footnote")).toBe(true);
+    const saved = await parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
+    expect(noteState(saved, 1)?.text).toBe("The note text.");
+  });
 });

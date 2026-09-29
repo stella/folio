@@ -2759,20 +2759,23 @@ const withRetiredFinalParagraphs = ({
         if (retracted !== null) {
           retractedRevisionIds.push(retracted);
         }
-        const joined = tr.doc.nodeAt(position);
-        if (formattingChanges && joined) {
-          const revisionId = nextRevisionId++;
-          tr.setNodeMarkup(position, undefined, {
-            ...joined.attrs,
-            _propertyChanges: [
-              ...(Array.isArray(existing) ? existing : []),
-              {
-                type: "paragraphPropertyChange",
-                info: { id: revisionId, author, date, ...revisionExtras },
-                previousFormatting,
-              } satisfies ParagraphPropertyChangeAttrs,
-            ],
-          });
+        // The join leaves the emptied paragraph, with its own properties;
+        // the words that stay read as the added paragraph did, as the
+        // deletion applied directly leaves them, but for what this batch set
+        // on the emptied one. A pending change the emptied paragraph already
+        // had records what rejecting puts back; otherwise this change does.
+        const revisionId = nextRevisionId;
+        const carried = carryParagraphProperties({
+          tr,
+          position,
+          source: previous,
+          styleResolver,
+          numbering,
+          revision: { id: revisionId, author, date, ...revisionExtras },
+          keep: propertiesSetInBatch(following, batchRevisionIds),
+        });
+        if (carried.tracked) {
+          nextRevisionId++;
           addedRevisions.push({ operationId, revisionId });
         }
         break;

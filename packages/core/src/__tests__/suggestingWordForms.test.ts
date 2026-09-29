@@ -204,6 +204,31 @@ describe("suggesting mode writes the revisions the reference writes", () => {
     await saveHarnessState(view.state, document);
   });
 
+  test("paragraphs pasted over the last paragraph record one property change on the last", async () => {
+    const { document, state } = await open(INTRO + paragraph("2A000002", "Alpha beta gamma."));
+    const placed = placeSelection(state, "Alpha beta gamma.", "paragraph") ?? state;
+    const view = new HeadlessEditorView(placed);
+    // The copied last paragraph already carries a pending property change.
+    const pending =
+      '<w:jc w:val="right"/><w:pPrChange w:id="9" w:author="Other" w:date="2026-01-01T00:00:00Z"><w:pPr><w:jc w:val="center"/></w:pPr></w:pPrChange>';
+    const source = await open(
+      paragraph("3B000003", "Bravo text.") + paragraph("4C000004", "Charlie text.", pending),
+      "editing",
+    );
+    view.paste(source.state.doc.slice(0, source.state.doc.content.size));
+    const last = textblocks(view.state.doc).at(-1)?.node;
+    expect(last?.textContent).toBe("Charlie text.");
+    expect(last ? (expectParagraphAttrs(last)._propertyChanges ?? []) : []).toHaveLength(1);
+    expect(paragraphs(resolveAllChanges(view.state, "reject").doc)).toEqual(
+      withoutIds(paragraphs(state.doc)),
+    );
+    expect(paragraphs(resolveAllChanges(view.state, "accept").doc).slice(1)).toMatchObject([
+      { text: "Bravo text.", alignment: null },
+      { text: "Charlie text.", alignment: "right", propertyChange: false },
+    ]);
+    await saveHarnessState(view.state, document);
+  });
+
   test("undoing a table pasted over everything restores every paragraph", async () => {
     const { state } = await open(INTRO + CENTERED + TAIL);
     const view = new HeadlessEditorView(

@@ -35,6 +35,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
+import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIEditSnapshot } from "./types";
@@ -684,6 +685,68 @@ describe("a merge into blocks the batch deletes", () => {
     ];
     expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
   });
+});
+
+describe("deleting the last paragraph right after a paragraph added before it", () => {
+  // The added paragraph's break is retracted: it joins the emptied last one
+  // at once. Accepted, that reads as the deletion applied directly, which
+  // keeps the added paragraph and its properties; rejected, as nothing done.
+  const last = BLOCK_COUNT - 1;
+  type Centred = "never" | "before the edits" | "tracked, in an earlier batch";
+  const CENTRED: readonly Centred[] = ["never", "before the edits", "tracked, in an earlier batch"];
+  const centre = (session: OperationSession, mode: Mode, blockId: string) =>
+    session.apply(mode, [
+      {
+        id: "center",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: { alignment: "center" },
+      },
+    ]);
+  const start = async (centred: Centred) => {
+    const session = await freshSession();
+    if (centred === "before the edits") {
+      centre(session, "direct", session.snapshot().blocks[last]?.id ?? "");
+    }
+    return session;
+  };
+  const run = async (mode: Mode, centred: Centred) => {
+    const session = await start(centred);
+    const lastId = session.snapshot().blocks[last]?.id ?? "";
+    session.apply(mode, [
+      { id: "insert", type: "insertBeforeBlock", blockId: lastId, text: "Added." },
+    ]);
+    if (centred === "tracked, in an earlier batch") {
+      centre(session, mode, lastId);
+    }
+    const result = session.apply(mode, [{ id: "delete", type: "deleteBlock", blockId: lastId }]);
+    expect(result.skipped).toEqual([]);
+    return session;
+  };
+
+  test.each(CENTRED)(
+    "accepts to the direct result (last paragraph centred: %s)",
+    async (centred) => {
+      const direct = await run("direct", centred);
+      const tracked = await run("tracked-changes", centred);
+      tracked.acceptAll();
+      expect(tracked.presentation({ withAnchors: false })).toEqual(
+        direct.presentation({ withAnchors: false }),
+      );
+    },
+  );
+
+  test.each(CENTRED)(
+    "rejects to the document it started from (last paragraph centred: %s)",
+    async (centred) => {
+      const original = await start(centred);
+      const tracked = await run("tracked-changes", centred);
+      tracked.state = resolveAllChangesInHeadlessState(tracked.state, "reject");
+      expect(tracked.presentation({ withAnchors: false })).toEqual(
+        original.presentation({ withAnchors: false }),
+      );
+    },
+  );
 });
 
 const spanArbitrary = fc

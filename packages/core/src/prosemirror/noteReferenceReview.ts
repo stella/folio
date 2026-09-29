@@ -62,16 +62,29 @@ export const noteReferencesRestored = (before: PMNode, after: PMNode): NoteKey[]
   );
 };
 
-/** Every revision that deletes part of a note: its text and its paragraph marks. */
-export const noteDeletionRevisions = (doc: PMNode): number[] => {
+/**
+ * The revisions that deleted a note along with its reference: its text and
+ * its paragraph marks, deleted by the reference deletion's author at its
+ * date. A deletion in the note made some other time is a change of its own,
+ * which resolving the reference leaves alone.
+ */
+export const noteDeletionRevisions = (doc: PMNode, reference: Mark): number[] => {
+  const author = String(reference.attrs["author"] ?? "");
+  const date = String(reference.attrs["date"] ?? "");
   const ids = new Set<number>();
   doc.descendants((node) => {
     if (node.type.name === "paragraph") {
       const mark = expectParagraphAttrs(node).pPrMark;
-      if (mark?.kind === "del") ids.add(mark.info.id);
+      if (mark?.kind === "del" && mark.info.author === author && mark.info.date === date) {
+        ids.add(mark.info.id);
+      }
     }
     for (const mark of node.marks) {
-      if (mark.type.name === "deletion") {
+      if (
+        mark.type.name === "deletion" &&
+        String(mark.attrs["author"] ?? "") === author &&
+        String(mark.attrs["date"] ?? "") === date
+      ) {
         const id: unknown = mark.attrs["revisionId"];
         if (typeof id === "number") ids.add(id);
       }
@@ -81,13 +94,17 @@ export const noteDeletionRevisions = (doc: PMNode): number[] => {
   return [...ids];
 };
 
-const restoredNote = <TNote extends Footnote | Endnote>(note: TNote, document: Document): TNote => {
+const restoredNote = <TNote extends Footnote | Endnote>(
+  note: TNote,
+  document: Document,
+  reference: Mark,
+): TNote => {
   const { styles, theme, numbering } = document.package;
   const doc = footnoteToProseDoc(note.content, {
     ...(styles !== undefined && { styles }),
     ...(theme !== undefined && { theme }),
   });
-  const revisions = noteDeletionRevisions(doc);
+  const revisions = noteDeletionRevisions(doc, reference);
   if (revisions.length === 0) return note;
   let state = EditorState.create({
     schema,
@@ -106,20 +123,27 @@ const restoredNote = <TNote extends Footnote | Endnote>(note: TNote, document: D
 };
 
 /**
- * The document with the deletions in the named notes rejected: the notes
- * whose reference's deletion was rejected get their text back.
+ * The document with the named notes' deletions that went with their
+ * reference rejected: the notes whose reference's deletion was rejected get
+ * their text back. `before` is the body that still had those deletions.
  */
-export const restoreNotes = (document: Document, keys: Iterable<NoteKey>): Document => {
-  const wanted = new Set(keys);
+export const restoreNotes = (
+  document: Document,
+  keys: Iterable<NoteKey>,
+  before: PMNode,
+): Document => {
+  const deletions = referenceDeletions(before);
+  const wanted = new Set([...keys].filter((key) => deletions.has(key)));
   if (wanted.size === 0) return document;
   const restore = <TNote extends Footnote | Endnote>(
     kind: NoteKind,
     notes: TNote[] | undefined,
   ): TNote[] | undefined => {
     if (!notes?.some((note) => wanted.has(noteKey(kind, note.id)))) return notes;
-    return notes.map((note) =>
-      wanted.has(noteKey(kind, note.id)) ? restoredNote(note, document) : note,
-    );
+    return notes.map((note) => {
+      const reference = deletions.get(noteKey(kind, note.id));
+      return reference ? restoredNote(note, document, reference) : note;
+    });
   };
   const footnotes = restore("footnote", document.package.footnotes);
   const endnotes = restore("endnote", document.package.endnotes);
@@ -137,7 +161,7 @@ export const restoreNotes = (document: Document, keys: Iterable<NoteKey>): Docum
 };
 
 /** The deletion each pending-deleted note reference carries. */
-const referenceDeletions = (doc: PMNode): Map<NoteKey, Mark> => {
+export const referenceDeletions = (doc: PMNode): Map<NoteKey, Mark> => {
   const deletions = new Map<NoteKey, Mark>();
   doc.descendants((node) => {
     if (!node.isText) return true;
@@ -264,14 +288,16 @@ export const createNoteReferenceFollower = (): NoteReferenceFollower => {
       const was = noteReferenceStates(before);
       const now = noteReferenceStates(body);
       const deletions = referenceDeletions(body);
+      const rejected = referenceDeletions(before);
       const edits = new Map<NoteKey, NoteEdit>();
       for (const [key, state] of now) {
         const previous = was.get(key);
-        if (state === "live" && previous === "deleted") {
+        const rejectedDeletion = rejected.get(key);
+        if (state === "live" && previous === "deleted" && rejectedDeletion) {
           edits.set(
             key,
             recorded(key, (note) => {
-              const restored = restoredNote(note, document);
+              const restored = restoredNote(note, document, rejectedDeletion);
               if (restored !== note) replaced.set(key, { restored, previous: note });
               return restored;
             }),
@@ -312,11 +338,8 @@ export const createNoteReferenceFollower = (): NoteReferenceFollower => {
   };
 };
 
-/**
- * The notes anything refers to, live or pending deletion: the main story, and
- * the stories the body does not hold (headers, footers, comments, notes).
- */
-const referencedNotes = (document: Document): Set<NoteKey> => {
+/** The notes model content refers to, live or pending deletion. */
+export const noteKeysReferencedIn = (content: unknown): Set<NoteKey> => {
   const keys = new Set<NoteKey>();
   const visit = (node: unknown): void => {
     if (Array.isArray(node)) {
@@ -330,11 +353,29 @@ const referencedNotes = (document: Document): Set<NoteKey> => {
     }
     for (const value of Object.values(node)) visit(value);
   };
-  const { headers, footers, footnotes, endnotes } = document.package;
-  visit(document.package.document.content);
-  visit([...(headers?.values() ?? []), ...(footers?.values() ?? [])]);
-  visit([document.package.document.comments ?? [], footnotes ?? [], endnotes ?? []]);
+  visit(content);
   return keys;
+};
+
+/**
+ * The notes anything refers to, live or pending deletion: the main story, and
+ * the stories the body does not hold (headers, footers, comments, notes).
+ * References inside the `skipped` notes do not count: those notes are going.
+ */
+export const referencedNotes = (
+  document: Document,
+  skipped: ReadonlySet<string> = new Set(),
+): Set<NoteKey> => {
+  const { headers, footers, footnotes, endnotes } = document.package;
+  const kept = (kind: NoteKind) => (note: Footnote | Endnote) =>
+    !skipped.has(noteKey(kind, note.id));
+  return noteKeysReferencedIn([
+    document.package.document.content,
+    [...(headers?.values() ?? []), ...(footers?.values() ?? [])],
+    document.package.document.comments ?? [],
+    (footnotes ?? []).filter(kept("footnote")),
+    (endnotes ?? []).filter(kept("endnote")),
+  ]);
 };
 
 /** Ids of the comments anchored anywhere in these stories. */

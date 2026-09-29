@@ -76,7 +76,13 @@ import {
   suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
-import { noteDeletionRevisions, noteReferencesRestored } from "../prosemirror/noteReferenceReview";
+import {
+  noteDeletionRevisions,
+  noteKeysReferencedIn,
+  noteReferencesRestored,
+  referenceDeletions,
+  referencedNotes,
+} from "../prosemirror/noteReferenceReview";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
@@ -2564,20 +2570,55 @@ export class FolioDocxReviewer {
     const referencedAfter = referencedNoteKeys(after);
     // A reference back in the body (a reject after an accept) brings its note back.
     for (const key of referencedAfter) this.removedNoteStories.delete(key);
-    for (const key of referencedNoteKeys(before)) {
-      if (referencedAfter.has(key)) continue;
+    const unreferenced = new Set(
+      [...referencedNoteKeys(before)].filter((key) => !referencedAfter.has(key)),
+    );
+    // A note another story still refers to stays.
+    const referencedElsewhere =
+      unreferenced.size > 0 ? this.noteKeysReferencedOutsideBody(unreferenced) : new Set<string>();
+    for (const key of unreferenced) {
+      if (referencedElsewhere.has(key)) continue;
       const handle = noteStoryHandleOf(key);
       if (handle) this.removedNoteStories.set(noteStoryKey(handle), handle);
     }
+    const rejectedDeletions = referenceDeletions(before);
     for (const key of noteReferencesRestored(before, after)) {
       const handle = noteStoryHandleOf(key);
       const state = handle ? this.getEditableStoryState(handle) : null;
-      const revisions = state ? noteDeletionRevisions(state.doc) : [];
+      const reference = rejectedDeletions.get(key);
+      // Only what went with the reference comes back, not the note's own deletions.
+      const revisions = state && reference ? noteDeletionRevisions(state.doc, reference) : [];
       if (handle && revisions.length > 0) {
         this.runStoryCommand(rejectAIEditRevision(revisions), handle);
       }
     }
     return result;
+  }
+
+  /**
+   * The notes a story other than the body refers to (a header, a footer, a
+   * comment, another note), leaving out references inside the `skipped` notes.
+   */
+  private noteKeysReferencedOutsideBody(skipped: ReadonlySet<string>): Set<string> {
+    const keys = new Set<string>(
+      noteKeysReferencedIn(this.baseDocument.package.document.comments ?? []),
+    );
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      let source: { content: BlockContent[] } | undefined;
+      if (handle.type === "footnote" || handle.type === "endnote") {
+        if (skipped.has(noteStoryKey(handle))) continue;
+        source = this.getNoteStory(handle);
+      } else {
+        source = this.getHeaderFooterStory(handle);
+      }
+      const state = this.secondaryStoryStates.get(secondaryStoryKey(handle))?.state;
+      const found = state
+        ? referencedNoteKeys(state.doc)
+        : noteKeysReferencedIn(source?.content ?? []);
+      for (const key of found) keys.add(key);
+    }
+    return keys;
   }
 
   private resolveEveryStoryOnce(mode: "accept" | "reject"): number {
@@ -2762,11 +2803,11 @@ export class FolioDocxReviewer {
     }
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
     if (snapshot.removedNoteStories.length > 0) {
-      // A note whose reference some other edit (an undo) put back is kept.
-      const referenced = referencedNoteKeys(snapshot.mainState.doc);
-      const removed = new Set(
-        snapshot.removedNoteStories.map(noteStoryKey).filter((key) => !referenced.has(key)),
-      );
+      // A note whose reference some other edit (an undo) put back, or that
+      // another story still refers to, is kept.
+      const candidates = new Set(snapshot.removedNoteStories.map(noteStoryKey));
+      const referenced: ReadonlySet<string> = referencedNotes(document, candidates);
+      const removed = new Set([...candidates].filter((key) => !referenced.has(key)));
       const { footnotes, endnotes } = document.package;
       if (footnotes) {
         document.package.footnotes = footnotes.filter(
