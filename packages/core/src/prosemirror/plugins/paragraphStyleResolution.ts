@@ -19,21 +19,33 @@
 import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import { isHistoryTransaction } from "prosemirror-history";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { TableMap } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 
 import type { NumberingMap } from "../../docx/numberingParser";
+import { resolveTableLook } from "../../docx/tableLook";
 import type { StyleEngine } from "../../style-engine";
 import type { ParagraphFormatting } from "../../types/document";
 import { tableOfContentsStyleLevel } from "../../utils/tableOfContentsStyle";
-import { expectParagraphAttrs } from "../attrs";
+import {
+  expectParagraphAttrs,
+  expectTableAttrs,
+  expectTableCellAttrs,
+  expectTableRowAttrs,
+} from "../attrs";
 import { setAutospacingBaseValue } from "../autospacingBase";
 import { directionToAuthoredBidi } from "../paragraphDirection";
 import type { ParagraphAttrs } from "../schema/nodes";
 import {
   type ParagraphCascadeResolver,
   paragraphStyleCascadeAttrs,
-  tableStyleParagraphOverlay,
+  tableCellParagraphOverlay,
 } from "../styles/paragraphStyleCascade";
+import {
+  type TableStyleRegion,
+  tableCellStyleRegions,
+  tableRowBand,
+} from "../styles/tableStyleRegions";
 import type { TableCellParagraphSpacingOverlay } from "../styles/styleResolver";
 import { listAttrsFromResolvedStyle } from "../styles/resolvedStyleAttrs";
 
@@ -239,6 +251,28 @@ const cascadePatch = (
   return Object.keys(patch).length > 0 ? patch : null;
 };
 
+/** The table-style regions for the cell at `depth` of `$pos`, as the load path picks them. */
+const cellStyleRegions = ($pos: ResolvedPos, depth: number): TableStyleRegion[] => {
+  const table = $pos.node(depth - 2);
+  const row = $pos.node(depth - 1);
+  const map = TableMap.get(table);
+  const cellPos = $pos.before(depth) - $pos.start(depth - 2);
+  const rect = map.findCell(cellPos);
+  const look = resolveTableLook(expectTableAttrs(table).look ?? undefined);
+  return tableCellStyleRegions({
+    look,
+    rowIndex: rect.top,
+    totalRows: map.height,
+    column: rect.left,
+    colspan: rect.right - rect.left,
+    totalColumns: map.width,
+    rowBand: tableRowBand(look, rect.top, map.height),
+    rowConditionalFormat: expectTableRowAttrs(row)._originalFormatting?.conditionalFormat,
+    cellConditionalFormat: expectTableCellAttrs($pos.node(depth))._originalFormatting
+      ?.conditionalFormat,
+  });
+};
+
 /**
  * The table-style paragraph overlay for a paragraph directly inside a table
  * cell (or a block container in one), as the load path layers it.
@@ -253,7 +287,11 @@ const cellParagraphOverlay = (
     if (role === "cell" || role === "header_cell") {
       const table = $pos.node(depth - 2);
       const styleId: unknown = table.attrs["styleId"];
-      return tableStyleParagraphOverlay(resolver, typeof styleId === "string" ? styleId : null);
+      return tableCellParagraphOverlay(
+        resolver,
+        typeof styleId === "string" ? styleId : null,
+        cellStyleRegions($pos, depth),
+      );
     }
     if (ancestor.type.name === "textBox") {
       return undefined;

@@ -28,6 +28,7 @@ import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import { stripParagraphMarkOnlyFormatting } from "../runStyleFormatting";
 import type { ParagraphAttrs } from "../schema/nodes";
 import { cascadeStyleTextFormatting } from "./styleToggleCascade";
+import type { TableStyleRegion } from "./tableStyleRegions";
 
 /** The resolver surface the paragraph cascade reads. */
 export type ParagraphCascadeResolver = Pick<
@@ -322,15 +323,15 @@ export function extractTableParagraphOverlay(
 }
 
 /**
- * The paragraph overlay a table style gives every cell paragraph: its base
- * `w:pPr` under its `wholeTable` region. A table naming no style, or a style
- * the part does not define, reads the default table style (ECMA-376 §17.7.6).
- * The positional regions (header row, banding, corners) layer over this per
- * cell on load.
+ * The paragraph overlay a table style gives one cell's paragraphs: its base
+ * `w:pPr`, then each applicable region's (`regions`, lowest precedence first,
+ * from `tableCellStyleRegions`). A table naming no style, or a style the part
+ * does not define, reads the default table style (ECMA-376 §17.7.6).
  */
-export function tableStyleParagraphOverlay(
+export function tableCellParagraphOverlay(
   styleResolver: Pick<StyleEngine, "getStyle" | "getDefaultTableStyle">,
   tableStyleId: string | null | undefined,
+  regions: readonly TableStyleRegion[],
 ): TableCellParagraphSpacingOverlay | undefined {
   const style =
     (tableStyleId ? styleResolver.getStyle(tableStyleId) : undefined) ??
@@ -338,9 +339,10 @@ export function tableStyleParagraphOverlay(
   if (!style) {
     return undefined;
   }
-  const wholeTable = style.tblStylePr?.find(({ type }) => type === "wholeTable");
-  return mergeParagraphFormatting(
-    extractTableParagraphOverlay(style.pPr),
-    extractTableParagraphOverlay(wholeTable?.pPr),
-  );
+  let overlay: ParagraphFormatting | undefined = extractTableParagraphOverlay(style.pPr);
+  for (const region of regions) {
+    const conditional = style.tblStylePr?.find(({ type }) => type === region);
+    overlay = mergeParagraphFormatting(overlay, extractTableParagraphOverlay(conditional?.pPr));
+  }
+  return overlay;
 }

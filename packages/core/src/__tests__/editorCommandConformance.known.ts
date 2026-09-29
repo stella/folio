@@ -83,12 +83,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   // ---------------------------------------------------------------- lists --
   {
     reason:
-      "A paragraph a list command numbers states no indentation, while the reopened paragraph reads the level's indentation as its own w:ind",
-    operations: [...LIST_TOGGLES, ...LIST_MARKERS, ...LIST_NUMBERING, "paste:list"],
-    kinds: ["readback-blocks", "readback-painted"],
-  },
-  {
-    reason:
       "List operations in suggesting mode: rejecting a tracked toggle or autoformat writes resolved spacing and indentation back as direct formatting; level changes and list removal apply untracked",
     operations: [
       ...LIST_TOGGLES,
@@ -102,31 +96,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
-  },
-  {
-    reason:
-      "Decreasing a list item's indent to zero, or restyling it, leaves no w:ind, so the numbering level's indent returns on reopen; restyling a paragraph with a direct outline level keeps that level",
-    operations: [
-      "command:decreaseIndent",
-      "command:applyStyle(Heading1)",
-      "command:applyStyle(Heading2)",
-    ],
-    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
-    kinds: ["readback-blocks", "readback-painted"],
-  },
-  {
-    reason:
-      "Restyling, clearing the style of, or unindenting a range that holds list items or style-numbered headings leaves numbering and indentation in the editor that the saved package does not state",
-    operations: [
-      "command:decreaseIndent",
-      "command:applyStyle(Heading1)",
-      "command:applyStyle(Heading2)",
-      "command:clearStyle",
-      "host:clearFormatting",
-    ],
-    shapes: ["mixed-lists", "style-numbered-headings", "host-unused-instances"],
-    placements: ["cross-paragraph", "document"],
-    kinds: ["readback-blocks", "readback-painted", "readback-markdown", "reject-mismatch"],
   },
   {
     reason:
@@ -174,6 +143,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:setIndentFirstLine(hanging)",
       "command:applyStyle(Heading1)",
       "command:applyStyle(Heading2)",
+      "command:clearStyle",
       "host:clearFormatting",
     ],
     modes: ["suggesting"],
@@ -221,14 +191,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
 
   // -------------------------------------------------------------- other --
-  {
-    reason:
-      "Pasted content reads back differently after a save: a body run pasted into a bold heading reads as bold live while its direct formatting turns bold off, and a table pasted over a paragraph in suggesting mode reopens with its cells in other rows",
-    operations: ["paste:paragraphs", "paste:copied-blocks", "paste:table"],
-    shapes: ["style-numbered-headings", "tables"],
-    kinds: ["readback-blocks", "readback-painted"],
-    tier: "full",
-  },
   {
     reason:
       "Adding or deleting a column and adding a row above walk rows without the table map: beside a vertical merge they misplace cells, and they rebuild w:tblGrid from the first row's cell count",

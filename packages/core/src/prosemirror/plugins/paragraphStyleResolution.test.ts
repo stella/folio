@@ -27,6 +27,10 @@ const STYLES: StyleDefinitions = {
       styleId: "TableGrid",
       type: "table",
       pPr: { spaceAfter: 0, lineSpacing: 240, lineSpacingRule: "auto" },
+      tblStylePr: [
+        { type: "firstRow", pPr: { spaceBefore: 120 } },
+        { type: "band2Horz", pPr: { spaceAfter: 60 } },
+      ],
     },
   ],
 };
@@ -130,6 +134,62 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
     const created = byText(insertAtEnd(loadState(), table).doc, "Cell").attrs;
     expect(created["spaceAfter"]).toBe(0);
     expect(created["lineSpacing"]).toBe(240);
+  });
+
+  test("a new cell paragraph reads its cell's table-style regions as a loaded one does", () => {
+    const loadedCell = (text: string) => ({
+      type: "tableCell" as const,
+      content: [loadedParagraph(text)],
+    });
+    const document: Document = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "table",
+              formatting: { styleId: "TableGrid", look: { firstRow: true } },
+              columnWidths: [2000],
+              rows: ["Header", "First", "Second"].map((text) => ({
+                type: "tableRow" as const,
+                cells: [loadedCell(text)],
+              })),
+            },
+          ],
+        },
+        styles: STYLES,
+      },
+    };
+    const loaded = EditorState.create({
+      doc: toProseDoc(document),
+      plugins: [createDocumentStylesPlugin(STYLES)],
+    });
+    // Replace each loaded cell paragraph with a fresh one, as a cut or a
+    // structural command would.
+    let edited = loaded;
+    for (const text of ["Header", "First", "Second"]) {
+      let found = -1;
+      edited.doc.descendants((node, pos) => {
+        if (node.type.name === "paragraph" && node.textContent === text) {
+          found = pos;
+        }
+        return found < 0;
+      });
+      const node = edited.doc.nodeAt(found)!;
+      edited = edited.apply(
+        edited.tr.replaceWith(found, found + node.nodeSize, paragraph(`New ${text}`)),
+      );
+    }
+    const keys = ["spaceBefore", "spaceAfter", "lineSpacing", "lineSpacingRule"];
+    for (const text of ["Header", "First", "Second"]) {
+      const reference = byText(loaded.doc, text).attrs;
+      const created = byText(edited.doc, `New ${text}`).attrs;
+      for (const key of keys) {
+        expect(created[key]).toEqual(reference[key]);
+      }
+    }
+    expect(byText(edited.doc, "New Header").attrs["spaceBefore"]).toBe(120);
+    expect(byText(edited.doc, "New First").attrs["spaceAfter"]).toBe(0);
+    expect(byText(edited.doc, "New Second").attrs["spaceAfter"]).toBe(60);
   });
 
   test("the resolution undoes with the edit that needed it", () => {
