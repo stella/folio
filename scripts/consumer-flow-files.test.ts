@@ -7,6 +7,7 @@ import { admit, loadCorpus, newElements, prune } from "../test/consumer-scenario
 import {
   type FlowFile,
   flowId,
+  flowShape,
   parseFlowFile,
   TARGETED_ACTIONS,
 } from "../test/consumer-scenarios/support/flow-file";
@@ -58,6 +59,23 @@ describe("flow files", () => {
       }),
     ).toThrow(/batch step/u);
     expect(flowId(valid)).toBe(flowId({ ...valid, origin: "elsewhere" }));
+  });
+
+  test("a flow's shape names its operations and actions, not its ids or text", () => {
+    const shaped = flow([
+      {
+        action: "story batch",
+        seed: 1,
+        operations: [
+          { type: "replaceRange", blockId: "@1" },
+          { type: "insertAfterBlock", blockId: "0F88C890", text: "A heading." },
+          { type: "replaceRange", blockId: "1508FAF4" },
+        ],
+      },
+      { action: "save and reopen", seed: 2 },
+      { action: "core batch", seed: 3 },
+    ]);
+    expect(flowShape(shaped)).toBe("insertAfterBlock+replaceRange > save and reopen > core batch");
   });
 });
 

@@ -153,5 +153,21 @@ export const flowId = (flow: FlowFile): string =>
     .digest("hex")
     .slice(0, 16);
 
+/**
+ * The operations a flow applies, step by step: a batch step's operation
+ * types, any other step's action; ids, text and positions left out. Part of
+ * a shrunk failure's fingerprint (support/failure-fingerprints.ts).
+ */
+export const flowShape = (flow: FlowFile): string =>
+  flow.steps
+    .map((step) =>
+      step.operations === undefined || step.operations.length === 0
+        ? step.action
+        : [...new Set(step.operations.map((operation) => String(operation["type"])))]
+            .sort()
+            .join("+"),
+    )
+    .join(" > ");
+
 /** A single-line JSON of `flow`, for an environment variable. */
 export const compactFlow = (flow: FlowFile): string => JSON.stringify(flow);

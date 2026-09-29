@@ -19,7 +19,7 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "./failure-fingerprints.ts";
-import { compactFlow, type FlowFile, flowId, type FlowKind } from "./flow-file.ts";
+import { compactFlow, type FlowFile, flowId, type FlowKind, flowShape } from "./flow-file.ts";
 import { mutateFlow } from "./flow-mutate.ts";
 import { describeFlow, FlowError, type FlowRun, runFlow, runFlowFile } from "./fuzz.ts";
 import { createRandom } from "./random.ts";
@@ -95,16 +95,20 @@ export const recordFailure = async (
   { seed, repro }: { seed: number; repro: string },
   limits: ShrinkLimits | null,
 ): Promise<FailureRecord> => {
-  const marker = failureMarker({ test: flowTestName(error.flow), seed, repro, failure: error });
-  logFailureMarker(marker);
-  if (limits === null || !(await failsWith(error.flow, marker.fingerprint))) {
-    return failureRecord(marker, error);
+  const test = flowTestName(error.flow);
+  const primary = failureMarker({ test, seed, repro, failure: error });
+  if (limits === null || !(await failsWith(error.flow, primary.fingerprint))) {
+    logFailureMarker(primary);
+    return failureRecord(primary, error);
   }
   const shrunk = await shrinkFlow(error.flow, {
-    holds: (candidate) => failsWith(candidate, marker.fingerprint),
+    holds: (candidate) => failsWith(candidate, primary.fingerprint),
     materialize,
     budget: { maxAttempts: limits.maxAttempts, deadline: Date.now() + limits.seconds * 1_000 },
   });
+  // What the minimized flow does is part of which bug this is.
+  const marker = failureMarker({ test, seed, repro, failure: error, flow: flowShape(shrunk.flow) });
+  logFailureMarker(marker);
   const replay = flowReplay(shrunk.flow);
   return failureRecord(marker, error, {
     replays: replay === repro ? [replay] : [replay, repro],
@@ -263,10 +267,9 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
       const seen = failures.get(fingerprint);
       log(`✗ ${label} (fingerprint ${fingerprint})\n  Replay: ${repro}`);
       if (seen !== undefined) {
+        // The same failure again: its line carries the shrunk one's fingerprint.
         seen.count += 1;
-        logFailureMarker(
-          failureMarker({ test: flowTestName(error.flow), seed, repro: repro, failure: error }),
-        );
+        logFailureMarker({ ...seen.record.marker, seed, repro });
         continue;
       }
       const record = await recordFailure(error, { seed, repro }, shrinkLimits());
