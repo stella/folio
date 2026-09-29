@@ -76,6 +76,7 @@ import {
   suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import { noteDeletionRevisions, noteReferencesRestored } from "../prosemirror/noteReferenceReview";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
@@ -817,6 +818,14 @@ const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHa
   `${type}:${relationshipId}`;
 
 const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+
+/** The note story a {@link noteStoryKey} key names. */
+const noteStoryHandleOf = (key: string): FolioNoteStoryHandle | null => {
+  const [type, noteId] = key.split(":");
+  return (type === "footnote" || type === "endnote") && noteId !== undefined
+    ? ({ type, noteId: Number(noteId) } as FolioNoteStoryHandle)
+    : null;
+};
 
 /** The notes a story's text refers to, keyed as {@link noteStoryKey} keys them. */
 const referencedNoteKeys = (doc: PMNode): Set<string> => {
@@ -2388,7 +2397,9 @@ export class FolioDocxReviewer {
    * revision is no longer present (already resolved, or never existed).
    */
   acceptChange(target: FolioReviewChange | number): boolean {
-    return this.resolveWithSectionReferenceHistory(() => this.acceptChangeInternal(target));
+    return this.resolveWithSectionReferenceHistory(() =>
+      this.withNotesFollowingReferences(() => this.acceptChangeInternal(target)),
+    );
   }
 
   private acceptChangeInternal(target: FolioReviewChange | number): boolean {
@@ -2414,7 +2425,9 @@ export class FolioDocxReviewer {
    * deletion's text is restored. See {@link acceptChange} for targeting.
    */
   rejectChange(target: FolioReviewChange | number): boolean {
-    return this.resolveWithSectionReferenceHistory(() => this.rejectChangeInternal(target));
+    return this.resolveWithSectionReferenceHistory(() =>
+      this.withNotesFollowingReferences(() => this.rejectChangeInternal(target)),
+    );
   }
 
   private rejectChangeInternal(target: FolioReviewChange | number): boolean {
@@ -2536,19 +2549,33 @@ export class FolioDocxReviewer {
   }
 
   private resolveEveryStory(mode: "accept" | "reject"): number {
-    const referencedBefore = referencedNoteKeys(this.state.doc);
-    const count = this.resolveEveryStoryOnce(mode);
-    // A note goes with its reference, as a note no text refers to does.
-    const referencedAfter = referencedNoteKeys(this.state.doc);
-    for (const key of referencedBefore) {
+    return this.withNotesFollowingReferences(() => this.resolveEveryStoryOnce(mode));
+  }
+
+  /**
+   * Resolve body changes the way a note follows its reference: a note whose
+   * reference goes, goes too, as a note no text refers to does; a note whose
+   * reference's deletion is rejected gets back the text that deletion took.
+   */
+  private withNotesFollowingReferences<T>(resolve: () => T): T {
+    const before = this.state.doc;
+    const result = resolve();
+    const after = this.state.doc;
+    const referencedAfter = referencedNoteKeys(after);
+    for (const key of referencedNoteKeys(before)) {
       if (referencedAfter.has(key)) continue;
-      const [type, noteId] = key.split(":");
-      if ((type === "footnote" || type === "endnote") && noteId !== undefined) {
-        const handle = { type, noteId: Number(noteId) } as FolioNoteStoryHandle;
-        this.removedNoteStories.set(noteStoryKey(handle), handle);
+      const handle = noteStoryHandleOf(key);
+      if (handle) this.removedNoteStories.set(noteStoryKey(handle), handle);
+    }
+    for (const key of noteReferencesRestored(before, after)) {
+      const handle = noteStoryHandleOf(key);
+      const state = handle ? this.getEditableStoryState(handle) : null;
+      const revisions = state ? noteDeletionRevisions(state.doc) : [];
+      if (handle && revisions.length > 0) {
+        this.runStoryCommand(rejectAIEditRevision(revisions), handle);
       }
     }
-    return count;
+    return result;
   }
 
   private resolveEveryStoryOnce(mode: "accept" | "reject"): number {

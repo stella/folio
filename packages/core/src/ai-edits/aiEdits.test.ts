@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "prosemirror-model";
+import { Schema, type MarkSpec } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
@@ -12,6 +12,8 @@ import {
   rejectAIEditRevision,
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
+import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
+import { schema as editorSchema } from "../prosemirror/schema";
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
@@ -23,6 +25,18 @@ import {
 } from "./snapshot";
 import type { FolioAIEditApplyMode, FolioAIEditOperation } from "./types";
 import { createScopedWordDiffOptions } from "./word-diff";
+
+/**
+ * The test's own marks, plus the editor's run-formatting marks it lacks:
+ * formatting is written with the marks of the schema the text belongs to.
+ */
+const withEditorRunMarks = (own: Record<string, MarkSpec>): Record<string, MarkSpec> => {
+  const marks = { ...own };
+  editorSchema.spec.marks.forEach((name, spec) => {
+    if (!(name in marks) && RUN_FORMATTING_MARK_NAMES.has(name)) marks[name] = spec;
+  });
+  return marks;
+};
 
 const schema = new Schema({
   nodes: {
@@ -99,7 +113,7 @@ const schema = new Schema({
       },
     },
   },
-  marks: {
+  marks: withEditorRunMarks({
     insertion: {
       attrs: {
         revisionId: {},
@@ -153,7 +167,7 @@ const schema = new Schema({
       },
       toDOM: () => ["u", 0],
     },
-  },
+  }),
 });
 
 type BlockSpec =
@@ -499,7 +513,7 @@ describe("Folio AI edit operations", () => {
 
     const accepting = applyFormatting();
     expect(collectMarksByText(accepting.view.state)).toEqual({
-      target: ["italic", "runPropertyChange", "runFormattingOverride"],
+      target: ["runPropertyChange", "italic", "runFormattingOverride"],
     });
     expect(getTrackedChangesFromDoc(accepting.view.state.doc)).toEqual([
       expect.objectContaining({

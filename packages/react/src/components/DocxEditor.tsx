@@ -58,6 +58,7 @@ import {
   type FolioGetDocxOptions,
 } from "@stll/folio-core/controller/folioEditor";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
+import { withoutUnreferencedNotes } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
@@ -2856,8 +2857,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       let savedBuffer: ArrayBuffer | null = null;
 
       try {
-        // Build current document from PM editor state
-        const doc = buildCurrentDocument();
+        // Build current document from PM editor state. A note goes with its
+        // reference: one nothing refers to any more is not saved.
+        const current = buildCurrentDocument();
+        const doc = current ? withoutUnreferencedNotes(current) : null;
         if (!doc) {
           return null;
         }

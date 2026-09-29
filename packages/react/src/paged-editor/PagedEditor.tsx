@@ -100,6 +100,10 @@ import {
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
+import {
+  noteReferencesRestored,
+  restoreNotes,
+} from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
   hitTestFragment,
@@ -2030,6 +2034,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }
     const documentChangeNotifyTimerRef = useRef<number | null>(null);
+    // The body as it was before the edits the next notification reports: a
+    // note goes with its reference, so a reference whose deletion those edits
+    // rejected gets its note's text back.
+    const noteReviewBaseRef = useRef<PMNode | null>(null);
+    useEffect(() => {
+      noteReviewBaseRef.current = null;
+    }, [documentIdentity]);
 
     const flushDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2037,7 +2048,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         documentChangeNotifyTimerRef.current = null;
       }
 
-      const newDoc = hiddenPMRef.current?.getDocument();
+      let newDoc = hiddenPMRef.current?.getDocument();
+      const reviewBase = noteReviewBaseRef.current;
+      noteReviewBaseRef.current = null;
+      const reviewed = hiddenPMRef.current?.getState()?.doc;
+      if (newDoc && reviewBase && reviewed) {
+        newDoc = restoreNotes(newDoc, noteReferencesRestored(reviewBase, reviewed));
+      }
       if (newDoc) {
         onDocumentChangeRef.current?.(newDoc);
         folioEmitterRef.current.emit("docChange", newDoc);
@@ -2780,7 +2797,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      ({ newState, docChanged }: HiddenEditorTransactionUpdate) => {
+      ({ newState, docChanged, transactions }: HiddenEditorTransactionUpdate) => {
+        if (docChanged && noteReviewBaseRef.current === null) {
+          noteReviewBaseRef.current = transactions[0]?.before ?? null;
+        }
+
         // Keep the anonymization match list mirrored in a ref so the
         // overlay recompute reads the latest set without depending on
         // a state setter inside its useCallback closure. We pull off
