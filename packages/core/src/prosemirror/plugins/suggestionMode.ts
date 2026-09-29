@@ -14,7 +14,7 @@
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
 import type { Node as PMNode, MarkType, Slice } from "prosemirror-model";
-import { Plugin, PluginKey, TextSelection } from "prosemirror-state";
+import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { Mapping } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
@@ -271,7 +271,8 @@ function markRangeAsInserted(
  * With track changes on, pasting over a non-empty text selection marks the
  * replaced text as a tracked deletion and the pasted slice as a tracked
  * insertion (so they read as one replacement), matching typing over a
- * selection. Returns false for a collapsed cursor or non-text selection so the
+ * selection. Select-all (an `AllSelection`) counts as a text selection over the
+ * whole document. Returns false for a collapsed cursor or another selection so the
  * default paste + the `appendTransaction` catch-all marks a plain insertion
  * (eigenpal/docx-editor#784).
  */
@@ -281,7 +282,8 @@ export function handleSuggestionPaste(
   pluginState: SuggestionModeState,
 ): boolean {
   const { selection } = view.state;
-  if (!(selection instanceof TextSelection) || selection.empty) {
+  const selectsAll = selection instanceof AllSelection;
+  if (!(selection instanceof TextSelection || selectsAll) || selection.empty) {
     return false;
   }
   const insertionType = view.state.schema.marks["insertion"];
@@ -290,7 +292,11 @@ export function handleSuggestionPaste(
     return false;
   }
 
-  const { from, to } = selection;
+  // Select-all spans the block boundaries around the content; replace the text
+  // span inside them, as a text selection over the whole document would.
+  const { from, to } = selectsAll
+    ? { from: Selection.atStart(view.state.doc).from, to: Selection.atEnd(view.state.doc).to }
+    : selection;
   const tr = view.state.tr;
   tr.setMeta(SUGGESTION_META, true);
 
