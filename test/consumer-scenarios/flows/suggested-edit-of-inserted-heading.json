@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "suggested",
+  "seed": 31369,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1199761512,
+      "operations": [
+        {
+          "type": "replaceBlock",
+          "blockId": "1508FAF4",
+          "text": "Notice buyer invoice buyer payment goods notice."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3535280601,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1508FAF4",
+          "text": "Delivery period invoice payment period buyer schedule.",
+          "numbering": {
+            "start": "new",
+            "kind": "bullet"
+          }
+        },
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "1508FAF4",
+            "startOffset": 41,
+            "endOffset": 47,
+            "selectedTextHash": "h4lgk0d"
+          },
+          "replace": "updated"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from random flow seed 31369",
+  "title": "a suggested heading insert, then a format change and a replacement of the inserted heading, beside comments"
+}

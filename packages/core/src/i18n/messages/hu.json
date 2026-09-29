@@ -339,8 +339,8 @@
       "editingDescription": "A dokumentum közvetlen szerkesztése",
       "outlineTitle": "Vázlat",
       "showDocumentOutline": "Dokumentum vázlata",
-      "suggesting": "Javaslat",
-      "suggestingDescription": "A módosítások követett javaslatokká válnak",
+      "suggesting": "Változások követése",
+      "suggestingDescription": "A szerkesztések követett változásként rögzülnek",
       "viewing": "Megtekintés",
       "viewingDescription": "A végleges dokumentum olvasása vagy nyomtatása"
     },
