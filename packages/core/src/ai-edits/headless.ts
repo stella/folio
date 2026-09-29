@@ -10,7 +10,7 @@ import {
   importReferencedStyleDefinitions,
   type ImportReferencedStyleDefinitionsResult,
 } from "../compare/style-resources";
-import { expectCharacterStyleMarkAttrs } from "../prosemirror/attrs";
+import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
 /**
  * Headless `.docx` review path: buffer -> apply AI edits -> buffer, with
  * no `EditorView` and no DOM. A queue worker or agent can read a document,
@@ -583,6 +583,7 @@ type FolioReviewerStateSnapshot = {
   secondaryStoryStates: readonly FolioSecondaryStoryState[];
   sectionReferenceRemovals: readonly RemovedSectionReference[];
   removedHeaderFooterStories: readonly FolioHeaderFooterStoryHandle[];
+  removedNoteStories: readonly FolioNoteStoryHandle[];
   importedStyles: StyleDefinitions | undefined;
   importedMedia: ReadonlyMap<string, MediaFile>;
   importedHeaders: ReadonlyMap<string, HeaderFooter>;
@@ -816,6 +817,21 @@ const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHa
   `${type}:${relationshipId}`;
 
 const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+
+/** The notes a story's text refers to, keyed as {@link noteStoryKey} keys them. */
+const referencedNoteKeys = (doc: PMNode): Set<string> => {
+  const keys = new Set<string>();
+  doc.descendants((node) => {
+    if (!node.isText) return true;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "footnoteRef") continue;
+      const { id, noteType } = expectFootnoteRefMarkAttrs(mark);
+      keys.add(`${noteType === "endnote" ? "endnote" : "footnote"}:${String(id)}`);
+    }
+    return false;
+  });
+  return keys;
+};
 
 /** One place a header or footer part is shown: its role in one section. */
 type HeaderFooterPlacement = { type: HeaderFooterType; section: number };
@@ -1068,6 +1084,8 @@ export class FolioDocxReviewer {
   private state: EditorState;
   private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
   private readonly removedHeaderFooterStories = new Map<string, FolioHeaderFooterStoryHandle>();
+  /** Notes whose reference a resolution removed: a note exists only through its reference. */
+  private readonly removedNoteStories = new Map<string, FolioNoteStoryHandle>();
   private readonly sectionReferenceRemovals: RemovedSectionReference[] = [];
   private importedStyles: StyleDefinitions | undefined;
   private readonly importedMedia = new Map<string, MediaFile>();
@@ -1979,11 +1997,15 @@ export class FolioDocxReviewer {
         handles.push({ type: "endnote", noteId: endnote.id });
       }
     }
-    return handles.filter(
-      (handle) =>
-        (handle.type !== "header" && handle.type !== "footer") ||
-        !this.removedHeaderFooterStories.has(headerFooterStoryKey(handle)),
-    );
+    return handles.filter((handle) => {
+      if (handle.type === "header" || handle.type === "footer") {
+        return !this.removedHeaderFooterStories.has(headerFooterStoryKey(handle));
+      }
+      return (
+        (handle.type !== "footnote" && handle.type !== "endnote") ||
+        !this.removedNoteStories.has(noteStoryKey(handle))
+      );
+    });
   }
 
   /** Discover every readable document story through a typed, serializable handle. */
@@ -2514,6 +2536,22 @@ export class FolioDocxReviewer {
   }
 
   private resolveEveryStory(mode: "accept" | "reject"): number {
+    const referencedBefore = referencedNoteKeys(this.state.doc);
+    const count = this.resolveEveryStoryOnce(mode);
+    // A note goes with its reference, as a note no text refers to does.
+    const referencedAfter = referencedNoteKeys(this.state.doc);
+    for (const key of referencedBefore) {
+      if (referencedAfter.has(key)) continue;
+      const [type, noteId] = key.split(":");
+      if ((type === "footnote" || type === "endnote") && noteId !== undefined) {
+        const handle = { type, noteId: Number(noteId) } as FolioNoteStoryHandle;
+        this.removedNoteStories.set(noteStoryKey(handle), handle);
+      }
+    }
+    return count;
+  }
+
+  private resolveEveryStoryOnce(mode: "accept" | "reject"): number {
     let count = 0;
     const resolvedStories: { handle: FolioEditableDocumentStoryHandle; state: EditorState }[] = [];
     const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] = [];
@@ -2643,6 +2681,7 @@ export class FolioDocxReviewer {
       secondaryStoryStates,
       sectionReferenceRemovals: [...this.sectionReferenceRemovals],
       removedHeaderFooterStories: [...this.removedHeaderFooterStories.values()],
+      removedNoteStories: [...this.removedNoteStories.values()],
       importedStyles: this.importedStyles,
       importedMedia: new Map(this.importedMedia),
       importedHeaders: new Map(this.importedHeaders),
@@ -2693,6 +2732,15 @@ export class FolioDocxReviewer {
       }
     }
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
+    if (snapshot.removedNoteStories.length > 0) {
+      const removed = new Set(snapshot.removedNoteStories.map(noteStoryKey));
+      document.package.footnotes = document.package.footnotes?.filter(
+        (note) => !removed.has(noteStoryKey({ type: "footnote", noteId: note.id })),
+      );
+      document.package.endnotes = document.package.endnotes?.filter(
+        (note) => !removed.has(noteStoryKey({ type: "endnote", noteId: note.id })),
+      );
+    }
     const definitions = [
       ...(document.package.document.comments ?? []),
       ...snapshot.createdComments,
@@ -2728,7 +2776,9 @@ export class FolioDocxReviewer {
       snapshot.finalSectionPropertiesOverride !== undefined ||
       snapshot.importedStyles !== undefined ||
       snapshot.importedHeaders.size > 0 ||
-      snapshot.importedFooters.size > 0;
+      snapshot.importedFooters.size > 0 ||
+      // A note that went with its reference is a whole element of a notes part.
+      snapshot.removedNoteStories.length > 0;
     let untrackedChanges = hasUntrackedChanges(snapshot.mainState);
     const changedNoteParaIds = new Set<string>();
     for (const entry of snapshot.secondaryStoryStates) {

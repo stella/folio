@@ -25,6 +25,7 @@ import path from "node:path";
 
 import JSZip from "jszip";
 
+import { FolioDocxReviewer } from "../ai-edits/headless";
 import { getLocalName, parseXml, type XmlElement } from "../docx/xmlParser";
 import {
   createHarnessState,
@@ -42,13 +43,21 @@ type ParagraphSummary = {
 };
 type BlockSummary = ParagraphSummary | { table: BlockSummary[][][] };
 
+type NoteSummaries = Partial<Record<"footnote" | "endnote", Record<string, BlockSummary[]>>>;
+
 type ReferenceFixture = {
   origin: "constructed" | "authored";
   body: string;
   footnotes?: string;
   endnotes?: string;
-  accept: BlockSummary[];
-  reject: BlockSummary[];
+  accept?: BlockSummary[];
+  reject?: BlockSummary[];
+  /** The notes left: a note goes with its reference. */
+  acceptNotes?: NoteSummaries;
+  rejectNotes?: NoteSummaries;
+  /** Every revision this author made rejected, and nothing else resolved. */
+  rejectAuthor?: string;
+  rejectAuthorResult?: BlockSummary[];
 };
 
 type Reference = {
@@ -206,7 +215,9 @@ const runText = (run: XmlElement): string =>
   children(run)
     .map((child) => {
       const name = getLocalName(child.name);
-      if (name === "t" || name === "delText" || name === "instrText") return textOf(child);
+      // Field instructions are not text a reader sees: a link restored as a
+      // field or as a hyperlink element reads the same.
+      if (name === "t" || name === "delText") return textOf(child);
       if (name === "tab") return "\t";
       if (name === "br" || name === "cr") return "\n";
       if (name === "footnoteReference" || name === "endnoteReference") {
@@ -288,7 +299,28 @@ const summarizeBlocks = (parent: XmlElement): BlockSummary[] =>
     return [];
   });
 
-const summarizeBody = async (bytes: Uint8Array): Promise<BlockSummary[]> => {
+const NOTE_KINDS = ["footnote", "endnote"] as const;
+const SEPARATOR_TYPES = new Set(["separator", "continuationSeparator", "continuationNotice"]);
+
+const summarizeNotes = async (bytes: Uint8Array | ArrayBuffer): Promise<NoteSummaries> => {
+  const zip = await JSZip.loadAsync(bytes);
+  const summaries: NoteSummaries = {};
+  for (const kind of NOTE_KINDS) {
+    const xml = await zip.file(`word/${kind}s.xml`)?.async("text");
+    if (!xml) continue;
+    const root = children(parseXml(xml))[0];
+    const notes: Record<string, BlockSummary[]> = {};
+    for (const note of root ? children(root) : []) {
+      if (getLocalName(note.name) !== kind) continue;
+      if (SEPARATOR_TYPES.has(String(note.attributes?.["w:type"] ?? ""))) continue;
+      notes[String(note.attributes?.["w:id"] ?? "")] = summarizeBlocks(note);
+    }
+    if (Object.keys(notes).length > 0) summaries[kind] = notes;
+  }
+  return summaries;
+};
+
+const summarizeBody = async (bytes: Uint8Array | ArrayBuffer): Promise<BlockSummary[]> => {
   const zip = await JSZip.loadAsync(bytes);
   const xml = await zip.file("word/document.xml")?.async("text");
   if (!xml) throw new Error("The saved package has no main document part");
@@ -299,6 +331,19 @@ const summarizeBody = async (bytes: Uint8Array): Promise<BlockSummary[]> => {
 };
 
 /** Identity is compared where the reference kept the input's ids; it regenerates a few. */
+const notesWithoutRegeneratedIds = (
+  notes: NoteSummaries | undefined,
+  input: ReadonlySet<string>,
+): NoteSummaries =>
+  Object.fromEntries(
+    Object.entries(notes ?? {}).map(([kind, byId]) => [
+      kind,
+      Object.fromEntries(
+        Object.entries(byId).map(([id, blocks]) => [id, withoutRegeneratedIds(blocks, input)]),
+      ),
+    ]),
+  );
+
 const withoutRegeneratedIds = (
   summary: readonly BlockSummary[],
   input: ReadonlySet<string>,
@@ -319,18 +364,54 @@ const inputParaIds = (body: string): Set<string> =>
 // CASES
 // ============================================================================
 
+const inputIds = (fixture: ReferenceFixture): Set<string> =>
+  inputParaIds(`${fixture.body}${fixture.footnotes ?? ""}${fixture.endnotes ?? ""}`);
+
 describe("tracked-change resolution matches the reference", () => {
   for (const [name, fixture] of Object.entries(reference.fixtures)) {
     for (const mode of ["accept", "reject"] as const) {
+      const expected = fixture[mode];
+      if (!expected) continue;
       test(`${name} › ${mode} all`, async () => {
         const document = await parseShapeDocument(await buildPackage(fixture));
         const resolved = resolveAllChanges(createHarnessState(document, "editing"), mode);
         const saved = await saveHarnessState(resolved, document);
-        const ids = inputParaIds(fixture.body);
+        const ids = inputIds(fixture);
         expect(withoutRegeneratedIds(await summarizeBody(saved.bytes), ids)).toEqual(
-          withoutRegeneratedIds(fixture[mode], ids),
+          withoutRegeneratedIds(expected, ids),
+        );
+      });
+      const expectedNotes = fixture[`${mode}Notes`];
+      if (!expectedNotes) continue;
+      test(`${name} › ${mode} all, every story`, async () => {
+        const reviewer = await FolioDocxReviewer.fromBuffer(
+          (await buildPackage(fixture)).slice().buffer,
+        );
+        if (mode === "accept") reviewer.acceptAll();
+        else reviewer.rejectAll();
+        const saved = await reviewer.toBuffer();
+        const ids = inputIds(fixture);
+        expect(withoutRegeneratedIds(await summarizeBody(saved), ids)).toEqual(
+          withoutRegeneratedIds(expected, ids),
+        );
+        expect(notesWithoutRegeneratedIds(await summarizeNotes(saved), ids)).toEqual(
+          notesWithoutRegeneratedIds(expectedNotes, ids),
         );
       });
     }
+    const { rejectAuthor, rejectAuthorResult } = fixture;
+    if (rejectAuthor === undefined || rejectAuthorResult === undefined) continue;
+    test(`${name} › reject ${rejectAuthor}'s revisions`, async () => {
+      const reviewer = await FolioDocxReviewer.fromBuffer(
+        (await buildPackage(fixture)).slice().buffer,
+      );
+      for (const change of reviewer.getChanges().filter(({ author }) => author === rejectAuthor)) {
+        reviewer.rejectChange(change);
+      }
+      const ids = inputIds(fixture);
+      expect(withoutRegeneratedIds(await summarizeBody(await reviewer.toBuffer()), ids)).toEqual(
+        withoutRegeneratedIds(rejectAuthorResult, ids),
+      );
+    });
   }
 });

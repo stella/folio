@@ -459,6 +459,19 @@ const batchAgainstOneAtATime = async (
       named.add(joined + 1);
     }
   }
+  // Tracked, deleting the story's last paragraph removes the break before it
+  // instead (that paragraph ends nothing), so once accepted the words of the
+  // last paragraph the batch keeps end in the deleted one's paragraph, whose
+  // mark is the one that stays: that paragraph goes by the deleted one's id.
+  const lastIndex = BLOCK_COUNT - 1;
+  const insertsAfterLast = applied.some(
+    ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === lastIndex,
+  );
+  if (mode !== "direct" && deletes(lastIndex) && !insertsAfterLast) {
+    let kept = lastIndex - 1;
+    while (kept >= 0 && deletes(kept)) kept--;
+    if (kept >= 0) named.add(kept);
+  }
   if (mode !== "direct") {
     // Both redlines accept, and to the same document.
     const accepts = (session: OperationSession, whose: string): boolean => {
@@ -560,7 +573,17 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
         { kind: "splitBlock", block: 0, before: 1 },
         { kind: "setBlockParagraphProperties", block: last },
       ];
-      for (const generated of [...orders, found]) {
+      // Found once the paragraph a removed break leaves became the one after it.
+      const insertedBefore: GeneratedOperation[] = [
+        { kind: "insertBeforeBlock", block: last },
+        { kind: "setBlockParagraphProperties", block: last },
+        { kind: "deleteBlock", block: last },
+      ];
+      const deletedWithEarlierEdit: GeneratedOperation[] = [
+        { kind: "deleteBlock", block: last },
+        { kind: "replaceInBlock", block: 0, first: 0, last: 0 },
+      ];
+      for (const generated of [...orders, found, insertedBefore, deletedWithEarlierEdit]) {
         problems.push(...(await batchAgainstOneAtATime(generated, mode)));
       }
       expect(problems).toEqual([]);

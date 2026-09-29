@@ -3171,6 +3171,53 @@
         }
       ]
     },
+    "nt-reference-only-deleted": {
+      "origin": "constructed",
+      "body": "<w:p w14:paraId=\"1A000001\" w14:textId=\"1A000001\"><w:r><w:t xml:space=\"preserve\">Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\" w14:textId=\"2A000002\"><w:r><w:t>Noted text</w:t></w:r><w:del w:id=\"93\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteReference w:id=\"1\"/></w:r></w:del><w:r><w:t xml:space=\"preserve\"> continues.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "footnotes": "<w:footnote w:id=\"1\"><w:p w14:paraId=\"6A00000A\" w14:textId=\"6A00000A\"><w:pPr></w:pPr><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:t xml:space=\"preserve\"> The note text.</w:t></w:r></w:p></w:footnote>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Noted text continues.",
+          "paraId": "2A000002",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Noted text<footnoteReference:1> continues.",
+          "paraId": "2A000002",
+          "pPr": "",
+          "markRPr": "",
+          "runs": ["<footnoteReference:1>|<vertAlign val=\"superscript\"/>"]
+        }
+      ],
+      "acceptNotes": {},
+      "rejectNotes": {
+        "footnote": {
+          "1": [
+            {
+              "text": " The note text.",
+              "paraId": "6A00000A",
+              "pPr": "",
+              "markRPr": ""
+            }
+          ]
+        }
+      }
+    },
     "authored-list-over-cell-last-paragraph": {
       "origin": "authored",
       "body": "<w:p w14:paraId=\"7302E734\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/><w:tblLook w:val=\"04A0\" w:firstRow=\"1\" w:lastRow=\"0\" w:firstColumn=\"1\" w:lastColumn=\"0\" w:noHBand=\"0\" w:noVBand=\"1\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"9350\"/></w:tblGrid><w:tr w14:paraId=\"12E54047\"><w:tc><w:tcPr><w:tcW w:w=\"9360\" w:type=\"dxa\"/></w:tcPr><w:p w14:paraId=\"516C999F\"><w:r><w:t>Cell first.</w:t></w:r></w:p><w:p w14:paraId=\"4E4E399C\"><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:ins w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:numId w:val=\"1\"/></w:numPr><w:ind w:hanging=\"360\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>Item one.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"2A04EF23\"><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:ilvl w:val=\"0\"/><w:numId w:val=\"1\"/></w:numPr><w:rPr><w:ins w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"4\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:pStyle w:val=\"ListParagraph\"/><w:numPr><w:numId w:val=\"1\"/></w:numPr><w:ind w:hanging=\"360\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"5\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>Item two.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"1A56E6E9\"><w:del w:id=\"6\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Cell last.</w:delText></w:r></w:del></w:p></w:tc></w:tr></w:tbl><w:p w14:paraId=\"7FDFB024\"><w:r><w:t>Tail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
@@ -7467,7 +7514,7 @@
     "authored-delete-footnote-reference": {
       "origin": "authored",
       "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:r><w:t>Noted text</w:t></w:r><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteReference w:id=\"1\"/></w:r></w:del><w:r><w:t xml:space=\"preserve\"> continues.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>Tail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
-      "footnotes": "<w:footnote w:type=\"separator\" w:id=\"-1\"><w:p w14:paraId=\"16376772\"><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:separator/></w:r></w:p></w:footnote><w:footnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p w14:paraId=\"15661F08\"><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:footnote><w:footnote w:id=\"1\"><w:p w14:paraId=\"6A00000A\"><w:pPr><w:rPr><w:del w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:delText xml:space=\"preserve\"> The note text.</w:delText></w:r></w:del></w:p></w:footnote>",
+      "footnotes": "<w:footnote w:id=\"1\"><w:p w14:paraId=\"6A00000A\"><w:pPr><w:rPr><w:del w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:footnoteRef/></w:r><w:r><w:delText xml:space=\"preserve\"> The note text.</w:delText></w:r></w:del></w:p></w:footnote>",
       "accept": [
         {
           "text": "Intro paragraph.",
@@ -7508,12 +7555,25 @@
           "pPr": "",
           "markRPr": ""
         }
-      ]
+      ],
+      "acceptNotes": {},
+      "rejectNotes": {
+        "footnote": {
+          "1": [
+            {
+              "text": " The note text.",
+              "paraId": "6A00000A",
+              "pPr": "",
+              "markRPr": ""
+            }
+          ]
+        }
+      }
     },
     "authored-delete-endnote-reference": {
       "origin": "authored",
       "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:r><w:t>Noted text</w:t></w:r><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:endnoteReference w:id=\"1\"/></w:r></w:del><w:r><w:t xml:space=\"preserve\"> continues.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>Tail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
-      "endnotes": "<w:endnote w:type=\"separator\" w:id=\"-1\"><w:p w14:paraId=\"73D00CBF\"><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:separator/></w:r></w:p></w:endnote><w:endnote w:type=\"continuationSeparator\" w:id=\"0\"><w:p w14:paraId=\"1F48C1AD\"><w:pPr><w:spacing w:after=\"0\" w:line=\"240\" w:lineRule=\"auto\"/></w:pPr><w:r><w:continuationSeparator/></w:r></w:p></w:endnote><w:endnote w:id=\"1\"><w:p w14:paraId=\"6A00000A\"><w:pPr><w:rPr><w:del w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:endnoteRef/></w:r><w:r><w:delText xml:space=\"preserve\"> The note text.</w:delText></w:r></w:del></w:p></w:endnote>",
+      "endnotes": "<w:endnote w:id=\"1\"><w:p w14:paraId=\"6A00000A\"><w:pPr><w:rPr><w:del w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:vertAlign w:val=\"superscript\"/></w:rPr><w:endnoteRef/></w:r><w:r><w:delText xml:space=\"preserve\"> The note text.</w:delText></w:r></w:del></w:p></w:endnote>",
       "accept": [
         {
           "text": "Intro paragraph.",
@@ -7547,6 +7607,314 @@
           "pPr": "",
           "markRPr": "",
           "runs": ["<endnoteReference:1>|<vertAlign val=\"superscript\"/>"]
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "acceptNotes": {},
+      "rejectNotes": {
+        "endnote": {
+          "1": [
+            {
+              "text": " The note text.",
+              "paraId": "6A00000A",
+              "pPr": "",
+              "markRPr": ""
+            }
+          ]
+        }
+      }
+    },
+    "authored-remove-hyperlink": {
+      "origin": "authored",
+      "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:r><w:t xml:space=\"preserve\">See </w:t></w:r><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:fldChar w:fldCharType=\"begin\"/></w:r><w:r><w:delInstrText>HYPERLINK \"https://example.com/\"</w:delInstrText></w:r><w:r><w:fldChar w:fldCharType=\"separate\"/></w:r><w:r><w:rPr><w:rPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:rPr><w:rStyle w:val=\"Hyperlink\"/></w:rPr></w:rPrChange></w:rPr><w:delText>linked text</w:delText></w:r><w:r><w:fldChar w:fldCharType=\"end\"/></w:r></w:del><w:ins w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:rPr><w:rPrChange w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:rPr><w:rStyle w:val=\"Hyperlink\"/></w:rPr></w:rPrChange></w:rPr><w:t>linked text</w:t></w:r></w:ins><w:r><w:t xml:space=\"preserve\"> here.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>Tail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "See linked text here.",
+          "paraId": "2A000002",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "See linked text here.",
+          "paraId": "2A000002",
+          "pPr": "",
+          "markRPr": "",
+          "runs": ["linked text|<rStyle val=\"Hyperlink\"/>"]
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "authored-crosscut-align": {
+      "origin": "authored",
+      "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Alpha </w:t></w:r><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>text.</w:delText></w:r></w:del></w:p><w:p w14:paraId=\"3B000003\"><w:pPr><w:jc w:val=\"center\"/><w:pPrChange w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:jc w:val=\"right\"/></w:pPr></w:pPrChange></w:pPr><w:del w:id=\"4\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Bravo </w:delText></w:r></w:del><w:r><w:t>text.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>T</w:t></w:r><w:r><w:t>ail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "3B000003",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "2A000002",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Bravo text.",
+          "paraId": "3B000003",
+          "pPr": "<jc val=\"right\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "authored-crosscut-ind": {
+      "origin": "authored",
+      "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:pPr><w:ind w:left=\"720\"/><w:rPr><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:ind w:left=\"720\"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Alpha </w:t></w:r><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>text.</w:delText></w:r></w:del></w:p><w:p w14:paraId=\"3B000003\"><w:pPr><w:ind w:left=\"720\"/><w:pPrChange w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:ind w:left=\"1440\" w:firstLine=\"360\"/></w:pPr></w:pPrChange></w:pPr><w:del w:id=\"4\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Bravo </w:delText></w:r></w:del><w:r><w:t>text.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>T</w:t></w:r><w:r><w:t>ail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "3B000003",
+          "pPr": "<ind left=\"720\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "2A000002",
+          "pPr": "<ind left=\"720\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Bravo text.",
+          "paraId": "3B000003",
+          "pPr": "<ind firstLine=\"360\" left=\"1440\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "authored-crosscut-markrpr": {
+      "origin": "authored",
+      "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:pPr><w:rPr><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/><w:b/><w:color w:val=\"C00000\"/></w:rPr><w:pPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr/></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Alpha </w:t></w:r><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>text.</w:delText></w:r></w:del></w:p><w:p w14:paraId=\"3B000003\"><w:pPr><w:rPr><w:i/><w:sz w:val=\"28\"/></w:rPr></w:pPr><w:del w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Bravo </w:delText></w:r></w:del><w:r><w:t>text.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>T</w:t></w:r><w:r><w:t>ail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "3B000003",
+          "pPr": "",
+          "markRPr": "<i/><sz val=\"28\"/>"
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "2A000002",
+          "pPr": "",
+          "markRPr": "<b/><color val=\"C00000\"/>"
+        },
+        {
+          "text": "Bravo text.",
+          "paraId": "3B000003",
+          "pPr": "",
+          "markRPr": "<i/><sz val=\"28\"/>"
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "authored-crosscut-spacing": {
+      "origin": "authored",
+      "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:pPr><w:spacing w:before=\"480\" w:after=\"0\"/><w:rPr><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:spacing w:before=\"480\" w:after=\"0\"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Alpha </w:t></w:r><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>text.</w:delText></w:r></w:del></w:p><w:p w14:paraId=\"3B000003\"><w:pPr><w:spacing w:before=\"480\" w:after=\"0\"/><w:pPrChange w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:spacing w:before=\"120\" w:after=\"360\" w:line=\"360\" w:lineRule=\"auto\"/></w:pPr></w:pPrChange></w:pPr><w:del w:id=\"4\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Bravo </w:delText></w:r></w:del><w:r><w:t>text.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>T</w:t></w:r><w:r><w:t>ail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "3B000003",
+          "pPr": "<spacing after=\"0\" before=\"480\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "2A000002",
+          "pPr": "<spacing after=\"0\" before=\"480\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Bravo text.",
+          "paraId": "3B000003",
+          "pPr": "<spacing after=\"360\" before=\"120\" line=\"360\" lineRule=\"auto\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "authored-crosscut-style": {
+      "origin": "authored",
+      "body": "<w:p w14:paraId=\"1A000001\"><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p w14:paraId=\"2A000002\"><w:pPr><w:pStyle w:val=\"Heading1\"/><w:rPr><w:del w:id=\"0\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"1\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:pStyle w:val=\"Heading1\"/></w:pPr></w:pPrChange></w:pPr><w:r><w:t xml:space=\"preserve\">Alpha </w:t></w:r><w:del w:id=\"2\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>text.</w:delText></w:r></w:del></w:p><w:p w14:paraId=\"3B000003\"><w:pPr><w:pStyle w:val=\"Heading1\"/><w:pPrChange w:id=\"3\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:pStyle w:val=\"BlockQuote\"/></w:pPr></w:pPrChange></w:pPr><w:del w:id=\"4\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText xml:space=\"preserve\">Bravo </w:delText></w:r></w:del><w:r><w:t>text.</w:t></w:r></w:p><w:p w14:paraId=\"5E000005\"><w:r><w:t>T</w:t></w:r><w:r><w:t>ail paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/><w:cols w:space=\"720\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "3B000003",
+          "pPr": "<pStyle val=\"Heading1\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Tail paragraph.",
+          "paraId": "5E000005",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "1A000001",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "2A000002",
+          "pPr": "<pStyle val=\"Heading1\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "Bravo text.",
+          "paraId": "3B000003",
+          "pPr": "<pStyle val=\"BlockQuote\"/>",
+          "markRPr": ""
         },
         {
           "text": "Tail paragraph.",
@@ -7602,6 +7970,81 @@
           "text": "Tail paragraph.",
           "paraId": "5E000005",
           "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tg-chain-reject-first": {
+      "origin": "constructed",
+      "body": "<w:p w14:paraId=\"1C000001\" w14:textId=\"1C000001\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"11\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:r><w:t>Carrier text.</w:t></w:r></w:p><w:p w14:paraId=\"2F000002\" w14:textId=\"2F000002\"><w:pPr><w:jc w:val=\"right\"/><w:rPr><w:ins w:id=\"12\" w:author=\"Author 2\" w:date=\"2026-01-02T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"21\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"31\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>First text.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"35000003\" w14:textId=\"35000003\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"13\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"32\" w:author=\"Author 2\" w:date=\"2026-01-02T00:00:00Z\"><w:r><w:t>Second text.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"4D000004\" w14:textId=\"4D000004\"><w:pPr><w:jc w:val=\"both\"/><w:pPrChange w:id=\"23\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"33\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"><w:r><w:t>Third text.</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "rejectAuthor": "Author 1",
+      "rejectAuthorResult": [
+        {
+          "text": "Carrier text.",
+          "paraId": "2F000002",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "[+Second text.+]",
+          "paraId": "35000003",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "[+Third text.+]",
+          "paraId": "4D000004",
+          "pPr": "<jc val=\"both\"/>",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tg-chain-reject-second": {
+      "origin": "constructed",
+      "body": "<w:p w14:paraId=\"1C000001\" w14:textId=\"1C000001\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"11\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:r><w:t>Carrier text.</w:t></w:r></w:p><w:p w14:paraId=\"2F000002\" w14:textId=\"2F000002\"><w:pPr><w:jc w:val=\"right\"/><w:rPr><w:ins w:id=\"12\" w:author=\"Author 2\" w:date=\"2026-01-02T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"21\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"31\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>First text.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"35000003\" w14:textId=\"35000003\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"13\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"32\" w:author=\"Author 2\" w:date=\"2026-01-02T00:00:00Z\"><w:r><w:t>Second text.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"4D000004\" w14:textId=\"4D000004\"><w:pPr><w:jc w:val=\"both\"/><w:pPrChange w:id=\"23\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"33\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"><w:r><w:t>Third text.</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "rejectAuthor": "Author 2",
+      "rejectAuthorResult": [
+        {
+          "text": "Carrier text.",
+          "paraId": "1C000001",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "[+First text.+]",
+          "paraId": "35000003",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "[+Third text.+]",
+          "paraId": "4D000004",
+          "pPr": "<jc val=\"both\"/>",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tg-chain-reject-third": {
+      "origin": "constructed",
+      "body": "<w:p w14:paraId=\"1C000001\" w14:textId=\"1C000001\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"11\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:r><w:t>Carrier text.</w:t></w:r></w:p><w:p w14:paraId=\"2F000002\" w14:textId=\"2F000002\"><w:pPr><w:jc w:val=\"right\"/><w:rPr><w:ins w:id=\"12\" w:author=\"Author 2\" w:date=\"2026-01-02T00:00:00Z\"/></w:rPr><w:pPrChange w:id=\"21\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"31\" w:author=\"Author 1\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>First text.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"35000003\" w14:textId=\"35000003\"><w:pPr><w:jc w:val=\"center\"/><w:rPr><w:ins w:id=\"13\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"32\" w:author=\"Author 2\" w:date=\"2026-01-02T00:00:00Z\"><w:r><w:t>Second text.</w:t></w:r></w:ins></w:p><w:p w14:paraId=\"4D000004\" w14:textId=\"4D000004\"><w:pPr><w:jc w:val=\"both\"/><w:pPrChange w:id=\"23\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"><w:pPr><w:jc w:val=\"center\"/></w:pPr></w:pPrChange></w:pPr><w:ins w:id=\"33\" w:author=\"Author 3\" w:date=\"2026-01-03T00:00:00Z\"><w:r><w:t>Third text.</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "rejectAuthor": "Author 3",
+      "rejectAuthorResult": [
+        {
+          "text": "Carrier text.",
+          "paraId": "1C000001",
+          "pPr": "<jc val=\"center\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "[+First text.+]",
+          "paraId": "2F000002",
+          "pPr": "<jc val=\"right\"/>",
+          "markRPr": ""
+        },
+        {
+          "text": "[+Second text.+]",
+          "paraId": "4D000004",
+          "pPr": "<jc val=\"center\"/>",
           "markRPr": ""
         }
       ]

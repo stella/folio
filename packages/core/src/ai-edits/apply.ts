@@ -916,6 +916,28 @@ const resolveFormattingFromStyle = ({
   return Object.keys(fallback).length > 0 ? fallback : undefined;
 };
 
+/**
+ * The properties a batch's own property change set on a paragraph: the ones
+ * whose value differs from what that change records as before.
+ */
+const propertiesSetInBatch = (
+  node: PMNode,
+  batchRevisionIds: ReadonlySet<number>,
+): ReadonlySet<string> => {
+  const changes = expectParagraphAttrs(node)._propertyChanges;
+  const change = Array.isArray(changes)
+    ? changes.find(({ info }) => batchRevisionIds.has(info.id))
+    : undefined;
+  if (change === undefined) return new Set();
+  const before = (change.previousFormatting ?? {}) as Record<string, unknown>;
+  const now = paragraphPropertiesSnapshot(node) as Record<string, unknown>;
+  return new Set(
+    [...new Set([...Object.keys(before), ...Object.keys(now)])].filter(
+      (key) => JSON.stringify(before[key]) !== JSON.stringify(now[key]),
+    ),
+  );
+};
+
 type CarryParagraphPropertiesOptions = {
   tr: Transaction;
   /** The paragraph that takes the properties. */
@@ -926,6 +948,8 @@ type CarryParagraphPropertiesOptions = {
   numbering: NumberingMap | null;
   /** Records the change as a tracked property change; applied directly when omitted. */
   revision?: ParagraphPropertyChangeAttrs["info"];
+  /** Properties the paragraph keeps its own values of: ones its batch set. */
+  keep?: ReadonlySet<string>;
 };
 
 /**
@@ -945,6 +969,7 @@ const carryParagraphProperties = ({
   styleResolver,
   numbering,
   revision,
+  keep,
 }: CarryParagraphPropertiesOptions): { tr: Transaction; changed: boolean; tracked: boolean } => {
   const target = tr.doc.nodeAt(position);
   if (!target || target.type !== source.type) {
@@ -953,7 +978,11 @@ const carryParagraphProperties = ({
     return { tr, changed: false, tracked: false };
   }
   const previousFormatting = paragraphPropertiesSnapshot(target);
-  const formatting = paragraphPropertiesSnapshot(source);
+  const own = previousFormatting as Record<string, unknown>;
+  const formatting = Object.fromEntries([
+    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(([key]) => !keep?.has(key)),
+    ...Object.entries(own).filter(([key]) => keep?.has(key)),
+  ]);
   // Both snapshots come from the same fixed walk over the in-scope keys.
   if (JSON.stringify(previousFormatting) === JSON.stringify(formatting)) {
     return { tr, changed: false, tracked: false };
@@ -972,7 +1001,7 @@ const carryParagraphProperties = ({
           {
             type: "paragraphPropertyChange",
             info: { id: -1, author: "", date: "1970-01-01T00:00:00Z" },
-            previousFormatting: formatting,
+            previousFormatting: formatting as ParagraphPropertyChangeAttrs["previousFormatting"],
           } satisfies ParagraphPropertyChangeAttrs,
         ],
       },
@@ -2648,6 +2677,7 @@ type RetireFinalParagraphsOptions = {
   deletions: readonly DeletedFinalParagraph[];
   /** Operations the batch applied: a deletion that changed nothing is not one. */
   appliedIds: ReadonlySet<string>;
+  batchRevisionIds: ReadonlySet<number>;
   revisionSeed: number;
   author: string;
   date: string;
@@ -2691,6 +2721,7 @@ const withRetiredFinalParagraphs = ({
   tr,
   deletions,
   appliedIds,
+  batchRevisionIds,
   revisionSeed,
   author,
   date,
@@ -2746,6 +2777,7 @@ const withRetiredFinalParagraphs = ({
           styleResolver,
           numbering,
           revision: { id: revisionId, author, date, ...revisionExtras },
+          keep: propertiesSetInBatch(emptied, batchRevisionIds),
         });
         resolvedOperationIds.add(operationId);
         addedRevisions.push({ operationId, revisionId });
@@ -5368,6 +5400,7 @@ const applyFolioAIEditOperationsInternal = ({
       tr,
       deletions: deletedFinalParagraphs,
       appliedIds: new Set(applied.map(({ id }) => id)),
+      batchRevisionIds,
       revisionSeed,
       author,
       date,
