@@ -46,7 +46,7 @@ import {
 import {
   getDocumentStyleDefinitions,
   getDocumentStyleResolver,
-} from "../prosemirror/plugins/documentStyles";
+} from "../prosemirror/plugins/documentStyleState";
 import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,

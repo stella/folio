@@ -1063,7 +1063,15 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           return false;
         }
 
-        if (event.key === "Enter") {
+        // Only a plain Enter ends a paragraph: Shift-Enter breaks the line and
+        // Mod-Enter breaks the page, through their own bindings.
+        if (
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.metaKey &&
+          !event.ctrlKey &&
+          !event.altKey
+        ) {
           const { $from, empty } = view.state.selection;
           if (
             empty &&

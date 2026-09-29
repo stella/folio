@@ -56,7 +56,7 @@ import {
   withoutResolvedEnclosures,
 } from "../contentControlRevisions";
 import { getDocumentNumbering } from "../plugins/documentNumbering";
-import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";

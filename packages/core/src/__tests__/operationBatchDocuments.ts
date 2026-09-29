@@ -20,7 +20,7 @@ import {
 import { createDocx } from "../docx/rezip";
 import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import { marksToTextFormatting } from "../prosemirror/conversion/fromProseDoc";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { isZeroWidthAnchor } from "../prosemirror/zeroWidthAnchors";
 import type { Comment, Paragraph, ParagraphContent, TextFormatting } from "../types/document";
 

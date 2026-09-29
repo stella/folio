@@ -15,15 +15,78 @@
  * style-agnostic behavior.
  */
 
-import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
+import { Mark } from "prosemirror-model";
+import { isHistoryTransaction } from "prosemirror-history";
+import { Mapping, ReplaceStep } from "prosemirror-transform";
+import { rebaseParagraphRuns } from "../rebaseParagraphRuns";
+import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
 
-import { type BuiltInStyleIndex, EMPTY_BUILT_IN_STYLE_INDEX } from "../../docx/builtInStyles";
-import type { Style, StyleDefinitions } from "../../types/document";
+import type { StyleDefinitions } from "../../types/document";
 import { StyleResolver, createStyleResolver } from "../styles/styleResolver";
+import { documentStylesKey } from "./documentStyleState";
+
+export {
+  documentStylesKey,
+  getDocumentStyleResolver,
+  getDocumentStyleDefinitions,
+  getDocumentBuiltInStyles,
+} from "./documentStyleState";
 import { getDocumentNumbering } from "./documentNumbering";
 import { resolveEditedParagraphStyles } from "./paragraphStyleResolution";
 
-export const documentStylesKey = new PluginKey<StyleResolver | null>("documentStyles");
+/** Rebase surviving right-hand runs when ordinary replacement steps consume a paragraph opening. */
+const rebaseEditedParagraphJoins = (
+  transactions: readonly Transaction[],
+  tr: Transaction,
+  resolver: StyleResolver | null,
+): void => {
+  const maps = transactions.flatMap((transaction) => transaction.mapping.maps);
+  let offset = 0;
+  for (const transaction of transactions) {
+    // Revision resolution and formatting commands already own their run rebases.
+    if (
+      isHistoryTransaction(transaction) ||
+      !transaction.steps.every((step) => step instanceof ReplaceStep)
+    ) {
+      offset += transaction.steps.length;
+      continue;
+    }
+    for (const [index, step] of transaction.steps.entries()) {
+      const before = transaction.docs[index];
+      if (!before) continue;
+      const map = step.getMap();
+      const following = new Mapping(maps.slice(offset + index + 1));
+      const mapping = new Mapping([map, ...following.maps]);
+      // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
+      map.forEach((oldFrom, oldTo) => {
+        before.nodesBetween(oldFrom, oldTo, (paragraph, position) => {
+          if (paragraph.type.name !== "paragraph") return true;
+          if (!map.mapResult(position, 1).deleted) return false;
+          const from = mapping.map(position + 1, 1);
+          const to = mapping.map(position + paragraph.nodeSize - 1, -1);
+          if (from >= to) return false;
+          const at = tr.doc.resolve(from);
+          if (at.parent.type.name !== "paragraph") return false;
+          const targetPosition = at.start() - 1;
+          if (targetPosition === mapping.map(position, 1)) return false;
+          const surviving = tr.doc.nodeAt(from);
+          const original = before.nodeAt(mapping.invert().map(from, 1));
+          if (!surviving || !original || !Mark.sameSet(surviving.marks, original.marks))
+            return false;
+          rebaseParagraphRuns({
+            tr,
+            position: targetPosition,
+            previous: paragraph,
+            styleResolver: resolver,
+            range: { from, to },
+          });
+          return false;
+        });
+      });
+    }
+    offset += transaction.steps.length;
+  }
+};
 
 let bareStyleResolver: StyleResolver | undefined;
 /** The cascade of a package that defines no styles: docDefaults-free built-ins. */
@@ -59,47 +122,16 @@ export function createDocumentStylesPlugin(
     // A paragraph an edit creates reads its style cascade the way a loaded
     // one does, so it paints its inherited formatting before any reopen.
     // A package without a styles part loads against the built-in defaults.
-    appendTransaction: (transactions, _oldState, newState) =>
-      resolveEditedParagraphStyles(
-        transactions,
-        newState,
-        documentStylesKey.getState(newState) ?? bareResolver(),
-        () => getDocumentNumbering(newState),
-      ),
+    appendTransaction: (transactions, _oldState, newState) => {
+      const styleResolver = documentStylesKey.getState(newState) ?? bareResolver();
+      const tr =
+        resolveEditedParagraphStyles(transactions, newState, styleResolver, () =>
+          getDocumentNumbering(newState),
+        ) ?? newState.tr;
+      rebaseEditedParagraphJoins(transactions, tr, styleResolver);
+      return tr.docChanged ? tr : null;
+    },
   });
-}
-
-/** Read the document's StyleResolver, or null when the plugin isn't installed. */
-export function getDocumentStyleResolver(state: EditorState): StyleResolver | null {
-  return documentStylesKey.getState(state) ?? null;
-}
-
-/**
- * The document's style definitions by id, or `null` when the state carries no
- * styles plugin and so cannot say what the document defines. A document
- * without a styles part defines none.
- */
-export function getDocumentStyleDefinitions(
-  state: EditorState,
-): { get: (styleId: string) => Style | undefined; paragraphStyles: () => Style[] } | null {
-  if (documentStylesKey.get(state) === undefined) {
-    return null;
-  }
-  const resolver = getDocumentStyleResolver(state);
-  return {
-    get: (styleId) => resolver?.getStyle(styleId),
-    paragraphStyles: () => resolver?.getParagraphStyles() ?? [],
-  };
-}
-
-/**
- * Read the document's built-in style index, for the callers that classify
- * paragraphs (heading collection, markdown export, the AI snapshot). Without
- * the plugin every lookup misses, which degrades classification to the
- * paragraph's own outline level rather than to English style ids.
- */
-export function getDocumentBuiltInStyles(state: EditorState): BuiltInStyleIndex {
-  return getDocumentStyleResolver(state)?.builtInStyles ?? EMPTY_BUILT_IN_STYLE_INDEX;
 }
 
 /** Reconfigure so ProseMirror replaces the keyed plugin's resolver state. */

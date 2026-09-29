@@ -26,7 +26,7 @@ import { finalRevisionParagraphRanges } from "../internal/revisionResolutionTrac
 import type { RevisionResolutionMode } from "../internal/revisionResolutionInline";
 import { resolveWholeStory } from "../internal/wholeStoryRevisionResolution";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
-import { getDocumentStyleResolver } from "./plugins/documentStyles";
+import { getDocumentStyleResolver } from "./plugins/documentStyleState";
 
 /** Resolve every revision in the state's story with the state's own styles and numbering. */
 export const resolveStateStory = (state: EditorState, mode: RevisionResolutionMode) =>

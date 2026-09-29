@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { Schema } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
@@ -15,6 +16,7 @@ import {
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
+import { schema as folioSchema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   createFolioAIEditSnapshot,
@@ -23,6 +25,10 @@ import {
 } from "./snapshot";
 import type { FolioAIEditApplyMode, FolioAIEditOperation } from "./types";
 import { createScopedWordDiffOptions } from "./word-diff";
+
+const runFormattingOverrideSpec =
+  folioSchema.spec.marks.get("runFormattingOverride") ??
+  panic("The editor schema has no runFormattingOverride mark");
 
 const schema = new Schema({
   nodes: {
@@ -153,6 +159,9 @@ const schema = new Schema({
       },
       toDOM: () => ["u", 0],
     },
+    // Formatting commands record which run properties are direct on this
+    // carrier; a document can only hold it when its schema declares it.
+    runFormattingOverride: runFormattingOverrideSpec,
   },
 });
 
@@ -499,7 +508,7 @@ describe("Folio AI edit operations", () => {
 
     const accepting = applyFormatting();
     expect(collectMarksByText(accepting.view.state)).toEqual({
-      target: ["italic", "runPropertyChange", "runFormattingOverride"],
+      target: ["runPropertyChange", "italic", "runFormattingOverride"],
     });
     expect(getTrackedChangesFromDoc(accepting.view.state.doc)).toEqual([
       expect.objectContaining({

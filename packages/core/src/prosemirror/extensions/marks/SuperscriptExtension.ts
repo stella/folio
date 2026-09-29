@@ -3,9 +3,9 @@
  */
 
 import { panic } from "better-result";
-import { toggleMark } from "prosemirror-commands";
 
 import { createMarkExtension } from "../create";
+import { toggleDocumentMark } from "./markUtils";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
 export const SuperscriptExtension = createMarkExtension({
@@ -25,7 +25,7 @@ export const SuperscriptExtension = createMarkExtension({
     }
     return {
       commands: {
-        toggleSuperscript: () => toggleMark(superscriptType),
+        toggleSuperscript: () => toggleDocumentMark(superscriptType),
       },
     };
   },

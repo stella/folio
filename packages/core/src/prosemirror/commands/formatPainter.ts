@@ -13,7 +13,7 @@ import type { Mark, Node as PMNode, ResolvedPos } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 
 import { expectCharacterStyleMarkAttrs } from "../attrs";
-import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,

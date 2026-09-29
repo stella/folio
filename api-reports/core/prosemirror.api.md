@@ -198,7 +198,7 @@ export function getListInfo(state: EditorState): {
 } | null;
 
 // @public
-export function getMarkAttr(state: EditorState, markType: MarkType, attr: string): unknown;
+export function getMarkAttr(state: EditorState, type: MarkType, attr: string): unknown;
 
 // @public (undocumented)
 export function getParagraphAlignment(state: EditorState): import__stll_docx_core_model.ParagraphAlignment | null;
@@ -327,7 +327,7 @@ export const isInListState: (state: ListState | undefined) => state is ActiveLis
 export function isInTable(state: EditorState): boolean;
 
 // @public
-export function isMarkActive(state: EditorState, markType: MarkType, attrs?: Record<string, unknown>): boolean;
+export function isMarkActive(state: EditorState, type: MarkType, attrs?: Record<string, unknown>): boolean;
 
 // @public
 export type ListNumberingMenuState = {

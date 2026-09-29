@@ -120,14 +120,14 @@ export const CommentReferenceExtension = createNodeExtension<CommentReferenceOpt
       ];
     },
   }),
-  onSchemaReady: ({ schema }) => ({
+  onSchemaReady: () => ({
     plugins: [
       new Plugin({
         appendTransaction(transactions, _oldState, newState) {
           if (!transactions.some(({ docChanged }) => docChanged)) {
             return null;
           }
-          const referenceType = schema.nodes[COMMENT_REFERENCE_NODE_NAME];
+          const referenceType = newState.schema.nodes[COMMENT_REFERENCE_NODE_NAME];
           if (!referenceType) {
             return null;
           }

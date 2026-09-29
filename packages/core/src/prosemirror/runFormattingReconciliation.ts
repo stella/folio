@@ -4,7 +4,6 @@ import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
 import { marksToTextFormatting } from "./conversion/fromProseDoc";
 import { textFormattingToMarks } from "./extensions/marks/markUtils";
-import { schema } from "./schema";
 import { expectCharacterStyleMarkAttrs } from "./attrs";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
 import {
@@ -92,7 +91,7 @@ export const reconcileRunFormattingMarks = ({
     suppressedFormatting: paragraphFormatting,
   });
   const overrideFormatting = mergeTextFormatting(paragraphMarkOverrides, authoredFormatting);
-  const formattingMarks = textFormattingToMarks(effectiveFormatting, schema, {
+  const formattingMarks = textFormattingToMarks(effectiveFormatting, node.type.schema, {
     overrideFormatting,
     directFormatting: authoredFormatting,
   });
