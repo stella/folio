@@ -638,6 +638,7 @@ export type TableCellAttrs = {
 
 // @public
 export type TableRowAttrs = {
+    _batchRowCleanup?: "pending" | null;
     height?: number;
     heightRule?: NonNullable<import__stll_docx_core_model.TableRowFormatting["heightRule"]>;
     isHeader?: boolean;
