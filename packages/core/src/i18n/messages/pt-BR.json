@@ -339,8 +339,8 @@
       "editingDescription": "Edite o documento diretamente",
       "outlineTitle": "Estrutura de tópicos",
       "showDocumentOutline": "Estrutura de tópicos do documento",
-      "suggesting": "Sugerindo",
-      "suggestingDescription": "As edições se tornam sugestões controladas",
+      "suggesting": "Controle de Alterações",
+      "suggestingDescription": "As edições são registradas como alterações controladas",
       "viewing": "Visualizando",
       "viewingDescription": "Leia ou imprima o documento final"
     },
