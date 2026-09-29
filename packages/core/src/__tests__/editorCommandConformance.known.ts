@@ -143,13 +143,14 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "Suggesting mode does not record the paragraph marks a multi-paragraph paste, Enter over a selection, a cross-paragraph delete or an inserted table of contents create or remove, so rejecting or accepting every change leaves the paragraphs split or unjoined",
+      "Suggesting mode does not record the paragraph marks a multi-paragraph paste, Enter over a selection, a cross-paragraph delete, an inserted table or an inserted table of contents create or remove, so rejecting or accepting every change leaves the paragraphs split or unjoined",
     operations: [
       "paste:paragraphs",
       "paste:copied-blocks",
       "key:Enter",
       "key:Delete",
       "command:generateTOC",
+      "command:insertTable",
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
@@ -183,6 +184,32 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
 
   // -------------------------------------------------------------- other --
+  {
+    reason:
+      "A note added to a package that already has a notes part is not written into that part on save, so the reopened document references a missing note",
+    operations: ["command:insertFootnote", "command:insertEndnote"],
+    shapes: ["notes"],
+    kinds: ["readback-blocks", "reject-mismatch"],
+  },
+  {
+    reason:
+      "Applying or clearing a paragraph style, or clearing the text color, drops a hyperlink's character-style run formatting in the editor, which the saved document still carries",
+    operations: [
+      "command:applyStyle(Heading1)",
+      "command:applyStyle(Heading2)",
+      "command:clearStyle",
+      "command:clearTextColor",
+    ],
+    shapes: ["fields-links-bookmarks"],
+    kinds: ["readback-blocks", "reject-mismatch"],
+  },
+  {
+    reason: "Suggesting mode removes a hyperlink or a note reference's mark directly",
+    operations: ["command:removeHyperlink", "command:deleteNoteRef"],
+    shapes: ["fields-links-bookmarks", "notes"],
+    modes: ["suggesting"],
+    kinds: ["reject-mismatch"],
+  },
   {
     reason:
       "A hyperlink or a character-format change applied across a field drops the field's result text on save, or on rejecting the change",

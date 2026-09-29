@@ -19,13 +19,12 @@
  * untouched so ordinary typed text stays mark-free and serializes cleanly.
  */
 
-import type { Schema } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
 import { createExtension } from "../create";
 import { textFormattingToMarks } from "../marks/markUtils";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { ExtensionRuntime } from "../types";
 
 export const emptyParagraphFormatKey = new PluginKey("emptyParagraphFormat");
 
@@ -45,7 +44,7 @@ function hasNonFontDefaults(dtf: TextFormatting): boolean {
   );
 }
 
-function createEmptyParagraphFormatPlugin(schema: Schema): Plugin {
+function createEmptyParagraphFormatPlugin(): Plugin {
   return new Plugin({
     key: emptyParagraphFormatKey,
     appendTransaction(transactions, _oldState, newState) {
@@ -75,6 +74,8 @@ function createEmptyParagraphFormatPlugin(schema: Schema): Plugin {
         return null;
       }
 
+      // The document's own schema: it may be another instance than the runtime's.
+      const { schema } = newState;
       const marks = textFormattingToMarks(dtf, schema);
       if (dtf.styleId) {
         marks.push(schema.mark("characterStyle", { styleId: dtf.styleId }));
@@ -92,9 +93,9 @@ function createEmptyParagraphFormatPlugin(schema: Schema): Plugin {
 
 export const EmptyParagraphFormatExtension = createExtension({
   name: "emptyParagraphFormat",
-  onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
+  onSchemaReady(): ExtensionRuntime {
     return {
-      plugins: [createEmptyParagraphFormatPlugin(ctx.schema)],
+      plugins: [createEmptyParagraphFormatPlugin()],
     };
   },
 });

@@ -217,6 +217,35 @@ export const parseShapeDocument = (bytes: Uint8Array): Promise<Document> =>
   parseDocx(bytes.slice().buffer, { preloadFonts: false, detectVariables: false });
 
 /**
+ * Which extension runtime a harness state runs. `harness` (the default) is a
+ * runtime of its own, built on a schema instance other than the one the
+ * document is parsed into, as a header, footer or note editor is: an
+ * extension that builds nodes from types it captured at setup, rather than
+ * from the document's schema, fails there. `document` is the runtime built on
+ * the document's own schema.
+ */
+export type HarnessRuntime = "harness" | "document";
+
+const TRANSACTION_INVARIANTS_KEY = /^transactionInvariants\$/u;
+
+const runtimePlugins = (runtime: HarnessRuntime): readonly Plugin[] =>
+  runtime === "harness"
+    ? harnessManager().getPlugins()
+    : // The harness reports an invalid document itself (see harnessManager).
+      singletonManager
+        .getPlugins()
+        .filter((plugin) => !TRANSACTION_INVARIANTS_KEY.test(pluginKeyName(plugin)));
+
+const pluginKeyName = (plugin: Plugin): string =>
+  (plugin as unknown as { key?: unknown }).key?.toString() ?? "";
+
+/** The extension runtime whose plugins `state` holds. */
+export const harnessRuntimeManager = (state: EditorState): ExtensionManager => {
+  const [first] = singletonManager.getPlugins();
+  return first !== undefined && state.plugins.includes(first) ? singletonManager : harnessManager();
+};
+
+/**
  * The plugins a mounted editor holds for `document`: the editor's hidden-state
  * assembly (controller/hiddenEditorManager), which tests outside the controller
  * may not import. Host plugins first, then the extension runtime, then the
@@ -226,10 +255,11 @@ export const createHarnessPlugins = (
   document: Document,
   mode: EditorMode,
   extraPlugins: readonly Plugin[] = [],
+  runtime: HarnessRuntime = "harness",
 ): Plugin[] => [
   ...extraPlugins,
   createSuggestionModePlugin(mode === "suggesting", HARNESS_AUTHOR),
-  ...harnessManager().getPlugins(),
+  ...runtimePlugins(runtime),
   createDocumentStylesPlugin(document.package.styles),
   createDocumentNumberingPlugin(document.package.numbering),
 ];
@@ -243,11 +273,12 @@ export const createHarnessState = (
   document: Document,
   mode: EditorMode,
   extraPlugins: readonly Plugin[] = [],
+  runtime: HarnessRuntime = "harness",
 ): EditorState =>
   ensureBaseDirectionInState(
     PMEditorState.create({
       doc: createHarnessDoc(document),
-      plugins: createHarnessPlugins(document, mode, extraPlugins),
+      plugins: createHarnessPlugins(document, mode, extraPlugins, runtime),
     }),
   );
 

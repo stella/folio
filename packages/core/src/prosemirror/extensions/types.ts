@@ -98,6 +98,13 @@ export const Priority = {
 // ============================================================================
 
 export type ExtensionContext = {
+  /**
+   * The schema this runtime was built with. The documents the runtime edits
+   * may be of another instance of it (header, footer and note editors each
+   * build a runtime, and every document is parsed into the shared schema), so
+   * commands, key bindings and plugins build and compare nodes and marks with
+   * the types of the state they act on, never with types taken from here.
+   */
   schema: Schema;
 };
 

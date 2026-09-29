@@ -7,7 +7,7 @@
  */
 
 import { Fragment } from "prosemirror-model";
-import type { Mark, Node as PMNode, NodeSpec, Schema } from "prosemirror-model";
+import type { Mark, Node as PMNode, NodeSpec } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import {
@@ -62,7 +62,7 @@ import {
 } from "../../styles/resolvedStyleAttrs";
 import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import { createNodeExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { ExtensionRuntime } from "../types";
 
 // ============================================================================
 // HELPERS (from nodes.ts)
@@ -868,11 +868,13 @@ function makeDecreaseIndent(amount: number = 720): Command {
   };
 }
 
-function makeApplyStyle(schema: Schema) {
+function makeApplyStyle() {
   // `styleId: null` clears the style: the paragraph takes the default
   // paragraph style, which `resolvedAttrs` then resolves.
   return (styleId: string | null, resolvedAttrs?: ResolvedStyleAttrs): Command =>
     (state, dispatch) => {
+      // The document's own schema: it may be another instance than the runtime's.
+      const { schema } = state;
       const { $from, $to } = state.selection;
 
       if (!dispatch) {
@@ -1122,8 +1124,8 @@ export const ParagraphExtension = createNodeExtension({
   name: "paragraph",
   schemaNodeName: "paragraph",
   nodeSpec: paragraphNodeSpec,
-  onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
-    const applyStyleFn = makeApplyStyle(ctx.schema);
+  onSchemaReady(): ExtensionRuntime {
+    const applyStyleFn = makeApplyStyle();
 
     return {
       commands: {

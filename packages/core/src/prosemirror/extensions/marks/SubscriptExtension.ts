@@ -3,9 +3,9 @@
  */
 
 import { panic } from "better-result";
-import { toggleMark } from "prosemirror-commands";
 
 import { createMarkExtension } from "../create";
+import { toggleDocumentMark } from "./markUtils";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
 export const SubscriptExtension = createMarkExtension({
@@ -25,7 +25,7 @@ export const SubscriptExtension = createMarkExtension({
     }
     return {
       commands: {
-        toggleSubscript: () => toggleMark(subscriptType),
+        toggleSubscript: () => toggleDocumentMark(subscriptType),
       },
     };
   },
