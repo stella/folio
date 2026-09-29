@@ -439,7 +439,7 @@ const flowFixtures = (
   return { ...FIXTURES, emoji: COLLISION_FIXTURES.emoji, ...STORY_FIXTURES };
 };
 
-export type FlowOptions = { generation?: Generation };
+export type FlowOptions = { generation?: Generation; captureSaved?: boolean };
 
 /** The fixture and mode a seed's flow runs on. */
 export const describeFlow = (
@@ -457,8 +457,8 @@ export const runFlow = async (
   seed: number,
   steps: number,
   kind: FlowKind = "random",
-  { generation = "targeted" }: FlowOptions = {},
-): Promise<void> => {
+  { generation = "targeted", captureSaved = false }: FlowOptions = {},
+): Promise<Uint8Array | undefined> => {
   const random = createRandom(seed);
   const fixtures = flowFixtures(kind, generation);
   const fixture = random.pick(Object.keys(fixtures));
@@ -500,6 +500,10 @@ export const runFlow = async (
       for (const { check } of checks) await check(context);
     }
     await relations.finish();
+    if (captureSaved) {
+      return (await saveAndReopen(flow.reviewer, "final sample", saveOptions(flow))).bytes;
+    }
+    return undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(

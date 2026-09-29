@@ -5,6 +5,9 @@
  * FOLIO_SCENARIO_COLLISION_RUNS and FOLIO_SCENARIO_FUZZ_STEPS.
  */
 
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { after, test } from "node:test";
 
 import { reportScenarioFailure, shellQuote } from "../support/failure-fingerprints.ts";
@@ -22,6 +25,23 @@ const SEED = integer(process.env["FOLIO_SCENARIO_SEED"], 20_260_926);
 const RUNS = integer(process.env["FOLIO_SCENARIO_FUZZ_RUNS"], 12);
 const STEPS = integer(process.env["FOLIO_SCENARIO_FUZZ_STEPS"], 10);
 const COLLISION_RUNS = integer(process.env["FOLIO_SCENARIO_COLLISION_RUNS"], 8);
+const SAVE_SAMPLE = integer(process.env["FOLIO_SCENARIO_SAVE_SAMPLE"], 0);
+const SAMPLE_DIR = process.env["FOLIO_SCENARIO_SAMPLE_DIR"];
+
+const saveSample = async (
+  bytes: Uint8Array,
+  { seed, kind, fixture, mode }: { seed: number; kind: FlowKind; fixture: string; mode: string },
+): Promise<void> => {
+  if (SAMPLE_DIR === undefined) {
+    throw new Error("FOLIO_SCENARIO_SAMPLE_DIR is required to save samples");
+  }
+  const fingerprint = createHash("sha256")
+    .update(`${kind}\0${seed}\0${fixture}\0${mode}`)
+    .digest("hex")
+    .slice(0, 16);
+  await mkdir(SAMPLE_DIR, { recursive: true });
+  await writeFile(path.join(SAMPLE_DIR, `${fingerprint}-${seed}.docx`), bytes);
+};
 
 const relationRepro = ["FOLIO_SCENARIO_RELATIONS", "FOLIO_SCENARIO_RELATIONS_DEPTH"]
   .flatMap((name) => {
@@ -51,7 +71,12 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
     known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
     async () => {
       try {
-        await runFlow(seed, STEPS, kind);
+        const sampleIndex = kind === "random" ? run : RUNS + run;
+        const shouldSave = sampleIndex < SAVE_SAMPLE;
+        const bytes = await runFlow(seed, STEPS, kind, { captureSaved: shouldSave });
+        if (shouldSave && bytes !== undefined) {
+          await saveSample(bytes, { seed, kind, fixture, mode });
+        }
       } catch (error) {
         reportScenarioFailure({
           test: `consumer flow ${fixture} / ${mode}`,
