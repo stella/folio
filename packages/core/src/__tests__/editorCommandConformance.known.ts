@@ -80,15 +80,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     placements: ["caret-middle"],
     kinds: ["threw"],
   },
-  {
-    reason:
-      "Clearing a selected table cell leaves an empty editor paragraph whose inherited spacing appears only after reopen",
-    operations: ["host:cut"],
-    shapes: ["tables"],
-    placements: ["cross-paragraph"],
-    modes: ["editing"],
-    kinds: ["readback-painted"],
-  },
   // ---------------------------------------------------------------- lists --
   {
     reason:
@@ -228,33 +219,15 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
   },
-  {
-    reason:
-      "A suggested deletion inside another author's tracked insertion does not survive a save",
-    operations: REPLACING_OPERATIONS,
-    shapes: ["tracked-changes", "pending-property-change"],
-    modes: ["suggesting"],
-    kinds: ["readback-blocks"],
-  },
 
   // -------------------------------------------------------------- other --
   {
     reason:
-      "Paragraphs a paste or a structural command creates carry no resolved style attributes (spacing, run defaults) until the document is reopened",
-    operations: [
-      "paste:paragraphs",
-      "paste:copied-blocks",
-      "paste:table",
-      "paste:list",
-      "key:Delete",
-      "command:deleteColumn",
-      "command:addRowAbove",
-      "command:addRowBelow",
-      "command:addColumnLeft",
-      "command:addColumnRight",
-      "command:splitCell",
-    ],
+      "Pasted content reads back differently after a save: a body run pasted into a bold heading reads as bold live while its direct formatting turns bold off, and a table pasted over a paragraph in suggesting mode reopens with its cells in other rows",
+    operations: ["paste:paragraphs", "paste:copied-blocks", "paste:table"],
+    shapes: ["style-numbered-headings", "tables"],
     kinds: ["readback-blocks", "readback-painted"],
+    tier: "full",
   },
   {
     reason:
@@ -286,27 +259,12 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "Replacing a range that spans paragraphs leaves a paragraph without resolved style attributes (spacing, run defaults) until the document is reopened",
-    operations: REPLACING_OPERATIONS,
-    placements: ["cross-paragraph", "document"],
-    kinds: ["readback-blocks", "readback-painted"],
-    tier: "full",
-  },
-  {
-    reason:
       "A hyperlink or a character-format change applied across a field drops the field's result text on save, or on rejecting the change",
     operations: ["command:setHyperlink", "command:clearFontSize"],
     shapes: ["fields-links-bookmarks"],
     placements: RANGE_PLACEMENTS,
     kinds: ["readback-blocks", "readback-painted", "reject-mismatch"],
     tier: "full",
-  },
-  {
-    reason:
-      "An inserted table of contents reads differently after a save: entry run formatting and page-number runs",
-    operations: ["command:generateTOC"],
-    shapes: ["outline-level-numbered", "style-numbered-headings"],
-    kinds: ["readback-blocks", "readback-painted", "readback-markdown"],
   },
 ];
 
