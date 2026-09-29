@@ -42,7 +42,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
    * two and names too few `newIds` for the halves after the first.
    */
   NEEDS_NEW_IDS: "needsNewIds",
-  /** A new revision or content-control id is not an integer from 0 to 2^31 - 1. */
+  /** A new revision or content-control id (a stamp's too) is not an integer from 0 to 2^31 - 1. */
   INVALID_NEW_ID: "invalidNewId",
   /**
    * The operation would merge two records carrying the same revision or
@@ -65,6 +65,19 @@ export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
   EMPTY_CONTENT: "emptyContent",
   /** A replacement names no paragraph to replace, or none to put in its place. */
   EMPTY_BLOCK_LIST: "emptyBlockList",
+  /**
+   * The operation would record a tracked change over one the target already
+   * carries (a paragraph mark, a split that would drop a paragraph's property
+   * change), or would give a tracked split a mark of its own.
+   */
+  REVISION_CONFLICT: "revisionConflict",
+  /** The operation would put a mark on a paragraph that ends its story body or table cell. */
+  CONTAINER_FINAL_MARK: "containerFinalMark",
+  /**
+   * No tracked change can record the edit: comment boundaries in a tracked
+   * range, the paragraph mark's run properties.
+   */
+  UNTRACKABLE: "untrackable",
   /** Seed contract: a main-story paragraph has no `paraId`. */
   MISSING_BLOCK_ID: "missingBlockId",
   /** Seed contract: two paragraphs in the package carry one id. */

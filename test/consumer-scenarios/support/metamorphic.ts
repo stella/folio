@@ -190,7 +190,18 @@ const exactState = (reviewer: Reviewer): string =>
     notes: reviewer.getNotesAsText(),
   });
 
-/** Every path where `a` and `b` differ (at most `limit`), as `path: a → b`. */
+/** `:<type>` for an entry with a string `type` (a change, a block), else nothing. */
+const typeTag = (value: unknown): string => {
+  const type =
+    typeof value === "object" && value !== null ? (value as { type?: unknown }).type : undefined;
+  return typeof type === "string" ? `:${type}` : "";
+};
+
+/**
+ * Every path where `a` and `b` differ (at most `limit`), as `path: a → b`.
+ * An array entry with a `type` shows it in the path (`[2:insertion].text`),
+ * so which kind of change differs is part of the failure's fingerprint.
+ */
 export const differences = (a: unknown, b: unknown, path = "", limit = 6): string[] => {
   const out: string[] = [];
   const walk = (x: unknown, y: unknown, at: string): void => {
@@ -198,11 +209,10 @@ export const differences = (a: unknown, b: unknown, path = "", limit = 6): strin
     if (typeof x === "object" && x !== null && typeof y === "object" && y !== null) {
       const keys = [...new Set([...Object.keys(x), ...Object.keys(y)])];
       for (const key of keys) {
-        walk(
-          (x as Record<string, unknown>)[key],
-          (y as Record<string, unknown>)[key],
-          `${at}${Array.isArray(x) ? `[${key}]` : `.${key}`}`,
-        );
+        const left = (x as Record<string, unknown>)[key];
+        const right = (y as Record<string, unknown>)[key];
+        const step = Array.isArray(x) ? `[${key}${typeTag(left) || typeTag(right)}]` : `.${key}`;
+        walk(left, right, `${at}${step}`);
       }
       return;
     }

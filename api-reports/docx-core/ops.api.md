@@ -12,6 +12,7 @@ export type AppliedDocumentOp = {
     document: Document_2;
     inverse: readonly DocumentOp[];
     touched: TouchedBlocks;
+    revisions: readonly number[];
 };
 
 // @public
@@ -27,6 +28,8 @@ export type DeleteRangeOp = {
     to: TextPosition;
     join?: number;
     expected?: InlineSlice;
+    newIds?: NewIds;
+    revision?: RevisionStamp;
 };
 
 // @public
@@ -48,6 +51,9 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly STRUCTURE_MISMATCH: "structureMismatch";
     readonly EMPTY_CONTENT: "emptyContent";
     readonly EMPTY_BLOCK_LIST: "emptyBlockList";
+    readonly REVISION_CONFLICT: "revisionConflict";
+    readonly CONTAINER_FINAL_MARK: "containerFinalMark";
+    readonly UNTRACKABLE: "untrackable";
     readonly MISSING_BLOCK_ID: "missingBlockId";
     readonly DUPLICATE_BLOCK_ID: "duplicateBlockId";
     readonly DUPLICATE_RECORD_ID: "duplicateRecordId";
@@ -56,7 +62,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 1;
+export const DOCUMENT_OP_SCHEMA_VERSION = 2;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -70,10 +76,12 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SPLIT_BLOCK: "splitBlock";
     readonly JOIN_BLOCKS: "joinBlocks";
     readonly REPLACE_BLOCKS: "replaceBlocks";
+    readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
+    readonly REPLACE_INLINE: "replaceInline";
 }>;
 
 // @public
-export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp;
+export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -128,6 +136,7 @@ export type InsertContentOp = {
     at: TextPosition;
     slice: InlineSlice;
     newIds?: NewIds;
+    revision?: RevisionStamp;
 };
 
 // @public
@@ -140,6 +149,7 @@ export type InsertTextOp = {
     text: string;
     runProps: InsertedRunProps;
     newIds?: NewIds;
+    revision?: RevisionStamp;
 };
 
 // @public
@@ -149,7 +159,11 @@ export type JoinBlocksOp = {
     blockId: string;
     nextBlockId: string;
     depth?: number;
-    expectedSecond?: SplitParagraphFields;
+    survivor?: SplitHalf;
+    expectedRetired?: SplitParagraphFields;
+    expectedSurvivor?: ParagraphReviewFields;
+    newIds?: NewIds;
+    revision?: RevisionStamp;
 };
 
 // @public
@@ -180,6 +194,9 @@ export const OP_STORIES: Readonly<{
 export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
 
 // @public
+export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
+
+// @public
 export const paragraphLength: (paragraph: Paragraph) => number;
 
 // @public
@@ -189,11 +206,49 @@ export const paragraphLogicalText: (paragraph: Paragraph) => string;
 export type ParagraphPropsPatch = FormattingPatch<ParagraphFormatting>;
 
 // @public
+export type ParagraphReviewFields = {
+    formatting?: ParagraphFormatting;
+    propertyChanges?: ParagraphPropertyChange[];
+    pPrMark?: ParagraphMarkChange;
+};
+
+// @public
+export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
+
+// @public
+export type PlanTrackedDeletionOptions = {
+    from: TextPosition;
+    to: TextPosition;
+    revision: RevisionStamp;
+    newIds?: NewIds;
+};
+
+// @public
 export type ReplaceBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
     story: OpStory;
     expected: readonly Paragraph[];
     blocks: readonly Paragraph[];
+};
+
+// @public
+export type ReplaceInlineOp = {
+    type: typeof DOCUMENT_OP_TYPES.REPLACE_INLINE;
+    story: OpStory;
+    blockId: string;
+    expected: readonly ParagraphContent[];
+    content: readonly ParagraphContent[];
+};
+
+// @public
+export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;
+
+// @public
+export type RevisionStamp = {
+    id: number;
+    author: string;
+    date: string;
+    initials?: string;
 };
 
 // @public
@@ -207,6 +262,16 @@ export type SetParagraphPropsOp = {
     patch: ParagraphPropsPatch;
     whenEmpty?: EmptyPropertySet;
     expected?: ParagraphPropsPatch;
+    revision?: RevisionStamp;
+};
+
+// @public
+export type SetParagraphReviewOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW;
+    story: OpStory;
+    blockId: string;
+    expected: ParagraphReviewFields;
+    review: ParagraphReviewFields;
 };
 
 // @public
@@ -220,17 +285,29 @@ export type SetRunPropsOp = {
     joinStart?: number;
     joinEnd?: number;
     newIds?: NewIds;
+    revision?: RevisionStamp;
 };
+
+// @public
+export const SPLIT_HALVES: Readonly<{
+    readonly FIRST: "first";
+    readonly SECOND: "second";
+}>;
 
 // @public
 export type SplitBlockOp = {
     type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
     at: TextPosition;
     newBlockId: string;
+    newHalf?: SplitHalf;
     newParagraph?: SplitParagraphFields;
     firstMark?: ParagraphMarkChange;
     newIds?: NewIds;
+    revision?: RevisionStamp;
 };
+
+// @public
+export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
 
 // @public
 export type SplitInlineOp = {

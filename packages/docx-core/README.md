@@ -40,7 +40,11 @@ bun add @stll/docx-core
   `applyDocumentOps` apply text and formatting edits addressed by paragraph
   id and offset, and return the new document, the blocks it touched and its
   exact inverse (operations addressed the same way), or a typed refusal.
-  `normalizeForOps` and `validateOpsDocument` establish and check the
+  With a `revision` stamp, the text, formatting and paragraph operations
+  record their edit as tracked changes instead. `planTrackedDeletion`
+  plans a tracked deletion around the author's own insertions and comment
+  anchors, and `revisionIdDemand` counts the new revision ids an operation
+  takes. `normalizeForOps` and `validateOpsDocument` establish and check the
   contract a document meets before operations apply to it; `toOpEnvelope`
   wraps an operation with its schema version for journaling.
 

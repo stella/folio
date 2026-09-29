@@ -49,10 +49,6 @@ export type BatchClaim =
        * any other does — see `followedByInsertion`.
        */
       keepsParagraph: boolean;
-      /** The node leaves the document while the batch is still applying. */
-      removesNode: boolean;
-      /** Applied directly rather than tracked. */
-      direct: boolean;
     }
   /**
    * Joins `block` with the block starting at `next`, where `block` ends.
@@ -82,7 +78,7 @@ export type BatchClaim =
 type BlockRole =
   | { kind: InlineClaim["type"]; claim: InlineClaim }
   | { kind: "rewriteBlock" | "paragraphProperties" }
-  | { kind: "deleteBlock"; keepsParagraph: boolean; removesNode: boolean; direct: boolean }
+  | { kind: "deleteBlock"; keepsParagraph: boolean }
   /** The block a merge ends (`own`), or the one it pulls in (`next`). */
   | { kind: "mergeOwn" | "mergeNext"; joinsNow: boolean };
 
@@ -104,8 +100,6 @@ const blockRolesOf = (claim: BatchClaim): { block: number; role: BlockRole }[] =
           role: {
             kind: "deleteBlock",
             keepsParagraph: claim.keepsParagraph,
-            removesNode: claim.removesNode,
-            direct: claim.direct,
           },
         },
       ];
@@ -130,7 +124,6 @@ type DeleteBlockRole = Extract<BlockRole, { kind: "deleteBlock" }>;
 const followedByInsertion = (role: DeleteBlockRole): DeleteBlockRole => ({
   ...role,
   keepsParagraph: false,
-  removesNode: role.direct,
 });
 
 const isPoint = ({ from, to }: PositionRange): boolean => from === to;
@@ -174,11 +167,12 @@ const rolesConflict = (left: BlockRole, right: BlockRole): boolean => {
         // An emptied paragraph that stays is still a paragraph to format.
         case "paragraphProperties":
           return !left.keepsParagraph;
-        // A merge into the deleted block joins across its deleted mark while
-        // tracked; applied directly, the block is gone and the merge would
-        // join whatever follows it.
+        // A merge into the deleted block joins across it, in either mode, as
+        // one at a time: tracked, across its deleted mark; applied directly,
+        // into whatever follows once it is gone. Where nothing does (the
+        // deletions run to the story's end), the merge itself is refused.
         case "mergeNext":
-          return left.removesNode;
+          return false;
         default:
           return true;
       }

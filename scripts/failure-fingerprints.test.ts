@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 
-import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
+import { diffShape, failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   classifyFailureMarkers,
   extractFailureMarkers,
@@ -67,5 +68,88 @@ describe("failure fingerprints", () => {
     expect(() => parseKnownFailures({ known: [{ fingerprint: "bad" }] })).toThrow(
       "Invalid known failure fingerprint entry",
     );
+  });
+
+  describe("the shape of the differences tells two bugs behind one symptom apart", () => {
+    const change = (type: string, text: string, blockId: string) =>
+      JSON.stringify({ type, author: "Consumer Scenario", text, blockId });
+    const readerStability = (lines: string[]) =>
+      new Error(
+        [
+          "step 4: [readerStability] getChanges reads otherwise after the save than before it (before → after):",
+          ...lines.map((line) => `    ${line}`),
+        ].join("\n"),
+      );
+    // A tracked column change the reopened package lists once instead of per cell.
+    const perCell = (at: number, blockId: string) =>
+      readerStability([
+        `[${at}].blockId: "${blockId}" → "0F88C890"`,
+        `[${at + 1}]: ${change("tableColumnInsertion", "", blockId)} → undefined`,
+      ]);
+    // A split inline insertion the reopened package lists as one change.
+    const split = (at: number, text: string) =>
+      readerStability([
+        `[${at}].text: "${text}" → "${text} and more"`,
+        `[${at + 1}]: ${change("insertion", " and more", "1508FAF4")} → undefined`,
+      ]);
+
+    test("same bug, other seeds, positions, ids and text: one fingerprint", () => {
+      expect(marker(1, perCell(0, "1108F4A8")).fingerprint).toBe(
+        marker(2, perCell(3, "5FCE4B43")).fingerprint,
+      );
+      expect(marker(1, split(1, "payment")).fingerprint).toBe(
+        marker(9, split(4, "delivery term")).fingerprint,
+      );
+      expect(diffShape(split(1, "payment"))).toBe("[] {insertion}→∅; [].text text→text");
+    });
+
+    test("different bugs with the same symptom line: two fingerprints", () => {
+      const column = marker(1, perCell(0, "1108F4A8"));
+      const inline = marker(1, split(1, "payment"));
+      expect(column.assertion).toBe(inline.assertion);
+      expect(column.fingerprint).not.toBe(inline.fingerprint);
+      expect(column.diff).toBe("[] {tableColumnInsertion}→∅; [].blockId text→text");
+    });
+
+    test("a typed entry's type stays in the shape, its position does not", () => {
+      const typed = (at: number) =>
+        readerStability([
+          `[${at}:insertion].text: "payment" → "payment and more"`,
+          `.blocks[${at}:paragraph].runs[0].text: "a" → "b"`,
+          `(root): "x" → "y"`,
+        ]);
+      expect(diffShape(typed(2))).toBe(
+        "(root) text→text; .blocks[paragraph].runs[].text text→text; [insertion].text text→text",
+      );
+      expect(marker(1, typed(2)).fingerprint).toBe(marker(2, typed(5)).fingerprint);
+      expect(marker(1, typed(2)).fingerprint).not.toBe(
+        marker(1, readerStability([`[2:deletion].text: "payment" → "payment and more"`]))
+          .fingerprint,
+      );
+    });
+
+    test("a failure with no differences keeps the fingerprint it always had", () => {
+      const plain = marker(1, new Error("step 1: no comment"));
+      expect(plain.diff).toBeUndefined();
+      expect(plain.fingerprint).toBe(
+        createHash("sha256").update("comments / suggested\0no comment").digest("hex").slice(0, 16),
+      );
+    });
+
+    test("a minimized flow's operations refine the fingerprint and keep the primary one", () => {
+      const failure = split(1, "payment");
+      const unshrunk = marker(1, failure);
+      const shrunk = failureMarker({
+        test: "comments / suggested",
+        seed: 1,
+        repro: "replay",
+        failure,
+        flow: "insertAfterBlock > replaceRange",
+      });
+      expect(shrunk.primary).toBe(unshrunk.fingerprint);
+      expect(shrunk.fingerprint).not.toBe(unshrunk.fingerprint);
+      const [extracted] = extractFailureMarkers(`FOLIO_FAILURE ${JSON.stringify(shrunk)}`);
+      expect(extracted).toEqual(shrunk);
+    });
   });
 });

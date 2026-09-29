@@ -1,0 +1,156 @@
+name: Merge group fuzz replay
+
+# When a merge group fails on a fuzz failure (a consumer-scenario flow or a
+# property), replay the same seeds on the commit the group was built on. A
+# failure the base reproduces was already there: it gets its issue, and the
+# pull request is labelled so it can go back into the queue. Runs after CI
+# rather than inside it, so the queue removing the group's branch does not
+# cancel it.
+on:
+  workflow_run: # zizmor: ignore[dangerous-triggers] never runs the group's code; reads its logs as data
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  replay:
+    name: Replay on the group's base
+    if: >-
+      github.event.workflow_run.event == 'merge_group'
+      && github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      base: ${{ steps.base.outputs.sha }}
+      pr: ${{ steps.base.outputs.pr }}
+      replayed: ${{ steps.logs.outputs.found }}
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        continue-on-error: true
+        with:
+          pattern: fuzz-log-*
+          path: queue-logs
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Any fuzz failure in the group's logs
+        id: logs
+        run: |
+          if grep -rqs 'FOLIO_FAILURE ' queue-logs; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No fuzz failure in the merge group's logs; nothing to replay."
+          fi
+
+      # The group commit's first parent is what the queue built it on: main,
+      # or the group ahead of it.
+      - name: Find the base and the pull request
+        id: base
+        if: steps.logs.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          sha=$(gh api "repos/$REPO/commits/$GROUP_SHA" --jq '.parents[0].sha')
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no base commit"; exit 1; }
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [[ "$BRANCH" =~ /pr-([0-9]+)- ]]; then
+            echo "pr=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The replay tooling comes from the default branch; the code it replays
+      # comes from the base.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.logs.outputs.found == 'true'
+        with:
+          path: tools
+          persist-credentials: false
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        if: steps.logs.outputs.found == 'true'
+        with:
+          ref: ${{ steps.base.outputs.sha }}
+          path: base
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        if: steps.logs.outputs.found == 'true'
+        with:
+          bun-version-file: "base/package.json"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: steps.logs.outputs.found == 'true'
+        with:
+          node-version: 22
+
+      - name: Install the base
+        if: steps.logs.outputs.found == 'true'
+        working-directory: base
+        run: bun install --frozen-lockfile
+
+      - name: Replay the failing seeds on the base
+        if: steps.logs.outputs.found == 'true'
+        run: >-
+          bun tools/scripts/fuzz-ejection.ts replay --queue-logs queue-logs
+          --group-sha "${GROUP_SHA}" --base base --out base-logs
+        env:
+          GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Keep the logs
+        if: steps.logs.outputs.found == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-ejection-logs
+          path: |
+            queue-logs
+            base-logs
+          retention-days: 14
+          if-no-files-found: warn
+
+  # Separate so the job that runs the base's code never holds a write token.
+  report:
+    name: Judge and file
+    needs: replay
+    if: needs.replay.outputs.replayed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: fuzz-ejection-logs
+          path: ejection
+
+      - name: Compare, file and label
+        run: >-
+          bun scripts/fuzz-ejection.ts report
+          --queue-logs ejection/queue-logs --base-logs ejection/base-logs
+          --group-sha "${GROUP_SHA}" --base-sha "${BASE_SHA}" --pr "${PR}" --run-url "${RUN_URL}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
+          BASE_SHA: ${{ needs.replay.outputs.base }}
+          PR: ${{ needs.replay.outputs.pr }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}

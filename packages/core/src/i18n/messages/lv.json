@@ -339,8 +339,8 @@
       "editingDescription": "Rediģējiet dokumentu tieši",
       "outlineTitle": "Struktūra",
       "showDocumentOutline": "Dokumenta struktūra",
-      "suggesting": "Ieteikšana",
-      "suggestingDescription": "Labojumi kļūst par reģistrētiem ieteikumiem",
+      "suggesting": "Izmaiņu reģistrēšana",
+      "suggestingDescription": "Labojumi tiek reģistrēti kā izsekotas izmaiņas",
       "viewing": "Skatīšana",
       "viewingDescription": "Lasiet vai drukājiet gatavo dokumentu"
     },
