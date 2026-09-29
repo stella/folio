@@ -284,7 +284,14 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         } else if (marker.kind === "del") {
           kind = "cellDeleted";
         }
-        const key = `cell:${kind}:${revisionId}`;
+        // An inserted or deleted cell is its own change, as a row is: one
+        // revision may span a column's cells, but the save gives each cell's
+        // marker an id of its own, so grouping them would read otherwise
+        // once reopened.
+        const key =
+          kind === "cellMerged"
+            ? `cell:${kind}:${revisionId}`
+            : `cell:${kind}:${revisionId}:${String(pos)}`;
         const text = node.textContent;
         const blockId = firstBlockIdWithin({ node, nodePos: pos, blockStarts });
         const existing = grouped.get(key);
