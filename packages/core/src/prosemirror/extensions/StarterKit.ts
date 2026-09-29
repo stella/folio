@@ -22,6 +22,7 @@ import { BidiShortcutExtension } from "./features/BidiShortcutExtension";
 import { ContentControlWidgetsExtension } from "./features/ContentControlWidgetsExtension";
 import { DropCursorExtension } from "./features/DropCursorExtension";
 import { EmptyParagraphFormatExtension } from "./features/EmptyParagraphFormatExtension";
+import { JoinedRunStyleExtension } from "./features/JoinedRunStyleExtension";
 import { GapCursorExtension } from "./features/GapCursorExtension";
 import { ImageDragExtension } from "./features/ImageDragExtension";
 import { ImagePasteExtension } from "./features/ImagePasteExtension";
@@ -155,6 +156,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("list", ListExtension());
   add("baseKeymap", BaseKeymapExtension());
   add("emptyParagraphFormat", EmptyParagraphFormatExtension());
+  add("joinedRunStyle", JoinedRunStyleExtension());
   add(
     "selectionTracker",
     options.onSelectionChange === undefined

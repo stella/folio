@@ -1,5 +1,5 @@
 import type { EditorState, Transaction } from "prosemirror-state";
-import { Plugin } from "prosemirror-state";
+import { AllSelection, Plugin, Selection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 type TextInputHandler<TView> = (
@@ -27,7 +27,29 @@ export const dispatchEditorTextInput = <TView extends TextInputDispatchTarget<TV
 ) => {
   const { from, to } = typeof input === "string" ? view.state.selection : input;
   const text = typeof input === "string" ? input : input.text;
-  const defaultTransaction = () => view.state.tr.insertText(text, from, to);
+  const defaultTransaction = () => {
+    if (!(view.state.selection instanceof AllSelection)) {
+      return view.state.tr.insertText(text, from, to);
+    }
+    // Select-all spans the block boundaries around the content: typing
+    // replaces the text inside them, formatted as the first character it
+    // replaces, and leaves the caret after it. The paragraph left is the last
+    // one, whose break is the one that stays.
+    const start = Selection.atStart(view.state.doc);
+    const end = Selection.atEnd(view.state.doc);
+    const last = end.$to.parent;
+    const tr = view.state.tr.insertText(text, start.from, end.to);
+    const $typed = tr.doc.resolve(start.from);
+    if (
+      start.$from.parent.type.name === "paragraph" &&
+      last.type.name === "paragraph" &&
+      $typed.parent.type.name === "paragraph" &&
+      start.$from.parent !== last
+    ) {
+      tr.setNodeMarkup($typed.before(), undefined, last.attrs);
+    }
+    return tr.setSelection(TextSelection.create(tr.doc, start.from + text.length));
+  };
   const handled = view.someProp("handleTextInput", (handler) =>
     handler(view, from, to, text, defaultTransaction),
   );

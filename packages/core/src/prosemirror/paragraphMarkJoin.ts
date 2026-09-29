@@ -18,6 +18,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 
 import { joinProseParagraphsWithRightPropertySource } from "../docx/paragraphPropertySource";
+import { JOINED_RUNS_RESTYLED_META } from "./extensions/features/JoinedRunStyleExtension";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 
@@ -39,6 +40,7 @@ export const joinAtParagraphMark = ({
   next,
   styleResolver,
 }: JoinAtParagraphMarkOptions): void => {
+  tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
   joinProseParagraphsWithRightPropertySource({
     attrs: next.attrs,
     pos: paragraphPos + paragraph.nodeSize,

@@ -18,7 +18,6 @@ import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
 } from "../prosemirror/commands/propertyChangeScope";
-import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolveParagraphProperties";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import {
   paragraphNumberingReference,
@@ -105,7 +104,13 @@ import {
   textBoxAnchorIdsBetween,
 } from "../prosemirror/anchoredTextBoxes";
 import { TEXT_BOX_ANCHOR_NODE_NAME } from "../prosemirror/extensions/nodes/TextBoxAnchorExtension";
+import { JOINED_RUNS_RESTYLED_META } from "../prosemirror/extensions/features/JoinedRunStyleExtension";
 import { joinAtParagraphMark } from "../prosemirror/paragraphMarkJoin";
+import {
+  carryParagraphProperties,
+  paragraphLeftAfter,
+  propertiesSetInBatch,
+} from "../prosemirror/paragraphPropertyCarry";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type {
@@ -914,130 +919,6 @@ const resolveFormattingFromStyle = ({
     fallback.alignment = attrs.alignmentFromStyle;
   }
   return Object.keys(fallback).length > 0 ? fallback : undefined;
-};
-
-/**
- * The properties a batch's own property change set on a paragraph: the ones
- * whose value differs from what that change records as before.
- */
-const propertiesSetInBatch = (
-  node: PMNode,
-  batchRevisionIds: ReadonlySet<number>,
-): ReadonlySet<string> => {
-  const changes = expectParagraphAttrs(node)._propertyChanges;
-  const change = Array.isArray(changes)
-    ? changes.find(({ info }) => batchRevisionIds.has(info.id))
-    : undefined;
-  if (change === undefined) return new Set();
-  const before = (change.previousFormatting ?? {}) as Record<string, unknown>;
-  const now = paragraphPropertiesSnapshot(node) as Record<string, unknown>;
-  return new Set(
-    [...new Set([...Object.keys(before), ...Object.keys(now)])].filter(
-      (key) => JSON.stringify(before[key]) !== JSON.stringify(now[key]),
-    ),
-  );
-};
-
-type CarryParagraphPropertiesOptions = {
-  tr: Transaction;
-  /** The paragraph that takes the properties. */
-  position: number;
-  /** The paragraph whose properties it takes. */
-  source: PMNode;
-  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
-  numbering: NumberingMap | null;
-  /** Records the change as a tracked property change; applied directly when omitted. */
-  revision?: ParagraphPropertyChangeAttrs["info"];
-  /** Properties the paragraph keeps its own values of: ones its batch set. */
-  keep?: ReadonlySet<string>;
-};
-
-/**
- * Give a paragraph another one's properties: the pPr a property change
- * covers. Its identity, mark, mark run properties and section stay its own,
- * and its runs are re-read in the new style.
- *
- * A removed paragraph mark leaves the paragraph after it, so a merge that
- * should read as the first paragraph hands the first's properties to the
- * second: tracked, accepting the merge gives what the direct merge gives, and
- * rejecting it restores the second's own.
- */
-const carryParagraphProperties = ({
-  tr,
-  position,
-  source,
-  styleResolver,
-  numbering,
-  revision,
-  keep,
-}: CarryParagraphPropertiesOptions): { tr: Transaction; changed: boolean; tracked: boolean } => {
-  const target = tr.doc.nodeAt(position);
-  if (!target || target.type !== source.type) {
-    // No paragraph follows to take them (a bookmark boundary or a table):
-    // the resolver keeps the mark there, and the first paragraph stays.
-    return { tr, changed: false, tracked: false };
-  }
-  const previousFormatting = paragraphPropertiesSnapshot(target);
-  const own = previousFormatting as Record<string, unknown>;
-  const formatting = Object.fromEntries([
-    ...Object.entries(paragraphPropertiesSnapshot(source)).filter(([key]) => !keep?.has(key)),
-    ...Object.entries(own).filter(([key]) => keep?.has(key)),
-  ]);
-  // Both snapshots come from the same fixed walk over the in-scope keys.
-  if (JSON.stringify(previousFormatting) === JSON.stringify(formatting)) {
-    return { tr, changed: false, tracked: false };
-  }
-  const existing = expectParagraphAttrs(target)._propertyChanges;
-  // A paragraph holds one w:pPrChange: a pending one already records what it
-  // had before, which is what rejecting restores.
-  const tracked = revision !== undefined && !hasSerializableParagraphPropertyChange(existing);
-  // Restoring a property change sets exactly the in-scope properties and
-  // leaves the rest, which is this hand-over read the other way round.
-  const carried = resolveParagraphChangeAttrs({
-    node: target.type.create(
-      {
-        ...target.attrs,
-        _propertyChanges: [
-          {
-            type: "paragraphPropertyChange",
-            info: { id: -1, author: "", date: "1970-01-01T00:00:00Z" },
-            previousFormatting: formatting as ParagraphPropertyChangeAttrs["previousFormatting"],
-          } satisfies ParagraphPropertyChangeAttrs,
-        ],
-      },
-      target.content,
-      target.marks,
-    ),
-    mode: "reject",
-    boundaryCovered: true,
-    revisionSet: null,
-    styleResolver,
-    numbering,
-  });
-  if (!carried) {
-    return panic("Paragraph properties did not pass to the paragraph", { position });
-  }
-  const changes = [
-    ...(Array.isArray(existing) ? existing : []),
-    ...(tracked && revision
-      ? [
-          {
-            type: "paragraphPropertyChange",
-            info: revision,
-            previousFormatting,
-          } satisfies ParagraphPropertyChangeAttrs,
-        ]
-      : []),
-  ];
-  const styled = tr.setNodeMarkup(position, undefined, {
-    ...carried,
-    _propertyChanges: changes.length > 0 ? changes : null,
-  });
-  return {
-    tr: rebaseParagraphRuns({ tr: styled, position, previous: target, styleResolver }),
-    changed: true,
-    tracked,
-  };
 };
 
 type ApplyBlockParagraphPropertiesOptions = {
@@ -5184,6 +5065,8 @@ const applyFolioAIEditOperationsInternal = ({
               styleResolver,
             });
           }
+          // The joined runs were re-read in the first paragraph's style above.
+          tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
           tr = tr.join(item.blockTo + separator.length);
           // The merge removes the first paragraph's mark, and the joined
           // paragraph ends with the second one's. A section break lives on
@@ -5262,9 +5145,11 @@ const applyFolioAIEditOperationsInternal = ({
             // takes this one's properties now, as part of the same change:
             // accepting gives what the direct merge gives, rejecting restores
             // its own.
+            // A chain of pending merges ends in the paragraph whose break stays.
+            const survivorPos = paragraphLeftAfter(tr.doc, item.blockFrom) ?? joinPos;
             const carried = carryParagraphProperties({
               tr,
-              position: joinPos,
+              position: survivorPos,
               source: paragraph,
               styleResolver,
               numbering,
@@ -5272,7 +5157,7 @@ const applyFolioAIEditOperationsInternal = ({
             });
             tr = carried.tr;
             mergedPropertiesRecorded = carried.tracked;
-            mergedPropertiesAt = joinPos;
+            mergedPropertiesAt = survivorPos;
           }
         }
 

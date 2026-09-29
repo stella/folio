@@ -65,6 +65,7 @@ import {
   droppedTextBoxAnchorIds,
   moveTextBoxesPastNextParagraph,
 } from "../anchoredTextBoxes";
+import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
@@ -205,6 +206,8 @@ function resolveChange(
 
     if (dispatch) {
       const tr = state.tr;
+      // Joins below re-read the runs they move themselves.
+      tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
       const deleteRanges: { from: number; to: number }[] = [];
       /** Where resolved inline content began and ended, in `state.doc`. */
       const resolvedBoundaries: number[] = [];
