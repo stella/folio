@@ -115,6 +115,8 @@ export const carryParagraphProperties = ({
   ];
   tr.setNodeMarkup(position, undefined, {
     ...carried,
+    // The hand-over covers pPr only: the section and its pending change stay.
+    _sectionProperties: target.attrs["_sectionProperties"],
     _propertyChanges: changes.length > 0 ? changes : null,
   });
   if (styleResolver) {

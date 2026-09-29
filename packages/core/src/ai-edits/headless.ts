@@ -2562,6 +2562,8 @@ export class FolioDocxReviewer {
     const result = resolve();
     const after = this.state.doc;
     const referencedAfter = referencedNoteKeys(after);
+    // A reference back in the body (a reject after an accept) brings its note back.
+    for (const key of referencedAfter) this.removedNoteStories.delete(key);
     for (const key of referencedNoteKeys(before)) {
       if (referencedAfter.has(key)) continue;
       const handle = noteStoryHandleOf(key);
@@ -2760,7 +2762,11 @@ export class FolioDocxReviewer {
     }
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
     if (snapshot.removedNoteStories.length > 0) {
-      const removed = new Set(snapshot.removedNoteStories.map(noteStoryKey));
+      // A note whose reference some other edit (an undo) put back is kept.
+      const referenced = referencedNoteKeys(snapshot.mainState.doc);
+      const removed = new Set(
+        snapshot.removedNoteStories.map(noteStoryKey).filter((key) => !referenced.has(key)),
+      );
       const { footnotes, endnotes } = document.package;
       if (footnotes) {
         document.package.footnotes = footnotes.filter(

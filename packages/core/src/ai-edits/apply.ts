@@ -2270,6 +2270,7 @@ type RotateAddedFinalBreaksOptions = {
   author: string;
   date: string;
   initials: string | undefined;
+  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
 };
 
 type RotatedAddedFinalBreaks = {
@@ -2699,7 +2700,13 @@ const withRetiredFinalParagraphs = ({
           // One w:pPrChange per paragraph: the emptied paragraph stays.
           break;
         }
-        joinAtParagraphMark({ tr, paragraphPos: position, paragraph: previous, next: following });
+        joinAtParagraphMark({
+          tr,
+          paragraphPos: position,
+          paragraph: previous,
+          next: following,
+          styleResolver,
+        });
         resolvedOperationIds.add(operationId);
         const retracted = addedBreakRevisionId(mark);
         if (retracted !== null) {
@@ -2767,6 +2774,7 @@ const withRotatedAddedFinalBreaks = ({
   author,
   date,
   initials,
+  styleResolver,
 }: RotateAddedFinalBreaksOptions): RotatedAddedFinalBreaks => {
   // A later insertion may land between a deleted break and the paragraph it
   // would join into. Move the old deletion to the new boundary so resolving
@@ -2942,6 +2950,7 @@ const withRotatedAddedFinalBreaks = ({
           paragraphPos: previous.position,
           paragraph: deleted,
           next: following,
+          styleResolver,
         });
         retractedRevisionIds.push(ownerRevisionId);
         const deletedBreakId = addedOrDeletedBreakRevisionId(displacedMark);
@@ -4668,6 +4677,7 @@ const applyFolioAIEditOperationsInternal = ({
               paragraphPos: markPosition,
               paragraph: deleted,
               next: following,
+              styleResolver: styleResolver ?? null,
             });
           } else if (!endsItsContainer && deleted?.attrs["pPrMark"] == null) {
             const markRevisionId = operationRevisionSeed++;
@@ -5300,6 +5310,7 @@ const applyFolioAIEditOperationsInternal = ({
       author,
       date,
       initials,
+      styleResolver: styleResolver ?? null,
     });
     tr = rotated.transaction;
     revisionSeed = rotated.nextRevisionId;

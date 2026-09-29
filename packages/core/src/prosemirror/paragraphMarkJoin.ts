@@ -29,8 +29,12 @@ type JoinAtParagraphMarkOptions = {
   paragraph: PMNode;
   /** The paragraph directly after it, which the join runs into. */
   next: PMNode;
-  /** Re-reads the moved runs' inherited formatting in the next paragraph's style. */
-  styleResolver?: RunStyleResolver | null;
+  /**
+   * Re-reads the moved runs' inherited formatting in the next paragraph's
+   * style. Without one, the editor's join restyler does it when the
+   * transaction is dispatched.
+   */
+  styleResolver: RunStyleResolver | null;
 };
 
 export const joinAtParagraphMark = ({
@@ -40,13 +44,13 @@ export const joinAtParagraphMark = ({
   next,
   styleResolver,
 }: JoinAtParagraphMarkOptions): void => {
-  tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
   joinProseParagraphsWithRightPropertySource({
     attrs: next.attrs,
     pos: paragraphPos + paragraph.nodeSize,
     transaction: tr,
   });
-  if (styleResolver && paragraph.content.size > 0) {
+  if (!styleResolver) return;
+  if (paragraph.content.size > 0) {
     rebaseParagraphRuns({
       previousContext: paragraphRunStyleContext(paragraph, styleResolver),
       paragraphPosition: paragraphPos,
@@ -55,4 +59,5 @@ export const joinAtParagraphMark = ({
       tr,
     });
   }
+  tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
 };
