@@ -16,7 +16,7 @@ import type {
   TextFormatting,
 } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { contractViolation } from "../contract";
+import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
@@ -87,6 +87,31 @@ const refusalOf = (document: Document, op: DocumentOp): string | undefined => {
 const blocks = (document: Document): BlockContent[] => document.package.document.content;
 
 describe("tracked text", () => {
+  // The L1 generator found an empty revision acting as a zero-width deletion
+  // target. The input normalization must remove it for both operation modes.
+  test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
+    "deleting text beside an empty %s agrees after tracked acceptance",
+    (type) => {
+      const document = normalizeForOps(
+        documentOf(
+          paragraph("00000001", [{ type, info: { id: 1, author: "A" }, content: [] }, run("x")]),
+        ),
+      );
+      const op = {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: { ...at("00000001", 0), zeroWidthBefore: 0 },
+        to: at("00000001", 1),
+        revision: stamp(2),
+      } as const satisfies DocumentOp;
+      const tracked = applied(document, op);
+      const direct = applied(document, directly(op));
+      expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT)).toEqual(
+        direct.document,
+      );
+      expect(blocks(direct.document)).toEqual([paragraph("00000001", [])]);
+    },
+  );
+
   test("a tracked insertion is wrapped and accepts to the direct insertion", () => {
     const document = documentOf(paragraph("00000001", [run("Hello")]));
     const insert: DocumentOp = {
