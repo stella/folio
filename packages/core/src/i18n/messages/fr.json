@@ -339,8 +339,8 @@
       "editingDescription": "Modifier directement le document",
       "outlineTitle": "Plan",
       "showDocumentOutline": "Plan du document",
-      "suggesting": "Suggestion",
-      "suggestingDescription": "Les modifications deviennent des suggestions suivies",
+      "suggesting": "Suivi des modifications",
+      "suggestingDescription": "Les modifications sont enregistrées comme modifications suivies",
       "viewing": "Affichage",
       "viewingDescription": "Lire ou imprimer le document final"
     },
