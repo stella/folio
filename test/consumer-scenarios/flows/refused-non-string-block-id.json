@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "tables",
+  "mode": "direct",
+  "seed": 31365,
+  "steps": [
+    {
+      "action": "mistake",
+      "seed": 3535280597
+    }
+  ],
+  "origin": "shrunk from random flow seed 31365",
+  "title": "a model batch whose blockId is not a string is refused and leaves the document as it was"
+}

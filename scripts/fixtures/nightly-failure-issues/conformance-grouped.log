@@ -1,0 +1,65 @@
+bun test v1.4.2 (744846f84)
+
+::group::src/__tests__/editorCommandConformance.test.ts:
+(pass) editor command conformance: coverage > every registry command is driven or excluded with a reason [2.10ms]
+160 |       expect(unexpected.map(describeViolation)).toEqual([]);
+                                                     ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "[editing] readback-painted: block 0 "Inline paste": lineSpacing: ∅ ≠ 276",
++   "[suggesting] readback-painted: block 0 "Inline paste": lineSpacing: ∅ ≠ 276",
++   "[suggesting] reject-mismatch: block 0 "Intro paragraph.": text: "Intro paragraph." ≠ """,
++ ]
+
+- Expected  - 1
++ Received  + 5
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/__tests__/editorCommandConformance.test.ts:160:49)
+(fail) editor command conformance > plain-markdown › paste:plain @ document [212.90ms]
+160 |       expect(unexpected.map(describeViolation)).toEqual([]);
+                                                     ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "[editing] readback-painted: block 0 "Inline paste": lineSpacing: ∅ ≠ 276",
++ ]
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/__tests__/editorCommandConformance.test.ts:160:49)
+(fail) editor command conformance > bare-package › paste:plain @ document [88.10ms]
+160 |       expect(unexpected.map(describeViolation)).toEqual([]);
+                                                     ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "[suggesting] undo: undo left 2 blocks",
++ ]
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/__tests__/editorCommandConformance.test.ts:160:49)
+(fail) editor command conformance > bare-package › host:cut @ document [71.00ms]
+170 |     expect(stale).toEqual([]);
+                        ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   "#1150 pasting a table into a list item",
++ ]
+
+      at <anonymous> (/home/runner/work/folio/folio/packages/core/src/__tests__/editorCommandConformance.test.ts:170:19)
+(fail) editor command conformance > no known gap is stale [0.40ms]
+
+::endgroup::
+
+4 tests failed:
+(fail) editor command conformance > plain-markdown › paste:plain @ document [212.90ms]
+(fail) editor command conformance > bare-package › paste:plain @ document [88.10ms]
+(fail) editor command conformance > bare-package › host:cut @ document [71.00ms]
+(fail) editor command conformance > no known gap is stale [0.40ms]
+
+ 2206 pass
+ 4 fail
+Ran 2210 tests across 1 file. [1203.40s]

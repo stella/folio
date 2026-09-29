@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "direct",
+  "seed": 31371,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 3599221800
+    }
+  ],
+  "origin": "shrunk from random flow seed 31371",
+  "title": "a comment on a paragraph of a document with note references"
+}

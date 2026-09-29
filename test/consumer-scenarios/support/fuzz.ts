@@ -16,13 +16,17 @@
  * mid-flow: a save reopened by a new reviewer, and a selective save the same
  * reviewer keeps working after. The `"legacy"` generation draws exactly what
  * flows drew before targeting, so seeds pinned then replay unchanged.
+ *
+ * Every run also records itself as a flow file (support/flow-file.ts):
+ * `runFlowFile` replays one, which is what shrinking, the corpus and the
+ * checked-in flows run.
  */
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
 import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
 import { readFileSync } from "node:fs";
 
-import { registerFeatureOperations, type StepKind } from "./coverage.ts";
+import { observeHits, registerFeatureOperations, type StepKind } from "./coverage.ts";
 import {
   featureCellKey,
   gapWeight,
@@ -31,6 +35,16 @@ import {
   type FeatureCoverage,
 } from "./feature-coverage.ts";
 import { COLLISION_FIXTURES, FIXTURES, openReviewer, STORY_FIXTURES } from "./documents.ts";
+import { normalizeAssertion } from "./failure-fingerprints.ts";
+import {
+  type Action,
+  type FlowFile,
+  type FlowKind,
+  type FlowStep,
+  type Generation,
+  LEGACY_ACTIONS,
+  TARGETED_ACTIONS,
+} from "./flow-file.ts";
 import { assertReadersAgree, saveAndReopen, visibleState } from "./invariants.ts";
 import { startRelations } from "./metamorphic.ts";
 import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } from "./oracle.ts";
@@ -50,10 +64,7 @@ import { biasedPicker, blocksOfStory, featureIndex, storyKindOf, type Picker } f
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
-export type FlowKind = "random" | "collisions";
-
-/** How a flow draws its steps; see the module comment. */
-export type Generation = "targeted" | "legacy";
+export type { FlowKind, Generation } from "./flow-file.ts";
 
 export type Flow = {
   reviewer: Reviewer;
@@ -69,6 +80,12 @@ export type Flow = {
   recent: string[];
   /** The session the next step runs in. */
   session: StepKind;
+  /** The steps so far, as a flow file records them (the running one last). */
+  trace: FlowStep[];
+  /** The running step, when a flow file planned it. */
+  planned: FlowStep | undefined;
+  /** Ids of the fixture's blocks, which every run of the flow opens with. */
+  fixtureIds: ReadonlySet<string>;
 };
 
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
@@ -132,10 +149,71 @@ const touch = (flow: Flow, operations: readonly Operation[]): void => {
   flow.recent.splice(0, Math.max(0, flow.recent.length - 12));
 };
 
+/**
+ * The batch a step applies: what it draws or, when its flow file pins
+ * operations, those (drawn anyway, so the step's later draws stay put).
+ * Recorded on the step's trace entry either way.
+ */
 const randomOperations = (
   flow: Flow,
   blocks: readonly Block[] = blocksOf(flow),
   pick: Picker | ((type: string) => Picker) | undefined = pickerFor(flow),
+): Operation[] => {
+  const drawn = drawOperations(flow, blocks, pick);
+  const pinned = flow.planned?.operations;
+  const used = pinned === undefined ? drawn : (fromPositions(pinned, blocks) as Operation[]);
+  const traced = flow.trace.at(-1);
+  if (traced !== undefined) {
+    traced.operations = toPositions(used, blocks, flow.fixtureIds) as Operation[];
+  }
+  return used;
+};
+
+// A block a flow inserted gets a new id on every run, so a pinned operation
+// names it by its position in the story's blocks when the step drew, `@<n>`.
+// A fixture block keeps its id, which survives steps before it going away.
+const POSITION = /^@(\d+)$/u;
+
+const mapBlockIds = (value: unknown, map: (id: string) => string): unknown => {
+  if (Array.isArray(value)) return value.map((item) => mapBlockIds(item, map));
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      key === "blockId" && typeof item === "string" ? map(item) : mapBlockIds(item, map),
+    ]),
+  );
+};
+
+const toPositions = (
+  operations: readonly Operation[],
+  blocks: readonly Block[],
+  fixtureIds: ReadonlySet<string>,
+): unknown =>
+  mapBlockIds(operations, (id) => {
+    if (fixtureIds.has(id)) return id;
+    const index = blocks.findIndex((block) => block.id === id);
+    return index === -1 ? id : `@${index}`;
+  });
+
+const fromPositions = (operations: readonly unknown[], blocks: readonly Block[]): unknown =>
+  mapBlockIds(operations, (id) => {
+    const index = POSITION.exec(id)?.[1];
+    return index === undefined ? id : (blocks[Number(index)]?.id ?? id);
+  });
+
+/** Every block id of every story the reviewer opened with. */
+const blockIdsOf = (reviewer: Reviewer): Set<string> =>
+  new Set(
+    [MAIN, ...secondaryStories(reviewer)].flatMap((story) =>
+      blocksOfStory(reviewer, story).map((block) => block.id),
+    ),
+  );
+
+const drawOperations = (
+  flow: Flow,
+  blocks: readonly Block[],
+  pick: Picker | ((type: string) => Picker) | undefined,
 ): Operation[] => {
   if (flow.kind === "collisions" && flow.random.chance(0.5)) {
     const names = Object.keys(COLLISIONS);
@@ -207,34 +285,6 @@ const record = (flow: Flow, entry: string) => {
   };
 };
 
-const LEGACY_ACTIONS = [
-  "suggest_changes",
-  "suggest_changes",
-  "core batch",
-  "mistake",
-  "add_comment",
-  "reply and resolve",
-  "accept one",
-  "reject one",
-  "accept all",
-  "reject all",
-  "save and reopen",
-] as const;
-
-/**
- * A targeted flow's steps: the legacy ones, edits aimed at a header, footer
- * or note, and two more session changes (one step in five changes session).
- */
-const TARGETED_ACTIONS = [
-  ...LEGACY_ACTIONS,
-  "story batch",
-  "story batch",
-  "new reviewer",
-  "selective save",
-] as const;
-
-type Action = (typeof TARGETED_ACTIONS)[number];
-
 /** The stories besides the body. */
 const secondaryStories = (reviewer: Reviewer): FolioDocumentStoryHandle[] =>
   reviewer
@@ -266,13 +316,22 @@ const coreBatchStep = async (
   );
 };
 
-/** One random step. */
-const step = async (flow: Flow): Promise<void> => {
+/**
+ * One step: drawn from the flow's generator, or the one a flow file planned,
+ * whose generator resumes at the position it recorded.
+ */
+const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
   for (const block of blocksOf(flow)) flow.seenIds.add(block.id);
+  let action: Action;
+  if (planned === undefined) {
+    action = flow.random.pick(flow.generation === "legacy" ? LEGACY_ACTIONS : TARGETED_ACTIONS);
+  } else {
+    action = planned.action;
+    flow.random = createRandom(planned.seed);
+  }
+  flow.planned = planned;
+  flow.trace.push({ action, seed: flow.random.state() });
   const { random } = flow;
-  const action: Action = random.pick(
-    flow.generation === "legacy" ? LEGACY_ACTIONS : TARGETED_ACTIONS,
-  );
   switch (action) {
     case "suggest_changes": {
       await suggestChecked(flow, { operations: randomOperations(flow) }, action);
@@ -312,7 +371,9 @@ const step = async (flow: Flow): Promise<void> => {
         record(flow, `${action} skipped`);
         return;
       }
-      const block = pickerFor(flow)?.block(blocks) ?? random.pick(blocks);
+      const pick = pickerFor(flow);
+      const picker = typeof pick === "function" ? pick("commentOnBlock") : pick;
+      const block = picker?.block(blocks) ?? random.pick(blocks);
       const done = record(flow, `${action} on ${block.id}`);
       const result = tool(flow, "add_comment", { blockId: block.id, text: sentence(random) });
       done(result.ok ? "ok" : result.error);
@@ -498,31 +559,107 @@ export const describeFlow = (
   return { fixture, mode: random.pick(MODES) };
 };
 
-/** Run one seeded flow of `steps` steps; a failure names the step and its log. */
-export const runFlow = async (
-  seed: number,
-  steps: number,
-  kind: FlowKind = "random",
-  { generation = "targeted" }: FlowOptions = {},
-): Promise<void> => {
+/** A finished flow: what it ran, as a flow file, and its signature if asked for. */
+export type FlowRun = { flow: FlowFile; signature: string[] };
+
+/** A flow that failed; `flow` holds its steps up to the one that failed. */
+export class FlowError extends Error {
+  flow: FlowFile;
+  constructor(message: string, options: { cause: unknown; flow: FlowFile }) {
+    super(message, { cause: options.cause });
+    this.flow = options.flow;
+  }
+}
+
+export type RunOptions = {
+  /** Collect the flow's signature as it runs: coverage cells, step outcomes, structures. */
+  signature?: boolean;
+};
+
+/** A few buckets, so a count reads as a shape rather than a number. */
+const bucket = (count: number): string => {
+  if (count < 2) return String(count);
+  return count < 4 ? "2-3" : "4+";
+};
+
+/**
+ * The document's structure after a step, coarse enough to repeat: which
+ * block kinds and target features the body has, which change types are
+ * pending and roughly how many comments there are.
+ */
+const structureOf = (reviewer: Reviewer): string => {
+  const features = new Set<string>();
+  for (const found of featureIndex(reviewer).features.values()) {
+    for (const feature of found) features.add(feature);
+  }
+  const kinds = new Set((reviewer.getContent() as Block[]).map((block) => String(block.kind)));
+  const changes = reviewer.getChanges();
+  const changeTypes = new Set(changes.map((change) => String(change.type)));
+  return [
+    [...kinds].sort().join("+"),
+    [...features].sort().join("+"),
+    `changes ${[...changeTypes].sort().join("+") || "none"} ${bucket(changes.length)}`,
+    `comments ${bucket(reviewer.getComments().length)}`,
+  ].join(" | ");
+};
+
+/** What a step's log entry says came of it, without its generated values. */
+const outcomeOf = (entry: string): string => {
+  const arrow = entry.lastIndexOf(" → ");
+  return arrow === -1 ? "done" : normalizeAssertion(entry.slice(arrow + 3));
+};
+
+type Plan = {
+  seed: number;
+  kind: FlowKind;
+  generation: Generation;
+  fixture: string;
+  mode: Mode;
+  random: Random;
+  steps: number;
+  planned?: readonly FlowStep[];
+  /** Where the flow came from, for its flow file. */
+  origin?: string;
+};
+
+const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   registerFeatureOperations(Object.keys(GENERATORS));
-  const random = createRandom(seed);
-  const fixtures = flowFixtures(kind, generation);
-  const fixture = random.pick(Object.keys(fixtures));
-  const mode = random.pick(MODES);
-  const bytes = await (fixtures[fixture] as () => Promise<Uint8Array>)();
+  const { seed, kind, generation, fixture, mode } = plan;
+  const load = flowFixtures(kind, generation)[fixture];
+  if (load === undefined) {
+    throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
+  }
+  const bytes = await load();
   const flow: Flow = {
     reviewer: await openReviewer(bytes),
     mode,
-    random,
+    random: plan.random,
     seenIds: new Set(),
     log: [],
     kind,
     generation,
     recent: [],
     session: "fresh",
+    trace: [],
+    planned: undefined,
+    // Read from a reviewer of its own, so the flow's never serves an extra read.
+    fixtureIds: blockIdsOf(await openReviewer(bytes)),
   };
   const { log } = flow;
+  const file = (): FlowFile => ({
+    version: 1,
+    kind,
+    generation,
+    fixture,
+    mode,
+    seed,
+    steps: flow.trace,
+    ...(plan.origin === undefined ? {} : { origin: plan.origin }),
+  });
+  const signature = new Set<string>();
+  const stopObserving = options.signature
+    ? observeHits((key, applied) => signature.add(`cell ${key} ${applied ? "applied" : "refused"}`))
+    : () => {};
   // Metamorphic relations (support/metamorphic.ts), checked after every step.
   const relations = await startRelations({ fixture: bytes, reviewer: flow.reviewer, mode, seed });
   const checks: StepCheck[] = [
@@ -534,8 +671,8 @@ export const runFlow = async (
     },
   ];
   try {
-    for (let index = 0; index < steps; index += 1) {
-      await step(flow);
+    for (let index = 0; index < plan.steps; index += 1) {
+      await step(flow, plan.planned?.[index]);
       const label = `step ${index}`;
       let saved: Promise<{ bytes: Uint8Array; reopened: Reviewer }> | undefined;
       const context: StepContext = {
@@ -545,17 +682,63 @@ export const runFlow = async (
         saved: () => (saved ??= saveAndReopen(flow.reviewer, label, saveOptions(flow))),
       };
       for (const { check } of checks) await check(context);
+      if (options.signature) {
+        const action = flow.trace.at(-1)?.action ?? "";
+        signature.add(`step ${action}: ${outcomeOf(log.at(-1) ?? "")}`);
+        signature.add(`structure ${structureOf(flow.reviewer)}`);
+      }
     }
     await relations.finish();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
+    throw new FlowError(
       [
         `${kind} flow (${generation}) with seed ${seed} (${fixture} / ${mode}) failed at step ${log.length - 1}:`,
         ...log.map((entry, index) => `  ${index}. ${entry}`),
         message,
       ].join("\n"),
-      { cause: error },
+      { cause: error, flow: file() },
     );
+  } finally {
+    stopObserving();
   }
+  return { flow: file(), signature: [...signature].sort() };
+};
+
+/** Run one seeded flow of `steps` steps; a failure names the step and its log. */
+export const runFlow = (
+  seed: number,
+  steps: number,
+  kind: FlowKind = "random",
+  { generation = "targeted", ...options }: FlowOptions & RunOptions = {},
+): Promise<FlowRun> => {
+  const random = createRandom(seed);
+  const fixture = random.pick(Object.keys(flowFixtures(kind, generation)));
+  const mode = random.pick(MODES);
+  return execute(
+    { seed, kind, generation, fixture, mode, random, steps, origin: `${kind} flow seed ${seed}` },
+    options,
+  );
+};
+
+/** Replay a flow file step by step; a failure names the step and its log. */
+export const runFlowFile = (file: FlowFile, options: RunOptions = {}): Promise<FlowRun> => {
+  const mode = MODES.find((candidate) => candidate === file.mode);
+  if (mode === undefined) {
+    return Promise.reject(new TypeError(`flow file: unknown mode ${file.mode}`));
+  }
+  return execute(
+    {
+      seed: file.seed,
+      kind: file.kind,
+      generation: file.generation,
+      fixture: file.fixture,
+      mode,
+      random: createRandom(file.seed),
+      steps: file.steps.length,
+      planned: file.steps,
+      ...(file.origin === undefined ? {} : { origin: file.origin }),
+    },
+    options,
+  );
 };
