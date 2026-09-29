@@ -250,18 +250,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "Adding or deleting a column and adding a row above walk rows without the table map: beside a vertical merge they misplace cells, and they rebuild w:tblGrid from the first row's cell count",
-    operations: [
-      "command:addColumnLeft",
-      "command:addColumnRight",
-      "command:deleteColumn",
-      "command:addRowAbove",
-    ],
-    shapes: ["tables"],
-    kinds: ["table-grid"],
-  },
-  {
-    reason:
       "Replacing a range that spans paragraphs leaves a paragraph without resolved style attributes (spacing, run defaults) until the document is reopened",
     operations: REPLACING_OPERATIONS,
     placements: ["cross-paragraph", "document"],
