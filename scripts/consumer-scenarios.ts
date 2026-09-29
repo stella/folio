@@ -31,7 +31,9 @@
 // the requested-outcome oracle could not model), FOLIO_SCENARIO_RELATIONS
 // (metamorphic relations checked in the fuzz flows: `all` by default, `none`,
 // or a comma-separated list) and FOLIO_SCENARIO_RELATIONS_DEPTH=full (check
-// the sampled relations on every batch; for sweeps).
+// the sampled relations on every batch; for sweeps), FOLIO_SCENARIO_SAVE_SAMPLE
+// (save this many initial generated flows as replayable DOCX artifacts) and
+// FOLIO_SCENARIO_SAMPLE_DIR (artifact destination).
 // FOLIO_SCENARIO_FEATURE_WEIGHTS=<report.json> enables bounded, seeded
 // steering from a previous feature coverage report; unset keeps current draws.
 // Flow files (test/consumer-scenarios/support/flow-file.ts):
@@ -492,6 +494,9 @@ try {
         ...(await flowEnvironment()),
         FOLIO_SCENARIO_SEED: seed,
         FOLIO_SCENARIO_COVERAGE_DIR: coverageDir,
+        FOLIO_SCENARIO_SAMPLE_DIR:
+          process.env["FOLIO_SCENARIO_SAMPLE_DIR"] ??
+          path.join(repoRoot, "test-results", "consumer-scenario-samples"),
         ...(process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"]
           ? {
               FOLIO_SCENARIO_FEATURE_WEIGHTS: path.resolve(

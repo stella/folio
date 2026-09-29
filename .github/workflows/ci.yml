@@ -346,8 +346,24 @@ jobs:
         run: bun test scripts/ci-plan.test.ts scripts/ci-result.test.mjs packages/docx-core/src/ops/__tests__/contract.test.ts packages/docx-core/src/projection.test.ts
 
       - name: Full test suite
+        id: full-suite
         if: needs.ci-plan.outputs.suite_depth == 'full'
-        run: bun run test
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun run test 2>&1 | tee test-results/full-test-suite.log
+
+      # A property failure in a merge group is replayed on the group's base
+      # (fuzz-ejection-replay.yml) to tell a pre-existing failure from one the
+      # group brought in; it reads the failure lines from this log.
+      - name: Keep the test log of a failed merge group
+        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-log-full-test-suite
+          path: test-results/full-test-suite.log
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Build
         if: needs.ci-plan.outputs.suite_depth == 'full'
@@ -677,7 +693,22 @@ jobs:
       # the published declarations, and runs them against public entry points
       # only: synthetic documents, act, save, reopen, compare every reader.
       - name: Scenarios over packed tarballs
-        run: bun scripts/consumer-scenarios.ts --typecheck
+        id: scenarios
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun scripts/consumer-scenarios.ts --typecheck 2>&1 | tee test-results/consumer-scenarios.log
+
+      # Replayed on the group's base when a merge group fails
+      # (fuzz-ejection-replay.yml).
+      - name: Keep the scenario log of a failed merge group
+        if: failure() && steps.scenarios.outcome == 'failure' && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-log-consumer-scenarios
+          path: test-results/consumer-scenarios.log
+          retention-days: 7
+          if-no-files-found: ignore
 
       # Which operation types met which stories, modes, target features and
       # sessions; the run fails on a required cell with no hits.

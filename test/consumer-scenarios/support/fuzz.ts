@@ -559,8 +559,11 @@ export const describeFlow = (
   return { fixture, mode: random.pick(MODES) };
 };
 
-/** A finished flow: what it ran, as a flow file, and its signature if asked for. */
-export type FlowRun = { flow: FlowFile; signature: string[] };
+/**
+ * A finished flow: what it ran, as a flow file, its signature if asked for
+ * and its final saved package if asked for.
+ */
+export type FlowRun = { flow: FlowFile; signature: string[]; saved?: Uint8Array };
 
 /** A flow that failed; `flow` holds its steps up to the one that failed. */
 export class FlowError extends Error {
@@ -574,6 +577,8 @@ export class FlowError extends Error {
 export type RunOptions = {
   /** Collect the flow's signature as it runs: coverage cells, step outcomes, structures. */
   signature?: boolean;
+  /** Save the finished flow and return the package, as a sample. */
+  captureSaved?: boolean;
 };
 
 /** A few buckets, so a count reads as a shape rather than a number. */
@@ -657,6 +662,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     ...(plan.origin === undefined ? {} : { origin: plan.origin }),
   });
   const signature = new Set<string>();
+  let captured: Uint8Array | undefined;
   const stopObserving = options.signature
     ? observeHits((key, applied) => signature.add(`cell ${key} ${applied ? "applied" : "refused"}`))
     : () => {};
@@ -689,6 +695,9 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
       }
     }
     await relations.finish();
+    if (options.captureSaved) {
+      captured = (await saveAndReopen(flow.reviewer, "final sample", saveOptions(flow))).bytes;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new FlowError(
@@ -702,7 +711,11 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   } finally {
     stopObserving();
   }
-  return { flow: file(), signature: [...signature].sort() };
+  return {
+    flow: file(),
+    signature: [...signature].sort(),
+    ...(captured === undefined ? {} : { saved: captured }),
+  };
 };
 
 /** Run one seeded flow of `steps` steps; a failure names the step and its log. */
