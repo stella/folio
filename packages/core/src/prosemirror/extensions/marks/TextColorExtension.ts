@@ -3,13 +3,40 @@
  */
 
 import { panic } from "better-result";
+import type { MarkType } from "prosemirror-model";
+import type { Command } from "prosemirror-state";
 
 import { textToStyle } from "../../../utils/formatToStyle";
 import { expectTextColorMarkAttrs } from "../../attrs";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
+import { getDocumentStyleResolver } from "../../plugins/documentStyles";
+// oxlint-disable-next-line import/no-cycle -- runtime-only: run formatting is re-resolved inside command handlers, not at module load
+import { rebaseRunFormattingInRange } from "../../rebaseParagraphRunFormatting";
 import { setMark, removeMark } from "./markUtils";
+
+/**
+ * Remove the direct text color from the selection. Only the direct color
+ * goes: a color the run's styles give it (a hyperlink's character style, a
+ * heading's paragraph style) paints again, as it does once the document is
+ * reopened.
+ */
+const clearDirectTextColor =
+  (textColorType: MarkType): Command =>
+  (state, dispatch) => {
+    const { from, to, empty } = state.selection;
+    const styleResolver = getDocumentStyleResolver(state);
+    return removeMark(textColorType)(
+      state,
+      dispatch &&
+        ((tr) => {
+          dispatch(
+            empty || !styleResolver ? tr : rebaseRunFormattingInRange(tr, from, to, styleResolver),
+          );
+        }),
+    );
+  };
 
 export const TextColorExtension = createMarkExtension({
   name: "textColor",
@@ -51,11 +78,11 @@ export const TextColorExtension = createMarkExtension({
       commands: {
         setTextColor: (attrs: TextColorAttrs) => {
           if (!attrs.rgb && !attrs.themeColor) {
-            return removeMark(textColorType);
+            return clearDirectTextColor(textColorType);
           }
           return setMark(textColorType, attrs as Record<string, unknown>);
         },
-        clearTextColor: () => removeMark(textColorType),
+        clearTextColor: () => clearDirectTextColor(textColorType),
       },
     };
   },

@@ -7,16 +7,18 @@ import {
   type RunFormattingCarrierRepresentation,
 } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
+/* oxlint-disable import/no-cycle -- runtime-only: run formatting is re-resolved inside command handlers, not at module load */
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
+/* oxlint-enable import/no-cycle */
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 
 type RebaseParagraphRunFormattingOptions = {
   nextAttrs: Record<string, unknown>;
   paragraphPosition: number;
-  shouldRebase?: (node: PMNode) => boolean;
+  shouldRebase?: (node: PMNode, position: number) => boolean;
   styleResolver: RunStyleResolver;
   tr: Transaction;
 };
@@ -56,7 +58,7 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
     node,
     position,
   }: RunFormattingCarrierRepresentation): void => {
-    if (shouldRebase && !shouldRebase(node)) {
+    if (shouldRebase && !shouldRebase(node, position)) {
       return;
     }
     const authoredFormatting = readAuthoredRunFormatting({
@@ -113,6 +115,41 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
         tr = tr.addMark(from, to, mark);
       }
     }
+  }
+  return tr;
+};
+
+/**
+ * Re-resolve the runs in [`from`, `to`) of `tr.doc` in their paragraph's
+ * current style context: after direct formatting is removed, what the run's
+ * styles paint shows again instead of nothing.
+ */
+export const rebaseRunFormattingInRange = (
+  tr: Transaction,
+  from: number,
+  to: number,
+  styleResolver: RunStyleResolver,
+): Transaction => {
+  const paragraphs: number[] = [];
+  tr.doc.nodesBetween(from, to, (node, position) => {
+    if (node.type.name === "paragraph") {
+      paragraphs.push(position);
+      return false;
+    }
+    return true;
+  });
+  for (const paragraphPosition of paragraphs) {
+    const paragraph = tr.doc.nodeAt(paragraphPosition);
+    if (!paragraph) {
+      continue;
+    }
+    tr = setParagraphAttrsWithRebasedRunFormatting({
+      nextAttrs: paragraph.attrs,
+      paragraphPosition,
+      shouldRebase: (node, position) => position < to && position + node.nodeSize > from,
+      styleResolver,
+      tr,
+    });
   }
   return tr;
 };

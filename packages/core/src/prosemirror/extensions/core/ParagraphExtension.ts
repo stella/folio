@@ -32,7 +32,9 @@ import type {
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
-import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
+import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
+// oxlint-disable-next-line import/no-cycle -- runtime-only: run formatting is re-resolved inside command handlers, not at module load
+import { setParagraphAttrsWithRebasedRunFormatting } from "../../rebaseParagraphRunFormatting";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
@@ -801,6 +803,7 @@ function makeApplyStyle() {
 
       let tr = state.tr;
       const seen = new Set<number>();
+      const styleResolver = getDocumentStyleResolver(state);
 
       // Build marks from run formatting if provided
       const styleMarks: Mark[] = [];
@@ -924,6 +927,18 @@ function makeApplyStyle() {
               // Then add the new style's marks
               for (const mark of styleMarks) {
                 tr = tr.addMark(paragraphStart, paragraphEnd, mark);
+              }
+              // A run's character style (a hyperlink's, say) survives the
+              // paragraph style, so what it paints comes back over the reset.
+              if (styleResolver) {
+                tr = setParagraphAttrsWithRebasedRunFormatting({
+                  nextAttrs: newAttrs,
+                  paragraphPosition: pos,
+                  shouldRebase: (inline) =>
+                    inline.marks.some(({ type }) => type.name === "characterStyle"),
+                  styleResolver,
+                  tr,
+                });
               }
             }
           }
