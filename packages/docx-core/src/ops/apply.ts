@@ -22,8 +22,9 @@
  * | `joinInline`        | `splitInline`                                             |
  * | `setRunProps`       | `setRunProps` per stretch of prior values, joining cuts   |
  * | `setParagraphProps` | `setParagraphProps` with the prior values                 |
- * | `splitBlock`        | `joinBlocks`                                              |
- * | `joinBlocks`        | `splitBlock` with the second paragraph's fields           |
+ * | `splitBlock`        | `joinBlocks`, then the kept half's review fields         |
+ * | `joinBlocks`        | `splitBlock` with the retired paragraph's fields, then  |
+ * |                     | the survivor's review fields                              |
  * | `replaceBlocks`     | `replaceBlocks`                                           |
  * | `setParagraphReview`| `setParagraphReview`                                      |
  * | `replaceInline`     | `replaceInline`                                           |
@@ -144,6 +145,8 @@ import {
   type SetParagraphReviewOp,
   type SetRunPropsOp,
   type SplitBlockOp,
+  SPLIT_HALVES,
+  type SplitHalf,
   type SplitInlineOp,
   type SplitParagraphFields,
   type TextPosition,
@@ -1178,26 +1181,68 @@ const splitFieldsOf = (paragraph: Paragraph): SplitParagraphFields => {
   return fields;
 };
 
+/**
+ * The paragraph properties two paragraphs joined have: the first's paragraph
+ * properties with the second's mark run properties, since the mark that stays
+ * is the second's.
+ */
+const joinedFormatting = (first: Paragraph, second: Paragraph) =>
+  withMarkFormatting(paragraphPropertiesOf(first.formatting), second.formatting);
+
+/** The review fields of two paragraphs once joined: the first's properties, the second's mark. */
+const joinedReview = (first: Paragraph, second: Paragraph): ParagraphReviewFields => {
+  const review: ParagraphReviewFields = {};
+  const formatting = joinedFormatting(first, second);
+  if (formatting !== undefined) review.formatting = formatting;
+  if (second.propertyChanges !== undefined) review.propertyChanges = second.propertyChanges;
+  if (second.pPrMark !== undefined) review.pPrMark = second.pPrMark;
+  return review;
+};
+
+/** A review-field setting from `from` to `to`; none when they are the same. */
+const reviewSetting = (
+  story: OpStory,
+  blockId: string,
+  from: ParagraphReviewFields,
+  to: ParagraphReviewFields,
+): SetParagraphReviewOp[] =>
+  structurallyEqual(from, to)
+    ? []
+    : [
+        {
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          story,
+          blockId,
+          expected: from,
+          review: to,
+        },
+      ];
+
+const isSplitHalf = (value: unknown): value is SplitHalf =>
+  value === SPLIT_HALVES.FIRST || value === SPLIT_HALVES.SECOND;
+
 type TrackSplitOptions = {
   op: SplitBlockOp;
   stamp: RevisionStamp;
   paragraph: Paragraph;
   /** The halves, recorded as a tracked split in place. */
   first: Paragraph;
-  second: Paragraph;
+  /** The half carrying the new id. */
+  made: Paragraph;
 };
 
 /**
- * Record a split as tracked: the new mark is an insertion, and new paragraph
- * properties are a property change from the source's. Returns the refusal
- * when the operation states a mark or property change of its own.
+ * Record a split as tracked: the new mark is an insertion, and the new
+ * paragraph records a property change from the source's properties when it
+ * states other ones and carries no change already. Returns the refusal when
+ * the operation states a mark or property change of its own.
  */
 const trackSplit = ({
   op,
   stamp,
   paragraph,
   first,
-  second,
+  made,
 }: TrackSplitOptions): DocumentOpRefusal | undefined => {
   if (op.firstMark !== undefined || (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
     return refusal(
@@ -1207,8 +1252,11 @@ const trackSplit = ({
     );
   }
   first.pPrMark = { kind: "ins", info: stampInfo(stamp) };
-  if (!sameParagraphProperties(second.formatting, paragraph.formatting)) {
-    second.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), paragraph.formatting)];
+  if (
+    !sameParagraphProperties(made.formatting, paragraph.formatting) &&
+    (made.propertyChanges?.length ?? 0) === 0
+  ) {
+    made.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), paragraph.formatting)];
   }
   return undefined;
 };
@@ -1228,36 +1276,55 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
       `${op.newBlockId} is already used in the package.`,
     );
   }
+  if (op.newHalf !== undefined && !isSplitHalf(op.newHalf)) {
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A half is first or second.");
+  }
   const located = locatePosition(document, op, op.at, "insertion");
   if (located.isErr()) {
     return Result.err(located.error);
   }
   const { location, gap } = located.value;
   const { paragraph } = location;
-  const cut = cutAt(paragraph.content, gap);
-  const first: Paragraph = { ...paragraph, content: cut.before };
-  delete first.sectionProperties;
-  delete first.pPrMark;
-  if (op.firstMark !== undefined) {
-    first.pPrMark = op.firstMark;
+  const newHalf =
+    op.newHalf ??
+    (gap.offset === paragraphLength(paragraph) ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
+  if (newHalf === SPLIT_HALVES.SECOND && (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The second half takes the paragraph's property changes with its mark.",
+    );
   }
+  const cut = cutAt(paragraph.content, gap);
   const fields =
     op.newParagraph ??
     (paragraph.formatting === undefined ? {} : { formatting: paragraph.formatting });
-  const second: Paragraph = {
-    ...fields,
-    type: "paragraph",
-    paraId: op.newBlockId,
-    content: cut.after,
-  };
-  if (paragraph.sectionProperties !== undefined) {
-    second.sectionProperties = paragraph.sectionProperties;
+  const made: Paragraph = { ...fields, type: "paragraph", paraId: op.newBlockId, content: [] };
+  // The paragraph's own fields stay with the half keeping its id; the mark, the
+  // section break and the pending property changes end the second half.
+  let first: Paragraph;
+  let second: Paragraph;
+  if (newHalf === SPLIT_HALVES.FIRST) {
+    first = { ...made, content: cut.before };
+    second = { ...paragraph, content: cut.after };
+  } else {
+    first = { ...paragraph, content: cut.before };
+    delete first.sectionProperties;
+    delete first.pPrMark;
+    delete first.propertyChanges;
+    second = { ...made, content: cut.after };
+    if (paragraph.propertyChanges !== undefined) second.propertyChanges = paragraph.propertyChanges;
+    if (paragraph.sectionProperties !== undefined) {
+      second.sectionProperties = paragraph.sectionProperties;
+    }
+    if (paragraph.pPrMark !== undefined) second.pPrMark = paragraph.pPrMark;
   }
-  if (paragraph.pPrMark !== undefined) {
-    second.pPrMark = paragraph.pPrMark;
+  if (op.firstMark !== undefined) {
+    first.pPrMark = op.firstMark;
   }
   if (op.revision !== undefined) {
-    const tracked = trackSplit({ op, stamp: op.revision, paragraph, first, second });
+    const madeHalf = newHalf === SPLIT_HALVES.FIRST ? first : second;
+    const tracked = trackSplit({ op, stamp: op.revision, paragraph, first, made: madeHalf });
     if (tracked !== undefined) {
       return Result.err(tracked);
     }
@@ -1274,18 +1341,29 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   if (committed.isErr()) {
     return Result.err(committed.error);
   }
-  const [, placedSecond] = committed.value.paragraphs;
+  const [placedFirst = first, placedSecond = second] = committed.value.paragraphs;
+  const kept = newHalf === SPLIT_HALVES.FIRST ? placedSecond : placedFirst;
+  const madePlaced = newHalf === SPLIT_HALVES.FIRST ? placedFirst : placedSecond;
+  const keptId = paragraph.paraId ?? op.at.blockId;
   return Result.ok({
     document: committed.value.document,
     inverse: [
       {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: op.at.story,
-        blockId: paragraph.paraId ?? op.at.blockId,
-        nextBlockId: op.newBlockId,
+        blockId: placedFirst.paraId ?? "",
+        nextBlockId: placedSecond.paraId ?? "",
         depth: cut.through.length,
-        expectedSecond: splitFieldsOf(placedSecond ?? second),
+        survivor: newHalf === SPLIT_HALVES.FIRST ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST,
+        expectedRetired: splitFieldsOf(madePlaced),
+        expectedSurvivor: reviewFieldsOf(kept),
       },
+      ...reviewSetting(
+        op.at.story,
+        kept.paraId ?? keptId,
+        joinedReview(placedFirst, placedSecond),
+        reviewFieldsOf(paragraph),
+      ),
     ],
     touched: committed.value.touched,
   });
@@ -1303,13 +1381,20 @@ type TrackJoinOptions = {
 /**
  * Record a join as tracked: the first paragraph's mark becomes a deletion,
  * and the second takes the first's paragraph properties as a property
- * change, so the paragraph an accepted join leaves has the direct join's
- * properties whichever of the two it is.
+ * change, so accepting leaves what the direct join leaves: the second
+ * paragraph, with the first's properties.
  */
 const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOptions): Applied => {
   const depth = op.depth ?? 0;
   if (!isCount(depth)) {
     return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A join depth is a count.");
+  }
+  if ((op.survivor ?? SPLIT_HALVES.SECOND) !== SPLIT_HALVES.SECOND) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "Resolving a tracked join leaves the second paragraph.",
+    );
   }
   if (leading.pPrMark !== undefined) {
     return refuse(
@@ -1321,10 +1406,7 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   const first: Paragraph = { ...leading, pPrMark: { kind: "del", info: stampInfo(stamp) } };
   let second = trailing;
   if (!sameParagraphProperties(leading.formatting, trailing.formatting)) {
-    second = withParagraphFormatting(
-      trailing,
-      withMarkFormatting(paragraphPropertiesOf(leading.formatting), trailing.formatting),
-    );
+    second = withParagraphFormatting(trailing, joinedFormatting(leading, trailing));
     // A paragraph already carrying a property change keeps it, and the formatting it started from.
     if ((trailing.propertyChanges?.length ?? 0) === 0) {
       second.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), trailing.formatting)];
@@ -1383,17 +1465,33 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
       `${op.blockId} ends a section.`,
     );
   }
+  const survivorSide = op.survivor ?? SPLIT_HALVES.SECOND;
+  if (!isSplitHalf(survivorSide)) {
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A half is first or second.");
+  }
+  const survivor = survivorSide === SPLIT_HALVES.SECOND ? trailing : leading;
+  const retired = survivorSide === SPLIT_HALVES.SECOND ? leading : trailing;
   if (
-    op.expectedSecond !== undefined &&
+    op.expectedRetired !== undefined &&
     !equalForStaleness(
-      { type: "paragraph", ...splitFieldsOf(trailing) },
-      { type: "paragraph", ...op.expectedSecond },
+      { type: "paragraph", ...splitFieldsOf(retired) },
+      { type: "paragraph", ...op.expectedRetired },
     )
   ) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
-      `${op.nextBlockId} states other fields than expected.`,
+      `${retired.paraId ?? ""} states other fields than expected.`,
+    );
+  }
+  if (
+    op.expectedSurvivor !== undefined &&
+    !equalForStaleness(reviewFieldsOf(survivor), op.expectedSurvivor)
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      `${survivor.paraId ?? ""} states other review fields than expected.`,
     );
   }
   if (op.revision !== undefined) {
@@ -1406,13 +1504,13 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
       trailing,
     });
   }
-  const trailingId = trailing.paraId ?? "";
-  // The split that undoes the join creates the second paragraph again, under its id.
-  if (!isParaId(trailingId)) {
+  const retiredId = retired.paraId ?? "";
+  // The split that undoes the join creates the retired paragraph again, under its id.
+  if (!isParaId(retiredId)) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      `${trailingId} could not name the paragraph again.`,
+      `${retiredId} could not name the paragraph again.`,
     );
   }
   const depth = op.depth ?? 0;
@@ -1427,31 +1525,47 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   if (merged.isErr()) {
     return Result.err(merged.error);
   }
-  const joined: Paragraph = { ...leading, content: merged.value.content };
-  delete joined.pPrMark;
+  // The survivor's identity; the first's properties; the second's mark, section
+  // break and pending property changes.
+  const joined = withReviewFields(
+    { ...survivor, content: merged.value.content },
+    joinedReview(leading, trailing),
+  );
+  delete joined.sectionProperties;
   if (trailing.sectionProperties !== undefined) {
     joined.sectionProperties = trailing.sectionProperties;
   }
-  if (trailing.pPrMark !== undefined) {
-    joined.pPrMark = trailing.pPrMark;
-  }
   const length = paragraphLength(leading);
+  const newHalf = survivorSide === SPLIT_HALVES.SECOND ? SPLIT_HALVES.FIRST : SPLIT_HALVES.SECOND;
+  const retiredFields = splitFieldsOf(retired);
+  if (newHalf === SPLIT_HALVES.SECOND) {
+    // The second half takes the property changes back with its mark.
+    delete retiredFields.propertyChanges;
+  }
   const split: SplitBlockOp = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: {
       story: op.story,
-      blockId: leading.paraId ?? op.blockId,
+      blockId: survivor.paraId ?? "",
       offset: length,
       zeroWidthBefore: zeroWidthLeavesAt(leading.content, length).length,
     },
-    newBlockId: trailingId,
-    newParagraph: splitFieldsOf(trailing),
+    newBlockId: retiredId,
+    newHalf,
+    newParagraph: retiredFields,
   };
   if (leading.pPrMark !== undefined) {
     split.firstMark = leading.pPrMark;
   }
   if (namesIds(merged.value.retired)) {
     split.newIds = merged.value.retired;
+  }
+  // What the split leaves on the survivor's half, before its own fields are given back.
+  const splitReview: ParagraphReviewFields = reviewFieldsOf(joined);
+  if (survivorSide === SPLIT_HALVES.FIRST) {
+    delete splitReview.propertyChanges;
+    delete splitReview.pPrMark;
+    if (leading.pPrMark !== undefined) splitReview.pPrMark = leading.pPrMark;
   }
   const committed = commit({
     document,
@@ -1467,7 +1581,10 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   return Result.ok({
     document: committed.value.document,
-    inverse: [split],
+    inverse: [
+      split,
+      ...reviewSetting(op.story, survivor.paraId ?? "", splitReview, reviewFieldsOf(survivor)),
+    ],
     touched: committed.value.touched,
   });
 };
@@ -1812,7 +1929,7 @@ export const applyDocumentOp = (
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const valid = validateOpsDocument(document);
   if (valid.isErr()) {
-    return refuse(op, valid.error.reason, valid.error.message);
+    return Result.err(refusal(op, valid.error.reason, valid.error.message));
   }
   const stamp = stampOf(op);
   const badStamp = stamp === undefined ? undefined : stampRefusal(document, op, stamp);

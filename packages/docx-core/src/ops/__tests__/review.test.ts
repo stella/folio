@@ -392,7 +392,7 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     textId: "77777777",
   });
 
-  test("a tracked split marks the first half's mark as inserted", () => {
+  test("a tracked split inside a paragraph gives the new id to the first half", () => {
     const document = documentOf(source, paragraph("00000009", [run("next")]));
     const split: DocumentOp = {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
@@ -401,11 +401,56 @@ describe("C9: Enter and Delete record paragraph marks", () => {
       revision: stamp(1),
     };
     const tracked = applied(document, split);
-    const [first] = blocks(tracked.document);
-    expect(first?.type === "paragraph" && first.pPrMark).toEqual({
-      kind: "ins",
-      info: { id: 1, author: "Reviewer", date: DATE },
-    });
+    expect(blocks(tracked.document)).toEqual([
+      paragraph("00000002", [run("Hello")], {
+        formatting: { styleId: "Heading1" },
+        pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
+      }),
+      { ...source, content: [run("World", { bold: true })] },
+      paragraph("00000009", [run("next")]),
+    ]);
+  });
+
+  test("a tracked split at the end adds a paragraph that records the source's properties", () => {
+    const pending = {
+      type: "paragraphPropertyChange" as const,
+      info: { id: 7, author: "Other" },
+      previousFormatting: { alignment: "end" as const },
+    };
+    const document = documentOf(
+      { ...source, propertyChanges: [pending] },
+      paragraph("00000009", [run("next")]),
+    );
+    const split: DocumentOp = {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 10),
+      newBlockId: "00000002",
+      newParagraph: {},
+      revision: stamp(1),
+      newIds: { revision: [2] },
+    };
+    const tracked = applied(document, split);
+    // The new paragraph takes the pending change, which keeps the properties it started from.
+    expect(blocks(tracked.document)).toEqual([
+      {
+        ...source,
+        pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
+      },
+      paragraph("00000002", [], { propertyChanges: [pending] }),
+      paragraph("00000009", [run("next")]),
+    ]);
+    const plain = applied(documentOf(source, paragraph("00000009", [run("next")])), split);
+    expect(blocks(plain.document)[1]).toEqual(
+      paragraph("00000002", [], {
+        propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 2, author: "Reviewer", date: DATE },
+            previousFormatting: { styleId: "Heading1" },
+          },
+        ],
+      }),
+    );
   });
 
   test("a tracked join marks the first paragraph's mark as deleted and moves nothing", () => {
@@ -472,20 +517,19 @@ describe("C6: a tracked split's new paragraph has exactly the direct split's fie
     const direct = blocks(applied(document, directly(split)).document);
     const [trackedFirst, trackedSecond] = tracked;
     const [directFirst, directSecond] = direct;
+    // The new paragraph is the first half here: it records the change and the mark.
     expect(trackedFirst).toEqual({
       ...directFirst,
-      pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
-    });
-    expect(trackedSecond).toEqual({
-      ...directSecond,
       propertyChanges: [
         {
           type: "paragraphPropertyChange",
-          info: { id: 2, author: "Reviewer", date: DATE },
+          info: { id: 1, author: "Reviewer", date: DATE },
           previousFormatting: { styleId: "Heading1", spaceBefore: 120 },
         },
       ],
+      pPrMark: { kind: "ins", info: { id: 2, author: "Reviewer", date: DATE } },
     });
+    expect(trackedSecond).toEqual(directSecond);
   });
 });
 
@@ -520,16 +564,25 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
     expect(undone.value.document).toStrictEqual(document);
   });
 
-  test("undoing the split alone keeps the later edit and the mark it moved", () => {
+  test("undoing the split alone after an edit its join would drop is refused as stale", () => {
     const first = applied(document, split);
     const second = applied(first.document, format);
     const undone = applyDocumentOps(second.document, first.inverse);
-    if (undone.isErr()) {
-      expect(undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
-      return;
-    }
+    expect(undone.isErr() && undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+  });
+
+  test("undoing the split alone after an edit of its text keeps the edit and the mark", () => {
+    const first = applied(document, split);
+    const typed = applied(first.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 5),
+      text: "!",
+      runProps: "inherit",
+    });
+    const undone = applyDocumentOps(typed.document, first.inverse);
+    if (undone.isErr()) throw undone.error;
     expect(blocks(undone.value.document)).toEqual([
-      { ...original, formatting: { alignment: "center" } },
+      { ...original, content: [run("HelloWorld!")] },
       paragraph("00000009", [run("next")]),
     ]);
   });

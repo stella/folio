@@ -266,10 +266,16 @@
     "op": {
       "type": "joinBlocks",
       "story": "main",
-      "blockId": "00000001",
-      "nextBlockId": "0000000A",
+      "blockId": "0000000A",
+      "nextBlockId": "00000001",
       "depth": 3,
-      "expectedSecond": {
+      "survivor": "second",
+      "expectedRetired": {
+        "formatting": {
+          "alignment": "center"
+        }
+      },
+      "expectedSurvivor": {
         "formatting": {
           "alignment": "center"
         }
@@ -281,7 +287,7 @@
     "op": {
       "type": "joinBlocks",
       "story": "main",
-      "blockId": "0000000A",
+      "blockId": "00000001",
       "nextBlockId": "00000002"
     }
   },
@@ -291,12 +297,37 @@
       "type": "splitBlock",
       "at": {
         "story": "main",
-        "blockId": "0000000A",
+        "blockId": "00000002",
         "offset": 8,
         "zeroWidthBefore": 0
       },
-      "newBlockId": "00000002",
+      "newBlockId": "00000001",
+      "newHalf": "first",
       "newParagraph": {
+        "formatting": {
+          "alignment": "center"
+        },
+        "preservedAttributes": [
+          {
+            "name": "rsidR",
+            "value": "00A1B2C3"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 2,
+    "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "00000002",
+      "expected": {
+        "formatting": {
+          "alignment": "center"
+        }
+      },
+      "review": {
         "formatting": {
           "alignment": "end"
         }
@@ -354,6 +385,9 @@
             "content": [
               {
                 "type": "run",
+                "formatting": {
+                  "bold": true
+                },
                 "content": [
                   {
                     "type": "text",
@@ -366,7 +400,8 @@
         ],
         "openStart": 0,
         "openEnd": 0
-      }
+      },
+      "join": 2
     }
   },
   {
@@ -402,21 +437,14 @@
       "blockId": "0000000A",
       "expected": [
         {
-          "type": "insertion",
-          "info": {
-            "id": 50,
-            "author": "A",
-            "date": "2026-01-02T03:04:05Z"
+          "type": "run",
+          "formatting": {
+            "bold": true
           },
           "content": [
             {
-              "type": "run",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "a"
-                }
-              ]
+              "type": "text",
+              "text": "A"
             }
           ]
         },
@@ -431,10 +459,258 @@
           "content": [
             {
               "type": "run",
+              "formatting": {
+                "bold": true
+              },
               "content": [
                 {
                   "type": "text",
                   "text": "Y"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "run",
+          "formatting": {
+            "bold": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "l"
+            }
+          ]
+        },
+        {
+          "type": "deletion",
+          "info": {
+            "id": 62,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          },
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "p"
+                }
+              ]
+            },
+            {
+              "type": "run",
+              "formatting": {
+                "italic": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "X"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "run",
+          "formatting": {
+            "bold": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "h"
+            }
+          ]
+        },
+        {
+          "type": "insertion",
+          "info": {
+            "id": 5,
+            "author": "A",
+            "date": "2026-01-02T03:04:05Z"
+          },
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "t"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "content": [
+        {
+          "type": "run",
+          "formatting": {
+            "bold": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "A"
+            }
+          ]
+        },
+        {
+          "type": "insertion",
+          "info": {
+            "id": 60,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          },
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Y"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "run",
+          "formatting": {
+            "bold": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "lp"
+            }
+          ]
+        },
+        {
+          "type": "run",
+          "formatting": {
+            "italic": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "X"
+            }
+          ]
+        },
+        {
+          "type": "run",
+          "formatting": {
+            "bold": true
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "h"
+            }
+          ]
+        },
+        {
+          "type": "insertion",
+          "info": {
+            "id": 5,
+            "author": "A",
+            "date": "2026-01-02T03:04:05Z"
+          },
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "t"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema": 2,
+    "op": {
+      "type": "setRunProps",
+      "from": {
+        "story": "main",
+        "blockId": "00000002",
+        "offset": 0
+      },
+      "to": {
+        "story": "main",
+        "blockId": "00000002",
+        "offset": 2
+      },
+      "patch": {
+        "underline": {
+          "style": "single"
+        }
+      },
+      "newIds": {
+        "revision": [66, 67]
+      },
+      "revision": {
+        "id": 65,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 2,
+    "op": {
+      "type": "replaceInline",
+      "story": "main",
+      "blockId": "00000002",
+      "expected": [
+        {
+          "type": "insertion",
+          "info": {
+            "id": 50,
+            "author": "A",
+            "date": "2026-01-02T03:04:05Z"
+          },
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "a"
+                }
+              ],
+              "formatting": {
+                "underline": {
+                  "style": "single"
+                }
+              },
+              "propertyChanges": [
+                {
+                  "type": "runPropertyChange",
+                  "info": {
+                    "id": 65,
+                    "author": "Reviewer",
+                    "date": "2026-02-03T04:05:06Z",
+                    "initials": "R"
+                  }
                 }
               ]
             }
@@ -451,25 +727,21 @@
               "type": "text",
               "text": " "
             }
-          ]
-        },
-        {
-          "type": "deletion",
-          "info": {
-            "id": 62,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
+          ],
+          "formatting": {
+            "underline": {
+              "style": "single"
+            }
           },
-          "content": [
+          "propertyChanges": [
             {
-              "type": "run",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "ga"
-                }
-              ]
+              "type": "runPropertyChange",
+              "info": {
+                "id": 66,
+                "author": "Reviewer",
+                "date": "2026-02-03T04:05:06Z",
+                "initials": "R"
+              }
             }
           ]
         },
@@ -478,7 +750,7 @@
           "content": [
             {
               "type": "text",
-              "text": "mma"
+              "text": "gamma"
             },
             {
               "type": "tab"
@@ -531,26 +803,6 @@
                 {
                   "type": "text",
                   "text": "a"
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "insertion",
-          "info": {
-            "id": 60,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          },
-          "content": [
-            {
-              "type": "run",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "Y"
                 }
               ]
             }
@@ -608,190 +860,9 @@
   {
     "schema": 2,
     "op": {
-      "type": "setRunProps",
-      "from": {
-        "story": "main",
-        "blockId": "00000001",
-        "offset": 0
-      },
-      "to": {
-        "story": "main",
-        "blockId": "00000001",
-        "offset": 2
-      },
-      "patch": {
-        "underline": {
-          "style": "single"
-        }
-      },
-      "newIds": {
-        "revision": [66, 67]
-      },
-      "revision": {
-        "id": 65,
-        "author": "Reviewer",
-        "date": "2026-02-03T04:05:06Z",
-        "initials": "R"
-      }
-    }
-  },
-  {
-    "schema": 2,
-    "op": {
-      "type": "replaceInline",
-      "story": "main",
-      "blockId": "00000001",
-      "expected": [
-        {
-          "type": "run",
-          "formatting": {
-            "bold": true,
-            "underline": {
-              "style": "single"
-            }
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "Al"
-            }
-          ],
-          "propertyChanges": [
-            {
-              "type": "runPropertyChange",
-              "info": {
-                "id": 65,
-                "author": "Reviewer",
-                "date": "2026-02-03T04:05:06Z",
-                "initials": "R"
-              },
-              "previousFormatting": {
-                "bold": true
-              }
-            }
-          ]
-        },
-        {
-          "type": "run",
-          "formatting": {
-            "bold": true
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "p"
-            }
-          ]
-        },
-        {
-          "type": "run",
-          "formatting": {
-            "italic": true
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "X"
-            }
-          ]
-        },
-        {
-          "type": "run",
-          "formatting": {
-            "bold": true
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "h"
-            }
-          ]
-        },
-        {
-          "type": "insertion",
-          "info": {
-            "id": 5,
-            "author": "A",
-            "date": "2026-01-02T03:04:05Z"
-          },
-          "content": [
-            {
-              "type": "run",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "t"
-                }
-              ]
-            }
-          ]
-        }
-      ],
-      "content": [
-        {
-          "type": "run",
-          "formatting": {
-            "bold": true
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "Alp"
-            }
-          ]
-        },
-        {
-          "type": "run",
-          "formatting": {
-            "italic": true
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "X"
-            }
-          ]
-        },
-        {
-          "type": "run",
-          "formatting": {
-            "bold": true
-          },
-          "content": [
-            {
-              "type": "text",
-              "text": "h"
-            }
-          ]
-        },
-        {
-          "type": "insertion",
-          "info": {
-            "id": 5,
-            "author": "A",
-            "date": "2026-01-02T03:04:05Z"
-          },
-          "content": [
-            {
-              "type": "run",
-              "content": [
-                {
-                  "type": "text",
-                  "text": "t"
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    }
-  },
-  {
-    "schema": 2,
-    "op": {
       "type": "setParagraphProps",
       "story": "main",
-      "blockId": "00000001",
+      "blockId": "00000002",
       "patch": {
         "keepNext": true
       },
@@ -808,7 +879,7 @@
     "op": {
       "type": "setParagraphReview",
       "story": "main",
-      "blockId": "00000001",
+      "blockId": "00000002",
       "expected": {
         "formatting": {
           "alignment": "center",
@@ -862,10 +933,16 @@
     "op": {
       "type": "joinBlocks",
       "story": "main",
-      "blockId": "0000000A",
-      "nextBlockId": "0000000B",
+      "blockId": "0000000B",
+      "nextBlockId": "0000000A",
       "depth": 0,
-      "expectedSecond": {
+      "survivor": "second",
+      "expectedRetired": {
+        "formatting": {
+          "alignment": "center"
+        }
+      },
+      "expectedSurvivor": {
         "formatting": {
           "alignment": "center"
         }
@@ -877,8 +954,8 @@
     "op": {
       "type": "joinBlocks",
       "story": "main",
-      "blockId": "00000001",
-      "nextBlockId": "0000000A",
+      "blockId": "0000000A",
+      "nextBlockId": "00000002",
       "newIds": {
         "revision": [73]
       },
@@ -895,11 +972,37 @@
     "op": {
       "type": "setParagraphReview",
       "story": "main",
-      "blockId": "00000001",
+      "blockId": "0000000A",
       "expected": {
         "formatting": {
-          "alignment": "center",
-          "keepNext": true
+          "alignment": "center"
+        },
+        "pPrMark": {
+          "kind": "del",
+          "info": {
+            "id": 72,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          }
+        }
+      },
+      "review": {
+        "formatting": {
+          "alignment": "center"
+        }
+      }
+    }
+  },
+  {
+    "schema": 2,
+    "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "00000002",
+      "expected": {
+        "formatting": {
+          "alignment": "center"
         },
         "propertyChanges": [
           {
@@ -914,16 +1017,7 @@
               "alignment": "center"
             }
           }
-        ],
-        "pPrMark": {
-          "kind": "del",
-          "info": {
-            "id": 72,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          }
-        }
+        ]
       },
       "review": {
         "formatting": {
@@ -950,177 +1044,56 @@
   {
     "schema": 2,
     "op": {
-      "type": "setParagraphReview",
-      "story": "main",
-      "blockId": "0000000A",
-      "expected": {
-        "formatting": {
-          "alignment": "center",
-          "keepNext": true
-        },
-        "propertyChanges": [
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center"
-            }
-          }
-        ],
-        "pPrMark": {
-          "kind": "ins",
-          "info": {
-            "id": 69,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          }
-        }
-      },
-      "review": {
-        "formatting": {
-          "alignment": "center"
-        },
-        "pPrMark": {
-          "kind": "ins",
-          "info": {
-            "id": 69,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          }
-        }
-      }
-    }
-  },
-  {
-    "schema": 2,
-    "op": {
       "type": "replaceBlocks",
       "story": "main",
       "expected": [
         {
-          "type": "paragraph",
-          "paraId": "00000001",
           "formatting": {
-            "alignment": "center",
-            "keepNext": true
+            "alignment": "center"
           },
-          "preservedAttributes": [
-            {
-              "name": "rsidR",
-              "value": "00A1B2C3"
-            }
-          ],
+          "type": "paragraph",
+          "paraId": "0000000B",
           "content": [
             {
               "type": "run",
               "formatting": {
-                "bold": true,
-                "underline": {
-                  "style": "single"
-                }
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "Al"
-                }
-              ],
-              "propertyChanges": [
-                {
-                  "type": "runPropertyChange",
-                  "info": {
-                    "id": 65,
-                    "author": "Reviewer",
-                    "date": "2026-02-03T04:05:06Z",
-                    "initials": "R"
-                  },
-                  "previousFormatting": {
-                    "bold": true
-                  }
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
                 "bold": true
               },
               "content": [
                 {
                   "type": "text",
-                  "text": "p"
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
-                "italic": true
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "X"
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
-                "bold": true
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "h"
+                  "text": "A"
                 }
               ]
             },
             {
               "type": "insertion",
               "info": {
-                "id": 5,
-                "author": "A",
-                "date": "2026-01-02T03:04:05Z"
+                "id": 60,
+                "author": "Reviewer",
+                "date": "2026-02-03T04:05:06Z",
+                "initials": "R"
               },
               "content": [
                 {
                   "type": "run",
+                  "formatting": {
+                    "bold": true
+                  },
                   "content": [
                     {
                       "type": "text",
-                      "text": "t"
+                      "text": "Y"
                     }
                   ]
                 }
               ]
             }
           ],
-          "propertyChanges": [
-            {
-              "type": "paragraphPropertyChange",
-              "info": {
-                "id": 68,
-                "author": "Reviewer",
-                "date": "2026-02-03T04:05:06Z",
-                "initials": "R"
-              },
-              "previousFormatting": {
-                "alignment": "center"
-              }
-            }
-          ],
           "pPrMark": {
-            "kind": "del",
+            "kind": "ins",
             "info": {
-              "id": 72,
+              "id": 69,
               "author": "Reviewer",
               "date": "2026-02-03T04:05:06Z",
               "initials": "R"
@@ -1130,37 +1103,16 @@
       ],
       "blocks": [
         {
-          "type": "paragraph",
-          "paraId": "00000001",
           "formatting": {
-            "alignment": "center",
-            "keepNext": true
+            "alignment": "center"
           },
-          "preservedAttributes": [
-            {
-              "name": "rsidR",
-              "value": "00A1B2C3"
-            }
-          ],
+          "type": "paragraph",
+          "paraId": "0000000B",
           "content": [],
-          "propertyChanges": [
-            {
-              "type": "paragraphPropertyChange",
-              "info": {
-                "id": 68,
-                "author": "Reviewer",
-                "date": "2026-02-03T04:05:06Z",
-                "initials": "R"
-              },
-              "previousFormatting": {
-                "alignment": "center"
-              }
-            }
-          ],
           "pPrMark": {
-            "kind": "del",
+            "kind": "ins",
             "info": {
-              "id": 72,
+              "id": 69,
               "author": "Reviewer",
               "date": "2026-02-03T04:05:06Z",
               "initials": "R"
@@ -1177,37 +1129,16 @@
       "story": "main",
       "expected": [
         {
-          "type": "paragraph",
-          "paraId": "00000001",
           "formatting": {
-            "alignment": "center",
-            "keepNext": true
+            "alignment": "center"
           },
-          "preservedAttributes": [
-            {
-              "name": "rsidR",
-              "value": "00A1B2C3"
-            }
-          ],
+          "type": "paragraph",
+          "paraId": "0000000B",
           "content": [],
-          "propertyChanges": [
-            {
-              "type": "paragraphPropertyChange",
-              "info": {
-                "id": 68,
-                "author": "Reviewer",
-                "date": "2026-02-03T04:05:06Z",
-                "initials": "R"
-              },
-              "previousFormatting": {
-                "alignment": "center"
-              }
-            }
-          ],
           "pPrMark": {
-            "kind": "del",
+            "kind": "ins",
             "info": {
-              "id": 72,
+              "id": 69,
               "author": "Reviewer",
               "date": "2026-02-03T04:05:06Z",
               "initials": "R"
@@ -1217,122 +1148,52 @@
       ],
       "blocks": [
         {
-          "type": "paragraph",
-          "paraId": "00000001",
           "formatting": {
-            "alignment": "center",
-            "keepNext": true
+            "alignment": "center"
           },
-          "preservedAttributes": [
-            {
-              "name": "rsidR",
-              "value": "00A1B2C3"
-            }
-          ],
+          "type": "paragraph",
+          "paraId": "0000000B",
           "content": [
             {
               "type": "run",
               "formatting": {
-                "bold": true,
-                "underline": {
-                  "style": "single"
-                }
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "Al"
-                }
-              ],
-              "propertyChanges": [
-                {
-                  "type": "runPropertyChange",
-                  "info": {
-                    "id": 65,
-                    "author": "Reviewer",
-                    "date": "2026-02-03T04:05:06Z",
-                    "initials": "R"
-                  },
-                  "previousFormatting": {
-                    "bold": true
-                  }
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
                 "bold": true
               },
               "content": [
                 {
                   "type": "text",
-                  "text": "p"
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
-                "italic": true
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "X"
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
-                "bold": true
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "h"
+                  "text": "A"
                 }
               ]
             },
             {
               "type": "insertion",
               "info": {
-                "id": 5,
-                "author": "A",
-                "date": "2026-01-02T03:04:05Z"
+                "id": 60,
+                "author": "Reviewer",
+                "date": "2026-02-03T04:05:06Z",
+                "initials": "R"
               },
               "content": [
                 {
                   "type": "run",
+                  "formatting": {
+                    "bold": true
+                  },
                   "content": [
                     {
                       "type": "text",
-                      "text": "t"
+                      "text": "Y"
                     }
                   ]
                 }
               ]
             }
           ],
-          "propertyChanges": [
-            {
-              "type": "paragraphPropertyChange",
-              "info": {
-                "id": 68,
-                "author": "Reviewer",
-                "date": "2026-02-03T04:05:06Z",
-                "initials": "R"
-              },
-              "previousFormatting": {
-                "alignment": "center"
-              }
-            }
-          ],
           "pPrMark": {
-            "kind": "del",
+            "kind": "ins",
             "info": {
-              "id": 72,
+              "id": 69,
               "author": "Reviewer",
               "date": "2026-02-03T04:05:06Z",
               "initials": "R"

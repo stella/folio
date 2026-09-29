@@ -159,7 +159,9 @@ export type JoinBlocksOp = {
     blockId: string;
     nextBlockId: string;
     depth?: number;
-    expectedSecond?: SplitParagraphFields;
+    survivor?: SplitHalf;
+    expectedRetired?: SplitParagraphFields;
+    expectedSurvivor?: ParagraphReviewFields;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
@@ -287,15 +289,25 @@ export type SetRunPropsOp = {
 };
 
 // @public
+export const SPLIT_HALVES: Readonly<{
+    readonly FIRST: "first";
+    readonly SECOND: "second";
+}>;
+
+// @public
 export type SplitBlockOp = {
     type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
     at: TextPosition;
     newBlockId: string;
+    newHalf?: SplitHalf;
     newParagraph?: SplitParagraphFields;
     firstMark?: ParagraphMarkChange;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
+
+// @public
+export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
 
 // @public
 export type SplitInlineOp = {

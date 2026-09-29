@@ -341,33 +341,45 @@ export const PARAGRAPH_MARK_FORMATTING_KEYS = Object.freeze([
   "runInWithNext",
 ] as const satisfies readonly (keyof ParagraphFormatting)[]);
 
+/** Which half of a split, or of a join, a rule applies to. */
+export const SPLIT_HALVES = Object.freeze({ FIRST: "first", SECOND: "second" } as const);
+
+/** One of {@link SPLIT_HALVES}. */
+export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
+
 /**
  * Split a paragraph in two at a position.
  *
- * The half before the position keeps the paragraph's identity: its `paraId`,
- * `textId`, unmodelled attributes and tracked property change. The half after
- * it is a new paragraph named `newBlockId`; it holds the paragraph mark, so the
- * section break and a tracked mark change move with it. It takes the fields in
- * `newParagraph`, or a copy of the paragraph's properties when the operation
- * states none. `firstMark` is the tracked change of the mark the split
- * creates. Absent `zeroWidthBefore` keeps zero-width children that open a
- * range with the new paragraph.
+ * One half keeps the paragraph's identity and own fields (`paraId`, `textId`,
+ * unmodelled attributes, properties); the other is a new paragraph named
+ * `newBlockId`, taking the fields in `newParagraph`, or a copy of the
+ * paragraph's properties when the operation states none. `newHalf` says which
+ * half is new: by default the second when the position ends the paragraph
+ * (a paragraph added after it), else the first (the text before the position
+ * moves to a paragraph of its own, and the paragraph continues with the rest).
+ * The paragraph mark always ends the second half, so the section break, the
+ * mark's tracked change and the pending property changes go with it; when the
+ * second half is the new one, `newParagraph` states no property changes.
+ * `firstMark` is the tracked change of the mark the split creates, which ends
+ * the first half. Absent `zeroWidthBefore` keeps zero-width children that
+ * open a range with the second half.
  *
  * A split inside a tracked change, a content control or a run with a tracked
- * property change continues it in the new paragraph as a record of its own:
+ * property change continues it in the second half as a record of its own:
  * `newIds` names its ids, outermost record first.
  *
  * With `revision`, the mark the split creates is a tracked insertion
- * (`firstMark` must then be absent), and a new paragraph whose paragraph
- * properties differ from the source's records a tracked property change from
- * the source's. Rejecting the mark joins the halves again as the inverse
- * `joinBlocks` does: the first keeps its fields and takes the second's mark.
+ * (`firstMark` must then be absent), and the new paragraph, when its paragraph
+ * properties differ from the source's and it carries no property change,
+ * records one from the source's. Rejecting the mark removes it, which leaves
+ * the second half with the first's content before its own.
  */
 export type SplitBlockOp = {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
   at: TextPosition;
   /** `w14:paraId` of the new paragraph: eight hex digits, unused in the document. */
   newBlockId: string;
+  newHalf?: SplitHalf;
   newParagraph?: SplitParagraphFields;
   firstMark?: ParagraphMarkChange;
   newIds?: NewIds;
@@ -376,22 +388,25 @@ export type SplitBlockOp = {
 
 /**
  * Join a paragraph with the paragraph that directly follows it in the same
- * container. The first keeps its identity and properties; the second's content
- * and paragraph mark (section break, tracked mark change) join it, and the
- * second's id is retired. `depth` merges that many levels of the records
- * meeting at the join, as {@link JoinInlineOp} does.
+ * container. The joined paragraph has the first's paragraph properties and
+ * the second's mark: its run properties, section break, tracked change and
+ * the pending property changes. It keeps the identity and own fields of the
+ * `survivor` half, by default the second, and the other's id is retired.
+ * `depth` merges that many levels of the records meeting at the join, as
+ * {@link JoinInlineOp} does.
  *
- * `expectedSecond` states the second paragraph's own fields, which the join
- * discards, and refuses the join as stale when they differ (fields a relayout
- * recomputes are not compared).
+ * `expectedRetired` states the own fields of the paragraph the join retires,
+ * and `expectedSurvivor` the review fields of the one it keeps, which the
+ * join replaces; either refuses the join as stale when it differs (fields a
+ * relayout recomputes are not compared).
  *
  * With `revision`, the join is tracked and moves nothing: the first
  * paragraph's mark becomes a tracked deletion, refused when the mark already
- * carries a tracked change. Accepting it joins the paragraphs, and the
- * paragraph left keeps the first's paragraph properties unless the first
- * holds no content by then, when the second is the one left. So the second
- * takes the first's paragraph properties now, as a tracked property change,
- * and accepting gives the direct join's properties whichever paragraph stays.
+ * carries a tracked change, and the second takes the first's paragraph
+ * properties as a tracked property change. Accepting removes the mark, which
+ * leaves the second paragraph with the first's content before its own: what
+ * the direct join leaves. A tracked join always leaves the second, so
+ * `survivor` must then be absent or `second`.
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
@@ -399,7 +414,9 @@ export type JoinBlocksOp = {
   blockId: string;
   nextBlockId: string;
   depth?: number;
-  expectedSecond?: SplitParagraphFields;
+  survivor?: SplitHalf;
+  expectedRetired?: SplitParagraphFields;
+  expectedSurvivor?: ParagraphReviewFields;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };

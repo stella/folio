@@ -97,7 +97,7 @@ const OPS: readonly DocumentOp[] = [
   {
     type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
     story: OP_STORIES.MAIN,
-    blockId: "0000000A",
+    blockId: "00000001",
     nextBlockId: "00000002",
   },
   {
@@ -117,8 +117,8 @@ const OPS: readonly DocumentOp[] = [
   },
   {
     type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
-    from: at("00000001", 0),
-    to: at("00000001", 2),
+    from: at("00000002", 0),
+    to: at("00000002", 2),
     patch: { underline: { style: "single" } },
     newIds: { revision: [66, 67] },
     revision: stamp(65),
@@ -126,7 +126,7 @@ const OPS: readonly DocumentOp[] = [
   {
     type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
     story: OP_STORIES.MAIN,
-    blockId: "00000001",
+    blockId: "00000002",
     patch: { keepNext: true },
     revision: stamp(68),
   },
@@ -140,8 +140,8 @@ const OPS: readonly DocumentOp[] = [
   {
     type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
     story: OP_STORIES.MAIN,
-    blockId: "00000001",
-    nextBlockId: "0000000A",
+    blockId: "0000000A",
+    nextBlockId: "00000002",
     newIds: { revision: [73] },
     revision: stamp(72),
   },

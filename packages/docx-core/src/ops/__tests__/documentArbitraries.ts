@@ -43,6 +43,7 @@ import {
   type ParagraphPropsPatch,
   type RevisionStamp,
   type RunPropsPatch,
+  SPLIT_HALVES,
   type SplitParagraphFields,
   type TextPosition,
 } from "../types";
@@ -764,13 +765,17 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       const used = new Set(paragraphIdsIn(document.package));
       let fresh = seed.fresh;
       while (used.has(toHexId(fresh))) fresh += 1;
+      // One split in three names the new half instead of taking the default.
+      const halves = [SPLIT_HALVES.FIRST, SPLIT_HALVES.SECOND] as const;
+      const newHalf = seed.depth % 3 === 0 ? { newHalf: halves[seed.first % 2] } : {};
       return seed.newParagraph === undefined
-        ? { type: kind, at, newBlockId: toHexId(fresh), ...ids }
+        ? { type: kind, at, newBlockId: toHexId(fresh), ...newHalf, ...ids }
         : {
             type: kind,
             at,
             newBlockId: toHexId(fresh),
             newParagraph: seed.newParagraph,
+            ...newHalf,
             ...ids,
           };
     }
@@ -813,6 +818,8 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
         blockId: (leading ?? target).paragraph.paraId ?? "",
         nextBlockId: trailing?.paragraph.paraId ?? "",
         depth: seed.depth % 3,
+        // One join in three keeps the first paragraph instead of the second.
+        ...(seed.third % 3 === 0 ? { survivor: SPLIT_HALVES.FIRST } : {}),
       };
     }
     default: {
@@ -912,7 +919,10 @@ export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): Docum
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
       // Mostly a paragraph whose mark carries no change: a tracked join refuses the others.
       const unmarked = seed.first % 4 === 0 ? undefined : unmarkedJoin(document, seed);
-      return { ...op, ...unmarked, ...ids, revision };
+      // A tracked join always leaves the second paragraph.
+      const join = { ...op, ...unmarked, ...ids, revision };
+      Reflect.deleteProperty(join, "survivor");
+      return join;
     }
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
       return { ...op, revision };
