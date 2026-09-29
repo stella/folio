@@ -147,6 +147,52 @@ describe("a tracked deletion of a paragraph that is a pending insertion", () => 
     reviewer.acceptAll();
     expect(texts(reviewer)).toEqual([...ORIGINAL.slice(0, -1), "two copies."]);
   });
+
+  for (const mode of ["tracked-changes", "suggested"] as const) {
+    test(`its words run into a restyled insertion and reject with their own style (${mode})`, async () => {
+      // Inserting after the last paragraph gives that paragraph the added
+      // break; deleting it runs its words into a paragraph inserted after it
+      // in the same batch, whose break is added too.
+      const reviewer = await open();
+      const signed = idOf(reviewer, "Signed");
+      reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [
+          {
+            id: "1",
+            type: "insertAfterBlock",
+            blockId: signed,
+            text: "Inserted.",
+            styleId: "Heading2",
+          },
+        ],
+      });
+      const result = reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        mode,
+        operations: [
+          { id: "2", type: "deleteBlock", blockId: signed },
+          {
+            id: "3",
+            type: "insertAfterBlock",
+            blockId: signed,
+            text: "Added.",
+            styleId: "Heading2",
+          },
+        ],
+      });
+      expect(result.applied).toHaveLength(2);
+      const styles = (current: FolioDocxReviewer) =>
+        current.getContent().map(({ text, styleId }) => [text, styleId ?? null]);
+      const original = styles(await open());
+      const saved = await reopen(reviewer);
+      reviewer.rejectAll();
+      expect(styles(reviewer)).toEqual(original);
+      saved.rejectAll();
+      expect(styles(saved)).toEqual(original);
+    });
+  }
 });
 
 test("a blank final paragraph deletes like a direct edit and rejects to the blank source", async () => {

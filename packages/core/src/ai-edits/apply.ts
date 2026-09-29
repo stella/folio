@@ -888,6 +888,14 @@ const paragraphPropertiesBeforeBatch = (
   return earliestBatchChange.previousFormatting ?? {};
 };
 
+/** The pPr rejecting every pending change of a paragraph's properties leaves. */
+const paragraphPropertiesOnReject = (
+  node: PMNode,
+): NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]> => {
+  const [earliest] = expectParagraphAttrs(node)._propertyChanges ?? [];
+  return earliest ? (earliest.previousFormatting ?? {}) : paragraphPropertiesSnapshot(node);
+};
+
 type ResolveFormattingFromStyleOptions = {
   attrs: ReturnType<typeof expectParagraphAttrs>;
   styleId: string | null | undefined;
@@ -4626,6 +4634,18 @@ const applyFolioAIEditOperationsInternal = ({
             // off the story's end), and deleting it retracts that insertion,
             // as deleting a merged break does: the words stay, marked
             // deleted, in the paragraph that follows.
+            //
+            // When that paragraph's break is a pending insertion as well,
+            // rejecting it runs the words on once more, and they keep the
+            // properties of the paragraph they stand in: the deleted
+            // paragraph's own are recorded as its `w:pPrChange` where they
+            // differ, which is what rejecting reads to put them back.
+            const restored = paragraphPropertiesOnReject(deleted);
+            const followingChanges = expectParagraphAttrs(following)._propertyChanges;
+            const recordsRestored =
+              isInsertedPPrMark(following.attrs["pPrMark"]) &&
+              !hasSerializableParagraphPropertyChange(followingChanges) &&
+              JSON.stringify(restored) !== JSON.stringify(paragraphPropertiesSnapshot(following));
             joinAtParagraphMark({
               tr,
               paragraphPos: markPosition,
@@ -4633,6 +4653,22 @@ const applyFolioAIEditOperationsInternal = ({
               next: following,
               firstIsGoing: true,
             });
+            const joined = tr.doc.nodeAt(markPosition);
+            if (recordsRestored && joined) {
+              const propertyRevisionId = operationRevisionSeed++;
+              tr = tr.setNodeMarkup(markPosition, undefined, {
+                ...joined.attrs,
+                _propertyChanges: [
+                  ...(Array.isArray(followingChanges) ? followingChanges : []),
+                  {
+                    type: "paragraphPropertyChange",
+                    info: { id: propertyRevisionId, author, date, ...trackedRevisionExtras },
+                    previousFormatting: restored,
+                  } satisfies ParagraphPropertyChangeAttrs,
+                ],
+              });
+              appliedRevisionIds = [...appliedRevisionIds, propertyRevisionId];
+            }
           } else if (!endsItsContainer && deleted?.attrs["pPrMark"] == null) {
             const markRevisionId = operationRevisionSeed++;
             tr = tr.setNodeAttribute(markPosition, "pPrMark", {

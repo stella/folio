@@ -109,6 +109,20 @@
       "kind": "random",
       "generation": "targeted",
       "title": "#1192 random flow"
+    },
+    {
+      "seed": 764128765,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "deleted words in a restyled insertion reject with their style"
+    },
+    {
+      "seed": 764128765,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "inserted heading beside a stated outline level"
     }
   ]
 }
