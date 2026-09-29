@@ -41,7 +41,8 @@ bun add @stll/docx-core
   id and offset, and return the new document, the blocks it touched and its
   exact inverse (operations addressed the same way), or a typed refusal.
   With a `revision` stamp, the text, formatting and paragraph operations
-  record their edit as tracked changes instead. `planTrackedDeletion`
+  record their edit as tracked changes instead, and `resolveRevision`
+  accepts or rejects tracked changes by revision id. `planTrackedDeletion`
   plans a tracked deletion around the author's own insertions and comment
   anchors, and `revisionIdDemand` counts the new revision ids an operation
   takes. `normalizeForOps` and `validateOpsDocument` establish and check the

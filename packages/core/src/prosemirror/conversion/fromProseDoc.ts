@@ -2196,9 +2196,14 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const outlineLevel = authored("outlineLevel", Reflect.get(attrs, "outlineLevel"));
   const bidi = authored("bidi", directionToAuthoredBidi(attrs.direction));
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
-  const indentLeft = authored("indentLeft", attrs.indentLeft);
+  // A zero left or first-line indent is stated only where a numbering level
+  // could supply another value; elsewhere it reads as the absent default.
+  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
+  const statedIndent = (value: number | undefined): number | undefined =>
+    value === 0 && !numbered ? undefined : value;
+  const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));
   const indentRight = authored("indentRight", attrs.indentRight);
-  const indentFirstLine = authored("indentFirstLine", attrs.indentFirstLine);
+  const indentFirstLine = statedIndent(authored("indentFirstLine", attrs.indentFirstLine));
   const borders = authored("borders", attrs.borders);
   const shading = authored("shading", attrs.shading);
   const tabs = authored("tabs", attrs.tabs);
@@ -2222,9 +2227,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     hasDirectLineSpacing ||
     hasDirectLineSpacingRule ||
     snapToGrid != null ||
-    indentLeft ||
+    indentLeft !== undefined ||
     indentRight ||
-    indentFirstLine ||
+    indentFirstLine !== undefined ||
     attrs.numPr ||
     attrs.styleId ||
     borders ||
@@ -2277,13 +2282,13 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (attrs.spacingExplicit) {
     f.spacingExplicit = attrs.spacingExplicit;
   }
-  if (indentLeft) {
+  if (indentLeft !== undefined) {
     f.indentLeft = indentLeft;
   }
   if (indentRight) {
     f.indentRight = indentRight;
   }
-  if (indentFirstLine) {
+  if (indentFirstLine !== undefined) {
     f.indentFirstLine = indentFirstLine;
   }
   if (attrs.hangingIndent && indentFirstLine) {

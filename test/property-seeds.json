@@ -54,6 +54,12 @@
       "path": "35",
       "note": "#1128: oracle for a tracked merge into a run of deleted blocks",
       "date": "2026-09-27"
+    },
+    {
+      "seed": 2057617557,
+      "path": "308:1:4",
+      "note": "formatting a last paragraph the batch deletes and inserts before (path at factor 5)",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (${name})": [
@@ -74,6 +80,52 @@
       "path": "1:0:1",
       "note": "#1127: upstream-complex-styles.docx",
       "date": "2026-09-27"
+    }
+  ],
+  "packages/core/src/ai-edits/tableOperations.property.test.ts::keep every value, agree across modes and readers, and reject cleanly": [
+    {
+      "seed": -1930932135,
+      "note": "#1159: tracked final paragraphs and batched rows",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": 58022172,
+      "note": "#1159: tracked final paragraphs and batched rows",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": 58022172,
+      "path": "282:1:0:1:0:0:0:0:0:1:1:5:5:5:6:6:6",
+      "note": "#1188: a refused column insertion and a no-op deletion were reported in opposite orders",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": -324071034,
+      "note": "#1159: tracked final paragraphs and batched rows",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": -1330713042,
+      "note": "#1159: tracked final paragraphs and batched rows",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": -1268251019,
+      "path": "156:0:0:0:0:3:2:2:6:3:3:3:5:7:3:9:5:3:6:7:8:7:8:7:7:9:7:9:7:7:8:7:7:11:7:10:11",
+      "note": "a direct column deletion closed a row before a column the same batch inserted could keep it, unlike the batch accepted tracked (path at factor 5)",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": 1265839460,
+      "path": "101:5:8:9:12:12:14:14:15:16:15:15:15:15:15:17:17:16:16:16:17:16:17:16:17:17:16:18:16:16:16:16:16:16:16:16:16:17:18:18:10:7:9:10",
+      "note": "deleting then reinserting a column beside a vertical merge in a table holding a nested table: the same row-closing order",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -1430791129,
+      "path": "619:4:5:8:6:5:9:7:7:7:8:23:7:7:7:16:21:29:29:24:19:19:22:37:27:28",
+      "note": "a nested-table column deletion left its emptied row open when the same batch merged the outer table and moved the nested table (path at factor 5)",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/internal/revisionResolutionStep.integration.test.ts::bulk resolution JSON replay and undo match its cached result": [

@@ -54,6 +54,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+    case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return op;
     default: {
       const unreachable: never = op;
