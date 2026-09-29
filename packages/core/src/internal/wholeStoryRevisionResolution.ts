@@ -275,6 +275,7 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
 
 type ParagraphChain = {
   node: PMNode;
+  formattingOwnerPosition: number;
   chunks: (
     | { type: "paragraph"; source: PMNode; position: number }
     | { type: "bookmarks"; content: Fragment }
@@ -318,22 +319,24 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       for (let index = chain.chunks.length - 1; index >= 0; index--) {
         const chunk = chain.chunks[index];
         if (!chunk) continue;
-        const content =
-          chunk.type === "paragraph"
-            ? rebaseParagraphRunContent({
-                paragraph: chunk.source,
-                target: chain.node,
-                position: chunk.position,
-                styleResolver: context.styleResolver,
-                onRebased: ({ before, after, position: runPosition }) =>
-                  recordNodeResolution({
-                    before,
-                    after,
-                    position: runPosition,
-                    steps: context.steps,
-                  }),
-              })
-            : chunk.content;
+        // The surviving owner keeps its own marks, as the single-change join
+        // does. Rebuilding them would change provenance without a style change.
+        let content = chunk.type === "paragraph" ? chunk.source.content : chunk.content;
+        if (chunk.type === "paragraph" && chunk.position !== chain.formattingOwnerPosition) {
+          content = rebaseParagraphRunContent({
+            paragraph: chunk.source,
+            target: chain.node,
+            position: chunk.position,
+            styleResolver: context.styleResolver,
+            onRebased: ({ before, after, position: runPosition }) =>
+              recordNodeResolution({
+                before,
+                after,
+                position: runPosition,
+                steps: context.steps,
+              }),
+          });
+        }
         content.forEach((child) => children.push(child));
       }
       final = rebuild(chain.node, { content: Fragment.fromArray(children) });
@@ -423,6 +426,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       }
       const empty = holdsNoContent(paragraph);
       const owner = empty ? chain.node : paragraph;
+      if (!empty) chain.formattingOwnerPosition = entry.position;
       const next = chain.node;
       if (empty) {
         const displacedToken = getProseParagraphPropertySourceToken(paragraph);
@@ -465,6 +469,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       : paragraph;
     chain = {
       node: resolved,
+      formattingOwnerPosition: entry.position,
       chunks: [{ type: "paragraph", source: resolved, position: entry.position }],
       position: entry.position,
       before: paragraph,

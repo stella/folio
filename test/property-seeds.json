@@ -97,5 +97,21 @@
       "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:…, which counted the two example scenarios)",
       "date": "2026-09-29"
     }
+  ],
+  "packages/core/src/prosemirror/commands/comments.bulk.test.ts::matches the legacy small-document semantics across generated nested revisions": [
+    {
+      "seed": 2609090,
+      "path": "0:0",
+      "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
+      "date": "2026-09-29"
+    }
+  ],
+  "packages/core/src/prosemirror/commands/comments.resolve-all.test.ts::matches the legacy whole-document range over mixed paragraph and table revisions": [
+    {
+      "seed": 2609260,
+      "path": "5:2:1:1:5:5:5:4:4:4:4:4:4",
+      "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
+      "date": "2026-09-29"
+    }
   ]
 }

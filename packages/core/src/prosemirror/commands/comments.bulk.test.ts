@@ -13,7 +13,7 @@ import {
 import { ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 import * as Y from "yjs";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import type { FolioAIBlock } from "../../ai-edits/types";
@@ -546,7 +546,7 @@ describe("headless bulk revision resolution equivalence", () => {
   );
 
   test("matches the legacy small-document semantics across generated nested revisions", () => {
-    fc.assert(
+    assertProperty(
       fc.property(fc.integer({ min: 1, max: 100_000 }), (seed) => {
         const doc = generatedDocument(seed, 4);
 
@@ -578,7 +578,7 @@ describe("headless bulk revision resolution equivalence", () => {
           expect(bulkTracker).toEqual(legacyTracker);
         }
       }),
-      propertyConfig({ seed: 2_609_090, numRuns: 24 }),
+      { seed: 2_609_090, numRuns: 24 },
     );
   });
 
