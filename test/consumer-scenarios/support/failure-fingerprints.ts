@@ -9,6 +9,15 @@ export type FailureMarker = {
   path: string | null;
   repro: string;
   assertion: string;
+  /** Where the compared values differed, values and positions left out (see `diffShape`). */
+  diff?: string;
+  /**
+   * The operations of the minimized flow, step by step, when the fingerprint
+   * includes them; `primary` is then the fingerprint without them, the one
+   * the failure had before it was shrunk.
+   */
+  flow?: string;
+  primary?: string;
 };
 
 export const shellQuote = (value: string): string => `'${value.replaceAll("'", `'\\''`)}'`;
@@ -43,25 +52,82 @@ export const normalizeAssertion = (failure: unknown): string => {
     .trim();
 };
 
+// A difference line of support/metamorphic.ts `differences`: `path: before → after`,
+// perhaps after a relation's own prefix.
+const DIFFERENCE = /^(?:batch → one at a time )?((?:\(root\)|[.[])[^\s:]*): (.+?) → (.+)$/u;
+
+/** What kind of value a difference line shows, without the value itself. */
+const valueKind = (text: string, path: string): string => {
+  const value = text.trim();
+  if (value === "undefined") return "∅";
+  if (value === "null" || value === "true" || value === "false") return value;
+  if (/^-?\d/u.test(value)) return "number";
+  if (value.startsWith("{")) {
+    // A change, a block or a comment: its type is part of what went wrong.
+    const type = /"type":"([\w-]+)"/u.exec(value)?.[1];
+    return type === undefined ? "{}" : `{${type}}`;
+  }
+  if (value.startsWith("[")) return "[]";
+  // A `type` field names a kind (insertion, deletion, …), not document text.
+  const kind = /\.type$/u.test(path) ? /^…?"([\w-]*)"?/u.exec(value)?.[1] : undefined;
+  return kind ?? "text";
+};
+
+/**
+ * The shape of a comparison's differences: which fields differ, between
+ * what kinds of values and which change types, with positions, ids and text
+ * left out. Two bugs behind the same symptom line differ here; one bug seen
+ * under two seeds does not. Empty when the failure lists no differences.
+ */
+export const diffShape = (failure: unknown): string => {
+  const shapes = new Set<string>();
+  for (const line of deepestMessage(failure).split("\n")) {
+    const match = DIFFERENCE.exec(line.trim());
+    if (match === null) continue;
+    const [, at, before, after] = match as unknown as [string, string, string, string];
+    const path = at.replace(/\[\d+\]/gu, "[]");
+    shapes.add(`${path} ${valueKind(before, path)}→${valueKind(after, path)}`);
+  }
+  return [...shapes].sort().slice(0, 12).join("; ");
+};
+
+const hash = (text: string): string => createHash("sha256").update(text).digest("hex").slice(0, 16);
+
+/**
+ * The marker for a failure. The fingerprint hashes the test, the symptom
+ * line and the differences' shape; given `flow` (a minimized flow's
+ * operations, see `flowShape` in support/fuzz-loop.ts) it hashes that too,
+ * and `primary` keeps the fingerprint without it.
+ */
 export const failureMarker = ({
   test,
   seed,
   path,
   repro,
   failure,
+  flow,
 }: {
   test: string;
   seed: number;
   path?: string | null;
   repro: string;
   failure: unknown;
+  flow?: string;
 }): FailureMarker => {
   const assertion = normalizeAssertion(failure);
-  const fingerprint = createHash("sha256")
-    .update(`${test}\0${assertion}`)
-    .digest("hex")
-    .slice(0, 16);
-  return { fingerprint, test, seed, path: path ?? null, repro, assertion };
+  const diff = diffShape(failure);
+  // Without differences the fingerprint is what it always was.
+  const primary = hash(diff === "" ? `${test}\0${assertion}` : `${test}\0${assertion}\0${diff}`);
+  return {
+    fingerprint: flow === undefined ? primary : hash(`${primary}\0${flow}`),
+    test,
+    seed,
+    path: path ?? null,
+    repro,
+    assertion,
+    ...(diff === "" ? {} : { diff }),
+    ...(flow === undefined ? {} : { flow, primary }),
+  };
 };
 
 export const logFailureMarker = (marker: FailureMarker): void => {
