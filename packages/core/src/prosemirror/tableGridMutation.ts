@@ -70,6 +70,28 @@ export const removeTableRow = (
  * tracked removes the cells one at a time and the row with its last one,
  * which is this result; the two modes have to leave the same table.
  */
+/**
+ * Tables a batch of structural edits may have left rows without cells in,
+ * each as a position in the document `mapFrom` steps into the transaction.
+ */
+export type TablesWithEmptiedRows = { position: number; mapFrom: number }[];
+
+/**
+ * Close the rows a batch left without cells, once the whole batch has run: a
+ * later operation of the same batch can still give such a row a cell (a column
+ * inserted beside a merge), as accepting the batch tracked does.
+ */
+export const removeRowsWithoutCellsAfterBatch = (
+  tr: Transaction,
+  tables: TablesWithEmptiedRows,
+): void => {
+  for (const { position, mapFrom } of tables) {
+    // A step that rewrites the table's own attrs replaces its opening token,
+    // so the position maps as the table's start rather than as a survivor.
+    removeRowsWithoutCells(tr, tr.mapping.slice(mapFrom).map(position, 1));
+  }
+};
+
 export const removeRowsWithoutCells = (tr: Transaction, tablePosition: number): void => {
   for (;;) {
     const table = tr.doc.nodeAt(tablePosition);

@@ -51,7 +51,7 @@ import { directionIsRtl } from "../../paragraphDirection";
 import { directParagraphSpacing, withDirectParagraphSpacing } from "../../paragraphSpacing";
 import { directParagraphIndentation } from "../../paragraphIndentation";
 import type { ParagraphDirection } from "../../paragraphDirection";
-import type { ParagraphAttrs } from "../../schema/nodes";
+import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
   paragraphAttrsFromResolvedStyle,
   listAttrsFromResolvedStyle,
@@ -698,6 +698,18 @@ function directParagraphAttrs(attrs: Readonly<ParagraphAttrs>): Record<string, u
   return direct;
 }
 
+/** A paragraph's attrs after a restyle, as the level-indentation read needs them. */
+function restyledAttrs(
+  current: Readonly<ParagraphAttrs>,
+  styleAttrs: ParagraphAttrsPatch,
+  originalFormatting: ParagraphFormatting | undefined,
+): ParagraphAttrs {
+  const { _originalFormatting: _previous, ...rest } = { ...current, ...styleAttrs };
+  return originalFormatting === undefined
+    ? rest
+    : { ...rest, _originalFormatting: originalFormatting };
+}
+
 function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
@@ -989,7 +1001,7 @@ function makeApplyStyle(schema: Schema) {
               Object.assign(
                 newAttrs,
                 listLevelIndentAttrPatch(
-                  { ...current, ...styleAttrs, _originalFormatting: restyledOriginal ?? null },
+                  restyledAttrs(current, styleAttrs, restyledOriginal),
                   {
                     numId: directNumId,
                     ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,
