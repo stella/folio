@@ -339,8 +339,8 @@
       "editingDescription": "Edytuj dokument bezpośrednio",
       "outlineTitle": "Konspekt",
       "showDocumentOutline": "Konspekt dokumentu",
-      "suggesting": "Sugerowanie",
-      "suggestingDescription": "Edycje stają się śledzonymi sugestiami",
+      "suggesting": "Śledzenie zmian",
+      "suggestingDescription": "Edycje są zapisywane jako śledzone zmiany",
       "viewing": "Wyświetlanie",
       "viewingDescription": "Czytaj lub drukuj dokument końcowy"
     },

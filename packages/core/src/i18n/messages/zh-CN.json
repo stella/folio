@@ -339,8 +339,8 @@
       "editingDescription": "直接编辑文档",
       "outlineTitle": "大纲",
       "showDocumentOutline": "文档大纲",
-      "suggesting": "建议",
-      "suggestingDescription": "编辑内容将成为修订建议",
+      "suggesting": "修订",
+      "suggestingDescription": "编辑内容将记录为修订",
       "viewing": "查看",
       "viewingDescription": "阅读或打印最终文档"
     },

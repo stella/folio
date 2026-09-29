@@ -227,25 +227,26 @@ const report = async (options: Options): Promise<void> => {
     base: options.baseSha,
     ...judged,
   };
-  const preExisting = findings.filter(({ record }) => base.has(record.marker.fingerprint));
-  if (!options.dryRun && preExisting.length > 0) {
+  // A group that merged (report-only fuzz) brought every failure to main.
+  const toFile = options.merged
+    ? findings
+    : findings.filter(({ record }) => base.has(record.marker.fingerprint));
+  if (!options.dryRun && toFile.length > 0) {
     const context: Context = {
       runUrl: options.runUrl,
-      sha: options.baseSha,
-      source: "a merge queue run, and again on its base",
+      sha: options.merged ? options.groupSha : options.baseSha,
+      source: options.merged
+        ? "a merge queue run that merged (fuzz report-only)"
+        : "a merge queue run, and again on its base",
       date: new Date().toISOString().slice(0, 10),
     };
-    const filed: Filed[] = await fileFindings(
-      preExisting,
-      context,
-      path.resolve(import.meta.dir, ".."),
-    );
+    const filed: Filed[] = await fileFindings(toFile, context, path.resolve(import.meta.dir, ".."));
     for (const entry of ejection.fingerprints) {
       entry.issue =
         filed.find(({ fingerprint }) => fingerprint === entry.fingerprint)?.issue ?? null;
     }
   }
-  if (!options.dryRun && ejection.requeue && options.pr !== null) {
+  if (!options.dryRun && !options.merged && ejection.requeue && options.pr !== null) {
     await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`
       .quiet()
       .nothrow();
@@ -286,6 +287,8 @@ type Options = {
   pr: number | null;
   runUrl: string | null;
   dryRun: boolean;
+  /** The group passed and merged: file every failure, label nothing. */
+  merged: boolean;
 };
 
 const parseArgs = (argv: readonly string[]): Options => {
@@ -300,6 +303,7 @@ const parseArgs = (argv: readonly string[]): Options => {
     pr: null,
     runUrl: null,
     dryRun: false,
+    merged: false,
   };
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -315,6 +319,7 @@ const parseArgs = (argv: readonly string[]): Options => {
       options.pr = /^\d+$/u.test(pr) ? Number(pr) : null;
     } else if (arg === "--run-url") options.runUrl = value() || null;
     else if (arg === "--dry-run") options.dryRun = true;
+    else if (arg === "--merged") options.merged = true;
     else throw new Error(`Unknown argument ${String(arg)}`);
   }
   return options;

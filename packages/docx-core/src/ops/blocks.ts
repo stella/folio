@@ -115,6 +115,69 @@ export const sameBlockList = (
     return other !== undefined && sameStep(step, other);
   });
 
+/** The block list a location's steps lead to. */
+export const blockListAt = (
+  blocks: readonly BlockContent[],
+  list: readonly BlockListStep[],
+): readonly BlockContent[] => {
+  let current = blocks;
+  for (const step of list) {
+    const block = current[step.block];
+    switch (step.kind) {
+      case "tableCell": {
+        const cell = block?.type === "table" ? block.rows[step.row]?.cells[step.cell] : undefined;
+        if (cell === undefined) {
+          return panic(`Block list step does not name a table cell at block ${step.block}.`);
+        }
+        current = cell.content;
+        break;
+      }
+      case "blockSdt":
+        if (block?.type !== "blockSdt") {
+          return panic(`Block list step does not name a block content control at ${step.block}.`);
+        }
+        current = block.content;
+        break;
+      case "blockCustomXml":
+        if (block?.type !== "blockCustomXml") {
+          return panic(`Block list step does not name a custom XML wrapper at ${step.block}.`);
+        }
+        current = block.content;
+        break;
+      default: {
+        const unreachable: never = step;
+        return unreachable;
+      }
+    }
+  }
+  return current;
+};
+
+/**
+ * Whether a block is the last one of its story body or table cell. A block
+ * content control or custom XML wrapper is a step in the block list, not a
+ * container: the last block inside one ends the container only when the
+ * wrapper does.
+ */
+export const endsItsContainer = (
+  body: DocumentBody,
+  { list, index }: { list: readonly BlockListStep[]; index: number },
+): boolean => {
+  let steps = list;
+  let position = index;
+  for (;;) {
+    if (position !== blockListAt(body.content, steps).length - 1) {
+      return false;
+    }
+    const last = steps.at(-1);
+    if (last === undefined || last.kind === "tableCell") {
+      return true;
+    }
+    steps = steps.slice(0, -1);
+    position = last.block;
+  }
+};
+
 const updateBlockList = (
   blocks: readonly BlockContent[],
   list: readonly BlockListStep[],
