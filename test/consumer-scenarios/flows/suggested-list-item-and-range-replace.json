@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "suggested",
+  "seed": 31366,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3599221795,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1308F7CE",
+          "text": "Invoice goods term clause period invoice period.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1384008800,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "1108F4A8",
+            "startOffset": 8,
+            "endOffset": 17,
+            "selectedTextHash": "hnqfstq"
+          },
+          "formatting": {
+            "italic": true
+          }
+        },
+        {
+          "type": "replaceBlock",
+          "blockId": "@3",
+          "text": "Delivery buyer schedule written payment."
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collisions flow seed 31366",
+  "title": "a suggested replacement, then a new bulleted item and a range replacement in the same paragraph, beside comments"
+}

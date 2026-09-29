@@ -6,6 +6,11 @@ export type Random = {
   int: (bound: number) => number;
   pick: <T>(items: readonly T[]) => T;
   chance: (probability: number) => boolean;
+  /**
+   * The generator's position, without advancing it: `createRandom(state())`
+   * draws exactly what this one draws next. A flow file records it per step.
+   */
+  state: () => number;
 };
 
 export const createRandom = (seed: number): Random => {
@@ -29,6 +34,7 @@ export const createRandom = (seed: number): Random => {
       return item;
     },
     chance: (probability: number): boolean => next() < probability,
+    state: (): number => state,
   };
 };
 
