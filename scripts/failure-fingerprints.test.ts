@@ -111,6 +111,23 @@ describe("failure fingerprints", () => {
       expect(column.diff).toBe("[] {tableColumnInsertion}→∅; [].blockId text→text");
     });
 
+    test("a typed entry's type stays in the shape, its position does not", () => {
+      const typed = (at: number) =>
+        readerStability([
+          `[${at}:insertion].text: "payment" → "payment and more"`,
+          `.blocks[${at}:paragraph].runs[0].text: "a" → "b"`,
+          `(root): "x" → "y"`,
+        ]);
+      expect(diffShape(typed(2))).toBe(
+        "(root) text→text; .blocks[paragraph].runs[].text text→text; [insertion].text text→text",
+      );
+      expect(marker(1, typed(2)).fingerprint).toBe(marker(2, typed(5)).fingerprint);
+      expect(marker(1, typed(2)).fingerprint).not.toBe(
+        marker(1, readerStability([`[2:deletion].text: "payment" → "payment and more"`]))
+          .fingerprint,
+      );
+    });
+
     test("a failure with no differences keeps the fingerprint it always had", () => {
       const plain = marker(1, new Error("step 1: no comment"));
       expect(plain.diff).toBeUndefined();

@@ -54,7 +54,8 @@ export const normalizeAssertion = (failure: unknown): string => {
 
 // A difference line of support/metamorphic.ts `differences`: `path: before → after`,
 // perhaps after a relation's own prefix.
-const DIFFERENCE = /^(?:batch → one at a time )?((?:\(root\)|[.[])[^\s:]*): (.+?) → (.+)$/u;
+const DIFFERENCE =
+  /^(?:batch → one at a time )?(\(root\)|(?:\[[^\]\s]*\]|\.[^\s:.[]+)+): (.+?) → (.+)$/u;
 
 /** What kind of value a difference line shows, without the value itself. */
 const valueKind = (text: string, path: string): string => {
@@ -85,7 +86,10 @@ export const diffShape = (failure: unknown): string => {
     const match = DIFFERENCE.exec(line.trim());
     if (match === null) continue;
     const [, at, before, after] = match as unknown as [string, string, string, string];
-    const path = at.replace(/\[\d+\]/gu, "[]");
+    // `[2]` → `[]`; a typed entry, `[2:insertion]`, keeps its type.
+    const path = at.replace(/\[\d+(?::([\w-]+))?\]/gu, (_, type?: string) =>
+      type === undefined ? "[]" : `[${type}]`,
+    );
     shapes.add(`${path} ${valueKind(before, path)}→${valueKind(after, path)}`);
   }
   return [...shapes].sort().slice(0, 12).join("; ");
