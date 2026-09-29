@@ -58,6 +58,7 @@ import {
 } from "../prosemirror/runFormattingReconciliation";
 import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
 import {
+  type ParagraphRunStyleContext,
   paragraphRunStyleContext,
   paragraphRunStyleContextAt,
   resolveParagraphBodyRunFormatting,
@@ -1090,6 +1091,14 @@ const applyBlockParagraphProperties = ({
     revisionId: change?.info.id ?? null,
     revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
   };
+};
+
+/** No inherited formatting: every run-formatting mark reads as authored. */
+const OPERATION_TEXT_CONTEXT: ParagraphRunStyleContext = {
+  baseParagraphFormatting: undefined,
+  paragraphFormatting: undefined,
+  paragraphMarkFormatting: undefined,
+  paragraphMarkPrecedesStyle: false,
 };
 
 type RebaseParagraphRunsOptions = {
@@ -3260,9 +3269,12 @@ const buildInsertedParagraphs = ({
       };
     }
     const paragraph = item.blockNode.type.create(attrs, content);
-    const sourceParagraph =
-      operation.inheritFormatting === false ? item.blockNode.type.create({}) : item.blockNode;
-    const sourceContext = paragraphRunStyleContext(sourceParagraph, styleResolver);
+    // The new text carries only the marks the operation gave it (its
+    // emphasis): nothing it inherits. Read against a style context, a
+    // property the style renders but the text has no mark for would read as
+    // switched off, and the text would state that override against the
+    // paragraph's own style (a heading's words written not bold).
+    const sourceContext = OPERATION_TEXT_CONTEXT;
     const targetContext = paragraphRunStyleContext(paragraph, styleResolver);
     const reconciled: PMNode[] = [];
     paragraph.forEach((child) => {
