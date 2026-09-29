@@ -12,7 +12,7 @@
  * - no revision id (tracked changes, property changes) or content-control id
  *   repeats, so the one record carrying an id is the one it names;
  * - the body's section view says what its blocks say;
- * - the main story holds no empty run or empty text node.
+ * - the main story holds no empty run, text node, or revision wrapper.
  *
  * Paragraphs in text boxes, headers, footers, notes and comments are other
  * stories: they are not addressable in schema version 1, and their ids count
@@ -82,7 +82,8 @@ const violation = (document: Document): DocumentOpsContractError | undefined => 
   if (paragraphs.some(({ paragraph }) => holdsEmptyRecord(paragraph.content))) {
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_RECORD,
-      message: "The main story holds an empty run or text node; normalizeForOps removes them.",
+      message:
+        "The main story holds an empty run, text node, or revision wrapper; normalizeForOps removes them.",
     });
   }
   return undefined;
@@ -128,7 +129,7 @@ const withoutEmpty = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
     if (kept !== children && kept !== undefined) {
       changed = true;
       const rebuilt = rebuildNode(node, kept);
-      // A run left with nothing is empty too; a container stays, as markup.
+      // Runs and revision wrappers left with nothing go; other containers stay as markup.
       if (!isEmptyRecord(rebuilt)) out.push(rebuilt);
       continue;
     }
