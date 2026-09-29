@@ -106,6 +106,14 @@ export const collectFindings = (
   };
   for (const record of records) add(record, false);
   for (const marker of markers) {
+    // An unshrunk report joins the shrunk finding it is the primary fingerprint of.
+    const shrunk = [...findings.values()].find(
+      ({ record }) => record.marker.primary === marker.fingerprint,
+    );
+    if (shrunk !== undefined) {
+      if (!shrunk.seeds.includes(marker.seed)) shrunk.seeds.push(marker.seed);
+      continue;
+    }
     add({ version: 1, marker, replays: [marker.repro], error: marker.assertion }, true);
   }
   return [...findings.values()];
