@@ -244,10 +244,20 @@ function markRangeAsInserted(
   // A block paste can add paragraph boundaries and whole table rows without
   // adding a markable run at those positions. Track the same structural range
   // as its inline content so rejecting the paste restores the original shape.
+  // A range that starts at the end of a paragraph's text and ends after a
+  // non-paragraph block (a table) placed that block after the paragraph whole:
+  // the paragraph's mark is its own. When the range ends with a paragraph, that
+  // paragraph took the original mark and the earlier one is the added break.
+  const $end = doc.resolve(to);
+  const endsBetweenBlocks =
+    !$end.parent.isTextblock &&
+    $end.nodeBefore !== null &&
+    $end.nodeBefore.type.name !== "paragraph";
   doc.nodesBetween(from, to, (node, pos) => {
     if (node.type.name === "paragraph") {
       const boundary = pos + node.nodeSize;
-      if (boundary > from && boundary < to && node.attrs["pPrMark"] == null) {
+      const keepsOwnMark = endsBetweenBlocks && boundary - 1 === from;
+      if (boundary > from && boundary < to && !keepsOwnMark && node.attrs["pPrMark"] == null) {
         tr.setNodeAttribute(pos, "pPrMark", {
           kind: "ins",
           info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
@@ -300,25 +310,64 @@ export function handleSuggestionPaste(
   const tr = view.state.tr;
   tr.setMeta(SUGGESTION_META, true);
 
-  // 1. Strike through the replaced selection (or retract own pending inserts).
-  markRangeAsDeleted(tr, view.state.doc, from, to, insertionType, deletionType, pluginState);
+  // A slice that starts with a closed block (a table, finished list items)
+  // cannot join the text around the caret, so it splits the textblock it lands
+  // in. Over text that starts its textblock, place it before that text: the
+  // split then leaves no paragraph behind that only the struck text fills. Over
+  // whole textblocks, strike their paragraph marks too, so accepting removes
+  // them as replacing them directly would.
+  const { doc } = view.state;
+  const $from = doc.resolve(from);
+  const $to = doc.resolve(to);
+  const closedBlocks = slice.openStart === 0 && slice.content.firstChild?.isBlock === true;
+  const beforeStruck = closedBlocks && $from.parent.isTextblock && $from.parentOffset === 0;
+  // A container's last paragraph mark is never tracked, so that paragraph stays
+  // behind, empty, once the replacement is accepted.
+  const wholeBlocks =
+    beforeStruck &&
+    $to.parent.isTextblock &&
+    $to.parentOffset === $to.parent.content.size &&
+    $to.index($to.depth - 1) < $to.node($to.depth - 1).childCount - 1;
 
-  // 2. Insert the pasted slice immediately after the struck-through selection.
+  // 1. Strike through the replaced selection (or retract own pending inserts).
+  markRangeAsDeleted(
+    tr,
+    doc,
+    from,
+    wholeBlocks ? $to.after() : to,
+    insertionType,
+    deletionType,
+    pluginState,
+  );
+
+  // 2. Insert the pasted slice beside the struck-through selection.
   //    `replaceRange` fits the slice's open sides into the surrounding content
   //    the way ProseMirror's normal paste does, so block clipboard content (a
   //    copied table or whole paragraphs) is placed structurally instead of
   //    failing or dropping nodes as a raw `replace` at an inline point would.
-  const insertFrom = tr.mapping.map(to);
-  const sizeBefore = tr.doc.content.size;
-  tr.replaceRange(insertFrom, insertFrom, slice);
-  const insertTo = insertFrom + (tr.doc.content.size - sizeBefore);
+  const at = beforeStruck ? tr.mapping.map(from, -1) : tr.mapping.map(to);
+  const firstStep = tr.steps.length;
+  tr.replaceRange(at, at, slice);
+  // The range the paste occupies is where its steps put content, which for
+  // block content is past the textblock boundary rather than at the caret.
+  const placed = tr.steps.slice(firstStep).flatMap((step, offset) => {
+    const later = new Mapping(tr.mapping.maps.slice(firstStep + offset + 1));
+    const ranges: { from: number; to: number }[] = [];
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror StepMap.forEach
+    step.getMap().forEach((_oldFrom, _oldTo, newFrom, newTo) => {
+      // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
+      ranges.push({ from: later.map(newFrom, -1), to: later.map(newTo, 1) });
+    });
+    return ranges;
+  });
+  const insertFrom = placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
+  const insertTo = placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
 
   // 3. Mark the pasted content as a tracked insertion; drop any inherited
   //    deletion marks first so new content is never shown struck through.
   tr.removeMark(insertFrom, insertTo, deletionType);
   const insertAttrs =
-    findAdjacentRevision(view.state.doc, from, "insertion", pluginState.author) ||
-    makeMarkAttrs(pluginState);
+    findAdjacentRevision(doc, from, "insertion", pluginState.author) || makeMarkAttrs(pluginState);
   markRangeAsInserted(tr, tr.doc, insertFrom, insertTo, insertionType, deletionType, insertAttrs);
 
   // Collapse to the end of the pasted content. Without this the struck-through
