@@ -217,6 +217,7 @@ import { hasSinkChildren } from "./preservedSinkCarriers";
 // oxlint-disable-next-line import/no-cycle
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
 import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
+import { projectNotesFromReferences } from "./noteReferenceProjection";
 import {
   marksToTextFormatting,
   sameFormattingValue,
@@ -720,6 +721,7 @@ export function fromProseDoc(
       ...baseDocument,
       package: {
         ...baseDocument.package,
+        ...projectNotesFromReferences(pmDoc, baseDocument),
         document: documentBody,
         ...(numbering ? { numbering } : {}),
       },
