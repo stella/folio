@@ -26,6 +26,8 @@ import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "./schema/nodes";
 
+type RecordedFormatting = NonNullable<ParagraphPropertyChangeAttrs["previousFormatting"]>;
+
 type CarryParagraphPropertiesOptions = {
   tr: Transaction;
   /** The paragraph that takes the properties. */
@@ -83,7 +85,7 @@ export const carryParagraphProperties = ({
           {
             type: "paragraphPropertyChange",
             info: { id: -1, author: "", date: "1970-01-01T00:00:00Z" },
-            previousFormatting: formatting as ParagraphPropertyChangeAttrs["previousFormatting"],
+            previousFormatting: formatting as RecordedFormatting,
           } satisfies ParagraphPropertyChangeAttrs,
         ],
       },
@@ -133,11 +135,12 @@ export const carryParagraphProperties = ({
  */
 export const paragraphLeftAfter = (doc: PMNode, paragraphPos: number): number | null => {
   let position = paragraphPos;
-  let node = doc.nodeAt(position);
-  if (!node) return null;
+  const start = doc.nodeAt(position);
+  if (!start) return null;
+  let node: PMNode = start;
   for (;;) {
-    const nextPos = position + node.nodeSize;
-    const next = doc.resolve(nextPos).nodeAfter;
+    const nextPos: number = position + node.nodeSize;
+    const next: PMNode | null = doc.resolve(nextPos).nodeAfter;
     if (!next || next.type !== node.type) return null;
     const mark = expectParagraphAttrs(next).pPrMark;
     const nextGoes = mark != null && (mark.kind === "del" || mark.kind === "moveFrom");
@@ -187,7 +190,7 @@ export const recordReplacedParagraphProperties = ({
     {
       type: "paragraphPropertyChange",
       info: revision,
-      previousFormatting: previousFormatting as ParagraphPropertyChangeAttrs["previousFormatting"],
+      previousFormatting: previousFormatting as RecordedFormatting,
     } satisfies ParagraphPropertyChangeAttrs,
   ]);
 };

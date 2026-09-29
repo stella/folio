@@ -2761,12 +2761,17 @@ export class FolioDocxReviewer {
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
     if (snapshot.removedNoteStories.length > 0) {
       const removed = new Set(snapshot.removedNoteStories.map(noteStoryKey));
-      document.package.footnotes = document.package.footnotes?.filter(
-        (note) => !removed.has(noteStoryKey({ type: "footnote", noteId: note.id })),
-      );
-      document.package.endnotes = document.package.endnotes?.filter(
-        (note) => !removed.has(noteStoryKey({ type: "endnote", noteId: note.id })),
-      );
+      const { footnotes, endnotes } = document.package;
+      if (footnotes) {
+        document.package.footnotes = footnotes.filter(
+          (note) => !removed.has(noteStoryKey({ type: "footnote", noteId: note.id })),
+        );
+      }
+      if (endnotes) {
+        document.package.endnotes = endnotes.filter(
+          (note) => !removed.has(noteStoryKey({ type: "endnote", noteId: note.id })),
+        );
+      }
     }
     const definitions = [
       ...(document.package.document.comments ?? []),
