@@ -78,13 +78,11 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
     known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
     async () => {
+      const sampleIndex = kind === "random" ? run : RUNS + run;
+      const shouldSave = sampleIndex < SAVE_SAMPLE;
+      let saved: Uint8Array | undefined;
       try {
-        const sampleIndex = kind === "random" ? run : RUNS + run;
-        const shouldSave = sampleIndex < SAVE_SAMPLE;
-        const { saved } = await runFlow(seed, STEPS, kind, { captureSaved: shouldSave });
-        if (shouldSave && saved !== undefined) {
-          await saveSample(saved, { seed, kind, fixture, mode });
-        }
+        ({ saved } = await runFlow(seed, STEPS, kind, { captureSaved: shouldSave }));
       } catch (error) {
         const failure = { test: `consumer flow ${fixture} / ${mode}`, seed, repro, failure: error };
         if (REPORT_ONLY) {
@@ -93,6 +91,10 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
           return;
         }
         reportScenarioFailure(failure);
+      }
+      // Outside the try: a sample that cannot be written fails the run.
+      if (shouldSave && saved !== undefined) {
+        await saveSample(saved, { seed, kind, fixture, mode });
       }
     },
   );
