@@ -86,9 +86,20 @@ jobs:
       # when one of them is fixed and its entry has to go.
       - name: Every operation at every placement
         working-directory: packages/core
+        env:
+          FOLIO_CONFORMANCE_FEATURE_COVERAGE_OUT: ../../test-results/conformance-features.json
         run: |
           set -o pipefail
           bun run test:conformance:full 2>&1 | tee ../../conformance-full.log
+
+      - name: Keep feature coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: conformance-feature-coverage
+          path: test-results/conformance-features.json
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Keep the log for the failure report
         if: failure()

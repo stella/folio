@@ -1,6 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
-import { TableMap } from "prosemirror-tables";
+import { removeColumn, TableMap } from "prosemirror-tables";
 
 import { expectTableAttrs, mergeTableAttrs } from "./attrs";
 
@@ -167,9 +167,7 @@ export const reconcileTableGridAfterColumnInsertion = ({
 
   const insertedColumnCount = columnCount - previousColumnCount;
   const previousWidths = expectTableAttrs(previousTable).columnWidths;
-  const neighbourWidth =
-    previousWidths?.[Math.max(0, Math.min(insertedColumn, previousColumnCount) - 1)] ??
-    previousWidths?.[0];
+  const neighbourWidth = insertedColumnWidth(previousTable, insertedColumn);
   const columnWidths =
     previousWidths?.length === previousColumnCount && neighbourWidth !== undefined
       ? previousWidths.toSpliced(
@@ -179,6 +177,37 @@ export const reconcileTableGridAfterColumnInsertion = ({
         )
       : undefined;
   setTableGrid({ tr, tablePosition, table, columnWidths, columnCount });
+};
+
+/** The width a column inserted at `insertedColumn` takes: its left neighbour's, when the grid is known. */
+const insertedColumnWidth = (table: PMNode, insertedColumn: number): number | undefined => {
+  const columnCount = TableMap.get(table).width;
+  const widths = expectTableAttrs(table).columnWidths;
+  if (widths?.length !== columnCount) {
+    return undefined;
+  }
+  return widths[Math.max(0, Math.min(insertedColumn, columnCount) - 1)] ?? widths[0];
+};
+
+/**
+ * Give a cell whose span grew or shrank the matching rendered width: its
+ * resolved twips width moves by `delta`. Layout falls back to cell widths
+ * when the grid is unknown, so a merged cell must not keep its old one. A
+ * percentage width, and the authored `w:tcW` kept beside it, stay as they are.
+ */
+const resizeCellWidth = (tr: Transaction, position: number, delta: number): void => {
+  const cell = tr.doc.nodeAt(position);
+  const width: unknown = cell?.attrs["width"];
+  const widthType: unknown = cell?.attrs["widthType"];
+  if (
+    !cell ||
+    delta === 0 ||
+    typeof width !== "number" ||
+    (widthType !== null && widthType !== undefined && widthType !== "dxa")
+  ) {
+    return;
+  }
+  tr.setNodeMarkup(position, null, { ...cell.attrs, width: Math.max(1, width + delta) });
 };
 
 type SetTableGridOptions = {
@@ -210,4 +239,134 @@ const setTableGrid = ({
       _originalFormatting: originalFormatting,
     }),
   );
+};
+
+type InsertTableColumnOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  /** The grid column the new column takes; the columns from it on move right. */
+  column: number;
+  /** The grid column whose cells the new cells copy their formatting from. */
+  templateColumn: number;
+  /** A new, empty cell shaped after `template`, the row's cell in the template column. */
+  createCell: (template: PMNode | null) => PMNode;
+};
+
+/**
+ * Insert a grid column, walking the table map: each row gains a cell at the
+ * column's place in the grid (after any cell a merge from a row above holds
+ * there), a cell merged across that place widens instead, and `w:tblGrid`
+ * gains the column.
+ */
+export const insertTableColumn = ({
+  tr,
+  tablePosition,
+  column,
+  templateColumn,
+  createCell,
+}: InsertTableColumnOptions): void => {
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") {
+    return;
+  }
+  const map = TableMap.get(table);
+  const tableStart = tablePosition + 1;
+  const mapFrom = tr.mapping.maps.length;
+  const addedWidth = insertedColumnWidth(table, column) ?? 0;
+  for (let row = 0; row < map.height; row++) {
+    const index = row * map.width + column;
+    const position = map.map[index];
+    const straddling =
+      column > 0 && column < map.width && position !== undefined && map.map[index - 1] === position
+        ? table.nodeAt(position)
+        : null;
+    if (straddling && position !== undefined) {
+      const offset = column - map.colCount(position);
+      const colwidth: unknown = straddling.attrs["colwidth"];
+      const mapped = tr.mapping.slice(mapFrom).map(tableStart + position);
+      tr.setNodeMarkup(mapped, null, {
+        ...straddling.attrs,
+        colspan: (Number(straddling.attrs["colspan"]) || 1) + 1,
+        colwidth: Array.isArray(colwidth) ? colwidth.toSpliced(offset, 0, 0) : colwidth,
+      });
+      resizeCellWidth(tr, mapped, addedWidth);
+      row += (Number(straddling.attrs["rowspan"]) || 1) - 1;
+      continue;
+    }
+    const templatePosition = map.map[row * map.width + templateColumn];
+    const template = templatePosition === undefined ? null : table.nodeAt(templatePosition);
+    tr.insert(
+      tr.mapping.slice(mapFrom).map(tableStart + map.positionAt(row, column, table)),
+      createCell(template),
+    );
+  }
+  reconcileTableGridAfterColumnInsertion({
+    tr,
+    tablePosition,
+    previousTable: table,
+    insertedColumn: column,
+  });
+};
+
+/**
+ * Remove grid columns [`left`, `right`), walking the table map: a cell only
+ * in them goes, a cell merged across them narrows, `w:tblGrid` loses them,
+ * and a row left without a cell of its own goes too.
+ */
+export const removeTableColumns = (
+  tr: Transaction,
+  tablePosition: number,
+  left: number,
+  right: number,
+): void => {
+  for (let column = right - 1; column >= left; column--) {
+    const table = tr.doc.nodeAt(tablePosition);
+    if (!table || table.type.spec["tableRole"] !== "table") {
+      return;
+    }
+    const map = TableMap.get(table);
+    const widths = expectTableAttrs(table).columnWidths;
+    const removedWidth = widths?.length === map.width ? (widths[column] ?? 0) : 0;
+    // The cells merged across the column narrow rather than go.
+    const narrowed = new Set<number>();
+    for (let row = 0; row < map.height; row++) {
+      const index = row * map.width + column;
+      const position = map.map[index];
+      if (
+        position !== undefined &&
+        ((column > 0 && map.map[index - 1] === position) ||
+          (column < map.width - 1 && map.map[index + 1] === position))
+      ) {
+        narrowed.add(position);
+      }
+    }
+    const mapFrom = tr.mapping.maps.length;
+    removeColumn(
+      tr,
+      {
+        map,
+        table,
+        tableStart: tablePosition + 1,
+        left: column,
+        right: column + 1,
+        top: 0,
+        bottom: map.height,
+      },
+      column,
+    );
+    for (const position of narrowed) {
+      resizeCellWidth(
+        tr,
+        tr.mapping.slice(mapFrom).map(tablePosition + 1 + position),
+        -removedWidth,
+      );
+    }
+    reconcileTableGridAfterColumnRemoval({
+      tr,
+      tablePosition,
+      previousTable: table,
+      removedColumn: column,
+    });
+  }
+  removeRowsWithoutCells(tr, tablePosition);
 };

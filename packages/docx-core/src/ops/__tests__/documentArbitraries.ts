@@ -30,7 +30,7 @@ import type {
 } from "../../model/document";
 import { storyParagraphs } from "../blocks";
 import { normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
+import { IDENTITY_SPACES, packageIdentityKeys, paragraphIdsIn } from "../ids";
 import { deleteBetween } from "../inline";
 import { runGaps, zeroWidthLeavesAt } from "../leaves";
 import { paragraphLength, paragraphLogicalText } from "../offsets";
@@ -41,7 +41,9 @@ import {
   INHERIT_RUN_PROPS,
   OP_STORIES,
   type ParagraphPropsPatch,
+  type RevisionStamp,
   type RunPropsPatch,
+  SPLIT_HALVES,
   type SplitParagraphFields,
   type TextPosition,
 } from "../types";
@@ -410,54 +412,143 @@ const withUniqueRecordIds = (
   return out;
 };
 
+const REVIEW_MARK_KINDS = ["ins", "del", "moveFrom", "moveTo"] as const;
+
+/** First revision id of the deletions {@link reviewValid} nests: above every generated one. */
+const NESTED_REVISION_IDS = 5000;
+
 /**
- * Synthetic documents meeting the seed contract. Half share their records
- * between the body and its section view, as the parser builds them; half hold
- * an independently built copy in the view, as a document read back from JSON
+ * Blocks as a review leaves them: marks of every kind, but none on a
+ * paragraph that ends its container (the story body or a table cell) or ends
+ * a section, and some tracked insertions holding a deletion of their first
+ * run (another author deleted part of an insertion).
+ */
+const reviewValid = (
+  blocks: readonly BlockContent[],
+  choices: readonly number[],
+): BlockContent[] => {
+  let drawn = 0;
+  const choose = (): number => choices[drawn++ % Math.max(1, choices.length)] ?? 0;
+  let nestedId = NESTED_REVISION_IDS;
+  const nestDeletion = (item: ParagraphContent): ParagraphContent => {
+    if ((item.type !== "insertion" && item.type !== "moveTo") || choose() % 2 !== 0) {
+      return item;
+    }
+    const [first, ...rest] = item.content;
+    if (first?.type !== "run") {
+      return item;
+    }
+    const deletion: TrackedRunContent = {
+      type: "deletion",
+      info: { id: nestedId++, author: "B", date: "2026-01-02T03:04:05Z" },
+      content: [first],
+    };
+    return { ...item, content: [deletion, ...rest] };
+  };
+  const visit = (list: readonly BlockContent[], endsContainer: boolean): BlockContent[] =>
+    list.map((block, index): BlockContent => {
+      const last = index === list.length - 1;
+      switch (block.type) {
+        case "paragraph": {
+          const paragraph: Paragraph = { ...block, content: block.content.map(nestDeletion) };
+          const mark = paragraph.pPrMark;
+          if (mark === undefined) return paragraph;
+          paragraph.pPrMark = { ...mark, kind: REVIEW_MARK_KINDS[choose() % 4] ?? "ins" };
+          if ((last && endsContainer) || paragraph.sectionProperties !== undefined) {
+            delete paragraph.pPrMark;
+          }
+          return paragraph;
+        }
+        case "table":
+          return {
+            ...block,
+            rows: block.rows.map((row) => ({
+              ...row,
+              cells: row.cells.map((cell) => ({ ...cell, content: visit(cell.content, true) })),
+            })),
+          };
+        case "blockSdt":
+          return { ...block, content: visit(block.content, last && endsContainer) };
+        default:
+          return block;
+      }
+    });
+  return visit(blocks, true);
+};
+
+/** Which documents a generator draws. */
+type DocumentMode = "any" | "review";
+
+const documentArbitraryIn = (mode: DocumentMode): fc.Arbitrary<Document> =>
+  fc
+    .tuple(
+      paragraphArbitrary,
+      fc.array(blockArbitrary, { maxLength: 5 }),
+      fc.nat(),
+      fc.boolean(),
+      fc.array(fc.nat(), { minLength: 8, maxLength: 8 }),
+    )
+    .map(([paragraph, blocks, at, shareSections, choices]): Document => {
+      const withParagraph = [...blocks];
+      withParagraph.splice(at % (blocks.length + 1), 0, paragraph);
+      // SAFETY: the renumbering keeps the shape of the plain data it is given.
+      const named = withUniqueRecordIds(assignParagraphIds(withParagraph), {
+        revision: 1,
+        control: 1,
+      }) as BlockContent[];
+      const reviewed = mode === "review" ? reviewValid(named, choices) : named;
+      return documentFrom(reviewed, shareSections);
+    });
+
+/**
+ * A synthetic document around blocks. Half share their records between the
+ * body and its section view, as the parser builds them; half hold an
+ * independently built copy in the view, as a document read back from JSON
  * does. Paragraphs in a comment and a note share the id space.
  */
-export const documentArbitrary: fc.Arbitrary<Document> = fc
-  .tuple(paragraphArbitrary, fc.array(blockArbitrary, { maxLength: 5 }), fc.nat(), fc.boolean())
-  .map(([paragraph, blocks, at, shareSections]): Document => {
-    const withParagraph = [...blocks];
-    withParagraph.splice(at % (blocks.length + 1), 0, paragraph);
-    // SAFETY: the renumbering keeps the shape of the plain data it is given.
-    const named = withUniqueRecordIds(assignParagraphIds(withParagraph), {
-      revision: 1,
-      control: 1,
-    }) as BlockContent[];
-    const content = normalizeForOps({ package: { document: { content: named } } }).package.document
-      .content;
-    const finalSectionProperties: SectionProperties = { pageWidth: 12240, pageHeight: 15840 };
-    const sections = buildSections(content, finalSectionProperties);
-    const body: DocumentBody = {
-      content,
-      sections: shareSections ? sections : independentCopy(sections),
-      finalSectionProperties,
-      comments: [
+const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document => {
+  const content = normalizeForOps({ package: { document: { content: blocks } } }).package.document
+    .content;
+  const finalSectionProperties: SectionProperties = { pageWidth: 12240, pageHeight: 15840 };
+  const sections = buildSections(content, finalSectionProperties);
+  const body: DocumentBody = {
+    content,
+    sections: shareSections ? sections : independentCopy(sections),
+    finalSectionProperties,
+    comments: [
+      {
+        id: 7,
+        author: "A",
+        content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+      },
+    ],
+  };
+  return {
+    package: {
+      document: body,
+      footnotes: [
         {
-          id: 7,
-          author: "A",
-          content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+          type: "footnote",
+          id: 2,
+          content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
         },
       ],
-    };
-    return {
-      package: {
-        document: body,
-        footnotes: [
-          {
-            type: "footnote",
-            id: 2,
-            content: [{ type: "paragraph", paraId: "7FFFFFF1", content: [] }],
-          },
-        ],
-        settings: { defaultTabStop: 720 },
-        properties: { title: "synthetic" },
-      },
-      warnings: ["kept"],
-    };
-  });
+      settings: { defaultTabStop: 720 },
+      properties: { title: "synthetic" },
+    },
+    warnings: ["kept"],
+  };
+};
+
+/** Synthetic documents meeting the seed contract, marks and tracked changes of every shape. */
+export const documentArbitrary: fc.Arbitrary<Document> = documentArbitraryIn("any");
+
+/**
+ * Review-valid synthetic documents: as {@link documentArbitrary}, with marks
+ * of every kind but none on a paragraph that ends its container or a
+ * section, and deletions nested in insertions.
+ */
+export const reviewDocumentArbitrary: fc.Arbitrary<Document> = documentArbitraryIn("review");
 
 /** A structurally equal copy that shares no record with its source. */
 export const independentCopy = <Value>(value: Value): Value => {
@@ -674,13 +765,17 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       const used = new Set(paragraphIdsIn(document.package));
       let fresh = seed.fresh;
       while (used.has(toHexId(fresh))) fresh += 1;
+      // One split in three names the new half instead of taking the default.
+      const halves = [SPLIT_HALVES.FIRST, SPLIT_HALVES.SECOND] as const;
+      const newHalf = seed.depth % 3 === 0 ? { newHalf: halves[seed.first % 2] } : {};
       return seed.newParagraph === undefined
-        ? { type: kind, at, newBlockId: toHexId(fresh), ...ids }
+        ? { type: kind, at, newBlockId: toHexId(fresh), ...newHalf, ...ids }
         : {
             type: kind,
             at,
             newBlockId: toHexId(fresh),
             newParagraph: seed.newParagraph,
+            ...newHalf,
             ...ids,
           };
     }
@@ -723,11 +818,115 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
         blockId: (leading ?? target).paragraph.paraId ?? "",
         nextBlockId: trailing?.paragraph.paraId ?? "",
         depth: seed.depth % 3,
+        // One join in three keeps the first paragraph instead of the second.
+        ...(seed.third % 3 === 0 ? { survivor: SPLIT_HALVES.FIRST } : {}),
       };
     }
     default: {
       const unreachable: never = kind;
       return unreachable;
     }
+  }
+};
+
+const TRACKED_OP_KINDS = [
+  DOCUMENT_OP_TYPES.INSERT_TEXT,
+  DOCUMENT_OP_TYPES.INSERT_CONTENT,
+  DOCUMENT_OP_TYPES.DELETE_RANGE,
+  DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+  DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+  DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+  DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+] as const;
+
+/** The operation kinds {@link trackedOpFor} draws. */
+export const GENERATED_TRACKED_OP_KINDS: readonly DocumentOpType[] = TRACKED_OP_KINDS;
+
+/** A revision id no record in the document carries. */
+export const unusedRevisionId = (document: Document): number => {
+  const prefix = `${IDENTITY_SPACES.REVISION}:`;
+  let largest = 0;
+  for (const key of packageIdentityKeys(document.package)) {
+    if (key.startsWith(prefix)) largest = Math.max(largest, Number(key.slice(prefix.length)));
+  }
+  return largest + 1;
+};
+
+const twoDigits = (value: number): string => String(value % 60).padStart(2, "0");
+
+/**
+ * The stamp of the `index`th tracked operation of a run: a date no generated
+ * record and no other operation of the run carries, so no operation merges
+ * into a change that was there before it.
+ */
+export const stampFor = (document: Document, seed: OpSeed, index: number): RevisionStamp => {
+  const stamp: RevisionStamp = {
+    id: unusedRevisionId(document),
+    author: seed.inherit ? "A" : "C",
+    date: `2026-03-04T05:${twoDigits(Math.floor(index / 60))}:${twoDigits(index)}Z`,
+  };
+  if (seed.fresh % 3 === 0) {
+    stamp.initials = stamp.author;
+  }
+  return stamp;
+};
+
+/** A paragraph with no mark change and the one directly after it, when there is such a pair. */
+const unmarkedJoin = (
+  document: Document,
+  seed: OpSeed,
+): { blockId: string; nextBlockId: string } | undefined => {
+  const paragraphs = storyParagraphs(document.package.document);
+  const pairs = paragraphs.flatMap((location) => {
+    const next = paragraphs.find(
+      (candidate) =>
+        candidate.index === location.index + 1 &&
+        JSON.stringify(candidate.list) === JSON.stringify(location.list),
+    );
+    // Half the time also one whose property change the join's own would not meet.
+    return next === undefined ||
+      location.paragraph.pPrMark !== undefined ||
+      location.paragraph.sectionProperties !== undefined ||
+      (seed.inherit && (next.paragraph.propertyChanges?.length ?? 0) > 0)
+      ? []
+      : [{ blockId: location.paragraph.paraId ?? "", nextBlockId: next.paragraph.paraId ?? "" }];
+  });
+  return pairs[seed.block % Math.max(1, pairs.length)];
+};
+
+/**
+ * A tracked operation against `document`: one of {@link opFor}'s, of a kind
+ * that takes a stamp, carrying the stamp for the `index`th operation of a run
+ * and new ids for the records it creates past the first (one operation in
+ * five names none, exercising the refusal).
+ */
+export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): DocumentOp => {
+  const kind =
+    TRACKED_OP_KINDS[seed.kind % TRACKED_OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
+  const op = opFor(document, { ...seed, kind: OP_KINDS.indexOf(kind) });
+  const revision = stampFor(document, seed, index);
+  const pool = (base: number, length: number) =>
+    Array.from({ length }, (_, offset) => base + (seed.fresh % 100_000) * 8 + offset);
+  const ids =
+    seed.depth % 5 === 0 ? {} : { newIds: { revision: pool(20_000, 8), control: pool(10_000, 3) } };
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+      return { ...op, ...ids, revision };
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
+      // Mostly a paragraph whose mark carries no change: a tracked join refuses the others.
+      const unmarked = seed.first % 4 === 0 ? undefined : unmarkedJoin(document, seed);
+      // A tracked join always leaves the second paragraph.
+      const join = { ...op, ...unmarked, ...ids, revision };
+      Reflect.deleteProperty(join, "survivor");
+      return join;
+    }
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+      return { ...op, revision };
+    default:
+      return op;
   }
 };

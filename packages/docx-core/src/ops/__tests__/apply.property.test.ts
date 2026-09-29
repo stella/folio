@@ -1,6 +1,6 @@
 /**
- * The laws every schema-version-1 operation keeps, over synthetic documents
- * built from the model.
+ * The laws every direct operation keeps, over synthetic documents built from
+ * the model (tracked operations: `review.property.test.ts`).
  *
  * 1. **Inverse.** Applying an operation and then its recorded inverse gives
  *    back a document structurally equal to the input, every unmodelled and
@@ -44,6 +44,7 @@ import {
   type DocumentOp,
   type DocumentOpType,
   INHERIT_RUN_PROPS,
+  SPLIT_HALVES,
 } from "../types";
 import {
   documentArbitrary,
@@ -81,7 +82,8 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
 /**
  * What each operation's inverse is made of: the table in `apply.ts`. Every
  * inverse is one operation, except a run patch's, which restores one stretch
- * of prior values per operation.
+ * of prior values per operation, and a split's or join's, which may give the
+ * paragraph keeping its id its own review fields back.
  */
 const INVERSE_KINDS = {
   insertText: ["deleteRange"],
@@ -91,9 +93,11 @@ const INVERSE_KINDS = {
   joinInline: ["splitInline"],
   setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
-  splitBlock: ["joinBlocks"],
-  joinBlocks: ["splitBlock"],
+  splitBlock: ["joinBlocks", "setParagraphReview"],
+  joinBlocks: ["splitBlock", "setParagraphReview"],
   replaceBlocks: ["replaceBlocks"],
+  setParagraphReview: ["setParagraphReview"],
+  replaceInline: ["replaceInline"],
 } as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
@@ -133,6 +137,8 @@ const namedIds = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
       return new Set([op.from.blockId, op.to.blockId]);
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return new Set([op.blockId]);
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
       return new Set([op.at.blockId, op.newBlockId]);
@@ -226,7 +232,12 @@ describe("document operations", () => {
           expect(allowed).toContain(inverse.type);
         }
         if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
-          expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
+          // A split or join gives the paragraph that keeps its id its own properties back too.
+          expect(applied.value.inverse.length).toBeLessThanOrEqual(
+            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK || op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+              ? 2
+              : 1,
+          );
         }
         expectRestores(applied.value, original);
       }),
@@ -475,17 +486,25 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
             const { blockId, offset } = op.at;
             const old = textOf(before, blockId);
-            expect(textOf(after, blockId)).toBe(old.slice(0, offset));
-            expect(textOf(after, op.newBlockId)).toBe(old.slice(offset));
+            // By default the new paragraph follows at the end, and takes the text before otherwise.
+            const newHalf =
+              op.newHalf ?? (offset === old.length ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
+            const [firstId, secondId] =
+              newHalf === SPLIT_HALVES.FIRST ? [op.newBlockId, blockId] : [blockId, op.newBlockId];
+            expect(textOf(after, firstId)).toBe(old.slice(0, offset));
+            expect(textOf(after, secondId)).toBe(old.slice(offset));
             break;
           }
           case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
-            expect(textOf(after, op.blockId)).toBe(
+            const survivor = op.survivor === SPLIT_HALVES.FIRST ? op.blockId : op.nextBlockId;
+            expect(textOf(after, survivor)).toBe(
               textOf(before, op.blockId) + textOf(before, op.nextBlockId),
             );
             break;
           }
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
+          case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+          case DOCUMENT_OP_TYPES.REPLACE_INLINE:
             break;
           default: {
             const unreachable: never = op;

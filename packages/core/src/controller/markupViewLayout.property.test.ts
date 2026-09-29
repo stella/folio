@@ -34,7 +34,11 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import { SECTION, WORD_STYLES, buildRawPackage } from "../__tests__/documentShapes";
 import {
@@ -661,7 +665,7 @@ describe("markup views lay out the text they show", () => {
   });
 
   test("every view settles on the layout of the text it reads, through any event sequence", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(scenarioArb, async (scenario) => {
         const verdict = await runScenario(scenario, "as-input");
         expect(verdict.staleCommits).toEqual([]);
@@ -671,7 +675,7 @@ describe("markup views lay out the text they show", () => {
         expect(verdict.unpaintable).toEqual([]);
         expect(verdict.misplacedBars).toEqual([]);
       }),
-      propertyConfig({ numRuns: 40, examples: PINNED_SCENARIOS.map((scenario) => [scenario]) }),
+      { numRuns: 40, examples: PINNED_SCENARIOS.map((scenario) => [scenario]) },
     );
   });
 
