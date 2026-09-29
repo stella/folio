@@ -1908,8 +1908,6 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
         block,
         end: item.blockTo,
         keepsParagraph,
-        removesNode: !producesTrackedChanges && !keepsParagraph,
-        direct: !producesTrackedChanges,
       };
     }
     case "insertAfterBlock":

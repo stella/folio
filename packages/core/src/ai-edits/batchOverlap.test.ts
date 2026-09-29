@@ -445,20 +445,6 @@ const batchAgainstOneAtATime = async (
         : [operation.block],
     ),
   );
-  // Tracked, a merge into a block the batch deletes joins across that block's
-  // deleted mark as well, into the block after it — and across every deleted
-  // block that follows, to the first one the batch keeps: that is what the
-  // marks say. Applied directly, the pair is refused.
-  const deletes = (block: number) =>
-    applied.some(({ operation }) => operation.kind === "deleteBlock" && operation.block === block);
-  for (const { operation } of applied) {
-    if (mode === "direct" || operation.kind !== "mergeBlockWithNext") {
-      continue;
-    }
-    for (let joined = operation.block + 1; deletes(joined); joined++) {
-      named.add(joined + 1);
-    }
-  }
   if (mode !== "direct") {
     // Both redlines accept, and to the same document.
     const accepts = (session: OperationSession, whose: string): boolean => {
@@ -590,15 +576,27 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
   });
 });
 
-describe("a tracked merge into a run of blocks the batch deletes", () => {
-  test("joins across every deleted mark, as one at a time would", async () => {
-    const generated: GeneratedOperation[] = [
-      { kind: "deleteBlock", block: 1 },
-      { kind: "mergeBlockWithNext", block: 0 },
-      { kind: "deleteBlock", block: 2 },
-    ];
-    expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
-  });
+describe("a merge into a block the batch deletes", () => {
+  for (const mode of MODES) {
+    test(`is refused, and the rest applies as one at a time would (${mode})`, async () => {
+      const generated: GeneratedOperation[] = [
+        { kind: "deleteBlock", block: 1 },
+        { kind: "mergeBlockWithNext", block: 0 },
+        { kind: "deleteBlock", block: 2 },
+      ];
+      expect(await batchAgainstOneAtATime(generated, mode)).toEqual([]);
+
+      const session = await freshSession();
+      const [first, second] = session.snapshot().blocks;
+      const result = session.apply(mode, [
+        { id: "delete", type: "deleteBlock", blockId: second?.id ?? "" },
+        { id: "merge", type: "mergeBlockWithNext", blockId: first?.id ?? "", separator: " " },
+      ]);
+      expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+        { id: "merge", reason: "overlappingOperation" },
+      ]);
+    });
+  }
 });
 
 const spanArbitrary = fc
