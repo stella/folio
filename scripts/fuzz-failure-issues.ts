@@ -106,6 +106,14 @@ export const collectFindings = (
   };
   for (const record of records) add(record, false);
   for (const marker of markers) {
+    // An unshrunk report joins the shrunk finding it is the primary fingerprint of.
+    const shrunk = [...findings.values()].find(
+      ({ record }) => record.marker.primary === marker.fingerprint,
+    );
+    if (shrunk !== undefined) {
+      if (!shrunk.seeds.includes(marker.seed)) shrunk.seeds.push(marker.seed);
+      continue;
+    }
     add({ version: 1, marker, replays: [marker.repro], error: marker.assertion }, true);
   }
   return [...findings.values()];
@@ -117,6 +125,8 @@ export const collectFindings = (
 
 export type IssueState = {
   fingerprint: string;
+  /** The fingerprint before shrinking, which an unshrunk report of the same failure carries. */
+  primary?: string;
   count: number;
   firstSeen: string;
   lastSeen: string;
@@ -177,7 +187,8 @@ export const nextState = (
   previous: IssueState | null,
   date: string,
 ): IssueState => ({
-  fingerprint: finding.record.marker.fingerprint,
+  fingerprint: previous?.fingerprint ?? finding.record.marker.fingerprint,
+  primary: previous?.primary ?? finding.record.marker.primary ?? finding.record.marker.fingerprint,
   count: (previous?.count ?? 0) + 1,
   firstSeen: previous?.firstSeen ?? date,
   lastSeen: date,
@@ -199,6 +210,8 @@ export const issueBody = (finding: Finding, state: IssueState, context: Context)
     "",
     `**Test:** ${marker.test}`,
     `**Symptom:** \`${marker.assertion}\``,
+    ...(marker.diff === undefined ? [] : [`**Differences:** \`${marker.diff}\``]),
+    ...(marker.flow === undefined ? [] : [`**Minimized operations:** \`${marker.flow}\``]),
     `**Fingerprint:** \`${marker.fingerprint}\``,
     `**Seed:** \`${String(marker.seed)}\`${marker.path === null ? "" : `, **path:** \`${marker.path}\``}`,
     "",
@@ -319,22 +332,31 @@ const main = async (): Promise<void> => {
   const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}&per_page=100`;
   const pages = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text()) as Issue[][];
   const filed = new Map<string, Issue>();
+  const byPrimary = new Map<string, Issue>();
+  const keep = (map: Map<string, Issue>, key: string, issue: Issue): void => {
+    const current = map.get(key);
+    if (current === undefined || (current.state !== "open" && issue.state === "open")) {
+      map.set(key, issue);
+    }
+  };
   // Newest first, so an open issue wins over an older closed one.
   for (const issue of pages.flat().sort((a, b) => b.number - a.number)) {
     const fingerprint = fingerprintOfTitle(issue.title);
     if (fingerprint === null) continue;
-    const current = filed.get(fingerprint);
-    if (current === undefined || (current.state !== "open" && issue.state === "open")) {
-      filed.set(fingerprint, issue);
-    }
+    keep(filed, fingerprint, issue);
+    keep(byPrimary, readState(issue.body ?? "")?.primary ?? fingerprint, issue);
   }
+  // A shrunk failure and an unshrunk report of it share the primary fingerprint.
+  const issueOf = ({ fingerprint, primary }: FailureMarker): Issue | undefined =>
+    filed.get(fingerprint) ??
+    (primary === undefined ? byPrimary.get(fingerprint) : filed.get(primary));
 
   let opened = 0;
   for (const finding of findings) {
     const { fingerprint } = finding.record.marker;
     const title = issueTitle(finding);
     const entry = known.get(fingerprint);
-    const issue = filed.get(fingerprint);
+    const issue = issueOf(finding.record.marker);
     if (issue === undefined && entry !== undefined) {
       const target = /^#(\d+)$/u.exec(entry.issueOrPr)?.[1];
       const note = `Fingerprint \`${fingerprint}\` failed again in ${context.runUrl ?? context.source} (seeds ${finding.seeds.join(", ")}).\n\n${fence(finding.record.replays[0] ?? "", "sh")}`;

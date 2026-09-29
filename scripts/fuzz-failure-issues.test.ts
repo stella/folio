@@ -48,6 +48,24 @@ describe("fuzz failure issues", () => {
     expect(findings[1]?.record.replays).toEqual([other.repro]);
   });
 
+  test("an unshrunk report joins the shrunk finding of the same failure", () => {
+    const failure = new Error("step 3: no comment");
+    const shrunk = failureRecord(
+      failureMarker({
+        test: "consumer flow comments / suggested",
+        seed: 1,
+        repro: "replay",
+        failure,
+        flow: "commentOnBlock > accept all",
+      }),
+      failure,
+    );
+    const findings = collectFindings([shrunk], [marker(5)]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.seeds).toEqual([1, 5]);
+    expect(nextState(findings[0]!, null, "2026-09-29").primary).toBe(marker(5).fingerprint);
+  });
+
   test("the title carries the fingerprint the next run finds it by", () => {
     const [finding] = collectFindings([], [marker(1)]);
     const title = issueTitle(finding!);
