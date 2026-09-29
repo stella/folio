@@ -130,6 +130,13 @@
       "kind": "random",
       "generation": "targeted",
       "title": "emphasis ending mid-word reads back from markdown"
+    },
+    {
+      "seed": 407184130,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "accepted paragraph merges keep run formatting across save"
     }
   ]
 }
