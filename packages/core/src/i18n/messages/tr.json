@@ -339,8 +339,8 @@
       "editingDescription": "Belgeyi doğrudan düzenleyin",
       "outlineTitle": "Ana hat",
       "showDocumentOutline": "Belge ana hattı",
-      "suggesting": "Önerme",
-      "suggestingDescription": "Düzenlemeler izlenen önerilere dönüşür",
+      "suggesting": "Değişiklik izleme",
+      "suggestingDescription": "Düzenlemeler izlenen değişiklikler olarak kaydedilir",
       "viewing": "Görüntüleme",
       "viewingDescription": "Son belgeyi okuyun veya yazdırın"
     },

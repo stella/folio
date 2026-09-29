@@ -5,6 +5,7 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
+  SPLIT_HALVES,
   type DocumentOp,
   EMPTY_PROPERTY_SETS,
   INHERIT_RUN_PROPS,
@@ -229,10 +230,46 @@ describe("splitBlock and joinBlocks", () => {
     content: [run("abcd")],
   };
 
-  test("the second half takes the paragraph mark, and a join undoes the split", () => {
+  test("a split inside a paragraph moves the text before it to a new paragraph", () => {
     const { document: next, inverse } = applied(documentOf(original), {
       type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
       at: at("00000001", 1),
+      newBlockId: "0000ABCD",
+    });
+    expect(paragraphs(next)).toEqual([
+      {
+        type: "paragraph",
+        paraId: "0000ABCD",
+        formatting: { alignment: "center" },
+        content: [run("a")],
+      },
+      { ...original, content: [run("bcd")] },
+    ]);
+    expect(inverse).toEqual([
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: "0000ABCD",
+        nextBlockId: "00000001",
+        depth: 2,
+        survivor: SPLIT_HALVES.SECOND,
+        expectedRetired: { formatting: { alignment: "center" } },
+        expectedSurvivor: { formatting: { alignment: "center" }, pPrMark },
+      },
+    ]);
+    expect(undone(next, inverse)).toEqual(documentOf(original));
+  });
+
+  test("a split at the end adds a paragraph after, which takes the mark", () => {
+    const pending = {
+      type: "paragraphPropertyChange" as const,
+      info: { id: 6, author: "A" },
+      previousFormatting: { alignment: "end" as const },
+    };
+    const source: Paragraph = { ...original, propertyChanges: [pending] };
+    const { document: next, inverse } = applied(documentOf(source), {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 4),
       newBlockId: "0000ABCD",
     });
     expect(paragraphs(next)).toEqual([
@@ -242,34 +279,26 @@ describe("splitBlock and joinBlocks", () => {
         textId: "77777777",
         formatting: { alignment: "center" },
         preservedAttributes: RSID,
-        content: [run("a")],
+        content: [run("abcd")],
       },
       {
         type: "paragraph",
         paraId: "0000ABCD",
         formatting: { alignment: "center" },
+        propertyChanges: [pending],
         sectionProperties,
         pPrMark,
-        content: [run("bcd")],
+        content: [],
       },
     ]);
-    expect(inverse).toEqual([
-      {
-        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
-        story: OP_STORIES.MAIN,
-        blockId: "00000001",
-        nextBlockId: "0000ABCD",
-        depth: 2,
-        expectedSecond: { formatting: { alignment: "center" } },
-      },
-    ]);
-    expect(undone(next, inverse)).toEqual(documentOf(original));
+    expect(undone(next, inverse)).toEqual(documentOf(source));
   });
 
-  test("a join is undone by a split that gives the second paragraph its own fields back", () => {
+  test("a join leaves the second paragraph with the first's properties", () => {
     const leading: Paragraph = {
       type: "paragraph",
       paraId: "00000001",
+      formatting: { alignment: "center", runProperties: { bold: true } },
       pPrMark,
       content: [run("ab")],
     };
@@ -277,7 +306,7 @@ describe("splitBlock and joinBlocks", () => {
       type: "paragraph",
       paraId: "00000002",
       textId: "12345678",
-      formatting: { alignment: "end" },
+      formatting: { alignment: "end", runProperties: { italic: true } },
       preservedAttributes: RSID,
       content: [run("cd")],
     };
@@ -290,22 +319,47 @@ describe("splitBlock and joinBlocks", () => {
       depth: 2,
     });
     expect(paragraphs(next)).toEqual([
-      { type: "paragraph", paraId: "00000001", content: [run("abcd")] },
+      {
+        ...trailing,
+        formatting: { alignment: "center", runProperties: { italic: true } },
+        content: [run("abcd")],
+      },
     ]);
     expect(inverse).toEqual([
       {
         type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-        at: at("00000001", 2, 0),
-        newBlockId: "00000002",
-        newParagraph: {
-          textId: "12345678",
-          formatting: { alignment: "end" },
-          preservedAttributes: RSID,
-        },
+        at: at("00000002", 2, 0),
+        newBlockId: "00000001",
+        newHalf: SPLIT_HALVES.FIRST,
+        newParagraph: { formatting: { alignment: "center", runProperties: { bold: true } } },
         firstMark: pPrMark,
+      },
+      {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+        story: OP_STORIES.MAIN,
+        blockId: "00000002",
+        expected: { formatting: { alignment: "center", runProperties: { italic: true } } },
+        review: { formatting: { alignment: "end", runProperties: { italic: true } } },
       },
     ]);
     expect(undone(next, inverse)).toEqual(document);
+    // Keeping the first instead is undone as exactly.
+    const keptFirst = applied(document, {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      survivor: SPLIT_HALVES.FIRST,
+    });
+    expect(paragraphs(keptFirst.document)).toEqual([
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        formatting: { alignment: "center", runProperties: { italic: true } },
+        content: [run("ab"), run("cd")],
+      },
+    ]);
+    expect(undone(keptFirst.document, keptFirst.inverse)).toEqual(document);
   });
 
   test("a join does not remove a section break", () => {

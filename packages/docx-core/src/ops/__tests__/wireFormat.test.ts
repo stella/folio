@@ -1,5 +1,5 @@
 /**
- * The persisted form of schema-version-1 operations.
+ * The persisted form of operations in the current schema version.
  *
  * Journaled operations are read back years after they were written, so their
  * JSON is pinned: one envelope per operation kind and per inverse, produced
@@ -24,7 +24,18 @@ import {
   OP_STORIES,
 } from "../types";
 
-const FIXTURE = path.join(import.meta.dir, "__fixtures__", "ops-v1.json");
+const FIXTURE = path.join(
+  import.meta.dir,
+  "__fixtures__",
+  `ops-v${DOCUMENT_OP_SCHEMA_VERSION}.json`,
+);
+
+const stamp = (id: number) => ({
+  id,
+  author: "Reviewer",
+  date: "2026-02-03T04:05:06Z",
+  initials: "R",
+});
 
 const at = (blockId: string, offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
 
@@ -86,8 +97,53 @@ const OPS: readonly DocumentOp[] = [
   {
     type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
     story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    nextBlockId: "00000002",
+  },
+  {
+    type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+    at: at("0000000A", 1),
+    text: "Y",
+    runProps: "inherit",
+    newIds: { revision: [61] },
+    revision: stamp(60),
+  },
+  {
+    type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+    from: at("0000000A", 3),
+    to: at("0000000A", 5),
+    newIds: { revision: [63, 64] },
+    revision: stamp(62),
+  },
+  {
+    type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+    from: at("00000002", 0),
+    to: at("00000002", 2),
+    patch: { underline: { style: "single" } },
+    newIds: { revision: [66, 67] },
+    revision: stamp(65),
+  },
+  {
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000002",
+    patch: { keepNext: true },
+    revision: stamp(68),
+  },
+  {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: at("0000000A", 2),
+    newBlockId: "0000000B",
+    newIds: { revision: [70, 71] },
+    revision: stamp(69),
+  },
+  {
+    type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+    story: OP_STORIES.MAIN,
     blockId: "0000000A",
     nextBlockId: "00000002",
+    newIds: { revision: [73] },
+    revision: stamp(72),
   },
 ];
 

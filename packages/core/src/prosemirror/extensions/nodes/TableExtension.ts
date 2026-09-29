@@ -17,6 +17,7 @@ import {
   CellSelection,
   selectedRect,
   TableMap,
+  tableNodeTypes,
 } from "prosemirror-tables";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
@@ -42,7 +43,8 @@ import {
   mergeTableRowAttrs,
 } from "../../attrs";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
-import { removeTableRow } from "../../tableGridMutation";
+import { insertTableColumn, removeTableColumns, removeTableRow } from "../../tableGridMutation";
+import { pastedSliceWithNewTableCells, pasteTableCells } from "../../tableCellPaste";
 import { setTableLookFlags } from "../../../docx/tableLook";
 import { createNodeExtension, createExtension } from "../create";
 import type {
@@ -846,16 +848,14 @@ function getTableContext(state: EditorState): TableContextInfo {
   let rowIndex: number | undefined;
   let columnIndex: number | undefined;
   let cellNode: PMNode | undefined;
+  let cellPos: number | undefined;
 
   for (let d = $from.depth; d > 0; d--) {
     const node = $from.node(d);
 
     if (node.type.name === "tableCell" || node.type.name === "tableHeader") {
       cellNode = node;
-      const rowNode = $from.node(d - 1);
-      if (rowNode.type.name === "tableRow") {
-        columnIndex = getColumnIndex(rowNode, $from.index(d - 1));
-      }
+      cellPos = $from.before(d);
     } else if (node.type.name === "tableRow") {
       const tableNode = $from.node(d - 1);
       if (tableNode.type.name === "table") {
@@ -872,21 +872,15 @@ function getTableContext(state: EditorState): TableContextInfo {
     return { isInTable: false };
   }
 
-  let rowCount = 0;
-  let columnCount = 0;
-
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  table.forEach((row) => {
-    if (row.type.name === "tableRow") {
-      rowCount++;
-      let cols = 0;
-      // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-      row.forEach((cell) => {
-        cols += Number(cell.attrs["colspan"]) || 1;
-      });
-      columnCount = Math.max(columnCount, cols);
-    }
-  });
+  // Columns are grid columns, read from the table map: a row's cells do not
+  // say which columns they sit in when a merge from a row above reaches
+  // down through the row.
+  const map = TableMap.get(table);
+  const rowCount = table.childCount;
+  const columnCount = map.width;
+  if (cellPos !== undefined && tablePos !== undefined) {
+    columnIndex = map.findCell(cellPos - tablePos - 1).left;
+  }
 
   const canSplitCell =
     cellNode !== undefined &&
@@ -929,27 +923,6 @@ function getTableContext(state: EditorState): TableContextInfo {
     ...(cellBackgroundColor !== undefined ? { cellBackgroundColor } : {}),
   };
 }
-
-const getColumnIndex = (rowNode: PMNode, targetIndex: number) => {
-  let columnIndex = 0;
-  let foundColumnIndex: number | undefined;
-
-  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  rowNode.forEach((child, _offset, index) => {
-    if (foundColumnIndex !== undefined) {
-      return;
-    }
-
-    if (index === targetIndex) {
-      foundColumnIndex = columnIndex;
-      return;
-    }
-
-    columnIndex += Number(child.attrs["colspan"]) || 1;
-  });
-
-  return foundColumnIndex;
-};
 
 // ============================================================================
 // TABLE NAVIGATION
@@ -1306,11 +1279,17 @@ export const TablePluginExtension = createExtension({
         return true;
       }
 
-      const { table, tablePos, rowIndex } = context;
-      const boundaryRow = rowIndex + boundaryOffset;
-      const map = TableMap.get(table);
+      const { table, tablePos } = context;
+      // Above the first row the selected cells cover, or below the last: a
+      // merged cell covers every row it spans.
+      const rect = selectedRect(state);
+      const boundaryRow = boundaryOffset === 0 ? rect.top : rect.bottom;
+      const { map } = rect;
       const tableStart = tablePos + 1;
       const tr = state.tr;
+      // The document's own node types: a command bound to another editor's
+      // schema would build nodes this document cannot hold.
+      const paragraphType = state.schema.nodes["paragraph"];
 
       const cells: PMNode[] = [];
       const extended = new Set<number>();
@@ -1339,16 +1318,17 @@ export const TablePluginExtension = createExtension({
           continue;
         }
         lastTemplatePos = templatePos;
+        const template = table.nodeAt(templatePos);
         cells.push(
-          nodeTypeTableCell.create(
-            buildCellAttrsFromTemplate(table.nodeAt(templatePos)),
-            nodeTypeParagraph.create(),
+          (template?.type ?? tableNodeTypes(state.schema).cell).create(
+            buildCellAttrsFromTemplate(template),
+            paragraphType?.create() ?? null,
           ),
         );
       }
 
-      const rowNode = table.child(rowIndex);
-      const newRow = nodeTypeTableRow.create(
+      const rowNode = table.child(boundaryOffset === 0 ? rect.top : rect.bottom - 1);
+      const newRow = rowNode.type.create(
         {
           height: rowNode.attrs["height"] ?? 360,
           heightRule: rowNode.attrs["heightRule"] ?? "atLeast",
@@ -1452,7 +1432,18 @@ export const TablePluginExtension = createExtension({
       return true;
     }
 
-    function addColumnLeft(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+    /**
+     * Insert a column beside the selected cells: left of the first column
+     * they cover, or right of the last. The table map places the new cells,
+     * so a row whose cell in that column is held by a merge from a row above
+     * still gains its cell at the right grid column, and `w:tblGrid` gains
+     * one column the width of its neighbour instead of being rebuilt.
+     */
+    function insertColumnBeside(
+      state: EditorState,
+      dispatch: ((tr: Transaction) => void) | undefined,
+      side: "left" | "right",
+    ): boolean {
       const context = getTableContext(state);
       if (
         !context.isInTable ||
@@ -1463,190 +1454,44 @@ export const TablePluginExtension = createExtension({
       ) {
         return false;
       }
-
       if (dispatch) {
-        let tr = state.tr;
-        const newColumnCount = (context.columnCount ?? 1) + 1;
-        const newColWidthPercent = Math.floor(100 / newColumnCount);
-
-        let rowPos = context.tablePos + 1;
-
-        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        context.table.forEach((row) => {
-          if (row.type.name === "tableRow") {
-            let cellPos = rowPos + 1;
-            let colIdx = 0;
-
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-            row.forEach((cell) => {
-              if (colIdx === context.columnIndex) {
-                const paragraph = nodeTypeParagraph.create();
-                const cellAttrs = buildCellAttrsFromTemplate(cell, {
-                  colspan: 1,
-                  rowspan: 1,
-                });
-                Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
-                const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
-                tr = tr.insert(tr.mapping.map(cellPos), newCell);
-              }
-              cellPos += cell.nodeSize;
-              colIdx += Number(cell.attrs["colspan"]) || 1;
-            });
-
-            if (context.columnIndex !== undefined && colIdx <= context.columnIndex) {
-              const paragraph = nodeTypeParagraph.create();
-              const cellAttrs = buildCellAttrsFromTemplate(row.child(row.childCount - 1), {
-                colspan: 1,
-                rowspan: 1,
-              });
-              Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
-              const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
-              tr = tr.insert(tr.mapping.map(cellPos), newCell);
-            }
-          }
-          rowPos += row.nodeSize;
+        const rect = selectedRect(state);
+        const tr = state.tr;
+        const paragraphType = state.schema.nodes["paragraph"];
+        insertTableColumn({
+          tr,
+          tablePosition: rect.tableStart - 1,
+          column: side === "left" ? rect.left : rect.right,
+          templateColumn: side === "left" ? rect.left : rect.right - 1,
+          createCell: (template) => {
+            const cellType = template?.type ?? tableNodeTypes(state.schema).cell;
+            // A merged template states the width of all its columns.
+            const attrs = buildCellAttrsFromTemplate(
+              template && (Number(template.attrs["colspan"]) || 1) === 1 ? template : null,
+              { colspan: 1, rowspan: 1 },
+            );
+            return cellType.create(attrs, paragraphType?.create() ?? null);
+          },
         });
-
-        const updatedTable = tr.doc.nodeAt(context.tablePos);
-        if (updatedTable && updatedTable.type.name === "table") {
-          const firstRow = updatedTable.child(0);
-          if (firstRow.type.name === "tableRow") {
-            let cellPos = context.tablePos + 2;
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-            firstRow.forEach((cell) => {
-              if (cell.type.name === "tableCell" || cell.type.name === "tableHeader") {
-                tr = tr.setNodeMarkup(
-                  cellPos,
-                  undefined,
-                  mergeTableCellAttrs(cell, {
-                    width: newColWidthPercent,
-                    widthType: "pct",
-                  }),
-                );
-              }
-              cellPos += cell.nodeSize;
-            });
-          }
-
-          // Update table columnWidths so full-width tables resize correctly.
-          const colCount = firstRow.childCount;
-          const tableWidthTwips = expectTableAttrs(updatedTable).width ?? 9360;
-          const colWidthTwips = Math.floor(tableWidthTwips / Math.max(1, colCount));
-          tr = tr.setNodeMarkup(
-            context.tablePos,
-            undefined,
-            mergeTableAttrs(updatedTable, {
-              columnWidths: Array.from({ length: colCount }, () => colWidthTwips),
-            }),
-          );
-        }
-
         dispatch(tr.scrollIntoView());
       }
       return true;
+    }
+
+    function addColumnLeft(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+      return insertColumnBeside(state, dispatch, "left");
     }
 
     function addColumnRight(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
-      const context = getTableContext(state);
-      if (
-        !context.isInTable ||
-        context.columnIndex === undefined ||
-        !context.table ||
-        context.tablePos === undefined ||
-        hasOmittedGridSlots(context.table)
-      ) {
-        return false;
-      }
-
-      if (dispatch) {
-        let tr = state.tr;
-        const newColumnCount = (context.columnCount ?? 1) + 1;
-        const newColWidthPercent = Math.floor(100 / newColumnCount);
-
-        let rowPos = context.tablePos + 1;
-
-        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        context.table.forEach((row) => {
-          if (row.type.name === "tableRow") {
-            let cellPos = rowPos + 1;
-            let colIdx = 0;
-            let insertedCount = 0;
-
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-            row.forEach((cell) => {
-              cellPos += cell.nodeSize;
-              colIdx += Number(cell.attrs["colspan"]) || 1;
-
-              if (
-                insertedCount === 0 &&
-                context.columnIndex !== undefined &&
-                colIdx > context.columnIndex
-              ) {
-                const paragraph = nodeTypeParagraph.create();
-                const cellAttrs = buildCellAttrsFromTemplate(cell, {
-                  colspan: 1,
-                  rowspan: 1,
-                });
-                Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
-                const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
-                tr = tr.insert(tr.mapping.map(cellPos), newCell);
-                insertedCount += 1;
-              }
-            });
-
-            if (insertedCount === 0) {
-              const paragraph = nodeTypeParagraph.create();
-              const cellAttrs = buildCellAttrsFromTemplate(row.child(row.childCount - 1), {
-                colspan: 1,
-                rowspan: 1,
-              });
-              Object.assign(cellAttrs, statedCellWidth(newColWidthPercent, "pct"));
-              const newCell = nodeTypeTableCell.create(cellAttrs, paragraph);
-              tr = tr.insert(tr.mapping.map(cellPos), newCell);
-            }
-          }
-          rowPos += row.nodeSize;
-        });
-
-        const updatedTable = tr.doc.nodeAt(context.tablePos);
-        if (updatedTable && updatedTable.type.name === "table") {
-          const firstRow = updatedTable.child(0);
-          if (firstRow.type.name === "tableRow") {
-            let cellPos = context.tablePos + 2;
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-            firstRow.forEach((cell) => {
-              if (cell.type.name === "tableCell" || cell.type.name === "tableHeader") {
-                tr = tr.setNodeMarkup(
-                  cellPos,
-                  undefined,
-                  mergeTableCellAttrs(cell, {
-                    width: newColWidthPercent,
-                    widthType: "pct",
-                  }),
-                );
-              }
-              cellPos += cell.nodeSize;
-            });
-          }
-
-          // Update table columnWidths so full-width tables resize correctly.
-          const colCount = firstRow.childCount;
-          const tableWidthTwips = expectTableAttrs(updatedTable).width ?? 9360;
-          const colWidthTwips = Math.floor(tableWidthTwips / Math.max(1, colCount));
-          tr = tr.setNodeMarkup(
-            context.tablePos,
-            undefined,
-            mergeTableAttrs(updatedTable, {
-              columnWidths: Array.from({ length: colCount }, () => colWidthTwips),
-            }),
-          );
-        }
-
-        dispatch(tr.scrollIntoView());
-      }
-      return true;
+      return insertColumnBeside(state, dispatch, "right");
     }
 
+    /**
+     * Delete the columns the selected cells cover. The table map finds each
+     * row's cell in them, a merged cell reaching past them narrows, a row
+     * left with no cell of its own goes, and `w:tblGrid` loses exactly those
+     * columns.
+     */
     function deleteColumn(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
       const context = getTableContext(state);
       if (
@@ -1659,80 +1504,13 @@ export const TablePluginExtension = createExtension({
       ) {
         return false;
       }
-
+      const rect = selectedRect(state);
+      if (rect.right - rect.left >= rect.map.width) {
+        return false;
+      }
       if (dispatch) {
-        let tr = state.tr;
-        const newColumnCount = (context.columnCount ?? 2) - 1;
-        const newColWidthPercent = Math.floor(100 / newColumnCount);
-
-        const deleteOps: { start: number; end: number }[] = [];
-        let rowPos = context.tablePos + 1;
-
-        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-        context.table.forEach((row) => {
-          if (row.type.name === "tableRow") {
-            let cellPos = rowPos + 1;
-            let colIdx = 0;
-
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-            row.forEach((cell) => {
-              const cellStart = cellPos;
-              const cellEnd = cellPos + cell.nodeSize;
-              const cellColspan = Number(cell.attrs["colspan"]) || 1;
-
-              if (
-                context.columnIndex !== undefined &&
-                colIdx <= context.columnIndex &&
-                context.columnIndex < colIdx + cellColspan
-              ) {
-                deleteOps.push({ start: cellStart, end: cellEnd });
-              }
-
-              cellPos = cellEnd;
-              colIdx += cellColspan;
-            });
-          }
-          rowPos += row.nodeSize;
-        });
-
-        for (const { start, end } of deleteOps.toReversed()) {
-          tr = tr.delete(start, end);
-        }
-
-        const updatedTable = tr.doc.nodeAt(context.tablePos);
-        if (updatedTable && updatedTable.type.name === "table") {
-          const firstRow = updatedTable.child(0);
-          if (firstRow.type.name === "tableRow") {
-            let cellPos = context.tablePos + 2;
-            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-            firstRow.forEach((cell) => {
-              if (cell.type.name === "tableCell" || cell.type.name === "tableHeader") {
-                tr = tr.setNodeMarkup(
-                  cellPos,
-                  undefined,
-                  mergeTableCellAttrs(cell, {
-                    width: newColWidthPercent,
-                    widthType: "pct",
-                  }),
-                );
-              }
-              cellPos += cell.nodeSize;
-            });
-          }
-
-          // Update table columnWidths to match new column count.
-          const colCount = firstRow.childCount;
-          const tableWidthTwips = expectTableAttrs(updatedTable).width ?? 9360;
-          const colWidthTwips = Math.floor(tableWidthTwips / Math.max(1, colCount));
-          tr = tr.setNodeMarkup(
-            context.tablePos,
-            undefined,
-            mergeTableAttrs(updatedTable, {
-              columnWidths: Array.from({ length: colCount }, () => colWidthTwips),
-            }),
-          );
-        }
-
+        const tr = state.tr;
+        removeTableColumns(tr, rect.tableStart - 1, rect.left, rect.right);
         dispatch(tr.scrollIntoView());
       }
       return true;
@@ -1818,27 +1596,19 @@ export const TablePluginExtension = createExtension({
       }
 
       if (dispatch) {
+        // The table map names the cell covering the column in each row, which
+        // is also right for a row whose cells a merge from above displaces.
         const tableStart = context.tablePos + 1;
-        // Find the cell at columnIndex in first and last row
-        const firstRow = context.table.child(0);
-        const lastRow = context.table.child(context.table.childCount - 1);
-
-        let firstCellPos = tableStart + 1; // inside first row
-        for (let c = 0; c < context.columnIndex && c < firstRow.childCount; c++) {
-          firstCellPos += firstRow.child(c).nodeSize;
+        const tableMap = TableMap.get(context.table);
+        const firstCell = tableMap.map[context.columnIndex];
+        if (firstCell === undefined) {
+          return false;
         }
-
-        let lastRowPos = tableStart;
-        for (let r = 0; r < context.table.childCount - 1; r++) {
-          lastRowPos += context.table.child(r).nodeSize;
-        }
-        let lastCellPos = lastRowPos + 1; // inside last row
-        for (let c = 0; c < context.columnIndex && c < lastRow.childCount; c++) {
-          lastCellPos += lastRow.child(c).nodeSize;
-        }
-
-        const cellSel = CellSelection.create(state.doc, firstCellPos, lastCellPos);
-        dispatch(state.tr.setSelection(cellSel));
+        dispatch(
+          state.tr.setSelection(
+            CellSelection.colSelection(state.doc.resolve(tableStart + firstCell)),
+          ),
+        );
       }
       return true;
     }
@@ -3017,6 +2787,16 @@ export const TablePluginExtension = createExtension({
       },
     });
 
+    // Cell paste runs ahead of `tableEditing`, whose own cell paste splits
+    // merges at positions that ignore where the table starts.
+    const tableCellPastePlugin = new Plugin({
+      key: new PluginKey("tableCellPaste"),
+      props: {
+        transformPasted: (slice) => pastedSliceWithNewTableCells(slice),
+        handlePaste: (view, _event, slice) => pasteTableCells(view.state, slice, view.dispatch),
+      },
+    });
+
     return {
       plugins: [
         columnResizing({
@@ -3024,6 +2804,7 @@ export const TablePluginExtension = createExtension({
           cellMinWidth: 25,
           lastColumnResizable: true,
         }),
+        tableCellPastePlugin,
         tableEditing(),
         activeCellPlugin,
       ],

@@ -342,8 +342,8 @@ type Messages = {
       "editingDescription": "Edit the document directly";
       "outlineTitle": "Outline";
       "showDocumentOutline": "Document outline";
-      "suggesting": "Suggesting";
-      "suggestingDescription": "Edits become tracked suggestions";
+      "suggesting": "Track Changes";
+      "suggestingDescription": "Edits are recorded as tracked changes";
       "viewing": "Viewing";
       "viewingDescription": "Read or print the final document";
     };
