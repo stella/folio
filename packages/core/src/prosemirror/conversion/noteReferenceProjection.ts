@@ -14,6 +14,8 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
+import { withNoteReferenceMark } from "../../docx/noteReferenceMark";
+
 import type {
   BlockContent,
   Document,
@@ -160,7 +162,11 @@ const projectNotes = <Note extends Footnote | Endnote>(
     // session comes back as that save left it: start from what it was.
     const source = (projectionSources.get(note) as Note | undefined) ?? note;
     if (!state.live && state.deletion) {
-      const deleted = { ...source, content: deletedContent(source.content, state.deletion) };
+      // The in-note reference mark is part of what the deletion takes.
+      const deleted = {
+        ...source,
+        content: deletedContent(withNoteReferenceMark(kind, source.content), state.deletion),
+      };
       projectionSources.set(deleted, source);
       projected.push(deleted);
     } else {

@@ -57,7 +57,8 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import type { BlockContent, Comment, Document } from "../types/document";
+import { withNoteReferenceMark } from "../docx/noteReferenceMark";
+import type { Comment, Document } from "../types/document";
 
 // ============================================================================
 // OPERATIONS
@@ -130,12 +131,13 @@ const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation 
         view as never,
       );
       if (applied) {
-        const content: BlockContent[] = [
+        // A note made in the editor has its own reference mark, as a read one does.
+        const content = withNoteReferenceMark(kind, [
           {
             type: "paragraph",
             content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
           },
-        ];
+        ]);
         if (kind === "footnote") {
           base.package.footnotes = [...footnotes, { type: "footnote", id, content }];
         } else {

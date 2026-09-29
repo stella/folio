@@ -7,9 +7,11 @@
 
 import { describe, expect, test } from "bun:test";
 
-import type { EditorState } from "prosemirror-state";
+import JSZip from "jszip";
+import { TextSelection, type EditorState } from "prosemirror-state";
 
 import { documentShape } from "../__tests__/documentShapes";
+import { CONFORMANCE_OPERATIONS } from "../__tests__/editorCommandConformance";
 import {
   createHarnessState,
   type EditorMode,
@@ -158,5 +160,54 @@ describe("structural edits in suggesting mode", () => {
   test("deleting a note reference outright removes the note", async () => {
     const { saved } = await run(NOTE_CASE, "editing");
     expect(normalFootnotes(saved.model)).toEqual([]);
+  });
+
+  test("a note made in the editor is deleted with its own reference mark", async () => {
+    const shape = documentShape("notes");
+    const base = await parseShapeDocument(await shape.build());
+    const caret = placeSelection(createHarnessState(base, "suggesting"), shape.focus, "caret-end");
+    if (!caret) {
+      throw new Error("No caret");
+    }
+    const view = new HeadlessEditorView(caret);
+    const insertNote = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:insertFootnote");
+    expect(insertNote?.run({ view, base, focus: shape.focus })).toBe(true);
+    const added = normalFootnotes(base).at(-1);
+    if (!added) {
+      throw new Error("No note was added");
+    }
+    // Accept the insertion (deleting one's own pending insertion retracts it
+    // instead), then select the new reference and delete it.
+    view.state = resolveAllChanges(view.state, "accept");
+    let reference: { from: number; to: number } | null = null;
+    view.state.doc.descendants((node, pos) => {
+      const mark = node.marks.find(({ type }) => type.name === "footnoteRef");
+      if (node.isText && mark && String(mark.attrs["id"]) === String(added.id)) {
+        reference = { from: pos, to: pos + node.nodeSize };
+      }
+    });
+    if (!reference) {
+      throw new Error("No reference to the new note");
+    }
+    const { from, to } = reference;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    expect(harnessManager().requireCommand("deleteNoteRef")()(view.state, view.dispatch)).toBe(
+      true,
+    );
+
+    const { bytes } = await saveHarnessState(view.state, base);
+    const footnotesXml = await (
+      await JSZip.loadAsync(bytes)
+    )
+      .file("word/footnotes.xml")
+      ?.async("text");
+    const note = new RegExp(
+      `<w:footnote\\b[^>]*\\bw:id="${added.id}"[^>]*>[\\s\\S]*?</w:footnote>`,
+      "u",
+    ).exec(footnotesXml ?? "")?.[0];
+    expect(note).toBeDefined();
+    // The only reference mark is the one inside a deletion.
+    expect(note?.match(/<w:footnoteRef\/>/gu)).toHaveLength(1);
+    expect(note).toMatch(/<w:del\b[^>]*>(?:(?!<\/w:del>)[\s\S])*<w:footnoteRef\/>/u);
   });
 });
