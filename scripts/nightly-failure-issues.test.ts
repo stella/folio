@@ -3,11 +3,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import {
+  groupConformanceFailures,
   issueBody,
   issueTitle,
+  overflowFailure,
   parseFailures,
   replayFor,
   seedEntry,
+  suiteReplay,
   unparsedFailure,
 } from "./nightly-failure-issues";
 
@@ -111,8 +114,9 @@ describe("nightly failure issues", () => {
   test("a failed run with no failing test in its log still gets an issue", () => {
     expect(parseFailures("error: something crashed\n")).toEqual([]);
     expect(issueTitle("property", unparsedFailure("property"))).toBe(
-      "Nightly property failure: <unknown file>::property sweep failed without a failing test in the log",
+      "Nightly property failure: property sweep failed without a failing test in the log",
     );
+    expect(replayFor("property", unparsedFailure("property"), 10)).toBe("bun run test:property");
   });
 
   test("same test name in different files produces separate issues", () => {
@@ -129,5 +133,72 @@ describe("nightly failure issues", () => {
       "scripts/second.test.ts",
     ]);
     expect(new Set(failures.map((failure) => issueTitle("property", failure))).size).toBe(2);
+  });
+
+  describe("conformance failures group by operation, placement and violation kind", () => {
+    const groups = groupConformanceFailures(
+      parseFailures(fixture("conformance-grouped.log"), packageOf),
+    );
+    const conformance = { ...context, kind: "conformance" as const, factor: null };
+
+    /** The FOLIO_CONFORMANCE_FILTER a replay line sets, as the test file compiles it. */
+    const filterOf = (replay: string): RegExp | null => {
+      const match = /FOLIO_CONFORMANCE_FILTER='([^']*)'/u.exec(replay);
+      return match === null ? null : new RegExp(match[1] as string, "u");
+    };
+
+    test("one group per class, listing every shape and mode it broke in", () => {
+      expect(groups.map(({ name }) => name)).toEqual([
+        "paste:plain @ document: readback-painted",
+        "paste:plain @ document: reject-mismatch",
+        "host:cut @ document: undo",
+        "editor command conformance > no known gap is stale",
+      ]);
+      expect(groups[0]?.group).toEqual({
+        operation: "paste:plain",
+        placement: "document",
+        kind: "readback-painted",
+        shapes: ["plain-markdown", "bare-package"],
+        modes: ["editing", "suggesting"],
+      });
+      expect(groups[1]?.group?.shapes).toEqual(["plain-markdown"]);
+      expect(issueTitle("conformance", groups[0]!)).toBe(
+        "Nightly conformance failure: paste:plain @ document: readback-painted",
+      );
+      const body = issueBody(groups[0]!, conformance, false);
+      expect(body).toContain("**Shapes:** `plain-markdown`, `bare-package`");
+      expect(body).toContain("**Violation:** `readback-painted` (editing, suggesting)");
+    });
+
+    test("every group replays exactly its cases", () => {
+      const cases = [
+        "plain-markdown › paste:plain @ document",
+        "bare-package › paste:plain @ document",
+        "bare-package › host:cut @ document",
+        "bare-package › paste:plain @ word",
+      ];
+      const selected = groups.slice(0, 3).map((group) => {
+        const replay = replayFor("conformance", group, null);
+        expect(replay).toStartWith("cd packages/core && FOLIO_CONFORMANCE=full ");
+        expect(replay).not.toContain(" -t ");
+        const filter = filterOf(replay);
+        return cases.filter((id) => filter?.test(id) === true);
+      });
+      expect(selected).toEqual([
+        ["plain-markdown › paste:plain @ document", "bare-package › paste:plain @ document"],
+        ["plain-markdown › paste:plain @ document"],
+        ["bare-package › host:cut @ document"],
+      ]);
+      expect(replayFor("conformance", groups[3]!, null)).toEndWith(" -t 'no known gap is stale'");
+    });
+
+    test("failures past the cap file one issue whose replay runs the tier", () => {
+      const overflow = overflowFailure("conformance", groups.slice(1), null);
+      const title = issueTitle("conformance", overflow);
+      expect(title).toBe("Nightly conformance failure: more failing groups than one run files");
+      expect(title).not.toContain("<unknown file>");
+      expect(replayFor("conformance", overflow, null)).toBe(suiteReplay("conformance"));
+      expect(overflow.error).toContain("host:cut @ document: undo\n  cd packages/core && ");
+    });
   });
 });
