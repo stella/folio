@@ -339,8 +339,8 @@
       "editingDescription": "Redaguokite dokumentą tiesiogiai",
       "outlineTitle": "Struktūra",
       "showDocumentOutline": "Dokumento struktūra",
-      "suggesting": "Siūlymas",
-      "suggestingDescription": "Redagavimai tampa sekamais pasiūlymais",
+      "suggesting": "Keitimų sekimas",
+      "suggestingDescription": "Taisymai įrašomi kaip sekami keitimai",
       "viewing": "Peržiūra",
       "viewingDescription": "Skaitykite arba spausdinkite galutinį dokumentą"
     },

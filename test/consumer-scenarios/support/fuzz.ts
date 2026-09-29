@@ -24,8 +24,16 @@
 
 import { createReviewerBridge, executeFolioToolCallUntyped } from "@stll/folio-agents";
 import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
+import { readFileSync } from "node:fs";
 
-import { observeHits, type StepKind } from "./coverage.ts";
+import { observeHits, registerFeatureOperations, type StepKind } from "./coverage.ts";
+import {
+  featureCellKey,
+  gapWeight,
+  generatedSelection,
+  targetFeatureSignature,
+  type FeatureCoverage,
+} from "./feature-coverage.ts";
 import { COLLISION_FIXTURES, FIXTURES, openReviewer, STORY_FIXTURES } from "./documents.ts";
 import { normalizeAssertion } from "./failure-fingerprints.ts";
 import {
@@ -43,6 +51,7 @@ import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } 
 import {
   type Block,
   COLLISIONS,
+  GENERATORS,
   coreBatch,
   MISTAKES,
   MODES,
@@ -51,7 +60,7 @@ import {
   randomOperation,
 } from "./operations.ts";
 import { createRandom, type Random, sentence } from "./random.ts";
-import { biasedPicker, blocksOfStory, featureIndex, type Picker } from "./targets.ts";
+import { biasedPicker, blocksOfStory, featureIndex, storyKindOf, type Picker } from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -81,16 +90,54 @@ export type Flow = {
 
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
 
+const weightsPath = process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"];
+const coverageWeights = weightsPath
+  ? (JSON.parse(readFileSync(weightsPath, "utf8")) as FeatureCoverage)
+  : null;
+const operationHits: Record<string, number> | undefined = coverageWeights ? {} : undefined;
+if (coverageWeights && operationHits) {
+  for (const [key, count] of Object.entries(coverageWeights.cells)) {
+    const operation = key.split(" | ").at(0);
+    if (operation) operationHits[operation] = (operationHits[operation] ?? 0) + count;
+  }
+}
+
 const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent() as Block[];
 
 /** The picker a targeted flow aims with, over `story`'s blocks as they are now. */
-const pickerFor = (flow: Flow, story: FolioDocumentStoryHandle = MAIN): Picker | undefined =>
-  flow.generation === "legacy"
-    ? undefined
-    : biasedPicker(flow.random, {
-        index: featureIndex(flow.reviewer, story),
-        recent: flow.recent,
-      });
+const pickerFor = (
+  flow: Flow,
+  story: FolioDocumentStoryHandle = MAIN,
+): Picker | ((type: string) => Picker) | undefined => {
+  if (flow.generation === "legacy") return undefined;
+  const index = featureIndex(flow.reviewer, story);
+  const options = { index, recent: flow.recent };
+  if (!coverageWeights) return biasedPicker(flow.random, options);
+  return (operation) =>
+    biasedPicker(flow.random, {
+      ...options,
+      coverageWeight: (block) => {
+        const features = targetFeatureSignature(
+          block,
+          index.features.get(block.id) ?? new Set(),
+          storyKindOf(index, block),
+        );
+        return Math.max(
+          ...features.map((feature) =>
+            gapWeight(
+              coverageWeights.cells[
+                featureCellKey({
+                  operation,
+                  feature,
+                  selection: generatedSelection(operation),
+                })
+              ] ?? 0,
+            ),
+          ),
+        );
+      },
+    });
+};
 
 /** Remember the blocks `operations` aimed at, for the next steps to aim near. */
 const touch = (flow: Flow, operations: readonly Operation[]): void => {
@@ -110,7 +157,7 @@ const touch = (flow: Flow, operations: readonly Operation[]): void => {
 const randomOperations = (
   flow: Flow,
   blocks: readonly Block[] = blocksOf(flow),
-  pick: Picker | undefined = pickerFor(flow),
+  pick: Picker | ((type: string) => Picker) | undefined = pickerFor(flow),
 ): Operation[] => {
   const drawn = drawOperations(flow, blocks, pick);
   const pinned = flow.planned?.operations;
@@ -166,7 +213,7 @@ const blockIdsOf = (reviewer: Reviewer): Set<string> =>
 const drawOperations = (
   flow: Flow,
   blocks: readonly Block[],
-  pick: Picker | undefined,
+  pick: Picker | ((type: string) => Picker) | undefined,
 ): Operation[] => {
   if (flow.kind === "collisions" && flow.random.chance(0.5)) {
     const names = Object.keys(COLLISIONS);
@@ -180,8 +227,7 @@ const drawOperations = (
       flow.generation === "legacy" ? blocksOf(flow) : blocks,
       flow.mode,
       flow.random,
-      undefined,
-      pick,
+      { pick, operationHits },
     );
     if (operation) operations.push(operation);
   }
@@ -325,7 +371,9 @@ const step = async (flow: Flow, planned?: FlowStep): Promise<void> => {
         record(flow, `${action} skipped`);
         return;
       }
-      const block = pickerFor(flow)?.block(blocks) ?? random.pick(blocks);
+      const pick = pickerFor(flow);
+      const picker = typeof pick === "function" ? pick("commentOnBlock") : pick;
+      const block = picker?.block(blocks) ?? random.pick(blocks);
       const done = record(flow, `${action} on ${block.id}`);
       const result = tool(flow, "add_comment", { blockId: block.id, text: sentence(random) });
       done(result.ok ? "ok" : result.error);
@@ -580,6 +628,7 @@ type Plan = {
 };
 
 const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
+  registerFeatureOperations(Object.keys(GENERATORS));
   const { seed, kind, generation, fixture, mode } = plan;
   const load = flowFixtures(kind, generation)[fixture];
   if (load === undefined) {

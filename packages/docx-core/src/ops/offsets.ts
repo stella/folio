@@ -219,7 +219,8 @@ const INLINE_SDT_CHILD_TYPES = {
 const isHyperlinkChild = (item: ParagraphContent): item is HyperlinkChild =>
   Object.hasOwn(HYPERLINK_CHILD_TYPES, item.type);
 
-const isTrackedChild = (item: ParagraphContent): item is TrackedRunContent =>
+/** Whether a tracked change (`w:ins`, `w:del`, a move) can hold the record. */
+export const isTrackedChild = (item: ParagraphContent): item is TrackedRunContent =>
   Object.hasOwn(TRACKED_CHILD_TYPES, item.type);
 
 const isInlineSdtChild = (item: ParagraphContent): item is InlineSdtChild =>

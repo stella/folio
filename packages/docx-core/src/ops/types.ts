@@ -1,6 +1,6 @@
 /**
- * Document operations, schema version 1: text and formatting edits on the
- * main story.
+ * Document operations, schema version 2: text, formatting and review edits on
+ * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
  * offset)`, where `blockId` is the paragraph's `w14:paraId` and `offset` counts
@@ -18,7 +18,7 @@
  * Wire format. An operation is plain data and survives `JSON.stringify` and
  * `JSON.parse` unchanged; it is journaled inside a {@link DocumentOpEnvelope}
  * that names this schema. Operations embed model records (`Paragraph`,
- * `ParagraphContent`, property sets) as they stand in schema version 1, so
+ * `ParagraphContent`, property sets) as they stand in this schema version, so
  * those record shapes are part of the wire format too: changing one changes
  * what a journaled operation means, and needs a new schema version and a
  * migration of the journaled operations.
@@ -29,15 +29,22 @@ import type {
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
+  ParagraphPropertyChange,
   TextFormatting,
 } from "../model/document";
 
-/** The operation schema this module reads and writes. */
-export const DOCUMENT_OP_SCHEMA_VERSION = 1;
+/**
+ * The operation schema this module reads and writes.
+ *
+ * Version 2 adds tracked changes: the `revision` stamp on the text, formatting
+ * and paragraph operations, and the review operations `setParagraphReview`
+ * and `replaceInline`.
+ */
+export const DOCUMENT_OP_SCHEMA_VERSION = 2;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
- * bodies are stories too; version 1 addresses the main story only.
+ * bodies are stories too; this version addresses the main story only.
  */
 export const OP_STORIES = Object.freeze({ MAIN: "main" } as const);
 
@@ -125,13 +132,32 @@ export type NewIds = {
   control?: readonly number[];
 };
 
+/**
+ * Who made a tracked change and when, and the revision id (`w:id`) of the
+ * first record the change creates.
+ *
+ * An operation carrying a stamp records its edit as a tracked change instead
+ * of making it: the stamp's id names the first record the edit creates and
+ * `newIds.revision` names the others, in document order. The id must be unused
+ * in the package. A new tracked wrapper that would sit next to one with the
+ * same author, date and initials merges into it and creates no record, so an
+ * author's burst of typing reads as one change.
+ */
+export type RevisionStamp = {
+  id: number;
+  author: string;
+  /** `w:date`, as the author's client stated it. */
+  date: string;
+  initials?: string;
+};
+
 /** The paragraph fields a split gives the new paragraph, besides its id, content and mark. */
 export type SplitParagraphFields = Omit<
   Paragraph,
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
 
-/** The operation kinds of schema version 1. */
+/** The operation kinds of schema version 2. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   INSERT_TEXT: "insertText",
   INSERT_CONTENT: "insertContent",
@@ -143,6 +169,8 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   SPLIT_BLOCK: "splitBlock",
   JOIN_BLOCKS: "joinBlocks",
   REPLACE_BLOCKS: "replaceBlocks",
+  SET_PARAGRAPH_REVIEW: "setParagraphReview",
+  REPLACE_INLINE: "replaceInline",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -156,6 +184,11 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
  * becomes a run of its own and that run is split around it; `newIds` names
  * the ids of the second half when the run carries some. The run decides where
  * the text goes, so `at.zeroWidthBefore` is not read.
+ *
+ * With `revision`, the text is a tracked insertion: it is wrapped in an
+ * `Insertion` carrying the stamp, cutting the records around it down to a
+ * level that admits one. Text landing inside another stamp's insertion or
+ * move splits that record around it rather than nesting inside it.
  */
 export type InsertTextOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_TEXT;
@@ -164,6 +197,7 @@ export type InsertTextOp = {
   text: string;
   runProps: InsertedRunProps;
   newIds?: NewIds;
+  revision?: RevisionStamp;
 };
 
 /**
@@ -175,12 +209,18 @@ export type InsertTextOp = {
  * slice that would merge two records that were separate is refused.
  * Absent `zeroWidthBefore` puts the point before the first zero-width child
  * at the offset that opens a range, after the others.
+ *
+ * With `revision`, the inserted content is a tracked insertion, as for
+ * {@link InsertTextOp}. It is refused inside tracked-removed content, and
+ * when it holds a comment boundary or reference, which no tracked change can
+ * hold.
  */
 export type InsertContentOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
   at: TextPosition;
   slice: InlineSlice;
   newIds?: NewIds;
+  revision?: RevisionStamp;
 };
 
 /**
@@ -196,6 +236,15 @@ export type InsertContentOp = {
  * `expected` is the slice the deletion must remove, compared without the
  * fields a relayout recomputes. It is how an inverse refuses to apply to
  * content that has changed since.
+ *
+ * With `revision`, the deletion is tracked and removes nothing. Content
+ * already inside a deletion or moved away is left as it is; content inside an
+ * insertion or a move gets a deletion nested inside that record; everything
+ * else is wrapped in a `Deletion` carrying the stamp, an inline content
+ * control the range covers whole going in with its content. A range holding
+ * a comment boundary or reference is refused, since no tracked change can
+ * hold one; `planTrackedDeletion` plans the deletions around them. A tracked
+ * deletion joins nothing, so `join` must be absent.
  */
 export type DeleteRangeOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
@@ -203,6 +252,8 @@ export type DeleteRangeOp = {
   to: TextPosition;
   join?: number;
   expected?: InlineSlice;
+  newIds?: NewIds;
+  revision?: RevisionStamp;
 };
 
 /**
@@ -239,6 +290,12 @@ export type JoinInlineOp = {
  * `joinStart` and `joinEnd` merge the runs meeting at the range ends that many
  * levels once the patch is applied, as {@link JoinInlineOp} does; the inverse
  * of a patch that cut runs uses them.
+ *
+ * With `revision`, every run the patch changes records a tracked property
+ * change (`w:rPrChange`) whose previous formatting is the run's own property
+ * set before the patch. A run already carrying one keeps it, and with it the
+ * formatting it started from. A tracked patch joins nothing, so `joinStart`
+ * and `joinEnd` must be absent.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
@@ -250,12 +307,19 @@ export type SetRunPropsOp = {
   joinStart?: number;
   joinEnd?: number;
   newIds?: NewIds;
+  revision?: RevisionStamp;
 };
 
 /**
  * Patch a paragraph's own property set. `expected` states the values the
  * patched keys must have (`null` for absent) and refuses the patch as stale
  * otherwise.
+ *
+ * With `revision`, the paragraph records a tracked property change
+ * (`w:pPrChange`) whose previous formatting is its own property set before
+ * the patch, or keeps the one it already carries. A property change holds
+ * paragraph properties only, not the paragraph mark's run properties, so a
+ * tracked patch of {@link PARAGRAPH_MARK_FORMATTING_KEYS} is refused.
  */
 export type SetParagraphPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS;
@@ -264,44 +328,86 @@ export type SetParagraphPropsOp = {
   patch: ParagraphPropsPatch;
   whenEmpty?: EmptyPropertySet;
   expected?: ParagraphPropsPatch;
+  revision?: RevisionStamp;
 };
+
+/**
+ * Paragraph formatting that belongs to the paragraph mark's run properties
+ * (`w:pPr/w:rPr`) rather than to the paragraph properties a `w:pPrChange`
+ * records.
+ */
+export const PARAGRAPH_MARK_FORMATTING_KEYS = Object.freeze([
+  "runProperties",
+  "runInWithNext",
+] as const satisfies readonly (keyof ParagraphFormatting)[]);
+
+/** Which half of a split, or of a join, a rule applies to. */
+export const SPLIT_HALVES = Object.freeze({ FIRST: "first", SECOND: "second" } as const);
+
+/** One of {@link SPLIT_HALVES}. */
+export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
 
 /**
  * Split a paragraph in two at a position.
  *
- * The half before the position keeps the paragraph's identity: its `paraId`,
- * `textId`, unmodelled attributes and tracked property change. The half after
- * it is a new paragraph named `newBlockId`; it holds the paragraph mark, so the
- * section break and a tracked mark change move with it. It takes the fields in
- * `newParagraph`, or a copy of the paragraph's properties when the operation
- * states none. `firstMark` is the tracked change of the mark the split
- * creates. Absent `zeroWidthBefore` keeps zero-width children that open a
- * range with the new paragraph.
+ * One half keeps the paragraph's identity and own fields (`paraId`, `textId`,
+ * unmodelled attributes, properties); the other is a new paragraph named
+ * `newBlockId`, taking the fields in `newParagraph`, or a copy of the
+ * paragraph's properties when the operation states none. `newHalf` says which
+ * half is new: by default the second when the position ends the paragraph
+ * (a paragraph added after it), else the first (the text before the position
+ * moves to a paragraph of its own, and the paragraph continues with the rest).
+ * The paragraph mark always ends the second half, so the section break, the
+ * mark's tracked change and the pending property changes go with it; when the
+ * second half is the new one, `newParagraph` states no property changes.
+ * `firstMark` is the tracked change of the mark the split creates, which ends
+ * the first half. Absent `zeroWidthBefore` keeps zero-width children that
+ * open a range with the second half.
  *
  * A split inside a tracked change, a content control or a run with a tracked
- * property change continues it in the new paragraph as a record of its own:
+ * property change continues it in the second half as a record of its own:
  * `newIds` names its ids, outermost record first.
+ *
+ * With `revision`, the mark the split creates is a tracked insertion
+ * (`firstMark` must then be absent), and the new paragraph, when its paragraph
+ * properties differ from the source's and it carries no property change,
+ * records one from the source's. Rejecting the mark removes it, which leaves
+ * the second half with the first's content before its own.
  */
 export type SplitBlockOp = {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
   at: TextPosition;
   /** `w14:paraId` of the new paragraph: eight hex digits, unused in the document. */
   newBlockId: string;
+  newHalf?: SplitHalf;
   newParagraph?: SplitParagraphFields;
   firstMark?: ParagraphMarkChange;
   newIds?: NewIds;
+  revision?: RevisionStamp;
 };
 
 /**
  * Join a paragraph with the paragraph that directly follows it in the same
- * container. The first keeps its identity and properties; the second's content
- * and paragraph mark (section break, tracked mark change) join it, and the
- * second's id is retired. `depth` merges that many levels of the records
- * meeting at the join, as {@link JoinInlineOp} does.
+ * container. The joined paragraph has the first's paragraph properties, or
+ * the second's when the first holds no content, and the second's mark: its
+ * run properties, section break, tracked change and the pending property
+ * changes. It keeps the identity and own fields of the
+ * `survivor` half, by default the second, and the other's id is retired.
+ * `depth` merges that many levels of the records meeting at the join, as
+ * {@link JoinInlineOp} does.
  *
- * `expectedSecond` states the second paragraph's own fields, which the join
- * discards, and refuses the join as stale when they differ (fields a relayout
- * recomputes are not compared).
+ * `expectedRetired` states the own fields of the paragraph the join retires,
+ * and `expectedSurvivor` the review fields of the one it keeps, which the
+ * join replaces; either refuses the join as stale when it differs (fields a
+ * relayout recomputes are not compared).
+ *
+ * With `revision`, the join is tracked and moves nothing: the first
+ * paragraph's mark becomes a tracked deletion, refused when the mark already
+ * carries a tracked change, and the second takes the paragraph properties
+ * the direct join would give it as a tracked property change. Accepting removes the mark, which
+ * leaves the second paragraph with the first's content before its own: what
+ * the direct join leaves. A tracked join always leaves the second, so
+ * `survivor` must then be absent or `second`.
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
@@ -309,7 +415,11 @@ export type JoinBlocksOp = {
   blockId: string;
   nextBlockId: string;
   depth?: number;
-  expectedSecond?: SplitParagraphFields;
+  survivor?: SplitHalf;
+  expectedRetired?: SplitParagraphFields;
+  expectedSurvivor?: ParagraphReviewFields;
+  newIds?: NewIds;
+  revision?: RevisionStamp;
 };
 
 /**
@@ -327,7 +437,44 @@ export type ReplaceBlocksOp = {
   blocks: readonly Paragraph[];
 };
 
-/** A schema-version-1 document operation. */
+/**
+ * A paragraph's review fields: its paragraph properties, their tracked change
+ * and its mark's tracked change. An absent field is absent on the paragraph.
+ */
+export type ParagraphReviewFields = {
+  formatting?: ParagraphFormatting;
+  propertyChanges?: ParagraphPropertyChange[];
+  pPrMark?: ParagraphMarkChange;
+};
+
+/**
+ * Set a paragraph's review fields exactly. `expected` is what they are now,
+ * and `review` what they become; the inverse swaps the two. A new mark on a
+ * paragraph that ends its container (the story body or a table cell) is
+ * refused: there is no next paragraph to join it with.
+ */
+export type SetParagraphReviewOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW;
+  story: OpStory;
+  blockId: string;
+  expected: ParagraphReviewFields;
+  review: ParagraphReviewFields;
+};
+
+/**
+ * Replace a paragraph's whole content. `expected` is the content as it
+ * stands, compared structurally; the inverse swaps it with `content`. Ids the
+ * new content carries must be unused elsewhere in the package.
+ */
+export type ReplaceInlineOp = {
+  type: typeof DOCUMENT_OP_TYPES.REPLACE_INLINE;
+  story: OpStory;
+  blockId: string;
+  expected: readonly ParagraphContent[];
+  content: readonly ParagraphContent[];
+};
+
+/** A schema-version-2 document operation. */
 export type DocumentOp =
   | InsertTextOp
   | InsertContentOp
@@ -338,7 +485,9 @@ export type DocumentOp =
   | SetParagraphPropsOp
   | SplitBlockOp
   | JoinBlocksOp
-  | ReplaceBlocksOp;
+  | ReplaceBlocksOp
+  | SetParagraphReviewOp
+  | ReplaceInlineOp;
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the

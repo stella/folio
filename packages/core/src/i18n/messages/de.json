@@ -339,8 +339,8 @@
       "editingDescription": "Dokument direkt bearbeiten",
       "outlineTitle": "Gliederung",
       "showDocumentOutline": "Dokumentgliederung",
-      "suggesting": "Vorschlagen",
-      "suggestingDescription": "Bearbeitungen werden zu nachverfolgten Vorschlägen",
+      "suggesting": "Änderungen nachverfolgen",
+      "suggestingDescription": "Bearbeitungen werden als nachverfolgte Änderungen aufgezeichnet",
       "viewing": "Anzeigen",
       "viewingDescription": "Endgültiges Dokument lesen oder drucken"
     },

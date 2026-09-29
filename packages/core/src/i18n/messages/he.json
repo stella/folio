@@ -339,8 +339,8 @@
       "editingDescription": "ערוך את המסמך ישירות",
       "outlineTitle": "ניווט",
       "showDocumentOutline": "חלונית הניווט במסמך",
-      "suggesting": "הצעות",
-      "suggestingDescription": "עריכות הופכות להצעות במעקב",
+      "suggesting": "מעקב אחר שינויים",
+      "suggestingDescription": "עריכות נרשמות כשינויים במעקב",
       "viewing": "תצוגה",
       "viewingDescription": "קרא או הדפס את המסמך הסופי"
     },

@@ -96,9 +96,10 @@ const kindOf = (node: InlineNode): NodeKind => {
 export const isEmptyRecord = (node: InlineNode): boolean =>
   (node.type === "text" && node.text === "") || (node.type === "run" && node.content.length === 0);
 
-type Cursor = { position: number; zeroWidthSeen: number };
+/** A walk's place in the offset space: the offset, and the zero-width leaves passed there. */
+export type Cursor = { position: number; zeroWidthSeen: number };
 
-const startCursor = (): Cursor => ({ position: 0, zeroWidthSeen: 0 });
+export const startCursor = (): Cursor => ({ position: 0, zeroWidthSeen: 0 });
 
 const unitRegion = (gaps: readonly Gap[], unit: number): number => {
   let region = 0;
@@ -151,9 +152,15 @@ export const rebuildNode = (node: InlineNode, children: readonly InlineNode[]): 
   return withChildren(node, narrowNodes(children, isParagraphContent));
 };
 
-type NodePieces = { pieces: [number, InlineNode][]; min: number; max: number };
+/** A record cut at gaps: its pieces by region, and the first and last region it has leaves in. */
+export type NodePieces = { pieces: [number, InlineNode][]; min: number; max: number };
 
-const partitionNode = (node: InlineNode, gaps: readonly Gap[], cursor: Cursor): NodePieces => {
+/** A record's pieces between gaps, the cursor moved past it. */
+export const partitionNode = (
+  node: InlineNode,
+  gaps: readonly Gap[],
+  cursor: Cursor,
+): NodePieces => {
   if (node.type === "text" && node.text !== "") {
     const start = cursor.position;
     const pieces: [number, InlineNode][] = [];
@@ -528,3 +535,41 @@ export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
   walk(items);
   return out;
 };
+
+/** A leaf with the records holding it, outermost first, and its gaps. */
+export type LeafSpan = {
+  node: InlineNode;
+  ancestors: readonly InlineNode[];
+  before: Gap;
+  after: Gap;
+};
+
+/** Every leaf of a list in document order: run text by text node, units, zero-width leaves. */
+export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
+  const out: LeafSpan[] = [];
+  const cursor = startCursor();
+  const walk = (list: readonly InlineNode[], ancestors: readonly InlineNode[]): void => {
+    for (const node of list) {
+      if (kindOf(node) === "branch") {
+        walk(childNodes(node) ?? [], [...ancestors, node]);
+        continue;
+      }
+      const before = { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen };
+      advance(node, cursor);
+      out.push({
+        node,
+        ancestors,
+        before,
+        after: { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen },
+      });
+    }
+  };
+  walk(items, []);
+  return out;
+};
+
+/** Gaps in document order: by offset, then by the zero-width leaves before them. */
+export const compareGaps = (left: Gap, right: Gap): number =>
+  left.offset === right.offset
+    ? left.zeroWidthBefore - right.zeroWidthBefore
+    : left.offset - right.offset;

@@ -29,6 +29,7 @@ import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtensi
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
 import { encloseWholeControls } from "../contentControlRevisions";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
+import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
 export const suggestionModeKey = new PluginKey<SuggestionModeState>("suggestionMode");
@@ -398,6 +399,71 @@ export function handleSuggestionPaste(
 
   view.dispatch(tr.scrollIntoView());
   return true;
+}
+
+/**
+ * With track changes on, a paste into a table's cells (a cell selection, or a
+ * block of copied cells) replaces each cell's content the way a paste over a
+ * text selection does: the old content struck through, the pasted content
+ * after it as an insertion. When the pasted content is whole paragraphs, the
+ * last one ends the cell, so its paragraph mark is tracked as added too:
+ * rejecting then drops it and accepting joins the struck paragraphs into it.
+ */
+export function handleSuggestionTableCellPaste(
+  view: EditorView,
+  slice: Slice,
+  pluginState: SuggestionModeState,
+): boolean {
+  const insertionType = view.state.schema.marks["insertion"];
+  const deletionType = view.state.schema.marks["deletion"];
+  if (!insertionType || !deletionType) {
+    return false;
+  }
+  const revision = makeMarkAttrs(pluginState);
+  return pasteTableCells(
+    view.state,
+    slice,
+    (tr) => view.dispatch(tr.setMeta(SUGGESTION_META, true)),
+    {
+      revision,
+      replaceCellContent: (tr, cellPos, content) => {
+        const cell = tr.doc.nodeAt(cellPos);
+        if (!cell) {
+          return;
+        }
+        const { from, to } = cellPasteRange(cell, cellPos, content);
+        const mapFrom = tr.mapping.maps.length;
+        markRangeAsDeleted(tr, tr.doc, from, to, insertionType, deletionType, pluginState);
+        const insertFrom = tr.mapping.slice(mapFrom).map(to);
+        const sizeBefore = tr.doc.content.size;
+        tr.replaceRange(insertFrom, insertFrom, content);
+        const insertTo = insertFrom + (tr.doc.content.size - sizeBefore);
+        tr.removeMark(insertFrom, insertTo, deletionType);
+        markRangeAsInserted(
+          tr,
+          tr.doc,
+          insertFrom,
+          insertTo,
+          insertionType,
+          deletionType,
+          revision,
+        );
+        tr.doc.nodesBetween(insertFrom, insertTo, (node, pos) => {
+          if (
+            node.type.name === "paragraph" &&
+            pos >= insertFrom &&
+            pos + node.nodeSize <= insertTo &&
+            node.attrs["pPrMark"] == null
+          ) {
+            tr.setNodeAttribute(pos, "pPrMark", {
+              kind: "ins",
+              info: { id: revision.revisionId, author: revision.author, date: revision.date },
+            });
+          }
+        });
+      },
+    },
+  );
 }
 
 /**
@@ -1054,14 +1120,18 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
       },
 
       // Pasting over a non-empty selection must track the replaced text as a
-      // deletion (not destroy it) and the pasted text as an insertion. A
+      // deletion (not destroy it) and the pasted text as an insertion, and a
+      // paste into table cells the same way in every cell it lands on. A
       // collapsed cursor falls through to the default paste + catch-all.
       handlePaste(view: EditorView, _event: ClipboardEvent, slice: Slice) {
         const pluginState = suggestionModeKey.getState(view.state);
         if (!pluginState?.active) {
           return false;
         }
-        return handleSuggestionPaste(view, slice, pluginState);
+        return (
+          handleSuggestionTableCellPaste(view, slice, pluginState) ||
+          handleSuggestionPaste(view, slice, pluginState)
+        );
       },
     },
 

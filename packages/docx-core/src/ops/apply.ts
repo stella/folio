@@ -22,9 +22,17 @@
  * | `joinInline`        | `splitInline`                                             |
  * | `setRunProps`       | `setRunProps` per stretch of prior values, joining cuts   |
  * | `setParagraphProps` | `setParagraphProps` with the prior values                 |
- * | `splitBlock`        | `joinBlocks`                                              |
- * | `joinBlocks`        | `splitBlock` with the second paragraph's fields           |
+ * | `splitBlock`        | `joinBlocks`, then the kept half's review fields         |
+ * | `joinBlocks`        | `splitBlock` with the retired paragraph's fields, then  |
+ * |                     | the survivor's review fields                              |
  * | `replaceBlocks`     | `replaceBlocks`                                           |
+ * | `setParagraphReview`| `setParagraphReview`                                      |
+ * | `replaceInline`     | `replaceInline`                                           |
+ *
+ * A tracked operation (one carrying a `revision` stamp, see `review.ts`) is
+ * undone as follows: a tracked insertion by `deleteRange`, a tracked split by
+ * `joinBlocks`, a tracked deletion or run patch by `replaceInline`, and a
+ * tracked paragraph patch or join by `setParagraphReview`.
  *
  * Each inverse carries its precondition: a deletion the slice it removes, a
  * patch the values it replaces, a join the fields of the paragraph it merges
@@ -35,9 +43,17 @@
 
 import { Result } from "better-result";
 
-import type { Document, Paragraph, ParagraphFormatting, Run } from "../model/document";
+import {
+  type Document,
+  MAX_REVISION_ID,
+  type Paragraph,
+  type ParagraphFormatting,
+  type Run,
+  type RunPropertyChange,
+} from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
+  endsItsContainer,
   type ParagraphLocation,
   replaceParagraphs,
   sameBlockList,
@@ -45,18 +61,21 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { meetsContract, validateOpsDocument } from "./contract";
+import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
 import {
   collides,
   countIds,
   countKeys,
+  IDENTITY_SPACES,
   identityKeysIn,
   idKey,
   isParaId,
   packageIdentityKeys,
   packageParagraphIds,
   paragraphIdsIn,
+  slotKey,
 } from "./ids";
 import {
   concatIds,
@@ -95,6 +114,20 @@ import {
   type DocumentOpRefusalReason,
 } from "./refusal";
 import {
+  namesMarkFormatting,
+  paragraphPropertiesOf,
+  paragraphPropertyChange,
+  reviewFieldsOf,
+  sameParagraphProperties,
+  stampedRevisionIds,
+  stampInfo,
+  withMarkFormatting,
+  withReviewFields,
+  WRAP_KINDS,
+  type WrapKind,
+  wrapTracked,
+} from "./review";
+import {
   DOCUMENT_OP_TYPES,
   type DeleteRangeOp,
   type DocumentOp,
@@ -104,10 +137,16 @@ import {
   type JoinInlineOp,
   type NewIds,
   type OpStory,
+  type ParagraphReviewFields,
   type ReplaceBlocksOp,
+  type ReplaceInlineOp,
+  type RevisionStamp,
   type SetParagraphPropsOp,
+  type SetParagraphReviewOp,
   type SetRunPropsOp,
   type SplitBlockOp,
+  SPLIT_HALVES,
+  type SplitHalf,
   type SplitInlineOp,
   type SplitParagraphFields,
   type TextPosition,
@@ -120,9 +159,17 @@ export type AppliedDocumentOp = {
   /** Apply in order to restore the input document. */
   inverse: readonly DocumentOp[];
   touched: TouchedBlocks;
+  /**
+   * The revision ids of the tracked changes the operation recorded, in
+   * document order: its stamp's id and the new ids its other records took.
+   * Empty for a direct operation, and for a tracked one that merged into a
+   * change carrying the same stamp.
+   */
+  revisions: readonly number[];
 };
 
-type Applied = Result<AppliedDocumentOp, DocumentOpRefusal>;
+/** What one operation did, before the revisions it recorded are read off it. */
+type Applied = Result<DocumentEdit, DocumentOpRefusal>;
 
 const UNTOUCHED: TouchedBlocks = Object.freeze({ modified: [], inserted: [], removed: [] });
 
@@ -137,6 +184,61 @@ const refusal = (
 
 const refuse = (op: DocumentOp, reason: DocumentOpRefusalReason, message: string): Applied =>
   Result.err(refusal(op, reason, message));
+
+/**
+ * Whether a tracked operation's stamp can name the first record it creates:
+ * a revision id in range that no record in the package carries.
+ */
+const stampRefusal = (
+  document: Document,
+  op: DocumentOp,
+  stamp: RevisionStamp,
+): DocumentOpRefusal | undefined => {
+  // A revision id reserves no value: every integer in range names a record.
+  const revisionId = stamp.id;
+  if (!Number.isInteger(revisionId) || revisionId < 0 || revisionId > MAX_REVISION_ID) {
+    return refusal(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+      `${revisionId} cannot be a revision id.`,
+    );
+  }
+  const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
+  if (packageIdentityKeys(document.package).includes(key)) {
+    return refusal(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      `Revision id ${stamp.id} is already used in the package.`,
+    );
+  }
+  return undefined;
+};
+
+/** The replacement that gives a paragraph back the content it had. */
+const contentRestoring = (
+  story: OpStory,
+  result: Paragraph,
+  original: Paragraph,
+): ReplaceInlineOp => ({
+  type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+  story,
+  blockId: result.paraId ?? original.paraId ?? "",
+  expected: result.content,
+  content: original.content,
+});
+
+/** The review fields' setting that gives a paragraph back the ones it had. */
+const reviewRestoring = (
+  story: OpStory,
+  result: Paragraph,
+  original: Paragraph,
+): SetParagraphReviewOp => ({
+  type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+  story,
+  blockId: result.paraId ?? original.paraId ?? "",
+  expected: reviewFieldsOf(result),
+  review: reviewFieldsOf(original),
+});
 
 /** Characters `insertText` does not carry: each is an inline atom of its own. */
 const NON_TEXT_CHARACTER_PATTERN = /[\t\n\r]/u;
@@ -429,20 +531,77 @@ type InsertedOptions = {
   start: Gap;
   end: Gap;
   newIds: NewIds | undefined;
+  revision: RevisionStamp | undefined;
 };
 
-/** Commit an insertion, recording the one deletion that undoes it. */
-const inserted = ({
-  document,
-  op,
-  story,
-  location,
-  content,
-  start,
-  end,
-  newIds,
-}: InsertedOptions): Applied =>
-  editOne(
+type Wrapped = Result<Paragraph["content"] | undefined, DocumentOpRefusal>;
+
+/**
+ * Content with the leaves between two gaps recorded as a tracked change;
+ * `undefined` when there is nothing to record.
+ */
+const wrappedContent = (
+  op: DocumentOp,
+  options: {
+    items: Paragraph["content"];
+    from: Gap;
+    to: Gap;
+    kind: WrapKind;
+    stamp: RevisionStamp;
+  },
+): Wrapped => {
+  const wrapped = wrapTracked(options);
+  switch (wrapped.kind) {
+    case "wrapped":
+      return Result.ok(wrapped.content);
+    case "unchanged":
+      return Result.ok(undefined);
+    case "refused":
+      return Result.err(
+        refusal(
+          op,
+          wrapped.reason,
+          wrapped.reason === DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE
+            ? "A tracked change cannot hold a comment boundary or reference."
+            : "The tracked edit falls inside tracked-removed content.",
+        ),
+      );
+    default: {
+      const unreachable: never = wrapped;
+      return unreachable;
+    }
+  }
+};
+
+/**
+ * Commit an insertion, recording the one deletion that undoes it. A tracked
+ * insertion is wrapped first; the deletion removes the wrapper with it.
+ */
+const inserted = (options: InsertedOptions): Applied => {
+  const { document, op, story, location, start, end, newIds, revision } = options;
+  let { content } = options;
+  if (revision !== undefined) {
+    // The wrap cuts the records again; an insertion the direct one refuses stays refused.
+    if (insertionInverse(location.paragraph.content, content, start, end) === undefined) {
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "The insertion would merge records that were separate.",
+      );
+    }
+    const wrapped = wrappedContent(op, {
+      items: content,
+      from: start,
+      to: end,
+      kind: WRAP_KINDS.INSERTION,
+      stamp: revision,
+    });
+    if (wrapped.isErr()) {
+      return Result.err(wrapped.error);
+    }
+    content = wrapped.value ?? content;
+  }
+  return editOne(
     {
       document,
       op,
@@ -475,6 +634,7 @@ const inserted = ({
       return Result.ok([deletion]);
     },
   );
+};
 
 const insertText = (document: Document, op: InsertTextOp): Applied => {
   if (
@@ -510,6 +670,7 @@ const insertText = (document: Document, op: InsertTextOp): Applied => {
     start,
     end,
     newIds: op.newIds,
+    revision: op.revision,
   });
 };
 
@@ -572,6 +733,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     start: gap,
     end: gapAfterInserted(gap, slice.content),
     newIds: op.newIds,
+    revision: op.revision,
   });
 };
 
@@ -614,6 +776,13 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   if (!isCount(join)) {
     return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A join depth is a count.");
   }
+  if (op.revision !== undefined && join !== 0) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "A tracked deletion joins nothing.",
+    );
+  }
   const located = locateRange(document, op, op.from, op.to);
   if (located.isErr()) {
     return Result.err(located.error);
@@ -636,6 +805,32 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
   }
   if (removed.content.length === 0) {
     return unchanged(document);
+  }
+  if (op.revision !== undefined) {
+    const wrapped = wrappedContent(op, {
+      items: paragraph.content,
+      from,
+      to,
+      kind: WRAP_KINDS.DELETION,
+      stamp: op.revision,
+    });
+    if (wrapped.isErr()) {
+      return Result.err(wrapped.error);
+    }
+    if (wrapped.value === undefined) {
+      return unchanged(document);
+    }
+    return editOne(
+      {
+        document,
+        op,
+        story,
+        at: location,
+        paragraph: withContent(paragraph, wrapped.value),
+        newIds: op.newIds,
+      },
+      (result) => Result.ok([contentRestoring(story, result, paragraph)]),
+    );
   }
   let content = remaining;
   let retired: NewIds = {};
@@ -769,6 +964,14 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
   if (!isCount(joinStart) || !isCount(joinEnd)) {
     return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A join depth is a count.");
   }
+  const { revision } = op;
+  if (revision !== undefined && (joinStart !== 0 || joinEnd !== 0)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "A tracked patch joins nothing.",
+    );
+  }
   const located = locateRange(document, op, op.from, op.to);
   if (located.isErr()) {
     return Result.err(located.error);
@@ -789,6 +992,41 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
       `The runs of ${op.from.blockId} state other values than expected.`,
+    );
+  }
+  if (revision !== undefined) {
+    // A run already carrying a property change keeps it, and the formatting it started from.
+    const recordChange = (patchedRun: Run, previous: Run): Run => {
+      if ((previous.propertyChanges?.length ?? 0) > 0) {
+        return patchedRun;
+      }
+      const change: RunPropertyChange = { type: "runPropertyChange", info: stampInfo(revision) };
+      if (previous.formatting !== undefined) {
+        change.previousFormatting = previous.formatting;
+      }
+      return { ...patchedRun, propertyChanges: [change] };
+    };
+    const tracked = patchRunsBetween(
+      paragraph.content,
+      from,
+      to,
+      op.patch,
+      op.whenEmpty,
+      recordChange,
+    );
+    if (tracked === undefined) {
+      return unchanged(document);
+    }
+    return editOne(
+      {
+        document,
+        op,
+        story,
+        at: location,
+        paragraph: withContent(paragraph, tracked.content),
+        newIds: op.newIds,
+      },
+      (result) => Result.ok([contentRestoring(story, result, paragraph)]),
     );
   }
   const patched = patchRunsBetween(paragraph.content, from, to, op.patch, op.whenEmpty);
@@ -881,9 +1119,35 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
       `${op.blockId} states other paragraph properties than expected.`,
     );
   }
+  const { revision } = op;
+  if (revision !== undefined && namesMarkFormatting(op.patch)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A paragraph property change does not record the paragraph mark's run properties.",
+    );
+  }
   const formatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
   if (structurallyEqual(formatting ?? {}, paragraph.formatting ?? {})) {
     return unchanged(document);
+  }
+  if (revision !== undefined) {
+    const next = withParagraphFormatting(paragraph, formatting);
+    // A paragraph already carrying a property change keeps it, and the formatting it started from.
+    if ((paragraph.propertyChanges?.length ?? 0) === 0) {
+      next.propertyChanges = [paragraphPropertyChange(stampInfo(revision), paragraph.formatting)];
+    }
+    return editOne(
+      {
+        document,
+        op,
+        story: op.story,
+        at: located.value,
+        paragraph: next,
+        newIds: undefined,
+      },
+      (result) => Result.ok([reviewRestoring(op.story, result, paragraph)]),
+    );
   }
   return editOne(
     {
@@ -919,6 +1183,89 @@ const splitFieldsOf = (paragraph: Paragraph): SplitParagraphFields => {
   return fields;
 };
 
+/**
+ * The paragraph properties two paragraphs joined have: the first's paragraph
+ * properties with the second's mark run properties, since the mark that stays
+ * is the second's. A first paragraph that holds no content brings nothing:
+ * the second keeps its own.
+ */
+const joinedFormatting = (first: Paragraph, second: Paragraph) =>
+  paragraphLength(first) === 0
+    ? second.formatting
+    : withMarkFormatting(paragraphPropertiesOf(first.formatting), second.formatting);
+
+/** The review fields of two paragraphs once joined: the first's properties, the second's mark. */
+const joinedReview = (first: Paragraph, second: Paragraph): ParagraphReviewFields => {
+  const review: ParagraphReviewFields = {};
+  const formatting = joinedFormatting(first, second);
+  if (formatting !== undefined) review.formatting = formatting;
+  if (second.propertyChanges !== undefined) review.propertyChanges = second.propertyChanges;
+  if (second.pPrMark !== undefined) review.pPrMark = second.pPrMark;
+  return review;
+};
+
+/** A review-field setting from `from` to `to`; none when they are the same. */
+const reviewSetting = (
+  story: OpStory,
+  blockId: string,
+  from: ParagraphReviewFields,
+  to: ParagraphReviewFields,
+): SetParagraphReviewOp[] =>
+  structurallyEqual(from, to)
+    ? []
+    : [
+        {
+          type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          story,
+          blockId,
+          expected: from,
+          review: to,
+        },
+      ];
+
+const isSplitHalf = (value: unknown): value is SplitHalf =>
+  value === SPLIT_HALVES.FIRST || value === SPLIT_HALVES.SECOND;
+
+type TrackSplitOptions = {
+  op: SplitBlockOp;
+  stamp: RevisionStamp;
+  paragraph: Paragraph;
+  /** The halves, recorded as a tracked split in place. */
+  first: Paragraph;
+  /** The half carrying the new id. */
+  made: Paragraph;
+};
+
+/**
+ * Record a split as tracked: the new mark is an insertion, and the new
+ * paragraph records a property change from the source's properties when it
+ * states other ones and carries no change already. Returns the refusal when
+ * the operation states a mark or property change of its own.
+ */
+const trackSplit = ({
+  op,
+  stamp,
+  paragraph,
+  first,
+  made,
+}: TrackSplitOptions): DocumentOpRefusal | undefined => {
+  if (op.firstMark !== undefined || (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
+    return refusal(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      "A tracked split records its own mark and property change.",
+    );
+  }
+  first.pPrMark = { kind: "ins", info: stampInfo(stamp) };
+  if (
+    !sameParagraphProperties(made.formatting, paragraph.formatting) &&
+    (made.propertyChanges?.length ?? 0) === 0
+  ) {
+    made.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), paragraph.formatting)];
+  }
+  return undefined;
+};
+
 const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   if (!isParaId(op.newBlockId)) {
     return refuse(
@@ -934,33 +1281,58 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
       `${op.newBlockId} is already used in the package.`,
     );
   }
+  if (op.newHalf !== undefined && !isSplitHalf(op.newHalf)) {
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A half is first or second.");
+  }
   const located = locatePosition(document, op, op.at, "insertion");
   if (located.isErr()) {
     return Result.err(located.error);
   }
   const { location, gap } = located.value;
   const { paragraph } = location;
-  const cut = cutAt(paragraph.content, gap);
-  const first: Paragraph = { ...paragraph, content: cut.before };
-  delete first.sectionProperties;
-  delete first.pPrMark;
-  if (op.firstMark !== undefined) {
-    first.pPrMark = op.firstMark;
+  const newHalf =
+    op.newHalf ??
+    (gap.offset === paragraphLength(paragraph) ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST);
+  if (newHalf === SPLIT_HALVES.SECOND && (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The second half takes the paragraph's property changes with its mark.",
+    );
   }
+  const cut = cutAt(paragraph.content, gap);
   const fields =
     op.newParagraph ??
     (paragraph.formatting === undefined ? {} : { formatting: paragraph.formatting });
-  const second: Paragraph = {
-    ...fields,
-    type: "paragraph",
-    paraId: op.newBlockId,
-    content: cut.after,
-  };
-  if (paragraph.sectionProperties !== undefined) {
-    second.sectionProperties = paragraph.sectionProperties;
+  const made: Paragraph = { ...fields, type: "paragraph", paraId: op.newBlockId, content: [] };
+  // The paragraph's own fields stay with the half keeping its id; the mark, the
+  // section break and the pending property changes end the second half.
+  let first: Paragraph;
+  let second: Paragraph;
+  if (newHalf === SPLIT_HALVES.FIRST) {
+    first = { ...made, content: cut.before };
+    second = { ...paragraph, content: cut.after };
+  } else {
+    first = { ...paragraph, content: cut.before };
+    delete first.sectionProperties;
+    delete first.pPrMark;
+    delete first.propertyChanges;
+    second = { ...made, content: cut.after };
+    if (paragraph.propertyChanges !== undefined) second.propertyChanges = paragraph.propertyChanges;
+    if (paragraph.sectionProperties !== undefined) {
+      second.sectionProperties = paragraph.sectionProperties;
+    }
+    if (paragraph.pPrMark !== undefined) second.pPrMark = paragraph.pPrMark;
   }
-  if (paragraph.pPrMark !== undefined) {
-    second.pPrMark = paragraph.pPrMark;
+  if (op.firstMark !== undefined) {
+    first.pPrMark = op.firstMark;
+  }
+  if (op.revision !== undefined) {
+    const madeHalf = newHalf === SPLIT_HALVES.FIRST ? first : second;
+    const tracked = trackSplit({ op, stamp: op.revision, paragraph, first, made: madeHalf });
+    if (tracked !== undefined) {
+      return Result.err(tracked);
+    }
   }
   const committed = commit({
     document,
@@ -974,19 +1346,98 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   if (committed.isErr()) {
     return Result.err(committed.error);
   }
-  const [, placedSecond] = committed.value.paragraphs;
+  const [placedFirst = first, placedSecond = second] = committed.value.paragraphs;
+  const kept = newHalf === SPLIT_HALVES.FIRST ? placedSecond : placedFirst;
+  const madePlaced = newHalf === SPLIT_HALVES.FIRST ? placedFirst : placedSecond;
+  const keptId = paragraph.paraId ?? op.at.blockId;
   return Result.ok({
     document: committed.value.document,
     inverse: [
       {
         type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
         story: op.at.story,
-        blockId: paragraph.paraId ?? op.at.blockId,
-        nextBlockId: op.newBlockId,
+        blockId: placedFirst.paraId ?? "",
+        nextBlockId: placedSecond.paraId ?? "",
         depth: cut.through.length,
-        expectedSecond: splitFieldsOf(placedSecond ?? second),
+        survivor: newHalf === SPLIT_HALVES.FIRST ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST,
+        expectedRetired: splitFieldsOf(madePlaced),
+        expectedSurvivor: reviewFieldsOf(kept),
       },
+      ...reviewSetting(
+        op.at.story,
+        kept.paraId ?? keptId,
+        joinedReview(placedFirst, placedSecond),
+        reviewFieldsOf(paragraph),
+      ),
     ],
+    touched: committed.value.touched,
+  });
+};
+
+type TrackJoinOptions = {
+  document: Document;
+  op: JoinBlocksOp;
+  stamp: RevisionStamp;
+  at: ParagraphLocation;
+  leading: Paragraph;
+  trailing: Paragraph;
+};
+
+/**
+ * Record a join as tracked: the first paragraph's mark becomes a deletion,
+ * and the second takes the first's paragraph properties as a property
+ * change, so accepting leaves what the direct join leaves: the second
+ * paragraph, with the first's properties.
+ */
+const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOptions): Applied => {
+  const depth = op.depth ?? 0;
+  if (!isCount(depth)) {
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A join depth is a count.");
+  }
+  if ((op.survivor ?? SPLIT_HALVES.SECOND) !== SPLIT_HALVES.SECOND) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "Resolving a tracked join leaves the second paragraph.",
+    );
+  }
+  if (leading.pPrMark !== undefined) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      `The mark of ${op.blockId} already carries a tracked change.`,
+    );
+  }
+  const first: Paragraph = { ...leading, pPrMark: { kind: "del", info: stampInfo(stamp) } };
+  let second = trailing;
+  const formatting = joinedFormatting(leading, trailing);
+  if (!sameParagraphProperties(formatting, trailing.formatting)) {
+    second = withParagraphFormatting(trailing, formatting);
+    // A paragraph already carrying a property change keeps it, and the formatting it started from.
+    if ((trailing.propertyChanges?.length ?? 0) === 0) {
+      second.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), trailing.formatting)];
+    }
+  }
+  const committed = commit({
+    document,
+    op,
+    story: op.story,
+    at,
+    before: [leading, trailing],
+    after: [first, second],
+    newIds: op.newIds,
+  });
+  if (committed.isErr()) {
+    return Result.err(committed.error);
+  }
+  const [placedFirst = first, placedSecond = second] = committed.value.paragraphs;
+  const inverse: SetParagraphReviewOp[] = [reviewRestoring(op.story, placedFirst, leading)];
+  if (second !== trailing) {
+    inverse.push(reviewRestoring(op.story, placedSecond, trailing));
+  }
+  return Result.ok({
+    document: committed.value.document,
+    inverse,
     touched: committed.value.touched,
   });
 };
@@ -1020,26 +1471,52 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
       `${op.blockId} ends a section.`,
     );
   }
+  const survivorSide = op.survivor ?? SPLIT_HALVES.SECOND;
+  if (!isSplitHalf(survivorSide)) {
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A half is first or second.");
+  }
+  const survivor = survivorSide === SPLIT_HALVES.SECOND ? trailing : leading;
+  const retired = survivorSide === SPLIT_HALVES.SECOND ? leading : trailing;
   if (
-    op.expectedSecond !== undefined &&
+    op.expectedRetired !== undefined &&
     !equalForStaleness(
-      { type: "paragraph", ...splitFieldsOf(trailing) },
-      { type: "paragraph", ...op.expectedSecond },
+      { type: "paragraph", ...splitFieldsOf(retired) },
+      { type: "paragraph", ...op.expectedRetired },
     )
   ) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
-      `${op.nextBlockId} states other fields than expected.`,
+      `${retired.paraId ?? ""} states other fields than expected.`,
     );
   }
-  const trailingId = trailing.paraId ?? "";
-  // The split that undoes the join creates the second paragraph again, under its id.
-  if (!isParaId(trailingId)) {
+  if (
+    op.expectedSurvivor !== undefined &&
+    !equalForStaleness(reviewFieldsOf(survivor), op.expectedSurvivor)
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      `${survivor.paraId ?? ""} states other review fields than expected.`,
+    );
+  }
+  if (op.revision !== undefined) {
+    return trackJoin({
+      document,
+      op,
+      stamp: op.revision,
+      at: first.value,
+      leading,
+      trailing,
+    });
+  }
+  const retiredId = retired.paraId ?? "";
+  // The split that undoes the join creates the retired paragraph again, under its id.
+  if (!isParaId(retiredId)) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
-      `${trailingId} could not name the paragraph again.`,
+      `${retiredId} could not name the paragraph again.`,
     );
   }
   const depth = op.depth ?? 0;
@@ -1054,31 +1531,47 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   if (merged.isErr()) {
     return Result.err(merged.error);
   }
-  const joined: Paragraph = { ...leading, content: merged.value.content };
-  delete joined.pPrMark;
+  // The survivor's identity; the first's properties; the second's mark, section
+  // break and pending property changes.
+  const joined = withReviewFields(
+    { ...survivor, content: merged.value.content },
+    joinedReview(leading, trailing),
+  );
+  delete joined.sectionProperties;
   if (trailing.sectionProperties !== undefined) {
     joined.sectionProperties = trailing.sectionProperties;
   }
-  if (trailing.pPrMark !== undefined) {
-    joined.pPrMark = trailing.pPrMark;
-  }
   const length = paragraphLength(leading);
+  const newHalf = survivorSide === SPLIT_HALVES.SECOND ? SPLIT_HALVES.FIRST : SPLIT_HALVES.SECOND;
+  const retiredFields = splitFieldsOf(retired);
+  if (newHalf === SPLIT_HALVES.SECOND) {
+    // The second half takes the property changes back with its mark.
+    delete retiredFields.propertyChanges;
+  }
   const split: SplitBlockOp = {
     type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
     at: {
       story: op.story,
-      blockId: leading.paraId ?? op.blockId,
+      blockId: survivor.paraId ?? "",
       offset: length,
       zeroWidthBefore: zeroWidthLeavesAt(leading.content, length).length,
     },
-    newBlockId: trailingId,
-    newParagraph: splitFieldsOf(trailing),
+    newBlockId: retiredId,
+    newHalf,
+    newParagraph: retiredFields,
   };
   if (leading.pPrMark !== undefined) {
     split.firstMark = leading.pPrMark;
   }
   if (namesIds(merged.value.retired)) {
     split.newIds = merged.value.retired;
+  }
+  // What the split leaves on the survivor's half, before its own fields are given back.
+  const splitReview: ParagraphReviewFields = reviewFieldsOf(joined);
+  if (survivorSide === SPLIT_HALVES.FIRST) {
+    delete splitReview.propertyChanges;
+    delete splitReview.pPrMark;
+    if (leading.pPrMark !== undefined) splitReview.pPrMark = leading.pPrMark;
   }
   const committed = commit({
     document,
@@ -1094,7 +1587,10 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   return Result.ok({
     document: committed.value.document,
-    inverse: [split],
+    inverse: [
+      split,
+      ...reviewSetting(op.story, survivor.paraId ?? "", splitReview, reviewFieldsOf(survivor)),
+    ],
     touched: committed.value.touched,
   });
 };
@@ -1240,6 +1736,128 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
   });
 };
 
+/** Revision and control ids a paragraph's own review fields carry, as slot keys. */
+const reviewKeysOf = (review: ParagraphReviewFields): string[] =>
+  identityKeysIn({ propertyChanges: review.propertyChanges, pPrMark: review.pPrMark });
+
+const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Applied => {
+  const located = locate(document, op, op.story, op.blockId);
+  if (located.isErr()) {
+    return Result.err(located.error);
+  }
+  const { paragraph } = located.value;
+  if (!equalForStaleness(reviewFieldsOf(paragraph), op.expected)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      `${op.blockId} states other review fields than expected.`,
+    );
+  }
+  const review = structuredClone(op.review);
+  const next = withReviewFields(paragraph, review);
+  if (structurallyEqual(next, paragraph)) {
+    return unchanged(document);
+  }
+  if (
+    review.pPrMark !== undefined &&
+    !structurallyEqual(review.pPrMark, paragraph.pPrMark) &&
+    endsItsContainer(storyBody(document, op.story), located.value)
+  ) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+      `${op.blockId} ends its container: there is no next paragraph its mark could join.`,
+    );
+  }
+  const taken = identitiesOutside(document, [paragraph]);
+  for (const key of identityKeysIn(paragraph.content)) taken.add(key);
+  const incoming = reviewKeysOf(review);
+  if (incoming.some((key) => taken.has(key)) || new Set(incoming).size !== incoming.length) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      "The review fields carry a revision id already used in the package.",
+    );
+  }
+  return Result.ok({
+    document: replaceParagraphs({
+      document,
+      story: op.story,
+      at: located.value,
+      count: 1,
+      replacement: [next],
+    }),
+    inverse: [reviewRestoring(op.story, next, paragraph)],
+    touched: touchedBetween([paragraph], [next]),
+  });
+};
+
+const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
+  const located = locate(document, op, op.story, op.blockId);
+  if (located.isErr()) {
+    return Result.err(located.error);
+  }
+  const { paragraph } = located.value;
+  if (!equalForStaleness(paragraph.content, op.expected)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STALE,
+      `${op.blockId} holds other content than expected.`,
+    );
+  }
+  const content = structuredClone(op.content);
+  if (holdsEmptyRecord(content)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+      "The content holds an empty run or text node.",
+    );
+  }
+  if (textsIn(content).some(hasIllegalXmlCharacters)) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_TEXT,
+      "The content holds text that cannot be written.",
+    );
+  }
+  if (structurallyEqual(content, paragraph.content)) {
+    return unchanged(document);
+  }
+  const remaining = countIds(packageParagraphIds(document.package));
+  for (const id of paragraphIdsIn(paragraph.content)) {
+    remaining.set(idKey(id), (remaining.get(idKey(id)) ?? 1) - 1);
+  }
+  if (collides(remaining, paragraphIdsIn(content))) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      "The content holds a paragraph id the package already uses.",
+    );
+  }
+  const taken = identitiesOutside(document, [paragraph]);
+  for (const key of reviewKeysOf(reviewFieldsOf(paragraph))) taken.add(key);
+  const incoming = identityKeysIn(content);
+  if (incoming.some((key) => taken.has(key)) || new Set(incoming).size !== incoming.length) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      "The content carries a revision or content-control id already used in the package.",
+    );
+  }
+  const next = withContent(paragraph, content);
+  return Result.ok({
+    document: replaceParagraphs({
+      document,
+      story: op.story,
+      at: located.value,
+      count: 1,
+      replacement: [next],
+    }),
+    inverse: [contentRestoring(op.story, next, paragraph)],
+    touched: touchedBetween([paragraph], [next]),
+  });
+};
+
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
@@ -1262,11 +1880,52 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
       return joinBlocks(document, op);
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
       return replaceBlocks(document, op);
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+      return setParagraphReview(document, op);
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+      return replaceInline(document, op);
     default: {
       const unreachable: never = op;
       return unreachable;
     }
   }
+};
+
+/** The stamp of a tracked operation; `undefined` for a direct one. */
+export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_TEXT:
+    case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+    case DOCUMENT_OP_TYPES.DELETE_RANGE:
+    case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+      return op.revision;
+    case DOCUMENT_OP_TYPES.SPLIT_INLINE:
+    case DOCUMENT_OP_TYPES.JOIN_INLINE:
+    case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+      return undefined;
+    default: {
+      const unreachable: never = op;
+      return unreachable;
+    }
+  }
+};
+
+/** The revision ids a tracked operation's records took. */
+const recordedRevisions = (
+  before: Document,
+  edit: DocumentEdit,
+  stamp: RevisionStamp,
+): number[] => {
+  const touched = new Set([...edit.touched.modified, ...edit.touched.inserted].map(idKey));
+  const paragraphs = storyParagraphs(edit.document.package.document)
+    .map(({ paragraph }) => paragraph)
+    .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
+  return stampedRevisionIds(paragraphs, stamp, new Set(packageIdentityKeys(before.package)));
 };
 
 /** Apply one operation to a document that meets the seed contract. */
@@ -1276,58 +1935,44 @@ export const applyDocumentOp = (
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   const valid = validateOpsDocument(document);
   if (valid.isErr()) {
-    return refuse(op, valid.error.reason, valid.error.message);
+    return Result.err(refusal(op, valid.error.reason, valid.error.message));
+  }
+  const stamp = stampOf(op);
+  const badStamp = stamp === undefined ? undefined : stampRefusal(document, op, stamp);
+  if (badStamp !== undefined) {
+    return Result.err(badStamp);
   }
   const applied = dispatch(document, op);
-  if (applied.isOk()) {
-    meetsContract(applied.value.document);
+  if (applied.isErr()) {
+    return Result.err(applied.error);
   }
-  return applied;
+  meetsContract(applied.value.document);
+  return Result.ok({
+    ...applied.value,
+    revisions: stamp === undefined ? [] : recordedRevisions(document, applied.value, stamp),
+  });
 };
-
-type TouchedState = "modified" | "inserted" | "removed";
-
-const TOUCH_TRANSITIONS = {
-  modified: { modified: "modified", inserted: "modified", removed: "removed" },
-  inserted: { modified: "inserted", inserted: "inserted", removed: undefined },
-  removed: { modified: "modified", inserted: "modified", removed: "removed" },
-} as const satisfies Record<TouchedState, Record<TouchedState, TouchedState | undefined>>;
 
 /**
  * Apply operations in order, atomically: the first refusal is returned and
- * the document is unchanged. The inverse undoes the whole list.
+ * the document is unchanged. The inverse undoes the whole list, and
+ * `revisions` lists each operation's in turn.
  */
 export const applyDocumentOps = (
   document: Document,
   ops: readonly DocumentOp[],
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
   let current = document;
-  const inverses: (readonly DocumentOp[])[] = [];
-  const touched = new Map<string, TouchedState>();
+  const edits: DocumentEdit[] = [];
+  const revisions: number[] = [];
   for (const op of ops) {
     const applied = applyDocumentOp(current, op);
     if (applied.isErr()) {
       return applied;
     }
     current = applied.value.document;
-    inverses.push(applied.value.inverse);
-    for (const state of ["modified", "inserted", "removed"] as const) {
-      for (const id of applied.value.touched[state]) {
-        const previous = touched.get(id);
-        const nextState = previous === undefined ? state : TOUCH_TRANSITIONS[previous][state];
-        if (nextState === undefined) {
-          touched.delete(id);
-        } else {
-          touched.set(id, nextState);
-        }
-      }
-    }
+    edits.push(applied.value);
+    revisions.push(...applied.value.revisions);
   }
-  const ids = (state: TouchedState): string[] =>
-    [...touched].flatMap(([id, value]) => (value === state ? [id] : []));
-  return Result.ok({
-    document: current,
-    inverse: inverses.toReversed().flat(),
-    touched: { modified: ids("modified"), inserted: ids("inserted"), removed: ids("removed") },
-  });
+  return Result.ok({ ...combineEdits(document, edits), revisions });
 };

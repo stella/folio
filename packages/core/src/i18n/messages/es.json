@@ -339,8 +339,8 @@
       "editingDescription": "Editar el documento directamente",
       "outlineTitle": "Esquema",
       "showDocumentOutline": "Esquema del documento",
-      "suggesting": "Sugerencias",
-      "suggestingDescription": "Las ediciones se convierten en sugerencias con seguimiento",
+      "suggesting": "Control de cambios",
+      "suggestingDescription": "Las ediciones se registran como cambios controlados",
       "viewing": "Visualización",
       "viewingDescription": "Leer o imprimir el documento final"
     },
