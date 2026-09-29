@@ -1,6 +1,6 @@
 /**
- * The laws every schema-version-1 operation keeps, over synthetic documents
- * built from the model.
+ * The laws every direct operation keeps, over synthetic documents built from
+ * the model (tracked operations: `review.property.test.ts`).
  *
  * 1. **Inverse.** Applying an operation and then its recorded inverse gives
  *    back a document structurally equal to the input, every unmodelled and
@@ -94,6 +94,8 @@ const INVERSE_KINDS = {
   splitBlock: ["joinBlocks"],
   joinBlocks: ["splitBlock"],
   replaceBlocks: ["replaceBlocks"],
+  setParagraphReview: ["setParagraphReview"],
+  replaceInline: ["replaceInline"],
 } as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
@@ -133,6 +135,8 @@ const namedIds = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
       return new Set([op.from.blockId, op.to.blockId]);
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+    case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return new Set([op.blockId]);
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
       return new Set([op.at.blockId, op.newBlockId]);
@@ -486,6 +490,8 @@ describe("document operations", () => {
             break;
           }
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
+          case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
+          case DOCUMENT_OP_TYPES.REPLACE_INLINE:
             break;
           default: {
             const unreachable: never = op;

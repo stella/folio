@@ -474,11 +474,15 @@ export const insertTextInContent = (
 // Run properties
 // ---------------------------------------------------------------------------
 
+/** A run a patch changed, given what else the patch records on it, from the run it was. */
+export type RunDecoration = (patched: Run, previous: Run) => Run;
+
 const patchRunsIn = (
   nodes: readonly InlineNode[],
   patch: RunPropsPatch,
   whenEmpty: EmptyPropertySet | undefined,
   prior: Map<Run, TextFormatting | undefined>,
+  decorate: RunDecoration | undefined,
 ): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
@@ -488,14 +492,15 @@ const patchRunsIn = (
         out.push(node);
         continue;
       }
-      const run = withRunFormatting(node, formatting);
+      const patchedRun = withRunFormatting(node, formatting);
+      const run = decorate === undefined ? patchedRun : decorate(patchedRun, node);
       prior.set(run, node.formatting);
       out.push(run);
       continue;
     }
     if (isParagraphContent(node) && isInlineContainer(node)) {
       const children = childrenOf(node);
-      const next = patchRunsIn(children, patch, whenEmpty, prior);
+      const next = patchRunsIn(children, patch, whenEmpty, prior, decorate);
       const same = next.every((child, index) => child === children[index]);
       out.push(same ? node : withChildren(node, asParagraphContent(next)));
       continue;
@@ -541,6 +546,8 @@ export type RunPatchSpan = {
  * `restoring` gives the changed runs back the values the patch replaced, one
  * patch per stretch of adjacent runs that had the same values. A run the
  * patch left alone ends a stretch, so a restoring patch never reaches it.
+ *
+ * `decorate` adds to each changed run what a tracked patch records on it.
  */
 export const patchRunsBetween = (
   items: readonly ParagraphContent[],
@@ -548,11 +555,12 @@ export const patchRunsBetween = (
   to: Gap,
   patch: RunPropsPatch,
   whenEmpty: EmptyPropertySet | undefined,
+  decorate?: RunDecoration,
 ): { content: ParagraphContent[]; restoring: RunPatchSpan[] } | undefined => {
   const gaps = [from, to];
   const [before = [], middle = [], after = []] = partitionContent(items, gaps);
   const prior = new Map<Run, TextFormatting | undefined>();
-  const patchedMiddle = patchRunsIn(middle, patch, whenEmpty, prior);
+  const patchedMiddle = patchRunsIn(middle, patch, whenEmpty, prior, decorate);
   if (prior.size === 0) {
     return undefined;
   }
