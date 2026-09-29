@@ -30,7 +30,7 @@ import type { DocumentShape } from "./documentShapes";
 import {
   createHarnessState,
   EDITOR_MODES,
-  harnessManager,
+  harnessRuntimeManager,
   HeadlessEditorView,
   modelMarkdown,
   parseShapeDocument,
@@ -57,7 +57,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
-import type { Comment, Document } from "../types/document";
+import type { BlockContent, Comment, Document } from "../types/document";
 
 // ============================================================================
 // OPERATIONS
@@ -103,15 +103,59 @@ const registryCommand = (
   id: variant === undefined ? `command:${name}` : `command:${name}(${variant})`,
   placements,
   run: ({ view }) =>
-    harnessManager().requireCommand(name)(...args)(view.state, view.dispatch, view as never),
+    harnessRuntimeManager(view.state).requireCommand(name)(...args)(
+      view.state,
+      view.dispatch,
+      view as never,
+    ),
 });
+
+/**
+ * Insert a note reference the way a host does: the note itself goes into the
+ * package the document saves against, and the command marks its reference.
+ */
+const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation => {
+  const name = kind === "footnote" ? "insertFootnote" : "insertEndnote";
+  return {
+    id: `command:${name}`,
+    placements: CARET,
+    run: ({ view, base }) => {
+      const footnotes = base.package.footnotes ?? [];
+      const endnotes = base.package.endnotes ?? [];
+      const existing = kind === "footnote" ? footnotes : endnotes;
+      const id = Math.max(0, ...existing.map((note) => note.id)) + 1;
+      const applied = harnessRuntimeManager(view.state).requireCommand(name)(id)(
+        view.state,
+        view.dispatch,
+        view as never,
+      );
+      if (applied) {
+        const content: BlockContent[] = [
+          {
+            type: "paragraph",
+            // A new paragraph carries its id, as a note editor gives it one;
+            // the save finds the notes a part gained by their paragraphs.
+            paraId: (0x4e_00_00_00 + id).toString(16).toUpperCase(),
+            content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
+          },
+        ];
+        if (kind === "footnote") {
+          base.package.footnotes = [...footnotes, { type: "footnote", id, content }];
+        } else {
+          base.package.endnotes = [...endnotes, { type: "endnote", id, content }];
+        }
+      }
+      return applied;
+    },
+  };
+};
 
 /** Apply a paragraph style the way the toolbar does: with the resolved style attrs. */
 const applyStyleLikeHost = (styleId: string): ConformanceOperation => ({
   id: `command:applyStyle(${styleId})`,
   placements: CARET,
   run: ({ view, base }) => {
-    const applyStyle = harnessManager().requireCommand("applyStyle");
+    const applyStyle = harnessRuntimeManager(view.state).requireCommand("applyStyle");
     const styles = base.package.styles;
     if (!styles) {
       return applyStyle(styleId)(view.state, view.dispatch, view as never);
@@ -165,8 +209,8 @@ export const REGISTRY_COMMAND_OPERATIONS: Readonly<
   setHyperlink: [registryCommand("setHyperlink", ["https://example.org/"], { placements: RANGE })],
   removeHyperlink: [registryCommand("removeHyperlink", [], { placements: RANGE })],
   insertHyperlink: [registryCommand("insertHyperlink", ["a link", "https://example.org/"])],
-  insertFootnote: [registryCommand("insertFootnote", [7])],
-  insertEndnote: [registryCommand("insertEndnote", [7])],
+  insertFootnote: [insertNoteLikeHost("footnote")],
+  insertEndnote: [insertNoteLikeHost("endnote")],
   deleteNoteRef: [registryCommand("deleteNoteRef", [], { placements: ["paragraph"] })],
 
   // Paragraph

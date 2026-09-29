@@ -174,14 +174,17 @@ export const HyperlinkExtension = createMarkExtension({
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
-    const hlType = ctx.schema.marks["hyperlink"];
-    if (!hlType) {
+    if (!ctx.schema.marks["hyperlink"]) {
       panic("Missing mark type: hyperlink");
     }
+    // Resolved per call: the document may be of another schema instance.
+    const documentHyperlinkType = (state: EditorState) =>
+      state.schema.marks["hyperlink"] ?? panic("Missing mark type: hyperlink");
 
     const setHyperlink =
       (href: string, tooltip?: string): Command =>
       (state, dispatch) => {
+        const hlType = documentHyperlinkType(state);
         const { from, to, empty } = state.selection;
 
         if (empty) {
@@ -207,6 +210,7 @@ export const HyperlinkExtension = createMarkExtension({
       };
 
     const removeHyperlink: Command = (state, dispatch) => {
+      const hlType = documentHyperlinkType(state);
       const { from, to, empty } = state.selection;
 
       if (empty) {
@@ -254,6 +258,7 @@ export const HyperlinkExtension = createMarkExtension({
     const insertHyperlink =
       (text: string, href: string, tooltip?: string): Command =>
       (state, dispatch) => {
+        const hlType = documentHyperlinkType(state);
         if (dispatch) {
           const mark = hlType.create({
             href: normalizeHyperlinkInput(href),

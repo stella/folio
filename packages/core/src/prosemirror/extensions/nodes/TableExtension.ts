@@ -6,7 +6,7 @@
  */
 
 import { panic } from "better-result";
-import type { NodeSpec, Node as PMNode } from "prosemirror-model";
+import type { NodeSpec, Node as PMNode, Schema } from "prosemirror-model";
 import { Plugin, PluginKey, TextSelection, Selection } from "prosemirror-state";
 import type { EditorState, Transaction, Command } from "prosemirror-state";
 import {
@@ -1083,10 +1083,14 @@ export const TablePluginExtension = createExtension({
     if (!schema.nodes["table"]) {
       panic("Missing node type: table");
     }
-    const nodeTypeParagraph = schema.nodes["paragraph"];
-    const nodeTypeTableCell = schema.nodes["tableCell"];
-    const nodeTypeTableRow = schema.nodes["tableRow"];
-    const nodeTypeTable = schema.nodes["table"];
+    // Commands build from the document's own node types, resolved per call:
+    // the document may be of another schema instance than this runtime's.
+    const documentTableTypes = (documentSchema: Schema) => ({
+      paragraph: documentSchema.nodes["paragraph"] ?? panic("Missing node type: paragraph"),
+      tableCell: documentSchema.nodes["tableCell"] ?? panic("Missing node type: tableCell"),
+      tableRow: documentSchema.nodes["tableRow"] ?? panic("Missing node type: tableRow"),
+      table: documentSchema.nodes["table"] ?? panic("Missing node type: table"),
+    });
 
     // ---- Commands ----
 
@@ -1124,11 +1128,13 @@ export const TablePluginExtension = createExtension({
     }
 
     function createTable(
+      documentSchema: Schema,
       rows: number,
       cols: number,
       borderColor: string = "000000",
       contentWidthTwips: number = 9360,
     ): PMNode {
+      const types = documentTableTypes(documentSchema);
       const tableRows: PMNode[] = [];
       const colWidthTwips = Math.floor(contentWidthTwips / cols);
       const defaultRowHeightTwips = 360; // 0.25in ≈ 24px at 96 DPI
@@ -1151,17 +1157,17 @@ export const TablePluginExtension = createExtension({
       for (let r = 0; r < rows; r++) {
         const cells: PMNode[] = [];
         for (let c = 0; c < cols; c++) {
-          const paragraph = nodeTypeParagraph.create();
+          const paragraph = types.paragraph.create();
           const cellAttrs: Record<string, unknown> = {
             colspan: 1,
             rowspan: 1,
             borders: defaultBorders,
             ...statedCellWidth(colWidthTwips, "dxa"),
           };
-          cells.push(nodeTypeTableCell.create(cellAttrs, paragraph));
+          cells.push(types.tableCell.create(cellAttrs, paragraph));
         }
         tableRows.push(
-          nodeTypeTableRow.create(
+          types.tableRow.create(
             { height: defaultRowHeightTwips, heightRule: defaultRowHeightRule },
             cells,
           ),
@@ -1169,7 +1175,7 @@ export const TablePluginExtension = createExtension({
       }
 
       const columnWidths = Array.from({ length: cols }, () => colWidthTwips);
-      return nodeTypeTable.create(
+      return types.table.create(
         {
           columnWidths,
           width: contentWidthTwips,
@@ -1219,8 +1225,8 @@ export const TablePluginExtension = createExtension({
               break;
             }
           }
-          const table = createTable(rows, cols, borderColor, contentWidthTwips);
-          const emptyParagraph = nodeTypeParagraph.create();
+          const table = createTable(state.schema, rows, cols, borderColor, contentWidthTwips);
+          const emptyParagraph = documentTableTypes(state.schema).paragraph.create();
 
           const $insert = state.doc.resolve(insertPos);
           const needsLeadingParagraph = $insert.nodeBefore?.type.name === "table";

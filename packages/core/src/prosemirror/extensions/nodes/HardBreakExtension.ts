@@ -60,8 +60,7 @@ export const HardBreakExtension = createNodeExtension({
     },
   },
   onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
-    const hardBreakType = ctx.schema.nodes["hardBreak"];
-    if (!hardBreakType) {
+    if (!ctx.schema.nodes["hardBreak"]) {
       panic("Missing node type: hardBreak");
     }
 
@@ -69,6 +68,9 @@ export const HardBreakExtension = createNodeExtension({
       keyboardShortcuts: {
         "Shift-Enter": (state, dispatch) => {
           if (dispatch) {
+            // The document's own type: it may be of another schema instance.
+            const hardBreakType =
+              state.schema.nodes["hardBreak"] ?? panic("Missing node type: hardBreak");
             dispatch(state.tr.replaceSelectionWith(hardBreakType.create()).scrollIntoView());
           }
           return true;

@@ -10,7 +10,7 @@ import type { Command } from "prosemirror-state";
 import { expectFootnoteRefMarkAttrs } from "../../attrs";
 import { suggestionModeKey } from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
-import type { ExtensionContext, ExtensionRuntime } from "../types";
+import type { ExtensionRuntime } from "../types";
 import { expandNoteReferenceDeletionRange } from "./noteReferenceDeletion";
 
 const noteRefAttrsFromDom = (
@@ -70,9 +70,7 @@ export const FootnoteRefExtension = createMarkExtension({
       ];
     },
   },
-  onSchemaReady(ctx: ExtensionContext): ExtensionRuntime {
-    const { schema } = ctx;
-
+  onSchemaReady(): ExtensionRuntime {
     const deleteWholeNoteReference =
       (direction: "backward" | "forward"): Command =>
       (state, dispatch) => {
@@ -99,6 +97,7 @@ export const FootnoteRefExtension = createMarkExtension({
             return true;
           }
 
+          const { schema } = state;
           const footnoteRefType = schema.marks["footnoteRef"];
           if (!footnoteRefType) {
             panic("Missing mark type: footnoteRef");
@@ -122,7 +121,10 @@ export const FootnoteRefExtension = createMarkExtension({
       }
 
       let tr = state.tr;
-      const markType = schema.marks["footnoteRef"];
+      const markType = state.schema.marks["footnoteRef"];
+      if (!markType) {
+        panic("Missing mark type: footnoteRef");
+      }
 
       // Remove footnoteRef marks in selection range
       tr = tr.removeMark($from.pos, $to.pos, markType);

@@ -24,6 +24,7 @@ import {
   expectStrikeMarkAttrs,
   expectTextEffectMarkAttrs,
 } from "../../attrs";
+import { documentMarkType } from "../../documentSchema";
 import { selectRunFormattingCarrierRepresentations } from "../../runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { hasRunFormattingOverrideAttrs } from "../../runFormattingProvenance";
@@ -337,8 +338,9 @@ function createMarkWithMergedAttrs(
   return markType.create(mergeMarkAttrs(markType, currentMark, nextAttrs));
 }
 
-export function setMark(markType: MarkType, attrs: MarkAttrs): Command {
+export function setMark(type: MarkType, attrs: MarkAttrs): Command {
   return (state, dispatch) => {
+    const markType = documentMarkType(state, type);
     const { from, to, empty } = state.selection;
 
     if (empty) {
@@ -507,10 +509,17 @@ const withRunFormattingOverride =
         : undefined,
     );
 
+/** `toggleMark` for the document's own counterpart of `type`. */
+export const toggleDocumentMark =
+  (type: MarkType): Command =>
+  (state, dispatch, view) =>
+    toggleMark(documentMarkType(state, type))(state, dispatch, view);
+
 /** UI toggle whose direct-formatting contract explicitly targets both script families. */
 export const toggleMarkForAllScripts =
-  (markType: MarkType, property: PairedToggleProperty): Command =>
+  (type: MarkType, property: PairedToggleProperty): Command =>
   (state, dispatch) => {
+    const markType = documentMarkType(state, type);
     const enabled = !isMarkActive(state, markType);
     return withRunFormattingOverride(toggleMark(markType), (attrs) =>
       updatePairedToggleAttrs(attrs, property, enabled),
@@ -558,12 +567,15 @@ function selectionHasVisibleUnderline(state: EditorState, markType: MarkType): b
 export function toggleUnderlineMark(markType: MarkType): Command {
   return (state, dispatch) =>
     setMark(markType, {
-      style: selectionHasVisibleUnderline(state, markType) ? "none" : "single",
+      style: selectionHasVisibleUnderline(state, documentMarkType(state, markType))
+        ? "none"
+        : "single",
     })(state, dispatch);
 }
 
-export function removeMark(markType: MarkType): Command {
+export function removeMark(type: MarkType): Command {
   return (state, dispatch) => {
+    const markType = documentMarkType(state, type);
     const { from, to, empty } = state.selection;
 
     if (empty) {
@@ -589,9 +601,10 @@ export function removeMark(markType: MarkType): Command {
  */
 export function isMarkActive(
   state: EditorState,
-  markType: MarkType,
+  type: MarkType,
   attrs?: Record<string, unknown>,
 ): boolean {
+  const markType = documentMarkType(state, type);
   const { from, to, empty } = state.selection;
 
   if (empty) {
@@ -632,7 +645,8 @@ export function isMarkActive(
 /**
  * Get the current value of a mark attribute
  */
-export function getMarkAttr(state: EditorState, markType: MarkType, attr: string): unknown {
+export function getMarkAttr(state: EditorState, type: MarkType, attr: string): unknown {
+  const markType = documentMarkType(state, type);
   const { empty, $from, from, to } = state.selection;
 
   if (empty) {
