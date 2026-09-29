@@ -5,7 +5,7 @@
 import { describe, test, expect } from "bun:test";
 import { history, undo } from "prosemirror-history";
 import { Fragment, Schema, Slice } from "prosemirror-model";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { AllSelection, EditorState, TextSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
@@ -315,6 +315,35 @@ describe("SuggestionMode Plugin", () => {
       const marks = getMarks(get());
       expect(marks.find((m) => m.text.includes("one"))?.marks).toContain("insertion");
       expect(marks.find((m) => m.text.includes("lazy"))?.marks).toContain("deletion");
+    });
+
+    test("pasting over select-all strikes the whole document instead of destroying it", () => {
+      // Select-all is an AllSelection, not a TextSelection. Declining it let the
+      // default paste replace the document untracked, so rejecting the
+      // suggestion left only an empty paragraph.
+      const doc = schema.node("doc", null, [
+        schema.node("paragraph", null, [schema.text("First")]),
+        schema.node("paragraph", null, [schema.text("Second")]),
+      ]);
+      let state = EditorState.create({
+        doc,
+        plugins: [createSuggestionModePlugin(true, "TestUser")],
+      });
+      state = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+
+      const { view, get } = mockView(state);
+      const slice = new Slice(Fragment.from(schema.text("pasted")), 0, 0);
+      const pluginState = suggestionModeKey.getState(state)!;
+      expect(handleSuggestionPaste(view, slice, pluginState)).toBe(true);
+
+      expect(getMarks(get())).toEqual([
+        { text: "First", marks: ["deletion"] },
+        { text: "Second", marks: ["deletion"] },
+        { text: "pasted", marks: ["insertion"] },
+      ]);
+      // The paste lands inside the last paragraph, as over a text selection.
+      expect(get().doc.childCount).toBe(2);
+      expect(get().selection.empty).toBe(true);
     });
 
     test("pasting at a collapsed cursor is declined (default paste handles it)", () => {
