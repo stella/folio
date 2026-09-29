@@ -440,8 +440,16 @@ type ResolvedOperationFields = {
    */
   insertTexts?: readonly string[];
   tableRowInsertion?: TableRowInsertion;
+  /**
+   * The comments running across the new row's place as the batch read it.
+   * The row carries them, so an edit that runs first and moves a comment's
+   * end (a deleted paragraph that held it) cannot leave the row outside.
+   */
+  tableRowComments?: readonly Mark[];
   tableRowDeletion?: TableRowDeletion;
   tableColumnInsertion?: TableColumnInsertion;
+  /** The comments running across the whole table as the batch read it, which a new column's cells carry. */
+  tableColumnComments?: readonly Mark[];
   tableColumnDeletion?: TableColumnDeletion;
   tableCellMerge?: TableCellMerge;
   tableCellSplit?: TableCellSplit;
@@ -2283,6 +2291,31 @@ type InsertBlocksInsideCommentsOptions = {
   at: number;
   blocks: PMNode | readonly PMNode[];
   carriedComments?: readonly Mark[];
+};
+
+/** The comments running across both edges of the table at `tablePosition`: over all of it. */
+const commentsAcrossTable = (doc: PMNode, tablePosition: number): Mark[] => {
+  const table = doc.nodeAt(tablePosition);
+  if (!table) return [];
+  const atEnd = commentsAcrossBlockBoundary(doc, tablePosition + table.nodeSize);
+  return commentsAcrossBlockBoundary(doc, tablePosition).filter((comment) =>
+    comment.isInSet(atEnd),
+  );
+};
+
+/** `comments` over the inline content of the node at `position`, which an insertion just placed. */
+const addCommentsOver = (
+  tr: Transaction,
+  position: number,
+  comments: readonly Mark[] | undefined,
+): Transaction => {
+  const node = tr.doc.nodeAt(position);
+  if (!node || !comments) return tr;
+  let next = tr;
+  for (const comment of comments) {
+    next = next.addMark(position + 1, position + node.nodeSize - 1, comment);
+  }
+  return next;
 };
 
 const insertBlocksInsideComments = ({
@@ -4299,9 +4332,10 @@ const applyFolioAIEditOperationsInternal = ({
         }
         const revision: TableStructureRevision | null = structuralRevision;
         const template = tableTemplates?.get(item.operation.id);
+        const mappedInsertion = mapTableRowInsertion(tr, insertion);
         const result = applyTableRowInsertion({
           tr,
-          insertion: mapTableRowInsertion(tr, insertion),
+          insertion: mappedInsertion,
           cellTexts: item.operation.cellTexts,
           revision,
           ...(template !== undefined && { template }),
@@ -4313,7 +4347,11 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        tr = result.transaction;
+        tr = addCommentsOver(
+          result.transaction,
+          mappedInsertion.rowPosition,
+          item.tableRowComments,
+        );
         if (result.revisionId !== null) {
           operationRevisionSeed++;
           appliedRevisionIds = [result.revisionId];
@@ -4351,7 +4389,14 @@ const applyFolioAIEditOperationsInternal = ({
           });
           continue;
         }
-        tr = result.transaction;
+        // Every cell of a table a comment runs across lies inside it, the new
+        // ones included; marking them keeps them inside when an edit that ran
+        // first moved the comment's end into the table.
+        tr = addCommentsOver(
+          result.transaction,
+          tr.mapping.map(insertion.tablePosition, 1),
+          item.tableColumnComments,
+        );
         if (result.revisionId !== null) {
           operationRevisionSeed++;
           appliedRevisionIds = [result.revisionId];
@@ -6846,6 +6891,7 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         tableRowInsertion: insertion,
+        tableRowComments: commentsAcrossBlockBoundary(doc, insertion.rowPosition),
       },
     };
   }
@@ -6891,6 +6937,7 @@ const resolveOperationTarget = ({
         blockTo,
         blockNode,
         tableColumnInsertion,
+        tableColumnComments: commentsAcrossTable(doc, tableColumnInsertion.tablePosition),
       },
     };
   }
