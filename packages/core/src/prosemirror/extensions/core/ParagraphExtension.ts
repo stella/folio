@@ -33,7 +33,6 @@ import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
 import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
-// oxlint-disable-next-line import/no-cycle -- runtime-only: run formatting is re-resolved inside command handlers, not at module load
 import { setParagraphAttrsWithRebasedRunFormatting } from "../../rebaseParagraphRunFormatting";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";

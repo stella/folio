@@ -7,12 +7,10 @@ import {
   type RunFormattingCarrierRepresentation,
 } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
-/* oxlint-disable import/no-cycle -- runtime-only: run formatting is re-resolved inside command handlers, not at module load */
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "./runFormattingReconciliation";
-/* oxlint-enable import/no-cycle */
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 
 type RebaseParagraphRunFormattingOptions = {

@@ -12,7 +12,6 @@ import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { getDocumentStyleResolver } from "../../plugins/documentStyles";
-// oxlint-disable-next-line import/no-cycle -- runtime-only: run formatting is re-resolved inside command handlers, not at module load
 import { rebaseRunFormattingInRange } from "../../rebaseParagraphRunFormatting";
 import { setMark, removeMark } from "./markUtils";
 
