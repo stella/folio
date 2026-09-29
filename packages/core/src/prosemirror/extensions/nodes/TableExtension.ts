@@ -45,7 +45,7 @@ import {
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
 import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import { insertTableColumn, removeTableColumns, removeTableRow } from "../../tableGridMutation";
-import { pasteTableCells } from "../../tableCellPaste";
+import { pastedSliceWithNewTableCells, pasteTableCells } from "../../tableCellPaste";
 import { setTableLookFlags } from "../../../docx/tableLook";
 import { createNodeExtension, createExtension } from "../create";
 import type {
@@ -2821,6 +2821,7 @@ export const TablePluginExtension = createExtension({
     const tableCellPastePlugin = new Plugin({
       key: new PluginKey("tableCellPaste"),
       props: {
+        transformPasted: (slice) => pastedSliceWithNewTableCells(slice),
         handlePaste: (view, _event, slice) => pasteTableCells(view.state, slice, view.dispatch),
       },
     });
