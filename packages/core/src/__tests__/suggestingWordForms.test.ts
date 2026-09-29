@@ -13,6 +13,7 @@ import { undo } from "prosemirror-history";
 import { AllSelection, TextSelection } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../prosemirror/attrs";
+import { acceptAIEditRevision } from "../prosemirror/commands/comments";
 import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import {
   createHarnessState,
@@ -238,6 +239,27 @@ describe("suggesting mode writes the revisions the reference writes", () => {
     expect(paragraphs(resolveAllChanges(view.state, "reject").doc)).toEqual(
       withoutIds(paragraphs(state.doc)),
     );
+  });
+
+  test("a paragraph whose mark goes runs on into the table after it", async () => {
+    const deletedMark =
+      '<w:p w14:paraId="2A000002" w14:textId="2A000002"><w:pPr><w:rPr><w:del w:id="9" w:author="Reviewer" w:date="2026-01-01T00:00:00Z"/></w:rPr></w:pPr><w:r><w:t>Alpha text.</w:t></w:r></w:p>';
+    const { state } = await open(INTRO + deletedMark + table() + TAIL, "editing");
+    const texts = (doc: import("prosemirror-model").Node) =>
+      textblocks(doc).map(({ node }) => node.textContent);
+    let single = state;
+    acceptAIEditRevision(9)(state, (transaction) => {
+      single = state.apply(transaction);
+    });
+    for (const accepted of [single, resolveAllChanges(state, "accept")]) {
+      expect(texts(accepted.doc)).toEqual([
+        "Intro paragraph.",
+        "Alpha text.Cell.",
+        "Tail paragraph.",
+      ]);
+      expect(paragraphs(accepted.doc)[1]).toMatchObject({ paraId: "66000001", mark: null });
+    }
+    expect(texts(resolveAllChanges(state, "reject").doc)).toEqual(texts(state.doc));
   });
 
   test("typing inside another author's insertion gives its second stretch an id of its own", async () => {

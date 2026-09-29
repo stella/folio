@@ -1,5 +1,6 @@
 import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
+import type { Transform } from "prosemirror-transform";
 import { panic } from "better-result";
 
 import {
@@ -25,7 +26,7 @@ type RebaseParagraphRunFormattingOptions = {
   tr: Transaction;
 };
 
-const paragraphAt = (tr: Transaction, paragraphPosition: number): PMNode => {
+const paragraphAt = (tr: Transform, paragraphPosition: number): PMNode => {
   const paragraph = tr.doc.nodeAt(paragraphPosition);
   if (!paragraph || paragraph.type.name !== "paragraph") {
     return panic("Cannot rebase run formatting outside a paragraph", {
@@ -36,7 +37,7 @@ const paragraphAt = (tr: Transaction, paragraphPosition: number): PMNode => {
   return paragraph;
 };
 
-type RebaseParagraphRunsOptions = {
+type RebaseParagraphRunsOptions<T extends Transform> = {
   /** The style context the runs' marks were resolved in. */
   previousContext: ParagraphRunStyleContext;
   paragraphPosition: number;
@@ -44,7 +45,7 @@ type RebaseParagraphRunsOptions = {
   range?: { from: number; to: number };
   shouldRebase?: (node: PMNode) => boolean;
   styleResolver: RunStyleResolver;
-  tr: Transaction;
+  tr: T;
 };
 
 /**
@@ -52,14 +53,14 @@ type RebaseParagraphRunsOptions = {
  * paragraph's current style context: direct formatting stays direct, and what
  * the old context lent the runs goes with it.
  */
-export const rebaseParagraphRuns = ({
+export const rebaseParagraphRuns = <T extends Transform>({
   previousContext,
   paragraphPosition,
   range,
   shouldRebase,
   styleResolver,
   tr,
-}: RebaseParagraphRunsOptions): Transaction => {
+}: RebaseParagraphRunsOptions<T>): T => {
   const paragraph = paragraphAt(tr, paragraphPosition);
   const nextContext = paragraphRunStyleContext(paragraph, styleResolver);
   const changes: {

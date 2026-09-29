@@ -13,6 +13,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
 import {
+  createNoteReferenceFollower,
   noteReferencesRestored,
   restoreNotes,
   withoutUnreferencedNotes,
@@ -143,6 +144,54 @@ describe("a note goes with its reference", () => {
     expect(withoutUnreferencedNotes(fromProseDoc(state.doc, document))).toEqual(
       fromProseDoc(state.doc, document),
     );
+  });
+
+  test("a note dropped on save takes the comments anchored only in it", async () => {
+    const document = await open(fixture);
+    const accepted = resolve(createHarnessState(document, "editing"), "accept");
+    const model = fromProseDoc(accepted.doc, document);
+    const note = model.package.footnotes?.find(({ id }) => id === 1);
+    const first = note?.content[0];
+    if (first?.type !== "paragraph") throw new Error("missing the note's paragraph");
+    first.content.unshift({ type: "commentRangeStart", id: 7 });
+    first.content.push({ type: "commentRangeEnd", id: 7 });
+    model.package.document.comments = [
+      { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z", content: [] },
+    ];
+    expect(withoutUnreferencedNotes(model).package.document.comments).toEqual([]);
+  });
+
+  test("an editor's notes follow the reject and its undo", async () => {
+    const document = await open(fixture);
+    const deleted = createHarnessState(document, "editing");
+    const rejected = resolve(deleted, "reject");
+    const follower = createNoteReferenceFollower();
+    follower.noteBase(deleted.doc);
+    const restored = follower.reconcile(document, rejected.doc);
+    expect(noteState(restored, 1)).toEqual({ text: "The note text.", deleted: false });
+    // Undo puts the reference's deletion back: the note returns as it was.
+    follower.noteBase(rejected.doc);
+    const undone = follower.reconcile(restored, deleted.doc);
+    expect(undone.package.footnotes).toEqual(document.package.footnotes);
+  });
+
+  test("a reference deleted again after its note changed takes the note's text", async () => {
+    const document = await open(fixture);
+    const deleted = createHarnessState(document, "editing");
+    const rejected = resolve(deleted, "reject");
+    const follower = createNoteReferenceFollower();
+    follower.noteBase(deleted.doc);
+    const restored = follower.reconcile(document, rejected.doc);
+    const edited: Document = {
+      ...restored,
+      package: {
+        ...restored.package,
+        footnotes: restored.package.footnotes?.map((note) => Object.assign({}, note)),
+      },
+    };
+    follower.noteBase(rejected.doc);
+    const redeleted = follower.reconcile(edited, deleted.doc);
+    expect(noteState(redeleted, 1)).toEqual({ text: "The note text.", deleted: true });
   });
 
   for (const mode of ["accept", "reject"] as const) {

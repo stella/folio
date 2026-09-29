@@ -67,6 +67,7 @@ import {
 } from "../anchoredTextBoxes";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import { runParagraphIntoTable, tableHasPendingStructure } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -526,6 +527,16 @@ function resolveChange(
       // accumulated transaction so the inline deletes above don't desync the
       // attr writes or joins below.
       pPrMarkOps.sort((a, b) => b.paragraphPos - a.paragraphPos);
+      // Tables whose own structure was pending when this resolution began:
+      // a paragraph before one keeps its place, as the bulk resolver decides
+      // before it resolves any table.
+      const pendingTables: number[] = [];
+      state.doc.descendants((node, position) => {
+        if (node.type.spec["tableRole"] === "table" && tableHasPendingStructure(node)) {
+          pendingTables.push(position);
+        }
+        return !node.isTextblock;
+      });
       // Where two paragraphs' runs meet after a join: their runs stay apart.
       const joinSeams: { position: number; step: number }[] = [];
       for (const op of pPrMarkOps) {
@@ -554,6 +565,17 @@ function resolveChange(
         }
         const nextNode = nextPos < tr.doc.content.size ? tr.doc.nodeAt(nextPos) : null;
         const joinable = nextNode?.type.name === paragraph.type.name;
+        const ranIn =
+          nextNode?.type.spec["tableRole"] === "table" &&
+          boundaries.length === 0 &&
+          !pendingTables.some((position) => tr.mapping.map(position) === nextPos)
+            ? runParagraphIntoTable({ tr, paragraphPos: mappedPos, styleResolver })
+            : null;
+        if (ranIn) {
+          tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
+          markParagraphPropertySourceTransfers(tr, [ranIn.transfer]);
+          continue;
+        }
         if (!joinable) {
           // Nothing to join with: the next sibling is a table, or the paragraph
           // ends its container — a body, a cell, a header, a note or a text box

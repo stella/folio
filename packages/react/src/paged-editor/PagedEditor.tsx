@@ -101,8 +101,8 @@ import {
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
 import {
-  noteReferencesRestored,
-  restoreNotes,
+  createNoteReferenceFollower,
+  type NoteReferenceFollower,
 } from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
@@ -2034,13 +2034,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }
     const documentChangeNotifyTimerRef = useRef<number | null>(null);
-    // The body as it was before the edits the next notification reports: a
-    // note goes with its reference, so a reference whose deletion those edits
-    // rejected gets its note's text back.
-    const noteReviewBaseRef = useRef<PMNode | null>(null);
+    // A note follows its reference: a reference whose deletion the reported
+    // edits rejected gives its note back its text, and deleting it again (as
+    // undoing that reject does) takes the text with it.
+    const [noteFollower] = useState<NoteReferenceFollower>(createNoteReferenceFollower);
     useEffect(() => {
-      noteReviewBaseRef.current = null;
-    }, [documentIdentity]);
+      noteFollower.reset();
+    }, [documentIdentity, noteFollower]);
 
     const flushDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2049,17 +2049,15 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }
 
       let newDoc = hiddenPMRef.current?.getDocument();
-      const reviewBase = noteReviewBaseRef.current;
-      noteReviewBaseRef.current = null;
-      const reviewed = hiddenPMRef.current?.getState()?.doc;
-      if (newDoc && reviewBase && reviewed) {
-        newDoc = restoreNotes(newDoc, noteReferencesRestored(reviewBase, reviewed));
+      const body = hiddenPMRef.current?.getState()?.doc;
+      if (newDoc && body) {
+        newDoc = noteFollower.reconcile(newDoc, body);
       }
       if (newDoc) {
         onDocumentChangeRef.current?.(newDoc);
         folioEmitterRef.current.emit("docChange", newDoc);
       }
-    }, []);
+    }, [noteFollower]);
 
     const scheduleDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2798,8 +2796,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      */
     const handleTransaction = useCallback(
       ({ newState, docChanged, transactions }: HiddenEditorTransactionUpdate) => {
-        if (docChanged && noteReviewBaseRef.current === null) {
-          noteReviewBaseRef.current = transactions[0]?.before ?? null;
+        const before = transactions[0]?.before;
+        if (docChanged && before) {
+          noteFollower.noteBase(before);
         }
 
         // Keep the anonymization match list mirrored in a ref so the
@@ -2934,6 +2933,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateAISuggestionsOverlay,
         passageHighlightOverlayRequestGate,
         syncCoordinator,
+        noteFollower,
       ],
       // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
     );

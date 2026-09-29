@@ -3387,6 +3387,16 @@ export class FolioDocxReviewer {
           : this.getNoteStory(handle);
       addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
     }
+    // A note that went with its reference takes the comments anchored in it.
+    for (const handle of this.removedNoteStories.values()) {
+      const entry = loaded.get(secondaryStoryKey(handle));
+      addAll(
+        anchoredBefore,
+        entry
+          ? anchoredCommentIdsInProseDoc(entry.initialState.doc)
+          : anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []),
+      );
+    }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }
 

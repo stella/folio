@@ -1,6 +1,6 @@
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { Fragment, Mark, Slice, type Node as PMNode } from "prosemirror-model";
-import { Mapping, StepMap, ReplaceStep, type Step } from "prosemirror-transform";
+import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
   getProseParagraphPropertySourceToken,
   recreateProseNodeWithParagraphPropertySource as rebuild,
@@ -14,6 +14,7 @@ import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolvePara
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
+import { runParagraphsIntoTables } from "../prosemirror/tableRunIn";
 import { anchoredTextBoxId, droppedTextBoxAnchorIds } from "../prosemirror/anchoredTextBoxes";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import {
@@ -619,6 +620,35 @@ type ResolveWholeStoryOptions = {
   numbering: NumberingMap | null;
 };
 export const resolveWholeStory = ({
+  doc,
+  mode,
+  styleResolver,
+  numbering,
+}: ResolveWholeStoryOptions) => {
+  // A paragraph whose mark goes right before a table runs on into the table's
+  // first cell before the rest resolves; both read as one resolution.
+  const runIn = new Transform(doc);
+  const { targets, transfers } = runParagraphsIntoTables(runIn, mode, styleResolver);
+  const result = resolveStoryRevisions({ doc: runIn.doc, mode, styleResolver, numbering });
+  if (!runIn.docChanged) return result;
+  for (const { position, step } of targets) {
+    const from = runIn.mapping.slice(step).map(position);
+    const target = runIn.doc.nodeAt(from);
+    if (target) result.changedRanges.push({ from, to: from + target.nodeSize });
+  }
+  let runInMap = StepMap.empty;
+  for (const step of runIn.steps) runInMap = composeRevisionResolutionMaps(runInMap, step.getMap());
+  const positionMap = composeRevisionResolutionMaps(runInMap, result.positionMap);
+  return {
+    ...result,
+    steps: [...runIn.steps, ...result.steps],
+    positionMap,
+    mapping: new Mapping([positionMap]),
+    transfers: [...transfers, ...result.transfers],
+  };
+};
+
+const resolveStoryRevisions = ({
   doc,
   mode,
   styleResolver,

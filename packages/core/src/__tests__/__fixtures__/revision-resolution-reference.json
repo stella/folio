@@ -8048,6 +8048,662 @@
           "markRPr": ""
         }
       ]
+    },
+    "tb-content-deleted-before-table": {
+      "origin": "constructed",
+      "body": "<w:p><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p><w:del w:id=\"82\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Alpha text.</w:delText></w:r></w:del></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4680\"/><w:gridCol w:w=\"4680\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 00.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 01.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 10.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 11.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Final paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tb-deleted-before-inserted-table": {
+      "origin": "constructed",
+      "body": "<w:p><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"92\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"82\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Alpha text.</w:delText></w:r></w:del></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4680\"/><w:gridCol w:w=\"4680\"/></w:tblGrid><w:tr><w:trPr><w:ins w:id=\"70\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"90\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"80\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>Cell 00.</w:t></w:r></w:ins></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"90\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"80\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>Cell 01.</w:t></w:r></w:ins></w:p></w:tc></w:tr><w:tr><w:trPr><w:ins w:id=\"71\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:trPr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"90\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"80\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>Cell 10.</w:t></w:r></w:ins></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:pPr><w:rPr><w:ins w:id=\"90\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:ins w:id=\"80\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:t>Cell 11.</w:t></w:r></w:ins></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Final paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "2F0DDDA0",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "41FC2056",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": "0713B345",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tb-deleted-before-table": {
+      "origin": "constructed",
+      "body": "<w:p><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"92\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"82\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Alpha text.</w:delText></w:r></w:del></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4680\"/><w:gridCol w:w=\"4680\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 00.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 01.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 10.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 11.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Final paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "52AAE8C9",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": "0B1746CF",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": "17042A34",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": "771730E3",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": "4FBB69B1",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": "1C6D5D38",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": "29320F1A",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": "007A32BD",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": "6AF92B6A",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": "74036888",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": "1D6F93CD",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": "5C85D92B",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": "2AC5E998",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tb-deleted-first-before-table": {
+      "origin": "constructed",
+      "body": "<w:p><w:pPr><w:rPr><w:del w:id=\"92\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"82\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Alpha text.</w:delText></w:r></w:del></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4680\"/><w:gridCol w:w=\"4680\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 00.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 01.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 10.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 11.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Final paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "accept": [
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": "3F539515",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": "048B1F93",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": "0444AC69",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": "5996DB82",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": "62C60138",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Alpha text.",
+          "paraId": "135AA39A",
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": "17431713",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": "03D8FC5D",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": "2157A66C",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": "3A984145",
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": "4BDC939C",
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tb-deleted-two-before-table": {
+      "origin": "constructed",
+      "body": "<w:p><w:pPr><w:rPr><w:del w:id=\"91\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"81\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Intro paragraph.</w:delText></w:r></w:del></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"92\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:del w:id=\"82\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"><w:r><w:delText>Alpha text.</w:delText></w:r></w:del></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4680\"/><w:gridCol w:w=\"4680\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 00.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 01.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 10.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 11.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Final paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "accept": [
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
+    },
+    "tb-mark-deleted-before-table": {
+      "origin": "constructed",
+      "body": "<w:p><w:r><w:t>Intro paragraph.</w:t></w:r></w:p><w:p><w:pPr><w:rPr><w:del w:id=\"92\" w:author=\"Reviewer\" w:date=\"2026-01-01T00:00:00Z\"/></w:rPr></w:pPr><w:r><w:t>Alpha text.</w:t></w:r></w:p><w:tbl><w:tblPr><w:tblStyle w:val=\"TableGrid\"/><w:tblW w:w=\"0\" w:type=\"auto\"/></w:tblPr><w:tblGrid><w:gridCol w:w=\"4680\"/><w:gridCol w:w=\"4680\"/></w:tblGrid><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 00.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 01.</w:t></w:r></w:p></w:tc></w:tr><w:tr><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 10.</w:t></w:r></w:p></w:tc><w:tc><w:tcPr><w:tcW w:w=\"4680\" w:type=\"dxa\"/></w:tcPr><w:p><w:r><w:t>Cell 11.</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:t>Final paragraph.</w:t></w:r></w:p><w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:right=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:header=\"720\" w:footer=\"720\" w:gutter=\"0\"/></w:sectPr>",
+      "accept": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Alpha text.Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ],
+      "reject": [
+        {
+          "text": "Intro paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "text": "Alpha text.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        },
+        {
+          "table": [
+            [
+              [
+                {
+                  "text": "Cell 00.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 01.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "text": "Cell 10.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ],
+              [
+                {
+                  "text": "Cell 11.",
+                  "paraId": null,
+                  "pPr": "",
+                  "markRPr": ""
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "text": "Final paragraph.",
+          "paraId": null,
+          "pPr": "",
+          "markRPr": ""
+        }
+      ]
     }
   }
 }

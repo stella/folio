@@ -25,7 +25,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { createDocx } from "../docx/rezip";
@@ -372,7 +372,7 @@ const expectPackageConsistent = async (
 
 describe("live comment threads match the saved package after every step", () => {
   test("over generated sessions across a table and a note", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(sessionArbitrary, async ({ comments, steps }) => {
         let reviewer = await FolioDocxReviewer.fromBuffer(
           await createDocx(buildDocument(comments)),
@@ -391,7 +391,7 @@ describe("live comment threads match the saved package after every step", () => 
           }
         }
       }),
-      propertyConfig({ numRuns: 40 }),
+      { numRuns: 40 },
     );
   }, 240_000);
 });
