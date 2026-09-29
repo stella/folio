@@ -233,13 +233,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   // -------------------------------------------------------------- other --
   {
     reason:
-      "A note added to a package that already has a notes part is not written into that part on save, so the reopened document references a missing note",
-    operations: ["command:insertFootnote", "command:insertEndnote"],
-    shapes: ["notes"],
-    kinds: ["readback-blocks", "reject-mismatch"],
-  },
-  {
-    reason:
       "Applying a paragraph style or clearing the text color drops a hyperlink's character-style run formatting in the editor, which the saved document still carries",
     operations: [
       "command:applyStyle(Heading1)",

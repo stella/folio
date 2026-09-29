@@ -133,9 +133,6 @@ const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation 
         const content: BlockContent[] = [
           {
             type: "paragraph",
-            // A new paragraph carries its id, as a note editor gives it one;
-            // the save finds the notes a part gained by their paragraphs.
-            paraId: (0x4e_00_00_00 + id).toString(16).toUpperCase(),
             content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
           },
         ];
