@@ -8,7 +8,7 @@
  * save add one outside everything the note's content says about itself.
  */
 
-import type { BlockContent, Paragraph, Run } from "../types/document";
+import type { BlockContent, Endnote, Footnote, Paragraph, Run } from "../types/document";
 
 type NoteKind = "footnote" | "endnote";
 
@@ -56,3 +56,33 @@ export const withNoteReferenceMark = (
     position === index ? { ...paragraph, content: [mark, ...paragraph.content] } : block,
   );
 };
+
+/** Notes made during the session, which the document read from its package did not have. */
+const sessionNotes = new WeakSet<Footnote | Endnote>();
+
+/**
+ * A new note, as an editor adds one: its content led by its own reference
+ * mark. Once no reference points to it, the save drops it, where a note the
+ * package held all along stays unless its reference is removed.
+ */
+export function createNote(
+  kind: "footnote",
+  id: number,
+  content: readonly BlockContent[],
+): Footnote;
+export function createNote(kind: "endnote", id: number, content: readonly BlockContent[]): Endnote;
+export function createNote(
+  kind: NoteKind,
+  id: number,
+  content: readonly BlockContent[],
+): Footnote | Endnote {
+  const note: Footnote | Endnote =
+    kind === "footnote"
+      ? { type: "footnote", id, content: withNoteReferenceMark(kind, content) }
+      : { type: "endnote", id, content: withNoteReferenceMark(kind, content) };
+  sessionNotes.add(note);
+  return note;
+}
+
+/** Whether `note` was made by {@link createNote} during the session. */
+export const isSessionNote = (note: Footnote | Endnote): boolean => sessionNotes.has(note);

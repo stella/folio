@@ -4,9 +4,13 @@
  * A note belongs to its reference. When every reference to a note is a
  * tracked deletion, the note's content is deleted with it — its runs and its
  * paragraph marks, the in-note reference mark included — so accepting the
- * deletion takes the note away and rejecting it keeps the note. When the
- * references the body had are gone altogether (deleted outright, or a
- * deletion accepted), the note goes too instead of staying behind unreferenced.
+ * deletion takes the note away and rejecting it keeps the note. A note no
+ * reference points to any more (deleted outright, a deletion accepted, or a
+ * pending insertion taken back) goes too instead of staying behind
+ * unreferenced, unless another story — a header, a footer, a comment, another
+ * note — still refers to it. That holds for a note the document's body
+ * referenced when it was read and for a note made during the session; a note
+ * the package held without any reference is left as it was.
  *
  * The body is the only place a reference lives, so the notes are projected
  * from it at save rather than kept in step edit by edit.
@@ -14,7 +18,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 
-import { withNoteReferenceMark } from "../../docx/noteReferenceMark";
+import { isSessionNote, withNoteReferenceMark } from "../../docx/noteReferenceMark";
 
 import type {
   BlockContent,
@@ -43,10 +47,25 @@ const numberAttr = (value: unknown): number | undefined =>
 const stringAttr = (value: unknown): string | undefined =>
   typeof value === "string" ? value : undefined;
 
+/** A note reference spelled in markup the body keeps verbatim (a drawing's text, say). */
+const VERBATIM_REFERENCE =
+  /<(?:[\w.-]+:)?(?<kind>footnote|endnote)Reference\b[^>]*?\bw:id="(?<id>-?\d+)"/gu;
+
 /** The state of every note reference in the ProseMirror body. */
 const bodyReferenceStates = (doc: PMNode): Map<string, ReferenceState> => {
   const states = new Map<string, ReferenceState>();
   doc.descendants((node) => {
+    if (!node.isText && node.isLeaf && node.type.name !== "image") {
+      // Markup kept verbatim still refers to its notes, and cannot be edited.
+      const markup = JSON.stringify(node.attrs);
+      if (markup.includes("Reference")) {
+        for (const match of markup.replaceAll('\\"', '"').matchAll(VERBATIM_REFERENCE)) {
+          const kind: NoteKind = match.groups?.["kind"] === "endnote" ? "endnote" : "footnote";
+          const id = key(kind, match.groups?.["id"] ?? "");
+          states.set(id, { deletion: null, ...states.get(id), live: true });
+        }
+      }
+    }
     const reference = node.isText
       ? node.marks.find((mark) => mark.type.name === "footnoteRef")
       : undefined;
@@ -75,8 +94,8 @@ const bodyReferenceStates = (doc: PMNode): Map<string, ReferenceState> => {
   return states;
 };
 
-/** Every note the model body references, found wherever a run holds one. */
-const modelReferences = (content: readonly BlockContent[]): Set<string> => {
+/** Every note the given model content references, found wherever a run holds one. */
+const modelReferences = (content: unknown): Set<string> => {
   const found = new Set<string>();
   const visit = (value: unknown): void => {
     if (Array.isArray(value)) {
@@ -140,6 +159,7 @@ const projectNotes = <Note extends Footnote | Endnote>(
   kind: NoteKind,
   states: ReadonlyMap<string, ReferenceState>,
   referencedBefore: ReadonlySet<string>,
+  referencedElsewhere: ReadonlySet<string>,
 ): Note[] | undefined => {
   if (!notes) {
     return undefined;
@@ -152,8 +172,11 @@ const projectNotes = <Note extends Footnote | Endnote>(
     }
     const state = states.get(key(kind, note.id));
     if (!state) {
-      // Referenced when the document was read, and by nothing now.
-      if (!referencedBefore.has(key(kind, note.id))) {
+      // Nothing in the body points to it any more.
+      const source = (projectionSources.get(note) as Note | undefined) ?? note;
+      const belongedToAReference =
+        referencedBefore.has(key(kind, note.id)) || isSessionNote(source);
+      if (!belongedToAReference || referencedElsewhere.has(key(kind, note.id))) {
         projected.push(note);
       }
       continue;
@@ -186,9 +209,29 @@ export const projectNotesFromReferences = (
     return {};
   }
   const states = bodyReferenceStates(doc);
+  // The stories other than the body, which the editor's body does not hold.
+  const referencedElsewhere = modelReferences([
+    ...(base.package.headers?.values() ?? []),
+    ...(base.package.footers?.values() ?? []),
+    base.package.document.comments ?? [],
+    footnotes ?? [],
+    endnotes ?? [],
+  ]);
   const referencedBefore = modelReferences(base.package.document.content);
-  const projectedFootnotes = projectNotes(footnotes, "footnote", states, referencedBefore);
-  const projectedEndnotes = projectNotes(endnotes, "endnote", states, referencedBefore);
+  const projectedFootnotes = projectNotes(
+    footnotes,
+    "footnote",
+    states,
+    referencedBefore,
+    referencedElsewhere,
+  );
+  const projectedEndnotes = projectNotes(
+    endnotes,
+    "endnote",
+    states,
+    referencedBefore,
+    referencedElsewhere,
+  );
   return {
     ...(projectedFootnotes ? { footnotes: projectedFootnotes } : {}),
     ...(projectedEndnotes ? { endnotes: projectedEndnotes } : {}),

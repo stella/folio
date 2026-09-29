@@ -210,4 +210,34 @@ describe("structural edits in suggesting mode", () => {
     expect(note?.match(/<w:footnoteRef\/>/gu)).toHaveLength(1);
     expect(note).toMatch(/<w:del\b[^>]*>(?:(?!<\/w:del>)[\s\S])*<w:footnoteRef\/>/u);
   });
+
+  test("a note whose pending reference is taken back is not saved", async () => {
+    const shape = documentShape("notes");
+    const base = await parseShapeDocument(await shape.build());
+    const caret = placeSelection(createHarnessState(base, "suggesting"), shape.focus, "caret-end");
+    if (!caret) {
+      throw new Error("No caret");
+    }
+    const view = new HeadlessEditorView(caret);
+    const insertNote = CONFORMANCE_OPERATIONS.find(({ id }) => id === "command:insertFootnote");
+    expect(insertNote?.run({ view, base, focus: shape.focus })).toBe(true);
+    const added = normalFootnotes(base).at(-1);
+    if (!added) {
+      throw new Error("No note was added");
+    }
+    // The reference is the author's own pending insertion: deleting it takes it back.
+    const { from } = view.state.selection;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, from - String(added.id).length, from),
+      ),
+    );
+    expect(harnessManager().requireCommand("deleteNoteRef")()(view.state, view.dispatch)).toBe(
+      true,
+    );
+
+    const { model } = await saveHarnessState(view.state, base);
+    expect(normalFootnotes(model).map(({ id }) => id)).not.toContain(added.id);
+    expect(normalFootnotes(model).length).toBe(normalFootnotes(base).length - 1);
+  });
 });
