@@ -13,6 +13,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
+import { history, undo } from "prosemirror-history";
 import { EditorState } from "prosemirror-state";
 
 import type { ParagraphDirection } from "../../paragraphDirection";
@@ -240,5 +241,41 @@ describe("appendTransaction (live editing)", () => {
     let state = stateOf(para("Agreement"));
     state = state.apply(state.tr.setSelection(state.selection));
     expect(dirs(state)).toEqual(["none"]);
+  });
+});
+
+describe("undo", () => {
+  test("undoing an edit restores the attributes it set beside the detected direction", () => {
+    // The direction update stays out of history; rewriting the whole node there
+    // brought the edit's own attribute back when the edit was undone.
+    const tagged = new Schema({
+      nodes: {
+        doc: { content: "block+" },
+        paragraph: {
+          group: "block",
+          content: "inline*",
+          attrs: { direction: { default: null }, tag: { default: null } },
+          toDOM: () => ["p", 0],
+        },
+        text: { group: "inline" },
+      },
+    });
+    const taggedPlugin = AutoBidiDetectionExtension().onSchemaReady({ schema: tagged })
+      .plugins?.[0];
+    if (!taggedPlugin) {
+      throw new Error("Expected plugin from AutoBidiDetectionExtension");
+    }
+    let state = EditorState.create({
+      doc: tagged.node("doc", null, [tagged.node("paragraph", null, [tagged.text("x")])]),
+      plugins: [history(), taggedPlugin],
+    });
+    state = state.apply(state.tr.setNodeAttribute(0, "tag", "edited").insertText("هذا ", 1));
+    expect(state.doc.firstChild?.attrs["direction"]).toEqual({ source: "auto" });
+
+    undo(state, (tr) => {
+      state = state.apply(tr);
+    });
+    expect(state.doc.firstChild?.attrs["tag"]).toBeNull();
+    expect(state.doc.textContent).toBe("x");
   });
 });
