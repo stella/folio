@@ -21,7 +21,7 @@ import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { paragraphNumberingAttr } from "../numberingAttr";
-import { directParagraphIndentation } from "../paragraphIndentation";
+import type { DirectParagraphIndentation } from "../paragraphIndentation";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -171,7 +171,7 @@ export function listAttrsFromNumbering(
  * reopen reads it back.
  */
 export function listLevelIndentAttrPatch(
-  attrs: ParagraphAttrs,
+  stated: DirectParagraphIndentation | undefined,
   numPr: { numId: number; ilvl: number },
   numbering: NumberingMap | null | undefined,
 ): ParagraphAttrsPatch {
@@ -179,7 +179,6 @@ export function listLevelIndentAttrPatch(
   if (!level?.pPr) {
     return {};
   }
-  const stated = directParagraphIndentation(attrs);
   const patch: ParagraphAttrsPatch = {};
   if (stated?.indentLeft === undefined && level.pPr.indentLeft !== undefined) {
     patch.indentLeft = level.pPr.indentLeft;

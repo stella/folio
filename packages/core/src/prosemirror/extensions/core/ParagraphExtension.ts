@@ -49,7 +49,10 @@ import {
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
 import { directParagraphSpacing, withDirectParagraphSpacing } from "../../paragraphSpacing";
-import { directParagraphIndentation } from "../../paragraphIndentation";
+import {
+  type DirectParagraphIndentation,
+  directParagraphIndentation,
+} from "../../paragraphIndentation";
 import type { ParagraphDirection } from "../../paragraphDirection";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
@@ -698,16 +701,26 @@ function directParagraphAttrs(attrs: Readonly<ParagraphAttrs>): Record<string, u
   return direct;
 }
 
-/** A paragraph's attrs after a restyle, as the level-indentation read needs them. */
-function restyledAttrs(
-  current: Readonly<ParagraphAttrs>,
+/**
+ * The indentation a restyled paragraph still states itself: a field its
+ * source stated that the new style's attrs keep a value for. Every other
+ * field now reads the style's value, which a save leaves to the style.
+ */
+function restyledIndentation(
   styleAttrs: ParagraphAttrsPatch,
   originalFormatting: ParagraphFormatting | undefined,
-): ParagraphAttrs {
-  const { _originalFormatting: _previous, ...rest } = { ...current, ...styleAttrs };
-  return originalFormatting === undefined
-    ? rest
-    : { ...rest, _originalFormatting: originalFormatting };
+): DirectParagraphIndentation {
+  const stated: DirectParagraphIndentation = {};
+  if (originalFormatting?.indentLeft !== undefined && typeof styleAttrs.indentLeft === "number") {
+    stated.indentLeft = styleAttrs.indentLeft;
+  }
+  if (
+    originalFormatting?.indentFirstLine !== undefined &&
+    typeof styleAttrs.indentFirstLine === "number"
+  ) {
+    stated.indentFirstLine = styleAttrs.indentFirstLine;
+  }
+  return stated;
 }
 
 function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
@@ -1001,7 +1014,7 @@ function makeApplyStyle(schema: Schema) {
               Object.assign(
                 newAttrs,
                 listLevelIndentAttrPatch(
-                  restyledAttrs(current, styleAttrs, restyledOriginal),
+                  restyledIndentation(styleAttrs, restyledOriginal),
                   {
                     numId: directNumId,
                     ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,

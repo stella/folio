@@ -54,6 +54,12 @@
       "path": "35",
       "note": "#1128: oracle for a tracked merge into a run of deleted blocks",
       "date": "2026-09-27"
+    },
+    {
+      "seed": 2057617557,
+      "path": "308:1:4",
+      "note": "formatting a last paragraph the batch deletes and inserts before (path at factor 5)",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (${name})": [
@@ -107,6 +113,12 @@
       "seed": -1268251019,
       "path": "156:0:0:0:0:3:2:2:6:3:3:3:5:7:3:9:5:3:6:7:8:7:8:7:7:9:7:9:7:7:8:7:7:11:7:10:11",
       "note": "a direct column deletion closed a row before a column the same batch inserted could keep it, unlike the batch accepted tracked (path at factor 5)",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": 1265839460,
+      "path": "101:5:8:9:12:12:14:14:15:16:15:15:15:15:15:17:17:16:16:16:17:16:17:16:17:17:16:18:16:16:16:16:16:16:16:16:16:17:18:18:10:7:9:10",
+      "note": "deleting then reinserting a column beside a vertical merge in a table holding a nested table: the same row-closing order",
       "date": "2026-09-29"
     }
   ],
