@@ -7,8 +7,8 @@
 
 /**
  * Escape only characters that would change markdown structure mid-text:
- *   - backslash, backtick, asterisk, brackets (always)
- *   - underscore: only at word boundaries (emphasis trigger)
+ *   - backslash, backtick, asterisk, brackets, tilde (always)
+ *   - underscore: unless between two letters or digits (emphasis trigger)
  *   - angle brackets: only when they look like a tag/autolink
  *
  * Characters like `.` `-` `+` `#` `(` `)` `!` are only meaningful at line
@@ -16,10 +16,11 @@
  * when to escape those.
  */
 export function escapeInline(text: string): string {
-  let out = text.replace(/(?<ch>[\\`*[\]])/gu, "\\$<ch>");
-  // Underscore as emphasis marker: only at word boundaries.
-  out = out.replace(/(?<pre>^|\s)_/gu, "$<pre>\\_");
-  out = out.replace(/_(?<post>\s|$)/gu, "\\_$<post>");
+  // A tilde pair reads as strikethrough, a single one too (GFM).
+  let out = text.replace(/(?<ch>[\\`*[\]~])/gu, "\\$<ch>");
+  // Only an underscore between two letters or digits cannot open or close
+  // emphasis (`snake_case`); any other one is escaped, once.
+  out = out.replace(/(?<![\p{L}\p{N}])_|_(?![\p{L}\p{N}])/gu, "\\_");
   // Angle brackets only escaped when they form a plausible HTML tag — an
   // alphabetic name immediately followed by attributes/end. Prose like `x < y`
   // and `i < n` stays untouched.

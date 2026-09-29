@@ -4006,7 +4006,7 @@ describe("Folio AI edit operations", () => {
     expect(updatedTable.textContent).toBe("BD");
   });
 
-  test("table-column deletes create one revision across every removed cell", () => {
+  test("table-column deletes create one revision per removed cell", () => {
     const makeTrackedColumnDeletionState = () => {
       const rows = [
         ["A", "B"],
@@ -4047,9 +4047,10 @@ describe("Folio AI edit operations", () => {
     if (revisionId === undefined) {
       throw new Error("expected a column deletion revision");
     }
+    // The save writes each cell's marker as a revision of its own.
     expect(acceptedResult).toEqual({
       nextRevisionId: expect.any(Number),
-      applied: [{ id: "delete-column", revisionId, revisionIds: [revisionId] }],
+      applied: [{ id: "delete-column", revisionId, revisionIds: [revisionId, revisionId + 1] }],
       skipped: [],
     });
     const pendingTable = accepting.state.doc.child(0);
@@ -4060,22 +4061,25 @@ describe("Folio AI edit operations", () => {
     });
     expect(pendingTable.child(1).child(1).attrs["cellMarker"]).toEqual({
       kind: "del",
-      info: { revisionId, author: "AI", date: expect.any(String) },
+      info: { revisionId: revisionId + 1, author: "AI", date: expect.any(String) },
     });
-    expect(
-      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellDeleted"),
-    ).toEqual([
-      {
-        id: revisionId,
+    const deletedCells = () =>
+      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellDeleted");
+    expect(deletedCells()).toEqual(
+      ["B", "D"].map((text, index) => ({
+        id: revisionId + index,
         type: "cellDeleted",
         author: "AI",
         date: expect.any(String),
-        text: "B\nD",
+        text,
         blockId: expect.any(String),
-      },
-    ]);
+      })),
+    );
 
+    // Accepting one cell's revision leaves the other pending.
     expect(acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(deletedCells()).toHaveLength(1);
+    expect(acceptAIEditRevision(revisionId + 1)(accepting.state, accepting.dispatch)).toBe(true);
     const acceptedTable = accepting.state.doc.child(0);
     expect(TableMap.get(acceptedTable).width).toBe(1);
     expect(acceptedTable.textContent).toBe("AC");
@@ -4097,9 +4101,9 @@ describe("Folio AI edit operations", () => {
     if (rejectedRevisionId === undefined) {
       throw new Error("expected a column deletion revision");
     }
-    expect(rejectAIEditRevision(rejectedRevisionId)(rejecting.state, rejecting.dispatch)).toBe(
-      true,
-    );
+    for (const id of [rejectedRevisionId, rejectedRevisionId + 1]) {
+      expect(rejectAIEditRevision(id)(rejecting.state, rejecting.dispatch)).toBe(true);
+    }
     const rejectedTable = rejecting.state.doc.child(0);
     expect(TableMap.get(rejectedTable).width).toBe(2);
     expect(rejectedTable.textContent).toBe("ABCD");
@@ -4147,7 +4151,7 @@ describe("Folio AI edit operations", () => {
     expect(view.state.doc).toEqual(state.doc);
   });
 
-  test("table-column inserts create one revision across every new cell", () => {
+  test("table-column inserts create one revision per new cell", () => {
     const makeTrackedColumnState = () => {
       const rows = [
         ["A", "B"],
@@ -4187,9 +4191,10 @@ describe("Folio AI edit operations", () => {
     if (revisionId === undefined) {
       throw new Error("expected a column insertion revision");
     }
+    // The save writes each cell's marker as a revision of its own.
     expect(acceptedResult).toEqual({
       nextRevisionId: expect.any(Number),
-      applied: [{ id: "insert-column", revisionId, revisionIds: [revisionId] }],
+      applied: [{ id: "insert-column", revisionId, revisionIds: [revisionId, revisionId + 1] }],
       skipped: [],
     });
     const pendingTable = accepting.state.doc.child(0);
@@ -4199,22 +4204,25 @@ describe("Folio AI edit operations", () => {
     });
     expect(pendingTable.child(1).child(1).attrs["cellMarker"]).toEqual({
       kind: "ins",
-      info: { revisionId, author: "AI", date: expect.any(String) },
+      info: { revisionId: revisionId + 1, author: "AI", date: expect.any(String) },
     });
-    expect(
-      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellInserted"),
-    ).toEqual([
-      {
-        id: revisionId,
+    const insertedCells = () =>
+      getTrackedChangesFromDoc(accepting.state.doc).filter(({ type }) => type === "cellInserted");
+    expect(insertedCells()).toEqual(
+      ["New top", "New bottom"].map((text, index) => ({
+        id: revisionId + index,
         type: "cellInserted",
         author: "AI",
         date: expect.any(String),
-        text: "New top\nNew bottom",
+        text,
         blockId: expect.any(String),
-      },
-    ]);
+      })),
+    );
 
+    // Accepting one cell's revision leaves the other pending.
     expect(acceptAIEditRevision(revisionId)(accepting.state, accepting.dispatch)).toBe(true);
+    expect(insertedCells()).toHaveLength(1);
+    expect(acceptAIEditRevision(revisionId + 1)(accepting.state, accepting.dispatch)).toBe(true);
     const acceptedTable = accepting.state.doc.child(0);
     expect(TableMap.get(acceptedTable).width).toBe(3);
     expect(acceptedTable.child(0).child(1).attrs["cellMarker"]).toBeNull();
@@ -4240,9 +4248,9 @@ describe("Folio AI edit operations", () => {
     }
     expect(accepting.state.doc.textContent).toBe("ANew topBCNew bottomD");
     expect(rejecting.state.doc.textContent).toBe("ANew topBCNew bottomD");
-    expect(rejectAIEditRevision(rejectedRevisionId)(rejecting.state, rejecting.dispatch)).toBe(
-      true,
-    );
+    for (const id of [rejectedRevisionId, rejectedRevisionId + 1]) {
+      expect(rejectAIEditRevision(id)(rejecting.state, rejecting.dispatch)).toBe(true);
+    }
     const rejectedTable = rejecting.state.doc.child(0);
     expect(TableMap.get(rejectedTable).width).toBe(2);
     expect(rejectedTable.textContent).toBe("ABCD");

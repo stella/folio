@@ -111,6 +111,27 @@
       "title": "#1192 random flow"
     },
     {
+      "seed": 764128763,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "column cell changes read the same after save"
+    },
+    {
+      "seed": 744138350,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "an edit inside a pending insertion reads the same after save"
+    },
+    {
+      "seed": 1056657126,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "emphasis ending mid-word reads back from markdown"
+    },
+    {
       "seed": 185578404,
       "steps": 10,
       "kind": "random",

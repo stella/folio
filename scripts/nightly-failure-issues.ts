@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Turn a failed nightly test log into GitHub issues, one per failing test.
+ * Turn a failed nightly test log into GitHub issues: one per failing property
+ * test, one per (operation, placement, violation kind) for the conformance
+ * tier, so a class of failure that hits many document shapes files once.
  *
  * The nightly property sweep and the full conformance tier run unattended, so
  * a failure nobody reads is a failure nobody fixes. This parses the run's log
@@ -44,9 +46,21 @@ export type Failure = {
   error: string | null;
   /** A seed test/property-seeds.json already pins failed again. */
   pinned: boolean;
+  /** Conformance violation kinds the error names, `mode kind` (e.g. `editing undo`). */
+  violations?: string[];
+  /** A conformance group: every shape where one operation at one placement broke one way. */
+  group?: ConformanceGroup;
 };
 
-const MAX_ISSUES = 10;
+export type ConformanceGroup = {
+  operation: string;
+  placement: string;
+  kind: string;
+  shapes: string[];
+  modes: string[];
+};
+
+const MAX_ISSUES = 20;
 const MAX_TEXT = 6_000;
 const LABELS: Record<Kind, { name: string; color: string; description: string }> = {
   property: {
@@ -70,6 +84,13 @@ const GROUP_FILE = /^(?:::group::)?((?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?):$/;
 const SEED_LINE = /^\{ seed: (-?\d+), path: "([\d:]*)", endOnFailure: true \}$/;
 const ERROR_FILE = /::error file=((?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?),/;
 const FRAME_FILE = /\/(packages\/[\w.-]+\/(?:[\w.@-]+\/)*[\w.@-]+\.test\.tsx?):\d+:\d+\)?$/;
+/** A received violation in a conformance case's diff: `+   "[editing] undo: …",`. */
+const VIOLATION_LINE = /^\+\s+"\[([\w-]+)\] ([\w-]+):/;
+/** A conformance case: `… > shape › operation @ placement`. */
+const CASE_NAME = /(?:^| > )([^>]+?) › (.+) @ ([^@]+)$/;
+export const CONFORMANCE_FILE = "packages/core/src/__tests__/editorCommandConformance.test.ts";
+const CONFORMANCE_COMMAND =
+  "cd packages/core && FOLIO_CONFORMANCE=full bun test src/__tests__/editorCommandConformance.test.ts";
 
 type Marker = {
   file: string | null;
@@ -95,6 +116,7 @@ export const parseFailures = (
   let groupFile: string | null = null;
   let located: string | null = null;
   let pending: Partial<Failure> = {};
+  let violations = new Set<string>();
   let marker: Marker | null = null;
   let summary = false;
 
@@ -148,6 +170,10 @@ export const parseFailures = (
       }
       pending.error = detail.join("\n").trim();
     }
+    const violation = VIOLATION_LINE.exec(line.trim());
+    if (violation !== null) {
+      violations.add(`${violation[1] as string} ${violation[2] as string}`);
+    }
     const errorFile = ERROR_FILE.exec(line) ?? FRAME_FILE.exec(line);
     if (errorFile !== null && located === null) {
       located = errorFile[1] as string;
@@ -168,9 +194,11 @@ export const parseFailures = (
         replay: marker?.replay ?? null,
         error: marker?.error ?? pending.error ?? null,
         pinned: marker?.pinned ?? false,
+        ...(violations.size === 0 ? {} : { violations: [...violations] }),
       });
     }
     pending = {};
+    violations = new Set();
     marker = null;
     located = null;
   }
@@ -186,10 +214,33 @@ const lastSegment = (name: string): string => name.split(" > ").at(-1) as string
 const packageDirOf = (file: string): string | null =>
   /^(packages\/[^/]+)\//.exec(file)?.[1] ?? null;
 
+/** The command that reruns a whole nightly suite: a replay for a failure no single test names. */
+export const suiteReplay = (kind: Kind): string =>
+  kind === "conformance" ? CONFORMANCE_COMMAND : "bun run test:property";
+
+/** The `FOLIO_CONFORMANCE_FILTER` regex that selects exactly these cases. */
+export const caseFilter = (shapes: readonly string[], operation: string, placement: string) => {
+  const shape =
+    shapes.length === 1
+      ? escapeRegExp(shapes[0] as string)
+      : `(?:${shapes.map(escapeRegExp).join("|")})`;
+  return `^${shape} › ${escapeRegExp(operation)} @ ${escapeRegExp(placement)}$`;
+};
+
 /** A replay command for a failure whose log did not carry one. */
 export const replayFor = (kind: Kind, failure: Failure, factor: number | null): string => {
+  if (failure.replay !== null) return failure.replay;
   const pattern = shellQuote(escapeRegExp(lastSegment(failure.name)));
   if (kind === "conformance") {
+    if (failure.group !== undefined) {
+      const { shapes, operation, placement } = failure.group;
+      const filter = shellQuote(caseFilter(shapes, operation, placement));
+      // A replacer function: the filter ends in `$'`, a special pattern in a replacement string.
+      return CONFORMANCE_COMMAND.replace(
+        "FOLIO_CONFORMANCE=full ",
+        () => `FOLIO_CONFORMANCE=full FOLIO_CONFORMANCE_FILTER=${filter} `,
+      );
+    }
     // A case (`shape › operation @ placement`) replays alone under the filter.
     const test = lastSegment(failure.name);
     const filter = / › .+ @ /.test(test)
@@ -197,17 +248,79 @@ export const replayFor = (kind: Kind, failure: Failure, factor: number | null): 
       : "";
     return `cd packages/core && FOLIO_CONFORMANCE=full ${filter}bun test src/__tests__/editorCommandConformance.test.ts -t ${pattern}`;
   }
-  if (failure.replay !== null) return failure.replay;
+  if (failure.file === null) return suiteReplay(kind);
   const env: string[] = [];
   if (failure.seed !== null) env.push(`PROPERTY_TEST_SEED=${String(failure.seed)}`);
   if (failure.path !== null) env.push(`PROPERTY_TEST_PATH=${shellQuote(failure.path)}`);
   if (factor !== null && factor !== 1) env.push(`PROPERTY_TEST_NUM_RUNS_FACTOR=${String(factor)}`);
-  const file = failure.file ?? "<file>";
+  const file = failure.file;
   const pkg = packageDirOf(file);
   const cd = pkg === null ? "" : `cd ${pkg} && `;
   const relative = pkg === null ? file : file.slice(pkg.length + 1);
   return `${cd}${[...env, "bun test", relative].join(" ")} -t ${pattern}`;
 };
+
+/**
+ * Conformance failures grouped by (operation, placement, violation kind): a
+ * case that broke two ways joins two groups, and a group lists every shape
+ * and mode it broke in. A failure that is not a case (a coverage test, the
+ * stale-gap check) stays on its own.
+ */
+export const groupConformanceFailures = (failures: readonly Failure[]): Failure[] => {
+  const groups = new Map<string, Failure & { group: ConformanceGroup }>();
+  const rest: Failure[] = [];
+  for (const failure of failures) {
+    const match = CASE_NAME.exec(failure.name);
+    if (match === null) {
+      rest.push(failure);
+      continue;
+    }
+    const [, shape, operation, placement] = match as unknown as [string, string, string, string];
+    const byKind = new Map<string, Set<string>>();
+    for (const violation of failure.violations ?? []) {
+      const [mode, kind] = violation.split(" ") as [string, string];
+      byKind.set(kind, (byKind.get(kind) ?? new Set()).add(mode));
+    }
+    if (byKind.size === 0) byKind.set("unclassified", new Set());
+    for (const [kind, modes] of byKind) {
+      const name = `${operation} @ ${placement}: ${kind}`;
+      let group = groups.get(name);
+      if (group === undefined) {
+        group = {
+          ...failure,
+          name,
+          file: failure.file ?? CONFORMANCE_FILE,
+          group: { operation, placement, kind, shapes: [], modes: [] },
+        };
+        delete group.violations;
+        groups.set(name, group);
+      }
+      if (!group.group.shapes.includes(shape)) group.group.shapes.push(shape);
+      for (const mode of modes) {
+        if (!group.group.modes.includes(mode)) group.group.modes.push(mode);
+      }
+    }
+  }
+  for (const group of groups.values()) {
+    group.group.modes.sort();
+    group.replay = replayFor("conformance", { ...group, replay: null }, null);
+  }
+  return [...groups.values(), ...rest];
+};
+
+/**
+ * One issue for the failures past the first `MAX_ISSUES`, under a title that
+ * stays the same from run to run, listing each with its own replay line.
+ */
+export const overflowFailure = (
+  kind: Kind,
+  rest: readonly Failure[],
+  factor: number | null,
+): Failure => ({
+  ...unparsedFailure(kind),
+  name: `more failing ${kind === "conformance" ? "groups" : "tests"} than one run files`,
+  error: rest.map((failure) => `${failure.name}\n  ${replayFor(kind, failure, factor)}`).join("\n"),
+});
 
 /** The test/property-seeds.json entry that pins a property failure. */
 export const seedEntry = (failure: Failure, date: string, runUrl: string | null): string | null => {
@@ -241,7 +354,8 @@ type Context = {
 };
 
 export const issueTitle = (kind: Kind, failure: Failure): string => {
-  const title = `Nightly ${kind} failure: ${failure.file ?? "<unknown file>"}::${failure.name}`;
+  const where = failure.group !== undefined || failure.file === null ? "" : `${failure.file}::`;
+  const title = `Nightly ${kind} failure: ${where}${failure.name}`;
   if (title.length <= 240) return title;
   const key = createHash("sha256").update(title).digest("hex").slice(0, 12);
   return `${title.slice(0, 226)}…${key}`;
@@ -266,7 +380,13 @@ export const issueBody = (failure: Failure, context: Context, recurrence: boolea
       ? ["", "This is a seed `test/property-seeds.json` already pins: a fixed failure came back."]
       : []),
     "",
-    `**Test:** ${failure.name}`,
+    ...(failure.group === undefined
+      ? [`**Test:** ${failure.name}`]
+      : [
+          `**Operation:** \`${failure.group.operation}\` at \`${failure.group.placement}\``,
+          `**Violation:** \`${failure.group.kind}\`${failure.group.modes.length === 0 ? "" : ` (${failure.group.modes.join(", ")})`}`,
+          `**Shapes:** ${failure.group.shapes.map((shape) => `\`${shape}\``).join(", ")}`,
+        ]),
     ...(failure.file === null ? [] : [`**File:** \`${failure.file}\``]),
     ...(failure.seed === null
       ? []
@@ -306,7 +426,7 @@ export const unparsedFailure = (kind: Kind): Failure => ({
   path: null,
   counterexample: null,
   title: null,
-  replay: null,
+  replay: suiteReplay(kind),
   error: "The job failed before or outside a test (setup, crash or timeout); see the run log.",
   pinned: false,
 });
@@ -354,7 +474,8 @@ const main = async (): Promise<void> => {
   const root = path.resolve(import.meta.dir, "..");
   const log =
     options.log !== "" && existsSync(options.log) ? readFileSync(options.log, "utf8") : "";
-  const parsed = parseFailures(log, packageOfFile(root));
+  const found = parseFailures(log, packageOfFile(root));
+  const parsed = options.kind === "conformance" ? groupConformanceFailures(found) : found;
   const failures = parsed.length === 0 ? [unparsedFailure(options.kind)] : parsed;
   const context: Context = {
     kind: options.kind,
@@ -366,12 +487,7 @@ const main = async (): Promise<void> => {
   const label = LABELS[options.kind];
   const shown = failures.slice(0, MAX_ISSUES);
   if (failures.length > MAX_ISSUES) {
-    const rest = failures.slice(MAX_ISSUES);
-    shown.push({
-      ...unparsedFailure(options.kind),
-      name: `${String(rest.length)} more ${options.kind} failures in one run`,
-      error: rest.map((failure) => failure.name).join("\n"),
-    });
+    shown.push(overflowFailure(options.kind, failures.slice(MAX_ISSUES), options.factor));
   }
 
   if (options.dryRun) {
