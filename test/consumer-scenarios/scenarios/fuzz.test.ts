@@ -36,7 +36,7 @@ const saveSample = async (
     throw new Error("FOLIO_SCENARIO_SAMPLE_DIR is required to save samples");
   }
   const fingerprint = createHash("sha256")
-    .update(`${kind}\0${seed}\0${fixture}\0${mode}`)
+    .update(`${kind}\0${seed}\0${String(STEPS)}\0${fixture}\0${mode}`)
     .digest("hex")
     .slice(0, 16);
   await mkdir(SAMPLE_DIR, { recursive: true });
