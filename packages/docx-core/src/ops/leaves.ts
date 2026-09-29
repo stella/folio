@@ -291,7 +291,7 @@ const ownFields = (node: InlineNode): [string, unknown][] => {
  * Whether two records are alike in everything but their content and the ids
  * they carry: merged, the first one's ids stand for both.
  */
-const sameOwnFields = (left: InlineNode, right: InlineNode): boolean =>
+export const sameOwnFields = (left: InlineNode, right: InlineNode): boolean =>
   left.type === right.type &&
   structurallyEqual(
     Object.fromEntries(ownFields(maskIdentity(left))),
@@ -535,6 +535,39 @@ export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
   walk(items);
   return out;
 };
+
+/**
+ * How many levels the record ending `left` and the one starting `right` merge
+ * before a pair differs: text with text, and records alike in everything but
+ * their content and ids, down the chain of last and first children. `0` when
+ * the two are not alike at all.
+ */
+export const alikeDepth = (left: InlineNode | undefined, right: InlineNode | undefined): number => {
+  if (left === undefined || right === undefined) {
+    return 0;
+  }
+  const kind = kindOf(left);
+  if (kind !== kindOf(right) || (kind !== "characters" && kind !== "branch")) {
+    return 0;
+  }
+  if (left.type === "text" && right.type === "text") {
+    return 1;
+  }
+  const leftChildren = childNodes(left);
+  const rightChildren = childNodes(right);
+  if (leftChildren === undefined || rightChildren === undefined || !sameOwnFields(left, right)) {
+    return 0;
+  }
+  return 1 + alikeDepth(leftChildren.at(-1), rightChildren.at(0));
+};
+
+/** Two lists end to end, the records meeting there merged as far as they are alike. */
+export const mergeAlike = (
+  left: readonly InlineNode[],
+  right: readonly InlineNode[],
+): InlineNode[] =>
+  mergeLists(left, right, alikeDepth(left.at(-1), right.at(0))) ??
+  panic("Records alike to a depth merge to that depth.");
 
 /** A leaf with the records holding it, outermost first, and its gaps. */
 export type LeafSpan = {

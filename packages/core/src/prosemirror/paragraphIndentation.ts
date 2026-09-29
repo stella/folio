@@ -2,6 +2,7 @@ import { panic } from "better-result";
 
 import type { FolioContentParagraphIndentation } from "../compare/content-types";
 import type { ParagraphFormatting } from "../types/document";
+import { paragraphNumberingReferenceId } from "../docx/numberingReference";
 import type { ParagraphAttrs } from "./schema/nodes";
 
 type ModelIndentation = Pick<ParagraphFormatting, keyof FolioContentParagraphIndentation>;
@@ -87,6 +88,7 @@ export const directParagraphIndentation = (
 ): DirectParagraphIndentation | undefined => {
   const original = attrs._originalFormatting ?? undefined;
   const resolved = attrs._resolvedFormatting;
+  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
   const indentation: DirectParagraphIndentation = {};
   for (const key of PARAGRAPH_INDENTATION_VALUE_KEYS) {
     const value = attrs[key];
@@ -94,8 +96,11 @@ export const directParagraphIndentation = (
       continue;
     }
     const stated = original?.[key] !== undefined;
-    // Without `_originalFormatting` a save writes only non-zero values.
-    const inherited = resolved?.[key] === value || (original === undefined && value === 0);
+    // Without `_originalFormatting` a save writes a zero left or first-line
+    // indent only where a numbering level could supply another value.
+    const zeroIsDefault = key === "indentRight" || !numbered;
+    const inherited =
+      resolved?.[key] === value || (original === undefined && value === 0 && zeroIsDefault);
     if (stated || !inherited) {
       copyIndentationValue({ target: indentation, key, value });
     }
@@ -106,7 +111,13 @@ export const directParagraphIndentation = (
     if (hanging) {
       indentation.indentFirstLine = -Math.abs(indentation.indentFirstLine);
     }
-  } else if (original?.hangingIndent !== undefined && typeof attrs.hangingIndent === "boolean") {
+  } else if (
+    original?.hangingIndent !== undefined &&
+    original.indentFirstLine === undefined &&
+    typeof attrs.hangingIndent === "boolean"
+  ) {
+    // A source that stated the hanging flag alone; a first line it stated and
+    // an edit removed takes its sign with it.
     indentation.hangingIndent = attrs.hangingIndent;
   }
   return Object.keys(indentation).length > 0 ? indentation : undefined;

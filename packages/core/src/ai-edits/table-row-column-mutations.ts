@@ -14,6 +14,7 @@ import {
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCells,
   removeTableRow,
+  type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
@@ -395,6 +396,8 @@ type ApplyTableColumnDeletionOptions = {
   deletion: TableColumnDeletion;
   insertedColumnCount: number;
   revision: TableStructureRevision | null;
+  /** Where to defer closing rows the deletion leaves without cells, when it runs in a batch. */
+  emptiedRows?: RowsEmptiedInBatch;
 };
 
 export const applyTableColumnDeletion = ({
@@ -402,6 +405,7 @@ export const applyTableColumnDeletion = ({
   deletion,
   insertedColumnCount,
   revision,
+  emptiedRows,
 }: ApplyTableColumnDeletionOptions): TableRowColumnMutationResult => {
   const tablePosition = tr.mapping.map(deletion.tablePosition, 1);
   const table = tr.doc.nodeAt(tablePosition);
@@ -453,7 +457,11 @@ export const applyTableColumnDeletion = ({
     previousTable: table,
     removedColumn: columnIndex,
   });
-  removeRowsWithoutCells(tr, tablePosition);
+  if (emptiedRows) {
+    emptiedRows.pending = true;
+  } else {
+    removeRowsWithoutCells(tr, tablePosition);
+  }
   return applied(tr, null);
 };
 

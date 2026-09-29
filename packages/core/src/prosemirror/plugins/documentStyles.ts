@@ -20,8 +20,17 @@ import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
 import { type BuiltInStyleIndex, EMPTY_BUILT_IN_STYLE_INDEX } from "../../docx/builtInStyles";
 import type { Style, StyleDefinitions } from "../../types/document";
 import { StyleResolver, createStyleResolver } from "../styles/styleResolver";
+import { getDocumentNumbering } from "./documentNumbering";
+import { resolveEditedParagraphStyles } from "./paragraphStyleResolution";
 
 export const documentStylesKey = new PluginKey<StyleResolver | null>("documentStyles");
+
+let bareStyleResolver: StyleResolver | undefined;
+/** The cascade of a package that defines no styles: docDefaults-free built-ins. */
+const bareResolver = (): StyleResolver => {
+  bareStyleResolver ??= createStyleResolver(undefined);
+  return bareStyleResolver;
+};
 
 /**
  * Create the plugin holding a StyleResolver for the document's `styles` for
@@ -47,6 +56,16 @@ export function createDocumentStylesPlugin(
       init: () => resolver,
       apply: (_tr, value) => value,
     },
+    // A paragraph an edit creates reads its style cascade the way a loaded
+    // one does, so it paints its inherited formatting before any reopen.
+    // A package without a styles part loads against the built-in defaults.
+    appendTransaction: (transactions, _oldState, newState) =>
+      resolveEditedParagraphStyles(
+        transactions,
+        newState,
+        documentStylesKey.getState(newState) ?? bareResolver(),
+        () => getDocumentNumbering(newState),
+      ),
   });
 }
 

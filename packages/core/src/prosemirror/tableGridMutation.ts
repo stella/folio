@@ -58,6 +58,42 @@ export const removeTableRow = (
 };
 
 /**
+ * Whether a batch of structural edits may have left rows without cells, to
+ * close once the whole batch has run.
+ */
+export type RowsEmptiedInBatch = { pending: boolean };
+
+/**
+ * Close the rows a batch left without cells, once the whole batch has run: a
+ * later operation of the same batch can still give such a row a cell (a column
+ * inserted beside a merge), as accepting the batch tracked does.
+ *
+ * Every table is visited rather than the ones the deletions named: a later
+ * operation of the batch can move a table whole, as a merge carries a nested
+ * table into the merged cell, and a position mapped through that move no
+ * longer finds it. Tables go from the last to the first, so closing rows in
+ * one never moves a table still to visit.
+ */
+export const removeRowsWithoutCellsAfterBatch = (
+  tr: Transaction,
+  emptied: RowsEmptiedInBatch,
+): void => {
+  if (!emptied.pending) {
+    return;
+  }
+  const tables: number[] = [];
+  tr.doc.descendants((node, position) => {
+    if (node.type.spec["tableRole"] === "table") {
+      tables.push(position);
+    }
+    return !node.isTextblock;
+  });
+  for (const position of tables.toReversed()) {
+    removeRowsWithoutCells(tr, position);
+  }
+};
+
+/**
  * Remove every row a structural edit left without a cell of its own, closing
  * the vertical merges that reached through it over one row fewer.
  *

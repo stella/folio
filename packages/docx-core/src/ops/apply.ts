@@ -28,6 +28,7 @@
  * | `replaceBlocks`     | `replaceBlocks`                                           |
  * | `setParagraphReview`| `setParagraphReview`                                      |
  * | `replaceInline`     | `replaceInline`                                           |
+ * | `resolveRevision`   | the inverses of the operations it expands to              |
  *
  * A tracked operation (one carrying a `revision` stamp, see `review.ts`) is
  * undone as follows: a tracked insertion by `deleteRange`, a tracked split by
@@ -113,6 +114,7 @@ import {
   DocumentOpRefusal,
   type DocumentOpRefusalReason,
 } from "./refusal";
+import { resolveRevision } from "./resolve";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -1884,6 +1886,8 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
       return setParagraphReview(document, op);
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return replaceInline(document, op);
+    case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+      return resolveRevision(document, op, applyDocumentOps);
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -1907,6 +1911,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+    case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return undefined;
     default: {
       const unreachable: never = op;

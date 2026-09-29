@@ -33,7 +33,8 @@ import { LIST_RENDERING_ATTR_KEYS } from "./listMarker";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
-import { listAttrsFromNumbering } from "./styles/resolvedStyleAttrs";
+import { directParagraphIndentation } from "./paragraphIndentation";
+import { listAttrsFromNumbering, listLevelIndentAttrPatch } from "./styles/resolvedStyleAttrs";
 import { listRenderingFor, recordsListRendering } from "./listRendering";
 
 const PARAGRAPH_NODE = "paragraph";
@@ -329,12 +330,13 @@ export const resolveListTarget = ({
 
 /** A paragraph's attrs as an item of `numId` at `ilvl`, resolved in `numbering`. */
 export const listItemAttrs = (
-  attrs: Record<string, unknown>,
+  attrs: Readonly<ParagraphAttrs>,
   { numId, ilvl }: { numId: number; ilvl: number },
   numbering: NumberingMap,
 ): Record<string, unknown> => ({
   ...attrs,
   ...listAttrsFromNumbering({ numId, ilvl }, numbering),
+  ...listLevelIndentAttrPatch(directParagraphIndentation(attrs), { numId, ilvl }, numbering),
   // Counted from the paragraph's own inline fields; the list does not change them.
   listImplicitChildLevelAdvances: attrs["listImplicitChildLevelAdvances"] ?? null,
   listMarkerSecondSlotOffsetTwips: attrs["listMarkerSecondSlotOffsetTwips"] ?? null,
@@ -422,7 +424,7 @@ const moveItems = ({ state, items, numId, numbering }: MoveItemsOptions): Transa
     updates: items.map(({ pos, node, membership }) => ({
       pos,
       node,
-      next: listItemAttrs(node.attrs, { numId, ilvl: membership.ilvl }, numbering),
+      next: listItemAttrs(expectParagraphAttrs(node), { numId, ilvl: membership.ilvl }, numbering),
     })),
   });
   return tr.scrollIntoView();

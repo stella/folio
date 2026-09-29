@@ -37,6 +37,13 @@
       "title": "keeps live block fields across save"
     },
     {
+      "seed": 1700929879,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "an inserted heading's words follow its style"
+    },
+    {
       "seed": 20260931,
       "steps": 4,
       "kind": "random",
@@ -144,6 +151,20 @@
       "kind": "random",
       "generation": "targeted",
       "title": "table insertion inside a comment"
+    },
+    {
+      "seed": 764128765,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "deleted words in a restyled insertion reject with their style"
+    },
+    {
+      "seed": 764128765,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "inserted heading beside a stated outline level"
     }
   ]
 }
