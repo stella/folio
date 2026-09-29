@@ -1,0 +1,177 @@
+name: Continuous Fuzz
+
+# Fuzzes main between merges, with more time than a merge group affords and
+# fresh seeds every run: consumer-scenario flows (fresh random and collision
+# flows plus mutants of a corpus of flows that reached new states; see
+# test/consumer-scenarios/support/fuzz-loop.ts) and the property suite. A
+# failure is shrunk and filed as one issue per fingerprint.
+on:
+  schedule:
+    # Every two hours at :41, off the scheduler's peak minutes.
+    - cron: "41 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "Consumer-scenario fuzz budget in minutes"
+        required: false
+        default: "25"
+      factor:
+        description: "Property numRuns multiplier"
+        required: false
+        default: "4"
+
+# Never two runs at once: a run that comes due while one is going waits.
+concurrency:
+  group: continuous-fuzz
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  consumer-fuzz:
+    name: Consumer-scenario fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - run: bun install --frozen-lockfile
+
+      # The corpus of flows that reached new states, carried from run to run.
+      - name: Restore the flow corpus
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .fuzz/corpus
+          key: consumer-fuzz-corpus-${{ github.run_id }}
+          restore-keys: consumer-fuzz-corpus-
+
+      # The seed derives from the run id: every run searches afresh, and a
+      # rerun of a run replays it.
+      - name: Fuzz for the budget
+        run: |
+          set -o pipefail
+          if [[ ! "$MINUTES" =~ ^[0-9]+$ ]] || (( MINUTES < 1 || MINUTES > 40 )); then
+            echo "::error::minutes must be a whole number from 1 to 40"
+            exit 1
+          fi
+          mkdir -p test-results
+          export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
+          export FOLIO_SCENARIO_BUDGET_SECONDS=$(( MINUTES * 60 ))
+          bun scripts/consumer-scenarios.ts -- continuous-fuzz.test.ts 2>&1 \
+            | tee test-results/continuous-fuzz.log
+        env:
+          MINUTES: ${{ github.event.inputs.minutes || '25' }}
+          FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          FOLIO_SCENARIO_SHRINK_SECONDS: "240"
+          FOLIO_SCENARIO_CORPUS_DIR: .fuzz/corpus
+          FOLIO_SCENARIO_FAILURES_DIR: test-results/fuzz-failures
+          FOLIO_SCENARIO_MINIMIZED_DIR: test-results/fuzz-minimized
+
+      - name: Save the flow corpus
+        if: always() && !cancelled()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .fuzz/corpus
+          key: consumer-fuzz-corpus-${{ github.run_id }}
+
+      - name: Keep the failures and minimized flows
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: continuous-fuzz-consumer
+          path: |
+            test-results/continuous-fuzz.log
+            test-results/fuzz-failures
+            test-results/fuzz-minimized
+          retention-days: 14
+          if-no-files-found: ignore
+
+  property-fuzz:
+    name: Property fuzz
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      # Every property, scaled up, under a salt no other run uses; a failure
+      # logs its seed, replay line and fingerprint (test/property-testing.ts).
+      - name: Property suite
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun run test:property 2>&1 | tee test-results/property-fuzz.log
+        env:
+          PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '4' }}
+          PROPERTY_TEST_SEED_SALT: continuous-${{ github.run_id }}
+
+      - name: Keep the log
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: continuous-fuzz-property
+          path: test-results/property-fuzz.log
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
+  # on a branch reports in its run, not in the issue tracker.
+  report:
+    name: File failures by fingerprint
+    needs: [consumer-fuzz, property-fuzz]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        continue-on-error: true
+        with:
+          pattern: continuous-fuzz-*
+          path: fuzz-results
+
+      - name: Open or update one issue per fingerprint
+        run: >-
+          bun scripts/fuzz-failure-issues.ts
+          --log fuzz-results/continuous-fuzz-consumer/continuous-fuzz.log
+          --records fuzz-results/continuous-fuzz-consumer/fuzz-failures
+          --log fuzz-results/continuous-fuzz-property/property-fuzz.log
+          --source "continuous fuzz" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

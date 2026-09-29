@@ -73,9 +73,13 @@ export const contentView = (block: ContentBlock): BlockView =>
   );
 
 const MARKDOWN_ESCAPE = /\\(?<char>[\\`*_{}[\]()#+\-.!|<>~])/gu;
-/** Inline emphasis a formatting edit adds; the block text carries none of it. */
+/**
+ * Inline emphasis a formatting edit adds; the block text carries none of it.
+ * The writer escapes every literal asterisk and tilde, so an unescaped one
+ * is a delimiter, mid-word included (`*Closing*revised`).
+ */
 const EMPHASIS =
-  /\*\*|__|~~|<\/?(?:u|sup|sub)>|(?<![\p{L}\p{N}\\])[*_]|(?<!\\)[*_](?![\p{L}\p{N}])/gu;
+  /(?<!\\)\*+|(?<!\\)~~|__|<\/?(?:u|sup|sub)>|(?<![\p{L}\p{N}\\])_|(?<!\\)_(?![\p{L}\p{N}])/gu;
 /**
  * A hyperlink reads as its text; the block text carries no target. An empty
  * one (a split at its edge leaves one) reads as nothing, so the blanks

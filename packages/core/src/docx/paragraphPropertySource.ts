@@ -1322,7 +1322,18 @@ export const setProseParagraphMarkupWithPropertySource = ({
   transaction,
 }: SetProseParagraphMarkupOptions): void => {
   const source = transaction.doc.nodeAt(pos);
-  transaction.setNodeMarkup(pos, undefined, attrs);
+  // Write only the attributes that change. Replacing the whole node would, in
+  // a transaction kept out of history, restore every other attribute as it was
+  // then over an undo of the edit that set it (a tracked paragraph mark).
+  if (source) {
+    for (const [name, value] of Object.entries(attrs)) {
+      if (source.attrs[name] !== value) {
+        transaction.setNodeAttribute(pos, name, value);
+      }
+    }
+  } else {
+    transaction.setNodeMarkup(pos, undefined, attrs);
+  }
   const target = transaction.doc.nodeAt(pos);
   if (!source || !target) {
     return;
