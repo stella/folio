@@ -186,9 +186,10 @@ const expectPendingTerminals = async ({
 
 describe("tracked section-boundary ownership", () => {
   test("accept removes a source endpoint before an ordinary paragraph", async () => {
+    // The paragraph left is the one whose mark stays: the second.
     await expectResolvedTerminals(
       documentWith([paragraph("00000001", "Alpha", SECTION_A), paragraph("00000002", "Beta")]),
-      documentWith([paragraph("00000001", "AlphaBeta")]),
+      documentWith([paragraph("00000002", "AlphaBeta")]),
     );
   });
 
@@ -206,7 +207,7 @@ describe("tracked section-boundary ownership", () => {
         paragraph("00000001", "Alpha", SECTION_A),
         paragraph("00000002", "Beta", FOLLOWING_SECTION),
       ]),
-      rejectedDocument: documentWith([paragraph("00000001", "AlphaBeta", FOLLOWING_SECTION)]),
+      rejectedDocument: documentWith([paragraph("00000002", "AlphaBeta", FOLLOWING_SECTION)]),
     });
   });
 
@@ -289,19 +290,19 @@ describe("tracked section-boundary ownership", () => {
     ]);
     expect(storyProjection(reopenedFirst)).toEqual({
       blocks: [
-        { id: "00000001", kind: "paragraph", text: "AlphaBeta" },
+        { id: "00000002", kind: "paragraph", text: "AlphaBeta" },
         { id: "00000003", kind: "paragraph", text: "Tail" },
       ],
       sections: [
-        { paraId: "00000001", sectionProperties: SECTION_B },
+        { paraId: "00000002", sectionProperties: SECTION_B },
         { paraId: "00000003", sectionProperties: FOLLOWING_SECTION },
       ],
       topLevelKinds: ["paragraph", "paragraph"],
     });
     expect(reopenedFirst.getChanges()).toHaveLength(1);
     expect(storyProjection(reopenedSecond)).toEqual({
-      blocks: [{ id: "00000001", kind: "paragraph", text: "AlphaBetaTail" }],
-      sections: [{ paraId: "00000001", sectionProperties: FOLLOWING_SECTION }],
+      blocks: [{ id: "00000003", kind: "paragraph", text: "AlphaBetaTail" }],
+      sections: [{ paraId: "00000003", sectionProperties: FOLLOWING_SECTION }],
       topLevelKinds: ["paragraph"],
     });
     expect(reopenedSecond.getChanges()).toHaveLength(0);

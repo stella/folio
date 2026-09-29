@@ -354,6 +354,8 @@ describe("resolving every suggestion headlessly", () => {
     const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument());
     const [first, last] = reviewer.getContent();
     if (!first || !last) throw new Error("fixture paragraphs missing");
+    // Accepting the merge removes the first paragraph's mark, and the
+    // paragraph left is the one whose mark stays: the first is gone.
     expect(
       reviewer.applyDocumentOperations({
         version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -362,9 +364,9 @@ describe("resolving every suggestion headlessly", () => {
           {
             id: "pending",
             type: "replaceInBlock",
-            blockId: last.id,
-            find: "two",
-            replace: "three",
+            blockId: first.id,
+            find: "First",
+            replace: "Opening",
           },
         ],
       }).applied,

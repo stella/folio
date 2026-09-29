@@ -57,7 +57,7 @@ import {
 } from "../contentControlRevisions";
 import { getDocumentNumbering } from "../plugins/documentNumbering";
 import { getDocumentStyleResolver } from "../plugins/documentStyles";
-import { paragraphRunStyleContextAt } from "../runStyleFormatting";
+import { paragraphRunStyleContext, paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
 import {
@@ -69,7 +69,10 @@ import { joinAtParagraphMark } from "../paragraphMarkJoin";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
-import { setParagraphAttrsWithRebasedRunFormatting } from "../rebaseParagraphRunFormatting";
+import {
+  rebaseParagraphRuns,
+  setParagraphAttrsWithRebasedRunFormatting,
+} from "../rebaseParagraphRunFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
@@ -520,6 +523,8 @@ function resolveChange(
       // accumulated transaction so the inline deletes above don't desync the
       // attr writes or joins below.
       pPrMarkOps.sort((a, b) => b.paragraphPos - a.paragraphPos);
+      // Where two paragraphs' runs meet after a join: their runs stay apart.
+      const joinSeams: { position: number; step: number }[] = [];
       for (const op of pPrMarkOps) {
         const mappedPos = tr.mapping.map(op.paragraphPos);
         const paragraph = tr.doc.nodeAt(mappedPos);
@@ -586,14 +591,10 @@ function resolveChange(
           tr.setNodeAttribute(mappedPos, "pPrMark", null);
           continue;
         }
-        // The inline sweep above has already run, so a paragraph that is empty
-        // here is one whose whole content was resolved away: a deleted
-        // paragraph being accepted, or an inserted one being rejected. Nothing
-        // of it survives but the join, and the paragraph the reader is left
-        // with is the NEXT one — which keeps its own mark, and in OOXML a
-        // paragraph's properties live on its mark. PM's `join` keeps the
-        // first node's attrs, so they are restored explicitly; otherwise a
-        // deleted heading would hand its style to the paragraph below it.
+        // The paragraph the reader is left with is the NEXT one, whether this
+        // one still has words or not: its mark ends the joined paragraph, and
+        // in OOXML a paragraph's properties live on its mark. PM's `join`
+        // keeps the first node's attrs, so the next one's are set explicitly.
         //
         // The next paragraph's own `pPrMark` travels with its attrs: it is a
         // different revision, and resolving this one must not resolve it.
@@ -603,13 +604,6 @@ function resolveChange(
         // only a section endpoint already owned by the following paragraph.
         try {
           if (boundaries.length > 0) {
-            const emptyFirstParagraph = holdsNoContent(paragraph);
-            const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
-            const joinedAttrs = {
-              ...formattingOwner.attrs,
-              pPrMark: nextNode.attrs["pPrMark"],
-              _sectionProperties: nextNode.attrs["_sectionProperties"],
-            };
             const leftToken = getProseParagraphPropertySourceToken(paragraph);
             const rightToken = getProseParagraphPropertySourceToken(nextNode);
             const inlineBookmarks = inlineBookmarksForParagraphJoin({
@@ -619,17 +613,35 @@ function resolveChange(
             });
             if (!inlineBookmarks) continue;
             tr.replaceWith(joinPos - 1, nextPos + 1, inlineBookmarks);
-            tr.setNodeMarkup(mappedPos, undefined, joinedAttrs);
-            if (emptyFirstParagraph)
-              markParagraphPropertySourceTransfers(tr, [
-                {
-                  displacedToken: typeof leftToken === "string" ? leftToken : null,
-                  selectedToken: typeof rightToken === "string" ? rightToken : null,
-                },
-              ]);
+            tr.setNodeMarkup(mappedPos, undefined, nextNode.attrs);
+            markParagraphPropertySourceTransfers(tr, [
+              {
+                displacedToken: typeof leftToken === "string" ? leftToken : null,
+                selectedToken: typeof rightToken === "string" ? rightToken : null,
+              },
+            ]);
+            if (styleResolver && paragraph.content.size > 0) {
+              rebaseParagraphRuns({
+                previousContext: paragraphRunStyleContext(paragraph, styleResolver),
+                paragraphPosition: mappedPos,
+                range: { from: 0, to: paragraph.content.size },
+                styleResolver,
+                tr,
+              });
+            }
           } else {
-            joinAtParagraphMark({ tr, paragraphPos: mappedPos, paragraph, next: nextNode });
+            joinAtParagraphMark({
+              tr,
+              paragraphPos: mappedPos,
+              paragraph,
+              next: nextNode,
+              styleResolver,
+            });
           }
+          joinSeams.push({
+            position: mappedPos + 1 + paragraph.content.size,
+            step: tr.steps.length,
+          });
           if (ownsSectionEndpoint(paragraph)) {
             removedSectionEndpointCount++;
             removedSectionReferences.push(...sectionReferencesOf(paragraph));
@@ -653,10 +665,16 @@ function resolveChange(
         resolveTerminalTableReviewCarrier(tr, mode);
       }
 
-      // The pieces a revision split off its run are one run again.
+      // The pieces a revision split off its run are one run again; runs that
+      // only meet because their paragraphs joined are not pieces of one run.
+      const seams = new Set(
+        joinSeams.map(({ position, step }) => tr.mapping.slice(step).map(position)),
+      );
       rejoinRunsAt({
         tr,
-        boundaries: resolvedBoundaries.map((position) => tr.mapping.map(position)),
+        boundaries: resolvedBoundaries
+          .map((position) => tr.mapping.map(position))
+          .filter((position) => !seams.has(position)),
         styleResolver,
       });
 

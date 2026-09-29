@@ -740,11 +740,14 @@ describe("unstamped revision id allocation", () => {
       }
 
       expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
+      // Rejecting the second insertion removes the break that ended the
+      // first's words: they end in the second's paragraph, whose property
+      // change restores the anchor's alignment. The same in every order.
       expect(
         paragraphState(view.state.doc).map(({ text, alignment }) => ({ text, alignment })),
       ).toEqual([
         { text: "Anchor paragraph.", alignment: "left" },
-        { text: "First inserted.", alignment: "center" },
+        { text: "First inserted.", alignment: "left" },
         { text: "Third inserted.", alignment: "both" },
       ]);
       const reopened = await reopenedView(view.state.doc);
@@ -798,14 +801,28 @@ describe("unstamped revision id allocation", () => {
         }
 
         expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
-        const expectedInsertions = SAME_ANCHOR_INSERTIONS.filter(
-          (_insertion, index) => decisions[index] === "accept",
+        // A rejected insertion takes away the break before it, so the words
+        // before that break end in its paragraph, whose property change
+        // restores the carrier's: an accepted insertion followed by a
+        // rejected one reads with the carrier's properties.
+        const expectedInsertions = SAME_ANCHOR_INSERTIONS.flatMap((insertion, index) =>
+          decisions[index] === "accept"
+            ? [
+                {
+                  text: insertion.text,
+                  alignment:
+                    index + 1 < SAME_ANCHOR_INSERTIONS.length && decisions[index + 1] === "reject"
+                      ? EMPTY_CARRIER_FORMATTING.alignment
+                      : insertion.alignment,
+                },
+              ]
+            : [],
         );
         expect(
           paragraphState(view.state.doc).map(({ text, alignment }) => ({ text, alignment })),
         ).toEqual([
           { text: "", alignment: EMPTY_CARRIER_FORMATTING.alignment },
-          ...expectedInsertions.map(({ text, alignment }) => ({ text, alignment })),
+          ...expectedInsertions,
         ]);
         expect(expectParagraphAttrs(view.state.doc.child(0))).toMatchObject({
           ...EMPTY_CARRIER_FORMATTING,
