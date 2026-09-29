@@ -8,7 +8,11 @@ test("the pinned scenario registry validates and keeps its declared replay order
   const flows = parseScenarioSeedRegistry(registry);
 
   assert.equal(flows.at(0)?.seed, 20_260_933);
-  assert.equal(flows.at(-1)?.seed, 1_250_352_735);
+  // Every pinned flow replays in file order, whatever a fix appends.
+  assert.deepEqual(
+    flows.map(({ seed, kind }) => `${String(seed)}:${kind}`),
+    registry.flows.map(({ seed, kind }) => `${String(seed)}:${kind}`),
+  );
   assert.deepEqual(
     flows.filter(({ seed }) => seed === 1_250_352_731).map(({ kind }) => kind),
     ["random", "collisions"],
