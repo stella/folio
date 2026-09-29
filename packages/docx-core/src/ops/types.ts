@@ -388,9 +388,10 @@ export type SplitBlockOp = {
 
 /**
  * Join a paragraph with the paragraph that directly follows it in the same
- * container. The joined paragraph has the first's paragraph properties and
- * the second's mark: its run properties, section break, tracked change and
- * the pending property changes. It keeps the identity and own fields of the
+ * container. The joined paragraph has the first's paragraph properties, or
+ * the second's when the first holds no content, and the second's mark: its
+ * run properties, section break, tracked change and the pending property
+ * changes. It keeps the identity and own fields of the
  * `survivor` half, by default the second, and the other's id is retired.
  * `depth` merges that many levels of the records meeting at the join, as
  * {@link JoinInlineOp} does.
@@ -402,8 +403,8 @@ export type SplitBlockOp = {
  *
  * With `revision`, the join is tracked and moves nothing: the first
  * paragraph's mark becomes a tracked deletion, refused when the mark already
- * carries a tracked change, and the second takes the first's paragraph
- * properties as a tracked property change. Accepting removes the mark, which
+ * carries a tracked change, and the second takes the paragraph properties
+ * the direct join would give it as a tracked property change. Accepting removes the mark, which
  * leaves the second paragraph with the first's content before its own: what
  * the direct join leaves. A tracked join always leaves the second, so
  * `survivor` must then be absent or `second`.

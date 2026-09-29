@@ -1184,10 +1184,13 @@ const splitFieldsOf = (paragraph: Paragraph): SplitParagraphFields => {
 /**
  * The paragraph properties two paragraphs joined have: the first's paragraph
  * properties with the second's mark run properties, since the mark that stays
- * is the second's.
+ * is the second's. A first paragraph that holds no content brings nothing:
+ * the second keeps its own.
  */
 const joinedFormatting = (first: Paragraph, second: Paragraph) =>
-  withMarkFormatting(paragraphPropertiesOf(first.formatting), second.formatting);
+  paragraphLength(first) === 0
+    ? second.formatting
+    : withMarkFormatting(paragraphPropertiesOf(first.formatting), second.formatting);
 
 /** The review fields of two paragraphs once joined: the first's properties, the second's mark. */
 const joinedReview = (first: Paragraph, second: Paragraph): ParagraphReviewFields => {
@@ -1405,8 +1408,9 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   }
   const first: Paragraph = { ...leading, pPrMark: { kind: "del", info: stampInfo(stamp) } };
   let second = trailing;
-  if (!sameParagraphProperties(leading.formatting, trailing.formatting)) {
-    second = withParagraphFormatting(trailing, joinedFormatting(leading, trailing));
+  const formatting = joinedFormatting(leading, trailing);
+  if (!sameParagraphProperties(formatting, trailing.formatting)) {
+    second = withParagraphFormatting(trailing, formatting);
     // A paragraph already carrying a property change keeps it, and the formatting it started from.
     if ((trailing.propertyChanges?.length ?? 0) === 0) {
       second.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), trailing.formatting)];

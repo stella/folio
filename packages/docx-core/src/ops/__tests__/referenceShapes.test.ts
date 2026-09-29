@@ -13,7 +13,8 @@
  *   records one from the paragraph's properties when its own differ.
  * - Backspace at the start of a paragraph deletes the previous one's mark,
  *   and the paragraph takes the previous one's paragraph properties as a
- *   property change; its mark run properties stay its own.
+ *   property change, unless the previous one holds no content; its mark run
+ *   properties stay its own.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -245,21 +246,16 @@ describe("Backspace at the start of a paragraph", () => {
     ]);
   });
 
-  test("deletes the mark of an empty paragraph the same way", () => {
-    const alpha = paragraph("2A000002", [], { alignment: "center" });
-    const bravo = paragraph("3B000003", [text("Bravo text.")], { alignment: "right" });
-    expect(edited(documentOf(alpha, bravo), [backspace])).toEqual([
-      INTRO,
-      { ...alpha, pPrMark: mark("del", 0) },
-      paragraph(
-        "3B000003",
-        [text("Bravo text.")],
-        { alignment: "center" },
-        {
-          propertyChanges: [change(1, { alignment: "right" })],
-        },
-      ),
-      TAIL,
-    ]);
-  });
+  for (const [name, own, next] of PROPERTIES) {
+    test(`deletes the mark of an empty paragraph and leaves the next one as it is (${name})`, () => {
+      const alpha = paragraph("2A000002", [], own);
+      const bravo = paragraph("3B000003", [text("Bravo text.")], next);
+      expect(edited(documentOf(alpha, bravo), [backspace])).toEqual([
+        INTRO,
+        { ...alpha, pPrMark: mark("del", 0) },
+        bravo,
+        TAIL,
+      ]);
+    });
+  }
 });
