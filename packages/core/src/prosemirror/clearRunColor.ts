@@ -1,3 +1,4 @@
+import type { Node as PMNode } from "prosemirror-model";
 import type { Command } from "prosemirror-state";
 
 import { getDocumentStyleResolver } from "./plugins/documentStyles";
@@ -17,35 +18,36 @@ export const clearRunColor = (): Command => (state, dispatch) => {
   const styleResolver = getDocumentStyleResolver(state);
   const tr = state.tr;
   const { from, to, empty } = state.selection;
-  const representations = empty
-    ? [
-        {
-          node: state.schema.text(" ", state.storedMarks ?? state.selection.$from.marks()),
-          position: from,
-          from,
-          to,
-        },
-      ]
-    : selectRunFormattingCarrierRepresentations({ doc: state.doc, from, to });
-  for (const representation of representations) {
+  const clearedMarks = (node: PMNode, position: number) => {
     const context = paragraphRunStyleContextAt({
       doc: state.doc,
-      pos: representation.position,
+      pos: position,
       styleResolver,
     });
     const { color: _color, ...authoredFormatting } = readAuthoredRunFormatting({
       context,
-      marks: representation.node.marks,
+      marks: node.marks,
       styleResolver,
     });
-    const marks = reconcileRunFormattingMarks({
+    return reconcileRunFormattingMarks({
       authoredFormatting,
       context,
-      node: representation.node,
+      node,
       styleResolver,
     });
-    if (empty) tr.setStoredMarks(marks);
-    else applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  };
+  if (empty) {
+    const node = state.schema.text(" ", state.storedMarks ?? state.selection.$from.marks());
+    tr.setStoredMarks(clearedMarks(node, from));
+  } else {
+    for (const representation of selectRunFormattingCarrierRepresentations({
+      doc: state.doc,
+      from,
+      to,
+    })) {
+      const marks = clearedMarks(representation.node, representation.position);
+      applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+    }
   }
   dispatch(tr.scrollIntoView());
   return true;
