@@ -64,11 +64,15 @@ if (BUDGET === 0) {
     );
     const summary = ({ record, count }: (typeof result.failures)[number]): string =>
       `  ${record.marker.fingerprint} ×${count} ${record.marker.test}: ${record.marker.assertion}\n    Replay: ${record.replays[0]}`;
-    const known = result.failures.filter(({ record }) => KNOWN.has(record.marker.fingerprint));
+    // The registry may list a shrunk failure's fingerprint or the one before shrinking.
+    const isKnown = ({ record }: (typeof result.failures)[number]): boolean =>
+      KNOWN.has(record.marker.fingerprint) ||
+      (record.marker.primary !== undefined && KNOWN.has(record.marker.primary));
+    const known = result.failures.filter(isKnown);
     if (known.length > 0) {
       console.log([`known failures, not failing the run:`, ...known.map(summary)].join("\n"));
     }
-    const fresh = result.failures.filter(({ record }) => !KNOWN.has(record.marker.fingerprint));
+    const fresh = result.failures.filter((failure) => !isKnown(failure));
     if (fresh.length > 0) {
       throw new Error(
         [`${fresh.length} failing fingerprint(s):`, ...fresh.map(summary)].join("\n"),

@@ -9,8 +9,8 @@
  * updates the issue already filed for it: an open one gets its occurrence
  * count, seeds and latest replay refreshed in place (no comment per run), a
  * closed one is reopened with a comment, because the failure came back. A
- * fingerprint `test/known-failure-fingerprints.json` lists gets a comment on
- * the issue or PR it names instead.
+ * fingerprint `test/known-failure-fingerprints.json` lists is already
+ * tracked where it says and gets no issue.
  *
  * Usage:
  *   bun scripts/fuzz-failure-issues.ts [--log <file>]… [--records <dir>]…
@@ -295,32 +295,18 @@ const writeBody = (body: string): string => {
   return file;
 };
 
-const main = async (): Promise<void> => {
-  const options = parseArgs(process.argv.slice(2));
-  const root = path.resolve(import.meta.dir, "..");
-  const markers = options.logs
-    .filter((log) => existsSync(log))
-    .flatMap((log) => extractFailureMarkers(readFileSync(log, "utf8")));
-  const findings = collectFindings(options.records.flatMap(readRecords), markers);
-  const context: Context = {
-    runUrl: options.runUrl,
-    sha: options.sha,
-    source: options.source,
-    date: new Date().toISOString().slice(0, 10),
-  };
-  if (findings.length === 0) {
-    console.log("no fuzz failures to file");
-    return;
-  }
-  if (options.dryRun) {
-    for (const finding of findings) {
-      console.log(
-        `=== ${issueTitle(finding)}\n${issueBody(finding, nextState(finding, null, context.date), context)}\n`,
-      );
-    }
-    return;
-  }
+/** Where a finding was filed: `#<number>`, or null when it was not. */
+export type Filed = { fingerprint: string; issue: string | null };
 
+/**
+ * Open or update the issue of every finding (see the module comment);
+ * returns where each went. `root` is the repository checkout.
+ */
+export const fileFindings = async (
+  findings: readonly Finding[],
+  context: Context,
+  root: string,
+): Promise<Filed[]> => {
   const known = new Map(
     parseKnownFailures(
       JSON.parse(readFileSync(path.join(root, "test", "known-failure-fingerprints.json"), "utf8")),
@@ -351,26 +337,25 @@ const main = async (): Promise<void> => {
     filed.get(fingerprint) ??
     (primary === undefined ? byPrimary.get(fingerprint) : filed.get(primary));
 
+  const results: Filed[] = [];
   let opened = 0;
   for (const finding of findings) {
     const { fingerprint } = finding.record.marker;
     const title = issueTitle(finding);
-    const entry = known.get(fingerprint);
+    const { primary } = finding.record.marker;
+    const entry =
+      known.get(fingerprint) ?? (primary === undefined ? undefined : known.get(primary));
     const issue = issueOf(finding.record.marker);
     if (issue === undefined && entry !== undefined) {
-      const target = /^#(\d+)$/u.exec(entry.issueOrPr)?.[1];
-      const note = `Fingerprint \`${fingerprint}\` failed again in ${context.runUrl ?? context.source} (seeds ${finding.seeds.join(", ")}).\n\n${fence(finding.record.replays[0] ?? "", "sh")}`;
-      if (target === undefined) {
-        console.log(`known ${fingerprint} (${entry.issueOrPr}); nothing to update`);
-      } else {
-        await $`gh issue comment ${target} --body-file ${writeBody(note)}`.quiet();
-        console.log(`commented on #${target}: known ${fingerprint}`);
-      }
+      // Tracked where the registry says; a run every few hours adds nothing there.
+      console.log(`known ${fingerprint}: ${entry.issueOrPr}`);
+      results.push({ fingerprint, issue: entry.issueOrPr });
       continue;
     }
     if (issue === undefined) {
       if (opened >= MAX_NEW_ISSUES) {
         console.log(`not filed (cap of ${String(MAX_NEW_ISSUES)} new issues): ${title}`);
+        results.push({ fingerprint, issue: null });
         continue;
       }
       const body = issueBody(finding, nextState(finding, null, context.date), context);
@@ -379,6 +364,8 @@ const main = async (): Promise<void> => {
       ).trim();
       opened += 1;
       console.log(`opened ${url}: ${title}`);
+      const number = /\/issues\/(\d+)$/u.exec(url)?.[1];
+      results.push({ fingerprint, issue: number === undefined ? null : `#${number}` });
       continue;
     }
     const number = String(issue.number);
@@ -396,7 +383,42 @@ const main = async (): Promise<void> => {
     } else {
       console.log(`updated #${number}: ${title}`);
     }
+    results.push({ fingerprint, issue: `#${number}` });
   }
+  return results;
+};
+
+/** The findings in `logs` (their FOLIO_FAILURE lines) and the record directories. */
+export const readFindings = (logs: readonly string[], records: readonly string[]): Finding[] =>
+  collectFindings(
+    records.flatMap(readRecords),
+    logs
+      .filter((log) => existsSync(log))
+      .flatMap((log) => extractFailureMarkers(readFileSync(log, "utf8"))),
+  );
+
+const main = async (): Promise<void> => {
+  const options = parseArgs(process.argv.slice(2));
+  const findings = readFindings(options.logs, options.records);
+  const context: Context = {
+    runUrl: options.runUrl,
+    sha: options.sha,
+    source: options.source,
+    date: new Date().toISOString().slice(0, 10),
+  };
+  if (findings.length === 0) {
+    console.log("no fuzz failures to file");
+    return;
+  }
+  if (options.dryRun) {
+    for (const finding of findings) {
+      console.log(
+        `=== ${issueTitle(finding)}\n${issueBody(finding, nextState(finding, null, context.date), context)}\n`,
+      );
+    }
+    return;
+  }
+  await fileFindings(findings, context, path.resolve(import.meta.dir, ".."));
 };
 
 if (import.meta.main) {
