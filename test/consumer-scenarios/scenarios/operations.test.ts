@@ -456,3 +456,45 @@ describe("an operation naming a numbering instance the package does not define (
     await assertHealthy(reviewer, "setBlockParagraphProperties undefined numId");
   });
 });
+
+describe("a batch that merges a block into one it deletes", () => {
+  // Direct and tracked-then-accepted leave the same paragraphs: the merge
+  // joins across the deleted block, or, where the deletions run to the end
+  // and nothing is left to join, directly it is refused and tracked it joins
+  // no separator onto the end.
+  const outcomes = async (mergedPrefix: string, deletedPrefixes: readonly string[]) => {
+    const texts: string[][] = [];
+    for (const mode of ["direct", "tracked-changes"] as const) {
+      const reviewer = await openReviewer(await plainDocument());
+      const idOf = (prefix: string) => {
+        const block = reviewer.getContent().find((candidate) => candidate.text.startsWith(prefix));
+        assert.ok(block, prefix);
+        return block.id;
+      };
+      reviewer.applyDocumentOperations(
+        coreBatch(
+          [
+            ...deletedPrefixes.map((prefix) => ({ type: "deleteBlock", blockId: idOf(prefix) })),
+            { type: "mergeBlockWithNext", blockId: idOf(mergedPrefix), separator: " " },
+          ],
+          mode,
+        ) as never,
+      );
+      texts.push(await resolvedText(new Uint8Array(await reviewer.toBuffer()), "accept"));
+    }
+    return texts;
+  };
+
+  test("joins across it, directly and tracked alike", async () => {
+    const [direct, tracked] = await outcomes("This agreement", ["The Supplier"]);
+    assert.deepEqual(tracked, direct);
+  });
+
+  test("with the deletions running to the end, leaves the merged block as it was", async () => {
+    const [direct, tracked] = await outcomes("The Buyer", ["Signed"]);
+    assert.deepEqual(tracked, direct);
+    assert.ok(
+      direct?.some((text) => text.endsWith("The Buyer pays each invoice within thirty days.")),
+    );
+  });
+});
