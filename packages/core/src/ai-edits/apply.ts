@@ -117,6 +117,7 @@ import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
+import { separateRevisionStretches } from "./revisionStretches";
 import {
   cutsIntoNoteReference,
   noteReferenceEditsAllowed,
@@ -1916,8 +1917,6 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
         block,
         end: item.blockTo,
         keepsParagraph,
-        removesNode: !producesTrackedChanges && !keepsParagraph,
-        direct: !producesTrackedChanges,
       };
     }
     case "insertAfterBlock":
@@ -2489,6 +2488,21 @@ const holdsOnlyDeletedContent = (paragraph: PMNode): boolean => {
     return false;
   });
   return whollyDeleted;
+};
+
+/**
+ * Whether everything after `position` in its container is paragraphs pending
+ * deletion: a join there, once accepted, has no words after it.
+ */
+const followedOnlyByDeletedParagraphs = (doc: PMNode, position: number): boolean => {
+  const at = doc.resolve(position);
+  let deletes = false;
+  for (let index = at.index(); index < at.parent.childCount; index++) {
+    const node = at.parent.child(index);
+    if (node.type.name !== "paragraph" || !holdsOnlyDeletedContent(node)) return false;
+    deletes ||= node.content.size > 0 || isPlainDeletedPPrMark(node.attrs["pPrMark"]);
+  }
+  return deletes;
 };
 
 /** A paragraph mark that is a plain pending deletion (not a relocation's source). */
@@ -4397,10 +4411,8 @@ const applyFolioAIEditOperationsInternal = ({
           tr.mapping.map(insertion.tablePosition, 1),
           item.tableColumnComments,
         );
-        if (result.revisionId !== null) {
-          operationRevisionSeed++;
-          appliedRevisionIds = [result.revisionId];
-        }
+        operationRevisionSeed += result.revisionIds.length;
+        appliedRevisionIds = [...result.revisionIds];
         const columnKey = getTableColumnCoordinateKey(insertion);
         insertedColumnCounts.set(columnKey, (insertedColumnCounts.get(columnKey) ?? 0) + 1);
         break;
@@ -4430,10 +4442,8 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = result.transaction;
-        if (result.revisionId !== null) {
-          operationRevisionSeed++;
-          appliedRevisionIds = [result.revisionId];
-        }
+        operationRevisionSeed += result.revisionIds.length;
+        appliedRevisionIds = [...result.revisionIds];
         break;
       }
       case "mergeTableCells": {
@@ -5028,7 +5038,20 @@ const applyFolioAIEditOperationsInternal = ({
         break;
       }
       case "mergeBlockWithNext": {
-        const separator = item.operation.separator ?? "";
+        // The block it names may be one this batch deletes, which has gone
+        // (directly) or is marked deleted (tracked) by now: the batch runs
+        // backwards. Directly, the merge joins whatever follows instead, as
+        // one at a time; where nothing does, it is refused as it would be
+        // one at a time. Tracked, the deleted paragraphs stay until accepted,
+        // but where they run to the story's end the join has nothing to put
+        // a separator in front of.
+        if (mode === "direct" && !canJoin(tr.doc, item.blockTo)) {
+          skipped.push({ id: item.operation.id, reason: "unsupportedBlock" });
+          continue;
+        }
+        const separator = followedOnlyByDeletedParagraphs(tr.doc, item.blockTo)
+          ? ""
+          : (item.operation.separator ?? "");
         const insertAt = item.blockTo - 1;
         const second = tr.doc.nodeAt(item.blockTo);
         // A comment running from one paragraph into the next runs across the
@@ -5349,6 +5372,21 @@ const applyFolioAIEditOperationsInternal = ({
           firstRevisionId === undefined
             ? withoutRevisions
             : { ...withoutRevisions, revisionId: firstRevisionId, revisionIds };
+      }
+    }
+    // A revision this batch left in separate stretches gets an id per
+    // stretch, as the save would give it; an operation that wrote the
+    // revision owns its stretches too.
+    const separated = separateRevisionStretches({ tr, revisionSeed });
+    revisionSeed = separated.nextRevisionId;
+    for (const { revisionId, from } of separated.minted) {
+      const receiptIndex = applied.findIndex(({ revisionIds }) => revisionIds?.includes(from));
+      const receipt = applied.at(receiptIndex);
+      if (receiptIndex >= 0 && receipt?.revisionIds) {
+        applied[receiptIndex] = {
+          ...receipt,
+          revisionIds: [...receipt.revisionIds, revisionId],
+        };
       }
     }
     // Before dispatch, which may start another batch.
