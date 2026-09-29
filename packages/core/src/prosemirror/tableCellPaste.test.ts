@@ -171,26 +171,32 @@ describe("pasting table cells into a merged table", () => {
     await saveHarnessState(view.state, base);
   });
 
-  test("a pasted copy of a merged cell does not claim the stored continuation of its source", async () => {
-    const base = await loadTables();
-    const state = placeSelection(createHarnessState(base, "editing"), "Cell C2", "caret-end");
-    if (!state) {
-      throw new Error("No caret");
-    }
-    const view = new HeadlessEditorView(state);
-    const blocks = textblocks(view.state.doc);
-    const index = blocks.findIndex(({ node }) => node.textContent === "Cell C2");
-    const first = blocks[index];
-    const second = blocks[index + 1];
-    if (!first || !second) {
-      throw new Error("No blocks to copy");
-    }
-    // "Cell C2" through "Cell A3", whose cell stores the continuation of A3:A4.
-    view.paste(view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size));
+  test.each([
+    ["into a cell", "editing", "caret-end"],
+    ["over everything, suggesting", "suggesting", "document"],
+  ] as const)(
+    "a pasted copy of a merged cell does not claim the stored continuation of its source (%s)",
+    async (_label, mode, placement) => {
+      const base = await loadTables();
+      const state = placeSelection(createHarnessState(base, mode), "Cell C2", placement);
+      if (!state) {
+        throw new Error("No caret");
+      }
+      const view = new HeadlessEditorView(state);
+      const blocks = textblocks(view.state.doc);
+      const index = blocks.findIndex(({ node }) => node.textContent === "Cell C2");
+      const first = blocks[index];
+      const second = blocks[index + 1];
+      if (!first || !second) {
+        throw new Error("No blocks to copy");
+      }
+      // "Cell C2" through "Cell A3", whose cell stores the continuation of A3:A4.
+      view.paste(view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size));
 
-    layout(view.state.doc);
-    await saveHarnessState(view.state, base);
-  });
+      layout(view.state.doc);
+      await saveHarnessState(view.state, base);
+    },
+  );
 
   test("splits a cell merged across the block's left edge", () => {
     const cell = (text: string, colspan = 1) =>

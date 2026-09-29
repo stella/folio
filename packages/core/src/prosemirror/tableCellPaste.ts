@@ -133,6 +133,40 @@ const newCellAttrs = (attrs: PMNode["attrs"]): PMNode["attrs"] => ({
   _docxVMergeContinuationCells: null,
 });
 
+const withNewTableCells = (node: PMNode): PMNode => {
+  if (node.isTextblock || node.isLeaf) {
+    return node;
+  }
+  const content = withNewTableCellsIn(node.content);
+  const role = node.type.spec["tableRole"];
+  const isCell = role === "cell" || role === "header_cell";
+  return content === node.content && !isCell
+    ? node
+    : node.type.create(isCell ? newCellAttrs(node.attrs) : node.attrs, content, node.marks);
+};
+
+const withNewTableCellsIn = (fragment: Fragment): Fragment => {
+  let changed = false;
+  const nodes: PMNode[] = [];
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Fragment.forEach
+  fragment.forEach((node) => {
+    const next = withNewTableCells(node);
+    changed ||= next !== node;
+    nodes.push(next);
+  });
+  return changed ? Fragment.from(nodes) : fragment;
+};
+
+/**
+ * A pasted slice whose table cells are new cells: a copy of a cell must not
+ * claim the source cell's identity, revisions, or the continuation cells its
+ * merge stored, whatever the paste lands on.
+ */
+export const pastedSliceWithNewTableCells = (slice: Slice): Slice => {
+  const content = withNewTableCellsIn(slice.content);
+  return content === slice.content ? slice : new Slice(content, slice.openStart, slice.openEnd);
+};
+
 /** The cells a slice holds, or null when it holds none (it is not table content). */
 export const pastedCells = (slice: Slice): PastedCells | null => {
   if (slice.size === 0) {
