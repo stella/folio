@@ -37,11 +37,23 @@ export const cellOf = (key: string): Cell => {
 
 const ledger: Ledger = { version: 1, cells: {} };
 
+type HitObserver = (key: string, applied: boolean) => void;
+const observers = new Set<HitObserver>();
+
 export const recordHit = (cell: Cell, applied: boolean): void => {
   const key = keyOf(cell);
   const count = (ledger.cells[key] ??= { applied: 0, refused: 0 });
   if (applied) count.applied += 1;
   else count.refused += 1;
+  for (const observer of observers) observer(key, applied);
+};
+
+/** Call `observer` on every hit from now on (a flow's signature); returns the unsubscribe. */
+export const observeHits = (observer: HitObserver): (() => void) => {
+  observers.add(observer);
+  return () => {
+    observers.delete(observer);
+  };
 };
 
 const outputDir = process.env["FOLIO_SCENARIO_COVERAGE_DIR"];
