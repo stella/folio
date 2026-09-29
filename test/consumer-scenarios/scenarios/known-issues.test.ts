@@ -123,34 +123,6 @@ describe("findings not yet filed", () => {
   }
 
   expectedFailure(
-    "TRACKED_MERGE_INTO_DELETED_BLOCK",
-    "a tracked batch that merges a block into one it deletes is refused, as in direct mode",
-    FINDING_SYMPTOMS.TRACKED_MERGE_INTO_DELETED_BLOCK,
-    async () => {
-      const reviewer = await openReviewer(await plainDocument());
-      const idOf = (prefix: string) => {
-        const block = reviewer.getContent().find((candidate) => candidate.text.startsWith(prefix));
-        assert.ok(block, prefix);
-        return block.id;
-      };
-      const result = reviewer.applyDocumentOperations(
-        coreBatch(
-          [
-            { type: "deleteBlock", blockId: idOf("The Supplier") },
-            { type: "mergeBlockWithNext", blockId: idOf("This agreement"), separator: " " },
-          ],
-          "tracked-changes",
-        ) as never,
-      );
-      assert.deepEqual(
-        result.issues.map((issue) => issue.code),
-        ["overlappingOperation"],
-        "applied a merge into a block the batch deletes",
-      );
-    },
-  );
-
-  expectedFailure(
     "INSERT_AFTER_PENDING_MERGE",
     "a paragraph inserted after a block with a pending tracked merge stays its own paragraph once accepted",
     FINDING_SYMPTOMS.INSERT_AFTER_PENDING_MERGE,

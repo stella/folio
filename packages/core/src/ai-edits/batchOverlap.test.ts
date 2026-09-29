@@ -445,14 +445,13 @@ const batchAgainstOneAtATime = async (
         : [operation.block],
     ),
   );
-  // Tracked, a merge into a block the batch deletes joins across that block's
-  // deleted mark as well, into the block after it — and across every deleted
-  // block that follows, to the first one the batch keeps: that is what the
-  // marks say. Applied directly, the pair is refused.
+  // A merge into a block the batch deletes joins across it, into the block
+  // after it — and across every deleted block that follows, to the first one
+  // the batch keeps — in either mode, as one at a time.
   const deletes = (block: number) =>
     applied.some(({ operation }) => operation.kind === "deleteBlock" && operation.block === block);
   for (const { operation } of applied) {
-    if (mode === "direct" || operation.kind !== "mergeBlockWithNext") {
+    if (operation.kind !== "mergeBlockWithNext") {
       continue;
     }
     for (let joined = operation.block + 1; deletes(joined); joined++) {
@@ -590,14 +589,68 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
   });
 });
 
-describe("a tracked merge into a run of blocks the batch deletes", () => {
-  test("joins across every deleted mark, as one at a time would", async () => {
-    const generated: GeneratedOperation[] = [
+describe("a merge into blocks the batch deletes", () => {
+  const last = BLOCK_COUNT - 1;
+  const cases: Record<string, GeneratedOperation[]> = {
+    "joins across a deleted block": [
+      { kind: "deleteBlock", block: 1 },
+      { kind: "mergeBlockWithNext", block: 0 },
+    ],
+    "joins across a run of deleted blocks": [
       { kind: "deleteBlock", block: 1 },
       { kind: "mergeBlockWithNext", block: 0 },
       { kind: "deleteBlock", block: 2 },
-    ];
-    expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
+    ],
+    // The counterexample the random batch below found: nothing follows the
+    // deleted block to join into.
+    "deleted to the story's end": [
+      { kind: "deleteBlock", block: last },
+      { kind: "mergeBlockWithNext", block: last - 1 },
+      { kind: "replaceInBlock", block: 0, first: 0, last: 0 },
+      { kind: "splitBlock", block: 0, before: 1 },
+    ],
+  };
+  for (const mode of MODES) {
+    for (const [name, generated] of Object.entries(cases)) {
+      test(`${name}: as one at a time would (${mode})`, async () => {
+        expect(await batchAgainstOneAtATime(generated, mode)).toEqual([]);
+      });
+    }
+  }
+
+  test("applied directly, a merge with nothing left to join is refused", async () => {
+    const session = await freshSession();
+    const blocks = session.snapshot().blocks;
+    const result = session.apply("direct", [
+      { id: "delete", type: "deleteBlock", blockId: blocks[last]?.id ?? "" },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: blocks[last - 1]?.id ?? "",
+        separator: " ",
+      },
+    ]);
+    expect(result.skipped.map(({ id, reason }) => ({ id, reason }))).toEqual([
+      { id: "merge", reason: "unsupportedBlock" },
+    ]);
+  });
+
+  test("tracked, a merge into deletions that run to the end writes no separator", async () => {
+    const session = await freshSession();
+    const blocks = session.snapshot().blocks;
+    const result = session.apply("tracked-changes", [
+      { id: "delete", type: "deleteBlock", blockId: blocks[last]?.id ?? "" },
+      {
+        id: "merge",
+        type: "mergeBlockWithNext",
+        blockId: blocks[last - 1]?.id ?? "",
+        separator: " ",
+      },
+    ]);
+    expect(result.skipped).toEqual([]);
+    session.acceptAll();
+    const accepted = session.snapshot().blocks.map(({ text }) => text);
+    expect(accepted.at(-1)).toBe(blockText(last - 1));
   });
 });
 
