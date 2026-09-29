@@ -13,6 +13,7 @@ import {
   reconcileTableGridAfterColumnInsertion,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCells,
+  markRowsEmptiedInBatch,
   removeTableRow,
   type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
@@ -458,7 +459,7 @@ export const applyTableColumnDeletion = ({
     removedColumn: columnIndex,
   });
   if (emptiedRows) {
-    emptiedRows.pending = true;
+    markRowsEmptiedInBatch({ tr, tablePosition, previousTable: table, emptied: emptiedRows });
   } else {
     removeRowsWithoutCells(tr, tablePosition);
   }

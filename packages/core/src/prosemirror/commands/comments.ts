@@ -75,6 +75,7 @@ import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCellsAfterBatch,
+  markRowEmptiedInBatch,
   type RowsEmptiedInBatch,
   removeTableRow,
 } from "../tableGridMutation";
@@ -1034,7 +1035,7 @@ function deleteTableCellAt(tr: Transaction, cellPos: number, emptied: RowsEmptie
   const spansDown = Number(cell.attrs["rowspan"]) > 1;
   if (row.childCount > 1 || spansDown) {
     if (row.childCount === 1) {
-      emptied.pending = true;
+      markRowEmptiedInBatch({ tr, rowPosition: resolved.start() - 1, emptied });
     }
     tr.delete(cellPos, cellPos + cell.nodeSize);
     reconcileTableGridAfterColumnRemoval({

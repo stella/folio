@@ -1185,6 +1185,8 @@ export type TableAttrs = {
  * Table row attributes
  */
 export type TableRowAttrs = {
+  /** Transaction-local cleanup state; cleared before dispatch or continuation capture. */
+  _batchRowCleanup?: "pending" | null;
   /** Row height (in twips) */
   height?: number;
   /** Height rule ('auto', 'exact', 'atLeast') */
