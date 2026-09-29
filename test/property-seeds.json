@@ -60,6 +60,12 @@
       "path": "281:2:5:5:8:8:8",
       "note": "tracked insertion before, formatting and deletion of the last block",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 699625871,
+      "path": "585:5:6:0:3",
+      "note": "#1221: deleting the last block carries its predecessor's properties from before the batch set them",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (${name})": [

@@ -622,6 +622,15 @@ describe("a tracked merge into a run of blocks the batch deletes", () => {
     ];
     expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
   });
+
+  test("deleting the last block carries its predecessor's properties from before the batch set them", async () => {
+    const generated: GeneratedOperation[] = [
+      { kind: "setBlockParagraphProperties", block: 2 },
+      { kind: "deleteBlock", block: 3 },
+      { kind: "mergeBlockWithNext", block: 0 },
+    ];
+    expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
+  });
 });
 
 const spanArbitrary = fc

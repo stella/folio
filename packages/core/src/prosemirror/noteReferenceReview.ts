@@ -227,6 +227,12 @@ export type NoteReferenceFollower = {
   noteBase: (before: PMNode) => void;
   /** The document to write back, its notes following the body's references. */
   reconcile: (document: Document, body: PMNode) => Document;
+  /**
+   * `document` with the note changes an earlier {@link reconcile} wrote back
+   * and the editor's document has not taken in yet: a save reads the editor
+   * right after a write-back, before the host hands the result back.
+   */
+  withPending: (document: Document) => Document;
   /** Forget the pending base and what earlier restores replaced (a new document). */
   reset: () => void;
 };
@@ -238,6 +244,15 @@ export const createNoteReferenceFollower = (): NoteReferenceFollower => {
     NoteKey,
     { restored: Footnote | Endnote; previous: Footnote | Endnote }
   >();
+  // Note changes written back that the editor's document may not hold yet.
+  const pending = new Map<NoteKey, { from: Footnote | Endnote; to: Footnote | Endnote }>();
+  const recorded =
+    (key: NoteKey, edit: NoteEdit): NoteEdit =>
+    (note) => {
+      const result = edit(note);
+      if (result !== note) pending.set(key, { from: note, to: result });
+      return result;
+    };
   return {
     noteBase: (before) => {
       base ??= before;
@@ -253,33 +268,54 @@ export const createNoteReferenceFollower = (): NoteReferenceFollower => {
       for (const [key, state] of now) {
         const previous = was.get(key);
         if (state === "live" && previous === "deleted") {
-          edits.set(key, (note) => {
-            const restored = restoredNote(note, document);
-            if (restored !== note) replaced.set(key, { restored, previous: note });
-            return restored;
-          });
+          edits.set(
+            key,
+            recorded(key, (note) => {
+              const restored = restoredNote(note, document);
+              if (restored !== note) replaced.set(key, { restored, previous: note });
+              return restored;
+            }),
+          );
         }
         const reference = deletions.get(key);
         if (state === "deleted" && previous === "live" && reference) {
-          edits.set(key, (note) => {
-            const earlier = replaced.get(key);
-            replaced.delete(key);
-            return earlier?.restored === note
-              ? earlier.previous
-              : deletedNote(note, document, reference);
-          });
+          edits.set(
+            key,
+            recorded(key, (note) => {
+              const earlier = replaced.get(key);
+              replaced.delete(key);
+              return earlier?.restored === note
+                ? earlier.previous
+                : deletedNote(note, document, reference);
+            }),
+          );
         }
+      }
+      return editNotes(document, edits);
+    },
+    withPending: (document) => {
+      const edits = new Map<NoteKey, NoteEdit>();
+      for (const [key, { from, to }] of pending) {
+        edits.set(key, (note) => {
+          // Taken in (or changed since): nothing is owed any more.
+          if (note !== from) pending.delete(key);
+          return note === from ? to : note;
+        });
       }
       return editNotes(document, edits);
     },
     reset: () => {
       base = null;
       replaced.clear();
+      pending.clear();
     },
   };
 };
 
-/** The notes the main story refers to, live or pending deletion. */
+/**
+ * The notes anything refers to, live or pending deletion: the main story, and
+ * the stories the body does not hold (headers, footers, comments, notes).
+ */
 const referencedNotes = (document: Document): Set<NoteKey> => {
   const keys = new Set<NoteKey>();
   const visit = (node: unknown): void => {
@@ -294,7 +330,10 @@ const referencedNotes = (document: Document): Set<NoteKey> => {
     }
     for (const value of Object.values(node)) visit(value);
   };
+  const { headers, footers, footnotes, endnotes } = document.package;
   visit(document.package.document.content);
+  visit([...(headers?.values() ?? []), ...(footers?.values() ?? [])]);
+  visit([document.package.document.comments ?? [], footnotes ?? [], endnotes ?? []]);
   return keys;
 };
 
@@ -315,8 +354,9 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
   const referenced = referencedNotes(document);
   const { footnotes, endnotes, headers, footers } = document.package;
   const keeps = (kind: NoteKind) => (note: Footnote | Endnote) =>
-    (kind === "footnote" ? isSeparatorFootnote(note) : isSeparatorEndnote(note)) ||
-    referenced.has(noteKey(kind, note.id));
+    (kind === "footnote"
+      ? isSeparatorFootnote(note as Footnote)
+      : isSeparatorEndnote(note as Endnote)) || referenced.has(noteKey(kind, note.id));
   const keptFootnotes = footnotes?.filter(keeps("footnote"));
   const keptEndnotes = endnotes?.filter(keeps("endnote"));
   if (keptFootnotes?.length === footnotes?.length && keptEndnotes?.length === endnotes?.length) {

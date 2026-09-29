@@ -92,6 +92,12 @@ const projectionCache = new WeakMap<EditorState, Map<DisplayMode, MarkupViewProj
  * Cached per editor state: the resolver also reads its styles and numbering
  * plugins, which may change while the document node stays the same.
  */
+/** How a view resolves the revisions it reads, or null when it shows them inline. */
+export const markupViewResolutionMode = (view: DisplayMode): RevisionResolutionMode | null => {
+  const resolution = MARKUP_VIEW_RESOLUTIONS[view];
+  return resolution.type === "resolved" ? resolution.mode : null;
+};
+
 export const projectMarkupView = (state: EditorState, view: DisplayMode): MarkupViewProjection => {
   const resolution = MARKUP_VIEW_RESOLUTIONS[view];
   if (resolution.type === "authored") {

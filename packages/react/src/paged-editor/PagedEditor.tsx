@@ -5589,7 +5589,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor;
         },
         getDocument() {
-          const current = folioEditor.getDocument();
+          // A write-back still pending may owe the notes a restore or a
+          // deletion: write it back now, and read the notes it wrote even
+          // before the host hands the document back.
+          if (documentChangeNotifyTimerRef.current !== null) {
+            flushDocumentChangeNotification();
+          }
+          const editorDocument = folioEditor.getDocument();
+          const current = editorDocument ? noteFollower.withPending(editorDocument) : null;
           return current ? (noteEditorRef.current?.snapshotDocument(current) ?? current) : null;
         },
         getState() {
@@ -5761,8 +5768,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }),
       [
         ensureHiddenEditorView,
+        flushDocumentChangeNotification,
         folioEditor,
         getActiveEditorStory,
+        noteFollower,
         getScrollContainer,
         refreshBodyImeCaretAnchor,
         scrollToPageImpl,

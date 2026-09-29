@@ -12,12 +12,13 @@
  * rows or cells are themselves pending.
  */
 
-import { Fragment, type MarkType, type Node as PMNode } from "prosemirror-model";
-import type { Transform } from "prosemirror-transform";
+import { Fragment, Slice, type MarkType, type Node as PMNode } from "prosemirror-model";
+import { ReplaceAroundStep, StepMap, type Transform } from "prosemirror-transform";
 
 import {
   getProseParagraphPropertySourceToken,
   type ParagraphPropertySourceTransfer,
+  recreateProseNodeWithParagraphPropertySource as rebuild,
 } from "../docx/paragraphPropertySource";
 import { expectParagraphAttrs } from "./attrs";
 import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
@@ -77,6 +78,7 @@ export const runParagraphIntoTable = ({
   removedMark,
 }: RunParagraphIntoTableOptions): {
   position: number;
+  map: StepMap;
   transfer: ParagraphPropertySourceTransfer;
 } | null => {
   const paragraph = tr.doc.nodeAt(paragraphPos);
@@ -92,21 +94,47 @@ export const runParagraphIntoTable = ({
   const target = runInTarget(tr.doc, tablePos);
   if (!target) return null;
 
-  tr.insert(target.pos + 1, paragraph.content);
+  // One step that keeps the words where they are and moves the table's
+  // opening (table, row, cell, the cell's first paragraph) in front of them,
+  // so every position in the words still maps to itself.
+  const $target = tr.doc.resolve(target.pos + 1);
+  const containerDepth = tr.doc.resolve(paragraphPos).depth;
+  let opening = Fragment.empty;
+  for (let depth = $target.depth; depth > containerDepth; depth--) {
+    opening = Fragment.from(rebuild($target.node(depth), { content: opening }));
+  }
+  const levels = $target.depth - containerDepth;
+  tr.step(
+    new ReplaceAroundStep(
+      paragraphPos,
+      target.pos + 1,
+      paragraphPos + 1,
+      paragraphPos + paragraph.nodeSize - 1,
+      new Slice(opening, 0, levels),
+      levels,
+      true,
+    ),
+  );
+  const position = paragraphPos + levels - 1;
   if (styleResolver && paragraph.content.size > 0) {
     rebaseParagraphRuns({
       previousContext: paragraphRunStyleContext(paragraph, styleResolver),
-      paragraphPosition: target.pos,
+      paragraphPosition: position,
       range: { from: 0, to: paragraph.content.size },
       styleResolver,
       tr,
     });
   }
-  tr.delete(paragraphPos, paragraphPos + paragraph.nodeSize);
   const displaced = getProseParagraphPropertySourceToken(paragraph);
   const selected = getProseParagraphPropertySourceToken(target.node);
+  // How positions read across the move: the paragraph's opening is the cell
+  // paragraph's, the table, row and cell openings are new in front of it, and
+  // the paragraph's close and the table's openings after its words are gone.
+  const closing = paragraphPos + paragraph.nodeSize - 1;
+  const map = new StepMap([paragraphPos, 0, levels - 1, closing, target.pos + 1 - closing, 0]);
   return {
-    position: target.pos - paragraph.nodeSize,
+    position,
+    map,
     transfer: {
       displacedToken: typeof displaced === "string" ? displaced : null,
       selectedToken: typeof selected === "string" ? selected : null,
@@ -134,12 +162,14 @@ export const runParagraphsIntoTables = (
   styleResolver: RunStyleResolver | null,
 ): {
   targets: { position: number; step: number }[];
+  maps: StepMap[];
   transfers: ParagraphPropertySourceTransfer[];
 } => {
   const removedMark = tr.doc.type.schema.marks[mode === "accept" ? "deletion" : "insertion"];
   const tried = new Set<number>();
   const targets: { position: number; step: number }[] = [];
   const transfers: ParagraphPropertySourceTransfer[] = [];
+  const maps: StepMap[] = [];
   for (;;) {
     let candidate: number | null = null;
     tr.doc.descendants((node, pos, parent, index) => {
@@ -150,7 +180,7 @@ export const runParagraphsIntoTables = (
       }
       return false;
     });
-    if (candidate === null) return { targets, transfers };
+    if (candidate === null) return { targets, maps, transfers };
     tried.add(candidate);
     const ranIn = runParagraphIntoTable({
       tr,
@@ -161,6 +191,7 @@ export const runParagraphsIntoTables = (
     if (ranIn !== null) {
       targets.push({ position: ranIn.position, step: tr.steps.length });
       transfers.push(ranIn.transfer);
+      maps.push(ranIn.map);
       tried.clear();
     }
   }

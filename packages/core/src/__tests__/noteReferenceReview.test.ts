@@ -23,6 +23,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document } from "../types/document";
 import { FolioDocxReviewer } from "../ai-edits/headless";
+import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import { createHarnessState, parseShapeDocument } from "./editorHarness";
 
 type Fixture = { body: string; footnotes?: string };
@@ -159,6 +160,35 @@ describe("a note goes with its reference", () => {
       { id: 7, author: "Reviewer", date: "2026-01-01T00:00:00Z", content: [] },
     ];
     expect(withoutUnreferencedNotes(model).package.document.comments).toEqual([]);
+  });
+
+  test("the markup views show the notes as they resolve the body", async () => {
+    const document = await open(fixture);
+    const state = createHarnessState(document, "editing");
+    const shown = (view: "all-markup" | "original" | "no-markup") => {
+      const footnotes = markupViewNotes(document.package.footnotes, view, state, document);
+      return noteState(
+        { ...document, package: { ...document.package, ...(footnotes && { footnotes }) } },
+        1,
+      );
+    };
+    expect(shown("all-markup")).toEqual({ text: "The note text.", deleted: true });
+    expect(shown("original")).toEqual({ text: "The note text.", deleted: false });
+    expect(shown("no-markup")).toEqual({ text: "", deleted: false });
+  });
+
+  test("a save right after a restore reads the restored note", async () => {
+    const document = await open(fixture);
+    const deleted = createHarnessState(document, "editing");
+    const rejected = resolve(deleted, "reject");
+    const follower = createNoteReferenceFollower();
+    follower.noteBase(deleted.doc);
+    follower.reconcile(document, rejected.doc);
+    // The host has not handed the written-back document to the editor yet.
+    expect(noteState(follower.withPending(document), 1)).toEqual({
+      text: "The note text.",
+      deleted: false,
+    });
   });
 
   test("an editor's notes follow the reject and its undo", async () => {

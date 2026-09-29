@@ -23,6 +23,7 @@ import {
   remapNoteMarkerText,
 } from "../layout-bridge/convert/footnoteLayout";
 import type { MeasureBlocksFn } from "../layout-bridge/convert/footnoteLayout";
+import { markupViewNotes } from "../prosemirror/markupViewNotes";
 import {
   prepareEndnoteAreas,
   resolveEndnotePosition,
@@ -622,7 +623,13 @@ function runLayoutPipelineMeasured<THfPMs>(
     // Step 2.5: Collect footnote references from blocks
     phaseStartedAt = performance.now();
     const footnoteRefs = collectFootnoteRefs(newBlocks);
-    const documentFootnotes = document?.package.footnotes;
+    // The notes read as the view reads the body.
+    const documentFootnotes = markupViewNotes(
+      document?.package.footnotes,
+      markupView,
+      state,
+      document,
+    );
     const hasFootnotes = footnoteRefs.length > 0 && documentFootnotes !== undefined;
 
     // Body note markers carry the raw `w:id` as their run text (the PM doc
@@ -636,7 +643,12 @@ function runLayoutPipelineMeasured<THfPMs>(
           footnoteRefs.map((ref) => ref.footnoteId),
         )
       : undefined;
-    const documentEndnotes = document?.package.endnotes;
+    const documentEndnotes = markupViewNotes(
+      document?.package.endnotes,
+      markupView,
+      state,
+      document,
+    );
     const endnoteDisplayNumbers = documentEndnotes
       ? computeNoteDisplayNumbers(
           documentEndnotes,

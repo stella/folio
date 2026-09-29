@@ -1219,6 +1219,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   async function serializeCurrentDocx(
     serializationOptions?: FolioGetDocxOptions,
   ): Promise<SerializedDocxResult | null> {
+    // A write-back still pending may owe the notes a restore or a deletion.
+    if (docChangeTimer !== null) {
+      flushDocumentChangeNotification();
+    }
     const view = editorView.value;
     const currentDocument = docModel.value;
     if (!view || !currentDocument) {

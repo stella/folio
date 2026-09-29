@@ -628,7 +628,7 @@ export const resolveWholeStory = ({
   // A paragraph whose mark goes right before a table runs on into the table's
   // first cell before the rest resolves; both read as one resolution.
   const runIn = new Transform(doc);
-  const { targets, transfers } = runParagraphsIntoTables(runIn, mode, styleResolver);
+  const { targets, maps, transfers } = runParagraphsIntoTables(runIn, mode, styleResolver);
   const result = resolveStoryRevisions({ doc: runIn.doc, mode, styleResolver, numbering });
   if (!runIn.docChanged) return result;
   for (const { position, step } of targets) {
@@ -637,7 +637,7 @@ export const resolveWholeStory = ({
     if (target) result.changedRanges.push({ from, to: from + target.nodeSize });
   }
   let runInMap = StepMap.empty;
-  for (const step of runIn.steps) runInMap = composeRevisionResolutionMaps(runInMap, step.getMap());
+  for (const map of maps) runInMap = composeRevisionResolutionMaps(runInMap, map);
   const positionMap = composeRevisionResolutionMaps(runInMap, result.positionMap);
   return {
     ...result,
