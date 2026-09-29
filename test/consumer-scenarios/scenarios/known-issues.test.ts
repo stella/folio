@@ -205,7 +205,9 @@ describe("findings not yet filed", () => {
       finding,
       `the ${kind} flow with seed ${seed} (${steps} steps) does what it asked and saves it`,
       FINDING_SYMPTOMS[finding],
-      () => runFlow(seed, steps, kind, generation ? { generation } : {}),
+      async () => {
+        await runFlow(seed, steps, kind, generation ? { generation } : {});
+      },
     );
   }
 });

@@ -30,7 +30,9 @@
 // the requested-outcome oracle could not model), FOLIO_SCENARIO_RELATIONS
 // (metamorphic relations checked in the fuzz flows: `all` by default, `none`,
 // or a comma-separated list) and FOLIO_SCENARIO_RELATIONS_DEPTH=full (check
-// the sampled relations on every batch; for sweeps).
+// the sampled relations on every batch; for sweeps), FOLIO_SCENARIO_SAVE_SAMPLE
+// (save this many initial generated flows as replayable DOCX artifacts) and
+// FOLIO_SCENARIO_SAMPLE_DIR (artifact destination).
 // Flow files (test/consumer-scenarios/support/flow-file.ts):
 // FOLIO_SCENARIO_FLOW (a flow file's JSON, or a path to one) replays that
 // flow alone in flow-corpus.test.ts; FOLIO_SCENARIO_BUDGET_SECONDS turns on
@@ -465,6 +467,9 @@ try {
         ...(await flowEnvironment()),
         FOLIO_SCENARIO_SEED: seed,
         FOLIO_SCENARIO_COVERAGE_DIR: coverageDir,
+        FOLIO_SCENARIO_SAMPLE_DIR:
+          process.env["FOLIO_SCENARIO_SAMPLE_DIR"] ??
+          path.join(repoRoot, "test-results", "consumer-scenario-samples"),
       })
       .nothrow();
     if (run.exitCode !== 0) {
