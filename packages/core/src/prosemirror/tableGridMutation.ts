@@ -58,6 +58,42 @@ export const removeTableRow = (
 };
 
 /**
+ * Whether a batch of structural edits may have left rows without cells, to
+ * close once the whole batch has run.
+ */
+export type RowsEmptiedInBatch = { pending: boolean };
+
+/**
+ * Close the rows a batch left without cells, once the whole batch has run: a
+ * later operation of the same batch can still give such a row a cell (a column
+ * inserted beside a merge), as accepting the batch tracked does.
+ *
+ * Every table is visited rather than the ones the deletions named: a later
+ * operation of the batch can move a table whole, as a merge carries a nested
+ * table into the merged cell, and a position mapped through that move no
+ * longer finds it. Tables go from the last to the first, so closing rows in
+ * one never moves a table still to visit.
+ */
+export const removeRowsWithoutCellsAfterBatch = (
+  tr: Transaction,
+  emptied: RowsEmptiedInBatch,
+): void => {
+  if (!emptied.pending) {
+    return;
+  }
+  const tables: number[] = [];
+  tr.doc.descendants((node, position) => {
+    if (node.type.spec["tableRole"] === "table") {
+      tables.push(position);
+    }
+    return !node.isTextblock;
+  });
+  for (const position of tables.toReversed()) {
+    removeRowsWithoutCells(tr, position);
+  }
+};
+
+/**
  * Remove every row a structural edit left without a cell of its own, closing
  * the vertical merges that reached through it over one row fewer.
  *
@@ -70,28 +106,6 @@ export const removeTableRow = (
  * tracked removes the cells one at a time and the row with its last one,
  * which is this result; the two modes have to leave the same table.
  */
-/**
- * Tables a batch of structural edits may have left rows without cells in,
- * each as a position in the document `mapFrom` steps into the transaction.
- */
-export type TablesWithEmptiedRows = { position: number; mapFrom: number }[];
-
-/**
- * Close the rows a batch left without cells, once the whole batch has run: a
- * later operation of the same batch can still give such a row a cell (a column
- * inserted beside a merge), as accepting the batch tracked does.
- */
-export const removeRowsWithoutCellsAfterBatch = (
-  tr: Transaction,
-  tables: TablesWithEmptiedRows,
-): void => {
-  for (const { position, mapFrom } of tables) {
-    // A step that rewrites the table's own attrs replaces its opening token,
-    // so the position maps as the table's start rather than as a survivor.
-    removeRowsWithoutCells(tr, tr.mapping.slice(mapFrom).map(position, 1));
-  }
-};
-
 export const removeRowsWithoutCells = (tr: Transaction, tablePosition: number): void => {
   for (;;) {
     const table = tr.doc.nodeAt(tablePosition);

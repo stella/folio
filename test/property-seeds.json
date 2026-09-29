@@ -120,6 +120,12 @@
       "path": "101:5:8:9:12:12:14:14:15:16:15:15:15:15:15:17:17:16:16:16:17:16:17:16:17:17:16:18:16:16:16:16:16:16:16:16:16:17:18:18:10:7:9:10",
       "note": "deleting then reinserting a column beside a vertical merge in a table holding a nested table: the same row-closing order",
       "date": "2026-09-29"
+    },
+    {
+      "seed": -1430791129,
+      "path": "619:4:5:8:6:5:9:7:7:7:8:23:7:7:7:16:21:29:29:24:19:19:22:37:27:28",
+      "note": "a nested-table column deletion left its emptied row open when the same batch merged the outer table and moved the nested table (path at factor 5)",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/internal/revisionResolutionStep.integration.test.ts::bulk resolution JSON replay and undo match its cached result": [
