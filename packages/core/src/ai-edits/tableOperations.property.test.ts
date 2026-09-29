@@ -26,7 +26,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   buildTableDocx,
@@ -507,35 +507,11 @@ describe("table operations on merged tables", () => {
   test(
     "keep every value, agree across modes and readers, and reject cleanly",
     async () => {
-      await fc.assert(
-        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-        propertyConfig({ numRuns: 150, seed: -1930932135 }),
-      );
-      await fc.assert(
-        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-        propertyConfig({ numRuns: 150, seed: 58022172 }),
-      );
-      // A refused column insertion and a no-op deletion were reported in opposite orders.
-      await fc.assert(
-        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-        propertyConfig({
-          numRuns: 150,
-          seed: 58022172,
-          path: "282:1:0:1:0:0:0:0:0:1:1:5:5:5:6:6:6",
-        }),
-      );
-      await fc.assert(
-        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-        propertyConfig({ numRuns: 150, seed: -324071034 }),
-      );
-      await fc.assert(
-        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-        propertyConfig({ numRuns: 150, seed: -1330713042 }),
-      );
-      await fc.assert(
-        fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase),
-        propertyConfig({ numRuns: 150 }),
-      );
+      // The seeds this property once failed on replay first, from
+      // test/property-seeds.json.
+      await assertProperty(fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase), {
+        numRuns: 150,
+      });
     },
     propertyTestTimeout(120_000),
   );
