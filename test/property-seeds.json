@@ -157,5 +157,19 @@
       "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
       "date": "2026-09-29"
     }
+  ],
+  "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (upstream-complex-styles.docx)": [
+    {
+      "seed": -1791229527,
+      "path": "26:3:1:1:2:3:2:2:2:2:3",
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes.",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 752725439,
+      "path": "6:3:1:1:1:2:3:2:2:2",
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes.",
+      "date": "2026-09-30"
+    }
   ]
 }

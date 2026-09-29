@@ -1,7 +1,11 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { alignFolioContentBlocks, type FolioContentAlignedBlockEvent } from "./content-alignment";
 import type { FolioContentBlock } from "./content-types";
 
@@ -207,4 +211,44 @@ describe("gap-local exact block anchors", () => {
       propertyConfig({ numRuns: 300 }),
     );
   });
+});
+
+test("persisted exact neighbours anchor generated edits around a recreated relocation", () => {
+  assertProperty(
+    fc.property(
+      fc.stringMatching(/^[A-Za-z]{1,12}$/u),
+      fc.integer({ min: 1, max: 8 }),
+      (label, editedCount) => {
+        const base = positionalBlocks(
+          [
+            `${label} title`,
+            ...Array.from(
+              { length: editedCount },
+              (_, index) => `${label} original ${String(index)}`,
+            ),
+            `${label} relocated paragraph with enough words`,
+            `${label} final anchor`,
+          ],
+          "base",
+        );
+        const moveIndex = editedCount + 1;
+        const revised = base.map((source, index) => ({
+          ...source,
+          idStability: "stable" as const,
+          text:
+            index > 0 && index < moveIndex ? `${label} replacement ${String(index)}` : source.text,
+        }));
+        const moved = revised.splice(moveIndex, 1).at(0);
+        if (!moved) throw new Error("Generated relocation source is missing");
+        revised.unshift({ ...moved, id: "recreated" });
+        const events = alignFolioContentBlocks(base, revised);
+        expect(reconstruct(events, "base")).toEqual(base);
+        expect(reconstruct(events, "revised")).toEqual(revised);
+        expect(
+          events.flatMap((event) => (event.type === "pair" ? [event.baseBlock.id] : [])),
+        ).toEqual(base.filter((_, index) => index !== moveIndex).map(({ id }) => id));
+      },
+    ),
+    { numRuns: 64 },
+  );
 });
