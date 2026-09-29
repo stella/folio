@@ -13,6 +13,7 @@ import {
 } from "@stll/folio-core/server";
 
 import { type Random, sentence } from "./random.ts";
+import { gapWeight, weightedChoice } from "./feature-coverage.ts";
 import { type Picker, uniformPicker, wordsOf } from "./targets.ts";
 
 export type Mode = "direct" | "tracked-changes" | "suggested";
@@ -213,17 +214,26 @@ export const supports = (type: string, mode: Mode): boolean =>
   isFolioDocumentOperationModeSupported(type as never, mode);
 
 /** A random well-formed operation `mode` supports, or null. */
+type RandomOperationOptions = {
+  types?: readonly string[];
+  pick?: Picker | ((type: string) => Picker);
+  operationHits?: Readonly<Record<string, number>>;
+};
+
 export const randomOperation = (
   blocks: readonly Block[],
   mode: Mode,
   random: Random,
-  types: readonly string[] = Object.keys(GENERATORS),
-  pick?: Picker,
+  { types = Object.keys(GENERATORS), pick, operationHits }: RandomOperationOptions = {},
 ): Operation | null => {
   const usable = types.filter((type) => supports(type, mode));
   for (let attempt = 0; attempt < 8; attempt += 1) {
-    const generator = GENERATORS[random.pick(usable)];
-    const operation = generator?.(blocks, random, pick);
+    const type = operationHits
+      ? weightedChoice(usable, random, (candidate) => gapWeight(operationHits[candidate] ?? 0))
+      : random.pick(usable);
+    const generator = GENERATORS[type];
+    const picker = typeof pick === "function" ? pick(type) : pick;
+    const operation = generator?.(blocks, random, picker);
     if (operation) return operation;
   }
   return null;

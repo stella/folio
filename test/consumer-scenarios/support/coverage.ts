@@ -10,6 +10,13 @@
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import {
+  addFeatureHit,
+  emptyFeatureCoverage,
+  mergeFeatureCoverage,
+  type FeatureCell,
+  type FeatureCoverage,
+} from "./feature-coverage.ts";
 
 export const DIMENSIONS = ["op", "story", "mode", "feature", "step"] as const;
 export type Dimension = (typeof DIMENSIONS)[number];
@@ -36,6 +43,14 @@ export const cellOf = (key: string): Cell => {
 };
 
 const ledger: Ledger = { version: 1, cells: {} };
+const featureCoverage = emptyFeatureCoverage();
+
+export const recordFeatureHit = (cell: FeatureCell): void => addFeatureHit(featureCoverage, cell);
+export const registerFeatureOperations = (operations: readonly string[]): void => {
+  for (const operation of operations) {
+    if (!featureCoverage.operations.includes(operation)) featureCoverage.operations.push(operation);
+  }
+};
 
 export const recordHit = (cell: Cell, applied: boolean): void => {
   const key = keyOf(cell);
@@ -53,6 +68,10 @@ if (outputDir) {
       path.join(outputDir, `ledger-${process.pid}-${Date.now()}.json`),
       JSON.stringify(ledger),
     );
+    writeFileSync(
+      path.join(outputDir, `features-${process.pid}-${Date.now()}.json`),
+      JSON.stringify(featureCoverage),
+    );
   });
 }
 
@@ -65,7 +84,7 @@ export const mergeLedgers = (dir: string): Ledger => {
   const merged: Ledger = { version: 1, cells: {} };
   let files: string[] = [];
   try {
-    files = readdirSync(dir).filter((file) => file.endsWith(".json"));
+    files = readdirSync(dir).filter((file) => file.startsWith("ledger-") && file.endsWith(".json"));
   } catch {
     return merged;
   }
@@ -78,6 +97,20 @@ export const mergeLedgers = (dir: string): Ledger => {
     }
   }
   return merged;
+};
+
+export const mergeFeatureFiles = (dir: string): FeatureCoverage => {
+  let files: string[];
+  try {
+    files = readdirSync(dir).filter(
+      (file) => file.startsWith("features-") && file.endsWith(".json"),
+    );
+  } catch {
+    return emptyFeatureCoverage();
+  }
+  return mergeFeatureCoverage(
+    files.map((file) => JSON.parse(readFileSync(path.join(dir, file), "utf8")) as FeatureCoverage),
+  );
 };
 
 /** A cell pattern: a dimension left out, or `"*"`, matches anything. */

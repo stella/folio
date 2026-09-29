@@ -366,7 +366,7 @@ export const runEditWorker = async (
     const reviewer = await openReviewer(original);
     const steps: EditStep[] = [];
     for (let index = 0; index < 3; index += 1) {
-      const operation = randomOperation(reviewer.getContent(), mode, random, TYPES);
+      const operation = randomOperation(reviewer.getContent(), mode, random, { types: TYPES });
       if (!operation) break;
       steps.push({ mode, operation });
       attempts += 1;
