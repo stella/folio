@@ -117,9 +117,12 @@ type DeleteBlockRole = Extract<BlockRole, { kind: "deleteBlock" }>;
 
 /**
  * A deletion of the paragraph that ends its container, once the batch inserts
- * a block after it: the insertion lands first, the paragraph then ends
- * nothing, and it goes as any other — tracked, its mark is deleted into the
- * inserted block and its properties with it; directly, the node goes.
+ * a block next to it. After it, the insertion lands first, the paragraph then
+ * ends nothing, and it goes as any other — tracked, its mark is deleted into
+ * the inserted block and its properties with it; directly, the node goes.
+ * Before it, the paragraph the deletion retires the mark of is the inserted
+ * one, a pending insertion, so retiring it joins the two and this paragraph
+ * does not stay either.
  */
 const followedByInsertion = (role: DeleteBlockRole): DeleteBlockRole => ({
   ...role,
@@ -269,7 +272,7 @@ export class BatchClaims {
   private readonly tables = new Map<number, string>();
   private readonly rowInsertions = new Map<number, string>();
   private readonly columnInsertions = new Map<number, string>();
-  /** Accepted deletions that keep their paragraph, by where the paragraph ends. */
+  /** Accepted deletions that keep their paragraph, by where the paragraph starts and ends. */
   private readonly keptParagraphs = new Map<number, { block: number; operationId: string }>();
 
   /** `claim`'s roles, given the insertions accepted so far. */
@@ -278,7 +281,7 @@ export class BatchClaims {
       role.kind === "deleteBlock" &&
       role.keepsParagraph &&
       claim.type === "deleteBlock" &&
-      this.insertions.has(claim.end)
+      (this.insertions.has(claim.end) || this.insertions.has(claim.block))
         ? { block, role: followedByInsertion(role) }
         : { block, role },
     );
@@ -419,6 +422,7 @@ export class BatchClaims {
       }
       if (claim.type === "deleteBlock" && role.kind === "deleteBlock" && role.keepsParagraph) {
         this.keptParagraphs.set(claim.end, { block, operationId });
+        this.keptParagraphs.set(claim.block, { block, operationId });
       }
     }
     switch (claim.type) {

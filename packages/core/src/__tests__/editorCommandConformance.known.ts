@@ -72,22 +72,7 @@ const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
 ];
 
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
-  {
-    reason:
-      "Clearing a selected table cell leaves an empty editor paragraph whose inherited spacing appears only after reopen",
-    operations: ["host:cut"],
-    shapes: ["tables"],
-    placements: ["cross-paragraph"],
-    modes: ["editing"],
-    kinds: ["readback-painted"],
-  },
   // ---------------------------------------------------------------- lists --
-  {
-    reason:
-      "A paragraph a list command numbers states no indentation, while the reopened paragraph reads the level's indentation as its own w:ind",
-    operations: [...LIST_TOGGLES, ...LIST_MARKERS, ...LIST_NUMBERING, "paste:list"],
-    kinds: ["readback-blocks", "readback-painted"],
-  },
   {
     reason:
       "List operations in suggesting mode: rejecting a tracked toggle or autoformat writes resolved spacing and indentation back as direct formatting; level changes and list removal apply untracked",
@@ -103,31 +88,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
-  },
-  {
-    reason:
-      "Decreasing a list item's indent to zero, or restyling it, leaves no w:ind, so the numbering level's indent returns on reopen; restyling a paragraph with a direct outline level keeps that level",
-    operations: [
-      "command:decreaseIndent",
-      "command:applyStyle(Heading1)",
-      "command:applyStyle(Heading2)",
-    ],
-    shapes: ["single-decimal-list", "single-bullet-list", "outline-level-numbered"],
-    kinds: ["readback-blocks", "readback-painted"],
-  },
-  {
-    reason:
-      "Restyling, clearing the style of, or unindenting a range that holds list items or style-numbered headings leaves numbering and indentation in the editor that the saved package does not state",
-    operations: [
-      "command:decreaseIndent",
-      "command:applyStyle(Heading1)",
-      "command:applyStyle(Heading2)",
-      "command:clearStyle",
-      "host:clearFormatting",
-    ],
-    shapes: ["mixed-lists", "style-numbered-headings", "host-unused-instances"],
-    placements: ["cross-paragraph", "document"],
-    kinds: ["readback-blocks", "readback-painted", "readback-markdown", "reject-mismatch"],
   },
   {
     reason:
@@ -175,6 +135,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:setIndentFirstLine(hanging)",
       "command:applyStyle(Heading1)",
       "command:applyStyle(Heading2)",
+      "command:clearStyle",
       "host:clearFormatting",
     ],
     modes: ["suggesting"],
@@ -220,42 +181,8 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     modes: ["suggesting"],
     kinds: ["reject-mismatch"],
   },
-  {
-    reason:
-      "A suggested deletion inside another author's tracked insertion does not survive a save",
-    operations: REPLACING_OPERATIONS,
-    shapes: ["tracked-changes", "pending-property-change"],
-    modes: ["suggesting"],
-    kinds: ["readback-blocks"],
-  },
 
   // -------------------------------------------------------------- other --
-  {
-    reason:
-      "Paragraphs a paste or a structural command creates carry no resolved style attributes (spacing, run defaults) until the document is reopened",
-    operations: [
-      "paste:paragraphs",
-      "paste:copied-blocks",
-      "paste:table",
-      "paste:list",
-      "key:Delete",
-      "command:deleteColumn",
-      "command:addRowAbove",
-      "command:addRowBelow",
-      "command:addColumnLeft",
-      "command:addColumnRight",
-      "command:splitCell",
-    ],
-    kinds: ["readback-blocks", "readback-painted"],
-  },
-  {
-    reason:
-      "Replacing a range that spans paragraphs leaves a paragraph without resolved style attributes (spacing, run defaults) until the document is reopened",
-    operations: REPLACING_OPERATIONS,
-    placements: ["cross-paragraph", "document"],
-    kinds: ["readback-blocks", "readback-painted"],
-    tier: "full",
-  },
   {
     reason:
       "A hyperlink or a character-format change applied across a field drops the field's result text on save, or on rejecting the change",
@@ -264,13 +191,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     placements: RANGE_PLACEMENTS,
     kinds: ["readback-blocks", "readback-painted", "reject-mismatch"],
     tier: "full",
-  },
-  {
-    reason:
-      "An inserted table of contents reads differently after a save: entry run formatting and page-number runs",
-    operations: ["command:generateTOC"],
-    shapes: ["outline-level-numbered", "style-numbered-headings"],
-    kinds: ["readback-blocks", "readback-painted", "readback-markdown"],
   },
 ];
 

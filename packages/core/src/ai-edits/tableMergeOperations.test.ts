@@ -170,3 +170,73 @@ describe("deleting the column beside a vertical merge", () => {
     }
   });
 });
+
+describe("a column deletion in a nested table the same batch moves", () => {
+  /**
+   * The outer table merges whole, carrying the nested table into the merged
+   * cell, while the nested table loses the only column its second row had a
+   * cell in. The emptied row still has to close once the batch is done.
+   */
+  const NESTED: TableSpec = {
+    rows: 3,
+    columns: 4,
+    cells: [
+      { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
+      {
+        row: 0,
+        column: 1,
+        rowSpan: 2,
+        columnSpan: 2,
+        text: "c1",
+        nested: {
+          rows: 2,
+          columns: 3,
+          cells: [
+            { row: 0, column: 0, rowSpan: 2, columnSpan: 2, text: "n0" },
+            { row: 0, column: 2, rowSpan: 1, columnSpan: 1, text: "n1" },
+            { row: 1, column: 2, rowSpan: 1, columnSpan: 1, text: "n2" },
+          ],
+        },
+      },
+      { row: 0, column: 3, rowSpan: 1, columnSpan: 1, text: "" },
+      { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "" },
+      { row: 1, column: 3, rowSpan: 2, columnSpan: 1, text: "c4" },
+      { row: 2, column: 0, rowSpan: 1, columnSpan: 2, text: "" },
+      { row: 2, column: 2, rowSpan: 1, columnSpan: 1, text: "" },
+    ],
+  };
+
+  test("closes the row the deletion emptied, in the editor and the package alike", async () => {
+    const reviewer = await open(await buildTableDocx(NESTED));
+    const firstCell = reviewer
+      .getContent()
+      .find(
+        ({ table }) =>
+          table?.tableIndex === 0 &&
+          table.rowIndex === 0 &&
+          table.gridColumnIndex === 0 &&
+          table.paragraphIndex === 0,
+      );
+    if (!firstCell) {
+      throw new Error("no block starts the first cell");
+    }
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "direct",
+      operations: [
+        {
+          id: "merge",
+          type: "mergeTableCells",
+          blockId: blockId(reviewer, "c4"),
+          endBlockId: firstCell.id,
+        },
+        { id: "column", type: "deleteTableColumn", blockId: blockId(reviewer, "n1") },
+      ],
+    });
+    expect(result.applied.map(({ id }) => id).toSorted()).toEqual(["column", "merge"]);
+
+    const reading = await readReviewerTables(reviewer);
+    expect(tableReadingProblems(reading)).toEqual([]);
+    expect(cells(reading)[1]).toEqual([["0:0", "1x2", "n0"]]);
+  });
+});

@@ -78,10 +78,11 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly REPLACE_BLOCKS: "replaceBlocks";
     readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
     readonly REPLACE_INLINE: "replaceInline";
+    readonly RESOLVE_REVISION: "resolveRevision";
 }>;
 
 // @public
-export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp;
+export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -239,6 +240,23 @@ export type ReplaceInlineOp = {
     expected: readonly ParagraphContent[];
     content: readonly ParagraphContent[];
 };
+
+// @public
+export type ResolveRevisionOp = {
+    type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
+    story: OpStory;
+    revisionIds: readonly number[];
+    decision: RevisionDecision;
+};
+
+// @public
+export const REVISION_DECISIONS: Readonly<{
+    readonly ACCEPT: "accept";
+    readonly REJECT: "reject";
+}>;
+
+// @public
+export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS];
 
 // @public
 export const revisionIdDemand: (document: Document_2, op: DocumentOp) => Result<number, DocumentOpRefusal>;

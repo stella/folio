@@ -11,6 +11,10 @@
  * - Enter at the end adds a paragraph after it: the paragraph's mark is
  *   inserted, and the new paragraph takes the pending property change, or
  *   records one from the paragraph's properties when its own differ.
+ * - Accepting or rejecting every change: a paragraph mark that goes takes
+ *   its paragraph's properties with it, and leaves the paragraph after it
+ *   (its id, properties, mark run properties and pending property change),
+ *   with the first's content before its own, in whatever order.
  * - Backspace at the start of a paragraph deletes the previous one's mark,
  *   and the paragraph takes the previous one's paragraph properties as a
  *   property change, unless the previous one holds no content; its mark run
@@ -28,7 +32,15 @@ import type {
   ParagraphPropertyChange,
 } from "../../model/document";
 import { applyDocumentOps } from "../apply";
-import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES, type RevisionStamp } from "../types";
+import { IDENTITY_SPACES, identityKeysIn } from "../ids";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  type RevisionDecision,
+  type RevisionStamp,
+} from "../types";
 
 const DATE = "2026-01-01T00:00:00Z";
 const REVIEWER: RevisionStamp = { id: 0, author: "Reviewer", date: DATE };
@@ -258,4 +270,481 @@ describe("Backspace at the start of a paragraph", () => {
       ]);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Resolving every change: the reference's accept-all and reject-all results
+// ---------------------------------------------------------------------------
+
+const deleted = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+  type: "deletion",
+  info: { id, author: "Reviewer", date: DATE },
+  content: content.flatMap((item) => (item.type === "run" ? [item] : [])),
+});
+
+const inserted = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+  type: "insertion",
+  info: { id, author: "Reviewer", date: DATE },
+  content: content.flatMap((item) => (item.type === "run" ? [item] : [])),
+});
+
+const storyRevisionIds = (document: Document): number[] => {
+  const prefix = `${IDENTITY_SPACES.REVISION}:`;
+  return identityKeysIn(document.package.document.content).flatMap((key) =>
+    key.startsWith(prefix) ? [Number(key.slice(prefix.length))] : [],
+  );
+};
+
+/** Every change in the story accepted or rejected, the way a review's accept all does. */
+const resolvedAll = (
+  document: Document,
+  decision: RevisionDecision,
+  ids = storyRevisionIds(document),
+): BlockContent[] => {
+  const applied = applyDocumentOps(document, [
+    {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: ids,
+      decision,
+    },
+  ]);
+  if (applied.isErr()) throw applied.error;
+  const undone = applyDocumentOps(applied.value.document, applied.value.inverse);
+  if (undone.isErr()) throw undone.error;
+  expect(undone.value.document).toStrictEqual(document);
+  return applied.value.document.package.document.content;
+};
+
+const ACCEPT = REVISION_DECISIONS.ACCEPT;
+const REJECT = REVISION_DECISIONS.REJECT;
+
+describe("Removing a paragraph mark leaves the paragraph after it", () => {
+  for (const [name, own, next] of PROPERTIES) {
+    const bravo = paragraph("3B000003", [text("Bravo text.")], next);
+
+    test(`accepting a deleted mark (${name})`, () => {
+      const alpha = paragraph("2A000002", [text("Alpha text.")], own, {
+        pPrMark: mark("del", 101),
+      });
+      const document = documentOf(alpha, bravo);
+      expect(resolvedAll(document, ACCEPT)).toEqual([
+        INTRO,
+        paragraph("3B000003", [text("Alpha text.Bravo text.")], next),
+        TAIL,
+      ]);
+      expect(resolvedAll(document, REJECT)).toEqual([
+        INTRO,
+        paragraph("2A000002", [text("Alpha text.")], own),
+        bravo,
+        TAIL,
+      ]);
+    });
+
+    test(`accepting a deleted mark of an empty paragraph (${name})`, () => {
+      const alpha = paragraph("2A000002", [], own, { pPrMark: mark("del", 101) });
+      expect(resolvedAll(documentOf(alpha, bravo), ACCEPT)).toEqual([INTRO, bravo, TAIL]);
+    });
+
+    test(`accepting a deleted mark whose paragraph's text is deleted too (${name})`, () => {
+      const alpha = paragraph("2A000002", [deleted(102, [text("Alpha text.")])], own, {
+        pPrMark: mark("del", 101),
+      });
+      const document = documentOf(alpha, bravo);
+      expect(resolvedAll(document, ACCEPT)).toEqual([INTRO, bravo, TAIL]);
+      expect(resolvedAll(document, REJECT)).toEqual([
+        INTRO,
+        paragraph("2A000002", [text("Alpha text.")], own),
+        bravo,
+        TAIL,
+      ]);
+    });
+
+    test(`accepting a deleted mark before deleted text (${name})`, () => {
+      const alpha = paragraph("2A000002", [text("Alpha text.")], own, {
+        pPrMark: mark("del", 101),
+      });
+      const deletedBravo = paragraph("3B000003", [deleted(102, [text("Bravo text.")])], next);
+      expect(resolvedAll(documentOf(alpha, deletedBravo), ACCEPT)).toEqual([
+        INTRO,
+        paragraph("3B000003", [text("Alpha text.")], next),
+        TAIL,
+      ]);
+    });
+
+    test(`rejecting an inserted mark (${name})`, () => {
+      const alpha = paragraph("2A000002", [text("Alpha text.")], own, {
+        pPrMark: mark("ins", 101),
+      });
+      const document = documentOf(alpha, bravo);
+      expect(resolvedAll(document, REJECT)).toEqual([
+        INTRO,
+        paragraph("3B000003", [text("Alpha text.Bravo text.")], next),
+        TAIL,
+      ]);
+      expect(resolvedAll(document, ACCEPT)).toEqual([
+        INTRO,
+        paragraph("2A000002", [text("Alpha text.")], own),
+        bravo,
+        TAIL,
+      ]);
+    });
+
+    test(`rejecting an inserted mark before inserted text (${name})`, () => {
+      const alpha = paragraph("2A000002", [text("Alpha text.")], own, {
+        pPrMark: mark("ins", 101),
+      });
+      const insertedBravo = paragraph("3B000003", [inserted(102, [text("Bravo text.")])], next);
+      expect(resolvedAll(documentOf(alpha, insertedBravo), REJECT)).toEqual([
+        INTRO,
+        paragraph("3B000003", [text("Alpha text.")], next),
+        TAIL,
+      ]);
+    });
+  }
+
+  test("the paragraph whose mark goes drops its pending property change", () => {
+    const alpha = paragraph(
+      "2A000002",
+      [text("Alpha text.")],
+      { alignment: "center" },
+      {
+        pPrMark: mark("del", 101),
+        propertyChanges: [change(102)],
+      },
+    );
+    const bravo = paragraph("3B000003", [text("Bravo text.")], { alignment: "right" });
+    const document = documentOf(alpha, bravo);
+    expect(resolvedAll(document, ACCEPT)).toEqual([
+      INTRO,
+      paragraph("3B000003", [text("Alpha text.Bravo text.")], { alignment: "right" }),
+      TAIL,
+    ]);
+    expect(resolvedAll(document, REJECT)).toEqual([
+      INTRO,
+      paragraph("2A000002", [text("Alpha text.")]),
+      bravo,
+      TAIL,
+    ]);
+  });
+
+  test("the paragraph left keeps its own pending property change until it is resolved", () => {
+    const alpha = paragraph(
+      "2A000002",
+      [text("Alpha text.")],
+      { styleId: "Heading1" },
+      {
+        pPrMark: mark("del", 101),
+      },
+    );
+    const bravo = paragraph(
+      "3B000003",
+      [text("Bravo text.")],
+      { styleId: "BlockQuote" },
+      {
+        propertyChanges: [change(102)],
+      },
+    );
+    const document = documentOf(alpha, bravo);
+    expect(resolvedAll(document, ACCEPT, [101])).toEqual([
+      INTRO,
+      { ...bravo, content: [text("Alpha text.Bravo text.")] },
+      TAIL,
+    ]);
+    expect(resolvedAll(document, REJECT)).toEqual([
+      INTRO,
+      paragraph("2A000002", [text("Alpha text.")], { styleId: "Heading1" }),
+      paragraph("3B000003", [text("Bravo text.")]),
+      TAIL,
+    ]);
+  });
+
+  test("the paragraph left keeps its mark run properties", () => {
+    const alpha = paragraph(
+      "2A000002",
+      [text("Alpha text.")],
+      {
+        runProperties: { bold: true, color: { rgb: "C00000" } },
+      },
+      { pPrMark: mark("del", 101) },
+    );
+    const bravo = paragraph("3B000003", [text("Bravo text.")], {
+      runProperties: { italic: true, fontSize: 28 },
+    });
+    expect(resolvedAll(documentOf(alpha, bravo), ACCEPT)).toEqual([
+      INTRO,
+      { ...bravo, content: [text("Alpha text.Bravo text.")] },
+      TAIL,
+    ]);
+  });
+
+  describe("a chain of removed marks ends in the paragraph after the last", () => {
+    const alpha = paragraph(
+      "2A000002",
+      [text("Alpha text.")],
+      { alignment: "center" },
+      {
+        pPrMark: mark("del", 101),
+      },
+    );
+    const bravo = paragraph(
+      "3B000003",
+      [text("Bravo text.")],
+      { indentLeft: 720, alignment: "right" },
+      {
+        pPrMark: mark("del", 102),
+      },
+    );
+    const charlie = paragraph("4C000004", [text("Charlie text.")], { styleId: "BlockQuote" });
+    const document = documentOf(alpha, bravo, charlie);
+    const joined = paragraph("4C000004", [text("Alpha text.Bravo text.Charlie text.")], {
+      styleId: "BlockQuote",
+    });
+
+    test("at once", () => {
+      expect(resolvedAll(document, ACCEPT)).toEqual([INTRO, joined, TAIL]);
+    });
+
+    test("in either order", () => {
+      const firstThenSecond = applyDocumentOps(document, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [101],
+          decision: ACCEPT,
+        },
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [102],
+          decision: ACCEPT,
+        },
+      ]);
+      const secondThenFirst = applyDocumentOps(document, [
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [102],
+          decision: ACCEPT,
+        },
+        {
+          type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+          story: OP_STORIES.MAIN,
+          revisionIds: [101],
+          decision: ACCEPT,
+        },
+      ]);
+      if (firstThenSecond.isErr()) throw firstThenSecond.error;
+      if (secondThenFirst.isErr()) throw secondThenFirst.error;
+      expect(firstThenSecond.value.document.package.document.content).toEqual([
+        INTRO,
+        joined,
+        TAIL,
+      ]);
+      expect(secondThenFirst.value.document.package.document.content).toEqual([
+        INTRO,
+        joined,
+        TAIL,
+      ]);
+    });
+  });
+});
+
+describe("Resolving inline changes", () => {
+  test("a deletion nested in another author's insertion", () => {
+    const keep = paragraph("2A000002", [
+      text("Keep "),
+      {
+        type: "insertion",
+        info: { id: 201, author: "Author One", date: DATE },
+        content: [text("added ")].flatMap((item) => (item.type === "run" ? [item] : [])),
+      },
+      {
+        type: "insertion",
+        info: { id: 202, author: "Author One", date: DATE },
+        content: [
+          {
+            type: "deletion",
+            info: { id: 203, author: "Author Two", date: "2026-01-02T00:00:00Z" },
+            content: [text("retracted ")].flatMap((item) => (item.type === "run" ? [item] : [])),
+          },
+        ],
+      },
+      text("end."),
+    ]);
+    const document = documentOf(keep);
+    expect(resolvedAll(document, ACCEPT)).toEqual([
+      INTRO,
+      paragraph("2A000002", [text("Keep added end.")]),
+      TAIL,
+    ]);
+    expect(resolvedAll(document, REJECT)).toEqual([
+      INTRO,
+      paragraph("2A000002", [text("Keep end.")]),
+      TAIL,
+    ]);
+  });
+
+  test("paragraph and run property changes", () => {
+    const changed = paragraph(
+      "2A000002",
+      [
+        {
+          type: "run",
+          formatting: { bold: true },
+          propertyChanges: [
+            {
+              type: "runPropertyChange",
+              info: { id: 302, author: "Reviewer", date: DATE },
+              previousFormatting: { italic: true },
+            },
+          ],
+          content: [{ type: "text", text: "Bold now " }],
+        },
+        text("plain."),
+      ],
+      { alignment: "center" },
+      { propertyChanges: [change(301, { alignment: "right" })] },
+    );
+    const document = documentOf(changed);
+    expect(resolvedAll(document, ACCEPT)).toEqual([
+      INTRO,
+      paragraph(
+        "2A000002",
+        [
+          {
+            type: "run",
+            formatting: { bold: true },
+            content: [{ type: "text", text: "Bold now " }],
+          },
+          text("plain."),
+        ],
+        { alignment: "center" },
+      ),
+      TAIL,
+    ]);
+    expect(resolvedAll(document, REJECT)).toEqual([
+      INTRO,
+      paragraph(
+        "2A000002",
+        [
+          {
+            type: "run",
+            formatting: { italic: true },
+            content: [{ type: "text", text: "Bold now " }],
+          },
+          text("plain."),
+        ],
+        { alignment: "right" },
+      ),
+      TAIL,
+    ]);
+  });
+});
+
+describe("Tracked Enter and Backspace, then every change resolved", () => {
+  const alphaOf = (formatting: ParagraphFormatting, fields: Partial<Paragraph> = {}) =>
+    paragraph("2A000002", [text("Alpha text.")], formatting, fields);
+  const bravo = paragraph("3B000003", [text("Bravo text.")], { alignment: "right" });
+
+  const tracked = (document: Document, ops: readonly DocumentOp[]): Document => {
+    const applied = applyDocumentOps(document, ops);
+    if (applied.isErr()) throw applied.error;
+    return applied.value.document;
+  };
+
+  test("Enter inside a paragraph: rejecting gives the paragraph back under its own id", () => {
+    const document = documentOf(alphaOf({ alignment: "center" }), bravo);
+    const split = tracked(document, [
+      {
+        type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+        at: at("2A000002", 6),
+        newBlockId: "5791F953",
+        revision: REVIEWER,
+      },
+    ]);
+    expect(resolvedAll(split, REJECT)).toEqual(document.package.document.content);
+    expect(resolvedAll(split, ACCEPT)).toEqual([
+      INTRO,
+      paragraph("5791F953", [text("Alpha ")], { alignment: "center" }),
+      paragraph("2A000002", [text("text.")], { alignment: "center" }),
+      bravo,
+      TAIL,
+    ]);
+  });
+
+  for (const [name, formatting, next, fields] of [
+    ["same properties", { alignment: "center" }, undefined, {}],
+    ["another style", { styleId: "Heading1" }, {}, {}],
+    [
+      "a pending change",
+      { alignment: "center" },
+      undefined,
+      { propertyChanges: [change(501, { alignment: "right" })] },
+    ],
+  ] as const) {
+    test(`Enter at the end (${name}): rejecting leaves the new paragraph with the old properties`, () => {
+      const alpha = alphaOf(formatting, fields);
+      const split = tracked(documentOf(alpha, bravo), [
+        {
+          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          at: at("2A000002", 11),
+          newBlockId: "06279B03",
+          ...(next === undefined ? {} : { newParagraph: next }),
+          revision: REVIEWER,
+          newIds: { revision: [1] },
+        },
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+          at: at("06279B03", 0),
+          text: "New text.",
+          runProps: "inherit",
+          revision: { ...REVIEWER, id: 2 },
+        },
+      ]);
+      // The pending change is rejected with the rest, which gives the paragraph its old properties.
+      const old =
+        fields.propertyChanges === undefined ? formatting : { alignment: "right" as const };
+      expect(resolvedAll(split, REJECT)).toEqual([
+        INTRO,
+        paragraph("06279B03", [text("Alpha text.")], old),
+        bravo,
+        TAIL,
+      ]);
+    });
+  }
+
+  test("Backspace: accepting gives the text the previous paragraph's look under the next one's id", () => {
+    const document = documentOf(alphaOf({ alignment: "center" }), bravo);
+    const joined = tracked(document, [
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: "2A000002",
+        nextBlockId: "3B000003",
+        revision: REVIEWER,
+        newIds: { revision: [1] },
+      },
+    ]);
+    expect(resolvedAll(joined, ACCEPT)).toEqual([
+      INTRO,
+      paragraph("3B000003", [text("Alpha text.Bravo text.")], { alignment: "center" }),
+      TAIL,
+    ]);
+    expect(resolvedAll(joined, REJECT)).toEqual(document.package.document.content);
+  });
+
+  test("Backspace from an empty paragraph: accepting leaves the next paragraph as it was", () => {
+    const document = documentOf(paragraph("2A000002", [], { alignment: "center" }), bravo);
+    const joined = tracked(document, [
+      {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: "2A000002",
+        nextBlockId: "3B000003",
+        revision: REVIEWER,
+      },
+    ]);
+    expect(resolvedAll(joined, ACCEPT)).toEqual([INTRO, bravo, TAIL]);
+  });
 });

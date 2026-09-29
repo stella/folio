@@ -21,6 +21,7 @@ import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { paragraphNumberingAttr } from "../numberingAttr";
+import type { DirectParagraphIndentation } from "../paragraphIndentation";
 import type { ParagraphAttrs, ParagraphAttrsPatch } from "../schema/nodes";
 import type { ResolvedParagraphStyle } from "./styleResolver";
 
@@ -160,6 +161,72 @@ export function listAttrsFromNumbering(
     numPr: paragraphNumberingAttr(paragraphNumberingReference(targetNumPr)),
     ...(rendering && listRenderingAttrPatch(rendering)),
   };
+}
+
+/**
+ * The numbering level's indentation a directly numbered paragraph reads as its
+ * own where it states none: the load path folds the level's `w:ind` into the
+ * paragraph (a direct `w:ind` wins per group, left vs first line/hanging), so
+ * a paragraph a command numbers carries it too, and the save writes it where a
+ * reopen reads it back.
+ */
+export function listLevelIndentAttrPatch(
+  stated: DirectParagraphIndentation | undefined,
+  numPr: { numId: number; ilvl: number },
+  numbering: NumberingMap | null | undefined,
+): ParagraphAttrsPatch {
+  const level = numbering?.getLevel(numPr.numId, numPr.ilvl);
+  if (!level?.pPr) {
+    return {};
+  }
+  const patch: ParagraphAttrsPatch = {};
+  if (stated?.indentLeft === undefined && level.pPr.indentLeft !== undefined) {
+    patch.indentLeft = level.pPr.indentLeft;
+  }
+  if (stated?.indentFirstLine === undefined && numberingLevelHasMarkerSlot(level)) {
+    if (level.pPr.indentFirstLine !== undefined) {
+      patch.indentFirstLine = level.pPr.indentFirstLine;
+    }
+    if (level.pPr.hangingIndent !== undefined) {
+      patch.hangingIndent = level.pPr.hangingIndent;
+    }
+  }
+  return patch;
+}
+
+/**
+ * The indentation a paragraph leaving its list keeps: the level's indentation
+ * it only read from its numbering goes with the numbering, back to what its
+ * style gives, while an indentation of its own stays. The inverse of
+ * {@link listLevelIndentAttrPatch}.
+ */
+export function listLevelIndentRemovalPatch(
+  attrs: Readonly<ParagraphAttrs>,
+  numbering: NumberingMap | null | undefined,
+): ParagraphAttrsPatch {
+  if (attrs.numPr?.kind !== "reference") {
+    return {};
+  }
+  const level = numbering?.getLevel(attrs.numPr.numId, attrs.numPr.ilvl ?? 0);
+  if (!level?.pPr) {
+    return {};
+  }
+  // Numbering a style supplied takes the style's own indentation with it.
+  const fromStyle = attrs.numPrFromStyle != null;
+  const resolved = fromStyle ? undefined : attrs._resolvedFormatting;
+  const patch: ParagraphAttrsPatch = {};
+  if (level.pPr.indentLeft !== undefined && attrs.indentLeft === level.pPr.indentLeft) {
+    patch.indentLeft = resolved?.indentLeft ?? null;
+  }
+  if (
+    level.pPr.indentFirstLine !== undefined &&
+    attrs.indentFirstLine === level.pPr.indentFirstLine &&
+    attrs.hangingIndent === (level.pPr.hangingIndent ?? false)
+  ) {
+    patch.indentFirstLine = resolved?.indentFirstLine ?? null;
+    patch.hangingIndent = resolved?.hangingIndent ?? false;
+  }
+  return patch;
 }
 
 /** Recompute every level-dependent attr when a paragraph changes list level. */

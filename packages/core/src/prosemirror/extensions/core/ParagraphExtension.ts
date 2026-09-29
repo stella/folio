@@ -32,7 +32,9 @@ import type {
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
-import { getDocumentBuiltInStyles } from "../../plugins/documentStyles";
+import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
+import { isStyleSourcedParagraphNumbering } from "../../../internal/paragraphFormattingSerialization";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
 import { expectParagraphAttrs } from "../../attrs";
@@ -46,13 +48,19 @@ import {
 } from "../../sectionCarrier";
 import { directParagraphAlignment } from "../../paragraphAlignment";
 import { directionIsRtl } from "../../paragraphDirection";
-import { withDirectParagraphSpacing } from "../../paragraphSpacing";
+import { directParagraphSpacing, withDirectParagraphSpacing } from "../../paragraphSpacing";
+import {
+  type DirectParagraphIndentation,
+  directParagraphIndentation,
+} from "../../paragraphIndentation";
 import type { ParagraphDirection } from "../../paragraphDirection";
-import type { ParagraphAttrs } from "../../schema/nodes";
+import type { ParagraphAttrs, ParagraphAttrsPatch } from "../../schema/nodes";
 import {
   paragraphAttrsFromResolvedStyle,
   listAttrsFromResolvedStyle,
+  listLevelIndentAttrPatch,
 } from "../../styles/resolvedStyleAttrs";
+import { getDocumentNumbering } from "../../plugins/documentNumbering";
 import { createNodeExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 
@@ -648,6 +656,73 @@ function setParagraphSpacingAttr(side: "before" | "after", twips: number): Comma
   };
 }
 
+const DIRECT_PARAGRAPH_TOGGLES = [
+  "outlineLevel",
+  "borders",
+  "shading",
+  "tabs",
+  "keepNext",
+  "keepLines",
+  "widowControl",
+  "pageBreakBefore",
+  "contextualSpacing",
+] as const;
+
+/** The attrs a paragraph states itself, over whatever style it reads. */
+function directParagraphAttrs(attrs: Readonly<ParagraphAttrs>): Record<string, unknown> {
+  const direct: Record<string, unknown> = {};
+  const alignment = directParagraphAlignment(attrs);
+  if (alignment !== undefined) {
+    direct["alignment"] = alignment;
+  }
+  const spacing = directParagraphSpacing(attrs);
+  for (const key of ["spaceBefore", "spaceAfter", "lineSpacing", "lineSpacingRule"] as const) {
+    if (spacing?.[key] !== undefined) {
+      direct[key] = spacing[key];
+    }
+  }
+  const indentation = directParagraphIndentation(attrs);
+  if (indentation?.indentLeft !== undefined) {
+    direct["indentLeft"] = indentation.indentLeft;
+  }
+  if (indentation?.indentRight !== undefined) {
+    direct["indentRight"] = indentation.indentRight;
+  }
+  if (indentation?.indentFirstLine !== undefined) {
+    direct["indentFirstLine"] = Math.abs(indentation.indentFirstLine);
+    direct["hangingIndent"] = indentation.hangingIndent === true;
+  }
+  const original = attrs._originalFormatting;
+  for (const key of DIRECT_PARAGRAPH_TOGGLES) {
+    if (original?.[key] !== undefined) {
+      direct[key] = attrs[key];
+    }
+  }
+  return direct;
+}
+
+/**
+ * The indentation a restyled paragraph still states itself: a field its
+ * source stated that the new style's attrs keep a value for. Every other
+ * field now reads the style's value, which a save leaves to the style.
+ */
+function restyledIndentation(
+  styleAttrs: ParagraphAttrsPatch,
+  originalFormatting: ParagraphFormatting | undefined,
+): DirectParagraphIndentation {
+  const stated: DirectParagraphIndentation = {};
+  if (originalFormatting?.indentLeft !== undefined && typeof styleAttrs.indentLeft === "number") {
+    stated.indentLeft = styleAttrs.indentLeft;
+  }
+  if (
+    originalFormatting?.indentFirstLine !== undefined &&
+    typeof styleAttrs.indentFirstLine === "number"
+  ) {
+    stated.indentFirstLine = styleAttrs.indentFirstLine;
+  }
+  return stated;
+}
+
 function setParagraphAttrsCmd(attrs: Record<string, unknown>): Command {
   return (state, dispatch) => {
     const { $from, $to } = state.selection;
@@ -776,9 +851,14 @@ function makeDecreaseIndent(amount: number = 720): Command {
         seen.add(pos);
         const currentIndent = node.attrs["indentLeft"] || 0;
         const newIndent = Math.max(0, currentIndent - amount);
+        // A numbered paragraph that states no left indent reads its level's,
+        // so reaching zero there has to be stated.
+        const numbered =
+          paragraphNumberingReferenceId(expectParagraphAttrs(node).numPr ?? undefined) !==
+          undefined;
         tr = tr.setNodeMarkup(pos, undefined, {
           ...node.attrs,
-          indentLeft: newIndent > 0 ? newIndent : null,
+          indentLeft: newIndent > 0 || numbered ? newIndent : null,
         });
       }
     });
@@ -789,7 +869,9 @@ function makeDecreaseIndent(amount: number = 720): Command {
 }
 
 function makeApplyStyle(schema: Schema) {
-  return (styleId: string, resolvedAttrs?: ResolvedStyleAttrs): Command =>
+  // `styleId: null` clears the style: the paragraph takes the default
+  // paragraph style, which `resolvedAttrs` then resolves.
+  return (styleId: string | null, resolvedAttrs?: ResolvedStyleAttrs): Command =>
     (state, dispatch) => {
       const { $from, $to } = state.selection;
 
@@ -868,7 +950,9 @@ function makeApplyStyle(schema: Schema) {
           const newAttrs: Record<string, unknown> = {
             ...node.attrs,
             styleId,
-            _tableOfContentsLevel: tableOfContentsStyleLevel({ styleId }) ?? null,
+            _tableOfContentsLevel: styleId
+              ? (tableOfContentsStyleLevel({ styleId }) ?? null)
+              : null,
           };
 
           if (resolvedAttrs) {
@@ -880,29 +964,64 @@ function makeApplyStyle(schema: Schema) {
             // both paths produce identical paragraph attrs — and the resulting
             // `defaultTextFormatting` lets EmptyParagraphFormatExtension keep
             // typed text styled after the style picker steals focus.
-            Object.assign(
-              newAttrs,
-              paragraphAttrsFromResolvedStyle(resolvedAttrs, {
-                styleId,
-                ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
-              }),
-            );
-            const originalFormatting = {
-              ...expectParagraphAttrs(node)._originalFormatting,
-              styleId,
-            };
-            Reflect.deleteProperty(originalFormatting, "alignment");
-            newAttrs["_originalFormatting"] = withDirectParagraphSpacing(
-              originalFormatting,
-              undefined,
-            );
-            newAttrs["spacingExplicit"] = null;
+            const current = expectParagraphAttrs(node);
+            const styleAttrs = paragraphAttrsFromResolvedStyle(resolvedAttrs, {
+              styleId: styleId ?? "",
+              ...(resolvedAttrs.styleName ? { styleName: resolvedAttrs.styleName } : {}),
+            });
+            Object.assign(newAttrs, styleAttrs);
+            if (!styleId) {
+              newAttrs["_tableOfContentsLevel"] = null;
+            }
+            const originalFormatting: ParagraphFormatting = { ...current._originalFormatting };
+            if (styleId) {
+              originalFormatting.styleId = styleId;
+            } else {
+              Reflect.deleteProperty(originalFormatting, "styleId");
+            }
+            let restyledOriginal: ParagraphFormatting | undefined = originalFormatting;
+            if (styleId) {
+              // The style decides these, as the attrs above now say.
+              Reflect.deleteProperty(originalFormatting, "alignment");
+              Reflect.deleteProperty(originalFormatting, "outlineLevel");
+              restyledOriginal = withDirectParagraphSpacing(originalFormatting, undefined);
+              newAttrs["spacingExplicit"] = null;
+            } else {
+              // Clearing the style keeps what the paragraph states itself over
+              // the default style, as a reopen layers it.
+              Object.assign(newAttrs, directParagraphAttrs(current));
+            }
+            newAttrs["_originalFormatting"] = restyledOriginal ?? null;
             // A style with `w:numPr` attaches its numbering (numPr + marker
             // attrs). A style without numbering leaves existing list attrs
-            // untouched: direct numbering survives a style switch.
+            // untouched: direct numbering survives a style switch, and with
+            // it the level's indentation where the restyled paragraph states
+            // none, as a reopen reads it.
             const listAttrs = listAttrsFromResolvedStyle(resolvedAttrs, resolvedAttrs.numbering);
+            const directNumId =
+              current.numPrFromStyle == null
+                ? paragraphNumberingReferenceId(current.numPr ?? undefined)
+                : undefined;
             if (listAttrs) {
               Object.assign(newAttrs, listAttrs);
+            } else if (isStyleSourcedParagraphNumbering(current.numPr, current.numPrFromStyle)) {
+              // Numbering the previous style supplied leaves with it.
+              Object.assign(newAttrs, CLEARED_LIST_RENDERING_ATTRS, {
+                numPr: null,
+                numPrFromStyle: null,
+              });
+            } else if (directNumId !== undefined) {
+              Object.assign(
+                newAttrs,
+                listLevelIndentAttrPatch(
+                  restyledIndentation(styleAttrs, restyledOriginal),
+                  {
+                    numId: directNumId,
+                    ilvl: paragraphNumberingLevel(current.numPr ?? undefined) ?? 0,
+                  },
+                  resolvedAttrs.numbering ?? getDocumentNumbering(state),
+                ),
+              );
             }
           }
 
@@ -1031,7 +1150,27 @@ export const ParagraphExtension = createNodeExtension({
           }),
         applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
           applyStyleFn(styleId, resolvedAttrs),
-        clearStyle: () => setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null }),
+        clearStyle: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
+          const resolver = getDocumentStyleResolver(state);
+          if (!resolver) {
+            return setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null })(
+              state,
+              dispatch,
+            );
+          }
+          // Clearing the style applies the default paragraph style, so the
+          // paragraph reads what a reopen resolves for it.
+          const resolved = resolver.resolveParagraphStyle(null);
+          const styleName = resolver.getDefaultParagraphStyle()?.name;
+          return applyStyleFn(null, {
+            ...(resolved.paragraphFormatting && {
+              paragraphFormatting: resolved.paragraphFormatting,
+            }),
+            ...(resolved.runFormatting && { runFormatting: resolved.runFormatting }),
+            ...(styleName && { styleName }),
+            numbering: getDocumentNumbering(state),
+          })(state, dispatch);
+        },
         insertSectionBreak: (breakType: SectionBreakType) => setSectionBreakType(breakType),
         removeSectionBreak: () => removeSectionBreakAtSelection,
         generateTOC:
