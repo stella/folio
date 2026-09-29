@@ -194,11 +194,13 @@ const stampRefusal = (
   op: DocumentOp,
   stamp: RevisionStamp,
 ): DocumentOpRefusal | undefined => {
-  if (!Number.isInteger(stamp.id) || stamp.id < 0 || stamp.id > MAX_REVISION_ID) {
+  // A revision id reserves no value: every integer in range names a record.
+  const revisionId = stamp.id;
+  if (!Number.isInteger(revisionId) || revisionId < 0 || revisionId > MAX_REVISION_ID) {
     return refusal(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
-      `${stamp.id} cannot be a revision id.`,
+      `${revisionId} cannot be a revision id.`,
     );
   }
   const key = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
