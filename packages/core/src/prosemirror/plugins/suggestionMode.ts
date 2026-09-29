@@ -21,6 +21,9 @@ import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { expectParagraphAttrs } from "../attrs";
+import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
+import { paragraphEndsItsContainer } from "../containerFinalParagraph";
+import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
@@ -321,20 +324,25 @@ export function handleSuggestionPaste(
   const $to = doc.resolve(to);
   const closedBlocks = slice.openStart === 0 && slice.content.firstChild?.isBlock === true;
   const beforeStruck = closedBlocks && $from.parent.isTextblock && $from.parentOffset === 0;
-  // A container's last paragraph mark is never tracked, so that paragraph stays
-  // behind, empty, once the replacement is accepted.
   const wholeBlocks =
-    beforeStruck &&
-    $to.parent.isTextblock &&
-    $to.parentOffset === $to.parent.content.size &&
-    $to.index($to.depth - 1) < $to.node($to.depth - 1).childCount - 1;
+    beforeStruck && $to.parent.isTextblock && $to.parentOffset === $to.parent.content.size;
+  // The paragraph a container ends with never carries a tracked mark, so it
+  // cannot be struck whole. The paste goes after it instead: a closing table
+  // then follows it, and its mark can be struck like any other; closing
+  // paragraphs take its place, see `rotateIntoFinalParagraph`.
+  const endsContainer =
+    wholeBlocks && paragraphEndsItsContainer(doc.resolve($to.before()), $to.parent.type.name);
+  const rotates =
+    endsContainer &&
+    slice.content.firstChild?.type === $to.parent.type &&
+    slice.content.lastChild?.type === $to.parent.type;
 
   // 1. Strike through the replaced selection (or retract own pending inserts).
   markRangeAsDeleted(
     tr,
     doc,
     from,
-    wholeBlocks ? $to.after() : to,
+    wholeBlocks && !rotates ? $to.after() : to,
     insertionType,
     deletionType,
     pluginState,
@@ -345,7 +353,12 @@ export function handleSuggestionPaste(
   //    the way ProseMirror's normal paste does, so block clipboard content (a
   //    copied table or whole paragraphs) is placed structurally instead of
   //    failing or dropping nodes as a raw `replace` at an inline point would.
-  const at = beforeStruck ? tr.mapping.map(from, -1) : tr.mapping.map(to);
+  let at = tr.mapping.map(to);
+  if (endsContainer) {
+    at = tr.mapping.map($to.after());
+  } else if (beforeStruck) {
+    at = tr.mapping.map(from, -1);
+  }
   const firstStep = tr.steps.length;
   tr.replaceRange(at, at, slice);
   // The range the paste occupies is where its steps put content, which for
@@ -360,8 +373,8 @@ export function handleSuggestionPaste(
     });
     return ranges;
   });
-  const insertFrom = placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
-  const insertTo = placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
+  let insertFrom = placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
+  let insertTo = placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
 
   // 3. Mark the pasted content as a tracked insertion; drop any inherited
   //    deletion marks first so new content is never shown struck through.
@@ -369,6 +382,13 @@ export function handleSuggestionPaste(
   const insertAttrs =
     findAdjacentRevision(doc, from, "insertion", pluginState.author) || makeMarkAttrs(pluginState);
   markRangeAsInserted(tr, tr.doc, insertFrom, insertTo, insertionType, deletionType, insertAttrs);
+
+  if (rotates) {
+    const rotation = tr.steps.length;
+    const joined = rotateIntoFinalParagraph(tr, tr.mapping.map($to.before()), insertAttrs);
+    insertFrom = Math.min(tr.mapping.slice(rotation).map(insertFrom, -1), joined);
+    insertTo = tr.mapping.slice(rotation).map(insertTo);
+  }
 
   // Collapse to the end of the pasted content. Without this the struck-through
   // original plus the pasted text stay selected, so the next keystroke would
@@ -378,6 +398,62 @@ export function handleSuggestionPaste(
 
   view.dispatch(tr.scrollIntoView());
   return true;
+}
+
+/**
+ * Pasted paragraphs replaced a container's last paragraph. They were placed
+ * after it, and the paragraph was struck but keeps its mark, as a container's
+ * last paragraph must. Join the first pasted paragraph onto it, so the struck
+ * text and the first paste share one paragraph whose break is the inserted one,
+ * and record the replaced paragraph's formatting on the paragraph that now ends
+ * the container: accepting leaves only the paste, and rejecting closes every
+ * pasted break back into one paragraph that returns to its old formatting.
+ * Returns the position of the joined paragraph.
+ */
+function rotateIntoFinalParagraph(tr: Transaction, replacedPos: number, attrs: MarkAttrs): number {
+  const replaced = tr.doc.nodeAt(replacedPos);
+  const first = replaced ? tr.doc.nodeAt(replacedPos + replaced.nodeSize) : null;
+  if (!replaced || !first) {
+    return replacedPos;
+  }
+  const replacedAttrs = expectParagraphAttrs(replaced);
+  const previousFormatting: Record<string, unknown> = {
+    ...paragraphPropertiesSnapshot(replaced),
+    numPr: replacedAttrs.numPr ?? null,
+  };
+  const { _sectionProperties: sectionProperties } = replaced.attrs;
+  tr.join(replacedPos + replaced.nodeSize);
+  // Rejecting the pasted breaks closes them into this paragraph, which keeps
+  // its own formatting; the change recorded here returns it to the replaced one.
+  tr.setNodeMarkup(replacedPos, undefined, {
+    ...first.attrs,
+    _propertyChanges: [
+      ...(expectParagraphAttrs(first)._propertyChanges ?? []),
+      {
+        type: "paragraphPropertyChange",
+        info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+        previousFormatting,
+      } satisfies ParagraphPropertyChangeAttrs,
+    ],
+  });
+
+  // The paragraph that now ends the container carries the replaced one's
+  // section, and no mark.
+  const $joined = tr.doc.resolve(replacedPos);
+  const container = $joined.parent;
+  let finalPos = replacedPos;
+  for (let index = $joined.index(); index < container.childCount - 1; index += 1) {
+    finalPos += container.child(index).nodeSize;
+  }
+  const final = tr.doc.nodeAt(finalPos);
+  if (final && (final.attrs["pPrMark"] != null || sectionProperties != null)) {
+    tr.setNodeMarkup(finalPos, undefined, {
+      ...final.attrs,
+      pPrMark: null,
+      ...(sectionProperties == null ? {} : { _sectionProperties: sectionProperties }),
+    });
+  }
+  return replacedPos;
 }
 
 /**
