@@ -126,6 +126,13 @@ const deletedParagraph = (paragraph: Paragraph, info: TrackedChangeInfo): Paragr
 const deletedContent = (blocks: readonly BlockContent[], info: TrackedChangeInfo): BlockContent[] =>
   blocks.map((block) => (block.type === "paragraph" ? deletedParagraph(block, info) : block));
 
+/**
+ * The note each projected (deleted) note was made from. An editor saves again
+ * against what its last save produced, so rejecting the reference deletion
+ * has to find the note as it was before its content was deleted.
+ */
+const projectionSources = new WeakMap<Footnote | Endnote, Footnote | Endnote>();
+
 const projectNotes = <Note extends Footnote | Endnote>(
   notes: readonly Note[] | undefined,
   kind: NoteKind,
@@ -149,11 +156,16 @@ const projectNotes = <Note extends Footnote | Endnote>(
       }
       continue;
     }
-    projected.push(
-      !state.live && state.deletion
-        ? { ...note, content: deletedContent(note.content, state.deletion) }
-        : note,
-    );
+    // A note deleted with its reference at an earlier save of the same
+    // session comes back as that save left it: start from what it was.
+    const source = (projectionSources.get(note) as Note | undefined) ?? note;
+    if (!state.live && state.deletion) {
+      const deleted = { ...source, content: deletedContent(source.content, state.deletion) };
+      projectionSources.set(deleted, source);
+      projected.push(deleted);
+    } else {
+      projected.push(source);
+    }
   }
   return projected;
 };

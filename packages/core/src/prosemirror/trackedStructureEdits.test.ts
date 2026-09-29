@@ -147,6 +147,12 @@ describe("structural edits in suggesting mode", () => {
     expect(normalFootnotes(accepted.model)).toEqual([]);
     const rejected = await saveHarnessState(resolveAllChanges(after, "reject"), base);
     expect(normalFootnotes(rejected.model)).toEqual(normalFootnotes(base));
+
+    // An editor saves again against what its last save produced.
+    const acceptedLater = await saveHarnessState(resolveAllChanges(after, "accept"), saved.model);
+    expect(normalFootnotes(acceptedLater.model)).toEqual([]);
+    const rejectedLater = await saveHarnessState(resolveAllChanges(after, "reject"), saved.model);
+    expect(normalFootnotes(rejectedLater.model)).toEqual(normalFootnotes(base));
   });
 
   test("deleting a note reference outright removes the note", async () => {
