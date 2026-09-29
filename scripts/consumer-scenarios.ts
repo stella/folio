@@ -31,6 +31,13 @@
 // (metamorphic relations checked in the fuzz flows: `all` by default, `none`,
 // or a comma-separated list) and FOLIO_SCENARIO_RELATIONS_DEPTH=full (check
 // the sampled relations on every batch; for sweeps).
+// Flow files (test/consumer-scenarios/support/flow-file.ts):
+// FOLIO_SCENARIO_FLOW (a flow file's JSON, or a path to one) replays that
+// flow alone in flow-corpus.test.ts; FOLIO_SCENARIO_BUDGET_SECONDS turns on
+// continuous-fuzz.test.ts, which reads and grows the corpus in
+// FOLIO_SCENARIO_CORPUS_DIR and writes shrunk failures to
+// FOLIO_SCENARIO_FAILURES_DIR and minimized new-state flows to
+// FOLIO_SCENARIO_MINIMIZED_DIR (paths relative to where this runs).
 // Exits non-zero on any failure, including missing required or hit unreachable coverage cells. Run via `bun run test:consumer-scenarios`.
 
 import { panic } from "better-result";
@@ -276,7 +283,8 @@ const stageConsumer = async (
 ): Promise<string> => {
   const consumerDir = await mkdtemp(path.join(tmpdir(), "folio-consumer-scenarios-"));
   console.log(`→ staging the consumer in ${consumerDir}`);
-  for (const entry of ["scenarios", "support", "scenario-seeds.json", "tsconfig.json"]) {
+  for (const entry of ["scenarios", "support", "flows", "scenario-seeds.json", "tsconfig.json"]) {
+    if (!existsSync(path.join(scenarioSrc, entry))) continue;
     await cp(path.join(scenarioSrc, entry), path.join(consumerDir, entry), { recursive: true });
   }
   const tarball = (name: string): string =>
@@ -384,6 +392,36 @@ const requestedSeed = process.env["FOLIO_SCENARIO_SEED"] ?? ciSeed() ?? DEFAULT_
 const seed =
   requestedSeed === "random" ? String(Math.floor(Math.random() * 2 ** 31)) : requestedSeed;
 
+/**
+ * The flow-file settings as the staged scenarios need them: directories made
+ * absolute (the scenarios run elsewhere), a flow file path read into JSON.
+ */
+const flowEnvironment = async (): Promise<Record<string, string>> => {
+  const environment: Record<string, string> = {};
+  for (const name of [
+    "FOLIO_SCENARIO_CORPUS_DIR",
+    "FOLIO_SCENARIO_FAILURES_DIR",
+    "FOLIO_SCENARIO_MINIMIZED_DIR",
+  ]) {
+    const value = process.env[name];
+    if (value !== undefined && value !== "") environment[name] = path.resolve(value);
+  }
+  // Fingerprints with an open issue: continuous-fuzz.test.ts records them without failing.
+  const known = JSON.parse(
+    await readFile(path.join(repoRoot, "test", "known-failure-fingerprints.json"), "utf8"),
+  ) as { known: { fingerprint: string }[] };
+  environment["FOLIO_SCENARIO_KNOWN_FINGERPRINTS"] = known.known
+    .map(({ fingerprint }) => fingerprint)
+    .join(",");
+  const flow = process.env["FOLIO_SCENARIO_FLOW"]?.trim();
+  if (flow !== undefined && flow !== "") {
+    environment["FOLIO_SCENARIO_FLOW"] = flow.startsWith("{")
+      ? flow
+      : await readFile(path.resolve(flow), "utf8");
+  }
+  return environment;
+};
+
 let failure: string | null = null;
 let packRoot = "";
 let consumerDir = "";
@@ -422,7 +460,12 @@ try {
     const coverageDir = path.join(consumerDir, "coverage");
     const run = await $`node --test --test-reporter=spec ${nameFilter} ${files}`
       .cwd(consumerDir)
-      .env({ ...process.env, FOLIO_SCENARIO_SEED: seed, FOLIO_SCENARIO_COVERAGE_DIR: coverageDir })
+      .env({
+        ...process.env,
+        ...(await flowEnvironment()),
+        FOLIO_SCENARIO_SEED: seed,
+        FOLIO_SCENARIO_COVERAGE_DIR: coverageDir,
+      })
       .nothrow();
     if (run.exitCode !== 0) {
       failure = `✗ consumer-scenarios: scenarios failed (FOLIO_SCENARIO_SEED=${seed} reproduces the fuzz runs).`;
