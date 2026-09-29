@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-`getChanges()` lists a tracked column insertion or deletion as one change per cell, as it reads after a save and reopen.
+A tracked column insertion or deletion gives each cell a revision of its own, so `getChanges()` lists, and `acceptChange()`/`rejectChange()` resolve, one cell at a time, as after a save and reopen.

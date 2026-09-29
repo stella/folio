@@ -117,6 +117,7 @@ import { stripBlockIdentityAttrs } from "./block-identity";
 import { type BatchClaim, BatchClaims } from "./batch-claims";
 import { type CharacterBoundaryStrictness, describeCharacterSplit } from "./character-boundaries";
 import { buildCleanBlockText, type CleanBlockText, resolveCleanTextRange } from "./clean-text";
+import { separateRevisionStretches } from "./revisionStretches";
 import {
   cutsIntoNoteReference,
   noteReferenceEditsAllowed,
@@ -4352,10 +4353,8 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = result.transaction;
-        if (result.revisionId !== null) {
-          operationRevisionSeed++;
-          appliedRevisionIds = [result.revisionId];
-        }
+        operationRevisionSeed += result.revisionIds.length;
+        appliedRevisionIds = [...result.revisionIds];
         const columnKey = getTableColumnCoordinateKey(insertion);
         insertedColumnCounts.set(columnKey, (insertedColumnCounts.get(columnKey) ?? 0) + 1);
         break;
@@ -4385,10 +4384,8 @@ const applyFolioAIEditOperationsInternal = ({
           continue;
         }
         tr = result.transaction;
-        if (result.revisionId !== null) {
-          operationRevisionSeed++;
-          appliedRevisionIds = [result.revisionId];
-        }
+        operationRevisionSeed += result.revisionIds.length;
+        appliedRevisionIds = [...result.revisionIds];
         break;
       }
       case "mergeTableCells": {
@@ -5304,6 +5301,21 @@ const applyFolioAIEditOperationsInternal = ({
           firstRevisionId === undefined
             ? withoutRevisions
             : { ...withoutRevisions, revisionId: firstRevisionId, revisionIds };
+      }
+    }
+    // A revision this batch left in separate stretches gets an id per
+    // stretch, as the save would give it; an operation that wrote the
+    // revision owns its stretches too.
+    const separated = separateRevisionStretches({ tr, revisionSeed });
+    revisionSeed = separated.nextRevisionId;
+    for (const { revisionId, from } of separated.minted) {
+      const receiptIndex = applied.findIndex(({ revisionIds }) => revisionIds?.includes(from));
+      const receipt = applied.at(receiptIndex);
+      if (receiptIndex >= 0 && receipt?.revisionIds) {
+        applied[receiptIndex] = {
+          ...receipt,
+          revisionIds: [...receipt.revisionIds, revisionId],
+        };
       }
     }
     // Before dispatch, which may start another batch.

@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-`getChanges()` lists each stretch of a pending insertion that an edit inside it splits as its own change, as it reads after a save and reopen.
+An edit that leaves a pending revision in separate stretches gives each stretch a revision id of its own, so each is listed and resolved on its own, as after a save and reopen.

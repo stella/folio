@@ -185,9 +185,6 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   const deletionType = doc.type.schema.marks["deletion"];
   const grouped = new Map<string, FolioReviewChange>();
   const inlineRanges = new Map<string, InlineChangeRange>();
-  // The latest stretch of each inline revision, and how many it has.
-  const fragmentKeys = new Map<string, string>();
-  const fragmentCounts = new Map<string, number>();
   const transparentInlineEnds = new Map<number, number>();
   const transparentGap = (start: number, end: number): boolean => {
     let pos = start;
@@ -287,14 +284,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         } else if (marker.kind === "del") {
           kind = "cellDeleted";
         }
-        // An inserted or deleted cell is its own change, as a row is: one
-        // revision may span a column's cells, but the save gives each cell's
-        // marker an id of its own, so grouping them would read otherwise
-        // once reopened.
-        const key =
-          kind === "cellMerged"
-            ? `cell:${kind}:${revisionId}`
-            : `cell:${kind}:${revisionId}:${String(pos)}`;
+        const key = `cell:${kind}:${revisionId}`;
         const text = node.textContent;
         const blockId = firstBlockIdWithin({ node, nodePos: pos, blockStarts });
         const existing = grouped.get(key);
@@ -448,7 +438,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
         if (rowScope?.kind === layerKind && belongsToRowRevision(rowScope, revision)) {
           continue;
         }
-        const revisionKey = `${currentBlockId ?? ""}:${layerKind}:${revision.id}`;
+        const key = `${currentBlockId ?? ""}:${layerKind}:${revision.id}`;
         const hyperlink = node.marks.find((candidate) => candidate.type.name === "hyperlink");
         const comment = node.marks.find((candidate) => candidate.type.name === "comment");
         const commentId = comment?.attrs["commentId"];
@@ -456,17 +446,6 @@ const getTrackedChangeGroupsFromProjectedDoc = (
           hyperlink: hyperlink ? String(hyperlink.attrs["href"] ?? "") : null,
           comment: typeof commentId === "number" ? commentId : null,
         };
-        // Other content between two stretches of one revision (an edit made
-        // inside a pending insertion) splits it into separate changes: the
-        // save writes each stretch as a revision of its own.
-        let key = fragmentKeys.get(revisionKey) ?? revisionKey;
-        const current = inlineRanges.get(key);
-        if (current && !transparentGap(current.end, pos)) {
-          const fragments = (fragmentCounts.get(revisionKey) ?? 1) + 1;
-          fragmentCounts.set(revisionKey, fragments);
-          key = `${revisionKey}:${String(fragments)}`;
-          fragmentKeys.set(revisionKey, key);
-        }
         const range = inlineRanges.get(key);
         if (range) {
           range.contiguous = range.contiguous && transparentGap(range.end, pos);
