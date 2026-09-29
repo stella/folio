@@ -18,7 +18,7 @@ import type { Transaction } from "prosemirror-state";
 
 import { expectTrackedChangeMarkAttrs } from "../prosemirror/attrs";
 
-type Stretch = { end: number; id: number };
+type Stretch = { id: number; interrupted: boolean };
 
 type Retarget = { from: number; to: number; mark: Mark; ids: ReadonlyMap<number, number> };
 
@@ -42,51 +42,20 @@ export const separateRevisionStretches = ({
   let nextRevisionId = revisionSeed;
   const minted: SeparatedRevisionStretches["minted"] = [];
   const retargets: Retarget[] = [];
+  // The open stretches of the current paragraph.
   let stretches = new Map<string, Stretch>();
-  const transparentEnds = new Map<number, number>();
-  const transparentGap = (start: number, end: number): boolean => {
-    let position = start;
-    while (position < end) {
-      const next = transparentEnds.get(position);
-      if (next === undefined) return false;
-      position = next;
-    }
-    return position === end;
-  };
 
   tr.doc.descendants((node, pos) => {
     if (node.isTextblock) {
       stretches = new Map();
       return true;
     }
-    if (node.type.name === "commentReference") {
-      transparentEnds.set(pos, pos + node.nodeSize);
-    }
-    if (!node.isInline) return true;
-    const end = pos + node.nodeSize;
-    /** The id this node's content of `kind` revision `revisionId` belongs to. */
-    const stretchId = (kind: string, revisionId: number): number => {
-      const key = `${kind}:${String(revisionId)}`;
-      const stretch = stretches.get(key);
-      if (!stretch) {
-        stretches.set(key, { end, id: revisionId });
-      } else if (stretch.end === end) {
-        // Already claimed by this node, through another of its marks.
-      } else if (transparentGap(stretch.end, pos)) {
-        stretch.end = end;
-      } else {
-        const fresh = nextRevisionId++;
-        minted.push({ revisionId: fresh, from: revisionId });
-        stretches.set(key, { end, id: fresh });
-      }
-      return stretches.get(key)?.id ?? revisionId;
-    };
-    for (const mark of node.marks) {
-      if (!INLINE_REVISION_MARKS.has(mark.type.name)) continue;
+    // Content, not the inline containers around it: a revision that runs
+    // into a content control and out again is one wrapper when saved.
+    if (!node.isInline || !(node.isLeaf || node.isText)) return true;
+    const layersOf = (mark: Mark) => {
       const attrs = expectTrackedChangeMarkAttrs(mark);
-      if (attrs.moveKind !== undefined) continue;
-      const ids = new Map<number, number>();
-      const layers = [
+      return [
         ...(attrs._docxRevisionAncestors ?? []).flatMap((ancestor) =>
           ancestor.type === "insertion" || ancestor.type === "deletion"
             ? [{ kind: ancestor.type, revisionId: ancestor.revisionId }]
@@ -94,12 +63,42 @@ export const separateRevisionStretches = ({
         ),
         { kind: mark.type.name, revisionId: attrs.revisionId },
       ];
-      for (const { kind, revisionId } of layers) {
-        const id = stretchId(kind, revisionId);
-        if (id !== revisionId) ids.set(revisionId, id);
+    };
+    const revisionMarks = node.marks.filter(
+      (mark) =>
+        INLINE_REVISION_MARKS.has(mark.type.name) &&
+        expectTrackedChangeMarkAttrs(mark).moveKind === undefined,
+    );
+    const carried = new Set(
+      revisionMarks.flatMap((mark) =>
+        layersOf(mark).map(({ kind, revisionId }) => `${kind}:${String(revisionId)}`),
+      ),
+    );
+    // Content outside a revision ends the stretch it interrupts; a comment
+    // reference sits inside a wrapper and ends nothing.
+    if (node.type.name !== "commentReference") {
+      for (const [key, stretch] of stretches) {
+        if (!carried.has(key)) stretch.interrupted = true;
+      }
+    }
+    for (const mark of revisionMarks) {
+      const ids = new Map<number, number>();
+      for (const { kind, revisionId } of layersOf(mark)) {
+        const key = `${kind}:${String(revisionId)}`;
+        let stretch = stretches.get(key);
+        if (!stretch) {
+          stretch = { id: revisionId, interrupted: false };
+          stretches.set(key, stretch);
+        } else if (stretch.interrupted) {
+          const fresh = nextRevisionId++;
+          minted.push({ revisionId: fresh, from: revisionId });
+          stretch = { id: fresh, interrupted: false };
+          stretches.set(key, stretch);
+        }
+        if (stretch.id !== revisionId) ids.set(revisionId, stretch.id);
       }
       if (ids.size > 0) {
-        retargets.push({ from: pos, to: end, mark, ids });
+        retargets.push({ from: pos, to: pos + node.nodeSize, mark, ids });
       }
     }
     return true;
