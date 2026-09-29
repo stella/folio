@@ -37,8 +37,8 @@ import type {
  * The operation schema this module reads and writes.
  *
  * Version 2 adds tracked changes: the `revision` stamp on the text, formatting
- * and paragraph operations, and the review operations `setParagraphReview`
- * and `replaceInline`.
+ * and paragraph operations, and the review operations `setParagraphReview`,
+ * `replaceInline` and `resolveRevision`.
  */
 export const DOCUMENT_OP_SCHEMA_VERSION = 2;
 
@@ -171,6 +171,7 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   REPLACE_BLOCKS: "replaceBlocks",
   SET_PARAGRAPH_REVIEW: "setParagraphReview",
   REPLACE_INLINE: "replaceInline",
+  RESOLVE_REVISION: "resolveRevision",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -474,6 +475,45 @@ export type ReplaceInlineOp = {
   content: readonly ParagraphContent[];
 };
 
+/** What resolving a tracked change does with it. */
+export const REVISION_DECISIONS = Object.freeze({ ACCEPT: "accept", REJECT: "reject" } as const);
+
+/** One of {@link REVISION_DECISIONS}. */
+export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS];
+
+/**
+ * Accept or reject tracked changes by revision id: insertions, deletions and
+ * moves, run and paragraph property changes, and paragraph marks.
+ *
+ * - Accepting an insertion or rejecting a deletion keeps the content and
+ *   drops the wrapper; the other two remove the content, changes nested in it
+ *   included. A tracked change left with nothing in it goes.
+ * - Accepting a property change drops the record; rejecting one restores the
+ *   formatting it recorded.
+ * - Accepting an inserted mark or rejecting a deleted one keeps the break and
+ *   drops the record. The other two remove the mark, and the paragraph's
+ *   properties go with it: the next paragraph is left, with its id,
+ *   properties, mark and pending property changes, and the first's content
+ *   before its own. The result does not depend on the order marks are
+ *   resolved in. A mark with no next paragraph to join (a
+ *   table follows, or the paragraph ends its container) loses its record,
+ *   unless the paragraph holds no content and goes with it: removing a
+ *   paragraph is a block operation, so that is refused (`untrackable`), as is
+ *   a join at a section break.
+ * - Records the resolution leaves meeting are merged as far as they are
+ *   alike: the pieces a change cut apart are one record again.
+ *
+ * It is applied as the primitive operations it expands to, atomically, and
+ * its inverse is theirs. Ids no record carries are skipped, so resolving the
+ * same ids again changes nothing.
+ */
+export type ResolveRevisionOp = {
+  type: typeof DOCUMENT_OP_TYPES.RESOLVE_REVISION;
+  story: OpStory;
+  revisionIds: readonly number[];
+  decision: RevisionDecision;
+};
+
 /** A schema-version-2 document operation. */
 export type DocumentOp =
   | InsertTextOp
@@ -487,7 +527,8 @@ export type DocumentOp =
   | JoinBlocksOp
   | ReplaceBlocksOp
   | SetParagraphReviewOp
-  | ReplaceInlineOp;
+  | ReplaceInlineOp
+  | ResolveRevisionOp;
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the
