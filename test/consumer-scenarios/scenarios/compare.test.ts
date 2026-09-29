@@ -43,7 +43,9 @@ const edited = async (bytes: Uint8Array, seed: number): Promise<Uint8Array> => {
     "insertTableRow",
   ];
   for (let step = 0; step < 4; step += 1) {
-    const operation = randomOperation(reviewer.getContent() as Block[], "direct", random, types);
+    const operation = randomOperation(reviewer.getContent() as Block[], "direct", random, {
+      types,
+    });
     if (operation) {
       reviewer.applyDocumentOperations(coreBatch([operation], "direct") as never);
     }

@@ -22,6 +22,7 @@ import {
   type DocumentOpEnvelope,
   toOpEnvelope,
   OP_STORIES,
+  REVISION_DECISIONS,
 } from "../types";
 
 const FIXTURE = path.join(
@@ -144,6 +145,18 @@ const OPS: readonly DocumentOp[] = [
     nextBlockId: "00000002",
     newIds: { revision: [73] },
     revision: stamp(72),
+  },
+  {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [60, 62, 65, 68],
+    decision: REVISION_DECISIONS.ACCEPT,
+  },
+  {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds: [69, 72],
+    decision: REVISION_DECISIONS.REJECT,
   },
 ];
 

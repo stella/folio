@@ -98,6 +98,7 @@ const INVERSE_KINDS = {
   replaceBlocks: ["replaceBlocks"],
   setParagraphReview: ["setParagraphReview"],
   replaceInline: ["replaceInline"],
+  resolveRevision: ["replaceInline", "setParagraphReview", "joinBlocks", "replaceBlocks"],
 } as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
@@ -140,6 +141,8 @@ const namedIds = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
       return new Set([op.blockId]);
+    case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+      return new Set();
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
       return new Set([op.at.blockId, op.newBlockId]);
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
@@ -505,6 +508,7 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
           case DOCUMENT_OP_TYPES.REPLACE_INLINE:
+          case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
             break;
           default: {
             const unreachable: never = op;

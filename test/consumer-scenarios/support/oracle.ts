@@ -27,7 +27,8 @@ import {
   inspectDocumentStylesFromDocx,
 } from "@stll/folio-core/server";
 
-import { recordHit, type StepKind } from "./coverage.ts";
+import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
+import { operationSelection, targetFeatureSignature } from "./feature-coverage.ts";
 import { openReviewer, toArrayBuffer } from "./documents.ts";
 import { captureLinks, comparePreservedLinks, type LinkSnapshot } from "./link-oracle.ts";
 import { coreBatch, type Mode, type Operation } from "./operations.ts";
@@ -75,6 +76,8 @@ export type Row = {
   kind: string;
   styleId?: string;
   headingLevel?: number;
+  /** The outline level the paragraph states itself, over its style's. */
+  directOutlineLevel?: { kind: "heading"; level: number } | { kind: "bodyText" };
   listLevel?: number;
   listReference?: { numId: number; level: number };
   displayLabel?: string;
@@ -294,23 +297,34 @@ const paragraphsOf = (text: string): string[] =>
   text.split(/\r\n|\r|\n/u).filter((line) => line.length > 0);
 
 /**
- * The fields a style id asks for on `pre` (absent: a new block). A style may
- * number its paragraphs, and a direct outline level outlives a restyle, so
- * the kind and levels are the request's only for a plain paragraph made a
- * `HeadingN`.
+ * The fields a style id asks for on `pre` (absent: a new block, formatted
+ * like `inherited`, the block it was inserted beside). A style may number its
+ * paragraphs, and a direct outline level outlives a restyle, so the kind and
+ * levels are the request's only for a plain paragraph made a `HeadingN`. A
+ * new block keeps the outline level its anchor states, and only an example
+ * that states none of its own shows its style's.
  */
-const styleFields = (model: Model, styleId: string | null, pre: Row | undefined): Fields => {
+const styleFields = (
+  model: Model,
+  styleId: string | null,
+  pre: Row | undefined,
+  inherited?: Row,
+): Fields => {
   if (styleId !== null) model.styles.add(styleId);
   const example = styleId === null ? undefined : model.styleExamples.get(styleId);
+  const styleExample = example?.directOutlineLevel === undefined ? example : undefined;
   const heading =
     styleId === null ? undefined : /^Heading(?<level>[1-9])$/u.exec(styleId)?.groups?.["level"];
-  const plain = pre !== undefined && pre.kind !== "heading";
+  const plain = pre !== undefined && pre.kind !== "heading" && pre.directOutlineLevel === undefined;
+  const stated = pre === undefined && styleId !== null ? inherited?.directOutlineLevel : undefined;
   let headingLevel: Fields["headingLevel"] = ANY;
-  if (example && pre?.headingLevel === undefined) headingLevel = example.headingLevel;
-  else if (heading && plain) headingLevel = Number(heading);
+  if (stated) headingLevel = stated.kind === "heading" ? stated.level + 1 : undefined;
+  else if (styleExample && pre?.headingLevel === undefined) {
+    headingLevel = styleExample.headingLevel;
+  } else if (heading && plain) headingLevel = Number(heading);
   return {
     styleId: styleId ?? undefined,
-    kind: example?.kind ?? (heading ? "heading" : ANY),
+    kind: stated ? ANY : (styleExample?.kind ?? (heading ? "heading" : ANY)),
     headingLevel,
     listLevel: example && pre?.listReference === undefined ? example.listLevel : ANY,
   };
@@ -326,12 +340,13 @@ const paragraphRequest = (
   model: Model,
   request: ParagraphRequest,
   pre: Row | undefined,
+  inherited?: Row,
 ): { fields: Fields; checks: ModelRow["checks"] } => {
   const fields: Fields = {};
   const checks: ModelRow["checks"] = [];
   if ("styleId" in request) {
     const styleId = request["styleId"] as string | null;
-    Object.assign(fields, styleFields(model, styleId, pre));
+    Object.assign(fields, styleFields(model, styleId, pre, inherited));
     const example = styleId === null ? undefined : model.styleExamples.get(styleId);
     if (
       model.mode !== "suggested" &&
@@ -469,12 +484,9 @@ const insertionAnchor = (model: Model, row: ModelRow, position: "before" | "afte
 const insertBlock =
   (position: "before" | "after"): Expect =>
   (model, operation) => {
-    const anchor = insertionAnchor(
-      model,
-      target(model, operation["blockId"], { adjacent: true }),
-      position,
-    );
-    const { fields, checks } = paragraphRequest(model, operation, undefined);
+    const named = target(model, operation["blockId"], { adjacent: true });
+    const anchor = insertionAnchor(model, named, position);
+    const { fields, checks } = paragraphRequest(model, operation, undefined, named.pre);
     const scope = operation["formattingScope"] ?? "firstParagraph";
     const texts =
       operation["lineBreakMode"] === "inline"
@@ -1224,11 +1236,19 @@ const recordOutcome = (pre: Pre, outcome: Outcome): void => {
       features.add("surrogateBoundary");
     }
     if (features.size === 0) features.add("none");
+    const story = storyKindOf(pre.targets, block);
+    for (const feature of targetFeatureSignature(block, features, story)) {
+      recordFeatureHit({
+        operation: String(operation.type),
+        feature,
+        selection: operationSelection(operation),
+      });
+    }
     for (const feature of features) {
       recordHit(
         {
           op: String(operation.type),
-          story: storyKindOf(pre.targets, block),
+          story,
           mode: LEDGER_MODES[pre.mode],
           feature,
           step: pre.step,

@@ -2,7 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { ParagraphFormatting, SectionProperties } from "../../types/document";
 import type { NumberingMap } from "../../docx/numberingParser";
 import { expectParagraphAttrs } from "../attrs";
-import { resolveParagraphDefaultTextFormatting } from "../conversion/toProseDoc";
+import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
 import { rejectedListRenderingPatch } from "../listNumbering";
 import type { RunStyleResolver } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";

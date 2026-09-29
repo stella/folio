@@ -1865,6 +1865,11 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
     useEffect(() => hyphenationReadiness.cancel, [hyphenationReadiness]);
 
+    // The layout inputs the committed layout was laid out with. A pass reads
+    // the inputs of the render that created this callback, so one the
+    // scheduler runs between a render and its effects has already laid out
+    // inputs the layout-input effect below has not seen.
+    const laidOutLayoutInputSignatureRef = useRef<string | null>(null);
     const runLayoutPipeline = useCallback(
       (state: EditorState, options: LayoutRunOptions = {}) => {
         const outcome = runLayoutPipelineCompute(
@@ -1931,6 +1936,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           // owning write the mirror rule allows.
           // eslint-disable-next-line folio-ref-mirrors/no-write-to-render-mirrored-ref
           layoutRef.current = outcome.layout;
+          laidOutLayoutInputSignatureRef.current = layoutInputSignature;
           folioEmitterRef.current.emit("layoutComplete", outcome.layout);
         }
       },
@@ -1968,6 +1974,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         mirrorMargins,
         styles,
         markupView,
+        layoutInputSignature,
       ],
     );
     const runLayoutPipelineRef = useRef(runLayoutPipeline);
@@ -5478,12 +5485,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     // runLayoutPipeline includes these values in its deps, but it
     // only runs when explicitly called — this effect triggers it.
     const layoutInputEpochRef = useRef(0);
-    const lastLayoutInputSignatureRef = useRef<string | null>(null);
     useEffect(() => {
       // Skip the initial render — handleEditorViewReady already does the first layout
       if (layoutInputEpochRef.current === 0) {
         layoutInputEpochRef.current = 1;
-        lastLayoutInputSignatureRef.current = layoutInputSignature;
         return;
       }
       // Until the hidden view is created the pages show the precomputed initial
@@ -5495,9 +5500,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ? layoutSessionRef.current.lastEditorState
           : null);
       if (state) {
-        const layoutInputsChanged = lastLayoutInputSignatureRef.current !== layoutInputSignature;
-        lastLayoutInputSignatureRef.current = layoutInputSignature;
-        if (!layoutInputsChanged && state.doc === layoutSessionRef.current.lastPmDoc) {
+        // Compared with what the committed layout was laid out with, not with
+        // the inputs this effect last saw: an input that changed and changed
+        // back before this effect ran may have been laid out in between.
+        if (
+          laidOutLayoutInputSignatureRef.current === layoutInputSignature &&
+          state.doc === layoutSessionRef.current.lastPmDoc
+        ) {
           return;
         }
         runLayoutPipelineRef.current(state, { reason: "layout-input" });

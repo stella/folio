@@ -135,12 +135,9 @@ export const numberPastedHtmlLists = (slice: Slice, view: EditorView): Slice => 
         if (!numbering) {
           panic("Pasted list group has no numbering definition");
         }
+        const { _pastedHtmlList: _consumed, ...unhinted } = attrs;
         result = node.type.create(
-          listItemAttrs(
-            { ...attrs, _pastedHtmlList: undefined },
-            { numId: group.numId, ilvl: hint.level },
-            numbering,
-          ),
+          listItemAttrs(unhinted, { numId: group.numId, ilvl: hint.level }, numbering),
           node.content,
           node.marks,
         );

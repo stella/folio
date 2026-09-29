@@ -19,7 +19,14 @@ import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../ap
 import { contractViolation } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { DOCUMENT_OP_TYPES, type DocumentOp, OP_STORIES, type RevisionStamp } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  type RevisionDecision,
+  type RevisionStamp,
+} from "../types";
 
 const DATE = "2026-05-06T07:08:09Z";
 
@@ -53,6 +60,18 @@ const applied = (document: Document, op: DocumentOp): AppliedDocumentOp => {
   return result.value;
 };
 
+const resolved = (
+  document: Document,
+  revisionIds: readonly number[],
+  decision: RevisionDecision,
+): Document =>
+  applied(document, {
+    type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+    story: OP_STORIES.MAIN,
+    revisionIds,
+    decision,
+  }).document;
+
 /** The operation without its stamp: what it does directly. */
 const directly = (op: DocumentOp): DocumentOp => {
   const direct = { ...op };
@@ -68,7 +87,7 @@ const refusalOf = (document: Document, op: DocumentOp): string | undefined => {
 const blocks = (document: Document): BlockContent[] => document.package.document.content;
 
 describe("tracked text", () => {
-  test("a tracked insertion is wrapped in an insertion carrying the stamp", () => {
+  test("a tracked insertion is wrapped and accepts to the direct insertion", () => {
     const document = documentOf(paragraph("00000001", [run("Hello")]));
     const insert: DocumentOp = {
       type: DOCUMENT_OP_TYPES.INSERT_TEXT,
@@ -90,6 +109,11 @@ describe("tracked text", () => {
         },
       ]),
     ]);
+    const direct = applied(document, directly(insert));
+    expect(resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      direct.document,
+    );
+    expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
   test("a tracked insertion with the same stamp joins the wrapper it follows", () => {
@@ -146,6 +170,7 @@ describe("tracked text", () => {
       { type: "insertion", info: { id: 6, author: "Reviewer", date: DATE }, content: [run("x")] },
       { ...theirs, info: { ...theirs.info, id: 7 }, content: [run("b")] },
     ]);
+    expect(resolved(tracked.document, [6], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
   test("a tracked insertion inside a deletion is refused", () => {
@@ -217,6 +242,12 @@ describe("tracked text", () => {
       ]),
     ]);
     expect(tracked.revisions).toEqual([10, 11, 12]);
+    expect(resolved(tracked.document, [10, 11, 12], REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+    expect(resolved(tracked.document, [10, 11, 12, 6], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      documentOf(paragraph("00000001", [])),
+    );
   });
 
   test("a tracked deletion refuses comment anchors; the plan deletes around them", () => {
@@ -313,6 +344,11 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
       ]),
     ]);
     expect(tracked.revisions).toEqual([1, 2]);
+    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    const direct = applied(document, directly(patch));
+    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      direct.document,
+    );
   });
 
   test("a run already carrying a property change keeps its baseline", () => {
@@ -350,6 +386,9 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
       ]),
     ]);
     // Rejecting the change that was there restores what it started from.
+    expect(blocks(resolved(tracked.document, [4], REVISION_DECISIONS.REJECT))).toEqual([
+      paragraph("00000001", [run("ab", { italic: true })]),
+    ]);
   });
 
   test("a tracked paragraph patch records the paragraph properties, not the mark's", () => {
@@ -374,6 +413,7 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
         previousFormatting: { styleId: "Heading1" },
       },
     ]);
+    expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
     expect(
       refusalOf(document, {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
@@ -409,6 +449,11 @@ describe("C9: Enter and Delete record paragraph marks", () => {
       { ...source, content: [run("World", { bold: true })] },
       paragraph("00000009", [run("next")]),
     ]);
+    const direct = applied(document, directly(split));
+    expect(resolved(tracked.document, [1], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      direct.document,
+    );
+    expect(resolved(tracked.document, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
   test("a tracked split at the end adds a paragraph that records the source's properties", () => {
@@ -479,10 +524,35 @@ describe("C9: Enter and Delete record paragraph marks", () => {
         ],
       },
     ]);
+    const direct = applied(document, directly(join));
+    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      direct.document,
+    );
+    expect(resolved(tracked.document, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
     // A mark already carrying a change is not overwritten.
     expect(refusalOf(tracked.document, { ...join, revision: stamp(3) })).toBe(
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
     );
+  });
+
+  test("accepting a join of an empty paragraph leaves the next one as it was", () => {
+    const empty = paragraph("00000001", [{ type: "bookmarkStart", id: 1, name: "_Ref" }], {
+      formatting: { styleId: "Heading1" },
+    });
+    const next = paragraph("00000002", [run("World")], { formatting: { alignment: "end" } });
+    const document = documentOf(empty, next, paragraph("00000003", [run("end")]));
+    const tracked = applied(document, {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      newIds: { revision: [2] },
+      revision: stamp(1),
+    });
+    expect(blocks(resolved(tracked.document, [1, 2], REVISION_DECISIONS.ACCEPT))).toEqual([
+      { ...next, content: [{ type: "bookmarkStart", id: 1, name: "_Ref" }, run("World")] },
+      paragraph("00000003", [run("end")]),
+    ]);
   });
 
   test("a mark is never given to a paragraph that ends its container", () => {
@@ -499,6 +569,27 @@ describe("C9: Enter and Delete record paragraph marks", () => {
         },
       }),
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK);
+  });
+
+  test("joining at a section break is refused", () => {
+    const ends = paragraph("00000001", [run("a")], {
+      sectionProperties: { pageWidth: 12240 },
+      pPrMark: { kind: "del", info: { id: 1, author: "Other" } },
+    });
+    const document = documentOf(ends, paragraph("00000002", [run("b")]));
+    expect(
+      refusalOf(document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: [1],
+        decision: REVISION_DECISIONS.ACCEPT,
+      }),
+    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    // Rejecting keeps the break, which needs no section operation.
+    expect(blocks(resolved(document, [1], REVISION_DECISIONS.REJECT))).toEqual([
+      paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 12240 } }),
+      paragraph("00000002", [run("b")]),
+    ]);
   });
 });
 
@@ -585,5 +676,18 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
       { ...original, content: [run("HelloWorld!")] },
       paragraph("00000009", [run("next")]),
     ]);
+  });
+
+  test("undoing a tracked edit after its paragraph's mark was resolved is refused as stale", () => {
+    const first = applied(document, split);
+    // The first half is the new paragraph, which carries the inserted mark.
+    const formatted = applied(first.document, {
+      ...format,
+      blockId: "00000002",
+      revision: stamp(3),
+    });
+    const accepted = resolved(formatted.document, [1], REVISION_DECISIONS.ACCEPT);
+    const undone = applyDocumentOps(accepted, formatted.inverse);
+    expect(undone.isErr() && undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
   });
 });

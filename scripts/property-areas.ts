@@ -211,31 +211,33 @@ if (import.meta.main) {
   }
   if (dryRun || selected.length === 0) {
     for (const { file } of selected) console.log(`  ${file}`);
-    process.exit(0);
+  } else {
+    const byPackage = new Map<string, PropertyFile[]>();
+    for (const entry of selected) {
+      byPackage.set(entry.packageDir, [...(byPackage.get(entry.packageDir) ?? []), entry]);
+    }
+    // Packages run side by side (at factor 10 docx-core's operation properties
+    // alone take as long as all of core's); each one's output is printed whole
+    // when it finishes, so a log still reads one package, one file at a time.
+    const exitCodes = await Promise.all(
+      [...byPackage].map(async ([packageDir, files]) => {
+        const relative = files.map(({ file }) => path.relative(packageDir, file));
+        const started = performance.now();
+        const run = await $`bun test ${relative} 2>&1`
+          .cwd(path.join(REPO_ROOT, packageDir))
+          .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })
+          .quiet()
+          .nothrow();
+        const seconds = ((performance.now() - started) / 1000).toFixed(1);
+        process.stdout.write(run.stdout);
+        console.log(
+          `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
+        );
+        return run.exitCode;
+      }),
+    );
+    // Set the code rather than exiting: output written to a pipe is flushed
+    // asynchronously, and exiting here cut a failing run's log short.
+    process.exitCode = exitCodes.every((code) => code === 0) ? 0 : 1;
   }
-  const byPackage = new Map<string, PropertyFile[]>();
-  for (const entry of selected) {
-    byPackage.set(entry.packageDir, [...(byPackage.get(entry.packageDir) ?? []), entry]);
-  }
-  // Packages run side by side (at factor 10 docx-core's operation properties
-  // alone take as long as all of core's); each one's output is printed whole
-  // when it finishes, so a log still reads one package, one file at a time.
-  const exitCodes = await Promise.all(
-    [...byPackage].map(async ([packageDir, files]) => {
-      const relative = files.map(({ file }) => path.relative(packageDir, file));
-      const started = performance.now();
-      const run = await $`bun test ${relative} 2>&1`
-        .cwd(path.join(REPO_ROOT, packageDir))
-        .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })
-        .quiet()
-        .nothrow();
-      const seconds = ((performance.now() - started) / 1000).toFixed(1);
-      process.stdout.write(run.stdout);
-      console.log(
-        `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
-      );
-      return run.exitCode;
-    }),
-  );
-  process.exit(exitCodes.every((code) => code === 0) ? 0 : 1);
 }
