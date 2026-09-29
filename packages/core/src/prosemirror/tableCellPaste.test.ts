@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import { EditorState as PMEditorState, TextSelection, type EditorState } from "prosemirror-state";
 import { CellSelection, TableMap } from "prosemirror-tables";
 
 import { documentShape } from "../__tests__/documentShapes";
@@ -15,6 +15,8 @@ import {
   textblocks,
 } from "../__tests__/editorHarness";
 import type { Document } from "../types/document";
+import { schema as documentSchema } from "./schema";
+import { pasteTableCells } from "./tableCellPaste";
 
 /**
  * The shape's table follows a paragraph, so it does not start the document:
@@ -188,5 +190,35 @@ describe("pasting table cells into a merged table", () => {
 
     layout(view.state.doc);
     await saveHarnessState(view.state, base);
+  });
+
+  test("splits a cell merged across the block's left edge", () => {
+    const cell = (text: string, colspan = 1) =>
+      documentSchema.node("tableCell", { colspan }, [
+        documentSchema.node("paragraph", null, documentSchema.text(text)),
+      ]);
+    const doc = documentSchema.node("doc", null, [
+      documentSchema.node("table", { columnWidths: [1000, 1000, 1000] }, [
+        documentSchema.node("tableRow", null, [cell("x"), cell("y"), cell("z")]),
+        documentSchema.node("tableRow", null, [cell("A", 2), cell("C")]),
+      ]),
+    ]);
+    let caret = 0;
+    doc.descendants((node, pos) => {
+      if (node.isText && node.text === "y") {
+        caret = pos;
+      }
+    });
+    let state = PMEditorState.create({ doc, selection: TextSelection.create(doc, caret) });
+    expect(
+      pasteTableCells(state, pastedTable(state), (tr) => {
+        state = state.apply(tr);
+      }),
+    ).toBe(true);
+
+    expect(layout(state.doc)).toEqual([
+      ["x@0,0 1×1", "P1@0,1 1×1", "P2@0,2 1×1"],
+      ["A@1,0 1×1", "P3@1,1 1×1", "P4@1,2 1×1"],
+    ]);
   });
 });

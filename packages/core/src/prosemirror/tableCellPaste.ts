@@ -22,14 +22,7 @@
 
 import { Fragment, Slice, type Node as PMNode, type Schema } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import {
-  CellSelection,
-  TableMap,
-  cellAround,
-  removeColSpan,
-  tableNodeTypes,
-  type Rect,
-} from "prosemirror-tables";
+import { CellSelection, TableMap, cellAround, tableNodeTypes, type Rect } from "prosemirror-tables";
 import { Transform } from "prosemirror-transform";
 
 import {
@@ -75,6 +68,20 @@ const fitSlice = (nodeType: PMNode["type"], slice: Slice): PMNode => {
     throw new RangeError(`Cannot create an empty ${nodeType.name}`);
   }
   return new Transform(node).replace(0, node.content.size, slice).doc;
+};
+
+/**
+ * A cell's attributes with `count` of its columns, from the `from`th on, taken
+ * out of its span and its column widths.
+ */
+const withoutColumns = (attrs: PMNode["attrs"], from: number, count: number): PMNode["attrs"] => {
+  const colwidth: unknown = attrs["colwidth"];
+  const widths = Array.isArray(colwidth) ? colwidth.toSpliced(from, count) : null;
+  return {
+    ...attrs,
+    colspan: Math.max(1, Number(attrs["colspan"]) || 1) - count,
+    colwidth: widths?.some((width) => Number(width) > 0) ? widths : null,
+  };
 };
 
 const spanOf = (cell: PMNode, name: "colspan" | "rowspan"): number =>
@@ -394,10 +401,10 @@ const isolateVertical = (
     tr.setNodeMarkup(
       updatePos,
       null,
-      removeColSpan(cell.attrs, left - cellLeft, colspan - (left - cellLeft)),
+      withoutColumns(cell.attrs, left - cellLeft, colspan - (left - cellLeft)),
     );
     const right = cell.type.createAndFill(
-      removeColSpan(newCellAttrs(cell.attrs), 0, left - cellLeft),
+      withoutColumns(newCellAttrs(cell.attrs), 0, left - cellLeft),
     );
     if (!right) {
       throw new RangeError("Cannot split a merged table cell");
