@@ -74,7 +74,8 @@ import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import {
   reconcileTableGridAfterColumnRemoval,
-  removeRowsWithoutCells,
+  removeRowsWithoutCellsAfterBatch,
+  type RowsEmptiedInBatch,
   removeTableRow,
 } from "../tableGridMutation";
 import {
@@ -478,7 +479,7 @@ function resolveChange(
       tableCellStructuralOps.sort((left, right) => right.cellPos - left.cellPos);
       let resolvedTableCellStructure = false;
       let failedTableCellMergeResolution = false;
-      const emptiedTables: EmptiedTable[] = [];
+      const emptiedTables: RowsEmptiedInBatch = { pending: false };
       for (const op of tableCellStructuralOps) {
         const mappedPos = tr.mapping.map(op.cellPos);
         const cell = tr.doc.nodeAt(mappedPos);
@@ -508,9 +509,7 @@ function resolveChange(
       if (failedTableCellMergeResolution) {
         return false;
       }
-      for (const { position, mapFrom } of emptiedTables) {
-        removeRowsWithoutCells(tr, tr.mapping.slice(mapFrom).map(position));
-      }
+      removeRowsWithoutCellsAfterBatch(tr, emptiedTables);
       if (resolvedTableCellStructure) {
         markStructuralChange(tr);
       }
@@ -1009,10 +1008,8 @@ function isTableCellRevisionAttr(value: unknown): value is TableCellRevisionAttr
   );
 }
 
-/** A table a cell deletion left a row without cells in, to compact once every deletion ran. */
-type EmptiedTable = { position: number; mapFrom: number };
-
-function deleteTableCellAt(tr: Transaction, cellPos: number, emptied: EmptiedTable[]): void {
+/** Record rows for a final sweep after every cell revision has resolved. */
+function deleteTableCellAt(tr: Transaction, cellPos: number, emptied: RowsEmptiedInBatch): void {
   const cell = tr.doc.nodeAt(cellPos);
   if (!cell || (cell.type.name !== "tableCell" && cell.type.name !== "tableHeader")) {
     return;
@@ -1037,7 +1034,7 @@ function deleteTableCellAt(tr: Transaction, cellPos: number, emptied: EmptiedTab
   const spansDown = Number(cell.attrs["rowspan"]) > 1;
   if (row.childCount > 1 || spansDown) {
     if (row.childCount === 1) {
-      emptied.push({ position: tablePosition, mapFrom: tr.mapping.maps.length });
+      emptied.pending = true;
     }
     tr.delete(cellPos, cellPos + cell.nodeSize);
     reconcileTableGridAfterColumnRemoval({
