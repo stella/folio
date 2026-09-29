@@ -27,7 +27,8 @@ import {
   inspectDocumentStylesFromDocx,
 } from "@stll/folio-core/server";
 
-import { recordHit, type StepKind } from "./coverage.ts";
+import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
+import { operationSelection, targetFeatureSignature } from "./feature-coverage.ts";
 import { openReviewer, toArrayBuffer } from "./documents.ts";
 import { captureLinks, comparePreservedLinks, type LinkSnapshot } from "./link-oracle.ts";
 import { coreBatch, type Mode, type Operation } from "./operations.ts";
@@ -1224,11 +1225,19 @@ const recordOutcome = (pre: Pre, outcome: Outcome): void => {
       features.add("surrogateBoundary");
     }
     if (features.size === 0) features.add("none");
+    const story = storyKindOf(pre.targets, block);
+    for (const feature of targetFeatureSignature(block, features, story)) {
+      recordFeatureHit({
+        operation: String(operation.type),
+        feature,
+        selection: operationSelection(operation),
+      });
+    }
     for (const feature of features) {
       recordHit(
         {
           op: String(operation.type),
-          story: storyKindOf(pre.targets, block),
+          story,
           mode: LEDGER_MODES[pre.mode],
           feature,
           step: pre.step,

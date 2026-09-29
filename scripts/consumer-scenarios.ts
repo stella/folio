@@ -15,6 +15,7 @@
 //   --only <pattern>   pass `--test-name-pattern` to node --test
 //   --coverage-out <file>  where to write the coverage ledger summary
 //                      (default: test-results/consumer-scenarios-coverage.json)
+//   --feature-coverage-out <file>  operation × feature × selection report
 //   -- <files>         scenario files to run (default: all)
 //
 // Coverage: every scenario process records which operation types met which
@@ -33,6 +34,8 @@
 // the sampled relations on every batch; for sweeps), FOLIO_SCENARIO_SAVE_SAMPLE
 // (save this many initial generated flows as replayable DOCX artifacts) and
 // FOLIO_SCENARIO_SAMPLE_DIR (artifact destination).
+// FOLIO_SCENARIO_FEATURE_WEIGHTS=<report.json> enables bounded, seeded
+// steering from a previous feature coverage report; unset keeps current draws.
 // Flow files (test/consumer-scenarios/support/flow-file.ts):
 // FOLIO_SCENARIO_FLOW (a flow file's JSON, or a path to one) replays that
 // flow alone in flow-corpus.test.ts; FOLIO_SCENARIO_BUDGET_SECONDS turns on
@@ -56,9 +59,15 @@ import {
   formatLedger,
   hitUnreachableCells,
   mergeLedgers,
+  mergeFeatureFiles,
   missingCells,
   summarize,
 } from "../test/consumer-scenarios/support/coverage";
+import {
+  mergeFeatureCoverage,
+  summarizeFeatureCoverage,
+  type FeatureCoverage,
+} from "../test/consumer-scenarios/support/feature-coverage";
 import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
 
 const scenarioSrc = path.join(repoRoot, "test", "consumer-scenarios");
@@ -82,6 +91,7 @@ type Args = {
   typecheck: boolean;
   only: string | null;
   coverageOut: string;
+  featureCoverageOut: string;
   files: string[];
 };
 
@@ -93,6 +103,7 @@ const parseArgs = (argv: readonly string[]): Args => {
     typecheck: false,
     only: null,
     coverageOut: path.join(repoRoot, "test-results", "consumer-scenarios-coverage.json"),
+    featureCoverageOut: path.join(repoRoot, "test-results", "consumer-scenarios-features.json"),
     files: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -104,6 +115,7 @@ const parseArgs = (argv: readonly string[]): Args => {
     else if (arg === "--typecheck") args.typecheck = true;
     else if (arg === "--only") args.only = value();
     else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
+    else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
     else if (arg === "--") args.files.push(...argv.slice(index + 1));
     else panic(`consumer-scenarios: unknown argument ${arg}`);
     if (arg === "--") break;
@@ -324,6 +336,7 @@ const stageConsumer = async (
 const reportCoverage = async (
   coverageDir: string,
   out: string,
+  featureOut: string,
   enforce: boolean,
 ): Promise<string | null> => {
   const expectations = JSON.parse(
@@ -334,6 +347,20 @@ const reportCoverage = async (
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, `${JSON.stringify(summarize(merged, expectations), null, 2)}\n`);
   console.log(`\n→ coverage ledger written to ${path.relative(repoRoot, out)}`);
+  const conformanceInput = process.env["FOLIO_CONFORMANCE_FEATURE_COVERAGE_IN"];
+  const conformance = conformanceInput
+    ? (JSON.parse(await readFile(conformanceInput, "utf8")) as FeatureCoverage)
+    : null;
+  const features = mergeFeatureCoverage([
+    mergeFeatureFiles(coverageDir),
+    ...(conformance ? [conformance] : []),
+  ]);
+  const featureSummary = summarizeFeatureCoverage(features);
+  await mkdir(path.dirname(featureOut), { recursive: true });
+  await writeFile(featureOut, `${JSON.stringify(featureSummary, null, 2)}\n`);
+  console.log(`→ feature coverage written to ${path.relative(repoRoot, featureOut)}`);
+  console.log(`→ ${featureSummary.emptyCells.length} empty operation × feature × selection cells`);
+  for (const cell of featureSummary.emptyCells.slice(0, 10)) console.log(`  no hits: ${cell}`);
   if (!enforce) {
     console.log("→ a subset ran; coverage expectations are not enforced");
     return null;
@@ -470,6 +497,13 @@ try {
         FOLIO_SCENARIO_SAMPLE_DIR:
           process.env["FOLIO_SCENARIO_SAMPLE_DIR"] ??
           path.join(repoRoot, "test-results", "consumer-scenario-samples"),
+        ...(process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"]
+          ? {
+              FOLIO_SCENARIO_FEATURE_WEIGHTS: path.resolve(
+                process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"],
+              ),
+            }
+          : {}),
       })
       .nothrow();
     if (run.exitCode !== 0) {
@@ -478,6 +512,7 @@ try {
     const coverageFailure = await reportCoverage(
       coverageDir,
       args.coverageOut,
+      args.featureCoverageOut,
       args.files.length === 0 && args.only === null,
     );
     failure ??= coverageFailure;
