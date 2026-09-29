@@ -43,6 +43,7 @@ import {
 } from "../../attrs";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
 import { removeTableRow } from "../../tableGridMutation";
+import { pasteTableCells } from "../../tableCellPaste";
 import { setTableLookFlags } from "../../../docx/tableLook";
 import { createNodeExtension, createExtension } from "../create";
 import type {
@@ -3017,6 +3018,15 @@ export const TablePluginExtension = createExtension({
       },
     });
 
+    // Cell paste runs ahead of `tableEditing`, whose own cell paste splits
+    // merges at positions that ignore where the table starts.
+    const tableCellPastePlugin = new Plugin({
+      key: new PluginKey("tableCellPaste"),
+      props: {
+        handlePaste: (view, _event, slice) => pasteTableCells(view.state, slice, view.dispatch),
+      },
+    });
+
     return {
       plugins: [
         columnResizing({
@@ -3024,6 +3034,7 @@ export const TablePluginExtension = createExtension({
           cellMinWidth: 25,
           lastColumnResizable: true,
         }),
+        tableCellPastePlugin,
         tableEditing(),
         activeCellPlugin,
       ],

@@ -74,14 +74,6 @@ const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
 export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   {
     reason:
-      "Pasting a table into the merged table shape throws in prosemirror-tables before either editor mode can apply the input",
-    operations: ["paste:table"],
-    shapes: ["tables"],
-    placements: ["caret-middle"],
-    kinds: ["threw"],
-  },
-  {
-    reason:
       "Clearing a selected table cell leaves an empty editor paragraph whose inherited spacing appears only after reopen",
     operations: ["host:cut"],
     shapes: ["tables"],
@@ -267,22 +259,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     ],
     shapes: ["tables"],
     kinds: ["table-grid"],
-  },
-  {
-    reason:
-      "Pasting content copied across table rows duplicates paragraph-property source tokens, which the save refuses",
-    operations: ["paste:copied-blocks"],
-    shapes: ["tables"],
-    kinds: ["invalid-model", "table-grid"],
-  },
-  {
-    reason:
-      "Replacing a range that spans table rows leaves cells that no longer tile the table grid",
-    operations: REPLACING_OPERATIONS,
-    shapes: ["tables"],
-    placements: ["cross-paragraph"],
-    kinds: ["table-grid"],
-    tier: "full",
   },
   {
     reason:
