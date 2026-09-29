@@ -5135,16 +5135,24 @@ const applyFolioAIEditOperationsInternal = ({
             // the first's words were all inserted, rejecting takes them away
             // and with them those properties.
             const insertedOnly = holdsOnlyInsertedContent(paragraph);
+            // When the paragraph it joined has its own break pending deletion,
+            // accepting leaves the paragraph after that break: that one reads
+            // as the first, as a chain of pending merges does.
+            const joinedMark: unknown = tr.doc.nodeAt(item.blockFrom)?.attrs["pPrMark"];
+            const carryPos = isDeletedPPrMark(joinedMark)
+              ? (paragraphLeftAfter(tr.doc, item.blockFrom) ?? item.blockFrom)
+              : item.blockFrom;
             const carried = carryParagraphProperties({
               tr,
-              position: item.blockFrom,
+              position: carryPos,
               source: paragraph,
               styleResolver,
               numbering,
-              ...(insertedOnly && {
+              ...((insertedOnly || carryPos !== item.blockFrom) && {
                 revision: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
               }),
             });
+            mergedPropertiesAt = carryPos;
             tr = carried.tr;
             mergedPropertiesRecorded = carried.tracked;
             if (!carried.tracked) {

@@ -393,6 +393,12 @@ describe("resolving random tracked work", () => {
       resolutionProperty,
       propertyConfig({ numRuns: 100, seed: -1401551044, path: "414:2:3:9:9:9" }),
     );
+    // 2026-09-29: merging an inserted paragraph into one whose own break a
+    // pending merge already removed.
+    await fc.assert(
+      resolutionProperty,
+      propertyConfig({ numRuns: 100, seed: -751467822, path: "181:4:6:6:8:9:12:12:11:12" }),
+    );
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -304239210 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 115449810 }));
     await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100 }));
