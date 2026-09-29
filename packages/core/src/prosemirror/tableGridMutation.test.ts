@@ -56,9 +56,9 @@ const layout = (state: EditorState): string[][] => {
   return rows;
 };
 
-const runAtC2 = async (command: string) => {
+const runAt = async (focus: string, command: string) => {
   const base = await parseShapeDocument(await documentShape("tables").build());
-  const state = placeSelection(createHarnessState(base, "editing"), "Cell C2", "caret-middle");
+  const state = placeSelection(createHarnessState(base, "editing"), focus, "caret-middle");
   if (!state) {
     throw new Error("No caret");
   }
@@ -72,7 +72,7 @@ const runAtC2 = async (command: string) => {
 
 describe("row and column commands beside vertical merges", () => {
   test("adding a row above grows the merges the new row passes through", async () => {
-    expect(layout(await runAtC2("addRowAbove"))).toEqual([
+    expect(layout(await runAt("Cell C2", "addRowAbove"))).toEqual([
       ["Merged A1@0 3×2", "Cell C1@2 1×1", "Cell D1@3 3×1"],
       ["@2 1×1"],
       ["Cell C2@2 1×1"],
@@ -82,7 +82,7 @@ describe("row and column commands beside vertical merges", () => {
   });
 
   test("adding a column left puts each row's new cell in the grid column", async () => {
-    const state = await runAtC2("addColumnLeft");
+    const state = await runAt("Cell C2", "addColumnLeft");
     expect(layout(state)).toEqual([
       ["Merged A1@0 2×2", "@2 1×1", "Cell C1@3 1×1", "Cell D1@4 2×1"],
       ["@2 1×1", "Cell C2@3 1×1"],
@@ -93,7 +93,7 @@ describe("row and column commands beside vertical merges", () => {
   });
 
   test("adding a column right puts each row's new cell in the grid column", async () => {
-    expect(layout(await runAtC2("addColumnRight"))).toEqual([
+    expect(layout(await runAt("Cell C2", "addColumnRight"))).toEqual([
       ["Merged A1@0 2×2", "Cell C1@2 1×1", "@3 1×1", "Cell D1@4 2×1"],
       ["Cell C2@2 1×1", "@3 1×1"],
       ["Cell A3@0 2×1", "Cell B3@1 1×1", "OuterInner 1Inner 2@2 1×1", "@3 1×1", "Cell D3@4 1×1"],
@@ -102,7 +102,7 @@ describe("row and column commands beside vertical merges", () => {
   });
 
   test("deleting a column removes each row's cell in it and keeps the grid", async () => {
-    const state = await runAtC2("deleteColumn");
+    const state = await runAt("Cell C2", "deleteColumn");
     // Row 2 had no cell outside the merges, so it goes and the merges shorten.
     expect(layout(state)).toEqual([
       ["Merged A1@0 1×2", "Cell D1@2 1×1"],
@@ -110,5 +110,19 @@ describe("row and column commands beside vertical merges", () => {
       ["Cell B4@1 1×1", "Cell D4@2 1×1"],
     ]);
     expect(outerTable(state.doc).attrs["columnWidths"]).toEqual([2200, 2200, 2200]);
+  });
+
+  test("a merged cell the column changes keeps a width that matches its span", async () => {
+    const mergedWidth = (state: EditorState): unknown =>
+      outerTable(state.doc).child(0).child(0).attrs["width"];
+    const original = mergedWidth(await runAt("Cell B3", "selectRow"));
+
+    const narrowed = await runAt("Cell B3", "deleteColumn");
+    expect(outerTable(narrowed.doc).child(0).child(0).attrs["colspan"]).toBe(1);
+    expect(mergedWidth(narrowed)).toBe(Number(original) - 2200);
+
+    const widened = await runAt("Cell B3", "addColumnLeft");
+    expect(outerTable(widened.doc).child(0).child(0).attrs["colspan"]).toBe(3);
+    expect(mergedWidth(widened)).toBe(Number(original) + 2200);
   });
 });
