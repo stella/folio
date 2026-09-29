@@ -87,14 +87,20 @@ const kindOf = (node: InlineNode): NodeKind => {
 };
 
 /**
- * Whether a record is an empty run or an empty text node. Neither says
- * anything, operations never create one, and a document is normalized so it
+ * Whether a text node, run, or revision wrapper holds nothing. Such records say
+ * nothing, operations never create one, and a document is normalized so it
  * holds none (see `contract.ts`): otherwise each is a zero-width leaf that
  * positions would have to count. An empty hyperlink or content control is
  * not empty in this sense: it is markup, and stays a zero-width leaf.
  */
 export const isEmptyRecord = (node: InlineNode): boolean =>
-  (node.type === "text" && node.text === "") || (node.type === "run" && node.content.length === 0);
+  (node.type === "text" && node.text === "") ||
+  ((node.type === "run" ||
+    node.type === "insertion" ||
+    node.type === "deletion" ||
+    node.type === "moveFrom" ||
+    node.type === "moveTo") &&
+    node.content.length === 0);
 
 /** A walk's place in the offset space: the offset, and the zero-width leaves passed there. */
 export type Cursor = { position: number; zeroWidthSeen: number };

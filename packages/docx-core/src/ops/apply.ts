@@ -687,7 +687,7 @@ const insertContent = (document: Document, op: InsertContentOp): Applied => {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "The slice holds nothing, or an empty run or text node.",
+      "The slice holds nothing, or an empty run, text node, or revision wrapper.",
     );
   }
   if (
@@ -1670,7 +1670,7 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "A replacement paragraph holds an empty run or text node.",
+      "A replacement paragraph holds an empty run, text node, or revision wrapper.",
     );
   }
   const before = found.map(({ paragraph }) => paragraph);
@@ -1812,7 +1812,7 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
-      "The content holds an empty run or text node.",
+      "The content holds an empty run, text node, or revision wrapper.",
     );
   }
   if (textsIn(content).some(hasIllegalXmlCharacters)) {

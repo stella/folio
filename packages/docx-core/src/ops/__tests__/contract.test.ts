@@ -150,6 +150,48 @@ describe("the seed contract", () => {
     );
   });
 
+  test.each(["insertion", "deletion", "moveFrom", "moveTo"] as const)(
+    "normalization removes empty %s wrappers recursively and preserves zero-width markup",
+    (type) => {
+      const document = parsedShape({
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          { type, info: { id: 1, author: "Reviewer" }, content: [] },
+          {
+            type,
+            info: { id: 2, author: "Reviewer" },
+            content: [{ type: "insertion", info: { id: 3, author: "Reviewer" }, content: [] }],
+          },
+          {
+            type,
+            info: { id: 4, author: "Reviewer" },
+            content: [{ type: "bookmarkStart", id: 5, name: "anchor" }],
+          },
+          { type: "hyperlink", children: [] },
+        ],
+      });
+      expect(reasonOf(document, typing("00000001"))).toBe(DOCUMENT_OP_REFUSAL_REASONS.EMPTY_RECORD);
+      const normalized = normalizeForOps(document);
+      expect(normalized.package.document.content).toEqual([
+        {
+          type: "paragraph",
+          paraId: "00000001",
+          content: [
+            {
+              type,
+              info: { id: 4, author: "Reviewer" },
+              content: [{ type: "bookmarkStart", id: 5, name: "anchor" }],
+            },
+            { type: "hyperlink", children: [] },
+          ],
+        },
+      ]);
+      expect(normalizeForOps(normalized)).toEqual(normalized);
+      expect(validateOpsDocument(normalized).isOk()).toBe(true);
+    },
+  );
+
   test("normalizing removes empty runs and empty text nodes, and nothing else", () => {
     const document = parsedShape({
       type: "paragraph",

@@ -40,7 +40,11 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph, ParagraphFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
 import { storyParagraphs } from "../blocks";
@@ -581,7 +585,7 @@ const TRACKING_REFUSALS: readonly string[] = [
 describe("tracked operations and their resolution", () => {
   test("L1: accepting a tracked operation's revisions gives the direct operation's result", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = trackedOpFor(document, seed);
         const tracked = applyDocumentOp(document, op);
@@ -608,7 +612,7 @@ describe("tracked operations and their resolution", () => {
         const expected = resolved(direct.value.document, extra.direct, REVISION_DECISIONS.ACCEPT);
         expectEquivalent(accepted, expected);
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
   });
