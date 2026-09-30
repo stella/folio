@@ -13,7 +13,7 @@
 
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
-import type { Node as PMNode, MarkType, Slice } from "prosemirror-model";
+import { Slice, type Node as PMNode, type MarkType } from "prosemirror-model";
 import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
@@ -403,6 +403,13 @@ export function handleSuggestionPaste(
   const deletionType = view.state.schema.marks["deletion"];
   if (!insertionType || !deletionType) {
     return false;
+  }
+
+  // Fit open block clipboard edges against the same container boundaries as
+  // direct select-all replacement. Fitting beside the struck final paragraph
+  // instead can create an empty row at an open table edge.
+  if (selectsAll && (slice.openStart > 0 || slice.openEnd > 0)) {
+    slice = new Slice(view.state.tr.replaceSelection(slice).doc.content, 0, 0);
   }
 
   // Select-all spans the block boundaries around the content; replace the text

@@ -2,24 +2,21 @@ import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import {
+  compressionRatioLimitFor,
+  countCentralDirectoryRecords,
+  createInflationBudget,
+  DOCX_MAX_COMPRESSION_RATIO,
+  exceedsCompressionRatio,
+  getZipEntrySizes,
+  inflateEntryWithinLimits,
+  type InflationLimit,
+} from "../archiveInflation";
+import {
   assertXmlResourceLimits,
   createXmlPackageBudget,
   FOLIO_XML_RESOURCE_LIMITS,
   type XmlResourceLimits,
 } from "../xmlResourceLimits";
-
-declare module "jszip" {
-  // oxlint-disable-next-line typescript/consistent-type-definitions -- declaration merging requires an interface
-  interface JSZipObject {
-    /**
-     * Chunked read of the entry content, missing from the published typings.
-     * `nodeStream` is this stream wrapped in a Node.js `Readable`, which
-     * browsers and web workers cannot provide; the stream itself is
-     * platform-neutral.
-     */
-    internalStream(type: "uint8array"): JSZip.JSZipStreamHelper<Uint8Array>;
-  }
-}
 
 export const DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 export const DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
@@ -35,6 +32,7 @@ export class DocxArchiveError extends TaggedError("DocxArchiveError")<{
     | "too-many-entries"
     | "entry-too-large"
     | "total-too-large"
+    | "compression-ratio-exceeded"
     | "invalid-options";
   cause?: unknown;
 }> {}
@@ -44,6 +42,13 @@ export type DocxArchiveOptions = {
   maxEntryBytes?: number;
   maxTotalBytes?: number;
   maxEntries?: number;
+  /**
+   * Most inflated bytes allowed per compressed byte, for each markup or text
+   * entry and for the package as a whole. Binary entries are bounded by the
+   * byte limits and the package ratio only, and entries and packages under
+   * 4 MiB inflated are exempt. Defaults to 200.
+   */
+  maxCompressionRatio?: number;
   /**
    * Bounds on parsed XML structure, applied to every XML part this archive
    * hands out as a string.
@@ -74,78 +79,44 @@ export type DocxArchive = {
   readEntryUint8: (path: string, options?: DocxArchiveReadOptions) => Promise<Uint8Array | null>;
 };
 
-const concatChunks = (chunks: readonly Uint8Array[]): Uint8Array => {
-  let totalBytes = 0;
-  for (const chunk of chunks) {
-    totalBytes += chunk.length;
-  }
-  const merged = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-};
-
-type CollectStreamOptions = {
-  stream: JSZip.JSZipStreamHelper<Uint8Array>;
-  maxEntryBytes: number;
-  remainingBytes: number;
-  maxTotalBytes: number;
+type ReadLimitErrorOptions = {
+  limit: InflationLimit;
   path: string;
+  maxEntryBytes: number;
+  maxTotalBytes: number;
+  maxCompressionRatio: number;
 };
 
-/**
- * Accumulate an entry chunk by chunk, checking both caps before each chunk is
- * retained. Pausing the stream abandons a decompression bomb mid-inflate, so
- * the caps bound memory instead of merely reporting the overrun afterwards.
- */
-const collectStream = async ({
-  stream,
-  maxEntryBytes,
-  remainingBytes,
-  maxTotalBytes,
+const readLimitError = ({
+  limit,
   path,
-}: CollectStreamOptions): Promise<Uint8Array> =>
-  await new Promise<Uint8Array>((resolve, reject) => {
-    const chunks: Uint8Array[] = [];
-    let entryBytes = 0;
-
-    const fail = (reason: "entry-too-large" | "total-too-large", message: string) => {
-      stream.pause();
-      reject(new DocxArchiveError({ message, reason }));
-    };
-
-    stream
-      .on("data", (chunk) => {
-        entryBytes += chunk.length;
-
-        if (entryBytes > maxEntryBytes) {
-          fail("entry-too-large", `DOCX entry "${path}" exceeded the ${maxEntryBytes}-byte limit`);
-          return;
-        }
-        if (entryBytes > remainingBytes) {
-          fail(
-            "total-too-large",
-            `DOCX archive exceeded the ${maxTotalBytes}-byte cumulative limit while reading "${path}"`,
-          );
-          return;
-        }
-        chunks.push(chunk);
-      })
-      .on("end", () => resolve(concatChunks(chunks)))
-      .on("error", reject)
-      .resume();
-  });
-
-const getDeclaredUncompressedBytes = (entry: JSZip.JSZipObject): number | null => {
-  const data = "_data" in entry ? entry._data : undefined;
-  const declaredBytes =
-    typeof data === "object" && data !== null && "uncompressedSize" in data
-      ? data.uncompressedSize
-      : undefined;
-  return typeof declaredBytes === "number" && Number.isFinite(declaredBytes) ? declaredBytes : null;
+  maxEntryBytes,
+  maxTotalBytes,
+  maxCompressionRatio,
+}: ReadLimitErrorOptions): DocxArchiveError => {
+  switch (limit) {
+    case "declared-size":
+      return new DocxArchiveError({
+        message: `DOCX entry "${path}" inflated past its declared size`,
+        reason: "entry-too-large",
+      });
+    case "compression-ratio":
+      return new DocxArchiveError({
+        message: `DOCX entry "${path}" exceeded the ${maxCompressionRatio}:1 compression ratio limit`,
+        reason: "compression-ratio-exceeded",
+      });
+    case "entry":
+      return new DocxArchiveError({
+        message: `DOCX entry "${path}" exceeded the ${maxEntryBytes}-byte limit`,
+        reason: "entry-too-large",
+      });
+    case "total":
+    case "aborted":
+      return new DocxArchiveError({
+        message: `DOCX archive exceeded the ${maxTotalBytes}-byte cumulative limit while reading "${path}"`,
+        reason: "total-too-large",
+      });
+  }
 };
 
 type ResolveByteLimitOptions = {
@@ -164,6 +135,9 @@ const resolveByteLimit = ({ value, fallback, name }: ResolveByteLimitOptions): n
   }
   return limit;
 };
+
+const asBytes = (bytes: ArrayBuffer | Uint8Array): Uint8Array =>
+  bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
 
 export const loadDocxArchive = async (
   bytes: ArrayBuffer | Uint8Array,
@@ -189,11 +163,25 @@ export const loadDocxArchive = async (
     fallback: DOCX_MAX_ENTRIES,
     name: "DOCX entry limit",
   });
+  const maxCompressionRatio = resolveByteLimit({
+    value: options.maxCompressionRatio,
+    fallback: DOCX_MAX_COMPRESSION_RATIO,
+    name: "DOCX compression ratio limit",
+  });
 
   if (bytes.byteLength > maxInputBytes) {
     throw new DocxArchiveError({
       message: `DOCX input contains ${bytes.byteLength} bytes (max ${maxInputBytes})`,
       reason: "input-too-large",
+    });
+  }
+
+  // Counted before JSZip builds an object per record: the entry cap has to
+  // bound that allocation, not only what is inflated afterwards.
+  if (countCentralDirectoryRecords(asBytes(bytes), maxEntries) > maxEntries) {
+    throw new DocxArchiveError({
+      message: `DOCX archive holds more than ${maxEntries} entries`,
+      reason: "too-many-entries",
     });
   }
 
@@ -217,35 +205,60 @@ export const loadDocxArchive = async (
   }
 
   let declaredTotalBytes = 0;
+  let declaredTotalKnown = true;
   for (const entry of archiveEntries) {
     if (entry.dir) {
       continue;
     }
-    const declaredBytes = getDeclaredUncompressedBytes(entry);
-    if (declaredBytes === null) {
-      declaredTotalBytes = Number.NaN;
-      break;
+    const { compressedBytes, uncompressedBytes } = getZipEntrySizes(entry);
+    if (uncompressedBytes === null) {
+      declaredTotalKnown = false;
+      continue;
     }
-    if (declaredBytes > maxEntryBytes) {
+    if (uncompressedBytes > maxEntryBytes) {
       throw new DocxArchiveError({
-        message: `DOCX entry "${entry.name}" declares ${declaredBytes} bytes (max ${maxEntryBytes})`,
+        message: `DOCX entry "${entry.name}" declares ${uncompressedBytes} bytes (max ${maxEntryBytes})`,
         reason: "entry-too-large",
       });
     }
-    declaredTotalBytes += declaredBytes;
+    if (
+      exceedsCompressionRatio({
+        inflatedBytes: uncompressedBytes,
+        compressedBytes,
+        maxRatio: compressionRatioLimitFor(entry.name, maxCompressionRatio),
+      })
+    ) {
+      throw new DocxArchiveError({
+        message: `DOCX entry "${entry.name}" declares more than ${maxCompressionRatio} bytes per compressed byte`,
+        reason: "compression-ratio-exceeded",
+      });
+    }
+    declaredTotalBytes += uncompressedBytes;
   }
 
-  if (Number.isFinite(declaredTotalBytes) && declaredTotalBytes > maxTotalBytes) {
+  if (declaredTotalKnown && declaredTotalBytes > maxTotalBytes) {
     throw new DocxArchiveError({
       message: `DOCX archive declares ${declaredTotalBytes} cumulative bytes (max ${maxTotalBytes})`,
       reason: "total-too-large",
+    });
+  }
+  if (
+    exceedsCompressionRatio({
+      inflatedBytes: declaredTotalBytes,
+      compressedBytes: bytes.byteLength,
+      maxRatio: maxCompressionRatio,
+    })
+  ) {
+    throw new DocxArchiveError({
+      message: `DOCX archive declares more than ${maxCompressionRatio} bytes per archive byte`,
+      reason: "compression-ratio-exceeded",
     });
   }
 
   const xmlLimits: XmlResourceLimits = { ...FOLIO_XML_RESOURCE_LIMITS, ...options.xmlLimits };
   const xmlBudget = createXmlPackageBudget();
   const countedParts = new Set<string>();
-  let totalBytesRead = 0;
+  const inflationBudget = createInflationBudget(maxTotalBytes);
   let readChain: Promise<unknown> = Promise.resolve();
 
   const readEntry = async (
@@ -262,15 +275,23 @@ export const loadDocxArchive = async (
       if (!entry) {
         return null;
       }
-      const content = await collectStream({
-        stream: entry.internalStream("uint8array"),
-        maxEntryBytes: Math.min(requestedMaxBytes, maxEntryBytes),
-        remainingBytes: maxTotalBytes - totalBytesRead,
-        maxTotalBytes,
-        path,
+      const entryLimit = Math.min(requestedMaxBytes, maxEntryBytes);
+      const result = await inflateEntryWithinLimits({
+        entry,
+        maxEntryBytes: entryLimit,
+        maxCompressionRatio: compressionRatioLimitFor(path, maxCompressionRatio),
+        budget: inflationBudget,
       });
-      totalBytesRead += content.length;
-      return content;
+      if (!result.ok) {
+        throw readLimitError({
+          limit: result.limit,
+          path,
+          maxEntryBytes: entryLimit,
+          maxTotalBytes,
+          maxCompressionRatio,
+        });
+      }
+      return result.bytes;
     };
 
     const next = readChain.then(work, work);
@@ -287,7 +308,7 @@ export const loadDocxArchive = async (
       archiveEntries.map((entry) => ({
         path: entry.name,
         directory: entry.dir,
-        declaredUncompressedBytes: getDeclaredUncompressedBytes(entry),
+        declaredUncompressedBytes: getZipEntrySizes(entry).uncompressedBytes,
       })),
     ),
     async readEntryString(path) {

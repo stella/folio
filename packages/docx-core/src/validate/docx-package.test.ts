@@ -100,3 +100,98 @@ describe("validateDocxPackage", () => {
     });
   });
 });
+
+const CENTRAL_DIRECTORY_SIGNATURE = 0x02_01_4b_50;
+const LOCAL_HEADER_SIGNATURE = 0x04_03_4b_50;
+
+/**
+ * Rewrite the uncompressed size `entryPath` declares in its local header and
+ * central-directory record, leaving its compressed data untouched.
+ */
+const withDeclaredSize = (source: Uint8Array, entryPath: string, declaredBytes: number) => {
+  const bytes = source.slice();
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const name = new TextEncoder().encode(entryPath);
+  const nameAt = (offset: number): boolean =>
+    offset + name.length <= bytes.length &&
+    name.every((byte, index) => bytes[offset + index] === byte);
+  let patched = 0;
+  for (let offset = 0; offset + 46 <= bytes.length; offset += 1) {
+    const signature = view.getUint32(offset, true);
+    if (
+      signature === CENTRAL_DIRECTORY_SIGNATURE &&
+      view.getUint16(offset + 28, true) === name.length &&
+      nameAt(offset + 46)
+    ) {
+      view.setUint32(offset + 24, declaredBytes, true);
+      patched += 1;
+    } else if (
+      signature === LOCAL_HEADER_SIGNATURE &&
+      view.getUint16(offset + 26, true) === name.length &&
+      nameAt(offset + 30)
+    ) {
+      view.setUint32(offset + 22, declaredBytes, true);
+      patched += 1;
+    }
+  }
+  if (patched !== 2) {
+    throw new Error(`Expected one local and one central record for ${entryPath}`);
+  }
+  return bytes;
+};
+
+const documentOfSize = (bytes: number) =>
+  `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p>${"x".repeat(bytes)}</w:p></w:body></w:document>`;
+
+describe("validateDocxPackage archive inflation limits", () => {
+  test("stops document XML that inflates past its declared size", async () => {
+    const bytes = withDeclaredSize(
+      await packageWithDocument(documentOfSize(3 * 1024 * 1024)),
+      "word/document.xml",
+      64,
+    );
+
+    expect(await validateDocxPackage(bytes)).toEqual({
+      valid: false,
+      code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+      error: 'Generated DOCX entry "word/document.xml" inflates past its declared size.',
+    });
+  });
+
+  test("refuses an entry whose declared expansion passes the ratio cap", async () => {
+    const bytes = await packageWithDocument(documentOfSize(5 * 1024 * 1024));
+
+    expect(await validateDocxPackage(bytes)).toEqual({
+      valid: false,
+      code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+      error:
+        'Generated DOCX entry "word/document.xml" declares more than 200 uncompressed bytes per compressed byte.',
+    });
+  });
+
+  test("leaves a highly compressible binary entry to the byte and archive limits", async () => {
+    const zip = await JSZip.loadAsync(await packageWithDocument(documentOfSize(16)));
+    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff));
+    // Incompressible padding keeps the archive as a whole under the ratio cap.
+    zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)), {
+      compression: "STORE",
+    });
+    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+
+    expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
+  });
+
+  test("counts archive records before the archive is parsed", async () => {
+    const zip = new JSZip();
+    for (let index = 0; index < 4100; index += 1) {
+      zip.file(`customXml/item${String(index)}.xml`, "", { createFolders: false });
+    }
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+
+    expect(await validateDocxPackage(bytes)).toEqual({
+      valid: false,
+      code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+      error: "Generated DOCX holds more than 4096 archive entries.",
+    });
+  });
+});

@@ -484,6 +484,61 @@ const replaceCellContentDirectly = (tr: Transaction, cellPos: number, slice: Sli
 
 type CellTarget = { pos: number; slice: Slice };
 
+type VerticalPasteTarget = CellTarget & { merge: "anchor" | "continuation" };
+
+type VerticalPasteTargetsOptions = {
+  context: TableContext;
+  cells: PastedCells;
+  placement: Pick<Rect, "top" | "left">;
+};
+
+/** Keep overwritten cells live until review resolves the pasted vertical merges. */
+const verticalPasteTargets = ({
+  context: { map, table, tableStart },
+  cells,
+  placement: { top, left },
+}: VerticalPasteTargetsOptions): VerticalPasteTarget[] | null => {
+  const targets: VerticalPasteTarget[] = [];
+  const covered = new Set<number>();
+  for (const [offset, fragment] of cells.rows.entries()) {
+    const row = top + offset;
+    let column = left;
+    for (let child = 0; child < fragment.childCount; child++) {
+      const pasted = fragment.child(child);
+      while (covered.has(row * map.width + column)) column++;
+      const right = column + spanOf(pasted, "colspan");
+      const bottom = row + spanOf(pasted, "rowspan");
+      for (let nextRow = row; nextRow < bottom;) {
+        const pos = map.map[nextRow * map.width + column];
+        const cell = pos === undefined ? null : table.nodeAt(pos);
+        if (pos === undefined || !cell || cell.attrs["cellMarker"] != null) return null;
+        const rect = map.findCell(pos);
+        if (
+          rect.top !== nextRow ||
+          rect.left !== column ||
+          rect.right !== right ||
+          rect.bottom > bottom
+        )
+          return null;
+        const anchor = nextRow === row;
+        targets.push({
+          pos: tableStart + pos,
+          slice: anchor
+            ? new Slice(pasted.content, 0, 0)
+            : new Slice(Fragment.from(table.type.schema.node("paragraph")), 0, 0),
+          merge: anchor ? "anchor" : "continuation",
+        });
+        nextRow = rect.bottom;
+      }
+      for (let r = row; r < bottom; r++) {
+        for (let c = column; c < right; c++) covered.add(r * map.width + c);
+      }
+      column = right;
+    }
+  }
+  return targets;
+};
+
 /**
  * The table cell each pasted cell lands on, when every one lands on a cell of
  * its own shape; null when the block's cells are shaped differently.
@@ -656,7 +711,22 @@ export const insertTableCells = (
   if (matches) {
     replaceTargets(tr, matches, replaceCellContent);
   } else if (revision) {
-    replaceTargets(tr, fillTargets(context, rect, cells, Slice.empty), replaceCellContent);
+    const vertical = verticalPasteTargets({ context, cells, placement: rect });
+    if (vertical) {
+      for (const { pos, slice, merge } of vertical.toSorted((a, b) => b.pos - a.pos)) {
+        replaceCellContent(tr, pos, slice);
+        if (merge === "continuation") {
+          tr.setNodeAttribute(pos, "cellMarker", {
+            kind: "merge",
+            info: { ...revision },
+            verticalMerge: "continue",
+            verticalMergeOriginal: "rest",
+          });
+        }
+      }
+    } else {
+      replaceTargets(tr, fillTargets(context, rect, cells, Slice.empty), replaceCellContent);
+    }
   } else {
     for (let row = rect.top; row < rect.bottom; row++) {
       const from = context.map.positionAt(row, rect.left, context.table);

@@ -1,5 +1,89 @@
 # @stll/folio-core
 
+## 0.54.0
+
+### Minor Changes
+
+- [#1285](https://github.com/stella/folio/pull/1285) [`d890ce9`](https://github.com/stella/folio/commit/d890ce998ece231903b94b138d22bd3624f94f45) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound archive inflation when opening documents. A document now fails to open when one of its parts inflates past the size the archive declares for it, or when a markup part or the package as a whole exceeds the compression-ratio limit; `maxCompressionRatio` in the archive and unzip options adjusts that limit.
+
+### Patch Changes
+
+- [#1237](https://github.com/stella/folio/pull/1237) [`c89f922`](https://github.com/stella/folio/commit/c89f92227dba2069ee78c0b98415e8e0e0a73b90) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep run formatting stable across save after accepting paragraph merges.
+
+- [#1213](https://github.com/stella/folio/pull/1213) [`aacdf56`](https://github.com/stella/folio/commit/aacdf567ce73d7d515d257594c0dea569f35daf7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Write a footnote or endnote added to a document that already has a notes part, instead of dropping it on save.
+
+- [#1136](https://github.com/stella/folio/pull/1136) [`0302a42`](https://github.com/stella/folio/commit/0302a42f56614dfb00bc749176f4f02224a8c936) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve deleted position flags across adjacent revision removals and replacements.
+
+- [#1279](https://github.com/stella/folio/pull/1279) [`d5a9ba3`](https://github.com/stella/folio/commit/d5a9ba3d0a9500afaf76ad720b016f43a694c10c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align shared dependency versions: jszip 3.10.2, valibot 1.5.0, @base-ui/react 1.8.0.
+
+- [#1270](https://github.com/stella/folio/pull/1270) [`496b8d7`](https://github.com/stella/folio/commit/496b8d75afabe6164f37f25f392527cead20f76a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep tracked batch merges and paragraph formatting consistent with sequential edits when deleting a final paragraph.
+
+- [#1192](https://github.com/stella/folio/pull/1192) [`ee33b59`](https://github.com/stella/folio/commit/ee33b5930f10e1ad5c814460fa432c7fb7594011) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep split tracked changes together across comment and hyperlink boundaries.
+
+- [#1215](https://github.com/stella/folio/pull/1215) [`609b102`](https://github.com/stella/folio/commit/609b10251c8eb186ce536b419f414e1318f0db34) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked column insertion or deletion gives each cell a revision of its own, so `getChanges()` lists, and `acceptChange()`/`rejectChange()` resolve, one cell at a time, as after a save and reopen.
+
+- [#1210](https://github.com/stella/folio/pull/1210) [`23eab1f`](https://github.com/stella/folio/commit/23eab1f628af5426cecba992abd89f2afa4cb9bb) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Build nodes and marks from the edited document's schema in formatting, hyperlink, note, line-break, table and style commands, so they work in header, footer and note editors; Shift-Enter and Mod-Enter in suggesting mode no longer split the paragraph.
+
+- [#1256](https://github.com/stella/folio/pull/1256) [`fd163f5`](https://github.com/stella/folio/commit/fd163f5c9dd6562329a98f0847375bda033e246e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve copied tracked revisions inside suggesting-mode paste insertions.
+
+- [#1272](https://github.com/stella/folio/pull/1272) [`436f6bb`](https://github.com/stella/folio/commit/436f6bbd3b3b0f55356f88e6b8f4342e2aac4870) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Report the same line width for the same text however its runs were split, so a review view settles on the layout of the text it shows.
+
+- [#1208](https://github.com/stella/folio/pull/1208) [`422291c`](https://github.com/stella/folio/commit/422291c3217e4ce458f057061ae337fa9d08efae) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paragraphs created by a paste, a cut, a table command or a replacement across paragraphs now show their inherited spacing, run defaults and table-style formatting immediately instead of only after the document is reopened. List commands, restyling, clearing a style and unindenting now leave the indentation and numbering a reopen reads, and a run that turns a heading's bold off reads as not bold.
+
+- [#1252](https://github.com/stella/folio/pull/1252) [`069dbfe`](https://github.com/stella/folio/commit/069dbfefa2b95203e0874db499752dd5aecb9a22) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve character-style formatting, pending cursor formatting, and authored run overrides when applying or clearing paragraph styles and clearing text color.
+
+- [#1269](https://github.com/stella/folio/pull/1269) [`5675f89`](https://github.com/stella/folio/commit/5675f8904e2c727595d5909126a7a91f5e5a7538) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore the original paragraph when rejecting final insertions after a wholly inserted table.
+
+- [#1224](https://github.com/stella/folio/pull/1224) [`48c0105`](https://github.com/stella/folio/commit/48c0105f234809bbbffb616eedcc88e661b66922) Thanks [@jan-kubica](https://github.com/jan-kubica)! - An inserted paragraph's words no longer state run properties against its style: text inserted after a heading, or with a heading style, stays as bold (or italic, sized, coloured) as the style makes it.
+
+- [#1278](https://github.com/stella/folio/pull/1278) [`d131712`](https://github.com/stella/folio/commit/d1317127a29c742fbfc00e39ba982c0063328594) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Runs a tracked paragraph join brings together keep inheriting from the surviving paragraph's style, and paragraph properties a style supplies are no longer written as the paragraph's own when a join or a rejected property change hands them over.
+
+- [#1225](https://github.com/stella/folio/pull/1225) [`e2676ce`](https://github.com/stella/folio/commit/e2676cee11b257764c9e40c9063ccc2ca98dbd0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Markdown export writes emphasis that reads back at any boundary: adjacent emphasized runs share their delimiters, delimiters beside punctuation or spaces are placed where they can open and close, and literal tildes and edge underscores are escaped, so no stray `*`, `_` or `~` reaches the text.
+
+- [#1226](https://github.com/stella/folio/pull/1226) [`1059405`](https://github.com/stella/folio/commit/1059405b664afb5caf6d2a067aac7e617b52dd0d) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A direct batch that merges a block into one it deletes joins across the deleted block, as applying the operations one at a time does, and refuses the merge where the deletions run to the story's end; tracked, such a merge no longer leaves its separator dangling at the end.
+
+- [#1282](https://github.com/stella/folio/pull/1282) [`d6d3722`](https://github.com/stella/folio/commit/d6d372282af41d93ae6e2825b0e063b7c681a8b0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse an edit and a cell merge in one batch when the edit lands in a cell the merge folds away, so direct and tracked batches agree on which operation applies.
+
+- [#1241](https://github.com/stella/folio/pull/1241) [`e858d51`](https://github.com/stella/folio/commit/e858d51ee78e83a964dda9a9a15fd5f93bdf4a79) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Close empty nested table rows after revision resolution, including tables captured in cell merge continuations.
+
+- [#1268](https://github.com/stella/folio/pull/1268) [`02faac9`](https://github.com/stella/folio/commit/02faac9e65c5ab60d468302ac538cda28670a27b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep neutral numbering indentation absent when reopening an edited paragraph.
+
+- [#1264](https://github.com/stella/folio/pull/1264) [`40958ee`](https://github.com/stella/folio/commit/40958ee877618aa4b7656a375b8e0a750ba1b6f6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Use full serialization when selective XML replacements overlap, preserving valid document markup.
+
+- [#1251](https://github.com/stella/folio/pull/1251) [`1ca985c`](https://github.com/stella/folio/commit/1ca985c5f6976633410b342d4805d629c974a551) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep unchanged paragraphs and adjacent edits aligned when comparing a recreated paragraph relocation.
+
+- [#1221](https://github.com/stella/folio/pull/1221) [`1aa89b6`](https://github.com/stella/folio/commit/1aa89b689da234bfe4dbcc5287074de2fad33744) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accepting a deleted paragraph mark, or rejecting an inserted one, now leaves the paragraph whose mark stays, with its identity and properties; tracked merges carry the first paragraph's properties onto it so accepting still reads as the direct merge. Suggesting mode records joins, cuts, splits, pastes and typing over select-all the same way, so accepting or rejecting them leaves the paragraphs a direct edit or no edit would. A paragraph whose mark goes right before a table runs on into the table's first cell. Clean Markdown (`docxToMarkdown`, `toMarkdown`) accepts paragraph marks the same way. A note follows its reference: rejecting the reference's deletion restores the note's text, undoing that restores the deletion, and accepting it removes the note.
+
+- [#1217](https://github.com/stella/folio/pull/1217) [`cd8703f`](https://github.com/stella/folio/commit/cd8703f10804565588211dbeeade70b687ab9a31) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Rejecting a tracked deletion whose words ran into a restyled inserted paragraph restores the deleted paragraph's own style.
+
+- [#1258](https://github.com/stella/folio/pull/1258) [`b44d16f`](https://github.com/stella/folio/commit/b44d16fb351d43917b2ed1071f81dc2997d99ebd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep tracked-change enumeration stable across save when pending revisions split into nested or separated wrappers.
+
+- [#1241](https://github.com/stella/folio/pull/1241) [`e858d51`](https://github.com/stella/folio/commit/e858d51ee78e83a964dda9a9a15fd5f93bdf4a79) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Limit deferred table row cleanup to rows emptied by the current deletions, preserving unrelated vertical merges.
+
+- [#1215](https://github.com/stella/folio/pull/1215) [`609b102`](https://github.com/stella/folio/commit/609b10251c8eb186ce536b419f414e1318f0db34) Thanks [@jan-kubica](https://github.com/jan-kubica)! - An edit that leaves a pending revision in separate stretches gives each stretch a revision id of its own, so each is listed and resolved on its own, as after a save and reopen.
+
+- [#1205](https://github.com/stella/folio/pull/1205) [`164f43a`](https://github.com/stella/folio/commit/164f43ac2e5fa55ab9fc076da630ff7cbd843bc4) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track pasting over a select-all in suggesting mode instead of replacing the document untracked. Pasted tables and lists now accept to the same result as a direct paste and reject back to the original paragraphs, and undo no longer leaves a tracked paragraph mark behind.
+
+- [#1207](https://github.com/stella/folio/pull/1207) [`96a9249`](https://github.com/stella/folio/commit/96a9249aafdac703f7bd77a994d173d2f70692e7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Paste table cells into tables with merged cells without throwing or breaking the grid, fill every cell of a cell selection, and track the paste in suggesting mode.
+
+- [#1207](https://github.com/stella/folio/pull/1207) [`96a9249`](https://github.com/stella/folio/commit/96a9249aafdac703f7bd77a994d173d2f70692e7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add and delete table columns, add rows and select columns by the table grid, so cells beside a vertical merge land in the right column and the table grid keeps its widths.
+
+- [#1216](https://github.com/stella/folio/pull/1216) [`6ba1828`](https://github.com/stella/folio/commit/6ba1828d6fba413fdc04dbc07e463938a8571537) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep a table row or column inserted inside a comment's range in that comment when the same batch deletes the paragraph holding the comment's end.
+
+- [#1206](https://github.com/stella/folio/pull/1206) [`db1761a`](https://github.com/stella/folio/commit/db1761a10f287bd723453ff16f35b7fb61707c66) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Label the tracked editing mode "Track Changes" in every locale instead of "Suggesting".
+
+- [#1213](https://github.com/stella/folio/pull/1213) [`aacdf56`](https://github.com/stella/folio/commit/aacdf567ce73d7d515d257594c0dea569f35daf7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track removing a hyperlink, deleting a note reference and inserting a table in suggesting mode; deleting a note reference removes the reference instead of leaving its number as plain text.
+
+- [#1262](https://github.com/stella/folio/pull/1262) [`73048d7`](https://github.com/stella/folio/commit/73048d7fa6160ce40119b642674d5e0f666145dc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph numbering when tracked paste changes are accepted or rejected.
+
+- [#1276](https://github.com/stella/folio/pull/1276) [`ba3b1a0`](https://github.com/stella/folio/commit/ba3b1a0ad5e5cb146cdfbb33f4aa2370dfdf79fd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Record the properties a tracked merge hands to the paragraph it leaves when the removed break was itself a pending insertion, so rejecting restores that paragraph's own style.
+
+- [#1213](https://github.com/stella/folio/pull/1213) [`aacdf56`](https://github.com/stella/folio/commit/aacdf567ce73d7d515d257594c0dea569f35daf7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Removing a hyperlink also removes its Hyperlink style, and a tracked removal records that style as the runs' previous formatting; an edit operation that deletes a note reference takes the note with it, as the editors do: tracked, the note's text is deleted with the reference, and removed outright, the note is dropped on save.
+
+- [#1265](https://github.com/stella/folio/pull/1265) [`78f1762`](https://github.com/stella/folio/commit/78f1762206297d678fddef857d66d5200e93f0a0) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve copied vertical table spans and open table edges when reviewing tracked pastes.
+- Updated dependencies [[`d5a9ba3`](https://github.com/stella/folio/commit/d5a9ba3d0a9500afaf76ad720b016f43a694c10c), [`d890ce9`](https://github.com/stella/folio/commit/d890ce998ece231903b94b138d22bd3624f94f45), [`f545ef1`](https://github.com/stella/folio/commit/f545ef1526264870550ae4300288d43b5c48d5cd), [`3a7d1c0`](https://github.com/stella/folio/commit/3a7d1c0ee2f0b9b9cbfbf625a9daa8aea00c7592), [`dc334e2`](https://github.com/stella/folio/commit/dc334e2256f129f1d202124bde894334254c33c3), [`003d387`](https://github.com/stella/folio/commit/003d387c4cabf72f160367ca536ed0757f9ae5a7), [`c80cb40`](https://github.com/stella/folio/commit/c80cb40f19165f466da9bfb113798ba2446167bc), [`1c68631`](https://github.com/stella/folio/commit/1c68631782a0590d53de969184e596d249fe4ba7), [`5c625cb`](https://github.com/stella/folio/commit/5c625cbfd950906c1e0cd6d357fb3af6def0baee)]:
+  - @stll/docx-core@0.29.0
+
 ## 0.53.0
 
 ### Minor Changes
