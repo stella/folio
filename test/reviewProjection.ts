@@ -22,28 +22,35 @@ const authoredFormatting = <Formatting extends object>(formatting: Formatting | 
     ? formatting
     : undefined;
 
-const canonicalParagraphFormatting = (formatting: Paragraph["formatting"]) =>
-  formatting
-    ? authoredFormatting({
-        ...formatting,
-        runProperties: authoredFormatting(formatting.runProperties),
-      })
-    : undefined;
+const canonicalParagraphFormatting = (formatting: Paragraph["formatting"]) => {
+  if (formatting === undefined) return undefined;
+  const next = { ...formatting };
+  const runProperties = authoredFormatting(formatting.runProperties);
+  if (runProperties === undefined) delete next.runProperties;
+  else next.runProperties = runProperties;
+  return authoredFormatting(next);
+};
 
 /** currentFormatting is an optional capture of the owning node's current properties. */
-const canonicalRun = (run: Run): Run => ({
-  ...run,
-  formatting: authoredFormatting(run.formatting),
-  ...(run.propertyChanges
-    ? {
-        propertyChanges: run.propertyChanges.map((change) => ({
-          ...change,
-          previousFormatting: authoredFormatting(change.previousFormatting),
-          currentFormatting: authoredFormatting(change.currentFormatting ?? run.formatting),
-        })),
-      }
-    : {}),
-});
+const canonicalRun = (run: Run): Run => {
+  const next = { ...run };
+  const formatting = authoredFormatting(run.formatting);
+  if (formatting === undefined) delete next.formatting;
+  else next.formatting = formatting;
+  if (run.propertyChanges) {
+    next.propertyChanges = run.propertyChanges.map((change) => {
+      const normalized = { ...change };
+      const previous = authoredFormatting(change.previousFormatting);
+      const current = authoredFormatting(change.currentFormatting ?? run.formatting);
+      if (previous === undefined) delete normalized.previousFormatting;
+      else normalized.previousFormatting = previous;
+      if (current === undefined) delete normalized.currentFormatting;
+      else normalized.currentFormatting = current;
+      return normalized;
+    });
+  }
+  return next;
+};
 
 const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
   const out: InlineNode[] = [];
@@ -60,13 +67,20 @@ const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
 
 const canonicalParagraph = (paragraph: Paragraph): Paragraph => {
   const next = { ...paragraph, content: asParagraphContent(canonicalList(paragraph.content)) };
-  next.formatting = canonicalParagraphFormatting(paragraph.formatting);
+  const formatting = canonicalParagraphFormatting(paragraph.formatting);
+  if (formatting === undefined) delete next.formatting;
+  else next.formatting = formatting;
   if (next.propertyChanges) {
-    next.propertyChanges = next.propertyChanges.map((change) => ({
-      ...change,
-      previousFormatting: canonicalParagraphFormatting(change.previousFormatting),
-      currentFormatting: canonicalParagraphFormatting(change.currentFormatting ?? next.formatting),
-    }));
+    next.propertyChanges = next.propertyChanges.map((change) => {
+      const normalized = { ...change };
+      const previous = canonicalParagraphFormatting(change.previousFormatting);
+      const current = canonicalParagraphFormatting(change.currentFormatting ?? next.formatting);
+      if (previous === undefined) delete normalized.previousFormatting;
+      else normalized.previousFormatting = previous;
+      if (current === undefined) delete normalized.currentFormatting;
+      else normalized.currentFormatting = current;
+      return normalized;
+    });
   }
   delete next.listRendering;
   delete next.renderedPageBreakBefore;
