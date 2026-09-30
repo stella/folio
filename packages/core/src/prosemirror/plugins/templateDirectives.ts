@@ -25,6 +25,7 @@ import {
   type DirectiveKind,
   isBlockDirectiveKind,
   type MarkerMeta,
+  type ScannedMarker,
   scanMarkers,
 } from "@stll/template-conditions";
 
@@ -45,6 +46,12 @@ export type DirectiveRange = {
    * array path the loop iterates (`{% for row in items %}` ⇒ `items`).
    */
   expr: string;
+  /**
+   * For an `if` / `elif` whose body is one field path plus a filter chain
+   * (`{% if consented | checkbox | label("…") %}`), that path; `expr` keeps
+   * the body as authored. Unset for every other tag.
+   */
+  conditionPath?: string;
   /** Clause-slot version selector, e.g. "v3" or "latest". */
   clauseVersion?: string;
   /** Loop alias of a `for` marker (`{% for row in items %}` ⇒ `row`); unset
@@ -54,9 +61,19 @@ export type DirectiveRange = {
   block: boolean;
 };
 
+/**
+ * The body of an `if` / `elif` tag as authored: its inner text after the
+ * keyword. The grammar reads a body that is one path plus a filter chain as
+ * that path, with the chain in `filters`; the document still holds the whole
+ * body, and that is what a host keys a condition by.
+ */
+const conditionBody = ({ inner, meta }: ScannedMarker): string =>
+  inner.slice(meta.kind.length).trim();
+
 /** The display expression for a marker (field path, clause name, key,
- *  condition, loop array path, loop property). */
-const directiveExpr = (meta: MarkerMeta): string => {
+ *  condition as authored, loop array path, loop property). */
+const directiveExpr = (marker: ScannedMarker): string => {
+  const { meta } = marker;
   switch (meta.kind) {
     case "placeholder":
       return meta.expr;
@@ -69,7 +86,7 @@ const directiveExpr = (meta: MarkerMeta): string => {
       return meta.property;
     case "if":
     case "elif":
-      return meta.expr;
+      return conditionBody(marker);
     case "for":
       return meta.path;
     case "else":
@@ -132,6 +149,10 @@ export const computeBlockDepths = (ranges: readonly DirectiveRange[]): Map<numbe
 const directiveAlias = (meta: MarkerMeta): string | undefined =>
   meta.kind === "for" ? meta.alias : undefined;
 
+/** The path a condition's filter chain configures, or undefined without a chain. */
+const directiveConditionPath = (meta: MarkerMeta): string | undefined =>
+  (meta.kind === "if" || meta.kind === "elif") && meta.filters.length > 0 ? meta.expr : undefined;
+
 export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
   const ranges: DirectiveRange[] = [];
 
@@ -146,13 +167,15 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
     if (sole && sole.raw === trimmed && isBlockDirectiveKind(sole.meta.kind)) {
       const last = chunks.at(-1);
       const alias = directiveAlias(sole.meta);
+      const conditionPath = directiveConditionPath(sole.meta);
       ranges.push({
         from: chunks[0]?.start ?? 0,
         to: last ? (last.end ?? last.start + last.text.length) : 0,
         kind: sole.meta.kind,
-        expr: directiveExpr(sole.meta),
+        expr: directiveExpr(sole),
         block: true,
         ...(alias !== undefined ? { alias } : {}),
+        ...(conditionPath !== undefined ? { conditionPath } : {}),
       });
       continue;
     }
@@ -165,14 +188,16 @@ export const scanDirectives = (doc: PMNode): DirectiveRange[] => {
     for (const marker of scanMarkers(joined)) {
       const clauseVersion = marker.meta.kind === "clause" ? marker.meta.version : undefined;
       const alias = directiveAlias(marker.meta);
+      const conditionPath = directiveConditionPath(marker.meta);
       ranges.push({
         from: offsetToDocPos(chunks, marker.start),
         to: offsetToDocPos(chunks, marker.end, "end"),
         kind: marker.meta.kind,
-        expr: directiveExpr(marker.meta),
+        expr: directiveExpr(marker),
         block: false,
         ...(clauseVersion !== undefined ? { clauseVersion } : {}),
         ...(alias !== undefined ? { alias } : {}),
+        ...(conditionPath !== undefined ? { conditionPath } : {}),
       });
     }
   }

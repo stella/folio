@@ -109,6 +109,27 @@ describe("scanDirectives", () => {
 
     expect(scanDirectives(doc).every((r) => r.alias === undefined)).toBe(true);
   });
+
+  test("a condition with a filter chain keeps its expression as authored and names its path", () => {
+    const chain = 'consent_given | label("Yes | No") | checkbox';
+    const doc = docOf(
+      `{% if ${chain} %}`,
+      "Consented.",
+      `{% elif items|length > 0 %}`,
+      "Listed.",
+      "{% endif %}",
+      `Inline {% if ${chain} %}yes{% endif %}.`,
+    );
+    const conditions = scanDirectives(doc)
+      .filter((r) => r.kind === "if" || r.kind === "elif")
+      .map(({ kind, expr, conditionPath, block }) => ({ kind, expr, conditionPath, block }));
+
+    expect(conditions).toEqual([
+      { kind: "if", expr: chain, conditionPath: "consent_given", block: true },
+      { kind: "elif", expr: "items|length > 0", conditionPath: undefined, block: true },
+      { kind: "if", expr: chain, conditionPath: "consent_given", block: false },
+    ]);
+  });
 });
 
 describe("computeBlockDepths", () => {

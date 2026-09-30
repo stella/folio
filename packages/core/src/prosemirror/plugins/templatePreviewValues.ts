@@ -27,7 +27,7 @@ import { Plugin, PluginKey } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Decoration, DecorationSet } from "prosemirror-view";
 
-import { classifyMarker, isFieldPath } from "@stll/template-conditions";
+import { isFieldPath } from "@stll/template-conditions";
 
 import type { DirectiveRange } from "./templateDirectives";
 import { scanDirectives } from "./templateDirectives";
@@ -195,31 +195,27 @@ function buildValueWidget(
   };
 }
 
-/** Loop alias the bare-path probe binds. Any identifier does; it is discarded. */
-const CHAIN_PROBE_ALIAS = "__folioCondition";
 /** A field path opens with a letter or underscore, so `9x` and `-x` are not one. */
 const FIELD_PATH_HEAD_RE = /^[\p{L}_]/u;
 
 /**
  * The bare field path a condition's filter chain hangs off, or undefined when
- * the expression is not a path plus a chain.
+ * the tag is not a path plus a chain.
  *
- * A host may write the tag the way `{% for x in xs | chain %}` already carries
- * one — `{% if buyer_is_a_consumer | checkbox | ai("Is the buyer …") %}` — while
- * keying `conditions` by the bare path. Splitting on `|` would cut a quoted
- * argument such as `label("a | b")` in half, so the expression is classified as
- * that very `for` chain instead and the grammar's own argument-aware scan
- * reports the path. An expression that is not a path plus a chain of known
- * filters (`a and b`, `items|length > 0`, `ai("a|b")`) classifies as nothing,
- * which is what keeps a real expression on exact matching.
+ * A host may write the tag with the chain of the boolean it names —
+ * `{% if buyer_is_a_consumer | checkbox | ai("Is the buyer …") %}` — while
+ * keying `conditions` by the bare path. The grammar's argument-aware scan
+ * splits the chain (`label("a | b")` stays one argument) and reports the path
+ * as `conditionPath`; an expression that is not a path plus a chain of known
+ * filters (`a and b`, `items|length > 0`, `ai("a|b")`) has none, which is what
+ * keeps a real expression on exact matching.
  */
-const filterChainPath = (expr: string): string | undefined => {
-  const meta = classifyMarker(`for ${CHAIN_PROBE_ALIAS} in ${expr}`, "statement");
-  if (meta?.kind !== "for" || !isFieldPath(meta.path) || !FIELD_PATH_HEAD_RE.test(meta.path)) {
-    return undefined;
-  }
-  return meta.path;
-};
+const filterChainPath = ({ conditionPath }: DirectiveRange): string | undefined =>
+  conditionPath !== undefined &&
+  isFieldPath(conditionPath) &&
+  FIELD_PATH_HEAD_RE.test(conditionPath)
+    ? conditionPath
+    : undefined;
 
 /**
  * The verdict stored under one key. Only a key the host set itself, holding a
@@ -242,13 +238,13 @@ const ownVerdict = (conditions: Record<string, boolean>, key: string): boolean |
  */
 const conditionVerdict = (
   conditions: Record<string, boolean>,
-  expr: string,
+  opener: DirectiveRange,
 ): boolean | undefined => {
-  const exact = ownVerdict(conditions, expr);
+  const exact = ownVerdict(conditions, opener.expr);
   if (exact !== undefined) {
     return exact;
   }
-  const path = filterChainPath(expr);
+  const path = filterChainPath(opener);
   return path === undefined ? undefined : ownVerdict(conditions, path);
 };
 
@@ -320,7 +316,7 @@ function collectHiddenRanges(
       continue;
     }
     const { opener, branches } = block;
-    const verdict = conditionVerdict(conditions, opener.expr);
+    const verdict = conditionVerdict(conditions, opener);
     if (verdict === undefined) {
       continue;
     }
