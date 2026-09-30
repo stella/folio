@@ -76,3 +76,24 @@ describe("a tracked deletion of pending inserted text", () => {
     });
   }
 });
+
+describe("revision wrapper enumeration", () => {
+  test("keeps deletion fragments around a pending insertion across save", async () => {
+    const reviewer = await FolioDocxReviewer.fromBuffer(await buildDocument(), {
+      author: "Reviewer",
+    });
+    replace(reviewer, "two", "three");
+    const block = reviewer.getContent().at(0);
+    if (!block) throw new Error("the fixture paragraph is missing");
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+    });
+    expect(result.applied).toHaveLength(1);
+    const reopened = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer());
+    const sorted = (target: FolioDocxReviewer) =>
+      changesOf(target).toSorted((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+    expect(sorted(reviewer)).toEqual(sorted(reopened));
+  });
+});

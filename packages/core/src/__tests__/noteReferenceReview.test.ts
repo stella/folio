@@ -314,3 +314,66 @@ describe("a note shared with other revisions and other stories", () => {
     expect(noteState(saved, 1)?.text).toBe("The note text.");
   });
 });
+
+describe("an edit operation that deletes a note reference", () => {
+  const deleted = reference.fixtures["authored-delete-footnote-reference"];
+  const liveNote = reference.fixtures["nt-reference-only-deleted"]?.footnotes;
+  if (!deleted || liveNote === undefined) throw new Error("missing the note reference fixtures");
+  // The same body with its reference live, and a note whose text is not deleted.
+  const live: Fixture = {
+    body: deleted.body.replace(
+      /<w:del\b[^>]*>(<w:r>.*?<w:footnoteReference w:id="1"\/><\/w:r>)<\/w:del>/u,
+      "$1",
+    ),
+    footnotes: liveNote,
+  };
+
+  const deleteNotedParagraph = async (mode: "direct" | "tracked-changes") => {
+    const reviewer = await FolioDocxReviewer.fromBuffer((await packageOf(live)).slice().buffer);
+    const block = reviewer.getContent().find(({ text }) => text.startsWith("Noted text"));
+    if (!block) throw new Error("no noted paragraph");
+    const result = reviewer.applyDocumentOperations({
+      version: 1,
+      mode,
+      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+    });
+    expect(result.skipped).toEqual([]);
+    return { reviewer, undoHandle: result.undoHandle };
+  };
+  const saved = async (reviewer: FolioDocxReviewer): Promise<Document> =>
+    parseShapeDocument(new Uint8Array(await reviewer.toBuffer()));
+
+  test("the fixture's reference and note are live", async () => {
+    expect(live.body).not.toContain("<w:del ");
+    expect(noteState(await open(live), 1)).toEqual({ text: "The note text.", deleted: false });
+  });
+
+  test("tracked, it deletes the note's text with the reference", async () => {
+    const { reviewer } = await deleteNotedParagraph("tracked-changes");
+    expect(noteState(await saved(reviewer), 1)).toEqual({ text: "The note text.", deleted: true });
+  });
+
+  test("tracked and accepted, the note goes", async () => {
+    const { reviewer } = await deleteNotedParagraph("tracked-changes");
+    expect(reviewer.acceptAll()).toBeGreaterThan(0);
+    expect(noteState(await saved(reviewer), 1)).toBeNull();
+  });
+
+  test("tracked and rejected, the note keeps its text", async () => {
+    const { reviewer } = await deleteNotedParagraph("tracked-changes");
+    expect(reviewer.rejectAll()).toBeGreaterThan(0);
+    expect(noteState(await saved(reviewer), 1)).toEqual({ text: "The note text.", deleted: false });
+  });
+
+  test("tracked and undone, the note keeps its text", async () => {
+    const { reviewer, undoHandle } = await deleteNotedParagraph("tracked-changes");
+    if (!undoHandle) throw new Error("no undo handle");
+    expect(reviewer.undoDocumentOperations(undoHandle).status).toBe("undone");
+    expect(noteState(await saved(reviewer), 1)).toEqual({ text: "The note text.", deleted: false });
+  });
+
+  test("direct, the note goes with its reference", async () => {
+    const { reviewer } = await deleteNotedParagraph("direct");
+    expect(noteState(await saved(reviewer), 1)).toBeNull();
+  });
+});

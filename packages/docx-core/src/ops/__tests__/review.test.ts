@@ -18,6 +18,7 @@ import type {
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
+import { mergeAtSeam } from "../resolve";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -196,6 +197,34 @@ describe("tracked text", () => {
       { ...theirs, info: { ...theirs.info, id: 7 }, content: [run("b")] },
     ]);
     expect(resolved(tracked.document, [6], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+  });
+
+  // The L1 generator found an accepted insertion whose hyperlink merged into
+  // the next one while the empty wrapper inside stayed a record of its own;
+  // merging the direct result's alike neighbours dropped it.
+  test("accepting an insertion merges the seams inside the records it merges", () => {
+    const link = (content: ParagraphContent[]): ParagraphContent => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children: [{ type: "inlineWrapper", kind: "bidi", control: "embedding", content }],
+    });
+    const document = documentOf(paragraph("00000001", [link([run("a")])]));
+    const op = {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 0),
+      slice: { content: [link([])], openStart: 0, openEnd: 0 },
+      revision: stamp(1),
+    } as const satisfies DocumentOp;
+    const tracked = applied(document, op);
+    const direct = applied(document, directly(op));
+    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+    expect(blocks(accepted)).toEqual([paragraph("00000001", [link([run("a")])])]);
+    // Directly, the inserted hyperlink stands beside the other; merged, they agree.
+    const [only] = blocks(direct.document);
+    const [first, second] = only?.type === "paragraph" ? only.content : [];
+    expect(first).toEqual(link([]));
+    expect(second !== undefined && mergeAtSeam(link([]), second)).toEqual([link([run("a")])]);
   });
 
   test("a tracked insertion inside a deletion is refused", () => {

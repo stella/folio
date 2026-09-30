@@ -8,10 +8,10 @@ import { panic } from "better-result";
 import type { Command } from "prosemirror-state";
 
 import { expectFootnoteRefMarkAttrs } from "../../attrs";
-import { suggestionModeKey } from "../../plugins/suggestionMode";
+import { suggestRangeDeletion, suggestionModeKey } from "../../plugins/suggestionMode";
 import { createMarkExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
-import { expandNoteReferenceDeletionRange } from "./noteReferenceDeletion";
+import { expandNoteReferenceDeletionRange, noteReferenceRanges } from "./noteReferenceDeletion";
 
 const noteRefAttrsFromDom = (
   dom: HTMLElement,
@@ -114,20 +114,30 @@ export const FootnoteRefExtension = createMarkExtension({
         };
     }
 
+    /**
+     * Delete the note references the selection touches (the one beside a
+     * caret), each whole: tracked as a deletion of the reference run when
+     * suggesting, removed outright otherwise.
+     */
     const deleteNoteRef: Command = (state, dispatch) => {
-      const { $from, $to } = state.selection;
+      const { from, to, empty } = state.selection;
+      const references = noteReferenceRanges(
+        state.doc,
+        empty ? Math.max(0, from - 1) : from,
+        empty ? Math.min(state.doc.content.size, to + 1) : to,
+      );
+      if (references.length === 0) {
+        return false;
+      }
       if (!dispatch) {
         return true;
       }
-
-      let tr = state.tr;
-      const markType = state.schema.marks["footnoteRef"];
-      if (!markType) {
-        panic("Missing mark type: footnoteRef");
+      const tr = state.tr;
+      for (const reference of references.toReversed()) {
+        if (!suggestRangeDeletion(state, tr, reference.from, reference.to)) {
+          tr.delete(reference.from, reference.to);
+        }
       }
-
-      // Remove footnoteRef marks in selection range
-      tr = tr.removeMark($from.pos, $to.pos, markType);
       dispatch(tr.scrollIntoView());
       return true;
     };
