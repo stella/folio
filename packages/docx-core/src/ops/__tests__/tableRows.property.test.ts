@@ -4,9 +4,10 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { Document, Paragraph, Table, TableRow } from "../../model/document";
+import type { Document, Paragraph, Table, TableCell, TableRow } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { storyParagraphs } from "../blocks";
+import { endsItsContainer, storyParagraphs } from "../blocks";
+import { permitsCellFinalMark } from "../tableTracking";
 import { contractViolation } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp, type RevisionStamp } from "../types";
@@ -30,7 +31,7 @@ type Shape = {
 };
 
 const shapeArbitrary: fc.Arbitrary<Shape> = fc.record({
-  rows: fc.integer({ min: 2, max: 4 }),
+  rows: fc.integer({ min: 1, max: 4 }),
   cells: fc.integer({ min: 1, max: 3 }),
   paragraphs: fc.integer({ min: 1, max: 3 }),
   text: fc.integer({ min: 0, max: 0xffff_ffff }),
@@ -54,30 +55,65 @@ const runFormatting = (seed: number) => {
 const makeParagraph = (paragraphId: string, text: string, formatting: number): Paragraph => ({
   type: "paragraph",
   paraId: paragraphId,
-  content: [
-    {
-      type: "run",
-      ...runFormatting(formatting),
-      content: [{ type: "text", text }],
-    },
-  ],
+  content:
+    text.length === 0
+      ? []
+      : [
+          {
+            type: "run",
+            ...runFormatting(formatting),
+            content: [{ type: "text", text }],
+          },
+        ],
 });
 
 const rowFor = (shape: Shape, rowIndex: number, firstId: number): TableRow => ({
   type: "tableRow",
   formatting: rowIndex % 2 === 0 ? { cantSplit: true } : { header: true },
   preservedAttributes: [{ name: "rsidTr", value: "00ABCDEF" }],
-  cells: Array.from({ length: 1 + ((shape.cells + rowIndex) % 3) }, (_, cellIndex) => ({
-    type: "tableCell" as const,
-    content: Array.from(
-      { length: 1 + ((shape.paragraphs + rowIndex + cellIndex) % 3) },
-      (_paragraphValue, paragraphIndex) => {
-        const paragraphId = firstId + cellIndex * 9 + paragraphIndex;
-        const text = `cell-${rowIndex}-${cellIndex}-${paragraphIndex}-${shape.text % 997}`;
-        return makeParagraph(formatParagraphId(paragraphId), text, shape.formatting + paragraphId);
-      },
-    ),
-  })),
+  cells: Array.from({ length: 1 + ((shape.cells + rowIndex) % 3) }, (_, cellIndex) => {
+    const paragraphCount = 1 + ((shape.paragraphs + rowIndex + cellIndex) % 3);
+    const content = Array.from({ length: paragraphCount }, (_paragraphValue, paragraphIndex) => {
+      const paragraphId = firstId + cellIndex * 9 + paragraphIndex;
+      const text =
+        (shape.text + rowIndex + cellIndex + paragraphIndex) % 5 === 0
+          ? ""
+          : `cell-${rowIndex}-${cellIndex}-${paragraphIndex}-${shape.text % 997}`;
+      const paragraph = makeParagraph(
+        formatParagraphId(paragraphId),
+        text,
+        shape.formatting + paragraphId,
+      );
+      if (paragraphIndex >= paragraphCount - 1 || shape.formatting % 2 === 0) return paragraph;
+      return {
+        ...paragraph,
+        pPrMark: { kind: "ins", info: { id: 300_000 + paragraphId, author: "Other", date: DATE } },
+      } satisfies Paragraph;
+    });
+    switch ((shape.formatting + rowIndex + cellIndex) % 3) {
+      case 0:
+        return { type: "tableCell", content } satisfies TableCell;
+      case 1:
+        return {
+          type: "tableCell",
+          content: [
+            { type: "blockSdt", properties: { sdtType: "richText", tag: "cell" }, content },
+          ],
+        } satisfies TableCell;
+      default:
+        return {
+          type: "tableCell",
+          content: [
+            {
+              type: "blockCustomXml",
+              openingXml: '<w:customXml w:element="cell">',
+              closingXml: "</w:customXml>",
+              content,
+            },
+          ],
+        } satisfies TableCell;
+    }
+  }),
 });
 
 type Fixture = { document: Document; rows: TableRow[]; nextId: number };
@@ -206,32 +242,56 @@ const rowHasRevision = (
 
 const rowParagraphs = (row: TableRow): Paragraph[] =>
   row.cells.flatMap((cell) =>
-    cell.content.flatMap((block) => (block.type === "paragraph" ? [block] : [])),
+    storyParagraphs({ content: cell.content }).map(({ paragraph }) => paragraph),
   );
 
-const assertTrackedRow = (
-  row: TableRow,
-  type: "tableRowInsertion" | "tableRowDeletion",
-  wrapper: "insertion" | "deletion",
-  revisionIds: ReadonlySet<number>,
-) => {
+type AssertTrackedRowOptions = {
+  row: TableRow;
+  type: "tableRowInsertion" | "tableRowDeletion";
+  wrapper: "insertion" | "deletion";
+  revisionIds: ReadonlySet<number>;
+  before: TableRow;
+};
+const assertTrackedRow = ({ row, type, wrapper, revisionIds, before }: AssertTrackedRowOptions) => {
   expect(rowHasRevision(row, type, 100_000)).toBe(true);
-  const wrapperIds = new Set<number>();
-  for (const paragraph of rowParagraphs(row)) {
-    if (paragraph.content.length === 0) continue;
-    expect(paragraph.pPrMark).toBeUndefined();
-    const wrappers = paragraph.content.filter((content) => content.type === wrapper);
-    expect(wrappers.length).toBeGreaterThan(0);
-    for (const content of wrappers) {
-      expect(content.info.author).toBe("Reviewer");
-      expect(content.info.date).toBe(DATE);
-      expect(revisionIds.has(content.info.id)).toBe(true);
-      expect(content.info.id).not.toBe(100_000);
-      expect(wrapperIds.has(content.info.id)).toBe(false);
-      wrapperIds.add(content.info.id);
+  const physicalIds = new Set([100_000]);
+  const originalParagraphs = new Map(
+    rowParagraphs(before).map((paragraph) => [paragraph.paraId, paragraph]),
+  );
+  for (const cell of row.cells) {
+    const body = { content: cell.content };
+    for (const location of storyParagraphs(body)) {
+      const { paragraph } = location;
+      if (endsItsContainer(body, location)) {
+        const mark = paragraph.pPrMark;
+        expect(mark).toBeDefined();
+        if (mark === undefined) throw new Error("Tracked cells have a final mark.");
+        expect(mark.kind).toBe(wrapper === "insertion" ? "ins" : "del");
+        expect(mark.info.author).toBe("Reviewer");
+        expect(mark.info.date).toBe(DATE);
+        expect(revisionIds.has(mark.info.id)).toBe(true);
+        expect(physicalIds.has(mark.info.id)).toBe(false);
+        physicalIds.add(mark.info.id);
+      } else {
+        expect(paragraph.pPrMark).toStrictEqual(originalParagraphs.get(paragraph.paraId)?.pPrMark);
+      }
+      if (paragraph.content.length === 0) continue;
+      const wrappers = paragraph.content.filter((content) => content.type === wrapper);
+      expect(wrappers.length).toBeGreaterThan(0);
+      for (const content of wrappers) {
+        expect(content.info.author).toBe("Reviewer");
+        expect(content.info.date).toBe(DATE);
+        expect(revisionIds.has(content.info.id)).toBe(true);
+        expect(physicalIds.has(content.info.id)).toBe(false);
+        physicalIds.add(content.info.id);
+      }
     }
   }
-  expect(wrapperIds.size).toBeGreaterThan(0);
+  expect(physicalIds.size).toBe(
+    1 +
+      row.cells.length +
+      rowParagraphs(row).filter((paragraph) => paragraph.content.length > 0).length,
+  );
 };
 
 const operationFamilies = ["insertRow", "deleteRow", "setTableRows"] as const;
@@ -282,7 +342,21 @@ describe("table row operation properties", () => {
             );
             expect(changedRows.length).toBeGreaterThan(0);
             for (const row of changedRows) {
-              assertTrackedRow(row, expectedStructuralChange, expectedWrapper, revisionIds);
+              const original =
+                op.type === DOCUMENT_OP_TYPES.INSERT_ROW
+                  ? op.row
+                  : tableOf(document).rows.find(
+                      (candidate) => operationTarget(candidate) === operationTarget(row),
+                    );
+              if (original === undefined)
+                throw new Error("Tracked rows retain their original target.");
+              assertTrackedRow({
+                row,
+                type: expectedStructuralChange,
+                wrapper: expectedWrapper,
+                revisionIds,
+                before: original,
+              });
             }
           }
 
@@ -322,8 +396,11 @@ describe("table row operation properties", () => {
             if (touched.has(paragraph.paraId ?? "")) continue;
             expect(afterParagraphs.get(paragraph.paraId ?? "")).toBe(paragraph);
           }
-          for (const { paragraph } of storyParagraphs(tracked.document.package.document)) {
-            expect(paragraph.pPrMark).toBeUndefined();
+          const body = tracked.document.package.document;
+          for (const location of storyParagraphs(body)) {
+            if (location.paragraph.pPrMark === undefined || !endsItsContainer(body, location))
+              continue;
+            expect(permitsCellFinalMark(body, location)).toBe(true);
           }
 
           if (kind === "insertRow") {

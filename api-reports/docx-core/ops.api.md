@@ -66,6 +66,8 @@ export type DeleteTableOp = {
     story: OpStory;
     blockId: string;
     expected?: Table;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
@@ -214,6 +216,11 @@ export type InsertTableOp = {
     story: OpStory;
     at: BlockInsertionPoint;
     table: Table;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
+    terminal?: {
+        beforeBlockId: string;
+    };
 };
 
 // @public

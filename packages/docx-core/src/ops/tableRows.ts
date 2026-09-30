@@ -3,14 +3,7 @@ import { Result, panic } from "better-result";
 import { applyTableOp } from "./tables";
 import { locateTableRow, type TableRowLocation } from "./tableLocation";
 
-import type {
-  BlockContent,
-  Document,
-  DocumentBody,
-  Paragraph,
-  Table,
-  TableRow,
-} from "../model/document";
+import type { Document, DocumentBody, Paragraph, Table, TableRow } from "../model/document";
 import {
   endsItsContainer,
   storyBody,
@@ -21,9 +14,7 @@ import {
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
-import { freshenIdentities } from "./identity";
 import {
-  IDENTITY_SPACES,
   collides,
   countIds,
   countKeys,
@@ -33,22 +24,19 @@ import {
   packageIdentityKeys,
   packageParagraphIds,
   paragraphIdsIn,
-  slotKey,
 } from "./ids";
 import { textsIn } from "./leaves";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
-import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { stampInfo, wrapTracked, WRAP_KINDS } from "./review";
+import { WRAP_KINDS } from "./review";
+import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
   type DeleteRowOp,
   type InsertRowOp,
   type OpStory,
-  type RevisionStamp,
   type SetTableRowsOp,
-  type NewIds,
 } from "./types";
 
 type RowOp = InsertRowOp | DeleteRowOp | SetTableRowsOp;
@@ -65,184 +53,12 @@ const paragraphsIn = (rows: readonly TableRow[]): Paragraph[] =>
     ({ paragraph }) => paragraph,
   );
 
-/** Rebuild only paths to changed paragraphs, retaining every other record. */
-const mapParagraphs = (
-  blocks: readonly BlockContent[],
-  replace: (paragraph: Paragraph) => Paragraph,
-): BlockContent[] =>
-  blocks.map((block): BlockContent => {
-    switch (block.type) {
-      case "paragraph":
-        return replace(block);
-      case "blockSdt":
-      case "blockCustomXml":
-        return { ...block, content: mapParagraphs(block.content, replace) };
-      case "table":
-        return {
-          ...block,
-          rows: block.rows.map((row) => ({
-            ...row,
-            cells: row.cells.map((cell) => ({
-              ...cell,
-              content: mapParagraphs(cell.content, replace),
-            })),
-          })),
-        };
-      case "preservedBlock":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-        return block;
-      default: {
-        const unreachable: never = block;
-        return unreachable;
-      }
-    }
-  });
-
-const rowWithParagraphs = (
-  row: TableRow,
-  replace: (paragraph: Paragraph) => Paragraph,
-): TableRow => ({
-  ...row,
-  cells: row.cells.map((cell) => ({
-    ...cell,
-    content: mapParagraphs(cell.content, replace),
-  })),
-});
-
 /** Indexed markup and shared row wrappers need a structural table operation. */
 const needsTableEdit = (table: Table): boolean =>
   table.preserved !== undefined ||
   table.bookmarks !== undefined ||
   table.carrierStack !== undefined ||
   table.rows.some((row) => row.contentControls !== undefined || row.carrierStack !== undefined);
-
-/** Nested tables, captured blocks and cell revisions have no tracked-row construction yet. */
-const trackableBlocks = (blocks: readonly BlockContent[]): boolean =>
-  blocks.every((block) => {
-    switch (block.type) {
-      case "paragraph":
-        return block.sectionProperties === undefined;
-      case "blockSdt":
-      case "blockCustomXml":
-        return trackableBlocks(block.content);
-      case "table":
-      case "preservedBlock":
-      case "bookmarkStart":
-      case "bookmarkEnd":
-        return false;
-      default: {
-        const unreachable: never = block;
-        return unreachable;
-      }
-    }
-  });
-
-type TrackRowOptions = {
-  document: Document;
-  op: InsertRowOp | DeleteRowOp;
-  row: TableRow;
-  revision: RevisionStamp;
-  newIds: NewIds | undefined;
-  kind: (typeof WRAP_KINDS)[keyof typeof WRAP_KINDS];
-};
-
-const trackRow = ({
-  document,
-  op,
-  row,
-  revision,
-  newIds,
-  kind,
-}: TrackRowOptions): Result<TableRow, DocumentOpRefusal> => {
-  if (row.structuralChange !== undefined) {
-    return refused({
-      op: op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-      message: "The row already carries a structural revision.",
-    });
-  }
-  if (
-    row.cells.some((cell) => cell.structuralChange !== undefined || !trackableBlocks(cell.content))
-  ) {
-    return refused({
-      op: op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "The row contains an unsupported tracked structure.",
-    });
-  }
-  const before = paragraphsIn([row]);
-  const after: Paragraph[] = [];
-  for (const paragraph of before) {
-    const wrapped = wrapTracked({
-      items: paragraph.content,
-      from: { offset: 0, zeroWidthBefore: 0 },
-      to: {
-        offset: paragraphLength(paragraph),
-        zeroWidthBefore: Number.MAX_SAFE_INTEGER,
-      },
-      kind,
-      stamp: revision,
-    });
-    if (wrapped.kind === "refused") {
-      return refused({
-        op: op,
-        reason: wrapped.reason,
-        message: "The row's content cannot record this revision.",
-      });
-    }
-    after.push(
-      wrapped.kind === "unchanged" ? paragraph : { ...paragraph, content: wrapped.content },
-    );
-  }
-  // The row gets the stamp's first id. Its inline wrappers take the supplied
-  // additional ids; existing records keep theirs, including nested changes.
-  const outside = new Set(packageIdentityKeys(document.package));
-  if (op.type === DOCUMENT_OP_TYPES.DELETE_ROW) {
-    for (const key of identityKeysIn(before)) outside.delete(key);
-  }
-  outside.add(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision.id }));
-  const freshened = freshenIdentities({
-    before,
-    after,
-    newIds: newIds ?? {},
-    usedElsewhere: () => outside,
-  });
-  switch (freshened.kind) {
-    case "needsIds":
-      return refused({
-        op: op,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-        message: `The row needs ${freshened.missing} additional revision ids.`,
-      });
-    case "invalidId":
-      return refused({
-        op: op,
-        reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
-        message: `${freshened.id} cannot be a new revision id.`,
-      });
-    case "fresh": {
-      const byId = new Map(
-        freshened.paragraphs.map((paragraph) => [idKey(paragraph.paraId ?? ""), paragraph]),
-      );
-      return Result.ok({
-        ...rowWithParagraphs(
-          row,
-          (paragraph) =>
-            byId.get(idKey(paragraph.paraId ?? "")) ?? panic("A tracked row lost a paragraph."),
-        ),
-        structuralChange: {
-          type: kind === WRAP_KINDS.INSERTION ? "tableRowInsertion" : "tableRowDeletion",
-          info: stampInfo(revision),
-        },
-      });
-    }
-    default: {
-      const unreachable: never = freshened;
-      return unreachable;
-    }
-  }
-};
 
 type WithRowsOptions = {
   document: Document;
@@ -342,6 +158,7 @@ const commitRows = ({
     if (
       mark !== undefined &&
       endsItsContainer(body, paragraphLocation) &&
+      !permitsCellFinalMark(body, paragraphLocation) &&
       !structurallyEqual(
         mark,
         originalParagraphs.get(idKey(paragraphLocation.paragraph.paraId ?? ""))?.pPrMark,
@@ -350,7 +167,7 @@ const commitRows = ({
       return refused({
         op: op,
         reason: DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
-        message: "A row operation cannot add a mark to a cell's final paragraph.",
+        message: "A cell-final mark must belong to its row structural revision.",
       });
     }
   }
@@ -467,17 +284,18 @@ export const applyRowOp = (
       }
       const tracked =
         op.revision === undefined
-          ? Result.ok(incoming)
-          : trackRow({
+          ? Result.ok([incoming])
+          : trackTableRows({
               document,
               op,
-              row: incoming,
+              rows: [incoming],
               revision: op.revision,
               newIds: op.newIds,
               kind: WRAP_KINDS.INSERTION,
             });
       if (tracked.isErr()) return Result.err(tracked.error);
-      rows.splice(op.at, 0, tracked.value);
+      const row = tracked.value.at(0) ?? panic("A tracked insertion lost its row.");
+      rows.splice(op.at, 0, row);
       return commitRows({ document: document, op: op, location: location, rows: rows });
     }
     case DOCUMENT_OP_TYPES.DELETE_ROW: {
@@ -503,26 +321,16 @@ export const applyRowOp = (
       if (op.revision === undefined) {
         rows.splice(location.rowIndex, 1);
       } else {
-        if (
-          before.filter((candidate) => candidate.structuralChange?.type !== "tableRowDeletion")
-            .length <= 1
-        ) {
-          return refused({
-            op: op,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-            message: "Deleting the last remaining row requires a table operation.",
-          });
-        }
-        const tracked = trackRow({
+        const tracked = trackTableRows({
           document,
           op,
-          row,
+          rows: [row],
           revision: op.revision,
           newIds: op.newIds,
           kind: WRAP_KINDS.DELETION,
         });
         if (tracked.isErr()) return Result.err(tracked.error);
-        rows[location.rowIndex] = tracked.value;
+        rows[location.rowIndex] = tracked.value.at(0) ?? panic("A tracked deletion lost its row.");
       }
       return commitRows({ document: document, op: op, location: location, rows: rows });
     }

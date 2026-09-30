@@ -39,9 +39,10 @@ import type {
 /**
  * The operation schema this module reads and writes.
  *
- * Version 4 adds paragraph deletion through `deleteBlocks`, direct whole-table
- * operations and their exact structural inverse.
- * Version 3 adds paragraph insertion through `insertBlocks` and the table-row
+ * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
+ * whole-table operations with their exact structural inverse, terminal insertion,
+ * and cell-ending paragraph marks on tracked row operations.
+ * Version 3 added paragraph insertion through `insertBlocks` and the table-row
  * operations `insertRow`, `deleteRow` and `setTableRows`.
  * Version 2 added tracked changes: the `revision` stamp on the text, formatting
  * and paragraph operations, and the review operations `setParagraphReview`,
@@ -582,8 +583,9 @@ export type ResolveRevisionOp = {
 /**
  * Insert a row at a zero-based index in the table holding `blockId`.
  * The paragraph reference selects the innermost table containing it.
- * With `revision`, the row and its cell content record an insertion; no
- * paragraph mark changes. `newIds` names the additional wrapper ids.
+ * With `revision`, the row, its cell content and
+ * cell-ending paragraph marks record insertion. `newIds` supplies the
+ * additional physical revision ids.
  */
 export type InsertRowOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_ROW;
@@ -623,29 +625,41 @@ export type SetTableRowsOp = {
   rows: readonly TableRow[];
 };
 
-/** Insert a table before or after a paragraph, preserving a final paragraph. */
+/**
+ * Insert a table before or after a paragraph. Tracking records each row,
+ * cell content and cell-ending paragraph mark. At a container's end,
+ * `terminal` moves the source content into a new preceding paragraph while
+ * retaining the source id and fields on the untracked final paragraph.
+ */
 export type InsertTableOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
   story: OpStory;
   at: BlockInsertionPoint;
   table: Table;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+  terminal?: { beforeBlockId: string };
 };
 
 /**
  * Remove the innermost table holding the addressed paragraph. Its block list
- * must retain a paragraph for the inverse; resolve terminal cell marks first.
+ * must retain a paragraph for the inverse. Tracking records row, cell-content
+ * and cell-ending paragraph-mark deletions without removing content.
  */
 export type DeleteTableOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_TABLE;
   story: OpStory;
   blockId: string;
   expected?: Table;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
 };
 
 /**
  * Exact structural inverse for table edits. The addressed paragraph must
  * remain in the same block list; unrelated edits in that list make it stale.
- * Surrounding blocks, section boundaries and container-final marks are preserved.
+ * Section boundaries and story-final marks are preserved; cell-ending marks
+ * are exact model data, including after independent row resolution.
  */
 export type SetContainerBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
