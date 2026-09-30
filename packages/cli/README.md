@@ -235,8 +235,11 @@ unless the file still has that version.
 
 A block id is the paragraph's own `w14:paraId` when it has one
 (`blockIdSource: "package"`). A paragraph without one gets an id derived from
-its text and position (`blockIdSource: "synthetic"`): stable across reads of
-the same bytes, but valid only for the `fileVersion` it was read at.
+the file's bytes (`blockIdSource: "synthetic"`): stable across reads of the
+same bytes, and written into the file as its `w14:paraId` by the first change,
+so a paragraph keeps its id across edits. A signed package is never rewritten
+for this; its id-less paragraphs keep ids derived from text and position,
+valid only for the `fileVersion` they were read at.
 
 `read` pages with `--max-blocks`; a page that stops early carries
 `nextCursor`, which `--cursor` continues. A cursor is bound to the version it

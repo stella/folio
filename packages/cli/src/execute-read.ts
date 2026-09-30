@@ -4,9 +4,15 @@ import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
 import { compareDocxVersions, formatVersionDiffForLLM } from "@stll/folio-agents/compare";
 import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
 import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
-import type { FolioAIBlock, FolioDocxReviewer } from "@stll/folio-core/server";
+import type { FolioAIBlock } from "@stll/folio-core/server";
 
-import { checkExpectedVersion, openReviewer, readDocumentFile } from "./document";
+import {
+  checkExpectedVersion,
+  openReviewer,
+  readDocumentFile,
+  type FolioBlockIdSource,
+  type OpenedDocument,
+} from "./document";
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { MAX_READ_BLOCKS, type FolioFileToolSpec } from "./registry";
 
@@ -41,20 +47,20 @@ export type FileReadData = {
   result: unknown;
 };
 
-/**
- * Where a block id comes from. `package` ids are the paragraph's own
- * `w14:paraId`; `synthetic` ids are derived from the paragraph's text and
- * position, valid only for the fileVersion they were read at.
- */
-export type FolioBlockIdSource = "package" | "synthetic";
-
-const idSourceOf = ({ idStability }: FolioAIBlock): FolioBlockIdSource =>
-  idStability === "positional" ? "synthetic" : "package";
+export type { FolioBlockIdSource } from "./document";
 
 type BlockIdSources = ReadonlyMap<string, FolioBlockIdSource>;
 
-export const blockIdSources = (reviewer: FolioDocxReviewer): BlockIdSources =>
-  new Map(reviewer.snapshot().blocks.map((block) => [block.id, idSourceOf(block)]));
+const idSourceOf = (
+  { id, idStability }: FolioAIBlock,
+  mintedIds: OpenedDocument["mintedIds"],
+): FolioBlockIdSource => {
+  if (mintedIds !== null) return mintedIds.has(id) ? "synthetic" : "package";
+  return idStability === "positional" ? "synthetic" : "package";
+};
+
+export const blockIdSources = ({ reviewer, mintedIds }: OpenedDocument): BlockIdSources =>
+  new Map(reviewer.snapshot().blocks.map((block) => [block.id, idSourceOf(block, mintedIds)]));
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -205,7 +211,7 @@ export const pageReadDocument = ({
 
 type RunAgentReadOptions = {
   tool: AgentReadTool;
-  reviewer: FolioDocxReviewer;
+  opened: OpenedDocument;
   fileVersion: string;
   args: Readonly<Record<string, unknown>>;
   bounds: FolioReadBounds;
@@ -220,13 +226,13 @@ const unexpectedShape = (tool: string): FolioCliError =>
 
 const runAgentRead = ({
   tool,
-  reviewer,
+  opened,
   fileVersion,
   args,
   bounds,
   pageByteBudget,
 }: RunAgentReadOptions): Result<unknown, FolioCliError> => {
-  const bridge = createReviewerBridge(reviewer);
+  const bridge = createReviewerBridge(opened.reviewer);
   const isReadDocument = tool.agentTool === FOLIO_AGENT_TOOL_NAMES.readDocument;
   const agentArgs = isReadDocument ? {} : args;
   const executed = executeFolioToolCallUntyped(tool.agentTool, agentArgs, bridge);
@@ -238,7 +244,7 @@ const runAgentRead = ({
     if (!Array.isArray(result)) return Result.err(unexpectedShape(tool.name));
     return pageReadDocument({
       blocks: result,
-      sources: blockIdSources(reviewer),
+      sources: blockIdSources(opened),
       fileVersion,
       args,
       bounds,
@@ -251,7 +257,7 @@ const runAgentRead = ({
     }
     return Result.ok({
       ...result,
-      blocks: labelBlocks(result["blocks"], blockIdSources(reviewer)),
+      blocks: labelBlocks(result["blocks"], blockIdSources(opened)),
     });
   }
   if (tool.agentTool === FOLIO_AGENT_TOOL_NAMES.findText) {
@@ -337,7 +343,7 @@ const readWithAgentTool = async (
   const { path, fileVersion } = file.value;
   const result = runAgentRead({
     tool,
-    reviewer: reviewer.value,
+    opened: reviewer.value,
     fileVersion,
     args: call.args,
     bounds,

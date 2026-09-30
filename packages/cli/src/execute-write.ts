@@ -202,15 +202,16 @@ const mutateWithAgentTool = async ({
   options,
 }: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
   if (tool.type !== "agentWrite") return panic("mutateWithAgentTool needs an agentWrite tool");
-  const reviewer = await openReviewer(source, options.author);
-  if (reviewer.isErr()) return Result.err(reviewer.error);
+  const opened = await openReviewer(source, options.author);
+  if (opened.isErr()) return Result.err(opened.error);
+  const { reviewer } = opened.value;
   const idSeed = await nextRevisionIdSeed(source.bytes);
   if (idSeed.isErr()) return Result.err(idSeed.error);
 
   const commentTool =
     tool.agentTool === FOLIO_AGENT_TOOL_NAMES.replyComment ||
     tool.agentTool === FOLIO_AGENT_TOOL_NAMES.resolveComment;
-  if (commentTool && !commentExists(reviewer.value, args["commentId"])) {
+  if (commentTool && !commentExists(reviewer, args["commentId"])) {
     return Result.err(
       cliError({
         code: FOLIO_CLI_ERROR_CODES.notFound,
@@ -220,7 +221,7 @@ const mutateWithAgentTool = async ({
     );
   }
 
-  const bridge = createReviewerBridge(reviewer.value, {
+  const bridge = createReviewerBridge(reviewer, {
     mode: tool.editMode === "tracked-or-direct" ? options.mode : "tracked-changes",
     revisionStamp: { date: options.date, idSeed: idSeed.value },
   });
@@ -229,7 +230,7 @@ const mutateWithAgentTool = async ({
   const refusal = refusalFor(executed.result);
   if (refusal !== null) return Result.err(refusal);
 
-  const saved = await saveReviewer(reviewer.value, options.repack);
+  const saved = await saveReviewer(reviewer, options.repack);
   if (saved.isErr()) return Result.err(saved.error);
   const receipts =
     isRecord(executed.result) && Array.isArray(executed.result["receipts"])
@@ -259,12 +260,13 @@ const resolveChanges = async ({
       ),
     );
   }
-  const reviewer = await openReviewer(source, options.author);
-  if (reviewer.isErr()) return Result.err(reviewer.error);
+  const opened = await openReviewer(source, options.author);
+  if (opened.isErr()) return Result.err(opened.error);
+  const { reviewer } = opened.value;
 
   let resolved: number | readonly string[];
   if (all === true) {
-    const count = action === "accept" ? reviewer.value.acceptAll() : reviewer.value.rejectAll();
+    const count = action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
     if (count === 0) {
       return Result.err(
         cliError({
@@ -276,7 +278,7 @@ const resolveChanges = async ({
     resolved = count;
   } else {
     const selected = idList ?? [];
-    const known = new Set(reviewer.value.getChanges().map(({ id }) => String(id)));
+    const known = new Set(reviewer.getChanges().map(({ id }) => String(id)));
     const missing = selected.filter((id) => !known.has(id));
     if (missing.length > 0) {
       return Result.err(
@@ -290,9 +292,7 @@ const resolveChanges = async ({
     }
     for (const id of selected) {
       const changed =
-        action === "accept"
-          ? reviewer.value.acceptChange(Number(id))
-          : reviewer.value.rejectChange(Number(id));
+        action === "accept" ? reviewer.acceptChange(Number(id)) : reviewer.rejectChange(Number(id));
       if (!changed) {
         return Result.err(
           cliError({
@@ -304,11 +304,11 @@ const resolveChanges = async ({
     }
     resolved = selected;
   }
-  const saved = await saveReviewer(reviewer.value, options.repack);
+  const saved = await saveReviewer(reviewer, options.repack);
   if (saved.isErr()) return Result.err(saved.error);
   return Result.ok({
     ...saved.value,
-    result: { action, resolved, remaining: reviewer.value.getChanges().length },
+    result: { action, resolved, remaining: reviewer.getChanges().length },
     receipts: [],
   });
 };
