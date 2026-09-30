@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseNumbering } from "./numberingParser";
 import { parseParagraph } from "./paragraphParser";
@@ -389,3 +391,54 @@ describe("w:numId and w:ilvl inherit independently", () => {
     expect(para.formatting?.numPrFromStyle).toBeUndefined();
   });
 });
+
+test(
+  "numbering defaults omit neutral zeros and preserve indentation overrides",
+  () => {
+    assertProperty(
+      fc.property(
+        fc.record({
+          left: fc.constantFrom(0, 360, 720),
+          firstLine: fc.constantFrom(0, 180, 360),
+          styled: fc.boolean(),
+          styleLeft: fc.boolean(),
+          styleFirstLine: fc.boolean(),
+          directZero: fc.boolean(),
+          explicitStyle: fc.boolean(),
+        }),
+        ({ left, firstLine, styled, styleLeft, styleFirstLine, directZero, explicitStyle }) => {
+          const numPr = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';
+          const styles = parseStyles(
+            `<w:styles ${W}><w:style w:type="paragraph" w:styleId="Numbered" w:default="1"><w:name w:val="Numbered"/><w:pPr>${styled ? numPr : ""}<w:ind ${styleLeft ? 'w:left="720"' : ""} ${styleFirstLine ? 'w:hanging="360"' : ""}/></w:pPr></w:style></w:styles>`,
+            null,
+          );
+          const numbering = parseNumbering(
+            NUMBERING_WITH_HANGING.replace(
+              'w:left="720" w:hanging="360"',
+              `w:left="${left}" w:firstLine="${firstLine}"`,
+            ),
+          );
+          const paragraph = parseStyledParagraph(
+            `<w:pPr>${styled || explicitStyle ? '<w:pStyle w:val="Numbered"/>' : ""}${styled ? "" : numPr}${directZero ? '<w:ind w:left="0" w:firstLine="0"/>' : ""}</w:pPr>`,
+            styles,
+            numbering,
+          );
+          let expectedLeft: number | undefined;
+          let expectedFirstLine: number | undefined;
+          if (directZero) {
+            expectedLeft = 0;
+            expectedFirstLine = 0;
+          } else {
+            if (!(styled && styleLeft) && (left !== 0 || styleLeft)) expectedLeft = left;
+            if (!(styled && styleFirstLine) && (firstLine !== 0 || styleFirstLine))
+              expectedFirstLine = firstLine;
+          }
+          expect(paragraph.formatting?.indentLeft).toBe(expectedLeft);
+          expect(paragraph.formatting?.indentFirstLine).toBe(expectedFirstLine);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  },
+  propertyTestTimeout(10_000),
+);

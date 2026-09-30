@@ -27,9 +27,9 @@ export type KnownConformanceGap = {
   shapes?: readonly string[];
   /** Placements covered; every placement when omitted. */
   placements?: readonly SelectionPlacement[];
+  /** Shape/operation pairs that have complete resolution coverage. */
+  excludedCases?: readonly Pick<ConformanceCaseKey, "shape" | "operation">[];
   modes?: readonly EditorMode[];
-  /** Cases inside this scope whose violations must remain unmasked. */
-  except?: readonly Partial<ConformanceCaseKey>[];
   kinds: readonly ViolationKind[];
   /**
    * `full` for a gap only the full tier's placements reach; the default tier
@@ -152,8 +152,11 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:generateTOC",
       "command:insertTable",
     ],
+    excludedCases: [
+      { shape: "tracked-changes", operation: "paste:copied-blocks" },
+      { shape: "tables", operation: "paste:copied-blocks" },
+    ],
     modes: ["suggesting"],
-    except: [{ shape: "tables", operation: "paste:copied-blocks" }],
     kinds: ["reject-mismatch", "accept-mismatch"],
   },
   {
@@ -161,6 +164,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "In suggesting mode, typing or inserting over a range deletes the range untracked, and replacing a range that spans paragraphs loses the typed text when the change is accepted",
     operations: REPLACING_OPERATIONS,
     placements: RANGE_PLACEMENTS,
+    excludedCases: [{ shape: "tracked-changes", operation: "paste:copied-blocks" }],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
     tier: "full",
@@ -225,9 +229,6 @@ export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): b
   (gap.operations === undefined || gap.operations.includes(key.operation)) &&
   (gap.shapes === undefined || gap.shapes.includes(key.shape)) &&
   (gap.placements === undefined || gap.placements.includes(key.placement)) &&
-  !gap.except?.some(
-    (excluded) =>
-      (excluded.shape === undefined || excluded.shape === key.shape) &&
-      (excluded.operation === undefined || excluded.operation === key.operation) &&
-      (excluded.placement === undefined || excluded.placement === key.placement),
+  !gap.excludedCases?.some(
+    ({ shape, operation }) => shape === key.shape && operation === key.operation,
   );
