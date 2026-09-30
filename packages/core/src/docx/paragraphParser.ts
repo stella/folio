@@ -96,6 +96,7 @@ import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import { captureSdtSiblingMarkers, parseSdtProperties } from "./sdtProperties";
 import { parseSectionProperties } from "./sectionParser";
 import type { StyleMap } from "./styleParser";
+import { resolveDefaultParagraphStyle } from "./defaultParagraphStyle";
 import { captureVerbatimXml } from "./verbatimCapture";
 import {
   cloneElement,
@@ -2258,9 +2259,11 @@ export function parseParagraph(
         // mirrors listAttrsFromResolvedStyle so the picker and the loader
         // resolve a style identically. Direct paragraph numPr keeps the
         // level-over-style behavior (Word's toolbar-list case).
-        const chainInd = numPrFromStyle
-          ? styleChainInd(paragraph.formatting?.styleId, styles)
-          : { left: false, firstLine: false };
+        const styleId =
+          paragraph.formatting?.styleId ??
+          (styles ? resolveDefaultParagraphStyle(styles.values())?.styleId : undefined);
+        const styleInd = styleChainInd(styleId, styles);
+        const chainInd = numPrFromStyle ? styleInd : { left: false, firstLine: false };
         if (level.pPr) {
           if (!paragraph.formatting) {
             paragraph.formatting = {};
@@ -2274,13 +2277,22 @@ export function parseParagraph(
             parseNumericAttribute(directInd, "w", "firstLine") !== undefined ||
             parseNumericAttribute(directInd, "w", "hanging") !== undefined;
 
-          if (!hasDirectLeft && !chainInd.left && level.pPr.indentLeft !== undefined) {
+          // An inherited zero with no style indent to override is the absent
+          // default. Materializing it makes the reopened reader report an
+          // authored indentation that the live paragraph never stated.
+          if (
+            !hasDirectLeft &&
+            !chainInd.left &&
+            level.pPr.indentLeft !== undefined &&
+            (level.pPr.indentLeft !== 0 || styleInd.left)
+          ) {
             paragraph.formatting.indentLeft = level.pPr.indentLeft;
           }
           if (
             !hasDirectFirstLineOrHanging &&
             !chainInd.firstLine &&
-            numberingLevelHasMarkerSlot(level)
+            numberingLevelHasMarkerSlot(level) &&
+            (level.pPr.indentFirstLine !== 0 || styleInd.firstLine)
           ) {
             if (level.pPr.indentFirstLine !== undefined) {
               paragraph.formatting.indentFirstLine = level.pPr.indentFirstLine;

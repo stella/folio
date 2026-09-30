@@ -1,4 +1,11 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+import { FolioDocxReviewer } from "../../ai-edits/headless";
+import { fromMarkdown } from "../../markdown/fromMarkdown";
+import { createDocx } from "../../docx/rezip";
+import { ensureParaIds } from "../../docx/ensureParaIds";
+import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
 
 import { documentShape } from "../../__tests__/documentShapes";
 import {
@@ -90,3 +97,71 @@ describe("paragraph indentation on save", () => {
     });
   });
 });
+
+// The consumer reader-stability oracle found inherited numbering zeros being
+// reported as direct indentation only after reopening an edited paragraph.
+test(
+  "zero numbering defaults stay absent from direct indentation across a style edit and save",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.constantFrom("direct", "tracked-changes"),
+        fc.integer({ min: 1, max: 9 }),
+        async (mode, numId) => {
+          const document = fromMarkdown("# Title\n\nBody clause.");
+          document.package.numbering = {
+            abstractNums: [
+              {
+                abstractNumId: numId,
+                levels: [
+                  {
+                    ilvl: 0,
+                    start: 1,
+                    numFmt: "decimal",
+                    lvlText: "%1.",
+                    pPr: { indentLeft: 0, indentFirstLine: 0 },
+                  },
+                ],
+              },
+            ],
+            nums: [{ numId, abstractNumId: numId }],
+          };
+          const style = document.package.styles?.styles.find(
+            (candidate) => candidate.styleId === "Heading2",
+          );
+          if (!style) throw new Error("Heading2 is missing");
+          style.pPr = { ...style.pPr, numPr: paragraphNumberingFromSlots({ numId, ilvl: 0 }) };
+          const bytes = (await ensureParaIds(await createDocx(document))).docx;
+          const reviewer = await FolioDocxReviewer.fromBuffer(bytes, { author: "Test" });
+          const block = reviewer
+            .getContent()
+            .find((candidate) => candidate.text === "Body clause.");
+          if (!block) throw new Error("Body clause is missing");
+          reviewer.applyDocumentOperations({
+            version: 1,
+            mode,
+            operations: [
+              {
+                id: "style",
+                type: "setBlockParagraphProperties",
+                blockId: block.id,
+                properties: { styleId: "Heading2" },
+              },
+            ],
+          });
+          const live = reviewer.getContent().find((candidate) => candidate.text === "Body clause.");
+          const saved = await FolioDocxReviewer.fromBuffer(await reviewer.toBuffer(), {
+            author: "Test",
+          });
+          const reopened = saved
+            .getContent()
+            .find((candidate) => candidate.text === "Body clause.");
+          expect(live?.directIndentation).toBeUndefined();
+          expect(reopened?.directIndentation).toEqual(live?.directIndentation);
+        },
+      ),
+      { numRuns: 18 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
