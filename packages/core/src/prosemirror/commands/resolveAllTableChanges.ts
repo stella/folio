@@ -17,6 +17,7 @@ import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility"
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { nodePropertyRevisionSites, propertyRevisionRecords } from "../revisionCarriers";
 import {
+  acceptedMergeFoldsIntoCellAbove,
   createRestoredTableCell,
   hasMatchingCollapsedTableCellMerge,
   tableCellContinuationCells,
@@ -658,9 +659,11 @@ const resolvePureTableMerges = ({
         }
       }
     } else if (marker?.kind === "merge") {
-      const joinsAbove = isTableCellMergeRevisionContinuation(
-        mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal,
-      );
+      const joinsAbove =
+        mode === "accept"
+          ? isTableCellMergeRevisionContinuation(marker.verticalMerge) &&
+            acceptedMergeFoldsIntoCellAbove(entry.node)
+          : isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal);
       if (mode === "accept" && !joinsAbove) {
         entry.touched = true;
         entry.node = entry.node.type.create(
