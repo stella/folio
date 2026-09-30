@@ -55,6 +55,7 @@ import {
 import {
   FAMILY_BASELINE_FAMILIES,
   compareFamilyToBaseline,
+  compareZeroFamilies,
   loadFamilyBaseline,
   writeFamilyBaselines,
 } from "./lib/corpus-family-baseline";
@@ -538,6 +539,7 @@ const checkAgainstBaseline = async (census: CorpusCensusFile): Promise<void> => 
   );
   const baseline = await loadBaseline();
   const violations = [
+    ...compareZeroFamilies(census.family),
     ...compareToBaseline(
       { ...baseline, entries: withoutDispositions(baseline.entries, dispositions) },
       defects,
@@ -647,6 +649,12 @@ const main = async (args: string[]): Promise<void> => {
   if (command === "write-baseline") {
     await assertReportOnlyListIsLive();
     const census = await loadCensuses(rest);
+    const zeroViolations = compareZeroFamilies(census.family);
+    if (zeroViolations.length > 0) {
+      throw new CorpusGateError({
+        message: `Operation invariant findings cannot be baselined:\n${renderViolations(zeroViolations)}`,
+      });
+    }
     // Writing is stricter than comparing: a comparison can tolerate a thin run
     // by keeping what it could not confirm, but a baseline written from one
     // records counts that are low for reasons outside the code, and the next
