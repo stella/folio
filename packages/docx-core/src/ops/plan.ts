@@ -41,6 +41,7 @@ const usedIds = (document: Document, space: IdentitySpace): Set<number> =>
 /** The same operation with other new ids; one that takes none is returned as it is. */
 const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:

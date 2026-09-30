@@ -54,6 +54,7 @@ import {
   type RunPropertyChange,
 } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
   endsItsContainer,
@@ -1871,6 +1872,8 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
 
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return deleteBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return insertBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
@@ -1917,6 +1920,7 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
 /** The stamp of a tracked operation; `undefined` for a direct one. */
 export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:

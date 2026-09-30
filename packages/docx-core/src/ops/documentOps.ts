@@ -26,6 +26,7 @@ export {
   toOpEnvelope,
   type BlockInsertionPoint,
   type InsertBlocksOp,
+  type DeleteBlocksOp,
   type InsertTableOp,
   type DeleteTableOp,
   type SetContainerBlocksOp,

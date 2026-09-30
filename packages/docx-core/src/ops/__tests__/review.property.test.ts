@@ -985,6 +985,8 @@ describe("tracked operations and their resolution", () => {
 /** The paragraphs an operation names. */
 const namedParagraphs = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return new Set(op.blockIds.map(idKey));
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         idKey(op.at.blockId),

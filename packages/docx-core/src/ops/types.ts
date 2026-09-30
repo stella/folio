@@ -39,10 +39,10 @@ import type {
 /**
  * The operation schema this module reads and writes.
  *
- * Version 4 adds tracked whole tables, terminal insertion and cell-ending
- * paragraph marks on tracked row operations.
- * Version 3 added direct whole-table operations and their exact structural
- * inverse, paragraph insertion through `insertBlocks`, and the table-row
+ * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
+ * whole-table operations with their exact structural inverse, terminal insertion,
+ * and cell-ending paragraph marks on tracked row operations.
+ * Version 3 added paragraph insertion through `insertBlocks` and the table-row
  * operations `insertRow`, `deleteRow` and `setTableRows`.
  * Version 2 added tracked changes: the `revision` stamp on the text, formatting
  * and paragraph operations, and the review operations `setParagraphReview`,
@@ -167,6 +167,7 @@ export type SplitParagraphFields = Omit<
 
 /** The operation kinds of schema version 4. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
   INSERT_TEXT: "insertText",
   INSERT_CONTENT: "insertContent",
@@ -463,6 +464,27 @@ export type InsertBlocksOp = {
 };
 
 /**
+ * Delete adjacent paragraphs in one block list. A following paragraph keeps
+ * its identity and fields. At the end of a block list, the last selected
+ * paragraph survives: it takes the preceding paragraph's content and
+ * paragraph properties when present, keeping its own mark properties and id;
+ * without a preceding paragraph it becomes empty.
+ *
+ * With `revision`, selected content is wrapped in deletions and the removed
+ * breaks are marked. The container-final paragraph never receives a mark.
+ * Section boundaries, non-paragraph following blocks and conflicting
+ * paragraph reviews are refused rather than partially removed. Tracked deletion
+ * of content carrying revision or content-control ids is also unsupported.
+ */
+export type DeleteBlocksOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_BLOCKS;
+  story: OpStory;
+  blockIds: readonly string[];
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
+/**
  * Replace a run of adjacent paragraphs with other paragraphs.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
@@ -649,6 +671,7 @@ export type SetContainerBlocksOp = {
 
 /** A schema-version-4 document operation. */
 export type DocumentOp =
+  | DeleteBlocksOp
   | InsertTableOp
   | DeleteTableOp
   | SetContainerBlocksOp
