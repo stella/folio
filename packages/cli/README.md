@@ -283,11 +283,16 @@ args = ["-y", "@stll/folio-cli", "mcp", "--root", "/path/to/contracts"]
 env = { FOLIO_AUTHOR = "Jane Doe" }
 ```
 
-Tools: `read_document`, `get_document_outline`, `read_section`,
-`list_stories`, `read_story`, `find_text`, `read_comments`, `read_changes`,
-`suggest_changes`, `add_comment`, `reply_comment`, `resolve_comment`,
-`resolve_changes`, and `compare_documents`. Each takes its folio-agents
-arguments plus a file envelope:
+A model is sent the tool list on every turn, so the server lists only the
+frequent tools, with compact schemas: `read_document`, `find_text`,
+`read_comments`, `read_changes`, `suggest_changes`, and `add_comment`. The
+rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
+`reply_comment`, `resolve_comment`, `resolve_changes`, and
+`compare_documents`) are reached through `list_capabilities`,
+`describe_capability` (a tool's full input schema and guidance, listed tools
+included), and `invoke_capability` (`{ capability, input, validate_only }`).
+Every tool is also callable by name. Each takes its folio-agents arguments
+plus a file envelope:
 
 | Field                        | Meaning                                                                                                                       |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
@@ -311,8 +316,17 @@ annotated `destructiveHint: true`; there is no way to skip the version check.
 One call returns at most 200 `read_document` blocks by default (up to
 1,000 with `maxBlocks`), 100 `find_text` matches, and 256 KiB; a longer read
 pages with `nextCursor`, and a result that cannot be paged is refused with
-`too_large` and a hint to narrow it. Results are the `{ ok, data | error }`
-envelope as JSON text, with `isError` set on failures.
+`too_large` and a hint to narrow it.
+
+Results carry what the next call needs. `read_document` returns
+`[id] text` lines (`formatting: true` for each block's fields), a write
+returns the new `fileVersion` plus what it produced (`applied`, `commentId`,
+...), and block ids stay valid across writes. A failure is
+`{ "error": { code, message, hint, retryable } }` with `isError` set.
+Arguments are read leniently (`"true"`, `"20"`, an enum value in another
+case) with an `Input read:` note; an unknown or ambiguous argument is refused
+with `validation_error`, and `overwrite` and `allowRepack` count only as JSON
+`true`.
 
 Resources: `folio://about` (these rules and the roots) and
 `folio://schema/operations` (the JSON Schema of an operation batch).
