@@ -13,7 +13,11 @@ import { panic } from "better-result";
 
 import type { NumberingMap } from "../docx/numberingParser";
 import { formattingEquals } from "../docx/runConsolidator";
-import { expectParagraphAttrs, expectRunPropertyChangeMarkAttrs } from "../prosemirror/attrs";
+import {
+  expectParagraphAttrs,
+  expectRunPropertyChangeMarkAttrs,
+  expectTableRowAttrs,
+} from "../prosemirror/attrs";
 import {
   hasSerializableParagraphPropertyChange,
   paragraphPropertiesSnapshot,
@@ -162,6 +166,7 @@ import {
   normalizeFolioAIBlockText,
 } from "./snapshot";
 import {
+  isEmptyTableCell,
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
   splitTableRectangle,
@@ -1872,6 +1877,32 @@ const deletedRowAffectedRanges = ({
   return ranges;
 };
 
+/**
+ * The blank cells a merge folds into the first cell of its rectangle. Only a
+ * blank cell can fold away tracked, so an edit that fills one decides whether
+ * the merge applies in one mode and not the other; see `batch-claims.ts`. A
+ * cell with content folds directly and is refused tracked whatever the batch
+ * does inside it.
+ */
+const foldedBlankCellRanges = (
+  doc: PMNode,
+  { tablePosition, rectangle }: TableCellMerge,
+): { from: number; to: number }[] => {
+  const table = doc.nodeAt(tablePosition);
+  if (table?.type.spec["tableRole"] !== "table") {
+    return panic("A resolved cell merge lost its table", { position: tablePosition });
+  }
+  const map = TableMap.get(table);
+  const tableStart = tablePosition + 1;
+  const kept = map.map[rectangle.top * map.width + rectangle.left];
+  return map.cellsInRect(rectangle).flatMap((relative) => {
+    const cell = relative === kept ? null : table.nodeAt(relative);
+    return cell && isEmptyTableCell(cell)
+      ? [{ from: tableStart + relative, to: tableStart + relative + cell.nodeSize }]
+      : [];
+  });
+};
+
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions): BatchClaim => {
   const block = item.blockFrom;
@@ -1961,9 +1992,15 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
       let axis: "row" | "column" | "cell" = "cell";
       if (item.operation.type === "insertTableRow") axis = "row";
       if (item.operation.type === "insertTableColumn") axis = "column";
-      return target.type === "none"
-        ? { type: "unclaimed" }
-        : { type: "tableStructure", table: target.tablePosition, axis };
+      if (target.type === "none") {
+        return { type: "unclaimed" };
+      }
+      return {
+        type: "tableStructure",
+        table: target.tablePosition,
+        axis,
+        folded: target.type === "mergeCells" ? foldedBlankCellRanges(doc, target) : [],
+      };
     }
   }
 };
@@ -2534,6 +2571,9 @@ const deletedFinalParagraphAfter = (at: ResolvedPos, paragraphTypeName: string):
  * Where the added break of the final paragraph at `at` rotates to: the free
  * mark `addedBreakCarrierBefore` finds, or else a paragraph the batch deletes
  * whole, whose deleted break the added one cancels (`cancelsDeletedBreak`).
+ * A table whose rows all share one insertion revision from this batch is not
+ * a barrier: rejecting that table removes it before the paragraphs join.
+ * Existing and partially inserted tables remain barriers.
  * The cancelling paragraph must be followed directly by the paragraph its
  * words run into.
  */
@@ -2542,7 +2582,23 @@ const finalBreakCarrierBefore = (
   paragraphTypeName: string,
   batchRevisionIds: ReadonlySet<number>,
 ): { position: number; node: PMNode; cancelsDeletedBreak: boolean } | null => {
-  const free = addedBreakCarrierBefore(at, paragraphTypeName);
+  const free = addedBreakCarrierBefore({
+    at,
+    paragraphTypeName,
+    canCrossTable: (table) => {
+      if (table.childCount === 0) return false;
+      let revisionId: number | undefined;
+      for (let index = 0; index < table.childCount; index++) {
+        const row = table.child(index);
+        if (row.type.spec["tableRole"] !== "row") return false;
+        const { trIns, trDel } = expectTableRowAttrs(row);
+        if (!trIns || trDel || !batchRevisionIds.has(trIns.revisionId)) return false;
+        revisionId ??= trIns.revisionId;
+        if (trIns.revisionId !== revisionId) return false;
+      }
+      return true;
+    },
+  });
   if (free) {
     return { ...free, cancelsDeletedBreak: false };
   }
@@ -2813,6 +2869,8 @@ const withRetiredFinalParagraphs = ({
  * which paragraph ends a container is only settled when the batch is, and an
  * insertion that looked final was undone by the next operation writing a table
  * after it.
+ * A wholly inserted table from this batch can be crossed to reach the carrier;
+ * its removal on reject exposes that same paragraph boundary again.
  *
  * The paragraph the run was appended after may be one the same batch deletes:
  * the insertion landed first, so the deletion took that paragraph's mark as

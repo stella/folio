@@ -2349,7 +2349,7 @@ const shiftAddedParagraphBreakBefore = ({
     return false;
   }
   const resolved = tr.doc.resolve(paragraphPosition);
-  const carrier = addedBreakCarrierBefore(resolved, paragraph.type.name);
+  const carrier = addedBreakCarrierBefore({ at: resolved, paragraphTypeName: paragraph.type.name });
   if (!carrier) {
     return false;
   }

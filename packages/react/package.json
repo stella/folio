@@ -61,7 +61,7 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@base-ui/react": "1.6.0",
+    "@base-ui/react": "1.8.0",
     "@fontsource/arimo": "^5.2.8",
     "@fontsource/caladea": "^5.2.8",
     "@fontsource/carlito": "^5.2.8",
