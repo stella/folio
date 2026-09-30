@@ -126,6 +126,7 @@ import {
   paragraphPropertiesOf,
   paragraphPropertyChange,
   reviewFieldsOf,
+  sameMarkFormatting,
   sameParagraphProperties,
   stampedRevisionIds,
   stampInfo,
@@ -1242,13 +1243,16 @@ type TrackSplitOptions = {
   first: Paragraph;
   /** The half carrying the new id. */
   made: Paragraph;
+  /** Whether the new half is the second, which ends with the paragraph's own mark. */
+  madeSecond: boolean;
 };
 
 /**
  * Record a split as tracked: the new mark is an insertion, and the new
  * paragraph records a property change from the source's properties when it
  * states other ones and carries no change already. Returns the refusal when
- * the operation states a mark or property change of its own.
+ * the operation states a mark or property change of its own, or other run
+ * properties for the paragraph's own mark: no tracked change records those.
  */
 const trackSplit = ({
   op,
@@ -1256,12 +1260,21 @@ const trackSplit = ({
   paragraph,
   first,
   made,
+  madeSecond,
 }: TrackSplitOptions): DocumentOpRefusal | undefined => {
   if (op.firstMark !== undefined || (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
     return refusal(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       "A tracked split records its own mark and property change.",
+    );
+  }
+  // A new second half ends with the paragraph's mark, which rejecting the split keeps.
+  if (madeSecond && !sameMarkFormatting(made.formatting, paragraph.formatting)) {
+    return refusal(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
   first.pPrMark = { kind: "ins", info: stampInfo(stamp) };
@@ -1337,7 +1350,14 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   }
   if (op.revision !== undefined) {
     const madeHalf = newHalf === SPLIT_HALVES.FIRST ? first : second;
-    const tracked = trackSplit({ op, stamp: op.revision, paragraph, first, made: madeHalf });
+    const tracked = trackSplit({
+      op,
+      stamp: op.revision,
+      paragraph,
+      first,
+      made: madeHalf,
+      madeSecond: newHalf === SPLIT_HALVES.SECOND,
+    });
     if (tracked !== undefined) {
       return Result.err(tracked);
     }

@@ -5,6 +5,12 @@
       "path": "379:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:6:0:19:0:3:10:5:3:4:5:3:3:3:4:5:3:4:4:4:4:3:3:3:3:3:3:3:3:3:3:3:3:3:5:3:3:3:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4",
       "note": "Shared review projection must treat optional undefined formatting fields as absent",
       "date": "2026-09-30"
+    },
+    {
+      "seed": 487359569,
+      "path": "1983:0:0:0:0:0:0:0:0:2:1:2:2:2:2:2:2:2:4:15:14:15:14:14:14:14:16:16:16:16:16:16:16:17:17:17:17:17:17:17:17:17:18:18:15:0:13:13:13:13:13:13:13:13:13:16:13:13:13:13:13:27:17:16:11:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:27:24:24:26:26:26:26:26",
+      "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/ops/__tests__/reviewRoundTrip.property.test.ts::L8: ${kind} survives editor save and reopen": [

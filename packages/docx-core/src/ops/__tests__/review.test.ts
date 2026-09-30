@@ -686,6 +686,59 @@ describe("C6: a tracked split's new paragraph has exactly the direct split's fie
   });
 });
 
+describe("a tracked split's new second half keeps the paragraph mark's run properties", () => {
+  const pending = {
+    type: "paragraphPropertyChange" as const,
+    info: { id: 1, author: "Other" },
+    previousFormatting: { alignment: "end" as const },
+  };
+  const source = (fields: Partial<Paragraph>): Paragraph =>
+    paragraph("00000001", [run("abc")], {
+      formatting: { styleId: "Heading1", runProperties: { bold: true } },
+      ...fields,
+    });
+  const splitAtEnd = (formatting: Paragraph["formatting"]): DocumentOp => ({
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: at("00000001", 3),
+    newBlockId: "00000002",
+    newParagraph: { formatting },
+    revision: stamp(2),
+    newIds: { revision: [3] },
+  });
+
+  test("other mark run properties are refused: rejecting could not give them back", () => {
+    for (const fields of [{}, { propertyChanges: [pending] }]) {
+      const document = documentOf(source(fields), paragraph("00000009", [run("next")]));
+      for (const formatting of [
+        { styleId: "Heading1", runProperties: { italic: true } },
+        { styleId: "Heading1" },
+        { styleId: "Heading1", runProperties: { bold: true }, runInWithNext: true },
+      ]) {
+        expect(refusalOf(document, splitAtEnd(formatting))).toBe(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        );
+      }
+    }
+  });
+
+  test("rejecting a split with the same mark run properties gives the paragraph back", () => {
+    for (const fields of [{}, { propertyChanges: [pending] }]) {
+      const original = source(fields);
+      const document = documentOf(original, paragraph("00000009", [run("next")]));
+      const split = applied(
+        document,
+        splitAtEnd({ styleId: "Heading1", runProperties: { bold: true } }),
+      );
+      const [rejected, next] = blocks(
+        resolved(split.document, split.revisions, REVISION_DECISIONS.REJECT),
+      );
+      // The mark ending the paragraph is the new half's, under its id.
+      expect(rejected).toEqual({ ...original, paraId: "00000002" });
+      expect(next).toEqual(paragraph("00000009", [run("next")]));
+    }
+  });
+});
+
 const source6 = (): Paragraph =>
   paragraph("00000001", [run("abcdef")], {
     formatting: { styleId: "Heading1", spaceBefore: 120, runProperties: { bold: true } },

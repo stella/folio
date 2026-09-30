@@ -160,6 +160,12 @@ export const sameParagraphProperties = (
 ): boolean =>
   structurallyEqual(paragraphPropertiesOf(left) ?? {}, paragraphPropertiesOf(right) ?? {});
 
+/** Whether two property sets state the same run properties for the paragraph mark. */
+export const sameMarkFormatting = (
+  left: ParagraphFormatting | undefined,
+  right: ParagraphFormatting | undefined,
+): boolean => structurallyEqual(markFormattingOf(left) ?? {}, markFormattingOf(right) ?? {});
+
 /**
  * The paragraph properties of `properties` with the mark's run properties of
  * `marks`. `undefined` when the first is absent and the second states no mark

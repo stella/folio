@@ -389,7 +389,9 @@ export type SplitHalf = (typeof SPLIT_HALVES)[keyof typeof SPLIT_HALVES];
  * (`firstMark` must then be absent), and the new paragraph, when its paragraph
  * properties differ from the source's and it carries no property change,
  * records one from the source's. Rejecting the mark removes it, which leaves
- * the second half with the first's content before its own.
+ * the second half with the first's content before its own. A property change
+ * does not record the mark's run properties, so a new second half, which ends
+ * with the paragraph's own mark, must state the same ones as the paragraph.
  */
 export type SplitBlockOp = {
   type: typeof DOCUMENT_OP_TYPES.SPLIT_BLOCK;
