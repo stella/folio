@@ -21,7 +21,11 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
@@ -385,23 +389,9 @@ describe("resolving random tracked work", () => {
         expect(read(reopened)).toEqual(accepted);
       }
     });
-    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -425480671 }));
-    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 2055257210 }));
-    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -1401551044 }));
-    // 2026-09-28: a table before a pending deletion of the story's last paragraph.
-    await fc.assert(
-      resolutionProperty,
-      propertyConfig({ numRuns: 100, seed: -1401551044, path: "414:2:3:9:9:9" }),
-    );
-    // 2026-09-29: merging an inserted paragraph into one whose own break a
-    // pending merge already removed.
-    await fc.assert(
-      resolutionProperty,
-      propertyConfig({ numRuns: 100, seed: -751467822, path: "181:4:6:6:8:9:12:12:11:12" }),
-    );
-    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: -304239210 }));
-    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100, seed: 115449810 }));
-    await fc.assert(resolutionProperty, propertyConfig({ numRuns: 100 }));
+    // The seeds this property once failed on replay first, from
+    // test/property-seeds.json.
+    await assertProperty(resolutionProperty, { numRuns: 100 });
     // The direct comparison must not pass vacuously.
     expect(comparedWithDirect).toBeGreaterThan(0);
   });
