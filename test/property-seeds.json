@@ -135,6 +135,12 @@
   "packages/core/src/ai-edits/tableOperations.property.test.ts::keep every value, agree across modes and readers, and reject cleanly": [
     {
       "seed": -1930932135,
+      "path": "101:7:9:12:12:8:8:8:35:36:36:36",
+      "note": "Retained merge continuations saved without a restart above after shared reader projection",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -1930932135,
       "note": "#1159: tracked final paragraphs and batched rows",
       "date": "2026-09-28"
     },
@@ -328,7 +334,7 @@
     {
       "seed": 1109375221,
       "path": "0",
-      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept",
+      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept; shared projection must establish its implicit origin before folding empty continuations",
       "date": "2026-09-30"
     },
     {

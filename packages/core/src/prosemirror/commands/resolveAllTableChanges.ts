@@ -26,6 +26,7 @@ import {
 import {
   tableMergeFoldDecisions,
   resolvedVisibleTableCellMergeAttrs,
+  resolvedTableMergeOriginAttrs,
 } from "./tableMergeFoldDecisions";
 import { resolveAllNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 
@@ -572,6 +573,7 @@ const resolvePureTableMerges = ({
 }: ResolvePureTableMergesOptions): ResolvedTableChanges => {
   const map = TableMap.get(table);
   const mergeDecisions = tableMergeFoldDecisions({ table, mode, revisionSet: null });
+  if (mergeDecisions.invalid.size > 0) return failedTableResolution(table);
   const cellRectangle = indexedTableCells(map);
   const rows = Array.from({ length: table.childCount }, (_, index) => table.child(index));
   const rowCells = rows.map(() => new Map<number, MutableCell>());
@@ -600,13 +602,15 @@ const resolvePureTableMerges = ({
       }
       const initial = elementAt(elementAt(rowMetadata, rowIndex).cells, cellIndex);
       const entry: MutableCell = {
-        node,
+        node: mergeDecisions.origins.has(cellOffset)
+          ? node.type.create(resolvedTableMergeOriginAttrs(node), node.content, node.marks)
+          : node,
         position: cellOffset,
         left,
         row: rowIndex,
         sourcePosition: initial.sourcePosition,
         mapSourcePosition: initial.mapSourcePosition,
-        touched: initial.touched,
+        touched: initial.touched || mergeDecisions.origins.has(cellOffset),
         continuation: null,
       };
       elementAt(rowCells, rowIndex).set(left, entry);
@@ -663,7 +667,7 @@ const resolvePureTableMerges = ({
         }
       }
     } else if (marker?.kind === "merge") {
-      const joinsAbove = mergeDecisions.get(entry.position);
+      const joinsAbove = mergeDecisions.folds.get(entry.position);
       if (joinsAbove === undefined) return panic("Merge resolution lost its cell");
       if (
         mode === "reject" &&
@@ -674,7 +678,11 @@ const resolvePureTableMerges = ({
       if (!joinsAbove) {
         entry.touched = true;
         entry.node = entry.node.type.create(
-          resolvedVisibleTableCellMergeAttrs(entry.node, mode),
+          resolvedVisibleTableCellMergeAttrs({
+            cell: entry.node,
+            mode,
+            origin: mergeDecisions.origins.has(entry.position),
+          }),
           entry.node.content,
           entry.node.marks,
         );

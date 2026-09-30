@@ -16,6 +16,7 @@ import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
 import {
   tableMergeFoldDecisions,
   resolvedVisibleTableCellMergeAttrs,
+  resolvedTableMergeOriginAttrs,
 } from "./tableMergeFoldDecisions";
 import { removeRowsWithoutCellsInRange } from "../tableGridMutation";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
@@ -123,10 +124,26 @@ export const resolveVisibleTableCellMerge = ({
   )
     return false;
   const decisions = tableMergeFoldDecisions({ table: context.table, mode, revisionSet });
-  const folds = decisions.get(context.relativeCellPos);
+  if (decisions.invalid.has(context.relativeCellPos)) return false;
+  const folds = decisions.folds.get(context.relativeCellPos);
   if (folds === undefined) return panic("Merge resolution lost its cell");
+  for (const origin of decisions.origins) {
+    if (origin === context.relativeCellPos) continue;
+    const originPos = context.tableStart + origin;
+    const originCell = tr.doc.nodeAt(originPos);
+    if (!originCell) return panic("Merge resolution lost its origin");
+    tr.setNodeMarkup(originPos, undefined, resolvedTableMergeOriginAttrs(originCell));
+  }
   if (folds) return mergeTableCellWithCellAbove(tr, cellPos);
-  tr.setNodeMarkup(cellPos, undefined, resolvedVisibleTableCellMergeAttrs(cell, mode));
+  tr.setNodeMarkup(
+    cellPos,
+    undefined,
+    resolvedVisibleTableCellMergeAttrs({
+      cell,
+      mode,
+      origin: decisions.origins.has(context.relativeCellPos),
+    }),
+  );
   return true;
 };
 

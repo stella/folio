@@ -1,7 +1,7 @@
 /**
  * Immediate PM-shape assertions missed resolution drift on reopen. Generate
- * content and whole-row continuation shapes against the reader, then demand
- * the same topology from both resolution paths and repeated saves.
+ * content, implicit origins, chains, and whole-row continuation shapes against
+ * the reader, then demand the same topology from both paths and repeated saves.
  */
 import { expect, test } from "bun:test";
 import fc from "fast-check";
@@ -23,14 +23,24 @@ import {
 
 const INFO = { id: 91, author: "Reviewer", date: "2026-09-01T00:00:00Z" };
 type CellCase = { continuation: boolean; text: boolean };
-type CaseOptions = { cells: readonly CellCase[]; decision: "accept" | "reject" };
+type CaseOptions = {
+  cells: readonly CellCase[];
+  decision: "accept" | "reject";
+  origin?: "plain" | "restart";
+  continuations?: number;
+};
 
 const paragraph = (text: string) =>
   ({
     type: "paragraph",
     content: text ? [{ type: "run", content: [{ type: "text", text }] }] : [],
   }) satisfies Paragraph;
-const documentFor = ({ cells, decision }: CaseOptions): Document => ({
+const documentFor = ({
+  cells,
+  decision,
+  origin = "restart",
+  continuations = 1,
+}: CaseOptions): Document => ({
   package: {
     document: {
       content: [
@@ -39,20 +49,25 @@ const documentFor = ({ cells, decision }: CaseOptions): Document => ({
           rows: [
             {
               type: "tableRow",
-              cells: cells.map((_cell, column) => ({
-                type: "tableCell",
-                formatting: { vMerge: "restart" },
-                content: [paragraph(`Top ${column}`)],
-              })),
+              cells: cells.map(
+                (_cell, column): TableCell => ({
+                  type: "tableCell",
+                  ...(origin === "restart" ? { formatting: { vMerge: "restart" } } : {}),
+                  content: [paragraph(`Top ${column}`)],
+                }),
+              ),
             },
-            {
-              type: "tableRow",
+            ...Array.from({ length: continuations }, (_value, row) => ({
+              type: "tableRow" as const,
               cells: cells.map(
                 ({ continuation, text }, column): TableCell => ({
                   type: "tableCell",
                   ...(continuation
                     ? {
-                        formatting: decision === "accept" ? { vMerge: "continue" } : {},
+                        formatting:
+                          decision === "accept" && origin === "restart"
+                            ? { vMerge: "continue" }
+                            : {},
                         structuralChange: {
                           type: "tableCellMerge",
                           info: INFO,
@@ -61,10 +76,10 @@ const documentFor = ({ cells, decision }: CaseOptions): Document => ({
                         },
                       }
                     : {}),
-                  content: [paragraph(text ? `Below ${column}` : "")],
+                  content: [paragraph(text ? `Below ${row}-${column}` : "")],
                 }),
               ),
-            },
+            })),
           ],
         },
       ],
@@ -99,6 +114,13 @@ const exercise = async (options: CaseOptions) => {
       if (change?.type !== "tableCellMerge") continue;
       cell.formatting = { ...cell.formatting, vMerge: "continue" };
       delete cell.structuralChange;
+    }
+  }
+  if (options.origin === "plain") {
+    const top = expectedTable.rows.at(0);
+    if (!top) throw new Error("Expected origin row");
+    for (const [column, cell] of top.cells.entries()) {
+      if (options.cells.at(column)?.continuation) cell.formatting = { vMerge: "restart" };
     }
   }
   const expected = shape(toProseDoc(expectedDocument));
@@ -149,12 +171,15 @@ test(
           minLength: 1,
           maxLength: 4,
         }),
-        async (generated) => {
+        fc.constantFrom("plain", "restart"),
+        fc.integer({ min: 1, max: 3 }),
+        async (generated, origin, continuations) => {
           const cells = generated.map((cell, index) => ({
             continuation: index === 0 || cell.continuation,
             text: cell.text,
           }));
-          for (const decision of ["accept", "reject"] as const) await exercise({ cells, decision });
+          for (const decision of ["accept", "reject"] as const)
+            await exercise({ cells, decision, origin, continuations });
         },
       ),
       { numRuns: 30 },
