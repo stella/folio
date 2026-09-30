@@ -12,7 +12,7 @@ import {
   CORPUS_INVARIANT_FAMILIES,
   EXTENDED_CORPUS_INVARIANTS,
   EXTENDED_INVARIANT_FAMILY,
-  isGatingFamily,
+  CORPUS_FAMILY_GATING,
 } from "./lib/corpus-invariants/contract";
 import { type CorpusFailure, failureFromAssertion } from "./lib/corpus-signature";
 
@@ -53,9 +53,11 @@ const censusOf = (
 };
 
 describe("family baseline files", () => {
-  test("every gating extended family owns one; core and report-only families own none", () => {
+  test("every ratcheting extended family owns one; zero and report-only families own none", () => {
     expect(FAMILY_BASELINE_FAMILIES).toEqual(
-      [...new Set(Object.values(EXTENDED_INVARIANT_FAMILY))].filter(isGatingFamily).sort(),
+      [...new Set(Object.values(EXTENDED_INVARIANT_FAMILY))]
+        .filter((family) => CORPUS_FAMILY_GATING[family] === "gating")
+        .sort(),
     );
     expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.core);
     expect(FAMILY_BASELINE_FAMILIES).not.toContain(CORPUS_INVARIANT_FAMILIES.performance);

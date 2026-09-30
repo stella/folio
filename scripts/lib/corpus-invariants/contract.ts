@@ -24,6 +24,8 @@ export const EXTENDED_CORPUS_INVARIANTS = {
   editorRoundTrip: "editor-round-trip",
   editorProjection: "editor-projection",
   editLocality: "edit-locality",
+  opInverse: "op-inverse",
+  opLocality: "op-locality",
   saveIdempotence: "save-idempotence",
   schemaValidity: "schema-validity",
   pipelineTotality: "pipeline-totality",
@@ -48,6 +50,8 @@ export const CORPUS_INVARIANT_FAMILIES = {
   editorRoundTrip: "editor-round-trip",
   editorProjection: "editor-projection",
   editLocality: "edit-locality",
+  opInverse: "op-inverse",
+  opLocality: "op-locality",
   saveIdempotence: "save-idempotence",
   schemaValidity: "schema-validity",
   pipelineTotality: "pipeline-totality",
@@ -59,7 +63,7 @@ export type CorpusInvariantFamily =
   (typeof CORPUS_INVARIANT_FAMILIES)[keyof typeof CORPUS_INVARIANT_FAMILIES];
 
 /**
- * Whether a family's findings ratchet, or only report.
+ * Whether a family's findings ratchet, require zero findings, or only report.
  *
  * The ratchet is exact in both directions: a signature that gains files is a
  * regression, and one that loses them must be written down before the gate
@@ -68,6 +72,9 @@ export type CorpusInvariantFamily =
  * budget it clears on an idle one, so a baseline measured under load fails a
  * quiet run and a baseline measured idle fails a busy one. Recording timings
  * and ratcheting them are different jobs, and only the first is sound here.
+ *
+ * The operation families require zero findings. Their threshold is code-owned,
+ * never a writable baseline; observed failures survive report-only file entries.
  *
  * A report-only family is measured, written to the census and printed in the
  * report with its outliers. It owns no baseline file and is never compared.
@@ -87,23 +94,31 @@ export const CORPUS_FAMILY_GATING = {
   [CORPUS_INVARIANT_FAMILIES.editorRoundTrip]: "gating",
   [CORPUS_INVARIANT_FAMILIES.editorProjection]: "report-only",
   [CORPUS_INVARIANT_FAMILIES.editLocality]: "gating",
+  [CORPUS_INVARIANT_FAMILIES.opInverse]: "zero",
+  [CORPUS_INVARIANT_FAMILIES.opLocality]: "zero",
   [CORPUS_INVARIANT_FAMILIES.saveIdempotence]: "gating",
   [CORPUS_INVARIANT_FAMILIES.schemaValidity]: "gating",
   [CORPUS_INVARIANT_FAMILIES.pipelineTotality]: "gating",
   [CORPUS_INVARIANT_FAMILIES.kernelDifferential]: "gating",
   [CORPUS_INVARIANT_FAMILIES.performance]: "report-only",
-} as const satisfies Record<CorpusInvariantFamily, "gating" | "report-only">;
+} as const satisfies Record<CorpusInvariantFamily, "gating" | "zero" | "report-only">;
 
 export type CorpusFamilyGating = (typeof CORPUS_FAMILY_GATING)[CorpusInvariantFamily];
 
 export const isGatingFamily = (family: CorpusInvariantFamily): boolean =>
-  CORPUS_FAMILY_GATING[family] === "gating";
+  CORPUS_FAMILY_GATING[family] !== "report-only";
+
+/** These families allow no findings and cannot acquire a baseline allowance. */
+export const isZeroFamily = (family: CorpusInvariantFamily): boolean =>
+  CORPUS_FAMILY_GATING[family] === "zero";
 
 export const EXTENDED_INVARIANT_FAMILY = {
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: CORPUS_INVARIANT_FAMILIES.reserialize,
   [EXTENDED_CORPUS_INVARIANTS.editorRoundTrip]: CORPUS_INVARIANT_FAMILIES.editorRoundTrip,
   [EXTENDED_CORPUS_INVARIANTS.editorProjection]: CORPUS_INVARIANT_FAMILIES.editorProjection,
   [EXTENDED_CORPUS_INVARIANTS.editLocality]: CORPUS_INVARIANT_FAMILIES.editLocality,
+  [EXTENDED_CORPUS_INVARIANTS.opInverse]: CORPUS_INVARIANT_FAMILIES.opInverse,
+  [EXTENDED_CORPUS_INVARIANTS.opLocality]: CORPUS_INVARIANT_FAMILIES.opLocality,
   [EXTENDED_CORPUS_INVARIANTS.saveIdempotence]: CORPUS_INVARIANT_FAMILIES.saveIdempotence,
   [EXTENDED_CORPUS_INVARIANTS.schemaValidity]: CORPUS_INVARIANT_FAMILIES.schemaValidity,
   [EXTENDED_CORPUS_INVARIANTS.pipelineTotality]: CORPUS_INVARIANT_FAMILIES.pipelineTotality,
@@ -122,6 +137,9 @@ export const familyOf = (invariant: CorpusInvariant): CorpusInvariantFamily =>
 
 export const isGatingFailure = ({ invariant }: { invariant: CorpusInvariant }): boolean =>
   isGatingFamily(familyOf(invariant));
+
+export const isZeroFailure = ({ invariant }: { invariant: CorpusInvariant }): boolean =>
+  isZeroFamily(familyOf(invariant));
 
 /** Milliseconds a single invariant may take on one file before the overrun is a finding. */
 export const DEFAULT_INVARIANT_BUDGET_MS = 30_000;
