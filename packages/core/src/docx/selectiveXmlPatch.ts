@@ -608,7 +608,10 @@ const routeChangedParagraphs = (
   }
 
   const candidate = spliceXml(originalXml, splices);
-  if (candidate === null || !splicesAsCanonical(candidate, PARAGRAPH_SCAN_NAMES)) {
+  if (candidate === null) {
+    return { type: "refused", reason: "unsafe-paragraph-splices" };
+  }
+  if (!splicesAsCanonical(candidate, PARAGRAPH_SCAN_NAMES)) {
     return { type: "refused", reason: "replacement-namespace-conflict" };
   }
   return { type: "routed", xml: candidate };
@@ -695,12 +698,17 @@ export type XmlSplice = { start: number; end: number; newXml: string };
  * the rest of the part byte-for-byte, so it can write half a comment range:
  * invalid OOXML that anchors the comment to nothing. Answers null when it
  * would, leaving the caller to rewrite a wider region — ultimately the whole
- * part from the model, which is balanced with itself.
+ * part from the model, which is balanced with itself. Overlapping source
+ * regions are refused too: replacing an inner region moves the outer region's
+ * end, so its original offsets cannot be applied to the resulting string.
  */
 export const spliceXml = (xml: string, splices: readonly XmlSplice[]): string | null => {
   let result = xml;
+  let unpatchedEnd = xml.length;
   for (const { start, end, newXml } of [...splices].toSorted((a, b) => b.start - a.start)) {
+    if (end > unpatchedEnd) return null;
     result = result.slice(0, start) + newXml + result.slice(end);
+    unpatchedEnd = start;
   }
   return patchBreaksCommentRangeBalance(xml, result) ? null : result;
 };

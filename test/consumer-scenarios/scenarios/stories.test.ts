@@ -189,8 +189,8 @@ describe("operations aimed at every feature of the body", () => {
     });
 
     // A reader lists a text box's paragraphs with the body. A fresh document:
-    // with a change pending in the paragraph that draws the box too, resolving
-    // after a reopen writes malformed XML (TEXT_BOX_RESOLVE_MALFORMED_XML).
+    // resolving after a reopen with changes pending both in the box and in the
+    // paragraph drawing it is covered in known-issues.test.ts (fixed findings).
     test(`stories / ${mode}: operations in a text box do what they asked`, async () => {
       const reviewer = await openReviewer(await storiesDocument());
       const random = createRandom(mode.length * 151);

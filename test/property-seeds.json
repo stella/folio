@@ -188,6 +188,12 @@
       "path": "682:0:0:6:6:6:6:3:3:3:6:6:5:13:5:5:6:5:4:5:5:5:6:9:7:10:6:7:9:7:12:10",
       "note": "nested merged table: an emptied row survived a batch that moved its table",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 1343423521,
+      "path": "440:10:9:5:4:8:4:4:4:22:4:19:7:7:7:22:23:24:28:25:25:25:29:25:23:34:27:27:29:29:32:27:27:27:30:30:30:30",
+      "note": "a batch edit filled a cell a vertical merge folds: applied directly, refused tracked (path at factor 5)",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/internal/revisionResolutionStep.integration.test.ts::bulk resolution JSON replay and undo match its cached result": [
@@ -328,6 +334,14 @@
     {
       "seed": 1595037221,
       "note": "An inserted table before final added paragraphs must not discard their break revisions.",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/core/src/docx/selectiveXmlPatch.property.test.ts::nested paragraph edits never apply overlapping source ranges": [
+    {
+      "seed": -1844025400,
+      "path": "0:0:0:0",
+      "note": "overlapping host and text-box paragraph replacements used stale source offsets",
       "date": "2026-09-30"
     }
   ],

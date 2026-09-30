@@ -71,8 +71,21 @@ export type BatchClaim =
       axis: "row" | "column" | "table";
       ranges: readonly PositionRange[];
     }
-  /** Any other change to a table's grid: rows or columns added, cells merged or split. */
-  | { type: "tableStructure"; table: number; axis: "row" | "column" | "cell" }
+  /**
+   * Any other change to a table's grid: rows or columns added, cells merged or
+   * split. A merge also names the blank cells it folds into its first one
+   * (`folded`, empty for every other change). Tracked, a merge folds only
+   * blank cells, since the record moves no content; applied directly, it
+   * moves whatever they hold. Another operation of the batch writing into one
+   * would let the merge apply in one mode and not the other, so nothing else
+   * may claim them.
+   */
+  | {
+      type: "tableStructure";
+      table: number;
+      axis: "row" | "column" | "cell";
+      folded: readonly PositionRange[];
+    }
   | { type: "unclaimed" };
 
 type BlockRole =
@@ -269,6 +282,8 @@ export class BatchClaims {
   private readonly insertions = new Map<number, string>();
   private readonly joins = new Map<number, string>();
   private readonly removals: { operationId: string; claim: TableRemovalClaim }[] = [];
+  /** Accepted merges' folded cells; see the `tableStructure` claim. */
+  private readonly folds: { operationId: string; ranges: readonly PositionRange[] }[] = [];
   private readonly tables = new Map<number, string>();
   private readonly rowInsertions = new Map<number, string>();
   private readonly columnInsertions = new Map<number, string>();
@@ -322,6 +337,10 @@ export class BatchClaims {
           return entry.operationId;
         }
       }
+      const fold = this.foldAt(block);
+      if (fold !== null) {
+        return fold;
+      }
       // Deleting a block that a removed row, column or table takes with it
       // anyway removes nothing twice: the two deletions compose.
       if (role.kind === "deleteBlock") {
@@ -352,6 +371,7 @@ export class BatchClaims {
       }
       case "tableStructure":
         return (
+          this.claimedInside(claim.folded) ??
           this.removals.find(
             ({ claim: removed }) =>
               insideAny(removed.ranges, claim.table) ||
@@ -412,6 +432,29 @@ export class BatchClaims {
     }
   }
 
+  /** The accepted merge whose folded cells hold `position`. */
+  private foldAt(position: number): string | null {
+    return this.folds.find(({ ranges }) => insideAny(ranges, position))?.operationId ?? null;
+  }
+
+  /**
+   * An accepted operation that claims anything inside `ranges`, the blank
+   * cells a merge folds. A block insertion anchored in a cell lands beside its
+   * table, so only the cell's own paragraph can be claimed there.
+   */
+  private claimedInside(ranges: readonly PositionRange[]): string | null {
+    if (ranges.length === 0) {
+      return null;
+    }
+    for (const [block, entries] of this.blocks) {
+      const entry = entries[0];
+      if (entry !== undefined && insideAny(ranges, block)) {
+        return entry.operationId;
+      }
+    }
+    return null;
+  }
+
   add(operationId: string, claim: BatchClaim): void {
     for (const { block, role } of this.rolesOf(claim)) {
       const entries = this.blocks.get(block);
@@ -445,6 +488,9 @@ export class BatchClaims {
         break;
       }
       case "tableStructure":
+        if (claim.folded.length > 0) {
+          this.folds.push({ operationId, ranges: claim.folded });
+        }
         if (!this.tables.has(claim.table)) {
           this.tables.set(claim.table, operationId);
         }
