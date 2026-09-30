@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 3: text, formatting and review edits on
+ * Document operations, schema version 4: text, formatting and review edits on
  * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -37,13 +37,14 @@ import type {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 4 adds paragraph deletion through `deleteBlocks`.
  * Version 3 adds paragraph insertion through `insertBlocks` and the table-row
  * operations `insertRow`, `deleteRow` and `setTableRows`.
  * Version 2 added tracked changes: the `revision` stamp on the text, formatting
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 3;
+export const DOCUMENT_OP_SCHEMA_VERSION = 4;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
@@ -160,8 +161,9 @@ export type SplitParagraphFields = Omit<
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
 
-/** The operation kinds of schema version 3. */
+/** The operation kinds of schema version 4. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
   INSERT_TEXT: "insertText",
   INSERT_CONTENT: "insertContent",
@@ -455,6 +457,27 @@ export type InsertBlocksOp = {
 };
 
 /**
+ * Delete adjacent paragraphs in one block list. A following paragraph keeps
+ * its identity and fields. At the end of a block list, the last selected
+ * paragraph survives: it takes the preceding paragraph's content and
+ * paragraph properties when present, keeping its own mark properties and id;
+ * without a preceding paragraph it becomes empty.
+ *
+ * With `revision`, selected content is wrapped in deletions and the removed
+ * breaks are marked. The container-final paragraph never receives a mark.
+ * Section boundaries, non-paragraph following blocks and conflicting
+ * paragraph reviews are refused rather than partially removed. Tracked deletion
+ * of content carrying revision or content-control ids is also unsupported.
+ */
+export type DeleteBlocksOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_BLOCKS;
+  story: OpStory;
+  blockIds: readonly string[];
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
+/**
  * Replace a run of adjacent paragraphs with other paragraphs.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
@@ -595,8 +618,9 @@ export type SetTableRowsOp = {
   rows: readonly TableRow[];
 };
 
-/** A schema-version-3 document operation. */
+/** A schema-version-4 document operation. */
 export type DocumentOp =
+  | DeleteBlocksOp
   | InsertBlocksOp
   | InsertTextOp
   | InsertContentOp
