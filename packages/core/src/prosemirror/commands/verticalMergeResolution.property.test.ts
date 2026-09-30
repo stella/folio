@@ -29,6 +29,7 @@ type CaseOptions = {
   origin?: "plain" | "restart";
   continuations?: number;
   date?: "present" | "absent" | "null";
+  rowTexts?: readonly (readonly boolean[])[];
 };
 
 const paragraph = (text: string) =>
@@ -42,6 +43,7 @@ const documentFor = ({
   origin = "restart",
   continuations = 1,
   date = "present",
+  rowTexts,
 }: CaseOptions): Document => ({
   package: {
     document: {
@@ -78,7 +80,11 @@ const documentFor = ({
                         },
                       }
                     : {}),
-                  content: [paragraph(text ? `Below ${row}-${column}` : "")],
+                  content: [
+                    paragraph(
+                      (rowTexts?.at(row)?.at(column) ?? text) ? `Below ${row}-${column}` : "",
+                    ),
+                  ],
                 }),
               ),
             })),
@@ -126,24 +132,31 @@ const exercise = async (options: CaseOptions) => {
     }
   }
   const expected = shape(toProseDoc(expectedDocument));
-  const folds = options.cells.map(
-    ({ continuation, text }) => continuation && (options.decision === "reject" || !text),
-  );
   const continuations = options.continuations ?? 1;
-  const expectedResolved = [
-    options.cells.map((_cell, column) => ({
-      text: `Top ${column}`,
-      rowspan: folds.at(column) ? continuations + 1 : 1,
-      colspan: 1,
-    })),
-    ...Array.from({ length: continuations }, (_value, row) =>
-      options.cells.flatMap(({ text }, column) =>
-        folds.at(column)
-          ? []
-          : [{ text: text ? `Below ${row}-${column}` : "", rowspan: 1, colspan: 1 }],
-      ),
-    ),
-  ];
+  const blocked = options.cells.map(() => false);
+  const top = options.cells.map((_cell, column) => ({
+    text: `Top ${column}`,
+    rowspan: 1,
+    colspan: 1,
+  }));
+  const expectedResolved = [top];
+  for (let row = 0; row < continuations; row++) {
+    expectedResolved.push(
+      options.cells.flatMap(({ continuation, text }, column) => {
+        const hasText = options.rowTexts?.at(row)?.at(column) ?? text;
+        const folds =
+          continuation && (options.decision === "reject" || (!hasText && !blocked.at(column)));
+        if (folds) {
+          const origin = top.at(column);
+          if (!origin) throw new Error("Missing expected merge origin");
+          origin.rowspan++;
+          return [];
+        }
+        if (continuation && hasText) blocked[column] = true;
+        return [{ text: hasText ? `Below ${row}-${column}` : "", rowspan: 1, colspan: 1 }];
+      }),
+    );
+  }
   let targeted: PMNode | undefined;
   for (const path of ["targeted", "bulk"] as const) {
     let state = EditorState.create({ doc: toProseDoc(document) });
@@ -199,6 +212,15 @@ test("reject folds the sole continuation in a single-column row", async () => {
   await exercise({ cells: [{ continuation: true, text: false }], decision: "reject" });
 });
 
+test("accept keeps an empty continuation below a visible text continuation", async () => {
+  await exercise({
+    cells: [{ continuation: true, text: false }],
+    decision: "accept",
+    continuations: 2,
+    rowTexts: [[true], [false]],
+  });
+});
+
 test(
   "resolved vertical merges match the reader across content and row shapes",
   async () => {
@@ -211,13 +233,14 @@ test(
         fc.constantFrom("plain", "restart"),
         fc.integer({ min: 1, max: 3 }),
         fc.constantFrom("present", "absent", "null"),
-        async (generated, origin, continuations, date) => {
+        fc.array(fc.array(fc.boolean(), { maxLength: 4 }), { maxLength: 3 }),
+        async (generated, origin, continuations, date, rowTexts) => {
           const cells = generated.map((cell, index) => ({
             continuation: index === 0 || cell.continuation,
             text: cell.text,
           }));
           for (const decision of ["accept", "reject"] as const)
-            await exercise({ cells, decision, origin, continuations, date });
+            await exercise({ cells, decision, origin, continuations, date, rowTexts });
         },
       ),
       { numRuns: 30 },

@@ -34,7 +34,11 @@ export const tableMergeFoldDecisions = ({
     const cell = table.nodeAt(position);
     if (cell?.attrs["cellMarker"]?.kind !== "merge") continue;
     const marker = expectTableCellAttrs(cell).cellMarker;
-    if (!marker || (revisionSet !== null && !revisionSet.has(marker.info.revisionId))) continue;
+    if (
+      marker?.kind !== "merge" ||
+      (revisionSet !== null && !revisionSet.has(marker.info.revisionId))
+    )
+      continue;
     const continues = isTableCellMergeRevisionContinuation(
       mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal,
     );
@@ -75,6 +79,14 @@ export const tableMergeFoldDecisions = ({
         mode === "accept" ? aboveMarker.verticalMerge : aboveMarker.verticalMergeOriginal,
       );
     const aboveModel = standaloneTableCellFromProseMirror(above);
+    // A visible continuation closes the reader's merge chain. Cells below it
+    // cannot fold into it when accepting that chain.
+    if (
+      mode === "accept" &&
+      ((aboveContinues && decisions.get(abovePosition) === false) ||
+        (isCellMergeContinuation(aboveModel) && tableCellHasMeaningfulContent(aboveModel)))
+    )
+      decisions.set(position, false);
     if (aboveContinues || isCellMergeContinuation(aboveModel) || isCellMergeStart(aboveModel))
       continue;
     origins.add(abovePosition);
