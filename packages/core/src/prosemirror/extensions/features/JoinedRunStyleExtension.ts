@@ -6,124 +6,19 @@
  * paragraph's remaining text on into the earlier one. A run's direct
  * formatting is its own and stays; what the later paragraph's style lent it
  * does not travel, and it reads in the style of the paragraph it now belongs
- * to — the editor's marks hold inherited formatting too, so without this the
- * moved runs would save the old style's look as direct formatting.
+ * to. The document styles plugin re-reads those runs after an ordinary edit.
  *
  * A transaction that re-reads the runs it moves itself (resolving a tracked
  * change, an operation that merges paragraphs) says so with
- * {@link JOINED_RUNS_RESTYLED_META}.
+ * {@link JOINED_RUNS_RESTYLED_META}, and is left as it is.
  */
 
-import { isHistoryTransaction } from "prosemirror-history";
-import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
-import { Mapping, ReplaceStep } from "prosemirror-transform";
+import { Plugin, PluginKey } from "prosemirror-state";
 
-import { getDocumentStyleResolver } from "../../plugins/documentStyles";
-import { rebaseParagraphRuns } from "../../rebaseParagraphRunFormatting";
-import { paragraphRunStyleContext } from "../../runStyleFormatting";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 
 export const JOINED_RUNS_RESTYLED_META = "joinedRunsRestyled";
-
-const joinedRunStyleKey = new PluginKey("joinedRunStyle");
-
-type MovedRuns = {
-  /** The paragraph the runs came from, before the join. */
-  paragraph: PMNode;
-  /** Where they start and end in the document after every transaction. */
-  from: number;
-  to: number;
-};
-
-/** Content of a later paragraph that a step ran on into an earlier one. */
-const movedRunsOf = (transactions: readonly Transaction[]): MovedRuns[] => {
-  const moved: MovedRuns[] = [];
-  transactions.forEach((transaction, transactionIndex) => {
-    // Undo and redo replay their event whole, this transaction's own restyle included.
-    if (
-      transaction.getMeta(JOINED_RUNS_RESTYLED_META) === true ||
-      isHistoryTransaction(transaction)
-    ) {
-      return;
-    }
-    transaction.steps.forEach((step, stepIndex) => {
-      if (!(step instanceof ReplaceStep)) {
-        return;
-      }
-      const { from, to } = step as unknown as { from: number; to: number };
-      const before = transaction.docs[stepIndex];
-      if (!before || to <= from) {
-        return;
-      }
-      const $from = before.resolve(from);
-      const $to = before.resolve(to);
-      if (
-        $from.parent === $to.parent ||
-        $from.parent.type.name !== "paragraph" ||
-        $to.parent.type.name !== "paragraph" ||
-        $to.end() <= to
-      ) {
-        return;
-      }
-      const mapping = new Mapping(transaction.mapping.maps.slice(stepIndex));
-      for (const later of transactions.slice(transactionIndex + 1)) {
-        mapping.appendMapping(later.mapping);
-      }
-      moved.push({
-        paragraph: $to.parent,
-        from: mapping.map(to, 1),
-        to: mapping.map($to.end(), -1),
-      });
-    });
-  });
-  return moved;
-};
-
-const createJoinedRunStylePlugin = (): Plugin =>
-  new Plugin({
-    key: joinedRunStyleKey,
-    appendTransaction(transactions, _oldState, newState) {
-      if (!transactions.some((transaction) => transaction.docChanged)) {
-        return null;
-      }
-      const moved = movedRunsOf(transactions);
-      if (moved.length === 0) {
-        return null;
-      }
-      const styleResolver = getDocumentStyleResolver(newState);
-      if (!styleResolver) {
-        return null;
-      }
-      const tr = newState.tr;
-      for (const { paragraph, from, to } of moved) {
-        if (to <= from || to > tr.doc.content.size) {
-          continue;
-        }
-        const $from = tr.doc.resolve(from);
-        // Still the start of its own paragraph: nothing joined it.
-        if ($from.parent.type.name !== "paragraph" || $from.parentOffset === 0) {
-          continue;
-        }
-        if ($from.parent.sameMarkup(paragraph)) {
-          continue;
-        }
-        rebaseParagraphRuns({
-          previousContext: paragraphRunStyleContext(paragraph, styleResolver),
-          paragraphPosition: $from.before(),
-          range: { from: $from.parentOffset, to: Math.min(to, $from.end()) - $from.start() },
-          styleResolver,
-          tr,
-        });
-      }
-      if (!tr.docChanged) {
-        return null;
-      }
-      tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
-      return tr;
-    },
-  });
 
 const pastedTableEndKey = new PluginKey("pastedTableEnd");
 
@@ -160,7 +55,7 @@ export const JoinedRunStyleExtension = createExtension({
   defaultOptions: {},
   onSchemaReady(): ExtensionRuntime {
     return {
-      plugins: [createJoinedRunStylePlugin(), createPastedTableEndPlugin()],
+      plugins: [createPastedTableEndPlugin()],
     };
   },
 });

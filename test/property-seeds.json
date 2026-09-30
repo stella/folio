@@ -92,6 +92,16 @@
       "path": "1:0:1",
       "note": "#1127: upstream-complex-styles.docx",
       "date": "2026-09-27"
+    },
+    {
+      "seed": -1791229527,
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 752725439,
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/ai-edits/tableOperations.property.test.ts::keep every value, agree across modes and readers, and reject cleanly": [
@@ -138,6 +148,18 @@
       "path": "619:4:5:8:6:5:9:7:7:7:8:23:7:7:7:16:21:29:29:24:19:19:22:37:27:28",
       "note": "a nested-table column deletion left its emptied row open when the same batch merged the outer table and moved the nested table (path at factor 5)",
       "date": "2026-09-29"
+    },
+    {
+      "seed": -175084983,
+      "path": "656:4:5:5:3:4:3:3:3:4:3:3:5:3:3:4:3:3:3:5:3:3:4:4:3:3:3:5:3:9:3:5:5:5:3:7:5:5:5:8:7:6:10:6:6:7:7:3:3:6:7:7",
+      "note": "nested merged table: an emptied row survived a batch that moved its table",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -973262996,
+      "path": "682:0:0:6:6:6:6:3:3:3:6:6:5:13:5:5:6:5:4:5:5:5:6:9:7:10:6:7:9:7:12:10",
+      "note": "nested merged table: an emptied row survived a batch that moved its table",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/internal/revisionResolutionStep.integration.test.ts::bulk resolution JSON replay and undo match its cached result": [
@@ -167,6 +189,22 @@
       "seed": 1158783253,
       "path": "474:0:0:0:0:0:0:5:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:3:3:3:3:3:3:3:3:4:2:4:3:4:4:3:3:5:3:3:3:4:5:4:4:3:3:3:5:3:3:3:3:3:3:5:6:3:3:11:10:3:7:7:7:7:8:10:7:9:7:8:7:11:7:7:7:7:7:7:8:8:7:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
       "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
+      "date": "2026-09-29"
+    }
+  ],
+  "packages/core/src/prosemirror/commands/comments.bulk.test.ts::matches the legacy small-document semantics across generated nested revisions": [
+    {
+      "seed": 2609090,
+      "path": "0:0",
+      "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
+      "date": "2026-09-29"
+    }
+  ],
+  "packages/core/src/prosemirror/commands/comments.resolve-all.test.ts::matches the legacy whole-document range over mixed paragraph and table revisions": [
+    {
+      "seed": 2609260,
+      "path": "5:2:1:1:5:5:5:4:4:4:4:4:4",
+      "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
       "date": "2026-09-29"
     }
   ],

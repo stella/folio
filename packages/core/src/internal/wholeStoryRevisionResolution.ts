@@ -1,5 +1,5 @@
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
-import { Fragment, Mark, Slice, type Node as PMNode } from "prosemirror-model";
+import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
   getProseParagraphPropertySourceToken,
@@ -21,6 +21,7 @@ import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
+import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
 import { resolveInlineRevisions, type RevisionResolutionMode } from "./revisionResolutionInline";
 import type { RemovedSectionReference } from "./sectionEndpointResolution";
@@ -273,72 +274,14 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
     context.removedReferences.push({ part: "footer", type, relationshipId: rId });
 };
 
-type RebaseJoinedRunsOptions = {
-  paragraph: PMNode;
-  owner: PMNode;
-  position: number;
-  styleResolver: RunStyleResolver | null;
-  steps: Step[];
-};
-/**
- * The content of a paragraph whose mark goes, as it reads in the paragraph it
- * joins: direct run formatting stays, and what its own style lent the runs is
- * re-read in the survivor's style.
- */
-const rebaseJoinedRuns = ({
-  paragraph,
-  owner,
-  position,
-  styleResolver,
-  steps,
-}: RebaseJoinedRunsOptions): Fragment => {
-  if (!styleResolver || paragraph.content.size === 0) return paragraph.content;
-  const previousContext = paragraphRunStyleContext(paragraph, styleResolver);
-  const nextContext = paragraphRunStyleContext(owner, styleResolver);
-  const rebased = new Map<PMNode, PMNode>();
-  paragraph.descendants((inline, pos) => {
-    if (!inline.isInline) return true;
-    const carrier = expandRunFormattingCarrier(inline, pos);
-    if (!carrier) return !inline.isAtom;
-    for (const { node: representation } of carrier.representations) {
-      const authoredFormatting = readAuthoredRunFormatting({
-        context: previousContext,
-        marks: representation.marks,
-        styleResolver,
-      });
-      const marks = reconcileRunFormattingMarks({
-        authoredFormatting,
-        context: nextContext,
-        node: representation,
-        styleResolver,
-      });
-      if (!Mark.sameSet(marks, representation.marks))
-        rebased.set(representation, representation.mark(marks));
-    }
-    return false;
-  });
-  if (rebased.size === 0) return paragraph.content;
-  const visit = (child: PMNode, childPosition: number): PMNode => {
-    const replacement = rebased.get(child) ?? child;
-    recordNodeResolution({ before: child, after: replacement, position: childPosition, steps });
-    if (replacement.isLeaf) return replacement;
-    const nested: PMNode[] = [];
-    let changed = replacement !== child;
-    replacement.forEach((inner, offset) => {
-      const result = visit(inner, childPosition + 1 + offset);
-      nested.push(result);
-      changed ||= result !== inner;
-    });
-    return changed ? rebuild(replacement, { content: Fragment.fromArray(nested) }) : replacement;
-  };
-  const children: PMNode[] = [];
-  paragraph.forEach((child, offset) => children.push(visit(child, position + 1 + offset)));
-  return Fragment.fromArray(children);
-};
-
 type ParagraphChain = {
   node: PMNode;
-  chunks: Fragment[];
+  /** The surviving paragraph: the chain's last, whose mark stays. */
+  formattingOwnerPosition: number;
+  chunks: (
+    | { type: "paragraph"; source: PMNode; position: number }
+    | { type: "bookmarks"; content: Fragment }
+  )[];
   position: number;
   before: PMNode;
   joinBoundaries: { closing: number; bookmarks: Fragment }[];
@@ -375,8 +318,29 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     let final = chain.node;
     if (chain.chunks.length > 1) {
       const children: PMNode[] = [];
-      for (let index = chain.chunks.length - 1; index >= 0; index--)
-        chain.chunks[index]?.forEach((child) => children.push(child));
+      for (let index = chain.chunks.length - 1; index >= 0; index--) {
+        const chunk = chain.chunks[index];
+        if (!chunk) continue;
+        // The surviving owner keeps its own marks, as the single-change join
+        // does. Rebuilding them would change provenance without a style change.
+        let content = chunk.type === "paragraph" ? chunk.source.content : chunk.content;
+        if (chunk.type === "paragraph" && chunk.position !== chain.formattingOwnerPosition) {
+          content = rebaseParagraphRunContent({
+            paragraph: chunk.source,
+            target: chain.node,
+            position: chunk.position,
+            styleResolver: context.styleResolver,
+            onRebased: ({ before, after, position: runPosition }) =>
+              recordNodeResolution({
+                before,
+                after,
+                position: runPosition,
+                steps: context.steps,
+              }),
+          });
+        }
+        content.forEach((child) => children.push(child));
+      }
       final = rebuild(chain.node, { content: Fragment.fromArray(children) });
     }
     if (!chain.before.sameMarkup(final))
@@ -459,27 +423,20 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           return null;
         }
         bookmarks = Fragment.fromArray(inline);
-        chain.chunks.push(bookmarks);
+        chain.chunks.push({ type: "bookmarks", content: bookmarks });
         pendingBookmarks = [];
       }
       // The mark that stays ends the joined paragraph, so the paragraph left
       // is the chain's last one: its identity, properties, mark and section
-      // endpoint survive whether this one still has words or not.
+      // endpoint survive whether this one still has words or not. Its runs
+      // are re-read in the survivor's style when the chain is assembled.
       const displacedToken = getProseParagraphPropertySourceToken(paragraph);
       const selectedToken = getProseParagraphPropertySourceToken(chain.node);
       context.transfers.push({
         displacedToken: typeof displacedToken === "string" ? displacedToken : null,
         selectedToken: typeof selectedToken === "string" ? selectedToken : null,
       });
-      chain.chunks.push(
-        rebaseJoinedRuns({
-          paragraph,
-          owner: chain.node,
-          position: entry.position,
-          styleResolver: context.styleResolver,
-          steps: context.steps,
-        }),
-      );
+      chain.chunks.push({ type: "paragraph", source: paragraph, position: entry.position });
       chain.position = entry.position;
       chain.before = paragraph;
       chain.joinBoundaries.push({
@@ -505,7 +462,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       : paragraph;
     chain = {
       node: resolved,
-      chunks: [resolved.content],
+      formattingOwnerPosition: entry.position,
+      chunks: [{ type: "paragraph", source: resolved, position: entry.position }],
       position: entry.position,
       before: paragraph,
       joinBoundaries: [],

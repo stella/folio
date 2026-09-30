@@ -133,6 +133,11 @@ const folioContentIdStability = <Block extends FolioContentBlock>(
   block: Block,
 ): FolioContentIdStability => block.idStability ?? "stable";
 
+type IncreasingPairOptions = {
+  priority?: (pair: FolioContentBlockPair) => number;
+  tieBreak?: "earliest" | "minimum-tail";
+};
+
 /**
  * Longest strictly increasing subsequence by revised index.
  *
@@ -142,6 +147,7 @@ const folioContentIdStability = <Block extends FolioContentBlock>(
  */
 export const longestIncreasingFolioContentPairs = (
   pairs: readonly FolioContentBlockPair[],
+  options: IncreasingPairOptions = {},
 ): FolioContentBlockPair[] => {
   if (pairs.length === 0) {
     return [];
@@ -152,19 +158,27 @@ export const longestIncreasingFolioContentPairs = (
   const rankByCoordinate = new Map(
     coordinates.map((coordinate, index) => [coordinate, index + 1] as const),
   );
-  const treeLengths = new Int32Array(coordinates.length + 1);
   const treeIndexes = new Int32Array(coordinates.length + 1).fill(-1);
   const lengths = new Int32Array(pairs.length).fill(1);
   const predecessors = new Int32Array(pairs.length).fill(-1);
+  const priorities = new Int32Array(pairs.length);
 
-  const earlier = (
-    leftLength: number,
-    leftIndex: number,
-    rightLength: number,
-    rightIndex: number,
-  ): boolean =>
-    leftLength > rightLength ||
-    (leftLength === rightLength && leftLength > 0 && leftIndex < rightIndex);
+  type PairOrderingOptions = { leftIndex: number; rightIndex: number };
+  const earlier = ({ leftIndex, rightIndex }: PairOrderingOptions): boolean => {
+    const leftLength = lengths[leftIndex] ?? 0;
+    const rightLength = lengths[rightIndex] ?? 0;
+    if (leftLength !== rightLength) return leftLength > rightLength;
+    if (leftLength === 0) return false;
+    const leftPriority = priorities[leftIndex] ?? 0;
+    const rightPriority = priorities[rightIndex] ?? 0;
+    if (leftPriority !== rightPriority) return leftPriority > rightPriority;
+    if (options.tieBreak === "minimum-tail") {
+      const leftTail = pairs[leftIndex]?.revisedIndex ?? Number.POSITIVE_INFINITY;
+      const rightTail = pairs[rightIndex]?.revisedIndex ?? Number.POSITIVE_INFINITY;
+      if (leftTail !== rightTail) return leftTail < rightTail;
+    }
+    return leftIndex < rightIndex;
+  };
 
   let bestEnd = 0;
   let groupStart = 0;
@@ -180,23 +194,24 @@ export const longestIncreasingFolioContentPairs = (
     for (let pairIndex = groupStart; pairIndex < groupEnd; pairIndex++) {
       const pair = pairs[pairIndex];
       const rank = pair === undefined ? undefined : rankByCoordinate.get(pair.revisedIndex);
-      if (rank === undefined) {
+      if (rank === undefined || pair === undefined) {
         continue;
       }
 
       let predecessorLength = 0;
       let predecessorIndex = -1;
       for (let cursor = rank - 1; cursor > 0; cursor -= cursor & -cursor) {
-        const candidateLength = treeLengths[cursor] ?? 0;
         const candidateIndex = treeIndexes[cursor] ?? -1;
-        if (earlier(candidateLength, candidateIndex, predecessorLength, predecessorIndex)) {
+        const candidateLength = lengths[candidateIndex] ?? 0;
+        if (earlier({ leftIndex: candidateIndex, rightIndex: predecessorIndex })) {
           predecessorLength = candidateLength;
           predecessorIndex = candidateIndex;
         }
       }
       lengths[pairIndex] = predecessorLength + 1;
       predecessors[pairIndex] = predecessorIndex;
-      if ((lengths[pairIndex] ?? 0) > (lengths[bestEnd] ?? 0)) {
+      priorities[pairIndex] = (priorities[predecessorIndex] ?? 0) + (options.priority?.(pair) ?? 0);
+      if (earlier({ leftIndex: pairIndex, rightIndex: bestEnd })) {
         bestEnd = pairIndex;
       }
     }
@@ -207,11 +222,9 @@ export const longestIncreasingFolioContentPairs = (
       if (rank === undefined) {
         continue;
       }
-      for (let cursor = rank; cursor < treeLengths.length; cursor += cursor & -cursor) {
-        const currentLength = treeLengths[cursor] ?? 0;
+      for (let cursor = rank; cursor < treeIndexes.length; cursor += cursor & -cursor) {
         const currentIndex = treeIndexes[cursor] ?? -1;
-        if (earlier(lengths[pairIndex] ?? 0, pairIndex, currentLength, currentIndex)) {
-          treeLengths[cursor] = lengths[pairIndex] ?? 0;
+        if (earlier({ leftIndex: pairIndex, rightIndex: currentIndex })) {
           treeIndexes[cursor] = pairIndex;
         }
       }
@@ -515,38 +528,23 @@ const pairByUniqueExactText = <Block extends FolioContentBlock>({
     return [];
   }
 
-  // Minimum-tail replacement preserves the previous exact-LCS tie break: for
-  // crossing equal-length subsequences, skip the earlier base candidate.
-  const tailRevisedIndexes: number[] = [];
-  const tailCandidateIndexes: number[] = [];
-  const predecessors = new Int32Array(orderedCandidates.length).fill(-1);
-  orderedCandidates.forEach((candidate, candidateIndex) => {
-    let lower = 0;
-    let upper = tailRevisedIndexes.length;
-    while (lower < upper) {
-      const middle = lower + Math.floor((upper - lower) / 2);
-      if ((tailRevisedIndexes[middle] ?? Number.POSITIVE_INFINITY) < candidate.revisedIndex) {
-        lower = middle + 1;
-      } else {
-        upper = middle;
-      }
-    }
-    predecessors[candidateIndex] = lower === 0 ? -1 : (tailCandidateIndexes[lower - 1] ?? -1);
-    tailRevisedIndexes[lower] = candidate.revisedIndex;
-    tailCandidateIndexes[lower] = candidateIndex;
+  // Exact text still maximizes the number of anchors. For equally long
+  // chains, prefer exact matches corroborated by an id persisted on one side;
+  // an unchanged neighbour then anchors the edits around a relocated copy.
+  // Without that evidence, retain the historical exact-LCS minimum-tail tie.
+  return longestIncreasingFolioContentPairs(orderedCandidates, {
+    tieBreak: "minimum-tail",
+    priority: ({ baseIndex, revisedIndex }) => {
+      const baseBlock = base[baseIndex];
+      const revisedBlock = revised[revisedIndex];
+      return baseBlock &&
+        revisedBlock &&
+        baseBlock.pairingFacts.id === revisedBlock.pairingFacts.id &&
+        baseBlock.pairingFacts.idStability !== revisedBlock.pairingFacts.idStability
+        ? 1
+        : 0;
+    },
   });
-  const pairs: FolioContentBlockPair[] = [];
-  for (
-    let candidateIndex = tailCandidateIndexes.at(-1) ?? -1;
-    candidateIndex !== -1;
-    candidateIndex = predecessors[candidateIndex] ?? -1
-  ) {
-    const candidate = orderedCandidates[candidateIndex];
-    if (candidate) {
-      pairs.push(candidate);
-    }
-  }
-  return pairs.toReversed();
 };
 
 type PairByNestedUniqueExactTextOptions<Block extends FolioContentBlock> =

@@ -20,7 +20,7 @@ import type { TextFormatting } from "../../../types/document";
 import { mergeTextFormatting } from "../../../utils/textFormattingMerge";
 import { expectCharacterStyleMarkAttrs, expectRunFormattingOverrideMarkAttrs } from "../../attrs";
 import { keepSectionBreaksOnSurvivingMarks } from "../../commands/sectionBreak";
-import { getDocumentStyleResolver } from "../../plugins/documentStyles";
+import { getDocumentStyleResolver } from "../../plugins/documentStyleState";
 import { RUN_FORMATTING_MARK_NAMES } from "../../runFormattingMarkNames";
 import { authoredRunFormattingFromAttrs } from "../../runFormattingProvenance";
 import { paragraphAttrsFromResolvedStyle } from "../../styles/resolvedStyleAttrs";

@@ -495,6 +495,8 @@ const tableRowSpec: NodeSpec = {
     // A `false` default would read `<w:hidden w:val="0"/>` as an absent
     // element and delete it on the next save.
     hidden: { default: null },
+    // Transaction-local cleanup state; never rendered or serialized.
+    _batchRowCleanup: { default: null },
     _resolvedJustification: { default: null },
     _originalFormatting: { default: null },
     _tablePropertyExceptions: { default: null },

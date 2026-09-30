@@ -47,7 +47,7 @@ import {
 import {
   getDocumentStyleDefinitions,
   getDocumentStyleResolver,
-} from "../prosemirror/plugins/documentStyles";
+} from "../prosemirror/plugins/documentStyleState";
 import {
   getDocumentNumbering,
   getDocumentNumberingInstanceIds,
@@ -117,6 +117,7 @@ import {
   paragraphLeftAfter,
   propertiesSetInBatch,
 } from "../prosemirror/paragraphPropertyCarry";
+import { rebaseParagraphRuns } from "../prosemirror/rebaseParagraphRuns";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import type {
@@ -1129,48 +1130,6 @@ const OPERATION_TEXT_CONTEXT: ParagraphRunStyleContext = {
   paragraphFormatting: undefined,
   paragraphMarkFormatting: undefined,
   paragraphMarkPrecedesStyle: false,
-};
-
-type RebaseParagraphRunsOptions = {
-  tr: Transaction;
-  position: number;
-  previous: PMNode;
-  target?: PMNode;
-  styleResolver: ReturnType<typeof getDocumentStyleResolver>;
-};
-
-/** Rebuild rendered marks after the paragraph's style cascade changes. */
-const rebaseParagraphRuns = ({
-  tr,
-  position,
-  previous,
-  target,
-  styleResolver,
-}: RebaseParagraphRunsOptions): Transaction => {
-  const paragraph = tr.doc.nodeAt(position);
-  if (!paragraph) return tr;
-  const sourceContext = paragraphRunStyleContext(previous, styleResolver);
-  const targetContext = paragraphRunStyleContext(target ?? paragraph, styleResolver);
-  const representations = selectRunFormattingCarrierRepresentations({
-    doc: tr.doc,
-    from: position + 1,
-    to: position + paragraph.nodeSize - 1,
-  });
-  for (const representation of representations) {
-    const authoredFormatting = readAuthoredRunFormatting({
-      context: sourceContext,
-      marks: representation.node.marks,
-      styleResolver,
-    });
-    const marks = reconcileRunFormattingMarks({
-      authoredFormatting,
-      context: targetContext,
-      node: representation.node,
-      styleResolver,
-    });
-    applyMarksToRunFormattingRepresentation({ tr, representation, marks });
-  }
-  return tr;
 };
 
 type ApplyReplaceBlockStyleIdResult = {

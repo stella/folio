@@ -8,6 +8,7 @@ import {
   type RunFormattingCarrierRepresentation,
 } from "./runFormattingInlineCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
+import { sameRunStyleContext } from "./rebaseParagraphRuns";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
@@ -63,6 +64,10 @@ export const rebaseParagraphRuns = <T extends Transform>({
 }: RebaseParagraphRunsOptions<T>): T => {
   const paragraph = paragraphAt(tr, paragraphPosition);
   const nextContext = paragraphRunStyleContext(paragraph, styleResolver);
+  // An unchanged cascade leaves the runs, their carriers and provenance as they are.
+  if (sameRunStyleContext(previousContext, nextContext)) {
+    return tr;
+  }
   const changes: {
     attrs: Readonly<Record<string, unknown>>;
     currentFormattingMarks: readonly Mark[];

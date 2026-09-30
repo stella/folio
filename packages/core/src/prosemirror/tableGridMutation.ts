@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { removeColumn, TableMap } from "prosemirror-tables";
@@ -57,76 +58,124 @@ export const removeTableRow = (
   }
 };
 
-/**
- * Whether a batch of structural edits may have left rows without cells, to
- * close once the whole batch has run.
- */
+/** Whether a batch of structural deletions may have emptied rows. */
 export type RowsEmptiedInBatch = { pending: boolean };
 
-/**
- * Close the rows a batch left without cells, once the whole batch has run: a
- * later operation of the same batch can still give such a row a cell (a column
- * inserted beside a merge), as accepting the batch tracked does.
- *
- * Every table is visited rather than the ones the deletions named: a later
- * operation of the batch can move a table whole, as a merge carries a nested
- * table into the merged cell, and a position mapped through that move no
- * longer finds it. Tables go from the last to the first, so closing rows in
- * one never moves a table still to visit.
- */
-export const removeRowsWithoutCellsAfterBatch = (
-  tr: Transaction,
-  emptied: RowsEmptiedInBatch,
-): void => {
-  if (!emptied.pending) {
-    return;
-  }
-  const tables: number[] = [];
-  tr.doc.descendants((node, position) => {
-    if (node.type.spec["tableRole"] === "table") {
-      tables.push(position);
-    }
-    return !node.isTextblock;
-  });
-  for (const position of tables.toReversed()) {
-    removeRowsWithoutCells(tr, position);
-  }
+const ROW_CLEANUP_PENDING = "pending";
+
+type MarkRowEmptiedInBatchOptions = {
+  tr: Transaction;
+  rowPosition: number;
+  emptied: RowsEmptiedInBatch;
 };
 
-/**
- * Remove every row a structural edit left without a cell of its own, closing
- * the vertical merges that reached through it over one row fewer.
- *
- * Deleting the only column a row still had a cell in, or merging whole rows
- * together, leaves a row holding nothing but the merges from above. The
- * editable model can carry such a row, but nothing else agrees with it: a
- * package spells it as a row of `w:vMerge` continuations, which the reader
- * gives a cell of its own by splitting the merge apart, so the reopened table
- * differs from the one the operation reported. Accepting the same deletion
- * tracked removes the cells one at a time and the row with its last one,
- * which is this result; the two modes have to leave the same table.
- */
-export const removeRowsWithoutCells = (tr: Transaction, tablePosition: number): void => {
+/** A transient row attribute follows node moves; conversion never serializes it. */
+export const markRowEmptiedInBatch = ({
+  tr,
+  rowPosition,
+  emptied,
+}: MarkRowEmptiedInBatchOptions): void => {
+  const row = tr.doc.nodeAt(rowPosition);
+  if (!row || row.type.spec.attrs?.["_batchRowCleanup"] === undefined) {
+    panic("Batch row cleanup requires the table row cleanup attribute");
+  }
+  tr.setNodeAttribute(rowPosition, "_batchRowCleanup", ROW_CLEANUP_PENDING);
+  emptied.pending = true;
+};
+
+type MarkRowsEmptiedInBatchOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  previousTable: PMNode;
+  emptied: RowsEmptiedInBatch;
+};
+
+/** Column removal keeps row indices stable: mark only newly cell-less rows. */
+export const markRowsEmptiedInBatch = ({
+  tr,
+  tablePosition,
+  previousTable,
+  emptied,
+}: MarkRowsEmptiedInBatchOptions): void => {
+  const table = tr.doc.nodeAt(tablePosition);
+  if (!table || table.type.spec["tableRole"] !== "table") return;
+  table.forEach((row, offset, index) => {
+    if (row.childCount === 0 && previousTable.child(index).childCount > 0) {
+      markRowEmptiedInBatch({ tr, rowPosition: tablePosition + 1 + offset, emptied });
+    }
+  });
+};
+
+type RemoveEmptyRowsOptions = {
+  tr: Transaction;
+  tablePosition: number;
+  shouldRemove: (row: PMNode) => boolean;
+};
+
+const removeEmptyRows = ({ tr, tablePosition, shouldRemove }: RemoveEmptyRowsOptions): void => {
   for (;;) {
     const table = tr.doc.nodeAt(tablePosition);
-    if (!table || table.type.spec["tableRole"] !== "table" || table.childCount < 2) {
-      return;
-    }
+    if (!table || table.type.spec["tableRole"] !== "table" || table.childCount < 2) return;
     let emptyRow = -1;
     table.forEach((row, _offset, index) => {
-      if (emptyRow === -1 && row.childCount === 0) {
-        emptyRow = index;
-      }
+      if (emptyRow === -1 && row.childCount === 0 && shouldRemove(row)) emptyRow = index;
     });
-    if (emptyRow === -1) {
-      return;
-    }
+    if (emptyRow === -1) return;
     removeTableRow(
       tr,
       { map: TableMap.get(table), table, tableStart: tablePosition + 1 },
       emptyRow,
     );
   }
+};
+
+/** Remove only rows emptied by deletions in this transaction, then clear remaining markers. */
+const removeBatchRows = (tr: Transaction, tablePosition: number): void => {
+  removeEmptyRows({
+    tr,
+    tablePosition,
+    shouldRemove: (row) => row.attrs["_batchRowCleanup"] === ROW_CLEANUP_PENDING,
+  });
+  tr.doc.nodeAt(tablePosition)?.forEach((row, offset) => {
+    if (row.attrs["_batchRowCleanup"] === ROW_CLEANUP_PENDING) {
+      tr.setNodeAttribute(tablePosition + 1 + offset, "_batchRowCleanup", null);
+    }
+  });
+};
+
+/** Sweep current tables in reverse so moves cannot invalidate cleanup targets. */
+export const removeRowsWithoutCellsAfterBatch = (
+  tr: Transaction,
+  emptied: RowsEmptiedInBatch,
+): void => {
+  if (!emptied.pending) return;
+  const tables: number[] = [];
+  tr.doc.descendants((node, position) => {
+    if (node.type.spec["tableRole"] === "table") tables.push(position);
+    return !node.isTextblock;
+  });
+  for (const position of tables.toReversed()) removeBatchRows(tr, position);
+};
+
+type RemoveRowsWithoutCellsInRangeOptions = { tr: Transaction; from: number; to: number };
+
+/** Close marked rows before their owning cell is captured into a continuation payload. */
+export const removeRowsWithoutCellsInRange = ({
+  tr,
+  from,
+  to,
+}: RemoveRowsWithoutCellsInRangeOptions): void => {
+  const tables: number[] = [];
+  tr.doc.nodesBetween(from, to, (node, position) => {
+    if (position >= from && node.type.spec["tableRole"] === "table") tables.push(position);
+    return !node.isTextblock;
+  });
+  for (const position of tables.toReversed()) removeBatchRows(tr, position);
+};
+
+/** Close all cell-less rows after an immediate structural edit. */
+export const removeRowsWithoutCells = (tr: Transaction, tablePosition: number): void => {
+  removeEmptyRows({ tr, tablePosition, shouldRemove: () => true });
 };
 
 type ReconcileTableGridAfterColumnRemovalOptions = {
