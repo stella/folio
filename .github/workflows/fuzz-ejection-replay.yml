@@ -3,8 +3,7 @@ name: Merge group fuzz replay
 # When a merge group fails on a fuzz failure (a consumer-scenario flow or a
 # property), replay the same seeds on the commit the group was built on. A
 # failure the base reproduces was already there: it gets its issue, and the
-# pull request is labelled so it can go back into the queue. A group that
-# passed with report-only fuzz failures merged them, so each gets its issue. Runs after CI
+# pull request is labelled so it can go back into the queue. Runs after CI
 # rather than inside it, so the queue removing the group's branch does not
 # cancel it.
 on:
@@ -19,8 +18,7 @@ jobs:
     name: Replay on the group's base
     if: >-
       github.event.workflow_run.event == 'merge_group'
-      && (github.event.workflow_run.conclusion == 'failure'
-        || github.event.workflow_run.conclusion == 'success')
+      && github.event.workflow_run.conclusion == 'failure'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -149,9 +147,7 @@ jobs:
           bun scripts/fuzz-ejection.ts report
           --queue-logs ejection/queue-logs --base-logs ejection/base-logs
           --group-sha "${GROUP_SHA}" --base-sha "${BASE_SHA}" --pr "${PR}" --run-url "${RUN_URL}"
-          ${MERGED:+--merged}
         env:
-          MERGED: ${{ github.event.workflow_run.conclusion == 'success' && '1' || '' }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           GROUP_SHA: ${{ github.event.workflow_run.head_sha }}
