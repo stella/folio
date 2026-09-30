@@ -67,7 +67,7 @@ import {
 } from "../anchoredTextBoxes";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
-import { runParagraphIntoTable, tableHasPendingStructure } from "../tableRunIn";
+import { runInCellPending, runParagraphIntoTable } from "../tableRunIn";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -527,12 +527,12 @@ function resolveChange(
       // accumulated transaction so the inline deletes above don't desync the
       // attr writes or joins below.
       pPrMarkOps.sort((a, b) => b.paragraphPos - a.paragraphPos);
-      // Tables whose own structure was pending when this resolution began:
-      // a paragraph before one keeps its place, as the bulk resolver decides
+      // Tables whose run-in cell was pending when this resolution began: a
+      // paragraph before one keeps its place, as the bulk resolver decides
       // before it resolves any table.
       const pendingTables: number[] = [];
       state.doc.descendants((node, position) => {
-        if (node.type.spec["tableRole"] === "table" && tableHasPendingStructure(node)) {
+        if (node.type.spec["tableRole"] === "table" && runInCellPending(node)) {
           pendingTables.push(position);
         }
         return !node.isTextblock;

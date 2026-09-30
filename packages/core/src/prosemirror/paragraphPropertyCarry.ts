@@ -163,7 +163,8 @@ const recordedFormatting = (node: PMNode): Record<string, unknown> => ({
  * it, leaves that break on the last part) but reads with other properties:
  * record the other's as its property change. Rejecting the inserted breaks
  * leaves this paragraph, which then reads as the one that was there. A
- * pending property change on the other one travels as it is.
+ * pending property change on the other one travels as it is. Returns whether
+ * a change under `revision` was written.
  */
 export const recordReplacedParagraphProperties = ({
   tr,
@@ -175,19 +176,21 @@ export const recordReplacedParagraphProperties = ({
   position: number;
   replaced: PMNode;
   revision: ParagraphPropertyChangeAttrs["info"];
-}): void => {
+}): boolean => {
   const target = tr.doc.nodeAt(position);
-  if (!target || target.type !== replaced.type) return;
+  if (!target || target.type !== replaced.type) return false;
   if (hasSerializableParagraphPropertyChange(expectParagraphAttrs(target)._propertyChanges)) {
-    return;
+    return false;
   }
   const pending = expectParagraphAttrs(replaced)._propertyChanges;
   if (hasSerializableParagraphPropertyChange(pending)) {
     tr.setNodeAttribute(position, "_propertyChanges", pending);
-    return;
+    return false;
   }
   const previousFormatting = recordedFormatting(replaced);
-  if (JSON.stringify(previousFormatting) === JSON.stringify(recordedFormatting(target))) return;
+  if (JSON.stringify(previousFormatting) === JSON.stringify(recordedFormatting(target))) {
+    return false;
+  }
   tr.setNodeAttribute(position, "_propertyChanges", [
     {
       type: "paragraphPropertyChange",
@@ -195,6 +198,7 @@ export const recordReplacedParagraphProperties = ({
       previousFormatting: previousFormatting as RecordedFormatting,
     } satisfies ParagraphPropertyChangeAttrs,
   ]);
+  return true;
 };
 
 /**

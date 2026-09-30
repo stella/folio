@@ -116,6 +116,7 @@ import {
   carryParagraphProperties,
   paragraphLeftAfter,
   propertiesSetInBatch,
+  recordReplacedParagraphProperties,
 } from "../prosemirror/paragraphPropertyCarry";
 import { rebaseParagraphRuns } from "../prosemirror/rebaseParagraphRuns";
 import { encloseWholeControls } from "../prosemirror/contentControlRevisions";
@@ -4640,9 +4641,25 @@ const applyFolioAIEditOperationsInternal = ({
           // would have to be inserted and deleted at once, which one
           // paragraph mark cannot say: accepting kept a blank paragraph, and
           // a suggested one failed to accept at all.
+          const retracted = tr.doc.nodeAt(item.blockFrom);
           tr = tr.delete(item.blockFrom, item.blockTo);
           if (retraction.clearBreakAt !== null) {
             tr = tr.setNodeAttribute(retraction.clearBreakAt, "pPrMark", null);
+            // The paragraph before now ends the container with the retracted
+            // one's mark, and so with the properties rejecting reads there.
+            const revisionIdProperties = operationRevisionSeed;
+            if (
+              retracted &&
+              recordReplacedParagraphProperties({
+                tr,
+                position: retraction.clearBreakAt,
+                replaced: retracted,
+                revision: { id: revisionIdProperties, author, date, ...trackedRevisionExtras },
+              })
+            ) {
+              operationRevisionSeed++;
+              appliedRevisionIds = [revisionIdProperties];
+            }
           }
           break;
         }

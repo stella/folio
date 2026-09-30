@@ -25,17 +25,24 @@ import { rebaseParagraphRuns } from "./rebaseParagraphRunFormatting";
 import { paragraphRunStyleContext, type RunStyleResolver } from "./runStyleFormatting";
 import { holdsNoContent } from "./zeroWidthAnchors";
 
-/** Whether a table's rows or cells are themselves pending insertion or deletion. */
-export const tableHasPendingStructure = (table: PMNode): boolean => {
-  let pending = false;
-  table.descendants((child) => {
-    pending ||=
-      child.attrs["trIns"] != null ||
-      child.attrs["trDel"] != null ||
-      child.attrs["cellMarker"] != null;
-    return !pending && !child.isTextblock;
-  });
-  return pending;
+/**
+ * Whether the cell a paragraph's words would run into is itself pending: its
+ * row or the cell (through nested tables' first cells) is inserted, deleted
+ * or merged, so resolving may not keep it. Pending rows or cells elsewhere in
+ * the table leave that cell where it is.
+ */
+export const runInCellPending = (table: PMNode): boolean => {
+  let node: PMNode | null = table;
+  while (node?.type.spec["tableRole"] === "table") {
+    const row: PMNode | null = node.firstChild;
+    if (!row) return false;
+    if (row.attrs["trIns"] != null || row.attrs["trDel"] != null) return true;
+    const cell: PMNode | null = row.firstChild;
+    if (!cell) return false;
+    if (cell.attrs["cellMarker"] != null) return true;
+    node = cell.firstChild;
+  }
+  return false;
 };
 
 /** The first paragraph of a table's first cell, descending into nested tables. */
@@ -45,9 +52,9 @@ const runInTarget = (doc: PMNode, tablePos: number): { pos: number; node: PMNode
   const table = node;
   const firstRow = table?.firstChild;
   if (!table || table.type.spec["tableRole"] !== "table" || !firstRow) return null;
-  // A table whose rows or cells are themselves pending may not keep the cell
-  // the words would run into: the paragraph keeps its own place instead.
-  if (tableHasPendingStructure(table)) return null;
+  // A pending row or cell may not keep the cell the words would run into:
+  // the paragraph keeps its own place instead.
+  if (runInCellPending(table)) return null;
   while (node && node.type.name !== "paragraph") {
     const child: PMNode | null = node.firstChild;
     if (!child || child.isInline) return null;

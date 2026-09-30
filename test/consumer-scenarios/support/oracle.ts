@@ -240,25 +240,39 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
   const indexOf = (id: string | undefined): number =>
     id === undefined ? -1 : model.rows.findIndex((candidate) => candidate.pre?.id === id);
   let previous: string | undefined;
+  // Blocks whose mark accepting removes, waiting for the block they run into.
+  let joining = false;
   for (const row of live) {
     if (known.has(row.id)) {
+      // The paragraph left by a join is the one whose mark stays: the block
+      // the joined ones run into, which keeps its identity.
+      const survivor = model.rows[indexOf(row.id)];
+      if (joining && survivor) survivor.pendingJoin = true;
+      joining = false;
       previous = row.id;
       continue;
     }
     known.add(row.id);
     const ghost = modelRow("", {}, row);
     if (row.text.length > 0) {
-      // Joined into the block before it once accepted.
-      const head = model.rows[indexOf(previous)];
-      if (head) head.pendingJoin = true;
+      // Runs on into the block after it once accepted.
+      joining = true;
       ghost.pendingJoin = true;
       ghost.removed = true;
       model.rows.push(ghost);
       continue;
     }
     ghost.pendingDeletion = true;
+    // Words joining a later block run on through it: what lands beside it
+    // decides where they stop.
+    if (joining) ghost.pendingJoin = true;
     model.rows.splice(indexOf(previous) + 1, 0, ghost);
     previous = row.id;
+  }
+  if (joining) {
+    // Nothing after it stays: it can only have joined the block before.
+    const head = model.rows[indexOf(previous)];
+    if (head) head.pendingJoin = true;
   }
   return model;
 };
