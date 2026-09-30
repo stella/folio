@@ -170,8 +170,10 @@ module.exports = {
     },
     exclude: {
       path: [
-        "(^|/)dist/",
-        "(^|/)node_modules/",
+        "^packages/[^/]+/dist/",
+        // Exclusion removes dependency edges too. Keep framework targets visible
+        // to the docx-core boundary, including nested package-manager layouts.
+        "(^|/)node_modules/(?!prosemirror-|.*/prosemirror-)",
         "^packages/docx-core/src/generated/",
         "^packages/core/src/generated/",
       ],
