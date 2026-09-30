@@ -179,6 +179,9 @@ const emptyPieceOf = (empty: InlineNode, other: InlineNode, emptied: Emptied): b
  * Two records meeting where a change was resolved, merged as far as they are
  * alike. A piece of a cut container that resolution emptied (one `emptied`
  * holds) goes into the piece it was cut from, which keeps the first one's ids.
+ * Two alike containers merged meet inside too, and that seam is merged the
+ * same way, emptied pieces included, so a merge leaves no seam it would merge
+ * again.
  */
 export const mergeAtSeam = (
   left: InlineNode,
@@ -186,7 +189,11 @@ export const mergeAtSeam = (
   emptied: Emptied = NOTHING_EMPTIED,
 ): InlineNode[] => {
   if (alikeDepth(left, right) > 0) {
-    return mergeAlike([left], [right]);
+    const leftChildren = childNodes(left);
+    const rightChildren = childNodes(right);
+    return leftChildren === undefined || rightChildren === undefined
+      ? mergeAlike([left], [right])
+      : [rebuildNode(left, mergedAtSeam(leftChildren, rightChildren, emptied))];
   }
   if (emptyPieceOf(left, right, emptied)) {
     return [rebuildNode(left, childNodes(right) ?? [])];
@@ -327,10 +334,42 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
 
 type JoinPlan = { op: ResolveRevisionOp; story: OpStory; paraId: string; added: boolean };
 
-/** Whether a paragraph's first and last records are containers resolution emptied. */
+/**
+ * Whether the record a paragraph's content starts with, and the one it ends
+ * with, are containers resolution emptied. The record is the innermost one at
+ * that edge, down the chain of first (or last) children: a join merges alike
+ * containers down that chain, so it is the one a join meets.
+ */
 type EmptiedEnds = { first: boolean; last: boolean };
 
 const NO_EMPTIED_ENDS: EmptiedEnds = { first: false, last: false };
+
+/** The innermost record at one edge of a list, down the chain of first or last children. */
+const edgeRecord = (
+  nodes: readonly InlineNode[],
+  edge: "first" | "last",
+): InlineNode | undefined => {
+  const at = (list: readonly InlineNode[]): InlineNode | undefined =>
+    edge === "first" ? list.at(0) : list.at(-1);
+  let node = at(nodes);
+  while (node !== undefined) {
+    const children = childNodes(node);
+    const inner = children === undefined ? undefined : at(children);
+    if (inner === undefined) return node;
+    node = inner;
+  }
+  return node;
+};
+
+/** Which edges of a list end in a record `emptied` holds. */
+const emptiedEndsOf = (nodes: readonly InlineNode[], emptied: Emptied): EmptiedEnds => {
+  const first = edgeRecord(nodes, "first");
+  const last = edgeRecord(nodes, "last");
+  return {
+    first: first !== undefined && emptied.has(first),
+    last: last !== undefined && emptied.has(last),
+  };
+};
 
 /**
  * The emptied ends of each paragraph resolution changed, by paragraph id.
@@ -377,18 +416,21 @@ const joinOps = (
     const nextId = idKey(next.paraId ?? "");
     const nextEnds = ends.get(nextId) ?? NO_EMPTIED_ENDS;
     const emptied = new Set<InlineNode>();
-    const last = paragraph.content.at(-1);
-    const first = next.content.at(0);
-    if (firstEnds.last && last !== undefined) emptied.add(last);
-    if (nextEnds.first && first !== undefined) emptied.add(first);
-    ends.set(nextId, {
-      first: paragraph.content.length === 0 ? nextEnds.first : firstEnds.first,
-      last: next.content.length === 0 ? firstEnds.last : nextEnds.last,
-    });
-    const survivor: Paragraph = {
-      ...next,
-      content: asParagraphContent(mergedAtSeam(paragraph.content, next.content, emptied)),
-    };
+    const marked: [readonly InlineNode[], "first" | "last", boolean][] = [
+      [paragraph.content, "first", firstEnds.first],
+      [paragraph.content, "last", firstEnds.last],
+      [next.content, "first", nextEnds.first],
+      [next.content, "last", nextEnds.last],
+    ];
+    for (const [content, edge, isEmptied] of marked) {
+      const record = edgeRecord(content, edge);
+      if (isEmptied && record !== undefined) emptied.add(record);
+    }
+    const merged = mergedAtSeam(paragraph.content, next.content, emptied);
+    // A record left as it was keeps its identity through the merge; an emptied
+    // one folded into its neighbour is rebuilt, and is no longer empty.
+    ends.set(nextId, emptiedEndsOf(merged, emptied));
+    const survivor: Paragraph = { ...next, content: asParagraphContent(merged) };
     return Result.ok([
       {
         type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
@@ -488,12 +530,7 @@ export const resolveRevision = (
     const paraId = paragraph.paraId ?? "";
     const resolved = resolveList(paragraph.content, resolution);
     if (resolved.changed) {
-      const first = resolved.nodes.at(0);
-      const last = resolved.nodes.at(-1);
-      emptiedEnds.set(idKey(paraId), {
-        first: first !== undefined && resolution.emptied.has(first),
-        last: last !== undefined && resolution.emptied.has(last),
-      });
+      emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolved.nodes, resolution.emptied));
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
         story: op.story,

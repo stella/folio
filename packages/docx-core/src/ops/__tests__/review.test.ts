@@ -18,6 +18,7 @@ import type {
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
+import { mergeAtSeam } from "../resolve";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -196,6 +197,42 @@ describe("tracked text", () => {
       { ...theirs, info: { ...theirs.info, id: 7 }, content: [run("b")] },
     ]);
     expect(resolved(tracked.document, [6], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+  });
+
+  // The L1 generator found an accepted insertion whose hyperlink merged into
+  // the next one while the seam inside was left unmerged. Resolution merges
+  // the seam inside the records it merges as it merges the outer one: the
+  // inserted wrapper held nothing before, so it stays, as it does directly.
+  test("accepting an insertion merges the seams inside the records it merges", () => {
+    const wrapper = (content: ParagraphContent[]): ParagraphContent => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const link = (children: ParagraphContent[]): ParagraphContent => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children,
+    });
+    const document = documentOf(paragraph("00000001", [link([wrapper([run("a")])])]));
+    const op = {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 0),
+      slice: { content: [link([wrapper([])])], openStart: 0, openEnd: 0 },
+      revision: stamp(1),
+    } as const satisfies DocumentOp;
+    const tracked = applied(document, op);
+    const direct = applied(document, directly(op));
+    const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
+    const merged = link([wrapper([]), wrapper([run("a")])]);
+    expect(blocks(accepted)).toEqual([paragraph("00000001", [merged])]);
+    // Directly, the inserted hyperlink stands beside the other; merged, they agree.
+    const [only] = blocks(direct.document);
+    const [first, second] = only?.type === "paragraph" ? only.content : [];
+    expect(first).toEqual(link([wrapper([])]));
+    expect(second !== undefined && mergeAtSeam(link([wrapper([])]), second)).toEqual([merged]);
   });
 
   test("a tracked insertion inside a deletion is refused", () => {
@@ -787,5 +824,42 @@ describe("an empty content control is content: resolution never merges it away",
     });
     const ids = [...typed.revisions, ...field.revisions];
     expect(resolved(field.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+  });
+
+  // Two alike containers a resolution merges meet inside too; a piece there
+  // is folded back only if the resolution emptied it.
+  test("an emptied piece inside merged containers goes back into its neighbour", () => {
+    const nested = (content: ParagraphContent[]): ParagraphContent =>
+      control(1, [control(2, content)]);
+    const document = documentOf(
+      paragraph("00000001", [nested([run("ab")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const typed = applied(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 1),
+      text: "x",
+      runProps: {},
+      revision: stamp(1),
+    });
+    // Split on each side of the insertion: in the middle paragraph the inner
+    // control's piece holds only it, inside a piece of the outer control, so
+    // rejecting empties the inner piece, not the paragraph's first record.
+    const first = applied(typed.document, {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 1),
+      newBlockId: "00000002",
+      revision: stamp(2),
+      newIds: { control: [7, 17] },
+    });
+    const second = applied(first.document, {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 1),
+      newBlockId: "00000003",
+      revision: stamp(3),
+      newIds: { control: [8, 18] },
+    });
+    const ids = [...typed.revisions, ...first.revisions, ...second.revisions];
+    expect(resolved(second.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 });

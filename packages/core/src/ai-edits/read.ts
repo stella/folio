@@ -25,6 +25,10 @@ import {
   getFolioNodeRevisionCarriers,
   type FolioNodeRevisionKind,
 } from "../prosemirror/revisionCarriers";
+import {
+  enclosingInsertionAncestors,
+  trackedRevisionLayerOf,
+} from "../prosemirror/trackedRevisionPath";
 import { getTableCellMergeChange } from "../prosemirror/tableCellMergeRevision";
 import { readerTextOf } from "./note-references";
 import {
@@ -160,14 +164,17 @@ type RowRevisionScope = {
  */
 type RevisionInfo = { id: number; author: string; date: string | null };
 
-type InlineBoundary = { hyperlink: string | null; comment: number | null };
+type InlineBoundary = {
+  hyperlink: string | null;
+  comment: number | null;
+  revisionParents: string;
+};
 
 type InlineChangeRange = {
   start: number;
   end: number;
   firstBoundary: InlineBoundary;
   lastBoundary: InlineBoundary;
-  contiguous: boolean;
 };
 
 type TrackedChangeGroup = { change: FolioReviewChange; ids: number[] };
@@ -185,6 +192,7 @@ const getTrackedChangeGroupsFromProjectedDoc = (
   const deletionType = doc.type.schema.marks["deletion"];
   const grouped = new Map<string, FolioReviewChange>();
   const inlineRanges = new Map<string, InlineChangeRange>();
+  const lastInlineGroupByPath = new Map<string, string>();
   const transparentInlineEnds = new Map<number, number>();
   const transparentGap = (start: number, end: number): boolean => {
     let pos = start;
@@ -391,82 +399,71 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     }
 
     const text = readerTextOf(node, noteReferences);
-    for (const mark of node.marks) {
-      if (mark.type.name === "runPropertyChange") {
+    const insertionMark = node.marks.find((mark) => mark.type === insertionType);
+    const deletionMark = node.marks.find((mark) => mark.type === deletionType);
+    const mark = deletionMark ?? insertionMark;
+    if (!mark || typeof mark.attrs["revisionId"] !== "number") {
+      return undefined;
+    }
+    const attrs = expectTrackedChangeMarkAttrs(mark);
+    // Live edits carry two marks; parsed nested revisions carry one mark
+    // and its ancestor path. Use the serializer's path in both forms.
+    const pathLayers = [
+      ...enclosingInsertionAncestors({
+        insertionMark: deletionMark ? insertionMark : undefined,
+        ancestors: attrs._docxRevisionAncestors ?? [],
+        node,
+      }),
+      trackedRevisionLayerOf(mark, node),
+    ];
+    const layers = pathLayers.map((layer) => ({
+      kind:
+        layer.type === "insertion" || layer.type === "moveTo"
+          ? ("insertion" as const)
+          : ("deletion" as const),
+      revision: { id: layer.revisionId, author: layer.author, date: layer.date ?? null },
+    }));
+    for (const [layerIndex, { kind: layerKind, revision }] of layers.entries()) {
+      const rowScope = rowRevisionScopes.at(-1);
+      if (rowScope?.kind === layerKind && belongsToRowRevision(rowScope, revision)) {
         continue;
       }
-      if (typeof mark.attrs["revisionId"] !== "number") {
-        continue;
-      }
-      let kind: FolioReviewChangeKind;
-      if (mark.type === insertionType) {
-        kind = "insertion";
-      } else if (mark.type === deletionType) {
-        kind = "deletion";
+      const path = `${currentBlockId ?? ""}:${JSON.stringify(pathLayers.slice(0, layerIndex + 1))}`;
+      const previousKey = lastInlineGroupByPath.get(path);
+      const previousRange = previousKey === undefined ? undefined : inlineRanges.get(previousKey);
+      // A wrapper closes when its ancestor path changes or unmarked text
+      // intervenes. Reusing its logical id later does not reopen that wrapper.
+      const key =
+        previousKey !== undefined && previousRange && transparentGap(previousRange.end, pos)
+          ? previousKey
+          : `${path}:${pos}`;
+      lastInlineGroupByPath.set(path, key);
+      const hyperlink = node.marks.find((candidate) => candidate.type.name === "hyperlink");
+      const comment = node.marks.find((candidate) => candidate.type.name === "comment");
+      const commentId = comment?.attrs["commentId"];
+      const boundary: InlineBoundary = {
+        hyperlink: hyperlink ? String(hyperlink.attrs["href"] ?? "") : null,
+        comment: typeof commentId === "number" ? commentId : null,
+        revisionParents: JSON.stringify(pathLayers.slice(0, layerIndex)),
+      };
+      const range = inlineRanges.get(key);
+      if (range) {
+        range.end = pos + node.nodeSize;
+        range.lastBoundary = boundary;
       } else {
+        inlineRanges.set(key, {
+          start: pos,
+          end: pos + node.nodeSize,
+          firstBoundary: boundary,
+          lastBoundary: boundary,
+        });
+      }
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.text += text;
         continue;
       }
-      const author = mark.attrs["author"];
-      const date = mark.attrs["date"];
-      // A parsed `w:ins > w:del` is one deletion mark that records the
-      // insertion around it as an ancestor, where an edit made in this
-      // session carries two marks. Both are the same two revisions: read the
-      // ancestors too, so a save and reopen lists what the reviewer showed.
-      const layers: { kind: FolioReviewChangeKind; revision: RevisionInfo }[] = [
-        ...(expectTrackedChangeMarkAttrs(mark)._docxRevisionAncestors ?? []).map((ancestor) => ({
-          kind:
-            ancestor.type === "insertion" || ancestor.type === "moveTo"
-              ? ("insertion" as const)
-              : ("deletion" as const),
-          revision: {
-            id: ancestor.revisionId,
-            author: ancestor.author,
-            date: ancestor.date ?? null,
-          },
-        })),
-        {
-          kind,
-          revision: {
-            id: mark.attrs["revisionId"],
-            author: typeof author === "string" ? author : "",
-            date: typeof date === "string" ? date : null,
-          },
-        },
-      ];
-      for (const { kind: layerKind, revision } of layers) {
-        const rowScope = rowRevisionScopes.at(-1);
-        if (rowScope?.kind === layerKind && belongsToRowRevision(rowScope, revision)) {
-          continue;
-        }
-        const key = `${currentBlockId ?? ""}:${layerKind}:${revision.id}`;
-        const hyperlink = node.marks.find((candidate) => candidate.type.name === "hyperlink");
-        const comment = node.marks.find((candidate) => candidate.type.name === "comment");
-        const commentId = comment?.attrs["commentId"];
-        const boundary: InlineBoundary = {
-          hyperlink: hyperlink ? String(hyperlink.attrs["href"] ?? "") : null,
-          comment: typeof commentId === "number" ? commentId : null,
-        };
-        const range = inlineRanges.get(key);
-        if (range) {
-          range.contiguous = range.contiguous && transparentGap(range.end, pos);
-          range.end = pos + node.nodeSize;
-          range.lastBoundary = boundary;
-        } else {
-          inlineRanges.set(key, {
-            start: pos,
-            end: pos + node.nodeSize,
-            firstBoundary: boundary,
-            lastBoundary: boundary,
-            contiguous: true,
-          });
-        }
-        const existing = grouped.get(key);
-        if (existing) {
-          existing.text += text;
-          continue;
-        }
-        grouped.set(key, { ...revision, type: layerKind, text, blockId: currentBlockId });
-      }
+      grouped.set(key, { ...revision, type: layerKind, text, blockId: currentBlockId });
     }
     return undefined;
   });
@@ -482,10 +479,11 @@ const getTrackedChangeGroupsFromProjectedDoc = (
     const previousRange = previousKey === null ? undefined : inlineRanges.get(previousKey);
     if (
       previous &&
-      range?.contiguous &&
-      previousRange?.contiguous &&
+      range &&
+      previousRange &&
       previousRange.end <= range.start &&
       transparentGap(previousRange.end, range.start) &&
+      previousRange.lastBoundary.revisionParents === range.firstBoundary.revisionParents &&
       (previousRange.lastBoundary.hyperlink !== range.firstBoundary.hyperlink ||
         previousRange.lastBoundary.comment !== range.firstBoundary.comment ||
         previousRange.end !== range.start) &&
@@ -522,8 +520,8 @@ export const getTrackedChangesFromSnapshot = (snapshot: FolioAIEditSnapshot): Fo
 
 /**
  * The tracked changes present in the body, read from inline marks and
- * structural node attributes. Runs of one inline revision within a block fold
- * into a single entry.
+ * structural node attributes. Adjacent runs sharing a revision wrapper path
+ * fold into one entry; interrupted or differently nested wrappers stay separate.
  *
  * A tracked row insertion or deletion marks the row AND every run in its
  * cells, the way Word writes it. Both halves are one change, so the run marks
