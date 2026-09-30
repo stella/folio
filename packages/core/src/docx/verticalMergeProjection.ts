@@ -2,7 +2,7 @@ import type { Table, TableCell, TableCellBlock, Paragraph } from "../types/docum
 import { isCellMergeContinuation } from "./tableParser";
 
 /** The reader and revision resolver share which continuation cells remain visible. */
-type RowSpanInfo = {
+export type RowSpanInfo = {
   rowSpan: number;
   skip: boolean;
   preserveVMergeRestart?: boolean;

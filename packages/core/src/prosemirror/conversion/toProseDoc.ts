@@ -72,7 +72,7 @@ import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
 import { paragraphNumberingAttr } from "../numberingAttr";
 import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
-import { calculateRowSpans } from "../../docx/verticalMergeProjection";
+import { calculateRowSpans, type RowSpanInfo } from "../../docx/verticalMergeProjection";
 import { isCellMergeContinuation } from "../../docx/tableParser";
 import { isBaselineVertAlign } from "../../docx/runParser";
 import {
