@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import {
+  compressibleArchive,
+  manyEntryArchive,
+  understatedEntryArchive,
+} from "../__tests__/archiveInflationFixtures";
 import { RELATIONSHIP_TYPES } from "../relsParser";
 import { DocxArchiveError } from "./boundedArchive";
 import { extractDocxText } from "./extractDocxText";
@@ -599,5 +604,35 @@ describe("extractDocxText", () => {
       charCount: 0,
       view: "accepted",
     });
+  });
+});
+
+describe("extractDocxText archive limits", () => {
+  test("stops the main document part once it inflates past its declared size", async () => {
+    await expect(
+      extractDocxText(await understatedEntryArchive("word/document.xml")),
+    ).rejects.toMatchObject({
+      _tag: "DocxArchiveError",
+      reason: "entry-too-large",
+      message: 'DOCX entry "word/document.xml" inflated past its declared size',
+    });
+  });
+
+  test("refuses a part whose declared expansion passes the ratio cap", async () => {
+    const bytes = await compressibleArchive({
+      entryPath: "word/header1.xml",
+      inflatedMebibytes: 5,
+    });
+
+    await expect(extractDocxText(bytes)).rejects.toMatchObject({
+      _tag: "DocxArchiveError",
+      reason: "compression-ratio-exceeded",
+    });
+  });
+
+  test("applies archive limits the caller passes", async () => {
+    await expect(
+      extractDocxText(await manyEntryArchive(40), { archive: { maxEntries: 10 } }),
+    ).rejects.toMatchObject({ _tag: "DocxArchiveError", reason: "too-many-entries" });
   });
 });

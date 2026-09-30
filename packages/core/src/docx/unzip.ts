@@ -27,6 +27,17 @@
 import JSZip from "jszip";
 
 import { bytesToDataUrl } from "../utils/base64";
+import {
+  countCentralDirectoryRecords,
+  createInflationBudget,
+  DOCX_MAX_COMPRESSION_RATIO,
+  exceedsCompressionRatio,
+  getZipEntrySizes,
+  inflateEntryWithinLimits,
+  type InflateEntryResult,
+  type InflationBudget,
+  type InflationLimit,
+} from "./archiveInflation";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
 import { decodeXmlBytes } from "./xmlEncoding";
@@ -67,6 +78,11 @@ export type DocxUnzipLimits = {
    * memory as bytes, not on what the parsed structure retains.
    */
   maxTotalUncompressedBytes: number;
+  /**
+   * Inflated bytes allowed per compressed byte, for each entry and for the
+   * package as a whole. Entries and packages under 4 MiB inflated are exempt.
+   */
+  maxCompressionRatio: number;
   /** Elements allowed in one XML part, counted before any tree is built. */
   maxXmlElementsPerPart: number;
   /** Attributes allowed in one XML part, counted before any tree is built. */
@@ -108,6 +124,7 @@ const DEFAULT_UNZIP_LIMITS: DocxUnzipLimits = {
   maxMediaBytes: 25 * MEBIBYTE,
   maxFontBytes: 10 * MEBIBYTE,
   maxTotalUncompressedBytes: 250 * MEBIBYTE,
+  maxCompressionRatio: DOCX_MAX_COMPRESSION_RATIO,
   maxXmlElementsPerPart: FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPart,
   maxXmlAttributesPerPart: FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart,
   maxXmlElementsPerPackage: FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPackage,
@@ -158,13 +175,6 @@ export type DocxUnzipOptions = Partial<Omit<DocxUnzipLimits, "allowedMediaMimeTy
 };
 
 type PartialDocxUnzipLimits = DocxUnzipOptions;
-
-type ZipEntryWithMetadata = {
-  _data?: {
-    uncompressedSize?: number;
-    compressedSize?: number;
-  };
-};
 
 type LoadedZip = {
   zip: JSZip;
@@ -295,6 +305,14 @@ export async function unzipDocx(
   }
 
   const wasEncrypted = containerType === DOCX_CONTAINER_TYPES.CFB;
+  // Counted before JSZip builds an object per record. Directory records are
+  // not counted against `maxFiles` below, so this bound leaves room for one per
+  // file; its job is to refuse an archive whose records would have to be
+  // materialized before the exact count could be taken.
+  const maxRecords = limits.maxFiles * 2;
+  if (countCentralDirectoryRecords(new Uint8Array(zipBuffer), maxRecords) > maxRecords) {
+    throw new DocxSecurityError("DOCX file contains too many entries");
+  }
   const loaded = await loadDocxZip(zipBuffer, limits.maxFiles);
   if (loaded.buffer.byteLength > limits.maxInputBytes) {
     throw new DocxSecurityError("DOCX file exceeds the maximum allowed size");
@@ -338,7 +356,28 @@ export async function unzipDocx(
   };
 
   let totalUncompressedBytes = 0;
+  const inflationBudget = createInflationBudget(limits.maxTotalUncompressedBytes);
   const extractionTasks: (() => Promise<ExtractedEntry | null>)[] = [];
+
+  // A part this parser never reads is still inflated by a later save or a
+  // lazy part read, which trust its declared size. Inflating it once here,
+  // within that declared size, is what makes the size worth trusting.
+  const verifyEntry = (file: JSZip.JSZipObject, path: string) => {
+    extractionTasks.push(async () => {
+      await verifyEntryWithinLimits({ file, path, limits, budget: inflationBudget });
+      return null;
+    });
+  };
+  const inflate = async (
+    file: JSZip.JSZipObject,
+    maxEntryBytes: number,
+  ): Promise<InflateEntryResult> =>
+    await inflateEntryWithinLimits({
+      entry: file,
+      maxEntryBytes,
+      maxCompressionRatio: limits.maxCompressionRatio,
+      budget: inflationBudget,
+    });
 
   // Validate the complete package before decompressing accepted entries. The
   // extraction tasks are started only after validation completes so an early
@@ -353,15 +392,25 @@ export async function unzipDocx(
     // not model still passes through the host's memory on the way out, and a
     // package that inflates past the ceiling has to be refused whether or not
     // anything here looks inside it.
-    const declaredSize = getEntryUncompressedSize(file);
+    const { compressedBytes, uncompressedBytes: declaredSize } = getZipEntrySizes(file);
     if (declaredSize !== null) {
       totalUncompressedBytes += declaredSize;
       if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
         throw new DocxSecurityError("DOCX file expands beyond the maximum allowed size");
       }
+      if (
+        exceedsCompressionRatio({
+          inflatedBytes: declaredSize,
+          compressedBytes,
+          maxRatio: limits.maxCompressionRatio,
+        })
+      ) {
+        throw new DocxSecurityError(`DOCX entry exceeds the maximum compression ratio: ${path}`);
+      }
     }
 
     if (!isParsedDocxEntry(path)) {
+      verifyEntry(file, path);
       continue;
     }
 
@@ -371,55 +420,77 @@ export async function unzipDocx(
     if (lowerPath.endsWith(".xml") || lowerPath.endsWith(".rels")) {
       assertEntrySize(path, declaredSize, limits.maxXmlBytes);
       if (options.extractAllXml === false && !shouldExtractXmlPart(lowerPath)) {
+        verifyEntry(file, path);
         continue;
       }
-      extractionTasks.push(() =>
-        file.async("uint8array").then((xmlBytes) => {
-          assertExtractedSize(path, xmlBytes.byteLength, limits.maxXmlBytes);
-          return { type: "xml", path, lowerPath, content: decodeXmlBytes(xmlBytes) };
-        }),
-      );
+      extractionTasks.push(async () => {
+        const result = await inflate(file, limits.maxXmlBytes);
+        if (!result.ok) {
+          throw inflationLimitError(result.limit, path);
+        }
+        return { type: "xml", path, lowerPath, content: decodeXmlBytes(result.bytes) };
+      });
     } else if (lowerPath.startsWith("word/media/")) {
       // Media files (images, etc.)
       const mimeType = getMediaMimeType(path);
       if (!limits.allowedMediaMimeTypes.has(mimeType)) {
+        verifyEntry(file, path);
         continue;
       }
       if (isEntryTooLarge(declaredSize, limits.maxMediaBytes)) {
         content.warnings.push(
           `Skipped oversized media file: ${path}; original entry preserved for round-trip.`,
         );
+        verifyEntry(file, path);
         continue;
       }
-      extractionTasks.push(() =>
-        file.async("arraybuffer").then((binaryContent) => {
-          if (binaryContent.byteLength > limits.maxMediaBytes) {
-            content.warnings.push(
-              `Skipped oversized media file: ${path}; original entry preserved for round-trip.`,
-            );
-            return null;
+      extractionTasks.push(async () => {
+        const result = await inflate(file, limits.maxMediaBytes);
+        if (!result.ok) {
+          if (result.limit !== "entry") {
+            throw inflationLimitError(result.limit, path);
           }
-          if (!isMediaContentAllowed(binaryContent, mimeType)) {
-            return null;
-          }
-          return { type: "media", path, mimeType, content: binaryContent };
-        }),
-      );
+          content.warnings.push(
+            `Skipped oversized media file: ${path}; original entry preserved for round-trip.`,
+          );
+          return null;
+        }
+        const binaryContent = result.bytes.buffer;
+        if (!isMediaContentAllowed(binaryContent, mimeType)) {
+          return null;
+        }
+        return { type: "media", path, mimeType, content: binaryContent };
+      });
     } else if (lowerPath.startsWith("word/fonts/")) {
       // Embedded fonts are optional for editing and original ZIP preservation.
       // Skip oversized fonts instead of rejecting otherwise readable documents.
       if (isEntryTooLarge(declaredSize, limits.maxFontBytes)) {
+        verifyEntry(file, path);
         continue;
       }
-      extractionTasks.push(() =>
-        file.async("arraybuffer").then((binaryContent) => {
-          if (binaryContent.byteLength > limits.maxFontBytes) {
-            return null;
+      extractionTasks.push(async () => {
+        const result = await inflate(file, limits.maxFontBytes);
+        if (!result.ok) {
+          if (result.limit !== "entry") {
+            throw inflationLimitError(result.limit, path);
           }
-          return { type: "font", path, content: binaryContent };
-        }),
-      );
+          return null;
+        }
+        return { type: "font", path, content: result.bytes.buffer };
+      });
+    } else {
+      verifyEntry(file, path);
     }
+  }
+
+  if (
+    exceedsCompressionRatio({
+      inflatedBytes: totalUncompressedBytes,
+      compressedBytes: loaded.buffer.byteLength,
+      maxRatio: limits.maxCompressionRatio,
+    })
+  ) {
+    throw new DocxSecurityError("DOCX file exceeds the maximum compression ratio");
   }
 
   const xmlBudget = createXmlPackageBudget();
@@ -508,6 +579,55 @@ function assignXmlContent(
   } else if (/^word\/footer[^/]*\.xml$/u.test(lowerPath)) {
     const filename = path.split("/").pop() || path;
     content.footers.set(filename, xmlContent);
+  }
+}
+
+function inflationLimitError(limit: InflationLimit, path: string): DocxSecurityError {
+  switch (limit) {
+    case "declared-size":
+      return new DocxSecurityError(`DOCX entry inflates past its declared size: ${path}`);
+    case "compression-ratio":
+      return new DocxSecurityError(`DOCX entry exceeds the maximum compression ratio: ${path}`);
+    case "entry":
+      return new DocxSecurityError(`DOCX entry exceeds maximum size: ${path}`);
+    case "total":
+      return new DocxSecurityError("DOCX file expands beyond the maximum allowed size");
+  }
+}
+
+type VerifyEntryOptions = {
+  file: JSZip.JSZipObject;
+  path: string;
+  limits: DocxUnzipLimits;
+  budget: InflationBudget;
+};
+
+/**
+ * Inflate an entry without keeping it, to bound what a later read of it can
+ * produce. A limit refuses the package. A corrupt entry does not: it was never
+ * going to be read here, a later read stops at the same byte, and refusing
+ * the whole document over a part folio does not model would be a regression.
+ */
+async function verifyEntryWithinLimits({
+  file,
+  path,
+  limits,
+  budget,
+}: VerifyEntryOptions): Promise<void> {
+  let result: InflateEntryResult;
+  try {
+    result = await inflateEntryWithinLimits({
+      entry: file,
+      maxEntryBytes: Number.POSITIVE_INFINITY,
+      maxCompressionRatio: limits.maxCompressionRatio,
+      budget,
+      retain: false,
+    });
+  } catch {
+    return;
+  }
+  if (!result.ok) {
+    throw inflationLimitError(result.limit, path);
   }
 }
 
@@ -730,8 +850,7 @@ function isParsedDocxEntry(path: string): boolean {
 }
 
 export function getEntryUncompressedSize(file: JSZip.JSZipObject): number | null {
-  const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
-  return typeof metadata?.uncompressedSize === "number" ? metadata.uncompressedSize : null;
+  return getZipEntrySizes(file).uncompressedBytes;
 }
 
 function assertEntrySize(path: string, declaredSize: number | null, maxBytes: number): void {
@@ -742,12 +861,6 @@ function assertEntrySize(path: string, declaredSize: number | null, maxBytes: nu
 
 function isEntryTooLarge(declaredSize: number | null, maxBytes: number): boolean {
   return declaredSize !== null && declaredSize > maxBytes;
-}
-
-function assertExtractedSize(path: string, byteLength: number, maxBytes: number): void {
-  if (byteLength > maxBytes) {
-    throw new DocxSecurityError(`DOCX entry exceeds maximum size: ${path}`);
-  }
 }
 
 function isMediaContentAllowed(data: ArrayBuffer, mimeType: string): boolean {

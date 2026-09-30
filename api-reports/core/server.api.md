@@ -220,7 +220,7 @@ export type DocumentStyleSet = {
 // @public
 export class DocxArchiveError extends DocxArchiveError_base<{
     message: string;
-    reason: "load-failed" | "input-too-large" | "too-many-entries" | "entry-too-large" | "total-too-large" | "invalid-options";
+    reason: "load-failed" | "input-too-large" | "too-many-entries" | "entry-too-large" | "total-too-large" | "compression-ratio-exceeded" | "invalid-options";
     cause?: unknown;
 }> {}
 
@@ -230,6 +230,7 @@ export type DocxArchiveOptions = {
     maxEntryBytes?: number;
     maxTotalBytes?: number;
     maxEntries?: number;
+    maxCompressionRatio?: number;
     xmlLimits?: Partial<XmlResourceLimits>;
 };
 
@@ -303,7 +304,12 @@ export type ExtractDocumentStyleSetOptions = {
 };
 
 // @public
-export const extractDocxText: (bytes: ArrayBuffer | Uint8Array) => Promise<ExtractedDocxText>;
+export const extractDocxText: (bytes: ArrayBuffer | Uint8Array, options?: ExtractDocxTextOptions) => Promise<ExtractedDocxText>;
+
+// @public
+export type ExtractDocxTextOptions = {
+    readonly archive?: DocxArchiveOptions;
+};
 
 // @public
 export type ExtractedDocxParagraph = {
