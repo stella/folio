@@ -596,6 +596,7 @@ export type DirectiveRange = {
     to: number;
     kind: DirectiveKind;
     expr: string;
+    conditionPath?: string;
     clauseVersion?: string;
     alias?: string;
     block: boolean;
