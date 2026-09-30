@@ -3,6 +3,11 @@ import JSZip from "jszip";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { createEmptyDocument } from "../utils/createDocument";
+import {
+  compressibleArchive,
+  manyEntryArchive,
+  withDeclaredSize,
+} from "./__tests__/archiveInflationFixtures";
 import { parseCoreProperties } from "./corePropertiesParser";
 import {
   FolioDocumentPrivacyArchiveError,
@@ -192,5 +197,28 @@ describe("rewriteDocxMetadataPrivacy", () => {
         transforms: ["remove-attribution"],
       }),
     ).rejects.toBeInstanceOf(FolioDocumentPrivacyArchiveError);
+  });
+
+  test("stops core properties that inflate past their declared size", async () => {
+    const source = await compressibleArchive({
+      entryPath: "docProps/core.xml",
+      inflatedMebibytes: 3,
+    });
+    const buffer = withDeclaredSize(source, "docProps/core.xml", 64).slice().buffer;
+
+    await expect(
+      rewriteDocxMetadataPrivacy(buffer, { transforms: ["remove-attribution"] }),
+    ).rejects.toMatchObject({
+      _tag: "FolioDocumentPrivacyArchiveError",
+      reason: "core-properties-too-large",
+    });
+  });
+
+  test("counts package entries before the package is parsed", async () => {
+    const buffer = (await manyEntryArchive(5001)).slice().buffer;
+
+    await expect(
+      rewriteDocxMetadataPrivacy(buffer, { transforms: ["remove-attribution"] }),
+    ).rejects.toMatchObject({ reason: "too-many-entries" });
   });
 });

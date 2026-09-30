@@ -988,6 +988,49 @@ describe("table cell structural revision resolution", () => {
     ]);
   });
 
+  // A saved `w:vMerge` continuation that carries text reads back as its own
+  // cell, so accepting a pending merge over one must leave it standing.
+  test.each([
+    ["one revision", acceptAIEditRevision(90)],
+    ["all changes", acceptAllChanges()],
+  ] as const)("accept keeps a pending vertical merge over text standing (%s)", (_label, accept) => {
+    const view = dispatcher(
+      EditorState.create({
+        schema: tableSchema,
+        doc: tableSchema.node("doc", null, [
+          tableSchema.node("table", null, [
+            tableSchema.node("tableRow", null, [
+              tableSchema.node("tableCell", null, [
+                tableSchema.node("paragraph", null, [tableSchema.text("Top")]),
+              ]),
+            ]),
+            tableSchema.node("tableRow", null, [
+              tableSchema.node(
+                "tableCell",
+                {
+                  cellMarker: {
+                    kind: "merge",
+                    info: { revisionId: 90, author: "Reviewer", date: null },
+                    verticalMerge: "continue",
+                    verticalMergeOriginal: "rest",
+                  },
+                },
+                [tableSchema.node("paragraph", null, [tableSchema.text("Below")])],
+              ),
+            ]),
+          ]),
+        ]),
+      }),
+    );
+
+    expect(accept(view.state, view.dispatch)).toBe(true);
+    const table = view.state.doc.firstChild;
+    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
+    expect(table?.child(1).firstChild?.textContent).toBe("Below");
+    expect(table?.child(1).firstChild?.attrs["cellMarker"]).toBeNull();
+    expect(() => view.state.doc.check()).not.toThrow();
+  });
+
   test("reject restores a vertical merge removed by a pending split", () => {
     const view = dispatcher(
       EditorState.create({

@@ -232,7 +232,7 @@ export async function extractEmbeddedFonts(
   buffer: ArrayBuffer,
   docNonce: string = generateHexId(),
 ): Promise<EmbeddedFont[]> {
-  const raw = await unzipDocx(buffer);
+  const raw = await unzipDocx(buffer, {}, { verifyUnreadEntries: false });
   return getEmbeddedFontFaces(
     {
       fontTableXml: raw.fontTableXml,

@@ -7,9 +7,9 @@
  *
  * Documents are compared under π: equal once the fields a relayout
  * recomputes are dropped, adjacent records alike in everything but their
- * content and ids are merged (a container holding nothing into an alike
- * neighbour too, as resolution merges them), and revision and content-control ids are
- * numbered in document order. π′ also ignores which paragraph's identity (id,
+ * content and ids are merged (a container holding nothing stays: an empty
+ * content control is markup of its own), and revision and content-control ids
+ * are numbered in document order. π′ also ignores which paragraph's identity (id,
  * attributes, mark run properties) survives a join.
  *
  * - **L1 Accept.** Accepting a tracked operation's revisions gives the direct
@@ -131,7 +131,7 @@ const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
       out.push(own);
       continue;
     }
-    // Merged as resolution merges records it leaves meeting.
+    // Merged as resolution merges records it leaves meeting; nothing here was emptied by it.
     out.splice(-1, 1, ...mergeAtSeam(last, own));
   }
   return out;

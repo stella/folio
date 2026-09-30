@@ -17,6 +17,7 @@ import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility"
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { nodePropertyRevisionSites, propertyRevisionRecords } from "../revisionCarriers";
 import {
+  acceptedMergeFoldsIntoCellAbove,
   createRestoredTableCell,
   hasMatchingCollapsedTableCellMerge,
   tableCellContinuationCells,
@@ -218,6 +219,7 @@ const rowRevisionKind = (row: PMNode): "trIns" | "trDel" | null => {
 type CellMarker = {
   kind: "ins" | "del" | "merge";
   info: { revisionId: number };
+  verticalMerge?: "continue" | "rest";
   verticalMergeOriginal?: "continue" | "rest";
 };
 
@@ -240,10 +242,15 @@ const cellRevisionMarker = (cell: PMNode): CellMarker | null => {
     "verticalMergeOriginal" in marker && isTableCellMergeRevisionValue(marker.verticalMergeOriginal)
       ? marker.verticalMergeOriginal
       : undefined;
+  const verticalMerge =
+    "verticalMerge" in marker && isTableCellMergeRevisionValue(marker.verticalMerge)
+      ? marker.verticalMerge
+      : undefined;
   return {
     kind: marker.kind,
     info: { revisionId: marker.info.revisionId },
     ...(verticalMergeOriginal ? { verticalMergeOriginal } : {}),
+    ...(verticalMerge ? { verticalMerge } : {}),
   };
 };
 
@@ -652,14 +659,19 @@ const resolvePureTableMerges = ({
         }
       }
     } else if (marker?.kind === "merge") {
-      if (mode === "accept") {
+      const joinsAbove =
+        mode === "accept"
+          ? isTableCellMergeRevisionContinuation(marker.verticalMerge) &&
+            acceptedMergeFoldsIntoCellAbove(entry.node)
+          : isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal);
+      if (mode === "accept" && !joinsAbove) {
         entry.touched = true;
         entry.node = entry.node.type.create(
           { ...entry.node.attrs, cellMarker: null },
           entry.node.content,
           entry.node.marks,
         );
-      } else if (!isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal)) {
+      } else if (!joinsAbove) {
         entry.touched = true;
         const original = entry.node.attrs["_originalFormatting"];
         let formatting: unknown = original;

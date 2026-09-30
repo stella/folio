@@ -220,7 +220,7 @@ export type DocumentStyleSet = {
 // @public
 export class DocxArchiveError extends DocxArchiveError_base<{
     message: string;
-    reason: "load-failed" | "input-too-large" | "too-many-entries" | "entry-too-large" | "total-too-large" | "invalid-options";
+    reason: "load-failed" | "input-too-large" | "too-many-entries" | "entry-too-large" | "total-too-large" | "compression-ratio-exceeded" | "invalid-options";
     cause?: unknown;
 }> {}
 
@@ -230,6 +230,7 @@ export type DocxArchiveOptions = {
     maxEntryBytes?: number;
     maxTotalBytes?: number;
     maxEntries?: number;
+    maxCompressionRatio?: number;
     xmlLimits?: Partial<XmlResourceLimits>;
 };
 
@@ -303,7 +304,12 @@ export type ExtractDocumentStyleSetOptions = {
 };
 
 // @public
-export const extractDocxText: (bytes: ArrayBuffer | Uint8Array) => Promise<ExtractedDocxText>;
+export const extractDocxText: (bytes: ArrayBuffer | Uint8Array, options?: ExtractDocxTextOptions) => Promise<ExtractedDocxText>;
+
+// @public
+export type ExtractDocxTextOptions = {
+    readonly archive?: DocxArchiveOptions;
+};
 
 // @public
 export type ExtractedDocxParagraph = {
@@ -419,7 +425,7 @@ export const FOLIO_DOCUMENT_PRIVACY_TRANSFORMS: readonly ["remove-attribution", 
 export const FOLIO_DOCX_CONFORMANCE_CHECKS: readonly ["archive-safety", "required-parts", "xml-well-formedness", "package-roots", "conformance-class", "canonical-model"];
 
 // @public (undocumented)
-export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES: readonly ["archive-load-failed", "archive-invalid-options", "archive-input-too-large", "archive-too-many-entries", "archive-entry-too-large", "archive-total-too-large", "required-part-missing", "xml-doctype-forbidden", "xml-not-well-formed", "xml-read-failed", "required-xml-unreadable", "package-root-invalid", "conformance-class-unknown", "model-invalid", "model-warning", "parser-recovery", "parser-unsupported", "parser-failed", "encrypted-container", "container-not-zip"];
+export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES: readonly ["archive-load-failed", "archive-invalid-options", "archive-input-too-large", "archive-too-many-entries", "archive-entry-too-large", "archive-total-too-large", "archive-compression-ratio-exceeded", "required-part-missing", "xml-doctype-forbidden", "xml-not-well-formed", "xml-read-failed", "required-xml-unreadable", "package-root-invalid", "conformance-class-unknown", "model-invalid", "model-warning", "parser-recovery", "parser-unsupported", "parser-failed", "encrypted-container", "container-not-zip"];
 
 // @public (undocumented)
 export const FOLIO_DOCX_CONFORMANCE_PROFILE: "folio-supported-v1";
