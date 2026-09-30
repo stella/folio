@@ -18,12 +18,15 @@ import {
   type CorpusInvariantInput,
   type ExtendedCorpusInvariant,
   EXTENDED_CORPUS_INVARIANTS,
+  isZeroFailure,
   type StageTimings,
 } from "./corpus-invariants/contract";
 import { runEditLocalityInvariant } from "./corpus-invariants/edit-locality";
 import { runEditorProjectionInvariant } from "./corpus-invariants/editor-projection";
 import { runEditorRoundTripInvariant } from "./corpus-invariants/editor-round-trip";
 import { runKernelDifferentialInvariant } from "./corpus-invariants/kernel-differential";
+import { runOpInverseInvariant } from "./corpus-invariants/op-inverse";
+import { runOpLocalityInvariant } from "./corpus-invariants/op-locality";
 import { runPipelineTotalityInvariant } from "./corpus-invariants/pipeline-totality";
 import { runReserializeInvariant } from "./corpus-invariants/reserialize";
 import { runSaveIdempotenceInvariant } from "./corpus-invariants/save-idempotence";
@@ -54,6 +57,8 @@ const INVARIANT_RUNNERS = {
   [EXTENDED_CORPUS_INVARIANTS.reserialize]: runReserializeInvariant,
   [EXTENDED_CORPUS_INVARIANTS.saveIdempotence]: runSaveIdempotenceInvariant,
   [EXTENDED_CORPUS_INVARIANTS.editLocality]: runEditLocalityInvariant,
+  [EXTENDED_CORPUS_INVARIANTS.opInverse]: runOpInverseInvariant,
+  [EXTENDED_CORPUS_INVARIANTS.opLocality]: runOpLocalityInvariant,
   [EXTENDED_CORPUS_INVARIANTS.pipelineTotality]: runPipelineTotalityInvariant,
 } as const satisfies Record<
   RunnableInvariant,
@@ -61,7 +66,9 @@ const INVARIANT_RUNNERS = {
 >;
 
 /** Cheapest first, so a budget that runs out costs the least evidence. */
-const INVARIANT_ORDER = [
+export const INVARIANT_ORDER = [
+  EXTENDED_CORPUS_INVARIANTS.opInverse,
+  EXTENDED_CORPUS_INVARIANTS.opLocality,
   EXTENDED_CORPUS_INVARIANTS.schemaValidity,
   EXTENDED_CORPUS_INVARIANTS.kernelDifferential,
   EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
@@ -129,6 +136,14 @@ export const runExtendedChecks = async ({
     }
     if (spentMs > fileBudgetMs) {
       truncatedAt ??= invariant;
+      if (isZeroFailure({ invariant })) {
+        failures.push(
+          failureFromAssertion(
+            invariant,
+            "the file time budget prevented an operation invariant verdict",
+          ),
+        );
+      }
       failures.push(
         failureFromAssertion(
           BUDGET_INVARIANT,

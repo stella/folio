@@ -241,6 +241,49 @@ describe("workspace dependency boundaries", () => {
     expect(cruiseResult.output.match(/docx-core-workspace-dependencies/gu)).toHaveLength(2);
   });
 
+  test("rejects ProseMirror dependencies throughout docx-core, including type-only edges", () => {
+    const fixtureRoot = createFixture();
+    addWorkspace({ fixtureRoot, workspace: "docx-core" });
+    addWorkspace({ fixtureRoot, workspace: "core" });
+    addWorkspace({ fixtureRoot, workspace: "agents" });
+    const frameworkRoot = path.join(fixtureRoot, "node_modules/prosemirror-model");
+    mkdirSync(frameworkRoot, { recursive: true });
+    writeFileSync(
+      path.join(frameworkRoot, "package.json"),
+      JSON.stringify({ name: "prosemirror-model", main: "index.js", types: "index.d.ts" }),
+    );
+    writeFileSync(path.join(frameworkRoot, "index.js"), "exports.Node = class Node {};\n");
+    writeFileSync(path.join(frameworkRoot, "index.d.ts"), "export declare class Node {}\n");
+    const forbiddenSources = {
+      "ops/static.ts": 'import { Node } from "prosemirror-model";\nexport const node = Node;\n',
+      "model/type.ts":
+        'import type { Node } from "prosemirror-model";\nexport type EditorNode = Node;\n',
+      "serialize/reexport.ts": 'export { Node } from "prosemirror-model";\n',
+      "projection/dynamic.ts": 'export const load = () => import("prosemirror-model");\n',
+      "parse/required.cjs": 'module.exports = require("prosemirror-model");\n',
+    };
+    for (const [relativePath, source] of Object.entries(forbiddenSources)) {
+      writeSource(fixtureRoot, "docx-core", relativePath, source);
+    }
+    writeSource(
+      fixtureRoot,
+      "core",
+      "editor.ts",
+      'import { Node } from "prosemirror-model";\nexport const node = Node;\n',
+    );
+
+    const result = cruise(fixtureRoot);
+
+    expect(result.exitCode, result.output).not.toBe(0);
+    expect(result.output.match(/docx-core-stays-framework-free/gu)).toHaveLength(
+      Object.keys(forbiddenSources).length,
+    );
+    for (const relativePath of Object.keys(forbiddenSources)) {
+      expect(result.output).toContain(`packages/docx-core/src/${relativePath}`);
+    }
+    expect(result.output).not.toContain("packages/core/src/editor.ts");
+  });
+
   test("rejects a non-workspace version hidden by a duplicate declaration", () => {
     const fixtureRoot = createFixture();
     addWorkspace({ fixtureRoot, workspace: "docx-core" });
