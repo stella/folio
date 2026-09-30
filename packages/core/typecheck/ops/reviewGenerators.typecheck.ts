@@ -12,7 +12,7 @@ import {
 import { panic } from "better-result";
 import fc from "fast-check";
 import { parseDocx } from "../../src/docx/parser";
-import { createEmptyDocx, repackDocx } from "../../src/docx/rezip";
+import { createDocx } from "../../src/docx/rezip";
 
 type WithRevision<Op> = Op extends DocumentOp ? ("revision" extends keyof Op ? Op : never) : never;
 type TrackedOp = WithRevision<DocumentOp>;
@@ -87,7 +87,6 @@ export const fixture = async (seed: Seed): Promise<Document> => {
           },
         ];
   const model: Document = {
-    originalBuffer: await createEmptyDocx(),
     package: {
       document: {
         content: [
@@ -116,7 +115,7 @@ export const fixture = async (seed: Seed): Promise<Document> => {
     },
   };
   return normalizeForOps(
-    await parseDocx(await repackDocx(model, { updateModifiedDate: false }), {
+    await parseDocx(await createDocx(model), {
       preloadFonts: false,
       detectVariables: false,
     }),

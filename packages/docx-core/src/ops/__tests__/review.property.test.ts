@@ -66,7 +66,7 @@ import {
   type RevisionStamp,
   SPLIT_HALVES,
 } from "../types";
-import { projectReview } from "./reviewProjection";
+import { projectReview } from "../../../../../test/reviewProjection";
 import {
   GENERATED_TRACKED_OP_KINDS,
   independentCopy,

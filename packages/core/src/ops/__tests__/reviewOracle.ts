@@ -15,8 +15,7 @@ import {
   describePackageDifferences,
   type PackageDifferences,
 } from "../../../../../scripts/lib/corpus-invariants/model-equality";
-import { canonicalReviewBlocks } from "../../../../docx-core/src/ops/__tests__/reviewProjection";
-import { IDENTITY_SPACES, identityKeysIn } from "../../../../docx-core/src/ops/ids";
+import { canonicalReviewBlocks, storyRevisionIds } from "../../../../../test/reviewProjection";
 import { repackDocx } from "../../docx/rezip";
 import { parseDocx } from "../../docx/parser";
 import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
@@ -25,16 +24,7 @@ import { createDocumentStylesPlugin } from "../../prosemirror/plugins/documentSt
 import { createDocumentNumberingPlugin } from "../../prosemirror/plugins/documentNumbering";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 
-export const storyRevisionIds = (document: Document): number[] => {
-  const prefix = `${IDENTITY_SPACES.REVISION}:`;
-  return [
-    ...new Set(
-      identityKeysIn(document.package.document.content).flatMap((key) =>
-        key.startsWith(prefix) ? [Number(key.slice(prefix.length))] : [],
-      ),
-    ),
-  ].sort((left, right) => left - right);
-};
+export { storyRevisionIds };
 
 /** Compare authored main-story content; ids and paragraph survivor identity stay exact. */
 export const reviewDifferences = (before: Document, after: Document): PackageDifferences => {

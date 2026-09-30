@@ -1,4 +1,36 @@
 {
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts::L2: rejecting a tracked operation's revisions gives the document back": [
+    {
+      "seed": -1426848857,
+      "path": "379:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:6:0:19:0:3:10:5:3:4:5:3:3:3:4:5:3:4:4:4:4:3:3:3:3:3:3:3:3:3:3:3:3:3:5:3:3:3:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4",
+      "note": "Shared review projection must treat optional undefined formatting fields as absent",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/core/src/ops/__tests__/reviewRoundTrip.property.test.ts::L8: ${kind} survives editor save and reopen": [
+    {
+      "seed": 221877490,
+      "path": "0:0:0:0:0:0:0",
+      "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/core/src/ops/__tests__/reviewRoundTrip.property.test.ts::L9: ${kind} reports model and editor resolution differences": [
+    {
+      "seed": 998410889,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/core/src/ops/__tests__/reviewRoundTrip.property.test.ts::L8: deletion inside another insertion keeps both wrapper ids": [
+    {
+      "seed": -1245202278,
+      "path": "0:0:0:0:0:0:0:0:0:0",
+      "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
+      "date": "2026-09-30"
+    }
+  ],
   "$comment": "Seeds that once failed, replayed first by assertProperty (test/property-testing.ts) in every environment. Key: <repo-relative test file>::<test title as written>. A nightly failure issue carries the entry to add.",
   "packages/docx-core/src/ops/__tests__/tableRows.property.test.ts::${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality": [
     {
