@@ -312,6 +312,12 @@
       "date": "2026-09-30"
     },
     {
+      "seed": -662344421,
+      "path": "38:4:4:2:3:3:3:12:12:2:2:11:19:19:26:26:26",
+      "note": "Final paragraph retirement crosses a wholly deleted table to match direct deletion without an extra empty paragraph.",
+      "date": "2026-09-30"
+    },
+    {
       "seed": 2055257210,
       "note": "#1159: moved from the test file's own seed list",
       "date": "2026-09-28"

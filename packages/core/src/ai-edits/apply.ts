@@ -2670,6 +2670,15 @@ const finalParagraphPredecessor = (doc: PMNode, at: number) => {
   for (let index = $emptied.index() - 1; index >= 0; index--) {
     const node = $emptied.parent.child(index);
     position -= node.nodeSize;
+    if (node.type.spec["tableRole"] === "table" && node.childCount > 0) {
+      let allRowsDeleted = true;
+      node.forEach((row) => {
+        allRowsDeleted &&= expectTableRowAttrs(row).trDel != null;
+      });
+      // A wholly deleted table is absent on accept, so the paragraph before
+      // it can own the retiring final break. A surviving table still stops it.
+      if (allRowsDeleted) continue;
+    }
     if (node.type !== emptied.type) return null;
     if (isPlainDeletedPPrMark(node.attrs["pPrMark"]) && holdsOnlyDeletedContent(node)) continue;
     return { node, position };

@@ -353,6 +353,36 @@ test("reject restores heading properties when an insertion interrupts a pending 
   expect(read(saved)).toEqual(original);
 });
 
+for (const tableDeletion of ["deleteTable", "deleteTableRow"] as const) {
+  test(`terminal paragraph deletions resolve like direct after ${tableDeletion}`, async () => {
+    const original = read(await open());
+    const edited = async (mode: Mode) => {
+      const reviewer = await open();
+      const blocks = reviewer.getContent();
+      const cell = blocks.find(({ table: cellTable }) => cellTable !== undefined);
+      if (!cell) throw new Error("Missing table deletion target");
+      expect(apply(reviewer, mode, { type: tableDeletion, blockId: cell.id })).toBe(true);
+      for (const prefix of ["Prices exclude", "Signed", "The Buyer"]) {
+        const block = blocks.find(({ text }) => text.startsWith(prefix));
+        if (!block) throw new Error("Missing terminal paragraph deletion target");
+        expect(apply(reviewer, mode, { type: "deleteBlock", blockId: block.id })).toBe(true);
+      }
+      return reviewer;
+    };
+    const direct = await edited("direct");
+    const tracked = await edited("tracked-changes");
+    const rejecting = await reopen(tracked);
+    rejecting.rejectAll();
+    expect(read(rejecting)).toEqual(original);
+    const savedPending = await reopen(tracked);
+    tracked.acceptAll();
+    expect(read(tracked)).toEqual(read(direct));
+    expect(read(await reopen(tracked))).toEqual(read(direct));
+    savedPending.acceptAll();
+    expect(read(savedPending)).toEqual(read(direct));
+  });
+}
+
 describe("resolving random tracked work", () => {
   test("reject restores, accept equals direct, and both survive a save", async () => {
     const original = read(await open());
