@@ -27,7 +27,6 @@ import {
 import type { CorpusInvariantInput } from "./contract";
 
 export const OP_SEQUENCE_SEEDS = [0x17a3, 0x5b91, 0xcf27] as const;
-export const OP_SEQUENCE_LENGTH = 12;
 
 /** Exact records, including captures and binary contents; undefined is wire absence. */
 export const exactOpModel = (value: unknown): unknown => {
@@ -110,10 +109,15 @@ export const OP_SEQUENCE_FAMILIES = [
   DOCUMENT_OP_TYPES.SPLIT_BLOCK,
   DOCUMENT_OP_TYPES.JOIN_BLOCKS,
   DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+  DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+  DOCUMENT_OP_TYPES.INSERT_TABLE,
+  DOCUMENT_OP_TYPES.DELETE_TABLE,
+  DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
   DOCUMENT_OP_TYPES.INSERT_ROW,
   DOCUMENT_OP_TYPES.DELETE_ROW,
   DOCUMENT_OP_TYPES.RESOLVE_REVISION,
 ] as const;
+export const OP_SEQUENCE_LENGTH = OP_SEQUENCE_FAMILIES.length;
 
 /** Every schema member needs a generator decision when the operations API grows. */
 export const OP_GENERATOR_ROLES = {
@@ -125,6 +129,10 @@ export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.SPLIT_BLOCK]: "generated",
   [DOCUMENT_OP_TYPES.JOIN_BLOCKS]: "generated",
   [DOCUMENT_OP_TYPES.INSERT_BLOCKS]: "generated",
+  [DOCUMENT_OP_TYPES.DELETE_BLOCKS]: "generated",
+  [DOCUMENT_OP_TYPES.INSERT_TABLE]: "generated",
+  [DOCUMENT_OP_TYPES.DELETE_TABLE]: "generated",
+  [DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS]: "generated",
   [DOCUMENT_OP_TYPES.INSERT_ROW]: "generated",
   [DOCUMENT_OP_TYPES.DELETE_ROW]: "generated",
   [DOCUMENT_OP_TYPES.RESOLVE_REVISION]: "generated",
@@ -244,6 +252,42 @@ const candidate = ({
         newIds,
         ...review,
       };
+    case "deleteBlocks":
+      return {
+        type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockIds: [blockId],
+        newIds,
+        ...review,
+      };
+    case "insertTable":
+      return {
+        type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+        story: OP_STORIES.MAIN,
+        at: { type: "before", blockId },
+        table: {
+          type: "table",
+          rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [freshParagraph] }] }],
+        },
+      };
+    case "deleteTable":
+      if (!location.list.some((step) => step.kind === "tableCell")) return undefined;
+      return { type: DOCUMENT_OP_TYPES.DELETE_TABLE, story: OP_STORIES.MAIN, blockId };
+    case "setContainerBlocks": {
+      const expected = blockListAt(document.package.document.content, location.list);
+      const blocks = [...expected];
+      blocks.splice(location.index, 0, {
+        type: "table",
+        rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: [freshParagraph] }] }],
+      });
+      return {
+        type: DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId,
+        expected,
+        blocks,
+      };
+    }
     case "insertRow": {
       if (!location.list.some((step) => step.kind === "tableCell")) return undefined;
       return {

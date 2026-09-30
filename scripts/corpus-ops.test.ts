@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { Document, Paragraph } from "../packages/docx-core/src/model/document";
+import type { BlockContent, Document, Paragraph } from "../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
+  applyDocumentOps,
   DOCUMENT_OP_TYPES,
   INHERIT_RUN_PROPS,
   normalizeForOps,
@@ -120,18 +121,40 @@ describe("corpus operation invariants", () => {
     const document = documentFixture();
     const snapshot = structuredClone(document);
     const exercised = new Set<string>();
+    const structuralFamilies = [
+      DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+      DOCUMENT_OP_TYPES.INSERT_TABLE,
+      DOCUMENT_OP_TYPES.DELETE_TABLE,
+      DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+    ];
+    const checkedStructuralFamilies = new Set<string>();
     for (let seed = 0; seed < 64; seed += 1) {
       const sequence = generateOpSequence(document, seed);
       expect(sequence.steps.length).toBeGreaterThan(0);
       expect(sequence.mutations).toEqual([]);
-      expect(inverseSequenceFailures(sequence)).toEqual([]);
+      const failures = inverseSequenceFailures(sequence);
+      expect(failures, `sequence seed ${seed}`).toEqual([]);
       for (const step of sequence.steps) {
         exercised.add(step.op.type);
+        if (
+          structuralFamilies.some((type) => type === step.op.type) &&
+          !sameOpModel(step.before, step.edit.document)
+        ) {
+          expect(step.edit.inverse.length).toBeGreaterThan(0);
+          expect(
+            inverseSequenceFailures({
+              ...sequence,
+              steps: [{ ...step, edit: { ...step.edit, inverse: [] } }],
+            }).length,
+          ).toBeGreaterThan(0);
+          checkedStructuralFamilies.add(step.op.type);
+        }
         expect(localityStepFailures(step)).toEqual([]);
       }
       const replay = generateOpSequence(document, seed);
       expect(sameOpModel(sequence, replay)).toBe(true);
     }
+    expect([...checkedStructuralFamilies].sort()).toEqual([...structuralFamilies].sort());
     expect([...exercised].sort()).toEqual([...OP_SEQUENCE_FAMILIES].sort());
     expect(
       Object.entries(OP_GENERATOR_ROLES)
@@ -141,6 +164,53 @@ describe("corpus operation invariants", () => {
     ).toEqual([...OP_SEQUENCE_FAMILIES].sort());
     expect(Object.keys(OP_GENERATOR_ROLES).sort()).toEqual(Object.values(DOCUMENT_OP_TYPES).sort());
     expect(sameOpModel(document, snapshot)).toBe(true);
+  });
+
+  test("row inverses retain the outer table when nested tables precede its surviving anchor", () => {
+    for (let depth = 1; depth <= 3; depth += 1) {
+      const before = documentFixture();
+      const table = before.package.document.content.at(2);
+      if (table?.type !== "table") throw new Error("fixture table is missing");
+      const survivingRow = table.rows.at(1);
+      const cell = survivingRow?.cells.at(0);
+      if (cell === undefined) throw new Error("fixture cell is missing");
+      let nested: BlockContent = makeParagraph("61000000", "Innermost cell");
+      for (let index = 0; index < depth; index += 1) {
+        nested = {
+          type: "table",
+          rows: [
+            {
+              type: "tableRow",
+              cells: [
+                {
+                  type: "tableCell",
+                  content: [nested, makeParagraph(`6100000${index + 1}`, "Nested final paragraph")],
+                },
+              ],
+            },
+          ],
+        };
+      }
+      cell.content.unshift(nested);
+      const op = {
+        type: DOCUMENT_OP_TYPES.SET_TABLE_ROWS,
+        story: OP_STORIES.MAIN,
+        blockId: "60000003",
+        expected: table.rows,
+        rows: table.rows.slice(1),
+      } as const;
+      const applied = applyDocumentOp(before, op);
+      if (applied.isErr()) throw applied.error;
+      const inverse = applied.value.inverse.at(0);
+      expect(inverse?.type).toBe(DOCUMENT_OP_TYPES.SET_TABLE_ROWS);
+      if (inverse?.type !== DOCUMENT_OP_TYPES.SET_TABLE_ROWS)
+        throw new Error("row inverse is missing");
+      expect(inverse.blockId).toBe("60000005");
+      const restored = applyDocumentOps(applied.value.document, applied.value.inverse);
+      if (restored.isErr()) throw restored.error;
+      expect(sameOpModel(restored.value.document, before)).toBe(true);
+      expect(localityStepFailures({ before, op, edit: applied.value })).toEqual([]);
+    }
   });
 
   test("the byte-derived seed depends on package contents deterministically", () => {
