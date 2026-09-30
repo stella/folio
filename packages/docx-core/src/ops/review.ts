@@ -25,6 +25,7 @@ import {
   childNodes,
   type Cursor,
   type Gap,
+  isCommentAnchor,
   type InlineNode,
   isParagraphContent,
   mergeLists,
@@ -222,13 +223,6 @@ export const WRAP_KINDS = Object.freeze({ INSERTION: "insertion", DELETION: "del
 
 export type WrapKind = (typeof WRAP_KINDS)[keyof typeof WRAP_KINDS];
 
-/** Comment boundaries and references: no tracked change can hold them. */
-const COMMENT_ANCHORS: ReadonlySet<string> = new Set([
-  "commentRangeStart",
-  "commentRangeEnd",
-  "commentReference",
-]);
-
 /** What a wrap does with a record the range runs into but does not cover. */
 type SpanningAction = "cut" | "descend" | "keep" | "refuse";
 
@@ -251,7 +245,7 @@ const spanningAction = (node: InlineNode, kind: WrapKind, stamp: RevisionStamp):
 type CoveredAction = "wrap" | "skip" | "descend" | "refuse";
 
 const coveredAction = (node: InlineNode, kind: WrapKind): CoveredAction => {
-  if (COMMENT_ANCHORS.has(node.type)) {
+  if (isCommentAnchor(node)) {
     return "refuse";
   }
   if (kind === WRAP_KINDS.DELETION) {

@@ -344,5 +344,13 @@
       "note": "overlapping host and text-box paragraph replacements used stale source offsets",
       "date": "2026-09-30"
     }
+  ],
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts::a planned tracked deletion removes only the author's own insertions": [
+    {
+      "seed": 35362653,
+      "path": "708:0:0:0:0:0:0:1:5:4:4:4:4:6:6:7:8:8:8:8:8:11:10:10:11:12:13:13:13:13:14:14:18:16:16:16:16:16:16:16:16:17:16:17:42:42:42:42:42:42:42:42:42:42:42:1:2:2:3:3:32:30:31:29:29:29:30:29:29:29:35:29:30:29:32:32:32:32:32:32:32:32:32:33:33:33:33:33:33:33:33:33:33:33:33:33",
+      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
+      "date": "2026-09-30"
+    }
   ]
 }

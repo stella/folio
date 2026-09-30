@@ -16,7 +16,14 @@ import {
   idKey,
   packageIdentityKeys,
 } from "./ids";
-import { compareGaps, type Gap, type LeafSpan, leafSpans, zeroWidthLeavesAt } from "./leaves";
+import {
+  compareGaps,
+  isCommentAnchor,
+  type Gap,
+  type LeafSpan,
+  leafSpans,
+  zeroWidthLeavesAt,
+} from "./leaves";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { isRemovedRevisionNode, isTrackedWrapper } from "./review";
 import {
@@ -152,15 +159,9 @@ export const revisionIdDemand = (
 /** How a leaf of a range to delete is deleted. */
 type LeafPlan = "direct" | "tracked" | "untouched" | "anchor";
 
-const COMMENT_ANCHORS: ReadonlySet<string> = new Set([
-  "commentRangeStart",
-  "commentRangeEnd",
-  "commentReference",
-]);
-
 const leafPlan = ({ node, ancestors }: LeafSpan, author: string): LeafPlan => {
   if (ancestors.some(isRemovedRevisionNode)) return "untouched";
-  if (COMMENT_ANCHORS.has(node.type)) return "anchor";
+  if (isCommentAnchor(node)) return "anchor";
   const own = ancestors.some(
     (ancestor) =>
       ancestor.type === "insertion" &&

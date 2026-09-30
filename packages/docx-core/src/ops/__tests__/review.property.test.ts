@@ -55,6 +55,7 @@ import {
   asParagraphContent,
   childNodes,
   compareGaps,
+  isCommentAnchor,
   defaultInsertionGap,
   type Gap,
   type InlineNode,
@@ -917,7 +918,7 @@ describe("tracked operations and their resolution", () => {
 
   test("a planned tracked deletion removes only the author's own insertions", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = trackedOpFor(document, { ...seed, kind: 2 });
         if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE || op.revision === undefined) return;
@@ -953,7 +954,7 @@ describe("tracked operations and their resolution", () => {
               isTrackedWrapper(ancestor) &&
               ancestor.info.author === op.revision?.author,
           );
-          if (removed || !mine) continue;
+          if (removed || !mine || isCommentAnchor(span.node)) continue;
           const start = Math.max(span.before.offset, op.from.offset);
           const end = Math.min(span.after.offset, op.to.offset);
           for (let unit = start; unit < end; unit += 1) own.add(unit);
@@ -963,6 +964,11 @@ describe("tracked operations and their resolution", () => {
         ).join("");
         const after = paragraphById(applied.value.document, op.from.blockId);
         expect(after === undefined ? undefined : paragraphLogicalText(after)).toBe(expected);
+        const anchors = (items: Paragraph["content"]) =>
+          leafSpans(items)
+            .filter(({ node }) => isCommentAnchor(node))
+            .map(({ node }) => node);
+        expect(anchors(after?.content ?? [])).toStrictEqual(anchors(paragraph.content));
         // Rejecting what the plan recorded leaves only the retraction.
         const retracted = applyAll(
           document,
@@ -976,7 +982,7 @@ describe("tracked operations and their resolution", () => {
           retracted,
         );
       }),
-      propertyConfig({ numRuns: NUM_RUNS / 5 }),
+      { numRuns: NUM_RUNS / 5 },
     );
     expect(tally.get("one") ?? 0).toBeGreaterThan(0);
   });

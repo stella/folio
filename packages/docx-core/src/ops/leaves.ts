@@ -36,6 +36,17 @@ export type Gap = { offset: number; zeroWidthBefore: number };
 /** A node of a paragraph's content tree: a paragraph child or a run child. */
 export type InlineNode = ParagraphContent | RunContent;
 
+/** Comment anchors are preserved by planned deletion and cannot be wrapped. */
+const COMMENT_ANCHOR_TYPES = {
+  commentRangeStart: true,
+  commentRangeEnd: true,
+  commentReference: true,
+} as const satisfies Record<Extract<ParagraphContent, { type: `comment${string}` }>["type"], true>;
+
+const COMMENT_ANCHORS = new Set(Object.keys(COMMENT_ANCHOR_TYPES));
+
+export const isCommentAnchor = (node: InlineNode): boolean => COMMENT_ANCHORS.has(node.type);
+
 const RUN_CONTENT_TYPES = {
   text: true,
   tab: true,
