@@ -99,14 +99,13 @@ export const resolveVisibleTableCellMerge = (
   if (!cell || !isTableCellMergeRevisionAttr(marker)) {
     return false;
   }
+  const mergeState = mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal;
+  if (mergeState === "continue") {
+    return mergeTableCellWithCellAbove(tr, cellPos);
+  }
   if (mode === "accept") {
     tr.setNodeAttribute(cellPos, "cellMarker", null);
     return true;
-  }
-
-  const originalState = marker.verticalMergeOriginal ?? "rest";
-  if (originalState === "continue") {
-    return mergeTableCellWithCellAbove(tr, cellPos);
   }
 
   const originalFormatting = cell.attrs["_originalFormatting"];

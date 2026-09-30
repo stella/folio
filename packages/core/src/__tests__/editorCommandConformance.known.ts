@@ -28,6 +28,8 @@ export type KnownConformanceGap = {
   /** Placements covered; every placement when omitted. */
   placements?: readonly SelectionPlacement[];
   modes?: readonly EditorMode[];
+  /** Cases inside this scope whose violations must remain unmasked. */
+  except?: readonly Partial<ConformanceCaseKey>[];
   kinds: readonly ViolationKind[];
   /**
    * `full` for a gap only the full tier's placements reach; the default tier
@@ -60,8 +62,6 @@ const REPLACING_OPERATIONS = [
   "command:insertHyperlink",
   "command:insertFootnote",
   "command:insertEndnote",
-  "paste:paragraphs",
-  "paste:copied-blocks",
 ] as const;
 
 const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
@@ -153,6 +153,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:insertTable",
     ],
     modes: ["suggesting"],
+    except: [{ shape: "tables", operation: "paste:copied-blocks" }],
     kinds: ["reject-mismatch", "accept-mismatch"],
   },
   {
@@ -234,4 +235,10 @@ export const gapCovers = (
 export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): boolean =>
   (gap.operations === undefined || gap.operations.includes(key.operation)) &&
   (gap.shapes === undefined || gap.shapes.includes(key.shape)) &&
-  (gap.placements === undefined || gap.placements.includes(key.placement));
+  (gap.placements === undefined || gap.placements.includes(key.placement)) &&
+  !gap.except?.some(
+    (excluded) =>
+      (excluded.shape === undefined || excluded.shape === key.shape) &&
+      (excluded.operation === undefined || excluded.operation === key.operation) &&
+      (excluded.placement === undefined || excluded.placement === key.placement),
+  );
