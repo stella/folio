@@ -138,6 +138,20 @@
       "title": "accepting a merged paragraph mark keeps run formatting across save"
     },
     {
+      "seed": 1016403979,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "row insertion beside a pending deleted row uses live coordinates"
+    },
+    {
+      "seed": 871572631,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "mixed row and column batches preserve source cell payloads"
+    },
+    {
       "seed": 20260937,
       "steps": 10,
       "kind": "random",

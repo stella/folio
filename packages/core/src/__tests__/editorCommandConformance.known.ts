@@ -9,6 +9,7 @@
  */
 
 import type { ViolationKind } from "./editorCommandConformance";
+import { LIST_PASTE_RESOLUTION_KEYS } from "./editorCommandConformance.listPaste";
 import type { EditorMode, SelectionPlacement } from "./editorHarness";
 
 export type ConformanceCaseKey = {
@@ -152,6 +153,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:generateTOC",
     ],
     excludedCases: [
+      ...LIST_PASTE_RESOLUTION_KEYS,
       { shape: "tracked-changes", operation: "paste:copied-blocks" },
       { shape: "tables", operation: "paste:copied-blocks" },
     ],
