@@ -159,8 +159,9 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
 /**
  * Whether `empty` is a piece of `other` that resolution left with nothing: a
  * container of the same kind and fields that the resolution emptied, where
- * the other holds something. A container that held nothing before (an empty
- * content control or hyperlink) is markup of its own and is never merged.
+ * the other holds something or was emptied too (two emptied pieces are one
+ * piece, whichever emptied first). A container that held nothing before (an
+ * empty content control or hyperlink) is markup of its own and is never merged.
  */
 const emptyPieceOf = (empty: InlineNode, other: InlineNode, emptied: Emptied): boolean => {
   const emptyChildren = childNodes(empty);
@@ -170,10 +171,53 @@ const emptyPieceOf = (empty: InlineNode, other: InlineNode, emptied: Emptied): b
     emptyChildren !== undefined &&
     otherChildren !== undefined &&
     emptyChildren.length === 0 &&
-    otherChildren.length > 0 &&
+    (otherChildren.length > 0 || emptied.has(other)) &&
     emptied.has(empty) &&
     sameOwnFields(empty, other)
   );
+};
+
+/**
+ * An emptied piece folded into its neighbour, which keeps the first one's ids;
+ * `undefined` when neither is one. When both are, the first stays as it is,
+ * still emptied.
+ */
+const foldedPiece = (
+  left: InlineNode,
+  right: InlineNode,
+  emptied: Emptied,
+): InlineNode | undefined => {
+  if (emptyPieceOf(right, left, emptied)) return left;
+  if (emptyPieceOf(left, right, emptied)) return rebuildNode(left, childNodes(right) ?? []);
+  return undefined;
+};
+
+/**
+ * Two records meeting beside a container resolution emptied, with no change
+ * resolved between them: the emptied piece folds into its neighbour, down the
+ * chain of alike containers at their facing edges when it sits inside one.
+ * Nothing else merges there.
+ */
+const foldAtSeam = (left: InlineNode, right: InlineNode, emptied: Emptied): InlineNode[] => {
+  const folded = foldedPiece(left, right, emptied);
+  if (folded !== undefined) return [folded];
+  const leftChildren = childNodes(left);
+  const rightChildren = childNodes(right);
+  const last = leftChildren?.at(-1);
+  const first = rightChildren?.at(0);
+  if (
+    left.type === "run" ||
+    leftChildren === undefined ||
+    rightChildren === undefined ||
+    last === undefined ||
+    first === undefined ||
+    !sameOwnFields(left, right)
+  ) {
+    return [left, right];
+  }
+  const inner = foldAtSeam(last, first, emptied);
+  if (inner.length !== 1) return [left, right];
+  return [rebuildNode(left, [...leftChildren.slice(0, -1), ...inner, ...rightChildren.slice(1)])];
 };
 
 /**
@@ -196,10 +240,8 @@ export const mergeAtSeam = (
       ? mergeAlike([left], [right])
       : [rebuildNode(left, mergedAtSeam(leftChildren, rightChildren, emptied))];
   }
-  if (emptyPieceOf(left, right, emptied)) {
-    return [rebuildNode(left, childNodes(right) ?? [])];
-  }
-  return emptyPieceOf(right, left, emptied) ? [left] : [left, right];
+  const folded = foldedPiece(left, right, emptied);
+  return folded === undefined ? [left, right] : [folded];
 };
 
 /** Two lists end to end, merged at the seam as {@link mergeAtSeam} merges. */
@@ -225,6 +267,8 @@ type ResolvedList = { nodes: InlineNode[]; changed: boolean };
 const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): ResolvedList => {
   const out: InlineNode[] = [];
   const seams: number[] = [];
+  /** Seams beside an emptied container, where only its fold happens. */
+  const folds: number[] = [];
   let changed = false;
   for (const node of nodes) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
@@ -253,23 +297,45 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       continue;
     }
     changed = true;
-    // A tracked change the resolution emptied goes.
-    if (isTrackedWrapper(node) && inner.nodes.length === 0 && children.length > 0) {
+    // A tracked change the resolution emptied goes. So does any record an
+    // acceptance empties: it removes content as a direct deletion does, which
+    // leaves no record with nothing. Kept, the record could not tell a later
+    // resolution it was emptied rather than empty before, and would stay where
+    // accepting the same changes at once folds it into an alike neighbour.
+    if (
+      (isTrackedWrapper(node) || resolution.decision === REVISION_DECISIONS.ACCEPT) &&
+      inner.nodes.length === 0 &&
+      children.length > 0
+    ) {
       seams.push(out.length);
       continue;
     }
     const rebuilt = rebuildNode(node, inner.nodes);
+    // A container the resolution emptied, or one with such a container at an
+    // edge, meets its neighbours there: otherwise an emptied piece of a cut
+    // container, with no change resolved between it and the other piece,
+    // would stay beside it rather than fold back in.
+    const ends =
+      inner.nodes.length === 0
+        ? { first: true, last: true }
+        : emptiedEndsOf(inner.nodes, resolution.emptied);
     if (inner.nodes.length === 0) resolution.emptied.add(rebuilt);
+    if (ends.first) folds.push(out.length);
+    if (ends.last) folds.push(out.length + 1);
     out.push(rebuilt);
   }
   if (!changed) {
     return { nodes: out, changed };
   }
-  for (const seam of [...new Set(seams)].toSorted((left, right) => right - left)) {
+  const merges = new Set(seams);
+  for (const seam of [...new Set([...seams, ...folds])].toSorted((left, right) => right - left)) {
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    out.splice(seam - 1, 2, ...mergeAtSeam(left, right, resolution.emptied));
+    const met = merges.has(seam)
+      ? mergeAtSeam(left, right, resolution.emptied)
+      : foldAtSeam(left, right, resolution.emptied);
+    out.splice(seam - 1, 2, ...met);
   }
   return { nodes: out, changed };
 };

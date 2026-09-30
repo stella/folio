@@ -862,4 +862,155 @@ describe("an empty content control is content: resolution never merges it away",
     const ids = [...typed.revisions, ...first.revisions, ...second.revisions];
     expect(resolved(second.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
+
+  // The L3 generator accepted a deletion that emptied one piece of a cut
+  // wrapper before the insertion cutting it was resolved: kept, the empty
+  // piece later met the other one and stayed beside it, where accepting
+  // everything at once folded it in. Accepting leaves no record it empties.
+  test("accepting in turn and at once agree on a piece an acceptance empties", () => {
+    const wrapper = (content: ParagraphContent[]): ParagraphContent => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const later = (id: number, second: number): RevisionStamp => ({
+      ...stamp(id),
+      date: `2026-05-06T07:08:${String(second).padStart(2, "0")}Z`,
+    });
+    const document = documentOf(paragraph("00000001", [wrapper([run("ab")])]));
+    const deleted = applied(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 1),
+      revision: later(1, 10),
+    });
+    // A closed slice cuts the wrapper: its first piece holds only the deletion.
+    const inserted = applied(deleted.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 1),
+      slice: { content: [run("x")], openStart: 0, openEnd: 0 },
+      revision: later(2, 11),
+    });
+    const removed = applied(inserted.document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 1),
+      to: at("00000001", 2),
+      revision: later(3, 12),
+    });
+    expect(blocks(removed.document)).toEqual([
+      paragraph("00000001", [
+        wrapper([{ type: "deletion", info: later(1, 10), content: [run("a")] }]),
+        {
+          type: "insertion",
+          info: later(2, 11),
+          content: [{ type: "deletion", info: later(3, 12), content: [run("x")] }],
+        },
+        wrapper([run("b")]),
+      ]),
+    ]);
+    const runs = [deleted.revisions, inserted.revisions, removed.revisions];
+    const atOnce = resolved(removed.document, runs.flat(), REVISION_DECISIONS.ACCEPT);
+    let inTurn = removed.document;
+    for (const ids of runs) inTurn = resolved(inTurn, ids, REVISION_DECISIONS.ACCEPT);
+    expect(blocks(atOnce)).toEqual([paragraph("00000001", [wrapper([run("b")])])]);
+    expect(inTurn).toStrictEqual(atOnce);
+  });
+
+  // The L3 generator pasted a slice open at its start inside a control: the
+  // pasted content went into the control's first piece, the rest of the
+  // control into a new piece after it. Rejecting emptied the first piece with
+  // no change resolved between the two, so it stayed beside the other.
+  test("rejecting a paste that cut a control gives the control back", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, [run("ab")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const typed = applied(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 0),
+      text: "xx",
+      runProps: {},
+      revision: stamp(1),
+    });
+    // Pasted inside the typed insertion, the slice open at its start.
+    const typing = { type: "insertion", info: stamp(1), content: [run("y")] } as const;
+    const pasted = applied(typed.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 1),
+      slice: { content: [control(1, [typing])], openStart: 4, openEnd: 0 },
+      revision: { ...stamp(2), date: "2026-05-06T07:08:10Z" },
+      newIds: { revision: [3], control: [7] },
+    });
+    const typing3 = { ...typing, info: stamp(3), content: [run("x")] };
+    expect(blocks(pasted.document)).toEqual([
+      paragraph("00000001", [
+        control(1, [
+          { ...typing, content: [run("x")] },
+          { ...typing, info: { ...stamp(2), date: "2026-05-06T07:08:10Z" } },
+        ]),
+        control(7, [typing3, run("ab")]),
+      ]),
+      paragraph("00000009", [run("next")]),
+    ]);
+    // The typing is revision 1 and the piece of it the paste cut off, 3.
+    const typings = [...typed.revisions, 3];
+    const ids = [...typings, ...pasted.revisions];
+    expect(resolved(pasted.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+    let inTurn = pasted.document;
+    for (const turn of [pasted.revisions, typings]) {
+      inTurn = resolved(inTurn, turn, REVISION_DECISIONS.REJECT);
+    }
+    expect(inTurn).toStrictEqual(document);
+  });
+
+  // A container a resolution empties meets its neighbours whatever its kind,
+  // however deep the emptied piece sits at the edge, and whichever of two
+  // pieces empties first.
+  describe("pieces of any container a rejection empties go back together", () => {
+    const wrapper = (content: ParagraphContent[]): ParagraphContent => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const link = (children: ParagraphContent[]): ParagraphContent => ({
+      type: "hyperlink",
+      rId: "rId9",
+      href: "https://example.org",
+      children,
+    });
+    const inserted = (id: number, text: string): ParagraphContent => ({
+      type: "insertion",
+      info: stamp(id),
+      content: [run(text)],
+    });
+    const kinds: [string, (id: number, content: ParagraphContent[]) => ParagraphContent][] = [
+      ["a content control", control],
+      ["a bidi wrapper", (_, content) => wrapper(content)],
+      ["a hyperlink holding a bidi wrapper", (_, content) => link([wrapper(content)])],
+    ];
+    for (const [name, piece] of kinds) {
+      test(name, () => {
+        const withNext = (content: ParagraphContent[]): Document =>
+          documentOf(paragraph("00000001", content), paragraph("00000009", [run("next")]));
+        const cut = withNext([piece(1, [inserted(1, "x")]), piece(7, [run("ab")])]);
+        expect(resolved(cut, [1], REVISION_DECISIONS.REJECT)).toStrictEqual(
+          withNext([piece(1, [run("ab")])]),
+        );
+        // Both pieces emptied, at once or one after the other, leave one.
+        const both = withNext([piece(1, [inserted(1, "x")]), piece(7, [inserted(2, "ab")])]);
+        const one = withNext([piece(1, [])]);
+        expect(resolved(both, [1, 2], REVISION_DECISIONS.REJECT)).toStrictEqual(one);
+        for (const order of [
+          [1, 2],
+          [2, 1],
+        ]) {
+          let inTurn = both;
+          for (const id of order) inTurn = resolved(inTurn, [id], REVISION_DECISIONS.REJECT);
+          expect(inTurn).toStrictEqual(one);
+        }
+      });
+    }
+  });
 });
