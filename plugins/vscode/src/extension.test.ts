@@ -1,7 +1,7 @@
 // Activation against a stand-in `vscode` module: what the extension registers,
 // and the MCP server definition it hands the editor.
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 type Listener = () => void;
 
@@ -125,7 +125,10 @@ const context = {
   asAbsolutePath: (relative: string) => `/ext/${relative}`,
 };
 
+const inheritedAuthor = process.env["FOLIO_AUTHOR"];
+
 beforeEach(() => {
+  delete process.env["FOLIO_AUTHOR"];
   state.trusted = true;
   state.folders = [{ uri: { scheme: "file", fsPath: "/work/contracts" } }];
   state.author = "Ada Lovelace";
@@ -137,6 +140,11 @@ beforeEach(() => {
   state.commands.clear();
   state.onFolders = [];
   activate(context as never);
+});
+
+afterEach(() => {
+  if (inheritedAuthor === undefined) delete process.env["FOLIO_AUTHOR"];
+  else process.env["FOLIO_AUTHOR"] = inheritedAuthor;
 });
 
 const definitions = async () =>
