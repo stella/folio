@@ -17,6 +17,7 @@ import { panic, Result } from "better-result";
 import type { Readable, Writable } from "node:stream";
 
 import { FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA } from "@stll/folio-agents/operation-schema";
+import { FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE } from "@stll/folio-core/server";
 import {
   ProtocolError,
   ProtocolErrorCode,
@@ -33,8 +34,10 @@ import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { executeReadTool, type FileToolCall, type FolioReadBounds } from "./execute-read";
 import { executeWriteTool, type WriteDestination } from "./execute-write";
 import {
+  compactSchema,
   createToolSurface,
   failure,
+  hoistRepeatedSchemas,
   success,
   type JsonSchema,
   type ToolDefinition,
@@ -66,10 +69,14 @@ export type FolioMcpServerOptions = {
 const ABOUT_URI = "folio://about";
 const OPERATIONS_SCHEMA_URI = "folio://schema/operations";
 
-const INSTRUCTIONS =
+const instructionsFor = (author: string | undefined): string =>
   "Reads and edits .docx files. A read returns the fileVersion; a write needs the latest one and " +
   "returns the next. Block ids stay valid across edits, so chain calls without re-reading. Edits " +
-  "are tracked changes. Failures are { error: { code, message, hint, retryable } }.";
+  "are tracked changes. " +
+  (author === undefined
+    ? "No author is configured, so writes are refused. "
+    : `Every change and comment is recorded under the author ${JSON.stringify(author)}. `) +
+  "Failures are { error: { code, message, hint, retryable } }.";
 
 const PATH_PROPERTY = {
   type: "string",
@@ -211,7 +218,8 @@ const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
       "Apply edits as tracked changes in one batch; returns the new fileVersion. Operations: " +
       "replaceInBlock {blockId, find, replace}; replaceRange {range, replace}; replaceBlock {blockId, text}; " +
       "insertAfterBlock / insertBeforeBlock {blockId, text}; deleteBlock {blockId}; " +
-      "commentOnRange {range, comment}. More types: describe_capability.",
+      "commentOnRange {range, comment}. The batch lands whole or not at all. Splits, merges, " +
+      "tables and formatting: describe_capability.",
     properties: {
       path: STRING,
       fileVersion: STRING,
@@ -484,6 +492,7 @@ const compactWrite = (
   const result = recordOf(receipt["result"]);
   const base = {
     fileVersion: receipt["fileVersion"],
+    author: receipt["author"],
     ...(input["destination"] !== undefined && { path: receipt["path"] }),
     ...(receipt["status"] === "replayed" && { replayed: true }),
     ...(receipt["rebased"] !== undefined && { rebased: receipt["rebased"] }),
@@ -554,7 +563,24 @@ const withFullRanges = (operations: unknown): unknown =>
       })
     : operations;
 
-const guideOf = (tool: FolioFileToolSpec): string => tool.description;
+/** Operation keys the model never writes. */
+const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set(["type", "suggestionId"]);
+
+/**
+ * The fields each operation type accepts, one line per type. The described
+ * schema lists every field once for all types, without their descriptions.
+ */
+const OPERATION_FIELDS = Object.entries(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE)
+  .map(
+    ([type, keys]) =>
+      `${type}: ${keys.filter((key) => !HIDDEN_OPERATION_KEYS.has(key)).join(", ")}`,
+  )
+  .join("\n");
+
+const guideOf = (tool: FolioFileToolSpec): string =>
+  tool.name === "suggest_changes"
+    ? `${tool.description}\nFields by operation type:\n${OPERATION_FIELDS}`
+    : tool.description;
 
 const toKitTool = (tool: FolioFileToolSpec): ToolDefinition<ToolCallContext> => {
   const direct = DIRECT_TOOLS[tool.name];
@@ -569,6 +595,9 @@ const toKitTool = (tool: FolioFileToolSpec): ToolDefinition<ToolCallContext> => 
     destructive: access !== "read",
     ...(lazy !== undefined && { domain: lazy.domain }),
     inputSchema: mcpInputSchema(tool),
+    describedSchema: hoistRepeatedSchemas(
+      compactSchema(mcpInputSchema(tool), { describedDepth: 1 }),
+    ),
     ...(direct !== undefined && {
       direct: {
         inputSchema: {
@@ -678,7 +707,7 @@ export const createFolioMcpServer = (options: FolioMcpServerOptions): Server => 
   };
   const server = new Server(
     { name: "folio", version: packageJson.version },
-    { capabilities: { tools: {}, resources: {} }, instructions: INSTRUCTIONS },
+    { capabilities: { tools: {}, resources: {} }, instructions: instructionsFor(options.author) },
   );
   server.setRequestHandler("tools/list", () => ({ tools: listMcpTools() }));
   server.setRequestHandler("tools/call", (request) =>

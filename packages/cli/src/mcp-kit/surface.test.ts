@@ -6,6 +6,7 @@ import {
   compactSchema,
   createToolSurface,
   failure,
+  hoistRepeatedSchemas,
   success,
   type ToolCallResult,
   type ToolDefinition,
@@ -144,6 +145,65 @@ describe("listing", () => {
       properties: {
         description: { type: "string" },
         nested: { type: "array", items: { type: "object" } },
+      },
+    });
+  });
+
+  test("hoistRepeatedSchemas states a repeated shape once", () => {
+    const shape = {
+      type: "object",
+      properties: { left: { type: "integer" }, right: { type: "integer" } },
+    };
+    const hoisted = hoistRepeatedSchemas(
+      { type: "object", properties: { first: shape, second: shape, third: { type: "string" } } },
+      { minBytes: 40 },
+    );
+
+    expect(hoisted).toEqual({
+      type: "object",
+      properties: {
+        first: { $ref: "#/$defs/first" },
+        second: { $ref: "#/$defs/first" },
+        third: { type: "string" },
+      },
+      $defs: { first: shape },
+    });
+    expect(hoistRepeatedSchemas({ type: "object", properties: { only: shape } })).toEqual({
+      type: "object",
+      properties: { only: shape },
+    });
+  });
+
+  test("compactSchema drops a maximum that only says integer", () => {
+    expect(
+      compactSchema({ type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER }),
+    ).toEqual({ type: "integer", minimum: 0 });
+  });
+
+  test("compactSchema keeps descriptions as many property levels deep as asked", () => {
+    const schema = {
+      type: "object",
+      description: "the tool",
+      properties: {
+        ops: {
+          type: "array",
+          description: "the operations",
+          items: {
+            type: "object",
+            properties: { find: { type: "string", description: "text to find" } },
+          },
+        },
+      },
+    };
+
+    expect(compactSchema(schema, { describedDepth: 1 })).toEqual({
+      type: "object",
+      properties: {
+        ops: {
+          type: "array",
+          description: "the operations",
+          items: { type: "object", properties: { find: { type: "string" } } },
+        },
       },
     });
   });

@@ -152,7 +152,11 @@ describe("folio mcp", () => {
           { type: "replaceRange", range: matches[1]?.range, replace: "Provider" },
         ],
       });
-      expect(suggested.data).toEqual({ fileVersion: await versionOf(file), applied: 2 });
+      expect(suggested.data).toEqual({
+        fileVersion: await versionOf(file),
+        author: "MCP Reviewer",
+        applied: 2,
+      });
 
       const commented = await call("add_comment", {
         path: file,

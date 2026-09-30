@@ -17,7 +17,12 @@ export {
   validationError,
 } from "./envelope";
 export { readToolInput, type ReadInput } from "./input";
-export { advertisedBytes, compactSchema } from "./schema";
+export {
+  advertisedBytes,
+  compactSchema,
+  hoistRepeatedSchemas,
+  type CompactSchemaOptions,
+} from "./schema";
 export {
   CAPABILITY_TOOL_NAMES,
   createToolSurface,

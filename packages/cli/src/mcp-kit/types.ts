@@ -43,8 +43,13 @@ export type ToolDefinition<Context> = {
   readonly destructive?: boolean;
   /** Groups lazy tools for `list_capabilities`' `domain` filter. */
   readonly domain?: string;
-  /** Every argument the tool accepts: what calls are checked against and describe returns. */
+  /** Every argument the tool accepts: what calls are checked against. */
   readonly inputSchema: JsonSchema;
+  /**
+   * What `describe_capability` returns as the input schema when a leaner
+   * rendering of `inputSchema` serves better (see `compactSchema`).
+   */
+  readonly describedSchema?: JsonSchema;
   /**
    * Present for a tool listed on every turn, with the compact schema it is
    * listed with. A tool without it is reached through the capability tools.

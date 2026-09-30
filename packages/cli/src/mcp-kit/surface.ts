@@ -264,7 +264,7 @@ export const createToolSurface = <Context>({
       description: tool.guide === undefined ? tool.summary : `${tool.summary}\n${tool.guide}`,
       access: tool.access,
       destructive: destructiveOf(tool),
-      inputSchema: tool.inputSchema,
+      inputSchema: tool.describedSchema ?? tool.inputSchema,
     });
   };
 
