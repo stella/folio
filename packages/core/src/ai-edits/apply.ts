@@ -166,6 +166,7 @@ import {
   normalizeFolioAIBlockText,
 } from "./snapshot";
 import {
+  isEmptyTableCell,
   mergeTableRectangle,
   mergeTrackedVerticalTableCells,
   splitTableRectangle,
@@ -1876,6 +1877,32 @@ const deletedRowAffectedRanges = ({
   return ranges;
 };
 
+/**
+ * The blank cells a merge folds into the first cell of its rectangle. Only a
+ * blank cell can fold away tracked, so an edit that fills one decides whether
+ * the merge applies in one mode and not the other; see `batch-claims.ts`. A
+ * cell with content folds directly and is refused tracked whatever the batch
+ * does inside it.
+ */
+const foldedBlankCellRanges = (
+  doc: PMNode,
+  { tablePosition, rectangle }: TableCellMerge,
+): { from: number; to: number }[] => {
+  const table = doc.nodeAt(tablePosition);
+  if (table?.type.spec["tableRole"] !== "table") {
+    return panic("A resolved cell merge lost its table", { position: tablePosition });
+  }
+  const map = TableMap.get(table);
+  const tableStart = tablePosition + 1;
+  const kept = map.map[rectangle.top * map.width + rectangle.left];
+  return map.cellsInRect(rectangle).flatMap((relative) => {
+    const cell = relative === kept ? null : table.nodeAt(relative);
+    return cell && isEmptyTableCell(cell)
+      ? [{ from: tableStart + relative, to: tableStart + relative + cell.nodeSize }]
+      : [];
+  });
+};
+
 /** What `item` claims of the document its batch resolved against; see `batch-claims.ts`. */
 const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions): BatchClaim => {
   const block = item.blockFrom;
@@ -1965,9 +1992,15 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
       let axis: "row" | "column" | "cell" = "cell";
       if (item.operation.type === "insertTableRow") axis = "row";
       if (item.operation.type === "insertTableColumn") axis = "column";
-      return target.type === "none"
-        ? { type: "unclaimed" }
-        : { type: "tableStructure", table: target.tablePosition, axis };
+      if (target.type === "none") {
+        return { type: "unclaimed" };
+      }
+      return {
+        type: "tableStructure",
+        table: target.tablePosition,
+        axis,
+        folded: target.type === "mergeCells" ? foldedBlankCellRanges(doc, target) : [],
+      };
     }
   }
 };

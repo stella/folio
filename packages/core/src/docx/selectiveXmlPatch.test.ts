@@ -420,6 +420,20 @@ const refusalOf = (original: string, serialized: string, id: string): string | u
 };
 
 describe("selective patch routes each changed paragraph locally", () => {
+  test("refuses simultaneous edits to a host paragraph and its text-box paragraph", () => {
+    const original = routingDoc(
+      hostPara("A0000001", drawingTextBox(para("A0000002", "Box"))) +
+        para("A0000003", "Following paragraph"),
+    );
+    const serialized = routingDoc(
+      hostPara("A0000001", drawingTextBox(para("A0000002", "A longer box"))) +
+        para("A0000003", "Following paragraph"),
+    );
+    const changed = new Set(["A0000001", "A0000002"]);
+    expect(validatePatchSafety(original, serialized, changed).safe).toBe(false);
+    expect(buildPatchedDocumentXml(original, serialized, changed)).toBeNull();
+  });
+
   test("splices an authored paragraph when the serialization writes no text-box Fallback", () => {
     const box = hostPara(
       "B0000001",
