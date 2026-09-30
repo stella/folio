@@ -9,13 +9,45 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { runExtendedChecks } from "./lib/corpus-extended";
+import { INVARIANT_ORDER, runExtendedChecks } from "./lib/corpus-extended";
 import {
   EXTENDED_CORPUS_INVARIANTS,
   familyOf,
   isGatingFamily,
 } from "./lib/corpus-invariants/contract";
 import { CORPUS_INVARIANTS } from "./lib/corpus-signature";
+
+describe("extended invariant registration", () => {
+  test("the execution order contains every runnable invariant exactly once", () => {
+    const expected = Object.values(EXTENDED_CORPUS_INVARIANTS).filter(
+      (invariant) => invariant !== EXTENDED_CORPUS_INVARIANTS.performance,
+    );
+    expect([...INVARIANT_ORDER].sort()).toEqual(expected.sort());
+  });
+});
+
+describe("a skipped operation invariant cannot silently pass", () => {
+  test("a file budget exhausted before the runners records both missing verdicts", async () => {
+    const empty = new Uint8Array(0);
+    const result = await runExtendedChecks({
+      bytes: empty,
+      buffer: empty.buffer as ArrayBuffer,
+      // No runner should receive this fixture: the exhausted budget skips every stage.
+      parsed: { package: {} } as never,
+      documentPart: "word/document.xml",
+      invariantBudgetMs: 30_000,
+      fileBudgetMs: -1,
+    });
+    const missing = result.failures.filter(
+      (failure) =>
+        failure.message === "the file time budget prevented an operation invariant verdict",
+    );
+    expect(missing.map((failure) => failure.invariant).sort()).toEqual(
+      [EXTENDED_CORPUS_INVARIANTS.opInverse, EXTENDED_CORPUS_INVARIANTS.opLocality].sort(),
+    );
+    expect(result.truncatedAt).toBe(EXTENDED_CORPUS_INVARIANTS.opInverse);
+  });
+});
 
 describe("a stage that merely ran slowly does not truncate the file", () => {
   // An invariant budget of zero makes every stage overrun, while a file budget

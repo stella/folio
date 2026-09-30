@@ -1,6 +1,6 @@
 /** Shared addressing for row and whole-table operations. */
 import { Result, panic } from "better-result";
-import type { Document, Table } from "../model/document";
+import type { Document, Table, TableRow } from "../model/document";
 import { blockListAt, storyBody, storyParagraphs, type ParagraphLocation } from "./blocks";
 import { idKey } from "./ids";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -52,3 +52,9 @@ export const locateTableRow = (
   if (table?.type !== "table") return panic("A table-cell path must name a table.");
   return Result.ok({ list, index: step.block, rowIndex: step.row, table });
 };
+
+/** Row operations address this table, never a nested table appearing first. */
+export const tableRowAnchor = (rows: readonly TableRow[]): string | undefined =>
+  storyParagraphs({ content: [{ type: "table", rows: [...rows] }] }).find(
+    ({ list }) => list.filter((step) => step.kind === "tableCell").length === 1,
+  )?.paragraph.paraId;

@@ -89,6 +89,8 @@ but not ratcheted:
 | `reserialize`         | With every rebuildable capture removed, so the real serializers run for every block, the saved package parses back to the same model. A difference here is a serializer defect verbatim replay hides.                                                    |
 | `editor-round-trip`   | Document → `toProseDoc` → `fromProseDoc` → save → parse preserves the whole normalised model, not only the visible text and block count `fixed-point` checks.                                                                                            |
 | `editor-projection`   | The same pipeline with reuse declined (`fromProseDoc(pm, base, { reuse: "none" })`), so every record is rebuilt from ProseMirror. Report-only until its first full-corpus baseline. See [Why `editor-projection` exists](#why-editor-projection-exists). |
+| `op-inverse`          | Seeded operation sequences and their captured inverses restore exact model records and serialized package parts. Fixed-zero gate.                                                                                                                        |
+| `op-locality`         | Generated operations leave undeclared paragraphs, containers, and unrelated serialized package parts unchanged. Fixed-zero gate.                                                                                                                         |
 | `edit-locality`       | One character inserted in the first non-empty body paragraph changes that paragraph and nothing else: no other block's model, no part outside the body.                                                                                                  |
 | `save-idempotence`    | Saving is a fixed point after the first normalising save. Every part is byte-stable from the second save on.                                                                                                                                             |
 | `schema-validity`     | A part folio rebuilds gains no schema violation it did not arrive with, against `specifications/generated/docx-transitional-schema.gen.json`.                                                                                                            |
@@ -98,7 +100,7 @@ but not ratcheted:
 
 ### Gating and report-only families
 
-Every family is classified `gating` or `report-only` in `CORPUS_FAMILY_GATING`
+Every family is classified `gating`, `zero`, or `report-only` in `CORPUS_FAMILY_GATING`
 (`scripts/lib/corpus-invariants/contract.ts`), a total map over the family
 union, so a family added later cannot arrive without that decision.
 
@@ -263,6 +265,15 @@ are a drift hazard: a normalisation added to one and not the other turns into a
 census of phantom defects. The projection wants a single owner in
 `packages/core` that both the property test and the gate import. That is a
 change to a published package, so it is named here rather than smuggled in.
+
+### Operation invariants
+
+`op-inverse` applies deterministic generated operation sequences and verifies that
+replaying their inverses restores the original document and serialization.
+`op-locality` checks that serialized blocks outside each operation’s touched set
+remain unchanged. Both run in the nightly invariant shards and gate at zero:
+findings cannot be admitted by baseline updates, dispositions, or report-only
+file entries. A skipped run remains degraded under the corpus budget rules.
 
 ### Budgets
 
@@ -575,3 +586,5 @@ corpora), and the Aspose and GroupDocs sample repositories.
 3. `bun run corpus:fetch`, then rerun the gate and
    `write-baseline`: new files change the lock digest, so the baseline must be
    re-measured.
+
+Operation sequences start from the public operations seed contract: unique paragraph ids and normalized empty inline records. Byte checks compare uncompressed parts of a control save of that seeded model; ZIP metadata and pre-existing save normalization are outside the operation being measured. Each file runs three byte-seeded sequences of twelve candidate edits, mixing direct and tracked modes. Unsupported candidates may refuse; accepted edits and their inverse primitives are checked. The generator role map requires a decision for every operation schema member.

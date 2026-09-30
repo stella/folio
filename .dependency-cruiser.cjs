@@ -112,18 +112,16 @@ const paintBackendRules = [
 ];
 
 /**
- * Document operations run unchanged in an editor, on a server and in a
- * sequencer, so determinism comes from there being one implementation. An
- * editor framework in their import graph would tie that implementation to
- * one host.
+ * The document model and its operations run in editors, servers and sequencers.
+ * A framework dependency anywhere in docx-core would tie that portable model
+ * to one host, including through an erased type-only import.
  */
-const documentOpsRules = [
+const documentModelRules = [
   {
-    name: "document-ops-stay-framework-free",
-    comment:
-      "@stll/docx-core/ops operates on the document model alone; it may not import ProseMirror.",
+    name: "docx-core-stays-framework-free",
+    comment: "@stll/docx-core is independent of editor frameworks; it may not import ProseMirror.",
     severity: "error",
-    from: { path: "^packages/docx-core/src/ops/" },
+    from: { path: workspacePath("docx-core") },
     to: { path: "(^|/)prosemirror-" },
   },
 ];
@@ -161,7 +159,7 @@ module.exports = {
   forbidden: [
     ...closedWorkspaceRules,
     ...paintBackendRules,
-    ...documentOpsRules,
+    ...documentModelRules,
     noCircularRuntimeImportsRule,
   ],
   options: {
@@ -172,8 +170,10 @@ module.exports = {
     },
     exclude: {
       path: [
-        "(^|/)dist/",
-        "(^|/)node_modules/",
+        "^packages/[^/]+/dist/",
+        // Exclusion removes dependency edges too. Keep framework targets visible
+        // to the docx-core boundary, including nested package-manager layouts.
+        "(^|/)node_modules/(?!prosemirror-|.*/prosemirror-)",
         "^packages/docx-core/src/generated/",
         "^packages/core/src/generated/",
       ],

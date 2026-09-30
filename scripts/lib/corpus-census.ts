@@ -8,7 +8,7 @@
  */
 
 import { NOT_A_DOCX_REASONS, type NotADocxReason } from "./corpus-classify";
-import { isGatingFailure } from "./corpus-invariants/contract";
+import { isGatingFailure, isZeroFailure } from "./corpus-invariants/contract";
 import {
   type CorpusFailure,
   type CorpusInvariant,
@@ -151,7 +151,8 @@ export const emptyCensus = (lockDigest: string, reportOnlyDigest: string): Corpu
 /** Up to this many truncated files are named, so a degraded run can be diagnosed. */
 export const MAX_TRUNCATED_EXAMPLES = 25;
 
-const isReportOnly = (failure: CorpusFailure): boolean => !isGatingFailure(failure);
+const survivesMissingEvidence = (failure: CorpusFailure): boolean =>
+  !isGatingFailure(failure) || isZeroFailure(failure);
 
 const assertNever = (value: never): never => {
   throw new Error(`unhandled corpus file result: ${JSON.stringify(value)}`);
@@ -204,17 +205,17 @@ export class CensusBuilder {
         if (this.#census.truncatedExamples.length < MAX_TRUNCATED_EXAMPLES) {
           this.#census.truncatedExamples.push({ file, stage: result.stage });
         }
-        // Only the report-only findings survive: the gating ones this file did
-        // produce are as load-dependent as the ones it never reached.
-        this.addChecked(file, result.failures.filter(isReportOnly), { counted: false });
+        // Ratcheted findings depend on how far a loaded run reached. Fixed-zero
+        // failures already observed remain defects even when later work is skipped.
+        this.addChecked(file, result.failures.filter(survivesMissingEvidence), { counted: false });
         return;
       }
       case "report-only": {
         this.#census.files += 1;
         this.#census.reportOnly += 1;
-        // Listed by hand, so this holds however the run went: the file is
-        // measured and reported, and neither passes nor fails.
-        this.addChecked(file, result.failures.filter(isReportOnly), { counted: false });
+        // Listed files contribute no ratchet evidence. Fixed-zero defects are
+        // still counted: a file exemption cannot grant an operation allowance.
+        this.addChecked(file, result.failures.filter(survivesMissingEvidence), { counted: false });
         return;
       }
       case "complete": {
