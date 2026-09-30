@@ -5,6 +5,7 @@
 
 import type { NumberingMap } from "../docx/numberingParser";
 import {
+  type ParagraphNumberingOverride,
   paragraphNumberingLevel,
   paragraphNumberingReferenceId,
   sameStatedParagraphNumbering,
@@ -21,7 +22,7 @@ export const recordsListRendering = (record: PreviousFormatting): boolean =>
 
 /** Every list-rendering attr for `numPr`: its level's, or all cleared when it numbers nothing. */
 export const listRenderingFor = (
-  numPr: PreviousFormatting["numPr"],
+  numPr: ParagraphNumberingOverride | null | undefined,
   numbering: NumberingMap | null,
 ): Record<string, unknown> => {
   const numId = paragraphNumberingReferenceId(numPr ?? undefined);
@@ -54,7 +55,7 @@ export type RejectedListRenderingOptions = {
   /** The previous state the rejected record restores. */
   previousFormatting: PreviousFormatting | null | undefined;
   numbering: NumberingMap | null;
-  restoredNumbering: ParagraphAttrs["numPr"];
+  restoredNumbering: ParagraphAttrs["numPr"] | null;
 };
 
 export const rejectedListRenderingPatch = ({
