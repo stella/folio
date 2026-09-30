@@ -130,12 +130,23 @@ export const carryParagraphProperties = ({
   return { tr, changed: true, tracked };
 };
 
+type ParagraphLeftAfterOptions = {
+  doc: PMNode;
+  paragraphPos: number;
+  /** Breaks a batch's deferred final-paragraph deletion will remove. */
+  removedBreakPositions?: ReadonlySet<number>;
+};
+
 /**
  * The paragraph left once the break of the paragraph at `paragraphPos` goes:
  * the next one, or, when its own break is pending deletion too, the first
  * paragraph after it whose break stays. Null when no paragraph follows.
  */
-export const paragraphLeftAfter = (doc: PMNode, paragraphPos: number): number | null => {
+export const paragraphLeftAfter = ({
+  doc,
+  paragraphPos,
+  removedBreakPositions,
+}: ParagraphLeftAfterOptions): number | null => {
   let position = paragraphPos;
   const start = doc.nodeAt(position);
   if (!start) return null;
@@ -145,7 +156,9 @@ export const paragraphLeftAfter = (doc: PMNode, paragraphPos: number): number | 
     const next: PMNode | null = doc.resolve(nextPos).nodeAfter;
     if (!next || next.type !== node.type) return null;
     const mark = expectParagraphAttrs(next).pPrMark;
-    const nextGoes = mark != null && (mark.kind === "del" || mark.kind === "moveFrom");
+    const nextGoes =
+      removedBreakPositions?.has(nextPos) ||
+      (mark != null && (mark.kind === "del" || mark.kind === "moveFrom"));
     const afterNext = doc.resolve(nextPos + next.nodeSize).nodeAfter;
     if (!nextGoes || afterNext?.type !== node.type) return nextPos;
     position = nextPos;

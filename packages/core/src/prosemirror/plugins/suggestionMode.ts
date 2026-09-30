@@ -20,7 +20,7 @@ import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
-import { expectParagraphAttrs } from "../attrs";
+import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -247,7 +247,9 @@ function markRangeAsDeleted(
     const lastPos = doc === tr.doc ? $last.before() : tr.mapping.map($last.before());
     const lastMark = tr.doc.nodeAt(lastPos)?.attrs["pPrMark"] as { kind?: unknown } | null;
     const lastGoes = lastMark?.kind === "del" || lastMark?.kind === "moveFrom";
-    const survivorPos = lastGoes ? (paragraphLeftAfter(tr.doc, lastPos) ?? lastPos) : lastPos;
+    const survivorPos = lastGoes
+      ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: lastPos }) ?? lastPos)
+      : lastPos;
     carryIntoParagraphLeft(joinState, tr, $first.parent, survivorPos, {
       id: delAttrs.revisionId,
       author: delAttrs.author,
@@ -277,6 +279,41 @@ function markRangeAsDeleted(
       tr.addMark(range.from, range.to, deletionType.create(delAttrs));
     }
   }
+}
+
+type EnclosePastedRunRevisionsOptions = {
+  tr: Transaction;
+  from: number;
+  to: number;
+  revision: MarkAttrs;
+};
+
+/** Preserve clipboard revisions inside the revision that inserted their content. */
+function enclosePastedRunRevisions({
+  tr,
+  from,
+  to,
+  revision: insertion,
+}: EnclosePastedRunRevisionsOptions): void {
+  tr.doc.nodesBetween(from, to, (node, pos) => {
+    if (!canCarryTrackedRunMark(node)) return;
+    const revision = node.marks.find(
+      ({ type }) => type.name === "insertion" || type.name === "deletion",
+    );
+    if (!revision) return;
+    const previous = expectTrackedChangeMarkAttrs(revision);
+    tr.addMark(
+      Math.max(from, pos),
+      Math.min(to, pos + node.nodeSize),
+      revision.type.create({
+        ...revision.attrs,
+        _docxRevisionAncestors: [
+          { type: "insertion", ...insertion, outerWrapperCount: 0 },
+          ...(previous._docxRevisionAncestors ?? []),
+        ],
+      }),
+    );
+  });
 }
 
 /**
@@ -433,7 +470,7 @@ export function handleSuggestionPaste(
     }
     const firstPos = tr.mapping.map($from.before());
     const mark = tr.doc.nodeAt(firstPos)?.attrs["pPrMark"] as ParagraphMarkAttr | null | undefined;
-    const survivorPos = paragraphLeftAfter(tr.doc, firstPos);
+    const survivorPos = paragraphLeftAfter({ doc: tr.doc, paragraphPos: firstPos });
     if (mark?.kind === "del" && survivorPos !== null) {
       carryIntoParagraphLeft(view.state, tr, $from.parent, survivorPos, mark.info);
     }
@@ -488,11 +525,10 @@ export function handleSuggestionPaste(
     insertTo = since.map(insertTo, -1);
   }
 
-  // 3. Mark the pasted content as a tracked insertion; drop any inherited
-  //    deletion marks first so new content is never shown struck through.
-  tr.removeMark(insertFrom, insertTo, deletionType);
+  // 3. Track the paste around any revisions the clipboard already carried.
   const insertAttrs =
     findAdjacentRevision(doc, from, "insertion", pluginState.author) || makeMarkAttrs(pluginState);
+  enclosePastedRunRevisions({ tr, from: insertFrom, to: insertTo, revision: insertAttrs });
   markRangeAsInserted(tr, tr.doc, insertFrom, insertTo, insertionType, deletionType, insertAttrs);
 
   if (!inlineSlice) {
@@ -577,7 +613,7 @@ export function handleSuggestionTableCellPaste(
         const sizeBefore = tr.doc.content.size;
         tr.replaceRange(insertFrom, insertFrom, content);
         const insertTo = insertFrom + (tr.doc.content.size - sizeBefore);
-        tr.removeMark(insertFrom, insertTo, deletionType);
+        enclosePastedRunRevisions({ tr, from: insertFrom, to: insertTo, revision });
         markRangeAsInserted(
           tr,
           tr.doc,
@@ -989,7 +1025,8 @@ function applyPPrDel(
     view.state,
     tr,
     targetNode,
-    paragraphLeftAfter(tr.doc, targetParagraphPos) ?? targetParagraphPos + targetNode.nodeSize,
+    paragraphLeftAfter({ doc: tr.doc, paragraphPos: targetParagraphPos }) ??
+      targetParagraphPos + targetNode.nodeSize,
     markInfo.info,
   );
   view.dispatch(tr.scrollIntoView());
@@ -1497,6 +1534,9 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           // oxlint-disable-next-line unicorn/no-array-method-this-argument -- ProseMirror Mapping.map(pos, assoc)
           const newTo = following.map(stepTo, 1);
           if (newTo > newFrom) {
+            if (userTr.getMeta("paste")) {
+              enclosePastedRunRevisions({ tr, from: newFrom, to: newTo, revision: markAttrs });
+            }
             if (deletionType) {
               markRangeAsInserted(
                 tr,

@@ -686,6 +686,31 @@ describe("measureParagraph cross-run line breaking", () => {
     );
   });
 
+  test("reports the same line width however the text is split into runs", () => {
+    withFakeTextMeasure(
+      () => {
+        const whole = measureParagraph(
+          paragraph([
+            { kind: "text", text: "the the " },
+            { kind: "text", text: "confirmation " },
+          ]),
+          1000,
+        );
+        const split = measureParagraph(
+          paragraph([
+            { kind: "text", text: "the the confirm" },
+            { kind: "text", text: "ation " },
+          ]),
+          1000,
+        );
+
+        expect(split.lines).toHaveLength(1);
+        expect(split.lines[0]?.width).toBe(whole.lines[0]?.width ?? Number.NaN);
+      },
+      { charWidth: sizeProportionalCharWidth },
+    );
+  });
+
   test("includes scaled letter spacing at the visible-word boundary", () => {
     withFakeTextMeasure(
       () => {
