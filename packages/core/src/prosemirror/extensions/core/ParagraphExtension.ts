@@ -7,7 +7,7 @@
  */
 
 import { Fragment } from "prosemirror-model";
-import type { Mark, Node as PMNode, NodeSpec } from "prosemirror-model";
+import type { Node as PMNode, NodeSpec } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 
 import {
@@ -40,6 +40,7 @@ import { isStyleSourcedParagraphNumbering } from "../../../internal/paragraphFor
 import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import { collectHeadings } from "../../../utils/headingCollector";
 import { tableOfContentsStyleLevel } from "../../../utils/tableOfContentsStyle";
+import { rebaseParagraphRuns } from "../../rebaseParagraphRuns";
 import { expectParagraphAttrs } from "../../attrs";
 import { autospacingMatchesBase } from "../../autospacingBase";
 import { removeSectionBreakAtSelection, setSectionBreakType } from "../../commands/sectionBreak";
@@ -876,8 +877,6 @@ function makeApplyStyle() {
   // paragraph style, which `resolvedAttrs` then resolves.
   return (styleId: string | null, resolvedAttrs?: ResolvedStyleAttrs): Command =>
     (state, dispatch) => {
-      // The document's own schema: it may be another instance than the runtime's.
-      const { schema } = state;
       const { $from, $to } = state.selection;
 
       if (!dispatch) {
@@ -886,67 +885,6 @@ function makeApplyStyle() {
 
       let tr = state.tr;
       const seen = new Set<number>();
-
-      // Build marks from run formatting if provided
-      const styleMarks: Mark[] = [];
-      if (resolvedAttrs?.runFormatting) {
-        const rpr = resolvedAttrs.runFormatting;
-
-        if (rpr.bold && schema.marks["bold"]) {
-          styleMarks.push(schema.marks["bold"].create());
-        }
-        if (rpr.italic && schema.marks["italic"]) {
-          styleMarks.push(schema.marks["italic"].create());
-        }
-        if (rpr.fontSize && schema.marks["fontSize"]) {
-          styleMarks.push(schema.marks["fontSize"].create({ size: rpr.fontSize }));
-        }
-        if (rpr.fontFamily && schema.marks["fontFamily"]) {
-          styleMarks.push(
-            schema.marks["fontFamily"].create({
-              ascii: rpr.fontFamily.ascii,
-              hAnsi: rpr.fontFamily.hAnsi,
-              asciiTheme: rpr.fontFamily.asciiTheme,
-            }),
-          );
-        }
-        if (rpr.color && !rpr.color.auto && schema.marks["textColor"]) {
-          styleMarks.push(
-            schema.marks["textColor"].create({
-              rgb: rpr.color.rgb,
-              themeColor: rpr.color.themeColor,
-              themeTint: rpr.color.themeTint,
-              themeShade: rpr.color.themeShade,
-            }),
-          );
-        }
-        if (rpr.underline && rpr.underline.style !== "none" && schema.marks["underline"]) {
-          styleMarks.push(
-            schema.marks["underline"].create({
-              style: rpr.underline.style,
-              color: rpr.underline.color,
-            }),
-          );
-        }
-        if ((rpr.strike || rpr.doubleStrike) && schema.marks["strike"]) {
-          styleMarks.push(
-            schema.marks["strike"].create({
-              double: rpr.doubleStrike || false,
-            }),
-          );
-        }
-      }
-
-      // Mark types that are controlled by style definitions
-      const styleControlledMarks = [
-        schema.marks["bold"],
-        schema.marks["italic"],
-        schema.marks["fontSize"],
-        schema.marks["fontFamily"],
-        schema.marks["textColor"],
-        schema.marks["underline"],
-        schema.marks["strike"],
-      ].filter(Boolean);
 
       state.doc.nodesBetween($from.pos, $to.pos, (node, pos) => {
         if (node.type.name === "paragraph" && !seen.has(pos)) {
@@ -1032,29 +970,15 @@ function makeApplyStyle() {
 
           tr = tr.setNodeMarkup(pos, undefined, newAttrs);
 
-          // Only modify marks when we have resolved style attrs
-          // (fallback path without resolvedAttrs just sets styleId)
-          if (resolvedAttrs) {
-            const paragraphStart = pos + 1;
-            const paragraphEnd = pos + node.nodeSize - 1;
-
-            if (paragraphEnd > paragraphStart) {
-              // Clear old style-controlled marks first
-              for (const markType of styleControlledMarks) {
-                tr = tr.removeMark(paragraphStart, paragraphEnd, markType);
-              }
-              // Then add the new style's marks
-              for (const mark of styleMarks) {
-                tr = tr.addMark(paragraphStart, paragraphEnd, mark);
-              }
-            }
-          }
+          rebaseParagraphRuns({
+            tr,
+            position: pos,
+            previous: node,
+            styleResolver: getDocumentStyleResolver(state),
+            storedMarks: state.storedMarks ?? state.selection.$from.marks(),
+          });
         }
       });
-
-      if (styleMarks.length > 0) {
-        tr = tr.setStoredMarks(styleMarks);
-      }
 
       dispatch(tr.scrollIntoView());
       return true;
@@ -1158,10 +1082,7 @@ export const ParagraphExtension = createNodeExtension({
         clearStyle: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
           const resolver = getDocumentStyleResolver(state);
           if (!resolver) {
-            return setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null })(
-              state,
-              dispatch,
-            );
+            return applyStyleFn(null)(state, dispatch);
           }
           // Clearing the style applies the default paragraph style, so the
           // paragraph reads what a reopen resolves for it.

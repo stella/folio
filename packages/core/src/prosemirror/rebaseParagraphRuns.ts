@@ -34,6 +34,7 @@ type RebaseParagraphRunsOptions = {
   target?: PMNode;
   styleResolver: RunStyleResolver | null;
   range?: { from: number; to: number };
+  storedMarks?: readonly Mark[] | null;
 };
 
 /** Rebuild rendered marks after the paragraph's style cascade changes. */
@@ -44,17 +45,21 @@ export const rebaseParagraphRuns = ({
   target,
   styleResolver,
   range,
+  storedMarks: initialStoredMarks,
 }: RebaseParagraphRunsOptions): Transaction => {
   const paragraph = tr.doc.nodeAt(position);
   if (!paragraph) return tr;
+  const storedMarks = initialStoredMarks ?? tr.storedMarks ?? tr.selection.$from.marks();
   const sourceContext = paragraphRunStyleContext(previous, styleResolver);
   const targetContext = paragraphRunStyleContext(target ?? paragraph, styleResolver);
-  if (sameRunStyleContext(sourceContext, targetContext)) return tr;
-  const representations = selectRunFormattingCarrierRepresentations({
-    doc: tr.doc,
-    from: range?.from ?? position + 1,
-    to: range?.to ?? position + paragraph.nodeSize - 1,
-  });
+  const sameCascade = sameRunStyleContext(sourceContext, targetContext);
+  const representations = sameCascade
+    ? []
+    : selectRunFormattingCarrierRepresentations({
+        doc: tr.doc,
+        from: range?.from ?? position + 1,
+        to: range?.to ?? position + paragraph.nodeSize - 1,
+      });
   for (const representation of representations) {
     const authoredFormatting = readAuthoredRunFormatting({
       context: sourceContext,
@@ -68,6 +73,31 @@ export const rebaseParagraphRuns = ({
       styleResolver,
     });
     applyMarksToRunFormattingRepresentation({ tr, representation, marks });
+  }
+  // Stored marks belong to a restyled paragraph, rather than an incoming
+  // chunk being rebased for a join into another paragraph's cascade.
+  if (
+    target === undefined &&
+    range === undefined &&
+    tr.selection.empty &&
+    tr.selection.from > position &&
+    tr.selection.from < position + paragraph.nodeSize
+  ) {
+    const node = paragraph.type.schema.text(" ", storedMarks);
+    tr.setStoredMarks(
+      sameCascade
+        ? storedMarks
+        : reconcileRunFormattingMarks({
+            authoredFormatting: readAuthoredRunFormatting({
+              context: sourceContext,
+              marks: node.marks,
+              styleResolver,
+            }),
+            context: targetContext,
+            node,
+            styleResolver,
+          }),
+    );
   }
   return tr;
 };

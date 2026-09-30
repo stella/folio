@@ -216,6 +216,14 @@
       "date": "2026-09-29"
     }
   ],
+  "packages/core/src/prosemirror/rebaseParagraphRuns.test.ts::paragraph style commands carry pending cursor formatting through changed and equal cascades": [
+    {
+      "seed": -142224918,
+      "path": "0:0",
+      "note": "a paragraph style command discarded pending cursor formatting",
+      "date": "2026-09-30"
+    }
+  ],
   "packages/core/src/ai-edits/revisionWrapperEnumeration.property.test.ts::tracked replacements followed by paragraph deletion preserve the revision census across save": [
     {
       "seed": 34068695,

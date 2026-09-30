@@ -1014,7 +1014,10 @@ export const compareComments = (
   const gone: Comment[] = [];
   for (const entry of before) {
     const live = liveBefore.find(({ id }) => id === entry.id);
-    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, live ?? entry);
+    // The accepted quote belongs to the accepted model. Use a live quote
+    // only when a pending paragraph join moved its anchor to another block.
+    const located = live && live.blockId !== entry.blockId ? live : entry;
+    const disposition = mode === "suggested" ? "kept" : anchorDisposition(model, located);
     if (disposition === "removed") gone.push(entry);
     else if (disposition === "kept") kept.push(entry);
   }

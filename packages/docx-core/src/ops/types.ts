@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 2: text, formatting and review edits on
+ * Document operations, schema version 3: text, formatting and review edits on
  * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -36,11 +36,12 @@ import type {
 /**
  * The operation schema this module reads and writes.
  *
- * Version 2 adds tracked changes: the `revision` stamp on the text, formatting
+ * Version 3 adds paragraph insertion through `insertBlocks`.
+ * Version 2 added tracked changes: the `revision` stamp on the text, formatting
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 2;
+export const DOCUMENT_OP_SCHEMA_VERSION = 3;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
@@ -157,8 +158,9 @@ export type SplitParagraphFields = Omit<
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
 
-/** The operation kinds of schema version 2. */
+/** The operation kinds of schema version 3. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  INSERT_BLOCKS: "insertBlocks",
   INSERT_TEXT: "insertText",
   INSERT_CONTENT: "insertContent",
   DELETE_RANGE: "deleteRange",
@@ -423,13 +425,37 @@ export type JoinBlocksOp = {
   revision?: RevisionStamp;
 };
 
+/** A paragraph-relative insertion point in one block list. */
+export type BlockInsertionPoint =
+  | { type: "before"; blockId: string }
+  | { type: "after"; blockId: string };
+
+/**
+ * Insert paragraphs beside an existing paragraph, with pre-minted ids.
+ * Section-bearing paragraphs are refused. With `revision`, each inserted
+ * paragraph receives an inserted mark and its content an insertion wrapper.
+ * Tracked insertion requires a following paragraph in the same block list;
+ * terminal insertion and insertion immediately before non-paragraph blocks
+ * are refused as `untrackable`.
+ * Incoming revision and content-control identities are refused in tracked
+ * mode rather than nesting reviews or rewriting supplied identities.
+ */
+export type InsertBlocksOp = {
+  type: typeof DOCUMENT_OP_TYPES.INSERT_BLOCKS;
+  story: OpStory;
+  at: BlockInsertionPoint;
+  blocks: readonly Paragraph[];
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
 /**
  * Replace a run of adjacent paragraphs with other paragraphs.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
  * compared structurally (without the fields a relayout recomputes), so a
  * replacement authored against another state is refused rather than applied
- * over it. No other operation's inverse is a replacement.
+ * over it. Paragraph insertion uses an anchored replacement as its inverse.
  */
 export type ReplaceBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
@@ -514,8 +540,9 @@ export type ResolveRevisionOp = {
   decision: RevisionDecision;
 };
 
-/** A schema-version-2 document operation. */
+/** A schema-version-3 document operation. */
 export type DocumentOp =
+  | InsertBlocksOp
   | InsertTextOp
   | InsertContentOp
   | DeleteRangeOp
