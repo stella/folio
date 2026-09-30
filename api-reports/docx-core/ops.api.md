@@ -22,6 +22,15 @@ export const applyDocumentOp: (document: Document_2, op: DocumentOp) => Result<A
 export const applyDocumentOps: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
 // @public
+export type BlockInsertionPoint = {
+    type: "before";
+    blockId: string;
+} | {
+    type: "after";
+    blockId: string;
+};
+
+// @public
 export type DeleteRangeOp = {
     type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
     from: TextPosition;
@@ -62,10 +71,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 2;
+export const DOCUMENT_OP_SCHEMA_VERSION = 3;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
+    readonly INSERT_BLOCKS: "insertBlocks";
     readonly INSERT_TEXT: "insertText";
     readonly INSERT_CONTENT: "insertContent";
     readonly DELETE_RANGE: "deleteRange";
@@ -82,7 +92,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
 }>;
 
 // @public
-export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp;
+export type DocumentOp = InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -129,6 +139,16 @@ export type InlineSlice = {
     content: readonly ParagraphContent[];
     openStart: number;
     openEnd: number;
+};
+
+// @public
+export type InsertBlocksOp = {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_BLOCKS;
+    story: OpStory;
+    at: BlockInsertionPoint;
+    blocks: readonly Paragraph[];
+    revision?: RevisionStamp;
+    newIds?: NewIds;
 };
 
 // @public
