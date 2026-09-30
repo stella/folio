@@ -116,9 +116,18 @@ const main = async (): Promise<void> => {
       continue;
     }
     for (const decision of Object.values(REVISION_DECISIONS)) {
+      const compared = Result.try({
+        try: () => compareReviewResolution(parsed.value, decision),
+        catch: (cause: unknown) => cause,
+      });
       findings.push({
         sha256: file.sha256,
-        outcome: compareReviewResolution(parsed.value, decision),
+        outcome: compared.isOk()
+          ? compared.value
+          : {
+              type: "file-failed",
+              errorType: compared.error instanceof Error ? compared.error.name : "UnknownError",
+            },
       });
     }
   }
