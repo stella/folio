@@ -30,6 +30,13 @@
       "title": "keeps live block fields across save"
     },
     {
+      "seed": 1066462270,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "uses accepted comment anchors after a tracked replacement is deleted"
+    },
+    {
       "seed": 20260932,
       "steps": 10,
       "kind": "collisions",
