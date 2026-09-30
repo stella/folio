@@ -14,7 +14,7 @@ import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolvePara
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
-import { runParagraphsIntoTables } from "../prosemirror/tableRunIn";
+import { runParagraphsIntoTables, runsIntoFollowingTable } from "../prosemirror/tableRunIn";
 import { anchoredTextBoxId, droppedTextBoxAnchorIds } from "../prosemirror/anchoredTextBoxes";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import {
@@ -45,8 +45,18 @@ const resolveProperties = ({
   changedRanges,
 }: ResolvePropertiesOptions) => {
   let structural = false;
+  // Noted on this walk so a story without one needs no separate scan.
+  let runsIntoTable = false;
   const walk = (node: PMNode, position: number): PMNode => {
     if (node.isText) return node;
+    if (!runsIntoTable && !node.isTextblock) {
+      for (let index = 0; index + 1 < node.childCount; index++) {
+        if (runsIntoFollowingTable(node.child(index), node.child(index + 1), mode)) {
+          runsIntoTable = true;
+          break;
+        }
+      }
+    }
     const nextAttrs =
       node.type.name === "paragraph"
         ? resolveParagraphChangeAttrs({
@@ -124,7 +134,8 @@ const resolveProperties = ({
     });
     return changed ? rebuild(resolved, { content: children }) : resolved;
   };
-  return { resolved: walk(doc, -1), structural };
+  const resolved = walk(doc, -1);
+  return { resolved, structural, runsIntoTable };
 };
 
 type StructuralContext = {
@@ -583,12 +594,24 @@ export const resolveWholeStory = ({
   styleResolver,
   numbering,
 }: ResolveWholeStoryOptions) => {
+  const { runsIntoTable, ...direct } = resolveStoryRevisions({
+    doc,
+    mode,
+    styleResolver,
+    numbering,
+  });
+  if (!runsIntoTable) return direct;
   // A paragraph whose mark goes right before a table runs on into the table's
   // first cell before the rest resolves; both read as one resolution.
   const runIn = new Transform(doc);
   const { targets, maps, transfers } = runParagraphsIntoTables(runIn, mode, styleResolver);
-  const result = resolveStoryRevisions({ doc: runIn.doc, mode, styleResolver, numbering });
-  if (!runIn.docChanged) return result;
+  if (!runIn.docChanged) return direct;
+  const { runsIntoTable: _rerun, ...result } = resolveStoryRevisions({
+    doc: runIn.doc,
+    mode,
+    styleResolver,
+    numbering,
+  });
   for (const { position, step } of targets) {
     const from = runIn.mapping.slice(step).map(position);
     const target = runIn.doc.nodeAt(from);
@@ -685,5 +708,6 @@ const resolveStoryRevisions = ({
     failed: context.failed,
     removedEndpointCount: context.removedEndpointCount,
     removedReferences: context.removedReferences,
+    runsIntoTable: propertyResult.runsIntoTable,
   };
 };

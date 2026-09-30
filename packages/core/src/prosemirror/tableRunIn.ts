@@ -151,6 +151,19 @@ const markGoes = (paragraph: PMNode, mode: "accept" | "reject"): boolean => {
 };
 
 /**
+ * Whether resolving every change in `mode` runs `paragraph` on into `next`:
+ * its mark goes and `next` is a table.
+ */
+export const runsIntoFollowingTable = (
+  paragraph: PMNode,
+  next: PMNode | null | undefined,
+  mode: "accept" | "reject",
+): boolean =>
+  paragraph.type.name === "paragraph" &&
+  next?.type.spec["tableRole"] === "table" &&
+  markGoes(paragraph, mode);
+
+/**
  * Before every change in a story is resolved: run each paragraph whose mark
  * goes and that sits right before a table on into that table. Returns each
  * paragraph that took words (its position after the step count given) and
@@ -175,7 +188,7 @@ export const runParagraphsIntoTables = (
     tr.doc.descendants((node, pos, parent, index) => {
       if (node.type.name !== "paragraph") return !node.isTextblock;
       const next = parent?.maybeChild(index + 1);
-      if (next?.type.spec["tableRole"] === "table" && markGoes(node, mode) && !tried.has(pos)) {
+      if (runsIntoFollowingTable(node, next, mode) && !tried.has(pos)) {
         candidate = pos;
       }
       return false;
