@@ -1,5 +1,27 @@
 {
   "$comment": "Seeds that once failed, replayed first by assertProperty (test/property-testing.ts) in every environment. Key: <repo-relative test file>::<test title as written>. A nightly failure issue carries the entry to add.",
+  "packages/docx-core/src/ops/__tests__/tableRows.property.test.ts::${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality": [
+    {
+      "seed": -989506751,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "tracked row and paragraph revisions use distinct ids",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1627649410,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "tracked row and paragraph revisions use distinct ids",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/tableRows.property.test.ts::tracked insertion then deletion of another original row obeys the batch law": [
+    {
+      "seed": 1443550133,
+      "path": "0:0:0:0:0:0:0",
+      "note": "a batch uses distinct row revision stamps",
+      "date": "2026-09-30"
+    }
+  ],
   "packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts::over generated paragraphs and edits": [
     {
       "seed": 11,

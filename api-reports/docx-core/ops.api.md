@@ -33,6 +33,16 @@ export type DeleteRangeOp = {
 };
 
 // @public
+export type DeleteRowOp = {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_ROW;
+    story: OpStory;
+    blockId: string;
+    expected?: TableRow;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
+};
+
+// @public
 export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly BLOCK_NOT_FOUND: "blockNotFound";
     readonly INVALID_OFFSET: "invalidOffset";
@@ -79,10 +89,13 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
     readonly REPLACE_INLINE: "replaceInline";
     readonly RESOLVE_REVISION: "resolveRevision";
+    readonly INSERT_ROW: "insertRow";
+    readonly DELETE_ROW: "deleteRow";
+    readonly SET_TABLE_ROWS: "setTableRows";
 }>;
 
 // @public
-export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp;
+export type DocumentOp = InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -142,6 +155,17 @@ export type InsertContentOp = {
 
 // @public
 export type InsertedRunProps = typeof INHERIT_RUN_PROPS | TextFormatting;
+
+// @public
+export type InsertRowOp = {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_ROW;
+    story: OpStory;
+    blockId: string;
+    at: number;
+    row: TableRow;
+    revision?: RevisionStamp;
+    newIds?: NewIds;
+};
 
 // @public
 export type InsertTextOp = {
@@ -304,6 +328,15 @@ export type SetRunPropsOp = {
     joinEnd?: number;
     newIds?: NewIds;
     revision?: RevisionStamp;
+};
+
+// @public
+export type SetTableRowsOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
+    story: OpStory;
+    blockId: string;
+    expected: readonly TableRow[];
+    rows: readonly TableRow[];
 };
 
 // @public
