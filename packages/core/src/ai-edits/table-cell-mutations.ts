@@ -480,7 +480,8 @@ export const splitTrackedVerticalTableCell = ({
   return tr;
 };
 
-const isEmptyTableCell = (cell: PMNode): boolean =>
+/** A cell holding one empty paragraph: all a tracked merge may fold away. */
+export const isEmptyTableCell = (cell: PMNode): boolean =>
   cell.childCount === 1 &&
   cell.firstChild?.isTextblock === true &&
   cell.firstChild.childCount === 0;

@@ -10,9 +10,10 @@ import path from "node:path";
 
 import JSZip from "jszip";
 import { undo } from "prosemirror-history";
-import { AllSelection, TextSelection } from "prosemirror-state";
+import { AllSelection, TextSelection, type EditorState } from "prosemirror-state";
 
 import { expectParagraphAttrs } from "../prosemirror/attrs";
+import type { Document } from "../types/document";
 import { acceptAIEditRevision } from "../prosemirror/commands/comments";
 import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import {
@@ -306,5 +307,148 @@ describe("suggesting mode writes the revisions the reference writes", () => {
     });
     expect(ids).toHaveLength(3);
     expect(new Set(ids).size).toBe(3);
+  });
+});
+
+describe("runs a join moves read from the surviving paragraph's style", () => {
+  const HEADING = paragraph("1A000001", "Service Agreement", '<w:pStyle w:val="Heading1"/>');
+  const BODY = paragraph("2A000002", "This agreement is made between the parties named below.");
+  const HEADING_RUN = { bold: true, size: 32 };
+  const BODY_RUN = { bold: false, size: 22 };
+
+  const caretIn = (view: HeadlessEditorView, index: number, at: "start" | "end" | number) => {
+    const block = textblocks(view.state.doc)[index];
+    if (!block) throw new Error(`missing paragraph ${index}`);
+    let offset = at;
+    if (at === "start") offset = 0;
+    if (at === "end") offset = block.node.content.size;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, block.pos + 1 + Number(offset)),
+      ),
+    );
+  };
+
+  /** The saved body, and every run that states run properties of its own. */
+  const savedBody = async (state: EditorState, base: Document) => {
+    const saved = await saveHarnessState(state, base);
+    const xml = await (
+      await JSZip.loadAsync(saved.bytes)
+    )
+      .file("word/document.xml")
+      ?.async("string");
+    if (!xml) throw new Error("missing document.xml");
+    const body = xml.slice(xml.indexOf("<w:body>"), xml.lastIndexOf("<w:sectPr"));
+    return {
+      bytes: saved.bytes,
+      body,
+      runProperties: body.match(/<w:r>(?:(?!<\/w:r>).)*?<w:rPr>.*?<\/w:rPr>/g) ?? [],
+    };
+  };
+
+  /** Each reopened paragraph's style and how each of its runs reads. */
+  const reopened = async (bytes: Uint8Array) => {
+    const state = createHarnessState(await parseShapeDocument(bytes), "editing");
+    return textblocks(state.doc).map(({ node }) => {
+      const runs: { text: string; bold: boolean; size: unknown }[] = [];
+      node.forEach((child) => {
+        if (!child.isText) return;
+        runs.push({
+          text: child.text ?? "",
+          bold: child.marks.some((mark) => mark.type.name === "bold"),
+          size: child.marks.find((mark) => mark.type.name === "fontSize")?.attrs["size"],
+        });
+      });
+      return { styleId: expectParagraphAttrs(node).styleId ?? null, runs };
+    });
+  };
+
+  for (const mode of ["suggesting", "editing"] as const) {
+    for (const lastJoin of ["Delete", "Backspace"] as const) {
+      test(`${mode}: split, join into the heading, then ${lastJoin} the rest back on`, async () => {
+        const { document, state } = await open(HEADING + BODY, mode);
+        const view = new HeadlessEditorView(state);
+        caretIn(view, 1, "This ".length);
+        view.pressKey("Enter");
+        caretIn(view, 1, "start");
+        view.pressKey("Backspace");
+        const part = textblocks(view.state.doc).findIndex(({ node }) =>
+          node.textContent.endsWith("This "),
+        );
+        if (lastJoin === "Delete") {
+          caretIn(view, part, "end");
+          view.pressKey("Delete");
+        } else {
+          caretIn(view, part + 1, "start");
+          view.pressKey("Backspace");
+        }
+        const merged = textblocks(view.state.doc).at(-1)?.node;
+        expect(
+          merged?.textContent.endsWith("This agreement is made between the parties named below."),
+        ).toBe(true);
+        // The paragraph left paints the heading's style-supplied properties.
+        expect(merged ? expectParagraphAttrs(merged).keepNext : null).toBe(true);
+
+        const saved = await savedBody(view.state, document);
+        expect(saved.runProperties).toEqual([]);
+        expect(saved.body).not.toContain("<w:keepNext");
+        expect(saved.body).not.toContain("<w:outlineLvl");
+
+        const accepted = await savedBody(resolveAllChanges(view.state, "accept"), document);
+        expect(accepted.runProperties).toEqual([]);
+        expect(accepted.body).not.toContain("<w:keepNext");
+        const acceptedParagraphs = await reopened(accepted.bytes);
+        expect(acceptedParagraphs).toHaveLength(1);
+        expect(acceptedParagraphs[0]?.styleId).toBe("Heading1");
+        expect(acceptedParagraphs[0]?.runs.map(({ text }) => text).join("")).toBe(
+          "Service AgreementThis agreement is made between the parties named below.",
+        );
+        for (const run of acceptedParagraphs[0]?.runs ?? []) {
+          expect(run).toMatchObject(HEADING_RUN);
+        }
+
+        if (mode === "suggesting") {
+          const rejected = await savedBody(resolveAllChanges(view.state, "reject"), document);
+          expect(rejected.runProperties).toEqual([]);
+          expect(rejected.body).not.toContain("<w:keepNext");
+          expect(await reopened(rejected.bytes)).toEqual([
+            { styleId: "Heading1", runs: [{ text: "Service Agreement", ...HEADING_RUN }] },
+            {
+              styleId: null,
+              runs: [
+                { text: "This agreement is made between the parties named below.", ...BODY_RUN },
+              ],
+            },
+          ]);
+        }
+      });
+    }
+  }
+
+  test("a heading joined onto body text records and restores only its own properties", async () => {
+    const { document, state } = await open(paragraph("3A000003", "Intro text.") + HEADING);
+    const view = new HeadlessEditorView(state);
+    caretIn(view, 1, "start");
+    view.pressKey("Backspace");
+    const saved = await savedBody(view.state, document);
+    expect(saved.body).toContain("<w:pPrChange");
+    expect(saved.body).not.toContain("<w:keepNext");
+    expect(saved.body).not.toContain("<w:outlineLvl");
+    expect(saved.runProperties).toEqual([]);
+
+    const rejectedState = resolveAllChanges(view.state, "reject");
+    const heading = textblocks(rejectedState.doc).at(-1)?.node;
+    expect(heading ? expectParagraphAttrs(heading) : null).toMatchObject({
+      styleId: "Heading1",
+      keepNext: true,
+    });
+    const rejected = await savedBody(rejectedState, document);
+    expect(rejected.body).not.toContain("<w:keepNext");
+    expect(rejected.body).not.toContain("<w:outlineLvl");
+    expect(rejected.runProperties).toEqual([]);
+    expect(await reopened(rejected.bytes)).toEqual([
+      { styleId: null, runs: [{ text: "Intro text.", ...BODY_RUN }] },
+      { styleId: "Heading1", runs: [{ text: "Service Agreement", ...HEADING_RUN }] },
+    ]);
   });
 });

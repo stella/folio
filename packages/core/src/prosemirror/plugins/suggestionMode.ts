@@ -26,6 +26,7 @@ import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
+import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
 import { encloseWholeControls } from "../contentControlRevisions";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -1025,9 +1026,27 @@ function applyPPrDel(
     const tr = view.state.tr;
     tr.setMeta(SUGGESTION_META, true);
     const joinPos = targetParagraphPos + targetNode.nodeSize;
+    const joined = view.state.doc.nodeAt(joinPos);
     try {
       tr.join(joinPos);
       tr.setNodeAttribute(targetParagraphPos, "pPrMark", null);
+      // The paragraph keeps its own properties, so the words the retraction
+      // brings in drop what their old paragraph's style lent them and read in
+      // this one's: a run with no formatting of its own stays without any.
+      const styleResolver = getDocumentStyleResolver(view.state);
+      if (styleResolver && joined?.type === targetNode.type && joined.content.size > 0) {
+        rebaseParagraphRuns({
+          previousContext: paragraphRunStyleContext(joined, styleResolver),
+          paragraphPosition: targetParagraphPos,
+          range: {
+            from: targetNode.content.size,
+            to: targetNode.content.size + joined.content.size,
+          },
+          styleResolver,
+          tr,
+        });
+      }
+      tr.setMeta(JOINED_RUNS_RESTYLED_META, true);
       view.dispatch(tr.scrollIntoView());
     } catch {
       return true;
