@@ -1,10 +1,10 @@
 {
   "docx-core": {
-    "types": 21146,
-    "instantiations": 26061
+    "types": 22261,
+    "instantiations": 31096
   },
   "core": {
-    "types": 180780,
+    "types": 190250,
     "instantiations": 195474
   },
   "react": {

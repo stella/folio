@@ -25,6 +25,11 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
   };
 };
 
+/**
+ * Plan a tracked replacement of a same-list range: the range's tracked
+ * deletion followed by the replacement fragment as tracked insertions.
+ * All physical revision ids come from one pool for the complete batch.
+ */
 export const planTrackedReplace = (
   document: Document,
   options: PlanTrackedReplaceOptions,
