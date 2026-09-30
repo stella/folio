@@ -61,7 +61,7 @@
     "@stll/folio-core": "workspace:^",
     "better-result": "3.0.1",
     "fast-xml-parser": "^5.10.1",
-    "jszip": "3.10.1"
+    "jszip": "3.10.2"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",
