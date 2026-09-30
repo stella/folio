@@ -115,6 +115,7 @@ export const carryParagraphProperties = ({
   ];
   tr.setNodeMarkup(position, undefined, {
     ...carried,
+    ...carriedNumberingProvenance(source, target, keep),
     // The hand-over covers pPr only: the section and its pending change stay.
     _sectionProperties: target.attrs["_sectionProperties"],
     _propertyChanges: changes.length > 0 ? changes : null,
@@ -129,6 +130,19 @@ export const carryParagraphProperties = ({
   }
   return { tr, changed: true, tracked };
 };
+
+/**
+ * Whether the carried numbering is the paragraph's own or its style's: the
+ * record holds `numPr` as the paragraph reads it, and a style's numbering
+ * stays the style's rather than becoming the paragraph's own `w:numPr`.
+ */
+const carriedNumberingProvenance = (
+  source: PMNode,
+  target: PMNode,
+  keep: ReadonlySet<string> | undefined,
+): Record<string, unknown> => ({
+  numPrFromStyle: expectParagraphAttrs(keep?.has("numPr") ? target : source).numPrFromStyle,
+});
 
 type ParagraphLeftAfterOptions = {
   doc: PMNode;
