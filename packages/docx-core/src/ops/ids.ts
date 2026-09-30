@@ -122,7 +122,15 @@ export type IdentitySlot = { space: IdentitySpace; id: number };
 
 export const slotKey = ({ space, id }: IdentitySlot): string => `${space}:${id}`;
 
-const revisionIdOf = (entries: readonly [string, unknown][]): number | undefined => {
+const revisionIdOf = (
+  entries: readonly [string, unknown][],
+  heldBy: string | undefined,
+): number | undefined => {
+  // Grid changes carry a physical revision id without author metadata.
+  if (heldBy === "gridChange" && Array.isArray(fieldOf(entries, "columnWidths"))) {
+    const id = fieldOf(entries, "id");
+    return typeof id === "number" ? id : undefined;
+  }
   const info = fieldOf(entries, "info");
   if (typeof info !== "object" || info === null) return undefined;
   const infoEntries = Object.entries(info);
@@ -149,7 +157,7 @@ export const identityKeysIn = (value: unknown): string[] => {
   // are one control. A different record with the same id is a second one.
   const stacked = new Map<number, Record<string, unknown>[]>();
   walk(value, (entries, heldBy) => {
-    const revision = revisionIdOf(entries);
+    const revision = revisionIdOf(entries, heldBy);
     if (revision !== undefined) {
       out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
     }
