@@ -4,7 +4,7 @@ import { history, undoDepth } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection, type Command, type Transaction } from "prosemirror-state";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import {
   getChangeTrackerState,
   ParagraphChangeTrackerExtension,
@@ -179,7 +179,7 @@ describe("resolve-all command equivalence", () => {
   test(
     "matches the legacy whole-document range over mixed paragraph and table revisions",
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(
           fc.array(paragraphCase, { minLength: 2, maxLength: 6 }),
           fc.constantFrom("none", "trIns", "trDel"),
@@ -197,7 +197,7 @@ describe("resolve-all command equivalence", () => {
             expectEquivalent(state);
           },
         ),
-        propertyConfig({ seed: 2_609_260, numRuns: 32, verbose: true }),
+        { seed: 2_609_260, numRuns: 32, verbose: true },
       );
     },
     propertyTestTimeout(30_000),

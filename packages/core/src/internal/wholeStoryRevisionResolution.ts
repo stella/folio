@@ -1,6 +1,6 @@
 import { REVIEW_CARRIERS } from "@stll/docx-core/model";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
-import { Mapping, StepMap, ReplaceStep, type Step } from "prosemirror-transform";
+import { Mapping, StepMap, ReplaceStep, Transform, type Step } from "prosemirror-transform";
 import {
   getProseParagraphPropertySourceToken,
   recreateProseNodeWithParagraphPropertySource as rebuild,
@@ -14,12 +14,14 @@ import { resolveParagraphChangeAttrs } from "../prosemirror/commands/resolvePara
 import { resolveAllNodePropertyChangeAttrs } from "../prosemirror/commands/resolveNodePropertyChangeAttrs";
 import { inlineBookmarksOf } from "../prosemirror/commands/paragraphBookmarkJoin";
 import { holdsNoContent } from "../prosemirror/zeroWidthAnchors";
+import { runParagraphsIntoTables, runsIntoFollowingTable } from "../prosemirror/tableRunIn";
 import { anchoredTextBoxId, droppedTextBoxAnchorIds } from "../prosemirror/anchoredTextBoxes";
 import { paragraphRunStyleContext, type RunStyleResolver } from "../prosemirror/runStyleFormatting";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
+import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
 import { resolveInlineRevisions, type RevisionResolutionMode } from "./revisionResolutionInline";
 import type { RemovedSectionReference } from "./sectionEndpointResolution";
@@ -43,8 +45,18 @@ const resolveProperties = ({
   changedRanges,
 }: ResolvePropertiesOptions) => {
   let structural = false;
+  // Noted on this walk so a story without one needs no separate scan.
+  let runsIntoTable = false;
   const walk = (node: PMNode, position: number): PMNode => {
     if (node.isText) return node;
+    if (!runsIntoTable && !node.isTextblock) {
+      for (let index = 0; index + 1 < node.childCount; index++) {
+        if (runsIntoFollowingTable(node.child(index), node.child(index + 1), mode)) {
+          runsIntoTable = true;
+          break;
+        }
+      }
+    }
     const nextAttrs =
       node.type.name === "paragraph"
         ? resolveParagraphChangeAttrs({
@@ -122,11 +134,13 @@ const resolveProperties = ({
     });
     return changed ? rebuild(resolved, { content: children }) : resolved;
   };
-  return { resolved: walk(doc, -1), structural };
+  const resolved = walk(doc, -1);
+  return { resolved, structural, runsIntoTable };
 };
 
 type StructuralContext = {
   mode: RevisionResolutionMode;
+  styleResolver: RunStyleResolver | null;
   deleted: { from: number; to: number }[];
   steps: Step[];
   changedRanges: { from: number; to: number }[];
@@ -273,7 +287,12 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
 
 type ParagraphChain = {
   node: PMNode;
-  chunks: Fragment[];
+  /** The surviving paragraph: the chain's last, whose mark stays. */
+  formattingOwnerPosition: number;
+  chunks: (
+    | { type: "paragraph"; source: PMNode; position: number }
+    | { type: "bookmarks"; content: Fragment }
+  )[];
   position: number;
   before: PMNode;
   joinBoundaries: { closing: number; bookmarks: Fragment }[];
@@ -310,8 +329,29 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     let final = chain.node;
     if (chain.chunks.length > 1) {
       const children: PMNode[] = [];
-      for (let index = chain.chunks.length - 1; index >= 0; index--)
-        chain.chunks[index]?.forEach((child) => children.push(child));
+      for (let index = chain.chunks.length - 1; index >= 0; index--) {
+        const chunk = chain.chunks[index];
+        if (!chunk) continue;
+        // The surviving owner keeps its own marks, as the single-change join
+        // does. Rebuilding them would change provenance without a style change.
+        let content = chunk.type === "paragraph" ? chunk.source.content : chunk.content;
+        if (chunk.type === "paragraph" && chunk.position !== chain.formattingOwnerPosition) {
+          content = rebaseParagraphRunContent({
+            paragraph: chunk.source,
+            target: chain.node,
+            position: chunk.position,
+            styleResolver: context.styleResolver,
+            onRebased: ({ before, after, position: runPosition }) =>
+              recordNodeResolution({
+                before,
+                after,
+                position: runPosition,
+                steps: context.steps,
+              }),
+          });
+        }
+        content.forEach((child) => children.push(child));
+      }
       final = rebuild(chain.node, { content: Fragment.fromArray(children) });
     }
     if (!chain.before.sameMarkup(final))
@@ -394,28 +434,20 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           return null;
         }
         bookmarks = Fragment.fromArray(inline);
-        chain.chunks.push(bookmarks);
+        chain.chunks.push({ type: "bookmarks", content: bookmarks });
         pendingBookmarks = [];
       }
-      const empty = holdsNoContent(paragraph);
-      const owner = empty ? chain.node : paragraph;
-      const next = chain.node;
-      if (empty) {
-        const displacedToken = getProseParagraphPropertySourceToken(paragraph);
-        const selectedToken = getProseParagraphPropertySourceToken(next);
-        context.transfers.push({
-          displacedToken: typeof displacedToken === "string" ? displacedToken : null,
-          selectedToken: typeof selectedToken === "string" ? selectedToken : null,
-        });
-      }
-      chain.node = rebuild(owner, {
-        attrs: {
-          ...owner.attrs,
-          pPrMark: next.attrs["pPrMark"],
-          _sectionProperties: next.attrs["_sectionProperties"],
-        },
+      // The mark that stays ends the joined paragraph, so the paragraph left
+      // is the chain's last one: its identity, properties, mark and section
+      // endpoint survive whether this one still has words or not. Its runs
+      // are re-read in the survivor's style when the chain is assembled.
+      const displacedToken = getProseParagraphPropertySourceToken(paragraph);
+      const selectedToken = getProseParagraphPropertySourceToken(chain.node);
+      context.transfers.push({
+        displacedToken: typeof displacedToken === "string" ? displacedToken : null,
+        selectedToken: typeof selectedToken === "string" ? selectedToken : null,
       });
-      chain.chunks.push(paragraph.content);
+      chain.chunks.push({ type: "paragraph", source: paragraph, position: entry.position });
       chain.position = entry.position;
       chain.before = paragraph;
       chain.joinBoundaries.push({
@@ -441,7 +473,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       : paragraph;
     chain = {
       node: resolved,
-      chunks: [resolved.content],
+      formattingOwnerPosition: entry.position,
+      chunks: [{ type: "paragraph", source: resolved, position: entry.position }],
       position: entry.position,
       before: paragraph,
       joinBoundaries: [],
@@ -561,6 +594,47 @@ export const resolveWholeStory = ({
   styleResolver,
   numbering,
 }: ResolveWholeStoryOptions) => {
+  const { runsIntoTable, ...direct } = resolveStoryRevisions({
+    doc,
+    mode,
+    styleResolver,
+    numbering,
+  });
+  if (!runsIntoTable) return direct;
+  // A paragraph whose mark goes right before a table runs on into the table's
+  // first cell before the rest resolves; both read as one resolution.
+  const runIn = new Transform(doc);
+  const { targets, maps, transfers } = runParagraphsIntoTables(runIn, mode, styleResolver);
+  if (!runIn.docChanged) return direct;
+  const { runsIntoTable: _rerun, ...result } = resolveStoryRevisions({
+    doc: runIn.doc,
+    mode,
+    styleResolver,
+    numbering,
+  });
+  for (const { position, step } of targets) {
+    const from = runIn.mapping.slice(step).map(position);
+    const target = runIn.doc.nodeAt(from);
+    if (target) result.changedRanges.push({ from, to: from + target.nodeSize });
+  }
+  let runInMap = StepMap.empty;
+  for (const map of maps) runInMap = composeRevisionResolutionMaps(runInMap, map);
+  const positionMap = composeRevisionResolutionMaps(runInMap, result.positionMap);
+  return {
+    ...result,
+    steps: [...runIn.steps, ...result.steps],
+    positionMap,
+    mapping: new Mapping([positionMap]),
+    transfers: [...transfers, ...result.transfers],
+  };
+};
+
+const resolveStoryRevisions = ({
+  doc,
+  mode,
+  styleResolver,
+  numbering,
+}: ResolveWholeStoryOptions) => {
   const steps: Step[] = [];
   const propertyRanges: { from: number; to: number }[] = [];
   const propertyResult = resolveProperties({
@@ -581,6 +655,7 @@ export const resolveWholeStory = ({
   });
   const context: StructuralContext = {
     mode,
+    styleResolver,
     steps: [],
     changedRanges: [],
     deleted: [],
@@ -633,5 +708,6 @@ export const resolveWholeStory = ({
     failed: context.failed,
     removedEndpointCount: context.removedEndpointCount,
     removedReferences: context.removedReferences,
+    runsIntoTable: propertyResult.runsIntoTable,
   };
 };

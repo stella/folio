@@ -24,7 +24,7 @@ import { Fragment, Slice } from "prosemirror-model";
 import type { Node as PMNode } from "prosemirror-model";
 import { redo, undo } from "prosemirror-history";
 import type { EditorState } from "prosemirror-state";
-import { TableMap } from "prosemirror-tables";
+import { CellSelection, TableMap } from "prosemirror-tables";
 
 import type { DocumentShape } from "./documentShapes";
 import {
@@ -894,6 +894,7 @@ export type CaseResult = {
   /** Outcome per mode; absent when the placement has no meaning in this shape. */
   runs: Partial<Record<EditorMode, ModeRun["status"]>>;
   violations: Violation[];
+  cellSelection: boolean;
 };
 
 export const runConformanceCase = async (
@@ -916,6 +917,7 @@ export const runConformanceCase = async (
   if (!editing || !suggesting) {
     return null;
   }
+  const cellSelection = editing.before.selection instanceof CellSelection;
 
   for (const run of [editing, suggesting]) {
     if (run.status === "threw") {
@@ -1010,5 +1012,6 @@ export const runConformanceCase = async (
   return {
     runs: { editing: editing.status, suggesting: suggesting.status },
     violations,
+    cellSelection,
   };
 };

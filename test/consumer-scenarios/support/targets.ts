@@ -14,6 +14,7 @@ import type { FolioDocumentStoryHandle } from "@stll/folio-core/server";
 
 import type { openReviewer } from "./documents.ts";
 import type { Random } from "./random.ts";
+import { weightedChoice } from "./feature-coverage.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 
@@ -38,6 +39,7 @@ export type Feature =
   | "field"
   | "hyperlink"
   | "noteReference"
+  | "contentControl"
   | "formatBoundary"
   | "storyEdge"
   | "surrogateBoundary";
@@ -52,6 +54,7 @@ export const FEATURES: readonly Feature[] = [
   "field",
   "hyperlink",
   "noteReference",
+  "contentControl",
   "formatBoundary",
   "storyEdge",
   "surrogateBoundary",
@@ -98,6 +101,7 @@ const NODE_FEATURES: Readonly<Record<string, Feature>> = {
   moveTo: "pendingRevision",
   footnoteRef: "noteReference",
   endnoteRef: "noteReference",
+  sdt: "contentControl",
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -113,13 +117,16 @@ const collectFeatures = (node: unknown, into: Set<Feature>): void => {
   const feature = typeof node["type"] === "string" ? NODE_FEATURES[node["type"]] : undefined;
   if (feature) into.add(feature);
   if (node["pPrMark"] !== undefined) into.add("pendingRevision");
+  if (Array.isArray(node["contentControls"]) && node["contentControls"].length > 0) {
+    into.add("contentControl");
+  }
   if (Array.isArray(node["propertyChanges"]) && node["propertyChanges"].length > 0) {
     into.add("pendingRevision");
   }
   for (const [key, value] of Object.entries(node)) {
     // Authored XML kept for replay is not structure.
     if (key === "rawXml" || key === "verbatimXml") continue;
-    if (isRecord(value)) collectFeatures(value, into);
+    if (isRecord(value) || Array.isArray(value)) collectFeatures(value, into);
   }
 };
 
@@ -127,14 +134,14 @@ const collectFeatures = (node: unknown, into: Set<Feature>): void => {
  * Every paragraph under `root` with a `paraId`, with the features its model
  * shows; `inTextBox` collects the ones inside a text box.
  */
-const paragraphFeatures = (
+export const paragraphFeatures = (
   root: unknown,
   into: Map<string, Set<Feature>>,
   inTextBox: Set<string>,
 ): void => {
-  const visit = (node: unknown, boxed: boolean): void => {
+  const visit = (node: unknown, boxed: boolean, controlled: boolean): void => {
     if (Array.isArray(node)) {
-      for (const item of node) visit(item, boxed);
+      for (const item of node) visit(item, boxed, controlled);
       return;
     }
     if (!isRecord(node)) return;
@@ -142,6 +149,7 @@ const paragraphFeatures = (
       if (boxed) inTextBox.add(node["paraId"].toUpperCase());
       const features = new Set<Feature>();
       collectFeatures(node["content"], features);
+      if (controlled) features.add("contentControl");
       if (node["pPrMark"] !== undefined) features.add("pendingRevision");
       if (Array.isArray(node["propertyChanges"]) && node["propertyChanges"].length > 0) {
         features.add("pendingRevision");
@@ -150,11 +158,12 @@ const paragraphFeatures = (
       into.set(node["paraId"].toUpperCase(), features);
     }
     const box = boxed || node["type"] === "shape" || node["type"] === "textBox";
+    const inControl = controlled || node["type"] === "sdt";
     for (const value of Object.values(node)) {
-      if (isRecord(value)) visit(value, box);
+      if (isRecord(value) || Array.isArray(value)) visit(value, box, inControl);
     }
   };
-  visit(root, false);
+  visit(root, false, false);
 };
 
 /** The model content of one story. */
@@ -355,6 +364,7 @@ export type BiasOptions = {
   recent: readonly string[];
   /** The share of picks that stay uniform. */
   uniform?: number;
+  coverageWeight?: (block: TargetBlock) => number;
 };
 
 /**
@@ -370,6 +380,9 @@ export const biasedPicker = (random: Random, options: BiasOptions): Picker => {
   return {
     block: (candidates) => {
       if (random.chance(share)) return uniform.block(candidates);
+      if (options.coverageWeight) {
+        return weightedChoice(candidates, random, options.coverageWeight);
+      }
       const touched = candidates.filter((block) => recent.has(block.id));
       if (touched.length > 0 && random.chance(0.35)) return random.pick(touched);
       const hot = candidates.filter(featured);

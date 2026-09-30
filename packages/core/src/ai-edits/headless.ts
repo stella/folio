@@ -10,7 +10,7 @@ import {
   importReferencedStyleDefinitions,
   type ImportReferencedStyleDefinitionsResult,
 } from "../compare/style-resources";
-import { expectCharacterStyleMarkAttrs } from "../prosemirror/attrs";
+import { expectCharacterStyleMarkAttrs, expectFootnoteRefMarkAttrs } from "../prosemirror/attrs";
 /**
  * Headless `.docx` review path: buffer -> apply AI edits -> buffer, with
  * no `EditorView` and no DOM. A queue worker or agent can read a document,
@@ -76,6 +76,15 @@ import {
   suggestionIdOfRevision,
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
+import {
+  deleteNoteWithReference,
+  noteDeletionRevisions,
+  noteKeysReferencedIn,
+  noteReferenceStates,
+  noteReferencesRestored,
+  referenceDeletions,
+  referencedNotes,
+} from "../prosemirror/noteReferenceReview";
 import { completeNumberingForDoc } from "../prosemirror/listInstanceReferences";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
 import {
@@ -137,6 +146,7 @@ import type {
   FolioWordDiffOptions,
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
+import { noteReferenceEditsAllowed } from "./note-references";
 import {
   anchoredCommentIdsInBlocks,
   anchoredCommentIdsInProseDoc,
@@ -583,6 +593,7 @@ type FolioReviewerStateSnapshot = {
   secondaryStoryStates: readonly FolioSecondaryStoryState[];
   sectionReferenceRemovals: readonly RemovedSectionReference[];
   removedHeaderFooterStories: readonly FolioHeaderFooterStoryHandle[];
+  removedNoteStories: readonly FolioNoteStoryHandle[];
   importedStyles: StyleDefinitions | undefined;
   importedMedia: ReadonlyMap<string, MediaFile>;
   importedHeaders: ReadonlyMap<string, HeaderFooter>;
@@ -816,6 +827,29 @@ const headerFooterStoryKey = ({ type, relationshipId }: FolioHeaderFooterStoryHa
   `${type}:${relationshipId}`;
 
 const noteStoryKey = ({ type, noteId }: FolioNoteStoryHandle): string => `${type}:${noteId}`;
+
+/** The note story a {@link noteStoryKey} key names. */
+const noteStoryHandleOf = (key: string): FolioNoteStoryHandle | null => {
+  const [type, noteId] = key.split(":");
+  return (type === "footnote" || type === "endnote") && noteId !== undefined
+    ? ({ type, noteId: Number(noteId) } as FolioNoteStoryHandle)
+    : null;
+};
+
+/** The notes a story's text refers to, keyed as {@link noteStoryKey} keys them. */
+const referencedNoteKeys = (doc: PMNode): Set<string> => {
+  const keys = new Set<string>();
+  doc.descendants((node) => {
+    if (!node.isText) return true;
+    for (const mark of node.marks) {
+      if (mark.type.name !== "footnoteRef") continue;
+      const { id, noteType } = expectFootnoteRefMarkAttrs(mark);
+      keys.add(`${noteType === "endnote" ? "endnote" : "footnote"}:${String(id)}`);
+    }
+    return false;
+  });
+  return keys;
+};
 
 /** One place a header or footer part is shown: its role in one section. */
 type HeaderFooterPlacement = { type: HeaderFooterType; section: number };
@@ -1068,6 +1102,8 @@ export class FolioDocxReviewer {
   private state: EditorState;
   private readonly secondaryStoryStates = new Map<string, FolioSecondaryStoryState>();
   private readonly removedHeaderFooterStories = new Map<string, FolioHeaderFooterStoryHandle>();
+  /** Notes whose reference a resolution removed: a note exists only through its reference. */
+  private readonly removedNoteStories = new Map<string, FolioNoteStoryHandle>();
   private readonly sectionReferenceRemovals: RemovedSectionReference[] = [];
   private importedStyles: StyleDefinitions | undefined;
   private readonly importedMedia = new Map<string, MediaFile>();
@@ -1743,7 +1779,18 @@ export class FolioDocxReviewer {
     });
   }
 
-  private applyDocumentOperationsInternal({
+  /** Apply a batch; the notes whose references it deletes or removes follow them. */
+  private applyDocumentOperationsInternal(
+    options: ApplyDocumentOperationsInternalOptions,
+  ): FolioDocumentOperationResult {
+    // A comparison states each note's own changes as a story of its own.
+    if (noteReferenceEditsAllowed()) return this.applyDocumentOperationsToStoryState(options);
+    return this.withNotesFollowingReferences(() =>
+      this.applyDocumentOperationsToStoryState(options),
+    );
+  }
+
+  private applyDocumentOperationsToStoryState({
     story,
     batch,
     author,
@@ -1863,7 +1910,10 @@ export class FolioDocxReviewer {
       return { status: "rejected", undoHandle, reason: "documentChanged" };
     }
 
-    this.setEditableStoryState(entry.story, entry.beforeState);
+    // A note whose reference the batch deleted gets its text back.
+    this.withNotesFollowingReferences(() =>
+      this.setEditableStoryState(entry.story, entry.beforeState),
+    );
     this.createdComments.length = entry.createdCommentsLengthBefore;
     this.documentOperationUndoEntries.pop();
     return { status: "undone", undoHandle };
@@ -1979,11 +2029,15 @@ export class FolioDocxReviewer {
         handles.push({ type: "endnote", noteId: endnote.id });
       }
     }
-    return handles.filter(
-      (handle) =>
-        (handle.type !== "header" && handle.type !== "footer") ||
-        !this.removedHeaderFooterStories.has(headerFooterStoryKey(handle)),
-    );
+    return handles.filter((handle) => {
+      if (handle.type === "header" || handle.type === "footer") {
+        return !this.removedHeaderFooterStories.has(headerFooterStoryKey(handle));
+      }
+      return (
+        (handle.type !== "footnote" && handle.type !== "endnote") ||
+        !this.removedNoteStories.has(noteStoryKey(handle))
+      );
+    });
   }
 
   /** Discover every readable document story through a typed, serializable handle. */
@@ -2366,7 +2420,9 @@ export class FolioDocxReviewer {
    * revision is no longer present (already resolved, or never existed).
    */
   acceptChange(target: FolioReviewChange | number): boolean {
-    return this.resolveWithSectionReferenceHistory(() => this.acceptChangeInternal(target));
+    return this.resolveWithSectionReferenceHistory(() =>
+      this.withNotesFollowingReferences(() => this.acceptChangeInternal(target)),
+    );
   }
 
   private acceptChangeInternal(target: FolioReviewChange | number): boolean {
@@ -2392,7 +2448,9 @@ export class FolioDocxReviewer {
    * deletion's text is restored. See {@link acceptChange} for targeting.
    */
   rejectChange(target: FolioReviewChange | number): boolean {
-    return this.resolveWithSectionReferenceHistory(() => this.rejectChangeInternal(target));
+    return this.resolveWithSectionReferenceHistory(() =>
+      this.withNotesFollowingReferences(() => this.rejectChangeInternal(target)),
+    );
   }
 
   private rejectChangeInternal(target: FolioReviewChange | number): boolean {
@@ -2514,6 +2572,103 @@ export class FolioDocxReviewer {
   }
 
   private resolveEveryStory(mode: "accept" | "reject"): number {
+    return this.withNotesFollowingReferences(() => this.resolveEveryStoryOnce(mode));
+  }
+
+  /**
+   * Change the body the way a note follows its reference: a note whose
+   * reference goes, goes too, as a note no text refers to does; a note whose
+   * reference an edit deletes as a tracked change has its text deleted with
+   * it; a note whose reference's deletion is rejected gets back the text that
+   * deletion took.
+   */
+  private withNotesFollowingReferences<T>(change: () => T): T {
+    const before = this.state.doc;
+    const result = change();
+    const after = this.state.doc;
+    const referencedAfter = referencedNoteKeys(after);
+    // A reference back in the body (a reject after an accept) brings its note back.
+    for (const key of referencedAfter) this.removedNoteStories.delete(key);
+    const unreferenced = new Set(
+      [...referencedNoteKeys(before)].filter((key) => !referencedAfter.has(key)),
+    );
+    // A note another story still refers to stays.
+    const referencedElsewhere =
+      unreferenced.size > 0 ? this.noteKeysReferencedOutsideBody(unreferenced) : new Set<string>();
+    for (const key of unreferenced) {
+      if (referencedElsewhere.has(key)) continue;
+      const handle = noteStoryHandleOf(key);
+      if (handle) this.removedNoteStories.set(noteStoryKey(handle), handle);
+    }
+    const rejectedDeletions = referenceDeletions(before);
+    for (const key of noteReferencesRestored(before, after)) {
+      const handle = noteStoryHandleOf(key);
+      const state = handle ? this.getEditableStoryState(handle) : null;
+      const reference = rejectedDeletions.get(key);
+      // Only what went with the reference comes back, not the note's own deletions.
+      const revisions = state && reference ? noteDeletionRevisions(state.doc, reference) : [];
+      if (handle && revisions.length > 0) {
+        this.runStoryCommand(rejectAIEditRevision(revisions), handle);
+      }
+    }
+    this.deleteNotesWithTheirReferences(before, after);
+    return result;
+  }
+
+  /** Delete the text of each note whose reference went from live to a tracked deletion. */
+  private deleteNotesWithTheirReferences(before: PMNode, after: PMNode): void {
+    const was = noteReferenceStates(before);
+    const deletions = referenceDeletions(after);
+    for (const [key, state] of noteReferenceStates(after)) {
+      if (state !== "deleted" || was.get(key) !== "live") continue;
+      const reference = deletions.get(key);
+      // A suggestion stays the body's own until it is accepted, and a moved
+      // reference keeps its note.
+      if (
+        !reference ||
+        reference.attrs["provenance"] === "suggested" ||
+        reference.attrs["moveKind"] != null
+      ) {
+        continue;
+      }
+      const handle = noteStoryHandleOf(key);
+      if (!handle || this.removedNoteStories.has(noteStoryKey(handle))) continue;
+      this.runStoryCommand((storyState, dispatch) => {
+        const transaction = deleteNoteWithReference(storyState.tr, reference);
+        if (!transaction.docChanged) return false;
+        dispatch?.(transaction);
+        return true;
+      }, handle);
+    }
+  }
+
+  /**
+   * The notes a story other than the body refers to (a header, a footer, a
+   * comment, another note), leaving out references inside the `skipped` notes.
+   */
+  private noteKeysReferencedOutsideBody(skipped: ReadonlySet<string>): Set<string> {
+    const keys = new Set<string>(
+      noteKeysReferencedIn(this.baseDocument.package.document.comments ?? []),
+    );
+    for (const handle of this.listStoryHandlesInternal()) {
+      if (handle.type === "main") continue;
+      let source: { content: BlockContent[] } | undefined;
+      if (handle.type === "footnote" || handle.type === "endnote") {
+        if (skipped.has(noteStoryKey(handle))) continue;
+        source = this.getNoteStory(handle);
+      } else {
+        source = this.getHeaderFooterStory(handle);
+      }
+      const state = this.secondaryStoryStates.get(secondaryStoryKey(handle))?.state;
+      const found = state
+        ? referencedNoteKeys(state.doc)
+        : noteKeysReferencedIn(source?.content ?? []);
+      for (const key of found) keys.add(key);
+    }
+    return keys;
+  }
+
+  private resolveEveryStoryOnce(mode: "accept" | "reject"): number {
     let count = 0;
     const resolvedStories: { handle: FolioEditableDocumentStoryHandle; state: EditorState }[] = [];
     const refreshes: ((activeSuggestionIds: ReadonlySet<string>) => void)[] = [];
@@ -2643,6 +2798,7 @@ export class FolioDocxReviewer {
       secondaryStoryStates,
       sectionReferenceRemovals: [...this.sectionReferenceRemovals],
       removedHeaderFooterStories: [...this.removedHeaderFooterStories.values()],
+      removedNoteStories: [...this.removedNoteStories.values()],
       importedStyles: this.importedStyles,
       importedMedia: new Map(this.importedMedia),
       importedHeaders: new Map(this.importedHeaders),
@@ -2693,6 +2849,24 @@ export class FolioDocxReviewer {
       }
     }
     this.mergeEditedSecondaryStories(document, snapshot.secondaryStoryStates);
+    if (snapshot.removedNoteStories.length > 0) {
+      // A note whose reference some other edit (an undo) put back, or that
+      // another story still refers to, is kept.
+      const candidates = new Set(snapshot.removedNoteStories.map(noteStoryKey));
+      const referenced: ReadonlySet<string> = referencedNotes(document, candidates);
+      const removed = new Set([...candidates].filter((key) => !referenced.has(key)));
+      const { footnotes, endnotes } = document.package;
+      if (footnotes) {
+        document.package.footnotes = footnotes.filter(
+          (note) => !removed.has(noteStoryKey({ type: "footnote", noteId: note.id })),
+        );
+      }
+      if (endnotes) {
+        document.package.endnotes = endnotes.filter(
+          (note) => !removed.has(noteStoryKey({ type: "endnote", noteId: note.id })),
+        );
+      }
+    }
     const definitions = [
       ...(document.package.document.comments ?? []),
       ...snapshot.createdComments,
@@ -2728,7 +2902,9 @@ export class FolioDocxReviewer {
       snapshot.finalSectionPropertiesOverride !== undefined ||
       snapshot.importedStyles !== undefined ||
       snapshot.importedHeaders.size > 0 ||
-      snapshot.importedFooters.size > 0;
+      snapshot.importedFooters.size > 0 ||
+      // A note that went with its reference is a whole element of a notes part.
+      snapshot.removedNoteStories.length > 0;
     let untrackedChanges = hasUntrackedChanges(snapshot.mainState);
     const changedNoteParaIds = new Set<string>();
     for (const entry of snapshot.secondaryStoryStates) {
@@ -3304,6 +3480,16 @@ export class FolioDocxReviewer {
           ? this.getHeaderFooterStory(handle)
           : this.getNoteStory(handle);
       addAll(anchoredNow, anchoredCommentIdsInBlocks(source?.content ?? []));
+    }
+    // A note that went with its reference takes the comments anchored in it.
+    for (const handle of this.removedNoteStories.values()) {
+      const entry = loaded.get(secondaryStoryKey(handle));
+      addAll(
+        anchoredBefore,
+        entry
+          ? anchoredCommentIdsInProseDoc(entry.initialState.doc)
+          : anchoredCommentIdsInBlocks(this.getNoteStory(handle)?.content ?? []),
+      );
     }
     return withoutLostCommentThreads(comments, { anchoredBefore, anchoredNow });
   }

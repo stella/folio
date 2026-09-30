@@ -25,6 +25,8 @@ import {
   summarizeState,
 } from "../__tests__/editorHarness";
 import type { Document } from "../types/document";
+import { fromProseDoc } from "./conversion/fromProseDoc";
+import { createNoteReferenceFollower, withoutUnreferencedNotes } from "./noteReferenceReview";
 
 type Case = {
   shape: string;
@@ -39,6 +41,17 @@ const CASES: readonly Case[] = [
   { shape: "plain-markdown", placement: "caret-middle", command: "insertTable", args: [2, 2] },
 ];
 
+/**
+ * Save as the editors do: the notes follow the body's references from
+ * `before` to `after`, and a note nothing refers to is dropped.
+ */
+const saveLikeEditors = async (before: EditorState, after: EditorState, base: Document) => {
+  const follower = createNoteReferenceFollower();
+  follower.noteBase(before.doc);
+  const written = follower.reconcile(fromProseDoc(after.doc, base), after.doc);
+  return saveHarnessState(after, withoutUnreferencedNotes(written));
+};
+
 const run = async ({ shape: shapeId, placement, command, args }: Case, mode: EditorMode) => {
   const shape = documentShape(shapeId);
   const base = await parseShapeDocument(await shape.build());
@@ -51,7 +64,7 @@ const run = async ({ shape: shapeId, placement, command, args }: Case, mode: Edi
     harnessManager().requireCommand(command)(...args)(view.state, view.dispatch, view as never),
   ).toBe(true);
   expect(view.state.doc.eq(before.doc)).toBe(false);
-  const saved = await saveHarnessState(view.state, base);
+  const saved = await saveLikeEditors(before, view.state, base);
   return { base, before, after: view.state, saved };
 };
 
@@ -145,15 +158,23 @@ describe("structural edits in suggesting mode", () => {
     }
 
     // Accepting removes the note; rejecting keeps it as it was.
-    const accepted = await saveHarnessState(resolveAllChanges(after, "accept"), base);
+    const accepted = await saveLikeEditors(after, resolveAllChanges(after, "accept"), base);
     expect(normalFootnotes(accepted.model)).toEqual([]);
-    const rejected = await saveHarnessState(resolveAllChanges(after, "reject"), base);
+    const rejected = await saveLikeEditors(after, resolveAllChanges(after, "reject"), base);
     expect(normalFootnotes(rejected.model)).toEqual(normalFootnotes(base));
 
     // An editor saves again against what its last save produced.
-    const acceptedLater = await saveHarnessState(resolveAllChanges(after, "accept"), saved.model);
+    const acceptedLater = await saveLikeEditors(
+      after,
+      resolveAllChanges(after, "accept"),
+      saved.model,
+    );
     expect(normalFootnotes(acceptedLater.model)).toEqual([]);
-    const rejectedLater = await saveHarnessState(resolveAllChanges(after, "reject"), saved.model);
+    const rejectedLater = await saveLikeEditors(
+      after,
+      resolveAllChanges(after, "reject"),
+      saved.model,
+    );
     expect(normalFootnotes(rejectedLater.model)).toEqual(normalFootnotes(base));
   });
 
@@ -191,11 +212,12 @@ describe("structural edits in suggesting mode", () => {
     }
     const { from, to } = reference;
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    const accepted = view.state;
     expect(harnessManager().requireCommand("deleteNoteRef")()(view.state, view.dispatch)).toBe(
       true,
     );
 
-    const { bytes } = await saveHarnessState(view.state, base);
+    const { bytes } = await saveLikeEditors(accepted, view.state, base);
     const footnotesXml = await (
       await JSZip.loadAsync(bytes)
     )
@@ -226,6 +248,7 @@ describe("structural edits in suggesting mode", () => {
       throw new Error("No note was added");
     }
     // The reference is the author's own pending insertion: deleting it takes it back.
+    const inserted = view.state;
     const { from } = view.state.selection;
     view.dispatch(
       view.state.tr.setSelection(
@@ -236,7 +259,7 @@ describe("structural edits in suggesting mode", () => {
       true,
     );
 
-    const { model } = await saveHarnessState(view.state, base);
+    const { model } = await saveLikeEditors(inserted, view.state, base);
     expect(normalFootnotes(model).map(({ id }) => id)).not.toContain(added.id);
     expect(normalFootnotes(model).length).toBe(normalFootnotes(base).length - 1);
   });

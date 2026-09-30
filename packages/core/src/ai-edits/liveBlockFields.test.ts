@@ -4,6 +4,7 @@ import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "../document-operations";
 import { fromMarkdown } from "../markdown/fromMarkdown";
+import { resolveStateStory } from "../prosemirror/markupViewProjection";
 import { FolioDocxReviewer } from "./headless";
 
 const open = async (markdown: string) => {
@@ -58,6 +59,7 @@ test("a tracked merge separator uses its owning paragraph's run style", async ()
   );
   const heading = blockId(reviewer, "Removed heading");
   const first = blockId(reviewer, "First body.");
+  const second = blockId(reviewer, "Second body.");
   const bold = blockId(reviewer, "Bold tail");
   reviewer.applyDocumentOperations({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -71,18 +73,21 @@ test("a tracked merge separator uses its owning paragraph's run style", async ()
     operations: [{ id: "merge-first", type: "mergeBlockWithNext", blockId: first, separator: " " }],
   });
   reviewer.acceptAll();
+  // The accepted merge removed the first paragraph's mark: the paragraph
+  // left is the second, whose mark ends the joined text.
+  expect(reviewer.getContent().some((block) => block.id === first)).toBe(false);
   const secondMerge = reviewer.applyDocumentOperations({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
     mode: "tracked-changes",
     operations: [
-      { id: "merge-second", type: "mergeBlockWithNext", blockId: first, separator: " " },
+      { id: "merge-second", type: "mergeBlockWithNext", blockId: second, separator: " " },
     ],
   });
   expect(secondMerge.applied).toHaveLength(1);
-  const merged = reviewer.getContent().find((block) => block.id === first);
+  const merged = reviewer.getContent().find((block) => block.id === second);
   expect(merged?.previewRuns).toBeDefined();
   expect(merged?.previewRuns).toEqual(
-    (await reopen(reviewer)).getContent().find((block) => block.id === first)?.previewRuns,
+    (await reopen(reviewer)).getContent().find((block) => block.id === second)?.previewRuns,
   );
   reviewer.applyDocumentOperations({
     version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
@@ -151,6 +156,13 @@ test("a later tracked merge does not borrow formatting from a resolved heading",
   if (!removedBreak) throw new Error("Missing pending paragraph break");
   expect(reviewer.rejectChange(removedBreak)).toBe(true);
   reviewer.acceptAll();
+  // The accepted deletion of the closing paragraph removed the break before
+  // it, so the paragraph holding the supplier clause is the one whose mark
+  // stayed: the closing paragraph's.
+  const merged = reviewer
+    .getContent()
+    .find((block) => block.text.startsWith("The Supplier delivers"))?.id;
+  if (!merged || merged === supplier) throw new Error("Missing the merged paragraph");
   apply("tracked-changes", [
     {
       id: "replace-clause",
@@ -159,12 +171,74 @@ test("a later tracked merge does not borrow formatting from a resolved heading",
       find: "below",
       replace: "the Customer",
     },
-    { id: "merge-again", type: "mergeBlockWithNext", blockId: supplier, separator: " " },
+    { id: "merge-again", type: "mergeBlockWithNext", blockId: merged, separator: " " },
   ]);
-  const live = reviewer.getContent().find((block) => block.id === supplier)?.previewRuns;
+  const live = reviewer.getContent().find((block) => block.id === merged)?.previewRuns;
   const saved = (await reopen(reviewer))
     .getContent()
-    .find((block) => block.id === supplier)?.previewRuns;
+    .find((block) => block.id === merged)?.previewRuns;
   expect(live).toEqual(saved);
   expect(live?.at(-1)?.fontSizePt).toBe(11);
 });
+
+test.each([1, 2, 3, 4, 5, 6])(
+  "accepting a merge between heading and body keeps run formatting across save (level %s)",
+  async (level) => {
+    for (const headingPosition of ["first", "last"] as const) {
+      for (const resolution of ["all", "individual"] as const) {
+        const heading = `${"#".repeat(level)} Heading`;
+        const body = "Plain **bold** and *italic* body.";
+        const markdown =
+          headingPosition === "first" ? `${heading}\n\n${body}` : `${body}\n\n${heading}`;
+        const source = await open(markdown);
+        const direct = await reopen(source);
+        const tracked = await reopen(source);
+        const first = source.getContent().at(0);
+        const second = source.getContent().at(1);
+        if (!first || !second) throw new Error("Missing merged paragraphs");
+        for (const [mode, reviewer] of [
+          ["direct", direct],
+          ["tracked-changes", tracked],
+        ] as const) {
+          expect(
+            reviewer.applyDocumentOperations({
+              version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+              mode,
+              operations: [
+                { id: "merge", type: "mergeBlockWithNext", blockId: first.id, separator: " " },
+              ],
+            }).applied,
+          ).toHaveLength(1);
+        }
+        if (resolution === "all") {
+          const resolved = resolveStateStory(tracked.state, "accept");
+          let replayed = tracked.state.doc;
+          for (const step of resolved.steps) {
+            const result = step.apply(replayed);
+            expect(result.failed).toBeNull();
+            if (!result.doc) throw new Error("A paragraph merge resolution step failed");
+            replayed = result.doc;
+          }
+          expect(replayed.eq(resolved.resolved)).toBe(true);
+          expect(tracked.acceptAll()).toBeGreaterThan(0);
+        } else {
+          expect(tracked.getChanges().length).toBeGreaterThan(0);
+          // The removed mark and the properties it carries onto the paragraph
+          // left are one change: accepting it resolves both entries.
+          for (let change = tracked.getChanges()[0]; change; change = tracked.getChanges()[0]) {
+            expect(tracked.acceptChange(change)).toBe(true);
+          }
+        }
+        expect(tracked.getContent()).toEqual((await reopen(tracked)).getContent());
+        // The direct merge keeps the first paragraph; the accepted one leaves
+        // the second, whose mark stays, reading as the direct merge does.
+        const [resolvedBlock, ...resolvedRest] = tracked.getContent();
+        const [directBlock, ...directRest] = direct.getContent();
+        expect(resolvedBlock?.id).toBe(second.id);
+        expect(directBlock?.id).toBe(first.id);
+        expect({ ...resolvedBlock, id: first.id }).toEqual({ ...directBlock, id: first.id });
+        expect(resolvedRest).toEqual(directRest);
+      }
+    }
+  },
+);

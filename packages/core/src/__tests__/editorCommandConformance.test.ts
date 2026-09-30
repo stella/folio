@@ -13,7 +13,16 @@
  */
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { appendFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+import {
+  addFeatureHit,
+  emptyFeatureCoverage,
+  placementSelection,
+  shapeFeatureSignature,
+  summarizeFeatureCoverage,
+} from "../../../../test/consumer-scenarios/support/feature-coverage";
 
 import { DOCUMENT_SHAPES } from "./documentShapes";
 import {
@@ -36,6 +45,10 @@ const FILTER = process.env["FOLIO_CONFORMANCE_FILTER"]
 
 /** Append every case's result as a JSON line here, for triage. */
 const REPORT_PATH = process.env["FOLIO_CONFORMANCE_REPORT"];
+/** Set to write operation × feature × selection coverage from executed cases. */
+const FEATURE_REPORT_PATH = process.env["FOLIO_CONFORMANCE_FEATURE_COVERAGE_OUT"];
+const featureCoverage = emptyFeatureCoverage();
+featureCoverage.operations = CONFORMANCE_OPERATIONS.map(({ id }) => id);
 
 const caseId = ({ shape, operation, placement }: ConformanceCaseKey): string =>
   `${shape} › ${operation} @ ${placement}`;
@@ -126,6 +139,13 @@ describe("editor command conformance", () => {
         return;
       }
       executedCases += EDITOR_MODES.length;
+      for (const feature of shapeFeatureSignature(shape.features)) {
+        addFeatureHit(featureCoverage, {
+          operation: operation.id,
+          feature,
+          selection: placementSelection(key.placement, result.cellSelection),
+        });
+      }
       for (const kind of SUGGESTION_INPUT_KINDS) {
         const driver = SUGGESTION_INPUT_DRIVERS[kind];
         if (driver.type === "conformance" && driver.operations.some((id) => id === key.operation)) {
@@ -173,6 +193,13 @@ describe("editor command conformance", () => {
   });
 
   afterAll(() => {
+    if (FEATURE_REPORT_PATH) {
+      mkdirSync(path.dirname(FEATURE_REPORT_PATH), { recursive: true });
+      writeFileSync(
+        FEATURE_REPORT_PATH,
+        `${JSON.stringify(summarizeFeatureCoverage(featureCoverage), null, 2)}\n`,
+      );
+    }
     const declaredInThisRun = SUGGESTION_INPUT_KINDS.filter((kind) => {
       const driver = SUGGESTION_INPUT_DRIVERS[kind];
       return (

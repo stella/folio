@@ -13,7 +13,9 @@ import {
   reconcileTableGridAfterColumnInsertion,
   reconcileTableGridAfterColumnRemoval,
   removeRowsWithoutCells,
+  markRowsEmptiedInBatch,
   removeTableRow,
+  type RowsEmptiedInBatch,
 } from "../prosemirror/tableGridMutation";
 import { stripBlockIdentityAttrs } from "./block-identity";
 import { tableRowFromTemplate, type TableStructureRevision } from "./table-template";
@@ -51,8 +53,24 @@ export type TableColumnInsertion = {
 export type TableColumnDeletion = TableColumnInsertion;
 
 type TableRowColumnMutationResult =
-  | { type: "applied"; transaction: Transaction; revisionId: number | null }
+  | {
+      type: "applied";
+      transaction: Transaction;
+      revisionId: number | null;
+      /** Every revision written: a column change writes one per cell. */
+      revisionIds: readonly number[];
+    }
   | { type: "unsupported" };
+
+/**
+ * The revision of the `index`th cell a column change marks. The save writes
+ * each cell's marker as a revision of its own, and each is accepted or
+ * rejected on its own; the reviewer's revisions are those from the start.
+ */
+const cellRevision = (revision: TableStructureRevision, index: number): TableStructureRevision => ({
+  ...revision,
+  revisionId: revision.revisionId + index,
+});
 
 type TableColumnInsertionResult =
   | TableRowColumnMutationResult
@@ -343,6 +361,7 @@ export const applyTableColumnInsertion = ({
   }
 
   const mapFrom = tr.mapping.maps.length;
+  let markedCells = 0;
   for (const action of actions) {
     const position = tr.mapping.slice(mapFrom).map(tablePosition + 1 + action.position);
     if (action.type === "setColspan") {
@@ -356,7 +375,7 @@ export const applyTableColumnInsertion = ({
             ...action.cell.attrs,
             cellMarker: {
               kind: "ins",
-              info: revision,
+              info: cellRevision(revision, markedCells++),
             },
           },
           action.cell.content,
@@ -370,7 +389,7 @@ export const applyTableColumnInsertion = ({
     previousTable: table,
     insertedColumn: insertion.columnIndex,
   });
-  return applied(tr, revision);
+  return applied(tr, revision, markedCells);
 };
 
 type ApplyTableColumnDeletionOptions = {
@@ -378,6 +397,8 @@ type ApplyTableColumnDeletionOptions = {
   deletion: TableColumnDeletion;
   insertedColumnCount: number;
   revision: TableStructureRevision | null;
+  /** Where to defer closing rows the deletion leaves without cells, when it runs in a batch. */
+  emptiedRows?: RowsEmptiedInBatch;
 };
 
 export const applyTableColumnDeletion = ({
@@ -385,6 +406,7 @@ export const applyTableColumnDeletion = ({
   deletion,
   insertedColumnCount,
   revision,
+  emptiedRows,
 }: ApplyTableColumnDeletionOptions): TableRowColumnMutationResult => {
   const tablePosition = tr.mapping.map(deletion.tablePosition, 1);
   const table = tr.doc.nodeAt(tablePosition);
@@ -403,14 +425,14 @@ export const applyTableColumnDeletion = ({
     if (!cellPositions) {
       return { type: "unsupported" };
     }
-    for (const cellPosition of cellPositions) {
+    for (const [index, cellPosition] of cellPositions.entries()) {
       tr.setNodeAttribute(tablePosition + 1 + cellPosition, "cellMarker", {
         kind: "del",
-        info: revision,
+        info: cellRevision(revision, index),
       });
     }
     markStructuralChange(tr);
-    return applied(tr, revision);
+    return applied(tr, revision, cellPositions.length);
   }
 
   if (map.width === 1) {
@@ -436,7 +458,11 @@ export const applyTableColumnDeletion = ({
     previousTable: table,
     removedColumn: columnIndex,
   });
-  removeRowsWithoutCells(tr, tablePosition);
+  if (emptiedRows) {
+    markRowsEmptiedInBatch({ tr, tablePosition, previousTable: table, emptied: emptiedRows });
+  } else {
+    removeRowsWithoutCells(tr, tablePosition);
+  }
   return applied(tr, null);
 };
 
@@ -490,10 +516,14 @@ export const applyTableRowDeletion = ({
 const applied = (
   transaction: Transaction,
   revision: TableStructureRevision | null,
+  revisionCount = 1,
 ): TableRowColumnMutationResult => ({
   type: "applied",
   transaction,
   revisionId: revision?.revisionId ?? null,
+  revisionIds: revision
+    ? Array.from({ length: revisionCount }, (_, index) => revision.revisionId + index)
+    : [],
 });
 
 type DeleteTableNodeOptions = {

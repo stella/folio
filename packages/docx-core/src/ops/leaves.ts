@@ -87,18 +87,25 @@ const kindOf = (node: InlineNode): NodeKind => {
 };
 
 /**
- * Whether a record is an empty run or an empty text node. Neither says
- * anything, operations never create one, and a document is normalized so it
+ * Whether a text node, run, or revision wrapper holds nothing. Such records say
+ * nothing, operations never create one, and a document is normalized so it
  * holds none (see `contract.ts`): otherwise each is a zero-width leaf that
  * positions would have to count. An empty hyperlink or content control is
  * not empty in this sense: it is markup, and stays a zero-width leaf.
  */
 export const isEmptyRecord = (node: InlineNode): boolean =>
-  (node.type === "text" && node.text === "") || (node.type === "run" && node.content.length === 0);
+  (node.type === "text" && node.text === "") ||
+  ((node.type === "run" ||
+    node.type === "insertion" ||
+    node.type === "deletion" ||
+    node.type === "moveFrom" ||
+    node.type === "moveTo") &&
+    node.content.length === 0);
 
-type Cursor = { position: number; zeroWidthSeen: number };
+/** A walk's place in the offset space: the offset, and the zero-width leaves passed there. */
+export type Cursor = { position: number; zeroWidthSeen: number };
 
-const startCursor = (): Cursor => ({ position: 0, zeroWidthSeen: 0 });
+export const startCursor = (): Cursor => ({ position: 0, zeroWidthSeen: 0 });
 
 const unitRegion = (gaps: readonly Gap[], unit: number): number => {
   let region = 0;
@@ -151,9 +158,15 @@ export const rebuildNode = (node: InlineNode, children: readonly InlineNode[]): 
   return withChildren(node, narrowNodes(children, isParagraphContent));
 };
 
-type NodePieces = { pieces: [number, InlineNode][]; min: number; max: number };
+/** A record cut at gaps: its pieces by region, and the first and last region it has leaves in. */
+export type NodePieces = { pieces: [number, InlineNode][]; min: number; max: number };
 
-const partitionNode = (node: InlineNode, gaps: readonly Gap[], cursor: Cursor): NodePieces => {
+/** A record's pieces between gaps, the cursor moved past it. */
+export const partitionNode = (
+  node: InlineNode,
+  gaps: readonly Gap[],
+  cursor: Cursor,
+): NodePieces => {
   if (node.type === "text" && node.text !== "") {
     const start = cursor.position;
     const pieces: [number, InlineNode][] = [];
@@ -284,7 +297,7 @@ const ownFields = (node: InlineNode): [string, unknown][] => {
  * Whether two records are alike in everything but their content and the ids
  * they carry: merged, the first one's ids stand for both.
  */
-const sameOwnFields = (left: InlineNode, right: InlineNode): boolean =>
+export const sameOwnFields = (left: InlineNode, right: InlineNode): boolean =>
   left.type === right.type &&
   structurallyEqual(
     Object.fromEntries(ownFields(maskIdentity(left))),
@@ -528,3 +541,74 @@ export const runGaps = (items: readonly InlineNode[]): NodeGaps[] => {
   walk(items);
   return out;
 };
+
+/**
+ * How many levels the record ending `left` and the one starting `right` merge
+ * before a pair differs: text with text, and records alike in everything but
+ * their content and ids, down the chain of last and first children. `0` when
+ * the two are not alike at all.
+ */
+export const alikeDepth = (left: InlineNode | undefined, right: InlineNode | undefined): number => {
+  if (left === undefined || right === undefined) {
+    return 0;
+  }
+  const kind = kindOf(left);
+  if (kind !== kindOf(right) || (kind !== "characters" && kind !== "branch")) {
+    return 0;
+  }
+  if (left.type === "text" && right.type === "text") {
+    return 1;
+  }
+  const leftChildren = childNodes(left);
+  const rightChildren = childNodes(right);
+  if (leftChildren === undefined || rightChildren === undefined || !sameOwnFields(left, right)) {
+    return 0;
+  }
+  return 1 + alikeDepth(leftChildren.at(-1), rightChildren.at(0));
+};
+
+/** Two lists end to end, the records meeting there merged as far as they are alike. */
+export const mergeAlike = (
+  left: readonly InlineNode[],
+  right: readonly InlineNode[],
+): InlineNode[] =>
+  mergeLists(left, right, alikeDepth(left.at(-1), right.at(0))) ??
+  panic("Records alike to a depth merge to that depth.");
+
+/** A leaf with the records holding it, outermost first, and its gaps. */
+export type LeafSpan = {
+  node: InlineNode;
+  ancestors: readonly InlineNode[];
+  before: Gap;
+  after: Gap;
+};
+
+/** Every leaf of a list in document order: run text by text node, units, zero-width leaves. */
+export const leafSpans = (items: readonly InlineNode[]): LeafSpan[] => {
+  const out: LeafSpan[] = [];
+  const cursor = startCursor();
+  const walk = (list: readonly InlineNode[], ancestors: readonly InlineNode[]): void => {
+    for (const node of list) {
+      if (kindOf(node) === "branch") {
+        walk(childNodes(node) ?? [], [...ancestors, node]);
+        continue;
+      }
+      const before = { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen };
+      advance(node, cursor);
+      out.push({
+        node,
+        ancestors,
+        before,
+        after: { offset: cursor.position, zeroWidthBefore: cursor.zeroWidthSeen },
+      });
+    }
+  };
+  walk(items, []);
+  return out;
+};
+
+/** Gaps in document order: by offset, then by the zero-width leaves before them. */
+export const compareGaps = (left: Gap, right: Gap): number =>
+  left.offset === right.offset
+    ? left.zeroWidthBefore - right.zeroWidthBefore
+    : left.offset - right.offset;

@@ -37,6 +37,13 @@
       "title": "keeps live block fields across save"
     },
     {
+      "seed": 1700929879,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "an inserted heading's words follow its style"
+    },
+    {
       "seed": 20260931,
       "steps": 4,
       "kind": "random",
@@ -75,6 +82,13 @@
       "title": "keeps surviving comments"
     },
     {
+      "seed": 185578404,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "accepting a merged paragraph mark keeps run formatting across save"
+    },
+    {
       "seed": 20260937,
       "steps": 10,
       "kind": "random",
@@ -109,6 +123,55 @@
       "kind": "random",
       "generation": "targeted",
       "title": "#1192 random flow"
+    },
+    {
+      "seed": 407184130,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "accepted paragraph merges keep run formatting across save"
+    },
+    {
+      "seed": 764128763,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "column cell changes read the same after save"
+    },
+    {
+      "seed": 744138350,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "an edit inside a pending insertion reads the same after save"
+    },
+    {
+      "seed": 1056657126,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "emphasis ending mid-word reads back from markdown"
+    },
+    {
+      "seed": 764128770,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "table insertion inside a comment"
+    },
+    {
+      "seed": 764128765,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "deleted words in a restyled insertion reject with their style"
+    },
+    {
+      "seed": 764128765,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "inserted heading beside a stated outline level"
     }
   ]
 }

@@ -339,8 +339,8 @@
       "editingDescription": "Upravujte dokument priamo",
       "outlineTitle": "Prehľad",
       "showDocumentOutline": "Prehľad dokumentu",
-      "suggesting": "Návrhy",
-      "suggestingDescription": "Úpravy sa zmenia na sledované návrhy",
+      "suggesting": "Sledovanie zmien",
+      "suggestingDescription": "Úpravy sa zaznamenajú ako sledované zmeny",
       "viewing": "Zobrazenie",
       "viewingDescription": "Čítajte alebo vytlačte výsledný dokument"
     },

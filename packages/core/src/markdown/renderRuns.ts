@@ -24,6 +24,8 @@ import type {
   RunContent,
   TrackedRunContent,
 } from "../types/document";
+import { compileMarkdownToContent } from "@stll/docx-core";
+
 import { decodeOoxmlSymbolCharacter } from "../utils/ooxmlSymbol";
 import { wrapComment, wrapDeletion, wrapInsertion, wrapMoveFrom, wrapMoveTo } from "./annotations";
 import { escapeAltText, escapeInline, escapeLinkUrl } from "./escape";
@@ -72,14 +74,17 @@ function marksFor(run: Run): MarkKey[] {
     return [];
   }
   const out: MarkKey[] = [];
+  // Innermost first. Strikethrough goes inside emphasis: an emphasis
+  // delimiter beside a tilde opens and closes wherever it stands, where the
+  // other way round (`~~*`) needs a blank or punctuation outside.
+  if (f.strike) {
+    out.push("strike");
+  }
   if (f.bold) {
     out.push("bold");
   }
   if (f.italic) {
     out.push("italic");
-  }
-  if (f.strike) {
-    out.push("strike");
   }
   const ascii = f.fontFamily?.ascii?.toLowerCase();
   if (ascii && MONOSPACE_FONTS.has(ascii)) {
@@ -97,7 +102,7 @@ function applyMarks(text: string, marks: MarkKey[]): string {
   // fence must be longer than the longest backtick run in the content, and a
   // space is padded inside when the content begins or ends with a backtick.
   if (marks.includes("code")) {
-    const literal = text.replace(/\\(?<char>[\\`*[\]_<])/gu, "$<char>");
+    const literal = text.replace(/\\(?<char>[\\`*[\]_<~])/gu, "$<char>");
     let longestRun = 0;
     for (const m of literal.matchAll(/`+/gu)) {
       longestRun = Math.max(longestRun, m[0].length);
@@ -112,6 +117,175 @@ function applyMarks(text: string, marks: MarkKey[]): string {
     out = `${d}${out}${d}`;
   }
   return out;
+}
+
+/**
+ * The character beside a run's delimiters: `""` at the paragraph's edge,
+ * `undefined` when it cannot be told (read as a letter, the strictest case).
+ */
+type Neighbor = string | undefined;
+
+type RunNeighbors = { before: Neighbor; after: Neighbor };
+
+const UNKNOWN_NEIGHBORS: RunNeighbors = { before: undefined, after: undefined };
+
+const isBlank = (ch: Neighbor): boolean => ch === "" || (ch !== undefined && /\s/u.test(ch));
+
+type EmphasisKey = Exclude<MarkKey, "code">;
+
+/**
+ * Which mark wraps a stretch of runs first, outermost first. Strikethrough
+ * goes inside emphasis: an emphasis delimiter beside a tilde opens and closes
+ * wherever it stands, where the other way round (`~~*`) needs a blank or
+ * punctuation outside.
+ */
+const GROUPING_ORDER: readonly EmphasisKey[] = ["italic", "bold", "strike"];
+
+/** The stackings tried, in turn, where the reader misreads one. */
+const GROUPING_ORDERS: readonly (readonly EmphasisKey[])[] = [
+  GROUPING_ORDER,
+  ["bold", "italic", "strike"],
+];
+
+/**
+ * CommonMark punctuation (Unicode P and S categories) as a delimiter of
+ * `mark` meets it. Beside an emphasis delimiter, an asterisk is another
+ * delimiter that runs together with it, and a tilde does not let it close
+ * (the GFM reader's rule): both count as letters. (Words carry them escaped,
+ * as a two-character unit.)
+ */
+const punctuationFor =
+  (mark: EmphasisKey) =>
+  (ch: Neighbor): boolean => {
+    if (ch === undefined || ch === "" || ch === "~") return false;
+    if (mark !== "strike" && ch === "*") return false;
+    return /[\p{P}\p{S}]/u.test(ch);
+  };
+
+/** One escape pair (`\*`) or one code point of escaped inline text. */
+const INLINE_UNIT = /\\[\s\S]|[\s\S]/gu;
+
+/**
+ * Wrap `inner` in `mark` so a CommonMark reader reads it back. A delimiter
+ * opens only before a character that is not blank, and before punctuation
+ * only where blank or punctuation precedes it; closing mirrors that. Where
+ * the words at an edge would stop a delimiter from opening or closing (a
+ * space at the edge, emphasis ending in a full stop right before a letter),
+ * those characters are left outside the emphasis rather than written as
+ * literal asterisks.
+ */
+function wrapFlanking(inner: string, mark: EmphasisKey, { before, after }: RunNeighbors): string {
+  const isPunctuation = punctuationFor(mark);
+  const opensAfter = (ch: Neighbor) => isBlank(ch) || isPunctuation(ch);
+  const units = Array.from(inner.matchAll(INLINE_UNIT), ([unit]) => unit);
+  const isPunctuationUnit = (unit: string) =>
+    (unit.length === 2 && unit.startsWith("\\")) || isPunctuation(unit);
+  let start = 0;
+  let end = units.length;
+  let outside = before;
+  for (;;) {
+    const unit = units[start];
+    if (unit === undefined || start >= end) break;
+    const opens = !isBlank(unit) && (!isPunctuationUnit(unit) || opensAfter(outside));
+    if (opens) break;
+    outside = unit.at(-1);
+    start++;
+  }
+  outside = after;
+  for (;;) {
+    const unit = units[end - 1];
+    if (unit === undefined || end <= start) break;
+    const closes = !isBlank(unit) && (!isPunctuationUnit(unit) || opensAfter(outside));
+    if (closes) break;
+    outside = unit.at(0);
+    end--;
+  }
+  return (
+    units.slice(0, start).join("") +
+    applyMarks(units.slice(start, end).join(""), start < end ? [mark] : []) +
+    units.slice(end).join("")
+  );
+}
+
+/** Paragraph content that writes nothing to the line. */
+const SILENT_MARKERS = new Set([
+  "bookmarkStart",
+  "bookmarkEnd",
+  "moveFromRangeStart",
+  "moveFromRangeEnd",
+  "moveToRangeStart",
+  "moveToRangeEnd",
+]);
+
+/** Comment range markers, which write nothing when comments are stripped. */
+const COMMENT_MARKERS = new Set(["commentRangeStart", "commentRangeEnd"]);
+
+/** A run as rendered text, with the emphasis still to wrap around it. */
+type Piece = { text: string; marks: ReadonlySet<EmphasisKey> };
+
+/** The first character `piece` puts on the line, inside the marks `outer` already opened. */
+const pieceStart = (
+  piece: Piece,
+  outer: ReadonlySet<EmphasisKey>,
+  order: readonly EmphasisKey[],
+): Neighbor => {
+  const first = piece.text.match(INLINE_UNIT)?.[0];
+  if (first === undefined || isBlank(first)) return first;
+  const opens = order.find((mark) => piece.marks.has(mark) && !outer.has(mark));
+  if (opens === undefined) return first;
+  return opens === "strike" ? "~" : "*";
+};
+
+/**
+ * Wrap consecutive pieces in their emphasis, one mark at a time: the pieces
+ * sharing the outermost mark are wrapped once, around the rest of their
+ * emphasis. Written run by run, the closing delimiter of one would meet the
+ * opening one of the next (`*a**b*`), which no reader takes for two
+ * emphases.
+ */
+function renderPieces(
+  pieces: readonly Piece[],
+  outer: ReadonlySet<EmphasisKey>,
+  edges: RunNeighbors,
+  order: readonly EmphasisKey[] = GROUPING_ORDER,
+): string {
+  let out = "";
+  let index = 0;
+  while (index < pieces.length) {
+    const piece = pieces[index];
+    if (!piece) break;
+    const mark = order.find((key) => piece.marks.has(key) && !outer.has(key));
+    if (mark === undefined) {
+      out += piece.text;
+      index++;
+      continue;
+    }
+    let last = index;
+    while (pieces[last + 1]?.marks.has(mark)) last++;
+    const next = pieces[last + 1];
+    // A delimiter opened right inside this one runs together with it into
+    // one delimiter run, which opens or closes by what stands outside both.
+    const around: RunNeighbors = {
+      before: out.length > 0 ? out.at(-1) : edges.before,
+      after: next === undefined ? edges.after : pieceStart(next, outer, order),
+    };
+    const inner = renderPieces(
+      pieces.slice(index, last + 1),
+      new Set([...outer, mark]),
+      around,
+      order,
+    );
+    out += wrapFlanking(inner, mark, around);
+    index = last + 1;
+  }
+  return out;
+}
+
+/** The first character an item that is not a run puts on the line, where it is fixed. */
+function renderedStart(item: { type: string } | undefined): Neighbor {
+  if (item?.type !== "hyperlink") return undefined;
+  const link = item as unknown as Hyperlink;
+  return link.href || link.anchor ? "[" : undefined;
 }
 
 /** Render a single run's RunContent array into the inline text fragment. */
@@ -208,35 +382,152 @@ function renderRunContent(
   return out;
 }
 
-/** Render a single Run with its formatting applied. */
-function renderRun(
+/** A run's rendered text and the emphasis it still takes; `null` when it writes nothing. */
+function pieceOf(
   ctx: RenderContext,
   pkg: DocxPackage | undefined,
   run: Run,
   paraId: string | undefined,
-): string {
+): Piece | null {
   // Hidden text (`w:vanish`) is suppressed in Word's normal view; drop it from
   // the markdown so hidden clauses / drafting notes don't leak into the export.
   if (run.formatting?.hidden) {
-    return "";
+    return null;
   }
   const inner = renderRunContent(ctx, pkg, run.content, paraId);
   if (!inner) {
-    return "";
+    return null;
   }
-  // Markdown can't carry whitespace at the boundaries of a mark, so we split
-  // leading/trailing whitespace out of the wrapped text. Done with trim-length
-  // math rather than a regex to avoid backtracking on long runs.
+  const marks = marksFor(run);
+  if (!marks.includes("code")) {
+    return { text: inner, marks: new Set(marks as EmphasisKey[]) };
+  }
+  // A code span cannot hold whitespace at its ends, so it is split out.
+  // Done with trim-length math rather than a regex to avoid backtracking on
+  // long runs.
   const leadLen = inner.length - inner.trimStart().length;
   const trailLen = inner.length - inner.trimEnd().length;
   const core = inner.slice(leadLen, inner.length - trailLen);
-  if (!core) {
-    return inner;
-  }
-  const lead = inner.slice(0, leadLen);
-  const trail = inner.slice(inner.length - trailLen);
-  return `${lead}${applyMarks(core, marksFor(run))}${trail}`;
+  const text = core
+    ? `${inner.slice(0, leadLen)}${applyMarks(core, marks)}${inner.slice(inner.length - trailLen)}`
+    : inner;
+  return { text, marks: new Set() };
 }
+
+type ReadCharacter = { char: string; marks: ReadonlySet<EmphasisKey> };
+
+/** What a markdown reader reads from one line: each character with its emphasis. */
+const readLine = (line: string): ReadCharacter[] =>
+  compileMarkdownToContent(line)
+    .content.flatMap((block) => (block.type === "paragraph" ? block.content : []))
+    .flatMap((item) => (item.type === "hyperlink" ? item.children : [item]))
+    .flatMap((item) => {
+      if (item.type !== "run") return [{ char: "\u0000", marks: new Set<EmphasisKey>() }];
+      const marks = new Set<EmphasisKey>(
+        GROUPING_ORDER.filter((key) => item.formatting?.[key] === true),
+      );
+      return item.content.flatMap((content) =>
+        content.type === "text"
+          ? Array.from(content.text, (char) => ({ char, marks }))
+          : [{ char: "\u0000", marks }],
+      );
+    });
+
+const sameMarks = (left: ReadonlySet<EmphasisKey>, right: ReadonlySet<EmphasisKey>) =>
+  left.size === right.size && [...left].every((key) => right.has(key));
+
+/**
+ * How `rendered`, between `edges`, reads back: `"exact"` with the pieces'
+ * text and each letter's emphasis, `"text"` with their text alone (emphasis
+ * lost somewhere, none of it read as literal asterisks), or `null`.
+ */
+const readBack = (
+  rendered: string,
+  pieces: readonly Piece[],
+  edges: RunNeighbors,
+): "exact" | "text" | null => {
+  // A paragraph's edge reads like a blank; an unknown neighbour like a letter.
+  const side = (ch: Neighbor): string => {
+    if (ch === undefined) return "x";
+    return ch === "" ? " " : ch;
+  };
+  const line = (inner: string) => `x ${side(edges.before)}${inner}${side(edges.after)} x`;
+  const read = readLine(line(rendered));
+  const plain = readLine(line(pieces.map(({ text }) => text).join("")));
+  if (read.map(({ char }) => char).join("") !== plain.map(({ char }) => char).join("")) {
+    return null;
+  }
+  // What the reader reads from each piece on its own (a hard break or an
+  // image reads as one item), with the emphasis the piece should carry.
+  const expected = pieces.flatMap(({ text, marks }) =>
+    readLine(`x${text}x`)
+      .slice(1, -1)
+      .map(({ char }) => ({ char, marks })),
+  );
+  const start = Array.from(`x ${side(edges.before)}`).length;
+  const end = Array.from(`${side(edges.after)} x`).length;
+  if (read.length !== start + expected.length + end) {
+    return read.every(({ marks }) => marks.size === 0) ? "text" : null;
+  }
+  let exact = true;
+  for (const [index, { char, marks }] of expected.entries()) {
+    const at = read[start + index];
+    if (at?.char !== char) return null;
+    // Emphasis the words did not have is never written.
+    if ([...at.marks].some((mark) => !marks.has(mark))) return null;
+    if (/[\p{L}\p{N}]/u.test(char) && !sameMarks(at.marks, marks)) exact = false;
+  }
+  return exact ? "exact" : "text";
+};
+
+/**
+ * Render consecutive runs with their formatting applied. The delimiters are
+ * placed by the flanking rules the reader applies, and the result is checked
+ * against the reader: a stacking it misreads is tried the other way round,
+ * or with more punctuation left outside, and failing all of those, the runs
+ * go out without emphasis rather than with stray asterisks.
+ */
+function renderRuns(
+  ctx: RenderContext,
+  pkg: DocxPackage | undefined,
+  runs: readonly Run[],
+  paraId: string | undefined,
+  edges: RunNeighbors = UNKNOWN_NEIGHBORS,
+): string {
+  const pieces = runs.flatMap((run) => pieceOf(ctx, pkg, run, paraId) ?? []);
+  const plain = pieces.map(({ text }) => text).join("");
+  if (!pieces.some(({ marks }) => marks.size > 0)) {
+    return plain;
+  }
+  let fallback: string | undefined;
+  // Emphasis spanning a space can nest past what the reader matches; the
+  // last tries close it at each space instead, leaving the spaces plain.
+  for (const split of [pieces, splitAtBlanks(pieces)]) {
+    for (const order of GROUPING_ORDERS) {
+      for (const neighbors of [edges, UNKNOWN_NEIGHBORS]) {
+        const rendered = renderPieces(split, new Set(), neighbors, order);
+        const read = readBack(rendered, pieces, edges);
+        if (read === "exact") return rendered;
+        if (read === "text") fallback ??= rendered;
+      }
+    }
+  }
+  return fallback ?? plain;
+}
+
+/** The pieces with every blank a piece of its own, without emphasis. */
+const splitAtBlanks = (pieces: readonly Piece[]): Piece[] =>
+  pieces.flatMap((piece) => {
+    if (piece.marks.size === 0) return [piece];
+    const parts: Piece[] = [];
+    for (const [unit] of piece.text.matchAll(INLINE_UNIT)) {
+      const marks = isBlank(unit) ? new Set<EmphasisKey>() : piece.marks;
+      const last = parts.at(-1);
+      if (last && last.marks === marks) last.text += unit;
+      else parts.push({ text: unit, marks });
+    }
+    return parts;
+  });
 
 function renderHyperlink(
   ctx: RenderContext,
@@ -246,9 +537,14 @@ function renderHyperlink(
 ): string {
   // Through a transparent wrapper: markdown carries neither a layout control
   // nor a tag name, so the linked text inside one is still the link's text.
-  const inner = getHyperlinkRuns(link)
-    .map((run) => renderRun(ctx, pkg, run, paraId))
-    .join("");
+  const bracketed = Boolean(link.href ?? link.anchor);
+  const inner = renderRuns(
+    ctx,
+    pkg,
+    getHyperlinkRuns(link),
+    paraId,
+    bracketed ? { before: "[", after: "]" } : UNKNOWN_NEIGHBORS,
+  );
   if (!inner) {
     return "";
   }
@@ -274,7 +570,7 @@ function renderTrackedWrapper(
   const renderChild = (child: TrackedRunContent): string => {
     switch (child.type) {
       case "run":
-        return renderRun(ctx, pkg, child, paraId);
+        return renderRuns(ctx, pkg, [child], paraId);
       case "hyperlink":
         return renderHyperlink(ctx, pkg, child, paraId);
       case "mathEquation":
@@ -283,7 +579,7 @@ function renderTrackedWrapper(
       // is the only way that text reaches the output.
       case "inlineWrapper":
       case "inlineSdt":
-        return renderParagraphInline(ctx, pkg, child.content, paraId);
+        return renderParagraphInline(ctx, pkg, child.content, paraId, UNKNOWN_NEIGHBORS);
       case "insertion":
       case "deletion":
       case "moveFrom":
@@ -291,7 +587,7 @@ function renderTrackedWrapper(
         return renderTrackedWrapper(ctx, pkg, child, paraId);
       case "simpleField":
       case "complexField":
-        return renderParagraphInline(ctx, pkg, [child], paraId);
+        return renderParagraphInline(ctx, pkg, [child], paraId, UNKNOWN_NEIGHBORS);
       // A range boundary carries no text, and neither does markup folio kept
       // as bytes: a capture is not read, so it has no words to render.
       case "bookmarkStart":
@@ -308,14 +604,37 @@ function renderTrackedWrapper(
       }
     }
   };
+  // Consecutive runs are written together, so their emphasis joins up.
+  const renderChildren = (): string => {
+    let rendered = "";
+    let runs: Run[] = [];
+    const flush = (after: Neighbor) => {
+      if (runs.length === 0) return;
+      rendered += renderRuns(ctx, pkg, runs, paraId, {
+        before: rendered.length > 0 ? rendered.at(-1) : undefined,
+        after,
+      });
+      runs = [];
+    };
+    for (const child of wrapper.content) {
+      if (child.type === "run") {
+        runs.push(child);
+        continue;
+      }
+      flush(renderedStart(child));
+      rendered += renderChild(child);
+    }
+    flush(undefined);
+    return rendered;
+  };
   if (ctx.opts.trackedChanges === "clean") {
     // Insertions become real text; deletions vanish.
     if (wrapper.type === "insertion" || wrapper.type === "moveTo") {
-      return wrapper.content.map(renderChild).join("");
+      return renderChildren();
     }
     return "";
   }
-  const inner = wrapper.content.map(renderChild).join("");
+  const inner = renderChildren();
   switch (wrapper.type) {
     case "insertion":
       return wrapInsertion(ctx, wrapper.info, inner);
@@ -342,16 +661,40 @@ export function renderParagraphInline(
   pkg: DocxPackage | undefined,
   content: readonly ParagraphContent[],
   paraId: string | undefined,
+  edges: RunNeighbors = { before: "", after: "" },
 ): string {
   let out = "";
   // Stack of open comment ranges (document order) so nested comments wrap right.
   const openComments: CommentSlot[] = [];
+  // Markers that write nothing are left out, so the runs on either side of
+  // one meet as they do on the line.
+  const items = content.filter(
+    (item) =>
+      !SILENT_MARKERS.has(item.type) &&
+      !(ctx.opts.comments === "strip" && COMMENT_MARKERS.has(item.type)),
+  );
+  const around = (index: number): RunNeighbors => {
+    const next = items[index + 1];
+    return {
+      before: out.length > 0 ? out.at(-1) : edges.before,
+      after: next === undefined ? edges.after : renderedStart(next),
+    };
+  };
 
-  for (const item of content) {
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    if (item === undefined) break;
     switch (item.type) {
-      case "run":
-        out += renderRun(ctx, pkg, item, paraId);
+      case "run": {
+        // Consecutive runs are written together, so their emphasis joins up.
+        const runs: Run[] = [item];
+        while (items[index + 1]?.type === "run") {
+          runs.push(items[index + 1] as Run);
+          index++;
+        }
+        out += renderRuns(ctx, pkg, runs, paraId, around(index));
         break;
+      }
       case "hyperlink":
         out += renderHyperlink(ctx, pkg, item, paraId);
         break;
@@ -378,7 +721,7 @@ export function renderParagraphInline(
         const runs = item.type === "simpleField" ? item.content : item.fieldResult;
         for (const child of runs) {
           if (child.type === "run") {
-            out += renderRun(ctx, pkg, child, paraId);
+            out += renderRuns(ctx, pkg, [child], paraId);
             continue;
           }
           if (child.type === "hyperlink") {
@@ -390,7 +733,7 @@ export function renderParagraphInline(
           // whatever text it puts on the line.
           out +=
             child.type === "inlineWrapper"
-              ? renderParagraphInline(ctx, pkg, child.content, paraId)
+              ? renderParagraphInline(ctx, pkg, child.content, paraId, UNKNOWN_NEIGHBORS)
               : child.text;
         }
         break;
@@ -400,7 +743,7 @@ export function renderParagraphInline(
       // are read through to the text itself.
       case "inlineSdt":
       case "inlineWrapper":
-        out += renderParagraphInline(ctx, pkg, item.content, paraId);
+        out += renderParagraphInline(ctx, pkg, item.content, paraId, around(index));
         break;
       case "mathEquation":
         // Markdown can't carry OMML; emit the plain-text fallback when present.

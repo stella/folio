@@ -28,7 +28,10 @@ import { headingLevelOf } from "@stll/docx-core/model";
 
 import type { BuiltInStyleIndex } from "../../../docx/builtInStyles";
 import { readOutlineLevelAttr } from "../../outlineLevelAttr";
-import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
+import {
+  getDocumentBuiltInStyles,
+  getDocumentStyleResolver,
+} from "../../plugins/documentStyleState";
 
 /**
  * The document's style for this heading level, else its deepest shallower one.

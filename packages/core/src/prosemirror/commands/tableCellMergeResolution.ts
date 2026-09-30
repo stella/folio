@@ -1,4 +1,4 @@
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
@@ -12,6 +12,7 @@ import {
 import type { TableCell, TableCellFormatting } from "../../types/document";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
 import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
+import { removeRowsWithoutCellsInRange } from "../tableGridMutation";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
 export const tableCellContinuationPayload = (
@@ -159,14 +160,19 @@ const mergeTableCellWithCellAbove = (tr: Transaction, cellPos: number): boolean 
     return false;
   }
 
+  // Deeper cell revisions have already resolved. Normalize their tables while
+  // the cell still owns live nodes; the continuation payload has no PM positions.
+  removeRowsWithoutCellsInRange({ tr, from: cellPos + 1, to: cellPos + cell.nodeSize - 1 });
+  const capturedCell = tr.doc.nodeAt(cellPos);
+  if (!capturedCell) panic("Nested table cleanup removed its owning cell");
   const continuationCells = tableCellContinuationCells(aboveCell, aboveRowspan);
-  continuationCells.push(tableCellContinuationFromNode(cell));
-  const nestedPayload = tableCellContinuationPayload(cell);
+  continuationCells.push(tableCellContinuationFromNode(capturedCell));
+  const nestedPayload = tableCellContinuationPayload(capturedCell);
   if (nestedPayload) {
     continuationCells.push(...nestedPayload.cells);
   }
 
-  tr.delete(cellPos, cellPos + cell.nodeSize);
+  tr.delete(cellPos, cellPos + capturedCell.nodeSize);
   tr.setNodeMarkup(abovePos, undefined, {
     ...aboveCell.attrs,
     rowspan: aboveRowspan + cellRowspan,

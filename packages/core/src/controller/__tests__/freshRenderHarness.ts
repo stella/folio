@@ -353,7 +353,10 @@ export const createFreshRenderRig = <TExt>(
   let committed: LayoutArtifactsView | null = null;
   let pendingRender = false;
   let documentRevision = 0;
-  let lastSignature: string | null = null;
+  // The layout inputs the committed layout was laid out with. A pass reads the
+  // inputs current when it runs, so one the scheduler runs before a pending
+  // re-render lays out inputs that render has not seen yet.
+  let laidOutSignature: string | null = null;
   const staleCommits: StaleCommit[] = [];
   const syncCoordinator = new LayoutSelectionGate();
 
@@ -417,10 +420,11 @@ export const createFreshRenderRig = <TExt>(
     };
   };
 
-  const apply = (outcome: LayoutOutcome): void => {
+  const apply = (outcome: LayoutOutcome, passSignature: string): void => {
     // The adapters keep the previous layout when a pass produced none.
     if (outcome.layout && outcome.blocks && outcome.measures) {
       committed = { blocks: outcome.blocks, measures: outcome.measures, layout: outcome.layout };
+      laidOutSignature = passSignature;
     }
   };
 
@@ -434,12 +438,14 @@ export const createFreshRenderRig = <TExt>(
         current: docText(state.doc),
       });
     }
+    const passSignature = signature();
     apply(
       runLayoutPipeline(
         buildDeps({ layoutSession: session, previousLayout: committed?.layout ?? null }),
         laidOut,
         runOptions,
       ),
+      passSignature,
     );
   };
 
@@ -463,10 +469,9 @@ export const createFreshRenderRig = <TExt>(
 
   const rerender = (): void => {
     pendingRender = false;
-    const next = signature();
-    const inputsChanged = lastSignature !== next;
-    lastSignature = next;
-    if (!inputsChanged && state.doc === session.lastPmDoc) {
+    // Against what the committed layout was laid out with, as the adapters'
+    // layout-input effect compares: not against the last render's inputs.
+    if (laidOutSignature === signature() && state.doc === session.lastPmDoc) {
       return;
     }
     runPass(state, { reason: "layout-input" });
@@ -570,7 +575,6 @@ export const createFreshRenderRig = <TExt>(
   };
 
   // The initial layout (the adapters' `handleEditorViewReady`).
-  lastSignature = signature();
   runPass(state, { reason: "initial" });
   return rig;
 };

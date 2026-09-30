@@ -66,18 +66,11 @@ import type {
   Theme,
 } from "../../types/document";
 import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
-import {
-  mergeParagraphFormatting,
-  mergeParagraphTabStops,
-} from "../../utils/paragraphFormattingMerge";
+import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
-import {
-  mergeParagraphNumbering,
-  paragraphNumberingReferenceId,
-} from "../../docx/numberingReference";
 import { paragraphNumberingAttr } from "../numberingAttr";
 import { emptyFieldRunPropertyChanges } from "../emptyFieldResultRuns";
 import { isCellMergeContinuation } from "../../docx/tableParser";
@@ -113,7 +106,6 @@ import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExten
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
-import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
 import {
@@ -127,6 +119,12 @@ import {
 import { schema } from "../schema";
 import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
 import { cascadeStyleTextFormatting } from "../styles/styleToggleCascade";
+import { tableCellStyleRegions, tableRowBand } from "../styles/tableStyleRegions";
+import {
+  extractTableParagraphOverlay,
+  paragraphStyleCascadeAttrs,
+  resolveRunFormattingWithoutDefaults,
+} from "../styles/paragraphStyleCascade";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
   ImagePositionAttrs,
@@ -1420,126 +1418,17 @@ function paragraphFormattingToAttrs(
   // paragraph's own style chain — see resolveParagraphStyleInTable.
   let stylePpr: Paragraph["formatting"] | undefined;
   if (styleResolver) {
-    const resolved = styleResolver.resolveParagraphStyleInTable(styleId, tableParagraphOverlay);
-    stylePpr = resolved.paragraphFormatting;
-    // What the paragraph would render as if it stated nothing of its own,
-    // narrowed to the fields a save could otherwise materialise (see
-    // ParagraphAttrs._resolvedFormatting).
-    const resolvedFormatting = styleResolvedParagraphFormatting(stylePpr);
-    if (resolvedFormatting) {
-      attrs._resolvedFormatting = resolvedFormatting;
-    }
-
-    // Apply style-based values as defaults (inline overrides)
-    set("alignment", formatting?.alignment ?? stylePpr?.alignment);
-    set("alignmentFromStyle", stylePpr?.alignment);
-    set("spaceBefore", formatting?.spaceBefore ?? stylePpr?.spaceBefore);
-    set("spaceAfter", formatting?.spaceAfter ?? stylePpr?.spaceAfter);
-    set("lineSpacing", formatting?.lineSpacing ?? stylePpr?.lineSpacing);
-    set("lineSpacingRule", formatting?.lineSpacingRule ?? stylePpr?.lineSpacingRule);
-    set("lineSpacingExplicit", lineSpacingProvenanceFromSpacing(formatting));
-    set("snapToGrid", formatting?.snapToGrid ?? stylePpr?.snapToGrid);
-    set("spacingExplicit", formatting?.spacingExplicit);
-    const paragraphStyle = styleId
-      ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
-      : styleResolver.getDefaultParagraphStyle();
-    const docDefaultSpacing = styleResolver.getDocDefaults()?.pPr;
-    // This existing provenance attribute covers every resolved style layer:
-    // default, named paragraph, and enclosing table styles. The direct
-    // `formatting` object still wins per field.
-    const spacingFromStyle: NonNullable<ParagraphAttrs["spacingFromImplicitDefaultStyle"]> = {};
-    if (formatting?.spaceBefore === undefined && stylePpr?.spaceBefore !== undefined) {
-      spacingFromStyle.before = true;
-    }
-    if (formatting?.spaceAfter === undefined && stylePpr?.spaceAfter !== undefined) {
-      spacingFromStyle.after = true;
-    }
-    if (spacingFromStyle.before || spacingFromStyle.after) {
-      attrs.spacingFromImplicitDefaultStyle = spacingFromStyle;
-    }
-    const spacingFromDocDefaults: NonNullable<ParagraphAttrs["spacingFromDocDefaults"]> = {};
-    if (
-      formatting?.spaceBefore === undefined &&
-      tableParagraphOverlay?.spaceBefore === undefined &&
-      paragraphStyle?.pPr?.spaceBefore === undefined &&
-      docDefaultSpacing?.spaceBefore !== undefined
-    ) {
-      spacingFromDocDefaults.before = true;
-    }
-    if (
-      formatting?.spaceAfter === undefined &&
-      tableParagraphOverlay?.spaceAfter === undefined &&
-      paragraphStyle?.pPr?.spaceAfter === undefined &&
-      docDefaultSpacing?.spaceAfter !== undefined
-    ) {
-      spacingFromDocDefaults.after = true;
-    }
-    if (spacingFromDocDefaults.before || spacingFromDocDefaults.after) {
-      attrs.spacingFromDocDefaults = spacingFromDocDefaults;
-    }
-    // When the paragraph explicitly removes the style's numbering (direct
-    // numId=0 under a numbered style), the reference layout also drops the
-    // style's marker-positioning indents. The paragraph keeps only the indents
-    // it states itself (#765: a direct left=357 renders indented instead of
-    // hanging the first line back to the margin). Outside that case w:ind
-    // merges per attribute: a direct left-only indent keeps the style's
-    // firstLine.
-    const numberingRemoved =
-      formatting?.numPr?.kind === "none" &&
-      paragraphNumberingReferenceId(stylePpr?.numPr) !== undefined;
-    const numberingStyleIndent = numberingRemoved ? undefined : stylePpr;
-    const effectiveIndent = mergeParagraphFormatting(numberingStyleIndent, formatting);
-    set("indentLeft", effectiveIndent?.indentLeft);
-    set("indentRight", formatting?.indentRight ?? stylePpr?.indentRight);
-    set("indentFirstLine", effectiveIndent?.indentFirstLine);
-    set("hangingIndent", effectiveIndent?.hangingIndent);
-    set("borders", formatting?.borders ?? stylePpr?.borders);
-    set("shading", formatting?.shading ?? stylePpr?.shading);
-    set("tabs", mergeParagraphTabStops(stylePpr?.tabs, formatting?.tabs));
-    set("kinsoku", formatting?.kinsoku ?? stylePpr?.kinsoku);
-    set("overflowPunctuation", formatting?.overflowPunctuation ?? stylePpr?.overflowPunctuation);
-    set("suppressAutoHyphens", formatting?.suppressAutoHyphens ?? stylePpr?.suppressAutoHyphens);
-
-    // Page break control
-    set("pageBreakBefore", formatting?.pageBreakBefore ?? stylePpr?.pageBreakBefore);
-    set("keepNext", formatting?.keepNext ?? stylePpr?.keepNext);
-    set("keepLines", formatting?.keepLines ?? stylePpr?.keepLines);
-    set("widowControl", formatting?.widowControl ?? stylePpr?.widowControl);
-    set("contextualSpacing", formatting?.contextualSpacing ?? stylePpr?.contextualSpacing);
-    // Run-in heading (`<w:specVanish/>` on the paragraph mark) — see
-    // ParagraphAttrs.runInWithNext.
-    set("runInWithNext", formatting?.runInWithNext ?? stylePpr?.runInWithNext);
-
-    // Outline level (for TOC)
-    set("outlineLevel", formatting?.outlineLevel ?? stylePpr?.outlineLevel);
-
-    // Text direction — a direct or style-sourced `w:bidi` is an authoritative
-    // manual decision (auto-detection must not override it).
-    set("direction", directionFromBidi(formatting?.bidi ?? stylePpr?.bidi));
-
-    set(
-      "defaultTextFormatting",
-      resolveParagraphDefaultTextFormatting(styleId, formatting, styleResolver, {
-        includeParagraphMarkRunProperties:
-          tableOfContentsLevel === undefined &&
-          (styleId === undefined || paragraph.content.length === 0),
-      }),
-    );
-
-    // A direct numPr may carry only ilvl while the style supplies numId.
-    // Merge the two fields so the effective list keeps the style's numbering
-    // identity. A direct numId (including 0) is authoritative.
-    const styleNumbering = stylePpr?.numPr;
-    if (
-      styleNumbering?.kind === "reference" &&
-      (formatting?.numPr === undefined || formatting.numPr.kind === "levelOnly")
-    ) {
-      const merged = mergeParagraphNumbering(styleNumbering, formatting?.numPr);
-      if (merged !== undefined) {
-        attrs.numPr = paragraphNumberingAttr(merged);
-      }
-      attrs.numPrFromStyle = paragraphNumberingAttr(styleNumbering);
-    }
+    const cascade = paragraphStyleCascadeAttrs({
+      styleId,
+      formatting,
+      styleResolver,
+      tableParagraphOverlay,
+      includeParagraphMarkRunProperties:
+        tableOfContentsLevel === undefined &&
+        (styleId === undefined || paragraph.content.length === 0),
+    });
+    stylePpr = cascade.stylePpr;
+    Object.assign(attrs, cascade.attrs);
   } else {
     // No style resolver - use inline formatting only
     set("alignment", formatting?.alignment);
@@ -1628,38 +1517,6 @@ type TableConditionalStyle = {
   rPr?: TextFormatting;
   pPr?: TableCellParagraphSpacingOverlay;
 };
-
-/**
- * Pick the modeled paragraph fields out of a table style's (or conditional
- * region's) `w:pPr` for use as the cell-paragraph cascade overlay.
- */
-function extractTableParagraphOverlay(
-  pPr: ParagraphFormatting | undefined,
-): TableCellParagraphSpacingOverlay | undefined {
-  if (!pPr) {
-    return undefined;
-  }
-  const overlay: TableCellParagraphSpacingOverlay = {};
-  if (pPr.spaceBefore !== undefined) {
-    overlay.spaceBefore = pPr.spaceBefore;
-  }
-  if (pPr.spaceAfter !== undefined) {
-    overlay.spaceAfter = pPr.spaceAfter;
-  }
-  if (pPr.lineSpacing !== undefined) {
-    overlay.lineSpacing = pPr.lineSpacing;
-  }
-  if (pPr.lineSpacingRule !== undefined) {
-    overlay.lineSpacingRule = pPr.lineSpacingRule;
-  }
-  if (pPr.contextualSpacing !== undefined) {
-    overlay.contextualSpacing = pPr.contextualSpacing;
-  }
-  if (pPr.frame !== undefined) {
-    overlay.frame = pPr.frame;
-  }
-  return Object.keys(overlay).length > 0 ? overlay : undefined;
-}
 
 /**
  * Resolve table style conditional formatting
@@ -1817,90 +1674,6 @@ function resolveTextFormatting(
 
   const styleFormatting = styleResolver.resolveRunStyle(formatting.styleId);
   return mergeTextFormatting(styleFormatting, formatting);
-}
-
-/**
- * Resolve an embedded character-style reference without importing
- * `docDefaults`. The caller already has the paragraph cascade, including
- * document defaults, and will layer these own properties over it.
- */
-type ParagraphDefaultFormattingResolver = Pick<
-  StyleEngine,
-  | "getStyle"
-  | "getDocDefaults"
-  | "getDefaultParagraphStyle"
-  | "getDefaultCharacterStyle"
-  | "getRunStyleOwnProperties"
->;
-
-function resolveRunFormattingWithoutDefaults(
-  formatting: TextFormatting | undefined,
-  styleResolver: ParagraphDefaultFormattingResolver | null,
-): TextFormatting | undefined {
-  if (!formatting || !styleResolver) {
-    return formatting;
-  }
-
-  const characterStyleFormatting = formatting.styleId
-    ? styleResolver.getRunStyleOwnProperties(formatting.styleId)
-    : undefined;
-  return cascadeStyleTextFormatting([
-    { formatting: characterStyleFormatting, type: "style" },
-    { formatting, type: "direct" },
-  ]).formatting;
-}
-
-/** @internal Recompute a paragraph's inherited run defaults from authored package state. */
-export function resolveParagraphDefaultTextFormatting(
-  styleId: string | undefined,
-  formatting: Paragraph["formatting"] | undefined,
-  styleResolver: ParagraphDefaultFormattingResolver,
-  options: { includeParagraphMarkRunProperties?: boolean } = {},
-): TextFormatting | undefined {
-  const style = styleId
-    ? (styleResolver.getStyle(styleId) ?? styleResolver.getDefaultParagraphStyle())
-    : styleResolver.getDefaultParagraphStyle();
-  const paragraphStyleRpr = style?.type === "paragraph" ? style.rPr : undefined;
-  // The pPr/rPr block describes the paragraph mark only — see the comment on
-  // `stripParagraphMarkOnlyFormatting`. We must NOT route this through
-  // `resolveTextFormatting` here, because that folds docDefaults back into
-  // the run properties and then overwrites the paragraph style's font
-  // (e.g. FootnoteText's Times New Roman) with the docDefault Calibri when
-  // merged into the cascade below.
-  const rawParagraphMarkRpr =
-    options.includeParagraphMarkRunProperties === false ? undefined : formatting?.runProperties;
-  const paragraphRunProperties = rawParagraphMarkRpr
-    ? stripParagraphMarkOnlyFormatting(
-        resolveRunFormattingWithoutDefaults(rawParagraphMarkRpr, styleResolver) ?? {},
-      )
-    : undefined;
-
-  const orderedBodyToggleFormatting = cascadeStyleTextFormatting(
-    [
-      { formatting: styleResolver.getDocDefaults()?.rPr, type: "defaults" },
-      { formatting: paragraphStyleRpr, type: "style" },
-      { formatting: styleResolver.getDefaultCharacterStyle()?.rPr, type: "style" },
-    ],
-    {
-      ordinaryFormatting: mergeTextFormatting(
-        mergeTextFormatting(
-          styleResolver.getDocDefaults()?.rPr,
-          styleResolver.getDefaultCharacterStyle()?.rPr,
-        ),
-        paragraphStyleRpr,
-      ),
-    },
-  );
-  const bodyRunDefaults = orderedBodyToggleFormatting.formatting;
-  return cascadeStyleTextFormatting(
-    [
-      { cascade: orderedBodyToggleFormatting, type: "carried" },
-      { formatting: paragraphRunProperties, type: "direct" },
-    ],
-    {
-      ordinaryFormatting: mergeTextFormatting(bodyRunDefaults, paragraphRunProperties),
-    },
-  ).formatting;
 }
 
 /**
@@ -2309,33 +2082,12 @@ function convertTable(
   setCS("swCell", "swCell");
   setCS("seCell", "seCell");
 
-  const bandingEnabledH = !look.noHBand;
-  const bandingEnabledV = !look.noVBand;
-
-  // Track data row index (excluding header rows) for banding
-  let dataRowIndex = 0;
   const totalRows = table.rows.length;
   const gridColumnCount = columnWidths?.length ?? 0;
   const totalColumns = gridColumnCount > 0 ? gridColumnCount : countTableColumns(table.rows);
   const rows = table.rows.map((row, rowIndex) => {
     // Conditional formatting flag: firstRow in tblLook means "apply first-row styling"
     const isFirstRowStyled = rowIndex === 0 && look.firstRow;
-    const isLastRow = rowIndex === totalRows - 1 && look.lastRow;
-
-    const rowBandStyle = (() => {
-      if (bandingEnabledH && !isFirstRowStyled && !isLastRow) {
-        return (() => {
-          if (dataRowIndex % 2 === 0) {
-            return conditionalStyles.band1Horz;
-          }
-          return conditionalStyles.band2Horz;
-        })();
-      }
-      return undefined;
-    })();
-    if (bandingEnabledH && !isFirstRowStyled && !isLastRow) {
-      dataRowIndex++;
-    }
     const resolvedRowJustification =
       tableStyle?.trPr?.justification ?? fallbackTableStyle?.trPr?.justification;
 
@@ -2347,8 +2099,7 @@ function convertTable(
       columnWidths,
       totalWidth,
       conditionalStyles,
-      rowBandStyle,
-      bandingEnabledV,
+      tableRowBand(look, rowIndex, totalRows),
       look,
       resolvedTableBorders, // Pass resolved table borders (own or from style)
       rowIndex,
@@ -2427,8 +2178,7 @@ function convertTableRow(
     swCell?: TableConditionalStyle;
     seCell?: TableConditionalStyle;
   },
-  rowBandStyle?: TableConditionalStyle,
-  bandingEnabledV?: boolean,
+  rowBand?: "band1Horz" | "band2Horz",
   tableLook?: ResolvedTableLook,
   tableBorders?: TableBorders,
   rowIndex?: number,
@@ -2529,8 +2279,6 @@ function convertTableRow(
   const isFirstRow = rowIndex === 0;
   const isLastRow = rowIndex === (totalRows ?? 1) - 1;
   const rowCnf = row.formatting?.conditionalFormat;
-  const rowIsFirstRow = rowCnf?.firstRow ?? isFirstRow;
-  const rowIsLastRow = rowCnf?.lastRow ?? isLastRow;
   const totalCols = totalColumns != null && totalColumns > 0 ? totalColumns : Math.max(numCells, 1);
 
   // A literal `<w:tr/>` from a non-Word producer parses with zero cells. PM's
@@ -2599,115 +2347,22 @@ function convertTableRow(
     // Determine cell position for table border application
     const isFirstCol = colIndex - colspan === 0;
     const isLastCol = colIndex === totalCols;
-    const cellCnf = cell.formatting?.conditionalFormat;
-    const cellIsFirstRow = cellCnf?.firstRow ?? rowIsFirstRow;
-    const cellIsLastRow = cellCnf?.lastRow ?? rowIsLastRow;
-    const cellIsFirstCol = cellCnf?.firstColumn ?? isFirstCol;
-    const cellIsLastCol = cellCnf?.lastColumn ?? isLastCol;
-
-    // Determine vertical banding style based on column index
-    let vertBandStyle: TableConditionalStyle | undefined;
-    if (bandingEnabledV) {
-      const firstColOffset = tableLook?.firstColumn ? 1 : 0;
-      const bandColIndex = colIndex - colspan - firstColOffset;
-      const isEligible =
-        bandColIndex >= 0 &&
-        !(tableLook?.lastColumn && cellIsLastCol) &&
-        !(tableLook?.firstColumn && cellIsFirstCol);
-      if (isEligible) {
-        vertBandStyle =
-          bandColIndex % 2 === 0 ? conditionalStyles?.band1Vert : conditionalStyles?.band2Vert;
-      }
-    }
-
-    if (cellCnf?.oddVBand) {
-      vertBandStyle = conditionalStyles?.band1Vert;
-    } else if (cellCnf?.evenVBand) {
-      vertBandStyle = conditionalStyles?.band2Vert;
-    }
-
-    let effectiveRowBandStyle = rowBandStyle;
-    if (rowCnf?.oddHBand) {
-      effectiveRowBandStyle = conditionalStyles?.band1Horz;
-    } else if (rowCnf?.evenHBand) {
-      effectiveRowBandStyle = conditionalStyles?.band2Horz;
-    }
-    if (cellCnf?.oddHBand) {
-      effectiveRowBandStyle = conditionalStyles?.band1Horz;
-    } else if (cellCnf?.evenHBand) {
-      effectiveRowBandStyle = conditionalStyles?.band2Horz;
-    }
-
-    // Build conditional style precedence (wholeTable -> banding -> columns -> rows -> corners)
-    let cellConditionalStyle = conditionalStyles?.wholeTable;
-    cellConditionalStyle = mergeConditionalStyles(cellConditionalStyle, effectiveRowBandStyle);
-    cellConditionalStyle = mergeConditionalStyles(cellConditionalStyle, vertBandStyle);
-    if (cellIsFirstCol && (tableLook?.firstColumn || rowCnf?.firstColumn || cellCnf?.firstColumn)) {
+    // The table style's regions for this cell, lowest precedence first.
+    let cellConditionalStyle: TableConditionalStyle | undefined;
+    for (const region of tableCellStyleRegions({
+      look: tableLook ?? resolveTableLook(undefined),
+      rowIndex: rowIndex ?? 0,
+      totalRows: totalRows ?? 1,
+      column: colIndex - colspan,
+      colspan,
+      totalColumns: totalCols,
+      rowBand,
+      rowConditionalFormat: rowCnf,
+      cellConditionalFormat: cell.formatting?.conditionalFormat,
+    })) {
       cellConditionalStyle = mergeConditionalStyles(
         cellConditionalStyle,
-        conditionalStyles?.firstCol,
-      );
-    }
-    if (cellIsLastCol && (tableLook?.lastColumn || rowCnf?.lastColumn || cellCnf?.lastColumn)) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.lastCol,
-      );
-    }
-    if (cellIsFirstRow && (tableLook?.firstRow || rowCnf?.firstRow || cellCnf?.firstRow)) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.firstRow,
-      );
-    }
-    if (cellIsLastRow && (tableLook?.lastRow || rowCnf?.lastRow || cellCnf?.lastRow)) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.lastRow,
-      );
-    }
-    if (
-      cellIsFirstRow &&
-      cellIsFirstCol &&
-      (tableLook?.firstRow || rowCnf?.firstRow || cellCnf?.firstRow) &&
-      (tableLook?.firstColumn || rowCnf?.firstColumn || cellCnf?.firstColumn)
-    ) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.nwCell,
-      );
-    }
-    if (
-      cellIsFirstRow &&
-      cellIsLastCol &&
-      (tableLook?.firstRow || rowCnf?.firstRow || cellCnf?.firstRow) &&
-      (tableLook?.lastColumn || rowCnf?.lastColumn || cellCnf?.lastColumn)
-    ) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.neCell,
-      );
-    }
-    if (
-      cellIsLastRow &&
-      cellIsFirstCol &&
-      (tableLook?.lastRow || rowCnf?.lastRow || cellCnf?.lastRow) &&
-      (tableLook?.firstColumn || rowCnf?.firstColumn || cellCnf?.firstColumn)
-    ) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.swCell,
-      );
-    }
-    if (
-      cellIsLastRow &&
-      cellIsLastCol &&
-      (tableLook?.lastRow || rowCnf?.lastRow || cellCnf?.lastRow) &&
-      (tableLook?.lastColumn || rowCnf?.lastColumn || cellCnf?.lastColumn)
-    ) {
-      cellConditionalStyle = mergeConditionalStyles(
-        cellConditionalStyle,
-        conditionalStyles?.seCell,
+        conditionalStyles?.[region],
       );
     }
 

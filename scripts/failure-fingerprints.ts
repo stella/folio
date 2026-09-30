@@ -62,6 +62,7 @@ export const extractFailureMarkers = (log: string): FailureMarker[] =>
     ) {
       throw new Error("Malformed FOLIO_FAILURE line");
     }
+    const optional = value as { diff?: unknown; flow?: unknown; primary?: unknown };
     return [
       {
         fingerprint: value.fingerprint,
@@ -70,6 +71,10 @@ export const extractFailureMarkers = (log: string): FailureMarker[] =>
         repro: value.repro,
         path: value.path,
         assertion: value.assertion,
+        ...(typeof optional.diff === "string" ? { diff: optional.diff } : {}),
+        ...(typeof optional.flow === "string" && typeof optional.primary === "string"
+          ? { flow: optional.flow, primary: optional.primary }
+          : {}),
       },
     ];
   });

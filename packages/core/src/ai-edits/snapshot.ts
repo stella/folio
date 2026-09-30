@@ -1212,7 +1212,18 @@ const getPreviewRunStyle = (
   marks: readonly Mark[],
   defaultStyle: PreviewRunStyle,
 ): PreviewRunStyle => {
-  const style: PreviewRunStyle = { ...defaultStyle };
+  // A run's toggles are its marks: the load path bakes the style's bold or
+  // italic into them, and a run without the mark saves as turning the toggle
+  // off (`w:b w:val="0"` under a bold style), which is what a reopen shows.
+  // Size, font and colour still fall back to the paragraph's run defaults.
+  const {
+    bold: _bold,
+    italic: _italic,
+    underline: _underline,
+    strike: _strike,
+    ...inherited
+  } = defaultStyle;
+  const style: PreviewRunStyle = { ...inherited };
 
   for (const mark of marks) {
     switch (mark.type.name) {

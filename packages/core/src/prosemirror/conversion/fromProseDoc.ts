@@ -181,7 +181,6 @@ import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStac
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
-import { schema } from "../schema";
 import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
@@ -217,7 +216,6 @@ import { hasSinkChildren } from "./preservedSinkCarriers";
 // oxlint-disable-next-line import/no-cycle
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
 import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
-import { projectNotesFromReferences } from "./noteReferenceProjection";
 import {
   marksToTextFormatting,
   sameFormattingValue,
@@ -721,7 +719,6 @@ export function fromProseDoc(
       ...baseDocument,
       package: {
         ...baseDocument.package,
-        ...projectNotesFromReferences(pmDoc, baseDocument),
         document: documentBody,
         ...(numbering ? { numbering } : {}),
       },
@@ -813,10 +810,14 @@ function stripSuggestedInlineMarks(
       : paragraphFormatting;
     const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
     next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
-    for (const restored of textFormattingToMarks(effectivePreviousFormatting, schema, {
-      overrideFormatting: previousFormatting,
-      directFormatting: previousFormatting,
-    })) {
+    for (const restored of textFormattingToMarks(
+      effectivePreviousFormatting,
+      suggestedRunPropertyChange.type.schema,
+      {
+        overrideFormatting: previousFormatting,
+        directFormatting: previousFormatting,
+      },
+    )) {
       next = restored.addToSet(next);
     }
     if (previousFormatting?.styleId) {
@@ -2177,9 +2178,14 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   const outlineLevel = authored("outlineLevel", Reflect.get(attrs, "outlineLevel"));
   const bidi = authored("bidi", directionToAuthoredBidi(attrs.direction));
   const snapToGrid = authored("snapToGrid", attrs.snapToGrid);
-  const indentLeft = authored("indentLeft", attrs.indentLeft);
+  // A zero left or first-line indent is stated only where a numbering level
+  // could supply another value; elsewhere it reads as the absent default.
+  const numbered = paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined;
+  const statedIndent = (value: number | undefined): number | undefined =>
+    value === 0 && !numbered ? undefined : value;
+  const indentLeft = statedIndent(authored("indentLeft", attrs.indentLeft));
   const indentRight = authored("indentRight", attrs.indentRight);
-  const indentFirstLine = authored("indentFirstLine", attrs.indentFirstLine);
+  const indentFirstLine = statedIndent(authored("indentFirstLine", attrs.indentFirstLine));
   const borders = authored("borders", attrs.borders);
   const shading = authored("shading", attrs.shading);
   const tabs = authored("tabs", attrs.tabs);
@@ -2203,9 +2209,9 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
     hasDirectLineSpacing ||
     hasDirectLineSpacingRule ||
     snapToGrid != null ||
-    indentLeft ||
+    indentLeft !== undefined ||
     indentRight ||
-    indentFirstLine ||
+    indentFirstLine !== undefined ||
     attrs.numPr ||
     attrs.styleId ||
     borders ||
@@ -2258,13 +2264,13 @@ function paragraphAttrsToFormatting(attrs: ParagraphAttrs): ParagraphFormatting 
   if (attrs.spacingExplicit) {
     f.spacingExplicit = attrs.spacingExplicit;
   }
-  if (indentLeft) {
+  if (indentLeft !== undefined) {
     f.indentLeft = indentLeft;
   }
   if (indentRight) {
     f.indentRight = indentRight;
   }
-  if (indentFirstLine) {
+  if (indentFirstLine !== undefined) {
     f.indentFirstLine = indentFirstLine;
   }
   if (attrs.hangingIndent && indentFirstLine) {

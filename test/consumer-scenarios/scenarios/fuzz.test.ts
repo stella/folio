@@ -3,11 +3,21 @@
  * random and collision runs. The generated seed and run counts are controlled
  * by FOLIO_SCENARIO_SEED, FOLIO_SCENARIO_FUZZ_RUNS,
  * FOLIO_SCENARIO_COLLISION_RUNS and FOLIO_SCENARIO_FUZZ_STEPS.
+ * FOLIO_SCENARIO_FUZZ_REPORT_ONLY=1 logs a generated run's failure marker
+ * without failing the run; pinned flows still fail.
  */
 
+import { createHash } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { after, test } from "node:test";
 
-import { reportScenarioFailure, shellQuote } from "../support/failure-fingerprints.ts";
+import {
+  failureMarker,
+  logFailureMarker,
+  reportScenarioFailure,
+  shellQuote,
+} from "../support/failure-fingerprints.ts";
 import { describeFlow, type FlowKind, runFlow } from "../support/fuzz.ts";
 import { ENABLED_RELATIONS, relationSummary } from "../support/metamorphic.ts";
 import { KNOWN_FAILING_FLOWS } from "../support/known-issues.ts";
@@ -22,6 +32,24 @@ const SEED = integer(process.env["FOLIO_SCENARIO_SEED"], 20_260_926);
 const RUNS = integer(process.env["FOLIO_SCENARIO_FUZZ_RUNS"], 12);
 const STEPS = integer(process.env["FOLIO_SCENARIO_FUZZ_STEPS"], 10);
 const COLLISION_RUNS = integer(process.env["FOLIO_SCENARIO_COLLISION_RUNS"], 8);
+const SAVE_SAMPLE = integer(process.env["FOLIO_SCENARIO_SAVE_SAMPLE"], 0);
+const SAMPLE_DIR = process.env["FOLIO_SCENARIO_SAMPLE_DIR"];
+const REPORT_ONLY = process.env["FOLIO_SCENARIO_FUZZ_REPORT_ONLY"] === "1";
+
+const saveSample = async (
+  bytes: Uint8Array,
+  { seed, kind, fixture, mode }: { seed: number; kind: FlowKind; fixture: string; mode: string },
+): Promise<void> => {
+  if (SAMPLE_DIR === undefined) {
+    throw new Error("FOLIO_SCENARIO_SAMPLE_DIR is required to save samples");
+  }
+  const fingerprint = createHash("sha256")
+    .update(`${kind}\0${seed}\0${String(STEPS)}\0${fixture}\0${mode}`)
+    .digest("hex")
+    .slice(0, 16);
+  await mkdir(SAMPLE_DIR, { recursive: true });
+  await writeFile(path.join(SAMPLE_DIR, `${fingerprint}-${seed}.docx`), bytes);
+};
 
 const relationRepro = ["FOLIO_SCENARIO_RELATIONS", "FOLIO_SCENARIO_RELATIONS_DEPTH"]
   .flatMap((name) => {
@@ -50,15 +78,23 @@ const generatedFlowTest = (kind: FlowKind, run: number, seed: number) => {
     `${label} run ${run} (seed ${seed}): ${fixture} / ${mode}, ${STEPS} steps`,
     known ? { skip: `reproduces ${known.finding}; runs in known-issues.test.ts` } : {},
     async () => {
+      const sampleIndex = kind === "random" ? run : RUNS + run;
+      const shouldSave = sampleIndex < SAVE_SAMPLE;
+      let saved: Uint8Array | undefined;
       try {
-        await runFlow(seed, STEPS, kind);
+        ({ saved } = await runFlow(seed, STEPS, kind, { captureSaved: shouldSave }));
       } catch (error) {
-        reportScenarioFailure({
-          test: `consumer flow ${fixture} / ${mode}`,
-          seed,
-          repro,
-          failure: error,
-        });
+        const failure = { test: `consumer flow ${fixture} / ${mode}`, seed, repro, failure: error };
+        if (REPORT_ONLY) {
+          logFailureMarker(failureMarker(failure));
+          console.warn(`report-only: ${label} run ${run} failed; replay: ${repro}`);
+          return;
+        }
+        reportScenarioFailure(failure);
+      }
+      // Outside the try: a sample that cannot be written fails the run.
+      if (shouldSave && saved !== undefined) {
+        await saveSample(saved, { seed, kind, fixture, mode });
       }
     },
   );

@@ -1177,7 +1177,7 @@ export const createProseParagraphWithPropertySource = (
   return paragraph;
 };
 
-type ParagraphPropertySourceTransfer = {
+export type ParagraphPropertySourceTransfer = {
   displacedToken: string | null;
   selectedToken: string | null;
 };
