@@ -97,7 +97,8 @@ export const resolveParagraphChangeAttrs = ({
           styleNumbering == null
             ? null
             : paragraphNumberingAttr(resolveParagraphNumbering(styleNumbering));
-        const restoredNumbering = rejection.previousFormatting?.numPr ?? inheritedNumbering;
+        const recordedNumbering = rejection.previousFormatting?.numPr;
+        const restoredNumbering = recordedNumbering ?? inheritedNumbering;
         Object.assign(
           nextAttrs,
           paragraphRejectAttrPatch(rejection.previousFormatting, inheritedFormatting),
@@ -107,7 +108,11 @@ export const resolveParagraphChangeAttrs = ({
             numbering,
             restoredNumbering,
           }),
-          { numPr: restoredNumbering, numPrFromStyle: inheritedNumbering },
+          {
+            numPr: restoredNumbering,
+            // Recorded numbering is authored, even when its value matches the style.
+            numPrFromStyle: recordedNumbering == null ? inheritedNumbering : null,
+          },
         );
         const restoredFormatting = paragraphRejectOriginalFormatting(
           rejection.previousFormatting,

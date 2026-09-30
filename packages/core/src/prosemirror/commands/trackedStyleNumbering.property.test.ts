@@ -18,7 +18,11 @@ import { createSuggestionModePlugin } from "../plugins/suggestionMode";
 import { toggleBulletList } from "../extensions/features/ListExtension";
 import { acceptAllChanges, rejectAllChanges } from "./comments";
 
-const sourceDocument = (numId: number, level: number): Document => ({
+type NumberingSource = "style" | "paragraph";
+
+type SourceDocumentOptions = { numId: number; level: number; numberingSource: NumberingSource };
+
+const sourceDocument = ({ numId, level, numberingSource }: SourceDocumentOptions): Document => ({
   package: {
     document: {
       content: [
@@ -29,7 +33,12 @@ const sourceDocument = (numId: number, level: number): Document => ({
         },
         {
           type: "paragraph",
-          formatting: { styleId: "Numbered" },
+          formatting: {
+            styleId: "Numbered",
+            ...(numberingSource === "paragraph"
+              ? { numPr: { kind: "reference", numId, ilvl: level } as const }
+              : {}),
+          },
           content: [{ type: "run", content: [{ type: "text", text: "Target" }] }],
         },
       ],
@@ -61,10 +70,19 @@ type ExerciseOptions = {
   level: number;
   operation: "carry" | "list" | "carry then list";
   decision: "accept" | "reject";
+  numberingSource: NumberingSource;
 };
 
-const exercise = async ({ numId, level, operation, decision }: ExerciseOptions) => {
-  const document = await parseDocx(await createDocx(sourceDocument(numId, level)));
+const exercise = async ({
+  numId,
+  level,
+  operation,
+  decision,
+  numberingSource,
+}: ExerciseOptions) => {
+  const document = await parseDocx(
+    await createDocx(sourceDocument({ numId, level, numberingSource })),
+  );
   let state = EditorState.create({
     doc: toProseDoc(document),
     plugins: [
@@ -96,7 +114,9 @@ const exercise = async ({ numId, level, operation, decision }: ExerciseOptions) 
   }
   const record = expectParagraphAttrs(state.doc.child(1))._propertyChanges?.at(0);
   expect(record).toBeDefined();
-  expect(record?.previousFormatting?.numPr ?? undefined).toBeUndefined();
+  expect(record?.previousFormatting?.numPr ?? undefined).toEqual(
+    numberingSource === "paragraph" ? { kind: "reference", numId, ilvl: level } : undefined,
+  );
   const resolve = decision === "accept" ? acceptAllChanges : rejectAllChanges;
   expect(
     resolve()(state, (tr) => {
@@ -121,7 +141,14 @@ const exercise = async ({ numId, level, operation, decision }: ExerciseOptions) 
     const root = parseXml(xml ?? "");
     const body = findChild(findChild(root, "w", "document"), "w", "body");
     const target = findChildren(body, "w", "p").at(1);
-    expect(findChild(findChild(target, "w", "pPr"), "w", "numPr")).toBeNull();
+    const directNumbering = findChild(findChild(target, "w", "pPr"), "w", "numPr");
+    if (decision === "reject" && numberingSource === "paragraph") {
+      expect(directNumbering).not.toBeNull();
+      expect(paragraph.formatting?.numPr).toEqual({ kind: "reference", numId, ilvl: level });
+      expect(paragraph.formatting?.numPrFromStyle).toBeUndefined();
+    } else {
+      expect(directNumbering).toBeNull();
+    }
     expect(paragraph.formatting?.styleId).toBe(decision === "reject" ? "Numbered" : "Plain");
   } else {
     expect(paragraph.formatting?.numPr?.kind).toBe("reference");
@@ -130,7 +157,13 @@ const exercise = async ({ numId, level, operation, decision }: ExerciseOptions) 
 };
 
 test("rejecting a suggested property change keeps style numbering inherited", async () => {
-  await exercise({ numId: 4, level: 0, operation: "carry", decision: "reject" });
+  await exercise({
+    numId: 4,
+    level: 0,
+    operation: "carry",
+    decision: "reject",
+    numberingSource: "style",
+  });
 });
 
 test(
@@ -143,7 +176,9 @@ test(
         async (numId, level) => {
           for (const operation of ["carry", "list", "carry then list"] as const) {
             for (const decision of ["accept", "reject"] as const) {
-              await exercise({ numId, level, operation, decision });
+              for (const numberingSource of ["style", "paragraph"] as const) {
+                await exercise({ numId, level, operation, decision, numberingSource });
+              }
             }
           }
         },
