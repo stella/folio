@@ -1,5 +1,13 @@
 # @stll/folio-cli
 
+## 0.3.4
+
+### Patch Changes
+
+- [#1296](https://github.com/stella/folio/pull/1296) [`d7346e2`](https://github.com/stella/folio/commit/d7346e2367edd1eabbea6b96ede11ed9d2fb4d27) Thanks [@jan-kubica](https://github.com/jan-kubica)! - The VS Code extension names agent changes like the editor does, without asking for folio.author.
+- Updated dependencies [[`9e14979`](https://github.com/stella/folio/commit/9e149794a1677b52ede30dc9e741140e5eb7684c), [`9e14979`](https://github.com/stella/folio/commit/9e149794a1677b52ede30dc9e741140e5eb7684c), [`d6dc366`](https://github.com/stella/folio/commit/d6dc366b1b1500603a13a22e98a546331abd3b41), [`5cb1689`](https://github.com/stella/folio/commit/5cb16893b6aacae90a49a91afe98b1dffb0ecc88), [`9e14979`](https://github.com/stella/folio/commit/9e149794a1677b52ede30dc9e741140e5eb7684c)]:
+  - @stll/folio-core@0.54.1
+
 ## 0.3.3
 
 ### Patch Changes

@@ -60,7 +60,7 @@
     },
     "packages/cli": {
       "name": "@stll/folio-cli",
-      "version": "0.3.3",
+      "version": "0.3.4",
       "bin": {
         "folio": "./src/bin.ts",
       },
@@ -93,7 +93,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.54.0",
+      "version": "0.54.1",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",
@@ -128,7 +128,7 @@
     },
     "packages/docx-core": {
       "name": "@stll/docx-core",
-      "version": "0.29.0",
+      "version": "0.30.0",
       "dependencies": {
         "@stll/docx-utils": "^0.1.0",
         "better-result": "3.0.1",

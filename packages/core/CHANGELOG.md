@@ -1,5 +1,21 @@
 # @stll/folio-core
 
+## 0.54.1
+
+### Patch Changes
+
+- [#1284](https://github.com/stella/folio/pull/1284) [`9e14979`](https://github.com/stella/folio/commit/9e149794a1677b52ede30dc9e741140e5eb7684c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolve tracked final-paragraph deletions across wholly deleted tables without adding an empty paragraph.
+
+- [#1284](https://github.com/stella/folio/pull/1284) [`9e14979`](https://github.com/stella/folio/commit/9e149794a1677b52ede30dc9e741140e5eb7684c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Restore paragraph properties when rejecting an insertion that displaces a pending deleted paragraph break.
+
+- [#1297](https://github.com/stella/folio/pull/1297) [`d6dc366`](https://github.com/stella/folio/commit/d6dc366b1b1500603a13a22e98a546331abd3b41) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Support `@stll/template-conditions` 0.6: an `{% if %}` / `{% elif %}` tag carrying a filter chain keeps its expression as authored, and the bare path the chain configures comes from the grammar's own chain scan.
+
+- [#1280](https://github.com/stella/folio/pull/1280) [`5cb1689`](https://github.com/stella/folio/commit/5cb16893b6aacae90a49a91afe98b1dffb0ecc88) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve authored numbering exactly and keep style-supplied numbering inherited when recording and rejecting paragraph property changes.
+
+- [#1284](https://github.com/stella/folio/pull/1284) [`9e14979`](https://github.com/stella/folio/commit/9e149794a1677b52ede30dc9e741140e5eb7684c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve tracked vertical-merge resolution and continuation content without converting unrelated table revisions.
+- Updated dependencies [[`cba570e`](https://github.com/stella/folio/commit/cba570e40ecea26e79fc9c81ced1803c549a9793), [`b56dcb9`](https://github.com/stella/folio/commit/b56dcb95631430e52f2fba8103e9d824e277e481), [`ad0dca4`](https://github.com/stella/folio/commit/ad0dca442e5fb200f60dea720aeae060996e1b70), [`0781905`](https://github.com/stella/folio/commit/0781905244c23e2192b38a8d7cb2d09c486b2fc6), [`a91219c`](https://github.com/stella/folio/commit/a91219c5d82e1ed5ce8dcd68695b98326e7b51b9), [`b18d455`](https://github.com/stella/folio/commit/b18d45571cb08c29936d9942dcee804bdf09b37a), [`0c2c665`](https://github.com/stella/folio/commit/0c2c6654e5d943ba4618beba98a8bc9f77b8c00a), [`8c1ce41`](https://github.com/stella/folio/commit/8c1ce41608f848f1e565da5ae16ebf85f5242821)]:
+  - @stll/docx-core@0.30.0
+
 ## 0.54.0
 
 ### Minor Changes

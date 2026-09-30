@@ -1,5 +1,27 @@
 # @stll/docx-core
 
+## 0.30.0
+
+### Minor Changes
+
+- [#1283](https://github.com/stella/folio/pull/1283) [`a91219c`](https://github.com/stella/folio/commit/a91219c5d82e1ed5ce8dcd68695b98326e7b51b9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add reversible direct and tracked paragraph deletion with container-final identity preservation.
+
+### Patch Changes
+
+- [#1292](https://github.com/stella/folio/pull/1292) [`cba570e`](https://github.com/stella/folio/commit/cba570e40ecea26e79fc9c81ced1803c549a9793) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Accepting tracked changes one operation at a time now gives the same result as accepting them at once: a record an acceptance empties goes, as a direct deletion leaves none, instead of staying empty beside the piece of it a later acceptance brings back. Rejecting a paste that cut a content control, hyperlink or other inline container now gives the container back whole: the piece the rejection empties folds into the other piece even when no resolved change lies between them.
+
+- [#1291](https://github.com/stella/folio/pull/1291) [`b56dcb9`](https://github.com/stella/folio/commit/b56dcb95631430e52f2fba8103e9d824e277e481) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Share comment-anchor classification across tracked deletion planning and wrapping.
+
+- [#1281](https://github.com/stella/folio/pull/1281) [`ad0dca4`](https://github.com/stella/folio/commit/ad0dca442e5fb200f60dea720aeae060996e1b70) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add direct table insertion and deletion operations with exact structural inverses.
+
+- [#1289](https://github.com/stella/folio/pull/1289) [`0781905`](https://github.com/stella/folio/commit/0781905244c23e2192b38a8d7cb2d09c486b2fc6) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Address row inverses through the containing table when a surviving cell starts with a nested table.
+
+- [#1288](https://github.com/stella/folio/pull/1288) [`b18d455`](https://github.com/stella/folio/commit/b18d45571cb08c29936d9942dcee804bdf09b37a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Plan tracked deletion and replacement across adjacent paragraphs with shared revision allocation.
+
+- [#1299](https://github.com/stella/folio/pull/1299) [`0c2c665`](https://github.com/stella/folio/commit/0c2c6654e5d943ba4618beba98a8bc9f77b8c00a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - A tracked split whose new paragraph is the second half now refuses mark run properties other than the paragraph's own. That half ends with the paragraph's own mark, and no property change records its run properties, so rejecting the split could not give them back.
+
+- [#1287](https://github.com/stella/folio/pull/1287) [`8c1ce41`](https://github.com/stella/folio/commit/8c1ce41608f848f1e565da5ae16ebf85f5242821) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Support tracked whole-table insertion and deletion with cell paragraph marks and terminal table insertion carriers.
+
 ## 0.29.0
 
 ### Minor Changes
