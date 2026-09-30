@@ -36,6 +36,7 @@ export const FOLIO_DOCX_CONFORMANCE_ISSUE_CODES = Object.freeze([
   "archive-too-many-entries",
   "archive-entry-too-large",
   "archive-total-too-large",
+  "archive-compression-ratio-exceeded",
   "required-part-missing",
   "xml-doctype-forbidden",
   "xml-not-well-formed",

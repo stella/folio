@@ -211,6 +211,7 @@ export {
 } from "./document-operations";
 export {
   extractDocxText,
+  type ExtractDocxTextOptions,
   type DocxParagraphSource,
   type DocxTableRowKind,
   type DocxTableRowPosition,

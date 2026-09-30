@@ -1,6 +1,6 @@
 {
   "name": "@stll/folio-cli",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Command line and stdio MCP server for reading, reviewing, and redlining .docx files with folio: tracked-change edits, comments, and comparisons written atomically with version preconditions.",
   "keywords": [
     "cli",
@@ -61,7 +61,7 @@
     "@stll/folio-core": "workspace:^",
     "better-result": "3.0.1",
     "fast-xml-parser": "^5.10.1",
-    "jszip": "3.10.1"
+    "jszip": "3.10.2"
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.0.0",

@@ -9,9 +9,13 @@ import {
   restoreTableCellsWithParagraphPropertySources,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
+import { isTableCellMergeRevisionContinuation } from "../../docx/tableParser";
 import type { TableCell, TableCellFormatting } from "../../types/document";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
-import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
+import {
+  standaloneTableCellToProseMirror,
+  tableCellHasMeaningfulContent,
+} from "../conversion/toProseDoc";
 import { removeRowsWithoutCellsInRange } from "../tableGridMutation";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
@@ -89,6 +93,15 @@ const tableCellContext = (doc: PMNode, cellPos: number): TableCellContext | null
   return null;
 };
 
+/**
+ * Whether accepting a pending vertical merge folds the cell into the one above.
+ * The saved `w:vMerge` continuation is read back as its own cell when it carries
+ * content, so accepting such a merge keeps the cell standing; folding it would
+ * hide text that reappears when the document is reopened.
+ */
+export const acceptedMergeFoldsIntoCellAbove = (cell: PMNode): boolean =>
+  !tableCellHasMeaningfulContent(standaloneTableCellFromProseMirror(cell));
+
 export const resolveVisibleTableCellMerge = (
   tr: Transaction,
   cellPos: number,
@@ -99,14 +112,17 @@ export const resolveVisibleTableCellMerge = (
   if (!cell || !isTableCellMergeRevisionAttr(marker)) {
     return false;
   }
+  if (
+    mode === "accept"
+      ? isTableCellMergeRevisionContinuation(marker.verticalMerge) &&
+        acceptedMergeFoldsIntoCellAbove(cell)
+      : isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal)
+  ) {
+    return mergeTableCellWithCellAbove(tr, cellPos);
+  }
   if (mode === "accept") {
     tr.setNodeAttribute(cellPos, "cellMarker", null);
     return true;
-  }
-
-  const originalState = marker.verticalMergeOriginal ?? "rest";
-  if (originalState === "continue") {
-    return mergeTableCellWithCellAbove(tr, cellPos);
   }
 
   const originalFormatting = cell.attrs["_originalFormatting"];

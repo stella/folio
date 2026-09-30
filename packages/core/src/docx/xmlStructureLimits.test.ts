@@ -26,6 +26,12 @@ import * as xmlParser from "./xmlParser";
 
 const CONTENT_TYPES = "<Types />";
 
+/**
+ * Repeated markup compresses past the archive ratio cap, which would refuse
+ * these packages before the structure bounds under test ever see them.
+ */
+const STRUCTURE_ONLY = { maxCompressionRatio: Number.MAX_SAFE_INTEGER } as const;
+
 type Part = { path: string; xml: string };
 
 const packageOf = async (parts: readonly Part[]): Promise<ArrayBuffer> => {
@@ -61,7 +67,7 @@ describe("element-dense markup", () => {
     const runs = FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPart + 1000;
     const buffer = await packageOf([document("<w:r/>".repeat(runs))]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer)));
+    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
 
     expect(error.limit).toBe("elements");
     expect(error.partPath).toBe("word/document.xml");
@@ -126,7 +132,7 @@ describe("attribute-dense markup", () => {
     const run = `<w:r w:a="1" w:b="2" w:c="3" w:d="4" w:e="5"/>`;
     const buffer = await packageOf([document(`<w:p>${run.repeat(runs)}</w:p>`)]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer)));
+    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
 
     expect(error.limit).toBe("attributes");
     expect(error.allowed).toBe(FOLIO_XML_RESOURCE_LIMITS.maxAttributesPerPart);
@@ -150,7 +156,7 @@ describe("a package spread thin across parts", () => {
       })),
     ]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer)));
+    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
 
     expect(error.limit).toBe("package-elements");
     expect(error.allowed).toBe(FOLIO_XML_RESOURCE_LIMITS.maxElementsPerPackage);
@@ -186,7 +192,7 @@ describe("repetitive nesting", () => {
     }
     const buffer = await packageOf([document(body)]);
 
-    const error = asLimitError(await rejectedError(unzipDocx(buffer)));
+    const error = asLimitError(await rejectedError(unzipDocx(buffer, STRUCTURE_ONLY)));
 
     expect(error.limit).toBe("depth");
     expect(error.allowed).toBe(FOLIO_XML_RESOURCE_LIMITS.maxDepth);

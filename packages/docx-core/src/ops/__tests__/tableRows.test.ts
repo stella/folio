@@ -258,9 +258,14 @@ describe("table row review", () => {
     expect(applied(structuredClone(document), op).document).toStrictEqual(result.document);
   });
 
-  test.each(["ins", "del", "moveFrom", "moveTo"] as const)(
-    "a pre-existing cell-final %s mark conflicts with a tracked row operation",
-    (kind) => {
+  test.each([
+    ["ins", DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT],
+    ["del", DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT],
+    ["moveFrom", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+    ["moveTo", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+  ] as const)(
+    "a pre-existing cell-final %s mark refuses a tracked row operation",
+    (kind, reason) => {
       const row: TableRow = {
         ...makeRow("00000010"),
         cells: [
@@ -284,7 +289,7 @@ describe("table row review", () => {
           revision,
           newIds,
         },
-        DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+        reason,
       );
     },
   );

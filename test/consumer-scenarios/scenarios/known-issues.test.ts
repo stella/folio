@@ -91,37 +91,6 @@ describe("findings not yet filed", () => {
     },
   );
 
-  for (const resolution of ["accept", "reject"] as const) {
-    expectedFailure(
-      "TEXT_BOX_RESOLVE_MALFORMED_XML",
-      `${resolution}ing tracked changes in a text box and the paragraph drawing it, after a reopen, saves a package that reopens`,
-      FINDING_SYMPTOMS.TEXT_BOX_RESOLVE_MALFORMED_XML,
-      async () => {
-        const reviewer = await openReviewer(await storiesDocument());
-        const blockOf = (prefix: string) => {
-          const block = reviewer
-            .getContent()
-            .find((candidate) => candidate.text.startsWith(prefix));
-          assert.ok(block, prefix);
-          return block.id;
-        };
-        const edit = (prefix: string, find: string) =>
-          applyTo(
-            reviewer,
-            { type: "main" },
-            { type: "replaceInBlock", blockId: blockOf(prefix), find, replace: "amended" },
-            "tracked-changes",
-          );
-        edit("The box beside", "beside");
-        edit(TEXT_BOX_TEXT, "Boxed");
-        const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
-        if (resolution === "accept") reopened.acceptAll();
-        else reopened.rejectAll();
-        await openReviewer(new Uint8Array(await reopened.toBuffer()));
-      },
-    );
-  }
-
   expectedFailure(
     "INSERT_AFTER_PENDING_MERGE",
     "a paragraph inserted after a block with a pending tracked merge stays its own paragraph once accepted",
@@ -197,6 +166,33 @@ test("a paragraph inserted inside a comment spanning a table reads the same befo
     "direct",
   );
   await saveAndReopen(reviewer, "insert inside a comment range");
+});
+
+// Fixed findings stay as plain regressions.
+describe("fixed findings", () => {
+  for (const resolution of ["accept", "reject"] as const) {
+    test(`${resolution}ing tracked changes in a text box and the paragraph drawing it, after a reopen, saves a package that reopens`, async () => {
+      const reviewer = await openReviewer(await storiesDocument());
+      const blockOf = (prefix: string) => {
+        const block = reviewer.getContent().find((candidate) => candidate.text.startsWith(prefix));
+        assert.ok(block, prefix);
+        return block.id;
+      };
+      const edit = (prefix: string, find: string) =>
+        applyTo(
+          reviewer,
+          { type: "main" },
+          { type: "replaceInBlock", blockId: blockOf(prefix), find, replace: "amended" },
+          "tracked-changes",
+        );
+      edit("The box beside", "beside");
+      edit(TEXT_BOX_TEXT, "Boxed");
+      const reopened = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+      if (resolution === "accept") reopened.acceptAll();
+      else reopened.rejectAll();
+      await openReviewer(new Uint8Array(await reopened.toBuffer()));
+    });
+  }
 });
 
 describe("findings of the metamorphic relations (support/metamorphic.ts) and their sweeps", () => {

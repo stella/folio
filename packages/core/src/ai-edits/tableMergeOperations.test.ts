@@ -343,3 +343,127 @@ describe("a merge or split the batch requests before a row insertion in the same
     },
   );
 });
+
+describe("an edit inside a cell the same batch merges away", () => {
+  /** Two rows; the right column is blank, so a tracked merge may fold it. */
+  const BLANK_RIGHT: TableSpec = {
+    rows: 2,
+    columns: 2,
+    cells: [
+      { row: 0, column: 0, rowSpan: 1, columnSpan: 1, text: "A1" },
+      { row: 0, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
+      { row: 1, column: 0, rowSpan: 1, columnSpan: 1, text: "A2" },
+      { row: 1, column: 1, rowSpan: 1, columnSpan: 1, text: "" },
+    ],
+  };
+
+  /** The first paragraph of the outer table's cell at `row`, `column`. */
+  const cellBlockId = (reviewer: FolioDocxReviewer, row: number, column: number): string => {
+    const block = reviewer
+      .getContent()
+      .find(
+        ({ table }) =>
+          table?.tableIndex === 0 &&
+          table.rowIndex === row &&
+          table.gridColumnIndex === column &&
+          table.paragraphIndex === 0,
+      );
+    if (!block) {
+      throw new Error(`no block starts cell ${row}:${column}`);
+    }
+    return block.id;
+  };
+
+  /** The batch applied, and its table as applied: a tracked result accepted. */
+  const run = async (
+    mode: Mode,
+    build: (reviewer: FolioDocxReviewer) => FolioDocumentOperation[],
+  ) => {
+    const reviewer = await open(await buildTableDocx(BLANK_RIGHT));
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: build(reviewer),
+    });
+    const reading =
+      mode === "direct"
+        ? await readReviewerTables(reviewer)
+        : await resolveTracked(reviewer, "accept");
+    expect(tableReadingProblems(reading)).toEqual([]);
+    return { result, table: cells(reading) };
+  };
+
+  const merge = (live: FolioDocxReviewer): FolioDocumentOperation => ({
+    id: "merge",
+    type: "mergeTableCells",
+    blockId: cellBlockId(live, 0, 1),
+    endBlockId: cellBlockId(live, 1, 1),
+  });
+
+  // Applied directly, a folded cell's text moves into the merged cell; tracked,
+  // the merge takes only blank cells. An edit filling one would let the merge
+  // through in one mode and not the other, so both refuse the later of the two.
+  test.each(["direct", "tracked-changes"] as const)(
+    "refuses a merge after an edit of a cell it folds (%s)",
+    async (mode) => {
+      const { result, table } = await run(mode, (live) => [
+        { id: "edit", type: "replaceBlock", blockId: cellBlockId(live, 1, 1), text: "X" },
+        merge(live),
+      ]);
+
+      expect(result.applied.map(({ id }) => id)).toEqual(["edit"]);
+      expect(result.skipped).toEqual([
+        expect.objectContaining({ id: "merge", reason: "overlappingOperation" }),
+      ]);
+      expect(table).toEqual([
+        [
+          ["0:0", "1x1", "A1"],
+          ["0:1", "1x1", ""],
+          ["1:0", "1x1", "A2"],
+          ["1:1", "1x1", "X"],
+        ],
+      ]);
+    },
+  );
+
+  test.each(["direct", "tracked-changes"] as const)(
+    "refuses an edit of a cell an earlier merge folds (%s)",
+    async (mode) => {
+      const { result, table } = await run(mode, (live) => [
+        merge(live),
+        { id: "edit", type: "replaceBlock", blockId: cellBlockId(live, 1, 1), text: "X" },
+      ]);
+
+      expect(result.applied.map(({ id }) => id)).toEqual(["merge"]);
+      expect(result.skipped).toEqual([
+        expect.objectContaining({ id: "edit", reason: "overlappingOperation" }),
+      ]);
+      expect(table).toEqual([
+        [
+          ["0:0", "1x1", "A1"],
+          ["0:1", "2x1", ""],
+          ["1:0", "1x1", "A2"],
+        ],
+      ]);
+    },
+  );
+
+  test.each(["direct", "tracked-changes"] as const)(
+    "applies an edit of the cell the merge keeps alongside it (%s)",
+    async (mode) => {
+      const { result, table } = await run(mode, (live) => [
+        { id: "edit", type: "replaceBlock", blockId: cellBlockId(live, 0, 1), text: "X" },
+        merge(live),
+      ]);
+
+      expect(result.applied.map(({ id }) => id)).toEqual(["edit", "merge"]);
+      expect(table).toEqual([
+        [
+          ["0:0", "1x1", "A1"],
+          ["0:1", "2x1", "X"],
+          ["1:0", "1x1", "A2"],
+        ],
+      ]);
+    },
+  );
+});
