@@ -119,8 +119,7 @@ const paintBackendRules = [
 const documentModelRules = [
   {
     name: "docx-core-stays-framework-free",
-    comment:
-      "@stll/docx-core is independent of editor frameworks; it may not import ProseMirror.",
+    comment: "@stll/docx-core is independent of editor frameworks; it may not import ProseMirror.",
     severity: "error",
     from: { path: workspacePath("docx-core") },
     to: { path: "(^|/)prosemirror-" },
