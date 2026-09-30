@@ -191,18 +191,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     shapes: ["notes"],
     kinds: ["readback-blocks", "reject-mismatch"],
   },
-  {
-    reason:
-      "Applying or clearing a paragraph style, or clearing the text color, drops a hyperlink's character-style run formatting in the editor, which the saved document still carries",
-    operations: [
-      "command:applyStyle(Heading1)",
-      "command:applyStyle(Heading2)",
-      "command:clearStyle",
-      "command:clearTextColor",
-    ],
-    shapes: ["fields-links-bookmarks"],
-    kinds: ["readback-blocks", "reject-mismatch"],
-  },
+
   {
     reason: "Suggesting mode removes a hyperlink or a note reference's mark directly",
     operations: ["command:removeHyperlink", "command:deleteNoteRef"],
