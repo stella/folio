@@ -27,6 +27,8 @@ export type KnownConformanceGap = {
   shapes?: readonly string[];
   /** Placements covered; every placement when omitted. */
   placements?: readonly SelectionPlacement[];
+  /** Shape/operation pairs that have complete resolution coverage. */
+  excludedCases?: readonly Pick<ConformanceCaseKey, "shape" | "operation">[];
   modes?: readonly EditorMode[];
   kinds: readonly ViolationKind[];
   /**
@@ -152,6 +154,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:generateTOC",
       "command:insertTable",
     ],
+    excludedCases: [{ shape: "tracked-changes", operation: "paste:copied-blocks" }],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
   },
@@ -160,6 +163,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "In suggesting mode, typing or inserting over a range deletes the range untracked, and replacing a range that spans paragraphs loses the typed text when the change is accepted",
     operations: REPLACING_OPERATIONS,
     placements: RANGE_PLACEMENTS,
+    excludedCases: [{ shape: "tracked-changes", operation: "paste:copied-blocks" }],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
     tier: "full",
@@ -223,4 +227,7 @@ export const gapCovers = (
 export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): boolean =>
   (gap.operations === undefined || gap.operations.includes(key.operation)) &&
   (gap.shapes === undefined || gap.shapes.includes(key.shape)) &&
-  (gap.placements === undefined || gap.placements.includes(key.placement));
+  (gap.placements === undefined || gap.placements.includes(key.placement)) &&
+  !gap.excludedCases?.some(
+    ({ shape, operation }) => shape === key.shape && operation === key.operation,
+  );
