@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { Document, Paragraph } from "@stll/docx-core/model";
+import type { Document, Paragraph } from "../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
   DOCUMENT_OP_TYPES,
   INHERIT_RUN_PROPS,
   normalizeForOps,
   OP_STORIES,
-} from "@stll/docx-core/ops";
+} from "../packages/docx-core/src/ops/documentOps";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 

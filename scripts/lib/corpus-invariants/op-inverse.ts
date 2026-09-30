@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { applyDocumentOps } from "@stll/docx-core/ops";
+import { applyDocumentOps } from "../../../packages/docx-core/src/ops/documentOps";
 import { Result } from "better-result";
 import { failureFromAssertion, failureFromError } from "../corpus-signature";
 import {

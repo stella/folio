@@ -1,4 +1,4 @@
-import type { BlockContent, Document } from "@stll/docx-core/model";
+import type { BlockContent, Document } from "../../../packages/docx-core/src/model/document";
 import { Result } from "better-result";
 import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
 import { idKey } from "../../../packages/docx-core/src/ops/ids";

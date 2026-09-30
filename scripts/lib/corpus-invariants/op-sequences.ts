@@ -1,6 +1,6 @@
 /** Reproducible, bounded operation sequences over seeded corpus models. */
 import { isDeepStrictEqual } from "node:util";
-import type { Document, Paragraph } from "@stll/docx-core/model";
+import type { Document, Paragraph } from "../../../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
   normalizeForOps,
@@ -11,7 +11,7 @@ import {
   REVISION_DECISIONS,
   type DocumentOp,
   type AppliedDocumentOp,
-} from "@stll/docx-core/ops";
+} from "../../../packages/docx-core/src/ops/documentOps";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
