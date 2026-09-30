@@ -215,5 +215,13 @@
       "note": "#1221: accepting a note reference's deletion drops the note and the comment anchored in it",
       "date": "2026-09-29"
     }
+  ],
+  "packages/core/src/docx/selectiveXmlPatch.property.test.ts::nested paragraph edits never apply overlapping source ranges": [
+    {
+      "seed": -1844025400,
+      "path": "0:0:0:0",
+      "note": "overlapping host and text-box paragraph replacements used stale source offsets",
+      "date": "2026-09-30"
+    }
   ]
 }
