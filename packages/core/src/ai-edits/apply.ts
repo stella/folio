@@ -5275,18 +5275,22 @@ const applyFolioAIEditOperationsInternal = ({
             const insertedOnly = holdsOnlyInsertedContent(paragraph);
             // When the paragraph it joined has its own break pending deletion,
             // accepting leaves the paragraph after that break: that one reads
-            // as the first, as a chain of pending merges does.
+            // as the first, as a chain of pending merges does. A break this
+            // batch's final deletion will retire counts as pending already:
+            // one at a time, that deletion has run before the merge.
             const joinedMark: unknown = tr.doc.nodeAt(item.blockFrom)?.attrs["pPrMark"];
-            const carryPos = isDeletedPPrMark(joinedMark)
-              ? (paragraphLeftAfter({
-                  doc: tr.doc,
-                  paragraphPos: item.blockFrom,
-                  removedBreakPositions: pendingRemovedFinalBreakPositions(
-                    tr,
-                    deletedFinalParagraphs,
-                  ),
-                }) ?? item.blockFrom)
-              : item.blockFrom;
+            const removedBreakPositions = pendingRemovedFinalBreakPositions(
+              tr,
+              deletedFinalParagraphs,
+            );
+            const carryPos =
+              isDeletedPPrMark(joinedMark) || removedBreakPositions.has(item.blockFrom)
+                ? (paragraphLeftAfter({
+                    doc: tr.doc,
+                    paragraphPos: item.blockFrom,
+                    removedBreakPositions,
+                  }) ?? item.blockFrom)
+                : item.blockFrom;
             const carried = carryParagraphProperties({
               tr,
               position: carryPos,

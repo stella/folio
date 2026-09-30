@@ -907,3 +907,158 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
     );
   }, 300_000);
 });
+
+describe("a merge retracting an inserted break before the last paragraph the batch deletes", () => {
+  // A's break is a pending insertion, so merging A into B joins them at once,
+  // and the joined paragraph precedes C, the last one, which the batch
+  // deletes. One at a time the deletion runs first, so C is the paragraph the
+  // merge leaves: it takes the merge's properties, and retiring the break
+  // before it must not replay the paragraph's earlier ones over them.
+  const lastIndex = BLOCK_COUNT - 1;
+  type Origin = "split" | "inserted";
+  type Extra = "none" | "mergedProperties" | "propertiesOnB";
+  type AlignedA = "direct" | "tracked";
+  type Alignment = NonNullable<ParagraphFormatting["alignment"]>;
+  const ORIGINS: readonly Origin[] = ["split", "inserted"];
+  const EXTRAS: readonly Extra[] = ["none", "mergedProperties", "propertiesOnB"];
+  const ALIGNED_A: readonly AlignedA[] = ["direct", "tracked"];
+  const ALIGNMENTS: readonly (readonly Alignment[])[] = [
+    ["left", "right", "center", "both"],
+    ["center", "center", "center", "center"],
+    ["both", "left", "right", "center"],
+  ];
+
+  type Setup = { session: OperationSession; a: string; b: string; c: string };
+
+  /**
+   * Initial alignments applied directly, then A's break added in `mode`, and
+   * A given an alignment of its own (tracked only when `alignedA` says so).
+   */
+  const prepare = async (
+    mode: Mode,
+    origin: Origin,
+    alignedA: AlignedA,
+    alignments: readonly Alignment[],
+  ): Promise<Setup> => {
+    const session = await freshSession();
+    const initial = session.snapshot().blocks;
+    session.apply(
+      "direct",
+      alignments.map((alignment, index) => ({
+        id: `initial-${String(index)}`,
+        type: "setBlockParagraphProperties" as const,
+        blockId: initial[index]?.id ?? "",
+        properties: { alignment },
+      })),
+    );
+    const blockId = initial[lastIndex - 1]?.id ?? "";
+    const offset = `${token(lastIndex - 1, 0)} ${token(lastIndex - 1, 1)}`.length;
+    const prior = session.apply(mode, [
+      origin === "split"
+        ? { id: "split", type: "splitBlock", blockId, offset, separator: " " }
+        : { id: "insert", type: "insertBeforeBlock", blockId, text: "Added words." },
+    ]);
+    expect(prior.skipped).toEqual([]);
+    const blocks = session.snapshot().blocks;
+    const a = blocks[lastIndex - 1]?.id ?? "";
+    const aligned = session.apply(alignedA === "tracked" ? mode : "direct", [
+      {
+        id: "a",
+        type: "setBlockParagraphProperties",
+        blockId: a,
+        properties: { alignment: "distribute" },
+      },
+    ]);
+    expect(aligned.skipped).toEqual([]);
+    return { session, a, b: blocks[lastIndex]?.id ?? "", c: blocks[lastIndex + 1]?.id ?? "" };
+  };
+
+  const batchOf = (extra: Extra, { a, b, c }: Setup): FolioDocumentOperation[] => [
+    {
+      id: "merge",
+      type: "mergeBlockWithNext",
+      blockId: a,
+      separator: " ",
+      ...(extra === "mergedProperties" && { mergedParagraphProperties: { alignment: "right" } }),
+    },
+    { id: "delete", type: "deleteBlock", blockId: c },
+    ...(extra === "propertiesOnB"
+      ? [
+          {
+            id: "b",
+            type: "setBlockParagraphProperties" as const,
+            blockId: b,
+            properties: { alignment: "left" as const },
+          },
+        ]
+      : []),
+  ];
+
+  const view = (session: OperationSession) =>
+    session
+      .presentation({ withAnchors: false })
+      .map(({ text, alignment, mark, spans }) =>
+        JSON.stringify({ text, alignment, mark, spans: spans.length }),
+      )
+      .join(" / ");
+  const rejectedView = (session: OperationSession) =>
+    view(new OperationSession(resolveAllChangesInHeadlessState(session.state, "reject")));
+
+  for (const origin of ORIGINS) {
+    for (const alignedA of ALIGNED_A) {
+      for (const extra of EXTRAS) {
+        test(`as one at a time, accepted as direct, rejected as before (${origin}, A aligned ${alignedA}, ${extra})`, async () => {
+          const problems: string[] = [];
+          for (const alignments of ALIGNMENTS) {
+            const label = `${JSON.stringify(alignments)}`;
+            const batch = await prepare("tracked-changes", origin, alignedA, alignments);
+            const before = rejectedView(batch.session);
+            const result = batch.session.apply("tracked-changes", batchOf(extra, batch));
+            const appliedIds = new Set(result.applied.map(({ id }) => id));
+            // One at a time, from the end of the document backwards, tracked and direct.
+            const oracle = await prepare("tracked-changes", origin, alignedA, alignments);
+            const direct = await prepare("direct", origin, alignedA, alignments);
+            for (const [mode, setup] of [
+              ["tracked-changes", oracle],
+              ["direct", direct],
+            ] as const) {
+              const operations = batchOf(extra, setup);
+              for (const id of ["delete", "b", "merge"]) {
+                const operation = operations.find((candidate) => candidate.id === id);
+                if (!operation || !appliedIds.has(id)) continue;
+                const alone = setup.session.apply(mode, [operation]);
+                if (alone.skipped.length > 0) {
+                  problems.push(
+                    `${label}: ${mode}, ${id} alone skipped as ${alone.skipped[0]?.reason ?? ""}`,
+                  );
+                }
+              }
+            }
+            // A paragraph with a pending property change refuses merged properties.
+            const refused = alignedA === "tracked" && extra === "mergedProperties" ? ["merge"] : [];
+            expect(result.skipped.map(({ id }) => id).toSorted()).toEqual(refused);
+            if (view(batch.session) !== view(oracle.session)) {
+              problems.push(
+                `${label}: as applied ${view(batch.session)} vs ${view(oracle.session)}`,
+              );
+            }
+            if (rejectedView(batch.session) !== before) {
+              problems.push(`${label}: rejected ${rejectedView(batch.session)} vs ${before}`);
+            }
+            batch.session.acceptAll();
+            oracle.session.acceptAll();
+            if (view(batch.session) !== view(oracle.session)) {
+              problems.push(`${label}: accepted ${view(batch.session)} vs ${view(oracle.session)}`);
+            }
+            if (view(batch.session) !== view(direct.session)) {
+              problems.push(
+                `${label}: accepted ${view(batch.session)} vs direct ${view(direct.session)}`,
+              );
+            }
+          }
+          expect(problems).toEqual([]);
+        });
+      }
+    }
+  }
+});
