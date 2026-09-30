@@ -30,6 +30,13 @@
       "title": "keeps live block fields across save"
     },
     {
+      "seed": 871572624,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "saves overlapping host and text-box paragraph edits as valid XML"
+    },
+    {
       "seed": 1066462270,
       "steps": 10,
       "kind": "random",

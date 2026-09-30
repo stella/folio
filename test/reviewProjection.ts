@@ -1,5 +1,10 @@
 /** Shared π/π′ oracle for operations; no editor or serializer dependency. */
-import type { BlockContent, Document, Paragraph, Run } from "@stll/docx-core/model";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Run,
+} from "../packages/docx-core/src/model/document";
 import {
   asParagraphContent,
   childNodes,

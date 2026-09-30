@@ -7,9 +7,9 @@
  *
  * Documents are compared under π: equal once the fields a relayout
  * recomputes are dropped, adjacent records alike in everything but their
- * content and ids are merged (a container holding nothing into an alike
- * neighbour too, as resolution merges them), and revision and content-control ids are
- * numbered in document order. π′ also ignores which paragraph's identity (id,
+ * content and ids are merged (a container holding nothing stays: an empty
+ * content control is markup of its own), and revision and content-control ids
+ * are numbered in document order. π′ also ignores which paragraph's identity (id,
  * attributes, mark run properties) survives a join.
  *
  * - **L1 Accept.** Accepting a tracked operation's revisions gives the direct
@@ -40,11 +40,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import {
-  assertProperty,
-  propertyConfig,
-  propertyTestTimeout,
-} from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
 import { storyParagraphs } from "../blocks";
@@ -513,7 +509,7 @@ describe("tracked operations and their resolution", () => {
 
   test("L2: rejecting a tracked operation's revisions gives the document back", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = trackedOpFor(document, seed);
         const tracked = applyDocumentOp(document, op);
@@ -533,14 +529,14 @@ describe("tracked operations and their resolution", () => {
         );
         expectEquivalent(rejected, document, rejectProjection(document, op));
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
   });
 
   test("L3: resolving a run's revisions at once equals resolving each operation's in turn", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -592,14 +588,14 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS / 5 }),
+      { numRuns: NUM_RUNS / 5 },
     );
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
 
   test("L4: tracked operations and resolutions are undone exactly by their inverses", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -625,7 +621,7 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
     expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
@@ -633,7 +629,7 @@ describe("tracked operations and their resolution", () => {
 
   test("L4: a run of tracked operations is undone exactly, in reverse and as a batch", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -658,13 +654,13 @@ describe("tracked operations and their resolution", () => {
           expectRestores(batch.value, original);
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS / 5 }),
+      { numRuns: NUM_RUNS / 5 },
     );
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
 
   test("L5: equal inputs give equal results", () => {
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -685,12 +681,12 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
   });
 
   test("L6: an operation touches only the paragraphs it names or resolves", () => {
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         opSeedArbitrary,
@@ -734,13 +730,13 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
   });
 
   test("L7: no tracked operation marks a paragraph that ends its container", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
         expect(containerFinalMarks(document)).toEqual([]);
         const op = trackedOpFor(document, seed);
@@ -750,14 +746,14 @@ describe("tracked operations and their resolution", () => {
         expect(containerFinalMarks(applied.value.document)).toEqual([]);
         expect(contractViolation(applied.value.document)).toBeUndefined();
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindChecked(tally, NUM_RUNS);
   });
 
   test("resolving the same revisions again changes nothing", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         fc.array(fc.boolean(), { minLength: 1, maxLength: 6 }),
@@ -778,13 +774,13 @@ describe("tracked operations and their resolution", () => {
           expect(twice.value.inverse).toEqual([]);
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expect(tally.get("resolved") ?? 0).toBeGreaterThan(NUM_RUNS / 4);
   });
 
   test("a tracked operation takes exactly the new ids revisionIdDemand counts", () => {
-    fc.assert(
+    assertProperty(
       fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = trackedOpFor(document, { ...seed, depth: 1 });
         const demand = revisionIdDemand(document, op);
@@ -805,13 +801,13 @@ describe("tracked operations and their resolution", () => {
           );
         }
       }),
-      propertyConfig({ numRuns: NUM_RUNS / 5 }),
+      { numRuns: NUM_RUNS / 5 },
     );
   });
 
   test("a planned tracked deletion removes only the author's own insertions", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(reviewDocumentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = trackedOpFor(document, { ...seed, kind: 2 });
         if (op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE || op.revision === undefined) return;
@@ -870,7 +866,7 @@ describe("tracked operations and their resolution", () => {
           retracted,
         );
       }),
-      propertyConfig({ numRuns: NUM_RUNS / 5 }),
+      { numRuns: NUM_RUNS / 5 },
     );
     expect(tally.get("one") ?? 0).toBeGreaterThan(0);
   });

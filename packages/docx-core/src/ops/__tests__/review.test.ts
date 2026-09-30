@@ -200,31 +200,39 @@ describe("tracked text", () => {
   });
 
   // The L1 generator found an accepted insertion whose hyperlink merged into
-  // the next one while the empty wrapper inside stayed a record of its own;
-  // merging the direct result's alike neighbours dropped it.
+  // the next one while the seam inside was left unmerged. Resolution merges
+  // the seam inside the records it merges as it merges the outer one: the
+  // inserted wrapper held nothing before, so it stays, as it does directly.
   test("accepting an insertion merges the seams inside the records it merges", () => {
-    const link = (content: ParagraphContent[]): ParagraphContent => ({
+    const wrapper = (content: ParagraphContent[]): ParagraphContent => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const link = (children: ParagraphContent[]): ParagraphContent => ({
       type: "hyperlink",
       rId: "rId9",
       href: "https://example.org",
-      children: [{ type: "inlineWrapper", kind: "bidi", control: "embedding", content }],
+      children,
     });
-    const document = documentOf(paragraph("00000001", [link([run("a")])]));
+    const document = documentOf(paragraph("00000001", [link([wrapper([run("a")])])]));
     const op = {
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at: at("00000001", 0),
-      slice: { content: [link([])], openStart: 0, openEnd: 0 },
+      slice: { content: [link([wrapper([])])], openStart: 0, openEnd: 0 },
       revision: stamp(1),
     } as const satisfies DocumentOp;
     const tracked = applied(document, op);
     const direct = applied(document, directly(op));
     const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
-    expect(blocks(accepted)).toEqual([paragraph("00000001", [link([run("a")])])]);
+    const merged = link([wrapper([]), wrapper([run("a")])]);
+    expect(blocks(accepted)).toEqual([paragraph("00000001", [merged])]);
     // Directly, the inserted hyperlink stands beside the other; merged, they agree.
     const [only] = blocks(direct.document);
     const [first, second] = only?.type === "paragraph" ? only.content : [];
-    expect(first).toEqual(link([]));
-    expect(second !== undefined && mergeAtSeam(link([]), second)).toEqual([link([run("a")])]);
+    expect(first).toEqual(link([wrapper([])]));
+    expect(second !== undefined && mergeAtSeam(link([wrapper([])]), second)).toEqual([merged]);
   });
 
   test("a tracked insertion inside a deletion is refused", () => {
@@ -743,5 +751,115 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
     const accepted = resolved(formatted.document, [1], REVISION_DECISIONS.ACCEPT);
     const undone = applyDocumentOps(accepted, formatted.inverse);
     expect(undone.isErr() && undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+  });
+});
+
+describe("an empty content control is content: resolution never merges it away", () => {
+  const control = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+    type: "inlineSdt",
+    properties: { sdtType: "richText", id, tag: "clause" },
+    content,
+  });
+
+  test("rejecting a tracked deletion keeps an empty control beside an alike one", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, []), control(2, [run("ab")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { ...at("00000001", 0), zeroWidthBefore: 0 },
+      to: at("00000001", 1),
+      revision: stamp(1),
+      newIds: { revision: [2] },
+    } as const satisfies DocumentOp;
+    const tracked = applied(document, op);
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      applied(document, directly(op)).document,
+    );
+  });
+
+  test("rejecting a tracked split keeps an empty control that ends the first half", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, []), control(2, [run("a")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const tracked = applied(document, {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: { ...at("00000001", 0), zeroWidthBefore: 1 },
+      newBlockId: "00000002",
+      revision: stamp(1),
+    });
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+  });
+
+  test("a piece of a cut control that resolution empties still goes back into it", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, [run("a")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const typed = applied(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 0),
+      text: "x",
+      runProps: {},
+      revision: stamp(1),
+    });
+    // The field goes between the control's two pieces, the first holding only the insertion.
+    const field = applied(typed.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 1),
+      slice: {
+        content: [{ type: "simpleField", instruction: "PAGE", content: [run("3")] }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      revision: { ...stamp(2), date: "2026-05-06T07:08:10Z" },
+      newIds: { control: [7] },
+    });
+    const ids = [...typed.revisions, ...field.revisions];
+    expect(resolved(field.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+  });
+
+  // Two alike containers a resolution merges meet inside too; a piece there
+  // is folded back only if the resolution emptied it.
+  test("an emptied piece inside merged containers goes back into its neighbour", () => {
+    const nested = (content: ParagraphContent[]): ParagraphContent =>
+      control(1, [control(2, content)]);
+    const document = documentOf(
+      paragraph("00000001", [nested([run("ab")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const typed = applied(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 1),
+      text: "x",
+      runProps: {},
+      revision: stamp(1),
+    });
+    // Split on each side of the insertion: in the middle paragraph the inner
+    // control's piece holds only it, inside a piece of the outer control, so
+    // rejecting empties the inner piece, not the paragraph's first record.
+    const first = applied(typed.document, {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 1),
+      newBlockId: "00000002",
+      revision: stamp(2),
+      newIds: { control: [7, 17] },
+    });
+    const second = applied(first.document, {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000001", 1),
+      newBlockId: "00000003",
+      revision: stamp(3),
+      newIds: { control: [8, 18] },
+    });
+    const ids = [...typed.revisions, ...first.revisions, ...second.revisions];
+    expect(resolved(second.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 });

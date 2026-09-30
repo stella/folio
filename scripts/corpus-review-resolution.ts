@@ -1,7 +1,7 @@
 /** Report-only L9 over cached, locked corpus files. Does not fetch or update baselines. */
 import path from "node:path";
 import { Result, TaggedError } from "better-result";
-import { normalizeForOps, REVISION_DECISIONS } from "@stll/docx-core/ops";
+import { normalizeForOps, REVISION_DECISIONS } from "../packages/docx-core/src/ops/documentOps";
 
 import { parseDocx } from "../packages/core/src/docx/parser";
 import {
