@@ -13,7 +13,7 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
 
-import type { Document, Paragraph, TableRow } from "../../model/document";
+import type { Document, Paragraph, Table, TableRow } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -246,6 +246,39 @@ const envelopes = (): DocumentOpEnvelope[] => {
     out.push(toOpEnvelope(op));
     for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
     rowDocument = result.value.document;
+  }
+  const table: Table = { type: "table", rows: [row("00000031")] };
+  let tableDocument: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "paragraph", paraId: "00000030", content: [] },
+          table,
+          { type: "paragraph", paraId: "00000032", content: [] },
+        ],
+      },
+    },
+  };
+  const tableOps = [
+    {
+      type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+      story: OP_STORIES.MAIN,
+      at: { type: "before", blockId: "00000030" },
+      table: { type: "table", rows: [row("00000033")] },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+      story: OP_STORIES.MAIN,
+      blockId: "00000031",
+      expected: table,
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of tableOps) {
+    const result = applyDocumentOp(tableDocument, op);
+    if (result.isErr()) throw result.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
+    tableDocument = result.value.document;
   }
   return out;
 };

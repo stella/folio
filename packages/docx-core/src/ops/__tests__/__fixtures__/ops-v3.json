@@ -2331,5 +2331,328 @@
         }
       ]
     }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "insertTable",
+      "story": "main",
+      "at": {
+        "type": "before",
+        "blockId": "00000030"
+      },
+      "table": {
+        "type": "table",
+        "rows": [
+          {
+            "type": "tableRow",
+            "cells": [
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000033",
+                    "content": [
+                      {
+                        "type": "run",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Cell"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "setContainerBlocks",
+      "story": "main",
+      "blockId": "00000030",
+      "expected": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "type": "tableRow",
+              "cells": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "paraId": "00000033",
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000030",
+          "content": []
+        },
+        {
+          "type": "table",
+          "rows": [
+            {
+              "type": "tableRow",
+              "cells": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "paraId": "00000031",
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000032",
+          "content": []
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "00000030",
+          "content": []
+        },
+        {
+          "type": "table",
+          "rows": [
+            {
+              "type": "tableRow",
+              "cells": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "paraId": "00000031",
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000032",
+          "content": []
+        }
+      ]
+    }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "deleteTable",
+      "story": "main",
+      "blockId": "00000031",
+      "expected": {
+        "type": "table",
+        "rows": [
+          {
+            "type": "tableRow",
+            "cells": [
+              {
+                "type": "tableCell",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "paraId": "00000031",
+                    "content": [
+                      {
+                        "type": "run",
+                        "content": [
+                          {
+                            "type": "text",
+                            "text": "Cell"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "setContainerBlocks",
+      "story": "main",
+      "blockId": "00000030",
+      "expected": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "type": "tableRow",
+              "cells": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "paraId": "00000033",
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000030",
+          "content": []
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000032",
+          "content": []
+        }
+      ],
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "type": "tableRow",
+              "cells": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "paraId": "00000033",
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000030",
+          "content": []
+        },
+        {
+          "type": "table",
+          "rows": [
+            {
+              "type": "tableRow",
+              "cells": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "paraId": "00000031",
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000032",
+          "content": []
+        }
+      ]
+    }
   }
 ]
