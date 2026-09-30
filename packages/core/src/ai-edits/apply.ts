@@ -1057,6 +1057,7 @@ const applyBlockParagraphProperties = ({
   numbering = null,
   revisionInfo,
 }: ApplyBlockParagraphPropertiesOptions): ApplyBlockParagraphPropertiesResult => {
+  const storedMarks = tr.storedMarks ?? tr.selection.$from.marks();
   const attrs = expectParagraphAttrs(node);
   const resolvedFormattingFromStyle =
     properties.styleId === undefined
@@ -1110,15 +1111,13 @@ const applyBlockParagraphProperties = ({
       : { tr, revisionIds: [] };
   const styled = bridgeResult.tr.setNodeMarkup(position, undefined, nextAttrs);
   return {
-    tr:
-      (attrs.styleId ?? null) === (nextStyleId ?? null)
-        ? styled
-        : rebaseParagraphRuns({
-            tr: styled,
-            position,
-            previous: node,
-            styleResolver,
-          }),
+    tr: rebaseParagraphRuns({
+      tr: styled,
+      position,
+      previous: node,
+      styleResolver,
+      storedMarks,
+    }),
     changed: true,
     revisionId: change?.info.id ?? null,
     revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
@@ -1162,6 +1161,7 @@ const applyReplaceBlockStyleId = ({
     return { tr, revisionId: null, revisionIds: [] };
   }
 
+  const storedMarks = tr.storedMarks ?? tr.selection.$from.marks();
   const attrs = expectParagraphAttrs(block);
   const resolvedFormattingFromStyle = resolveFormattingFromStyle({
     attrs,
@@ -1213,15 +1213,13 @@ const applyReplaceBlockStyleId = ({
       : { tr, revisionIds: [] };
   const styled = bridgeResult.tr.setNodeMarkup(blockPosition, undefined, nextAttrs);
   return {
-    tr:
-      (attrs.styleId ?? null) === item.operation.styleId
-        ? styled
-        : rebaseParagraphRuns({
-            tr: styled,
-            position: blockPosition,
-            previous: block,
-            styleResolver,
-          }),
+    tr: rebaseParagraphRuns({
+      tr: styled,
+      position: blockPosition,
+      previous: block,
+      styleResolver,
+      storedMarks,
+    }),
     revisionId: change?.info.id ?? null,
     revisionIds: change ? [change.info.id, ...bridgeResult.revisionIds] : [],
   };
