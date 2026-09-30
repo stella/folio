@@ -1031,7 +1031,7 @@ describe("table cell structural revision resolution", () => {
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
-  test("reject keeps continuation-only rows visible after a pending split", () => {
+  test("reject restores a vertical merge removed by a pending split", () => {
     const view = dispatcher(
       EditorState.create({
         schema: tableSchema,
@@ -1075,12 +1075,9 @@ describe("table cell structural revision resolution", () => {
 
     expect(rejectAIEditRevision(82)(view.state, view.dispatch)).toBe(true);
     const table = view.state.doc.firstChild;
-    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
-    expect(table?.child(1).childCount).toBe(1);
-    expect(table?.child(2).childCount).toBe(1);
-    expect(table?.child(1).firstChild?.attrs["_originalFormatting"]).toMatchObject({
-      vMerge: "continue",
-    });
+    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(3);
+    expect(table?.child(1).childCount).toBe(0);
+    expect(table?.child(2).childCount).toBe(0);
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
@@ -1112,13 +1109,27 @@ describe("table cell structural revision resolution", () => {
     );
 
     expect(rejectAIEditRevision(83)(view.state, view.dispatch)).toBe(true);
-    const table = view.state.doc.firstChild;
-    expect(table?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
-    expect(table?.child(1).firstChild?.textContent).toBe("Restored");
-    expect(table?.child(1).firstChild?.attrs["_originalFormatting"]).toMatchObject({
-      vMerge: "continue",
-    });
-    expect(table?.child(0).firstChild?.attrs["_docxVMergeContinuationCells"]).toBeNull();
+    const mergedCell = view.state.doc.firstChild?.firstChild?.firstChild;
+    expect(mergedCell?.childCount).toBe(1);
+    expect(mergedCell?.textContent).toBe("");
+    expect(mergedCell?.attrs["_docxVMergeContinuationCells"]).toEqual([
+      {
+        type: "tableCell",
+        formatting: { vMerge: "continue" },
+        content: [
+          {
+            _docxParagraphSourceBinding: { type: "authored" },
+            type: "paragraph",
+            content: [
+              {
+                type: "run",
+                content: [{ type: "text", text: "Restored" }],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
     expect(() => view.state.doc.check()).not.toThrow();
   });
 
