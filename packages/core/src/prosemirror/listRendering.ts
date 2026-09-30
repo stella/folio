@@ -54,18 +54,20 @@ export type RejectedListRenderingOptions = {
   /** The previous state the rejected record restores. */
   previousFormatting: PreviousFormatting | null | undefined;
   numbering: NumberingMap | null;
+  restoredNumbering: ParagraphAttrs["numPr"];
 };
 
 export const rejectedListRenderingPatch = ({
   current,
   previousFormatting,
   numbering,
+  restoredNumbering,
 }: RejectedListRenderingOptions): Record<string, unknown> => {
   const record = previousFormatting ?? {};
   if (recordsListRendering(record)) {
     return {};
   }
-  const restored = record.numPr ?? undefined;
+  const restored = restoredNumbering ?? undefined;
   if (sameStatedParagraphNumbering(restored, current.numPr ?? undefined)) {
     return {};
   }

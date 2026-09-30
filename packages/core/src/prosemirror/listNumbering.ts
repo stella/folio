@@ -30,6 +30,8 @@ import type { ListLevel } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { paragraphPropertiesSnapshot } from "./commands/propertyChangeScope";
 import { LIST_RENDERING_ATTR_KEYS } from "./listMarker";
+import { getDocumentStyleResolver } from "./plugins/documentStyleState";
+import type { RunStyleResolver } from "./runStyleFormatting";
 import { getDocumentNumbering } from "./plugins/documentNumbering";
 import { makeRevisionInfo, SUGGESTION_META } from "./plugins/suggestionMode";
 import type { ParagraphAttrs, ParagraphPropertyChangeAttrs } from "./schema/nodes";
@@ -73,7 +75,7 @@ const listChangeSnapshot = (
   const previousFormatting: Record<string, unknown> = paragraphPropertiesSnapshot(
     node.type.create(attrs, node.content, node.marks),
   );
-  previousFormatting["numPr"] = attrs["numPr"] ?? null;
+  previousFormatting["numPr"] ??= null;
   for (const key of LIST_RENDERING_ATTR_KEYS) {
     previousFormatting[key] = attrs[key] ?? null;
   }
@@ -84,19 +86,28 @@ const listChangeSnapshot = (
  * The original state a pending record describes, completed with the list
  * attrs it may not state. A record written by a list command states them all.
  * One written for another property (or read from a file) states the scope
- * only: its numbering is the original's, and an absent one means the original
- * had none, so the rendering is recomputed from it rather than copied from
+ * only: absent direct numbering uncovers the original style's numbering,
+ * so the rendering is recomputed from it rather than copied from
  * the live paragraph, whose list may since have changed.
  */
-const originalListFormatting = (
-  record: PreviousFormatting,
-  numbering: NumberingMap | null,
-): Record<string, unknown> => {
+type OriginalListFormattingOptions = {
+  record: PreviousFormatting;
+  numbering: NumberingMap | null;
+  styleResolver: RunStyleResolver | null;
+};
+
+const originalListFormatting = ({
+  record,
+  numbering,
+  styleResolver,
+}: OriginalListFormattingOptions): Record<string, unknown> => {
   const original: Record<string, unknown> = { ...record };
   if (recordsListRendering(record)) {
     return original;
   }
-  Object.assign(original, listRenderingFor(record.numPr, numbering));
+  const inherited = styleResolver?.resolveParagraphStyle(record.styleId ?? undefined)
+    .paragraphFormatting?.numPr;
+  Object.assign(original, listRenderingFor(record.numPr ?? inherited, numbering));
   original["numPr"] = record.numPr ?? null;
   return original;
 };
@@ -117,6 +128,7 @@ type TrackListChangeOptions = {
   next: Record<string, unknown>;
   rev: RevisionInfo;
   numbering: NumberingMap | null;
+  styleResolver: RunStyleResolver | null;
 };
 
 /**
@@ -138,13 +150,14 @@ const trackListChange = ({
   next,
   rev,
   numbering,
+  styleResolver,
 }: TrackListChangeOptions): Record<string, unknown> => {
   const currentAttrs = expectParagraphAttrs(current);
   const existing = currentAttrs._propertyChanges ?? [];
   const pending = existing.find(({ info }) => info.provenance !== "suggested");
   const retained = existing.filter((change) => change !== pending);
   const previousFormatting = pending?.previousFormatting
-    ? originalListFormatting(pending.previousFormatting, numbering)
+    ? originalListFormatting({ record: pending.previousFormatting, numbering, styleResolver })
     : listChangeSnapshot(current, currentAttrs);
   const ownPending = pending !== undefined && pending.info.author === rev.author;
 
@@ -365,8 +378,17 @@ export const applyParagraphUpdates = ({
 }: ApplyParagraphUpdatesOptions): void => {
   const rev = makeRevisionInfo(state);
   const numbering = getDocumentNumbering(state);
+  const styleResolver = getDocumentStyleResolver(state);
   for (const { pos, node, next } of updates) {
-    const attrs = rev ? trackListChange({ current: node, next, rev, numbering }) : next;
+    const attrs = rev
+      ? trackListChange({
+          current: node,
+          next,
+          rev,
+          numbering,
+          styleResolver,
+        })
+      : next;
     tr.setNodeMarkup(pos, undefined, attrs);
   }
   if (rev) {

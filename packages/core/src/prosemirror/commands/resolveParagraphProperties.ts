@@ -1,6 +1,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { ParagraphFormatting, SectionProperties } from "../../types/document";
 import type { NumberingMap } from "../../docx/numberingParser";
+import { paragraphNumberingAttr } from "../numberingAttr";
+import { resolveParagraphNumbering } from "../../docx/numberingReference";
 import { expectParagraphAttrs } from "../attrs";
 import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
@@ -87,6 +89,15 @@ export const resolveParagraphChangeAttrs = ({
           previousFormattingFromStyle === undefined && resolvedFromStyle === undefined
             ? undefined
             : { ...previousFormattingFromStyle, ...resolvedFromStyle };
+        let styleNumbering = previousFormattingFromStyle?.numPr;
+        if (!styleResolver && sameStyle) {
+          styleNumbering = currentAttrs.numPrFromStyle ?? undefined;
+        }
+        const inheritedNumbering =
+          styleNumbering == null
+            ? null
+            : paragraphNumberingAttr(resolveParagraphNumbering(styleNumbering));
+        const restoredNumbering = rejection.previousFormatting?.numPr ?? inheritedNumbering;
         Object.assign(
           nextAttrs,
           paragraphRejectAttrPatch(rejection.previousFormatting, inheritedFormatting),
@@ -94,7 +105,9 @@ export const resolveParagraphChangeAttrs = ({
             current: expectParagraphAttrs(node),
             previousFormatting: rejection.previousFormatting,
             numbering,
+            restoredNumbering,
           }),
+          { numPr: restoredNumbering, numPrFromStyle: inheritedNumbering },
         );
         const restoredFormatting = paragraphRejectOriginalFormatting(
           rejection.previousFormatting,

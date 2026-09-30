@@ -133,7 +133,7 @@ export const carryParagraphProperties = ({
 
 /**
  * Whether the carried numbering is the paragraph's own or its style's: the
- * record holds `numPr` as the paragraph reads it, and a style's numbering
+ * record holds only stated numbering, and a style's numbering
  * stays the style's rather than becoming the paragraph's own `w:numPr`.
  */
 const carriedNumberingProvenance = (
@@ -180,10 +180,7 @@ export const paragraphLeftAfter = ({
   }
 };
 
-const recordedFormatting = (node: PMNode): Record<string, unknown> => ({
-  ...paragraphPropertiesSnapshot(node),
-  numPr: expectParagraphAttrs(node).numPr ?? null,
-});
+const recordedFormatting = paragraphPropertiesSnapshot;
 
 /**
  * A paragraph now holds the break another one had (a split, or a paste into
