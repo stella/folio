@@ -31,12 +31,14 @@ import type {
   ParagraphMarkChange,
   ParagraphPropertyChange,
   TextFormatting,
+  TableRow,
 } from "../model/document";
 
 /**
  * The operation schema this module reads and writes.
  *
- * Version 3 adds paragraph insertion through `insertBlocks`.
+ * Version 3 adds paragraph insertion through `insertBlocks` and the table-row
+ * operations `insertRow`, `deleteRow` and `setTableRows`.
  * Version 2 added tracked changes: the `revision` stamp on the text, formatting
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
@@ -174,6 +176,9 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   SET_PARAGRAPH_REVIEW: "setParagraphReview",
   REPLACE_INLINE: "replaceInline",
   RESOLVE_REVISION: "resolveRevision",
+  INSERT_ROW: "insertRow",
+  DELETE_ROW: "deleteRow",
+  SET_TABLE_ROWS: "setTableRows",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -509,7 +514,8 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
 
 /**
  * Accept or reject tracked changes by revision id: insertions, deletions and
- * moves, run and paragraph property changes, and paragraph marks.
+ * moves, run and paragraph property changes, paragraph marks, and row insertions
+ * and deletions.
  *
  * - Accepting an insertion or rejecting a deletion keeps the content and
  *   drops the wrapper; the other two remove the content, changes nested in it
@@ -526,6 +532,10 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
  *   unless the paragraph holds no content and goes with it: removing a
  *   paragraph is a block operation, so that is refused (`untrackable`), as is
  *   a join at a section break.
+ * - Row insertions and deletions are resolved after inline changes and before
+ *   paragraph marks. Keeping a row clears its structural revision; removing
+ *   it also removes its nested revisions. Removing every row requires a
+ *   whole-table operation and is refused as `untrackable`.
  * - Records the resolution leaves meeting are merged as far as they are
  *   alike: the pieces a change cut apart are one record again.
  *
@@ -538,6 +548,51 @@ export type ResolveRevisionOp = {
   story: OpStory;
   revisionIds: readonly number[];
   decision: RevisionDecision;
+};
+
+/**
+ * Insert a row at a zero-based index in the table holding `blockId`.
+ * The paragraph reference selects the innermost table containing it.
+ * With `revision`, the row and its cell content record an insertion; no
+ * paragraph mark changes. `newIds` names the additional wrapper ids.
+ */
+export type InsertRowOp = {
+  type: typeof DOCUMENT_OP_TYPES.INSERT_ROW;
+  story: OpStory;
+  blockId: string;
+  at: number;
+  row: TableRow;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
+/**
+ * Remove the row holding `blockId`, or record a row and cell-content deletion
+ * with `revision`. The innermost containing row is selected. `expected`, when
+ * present, refuses a stale row. Removing the last row requires a table
+ * operation and is refused; tracked deletion keeps a row not pending deletion.
+ */
+export type DeleteRowOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_ROW;
+  story: OpStory;
+  blockId: string;
+  expected?: TableRow;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
+/**
+ * Replace a table's rows exactly, with a structural staleness precondition.
+ * This is the inverse and resolution primitive for row operations. The table
+ * holding `blockId` must retain at least one row; whole-table removal is a
+ * separate operation.
+ */
+export type SetTableRowsOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
+  story: OpStory;
+  blockId: string;
+  expected: readonly TableRow[];
+  rows: readonly TableRow[];
 };
 
 /** A schema-version-3 document operation. */
@@ -555,7 +610,10 @@ export type DocumentOp =
   | ReplaceBlocksOp
   | SetParagraphReviewOp
   | ReplaceInlineOp
-  | ResolveRevisionOp;
+  | ResolveRevisionOp
+  | InsertRowOp
+  | DeleteRowOp
+  | SetTableRowsOp;
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the

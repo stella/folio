@@ -35,6 +35,7 @@ import {
 } from "./leaves";
 import { paragraphLength } from "./offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
+import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
 import {
   DOCUMENT_OP_TYPES,
@@ -395,7 +396,7 @@ const storyIdentityKeys = (document: Document, story: OpStory): Set<string> =>
  * Resolve tracked changes by revision id, applied as the primitive
  * operations it expands to. An id no record in the story carries is
  * skipped; one carried by a record resolution does not reach yet (a table,
- * row or section change, a record inside a field) is refused.
+ * cell or section change, a record inside a field) is refused.
  */
 export const resolveRevision = (
   document: Document,
@@ -425,14 +426,17 @@ export const resolveRevision = (
   }
   const resolution: Resolution = { ids, decision: op.decision };
   const paragraphs = storyParagraphs(storyBody(document, op.story));
-  const reachable = new Set(paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]));
+  const reachable = new Set([
+    ...paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]),
+    ...reachableRowIds(document, op.story),
+  ]);
   const unreachable = [...ids].find((id) => !reachable.has(id));
   if (unreachable !== undefined) {
     return Result.err(
       refusal(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `Revision ${unreachable} is not an inline change, property change or paragraph mark.`,
+        `Revision ${unreachable} is not an inline change, property change, row change or paragraph mark.`,
       ),
     );
   }
@@ -474,9 +478,13 @@ export const resolveRevision = (
   if (staged.isErr()) {
     return Result.err(staged.error);
   }
-  const edits: DocumentEdit[] = [staged.value];
-  let current = staged.value.document;
+  const rows = resolveTableRows({ document: staged.value.document, op, applyOps });
+  if (rows.isErr()) return Result.err(rows.error);
+  const removedParagraphs = new Set(rows.value.touched.removed.map(idKey));
+  const edits: DocumentEdit[] = [staged.value, rows.value];
+  let current = rows.value.document;
   for (const join of joins.toReversed()) {
+    if (removedParagraphs.has(idKey(join.paraId))) continue;
     const planned = joinOps(current, join);
     if (planned.isErr()) {
       return Result.err(planned.error);

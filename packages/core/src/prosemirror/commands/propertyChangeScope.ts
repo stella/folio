@@ -232,6 +232,14 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
     if (key === "hangingIndent" && styleSuppliedParagraphValue(attrs, "indentFirstLine")) {
       continue;
     }
+    // A value the style lends is not the paragraph's own `w:pPr`: a record
+    // holds what the paragraph states, as a save would write it.
+    if (styleSuppliedParagraphValue(attrs, key)) {
+      continue;
+    }
+    if (key === "hangingIndent" && styleSuppliedParagraphValue(attrs, "indentFirstLine")) {
+      continue;
+    }
     const value: unknown = attrs[key];
     if (
       key === "hangingIndent" &&

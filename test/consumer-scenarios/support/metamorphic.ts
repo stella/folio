@@ -22,8 +22,9 @@
  * - `batchSequential`: a batch leaves what its applied operations leave one
  *   at a time, each re-resolved against the document as it then stands, in
  *   the order the batch contract gives (packages/core/src/ai-edits/
- *   batchOverlap.test.ts): insertions first, together, then annotations, then
- *   the rest from the end of the document backwards.
+ *   batchOverlap.test.ts): annotations first, then insertions and other
+ *   non-column operations, then table-column edits in source-grid order
+ *   (table and column descending, insertions before deletions at ties).
  * - `readerStability`: after every save, the live reviewer and the reopened
  *   one give the same `getContent()`, bridge snapshot, `toMarkdown`,
  *   `getChanges()` and `getComments()`.
@@ -467,25 +468,57 @@ const placement = (operation: AnyOperation, preRows: readonly Row[]): [number, n
 };
 
 /** The one-at-a-time groups, in the batch contract's order. */
-const sequentialGroups = (
+export const sequentialGroups = (
   applied: readonly AnyOperation[],
   preRows: readonly Row[],
 ): AnyOperation[][] => {
   const indexed = applied.map((operation, index) => ({ operation, index }));
+  const isColumnEdit = (operation: AnyOperation): boolean =>
+    operation.type === "insertTableColumn" || operation.type === "deleteTableColumn";
   const rest = indexed
-    .filter(({ operation }) => !INSERTIONS.has(operation.type) && !ANNOTATIONS.has(operation.type))
+    .filter(
+      ({ operation }) =>
+        !INSERTIONS.has(operation.type) &&
+        !ANNOTATIONS.has(operation.type) &&
+        !isColumnEdit(operation),
+    )
     .toSorted((left, right) => {
       const a = placement(left.operation, preRows);
       const b = placement(right.operation, preRows);
       return b[0] - a[0] || b[1] - a[1] || b[2] - a[2] || right.index - left.index;
     });
+  const columnLocation = (operation: AnyOperation): [number, number] => {
+    const targetId = blockIdOf(operation);
+    const target = preRows.find((row) => row.id === targetId);
+    if (!target?.table)
+      throw new Error(`Applied ${operation.type} anchor ${targetId} has no source table.`);
+    const sourceColumn = target.table.gridColumnIndex;
+    const column =
+      operation.type === "insertTableColumn" && operation["position"] !== "before"
+        ? sourceColumn + target.table.columnSpan
+        : sourceColumn;
+    return [target.table.tableIndex, column];
+  };
+  const columns = indexed
+    .filter(({ operation }) => isColumnEdit(operation))
+    .toSorted((left, right) => {
+      const [leftTable, leftColumn] = columnLocation(left.operation);
+      const [rightTable, rightColumn] = columnLocation(right.operation);
+      if (leftTable !== rightTable) return rightTable - leftTable;
+      if (leftColumn !== rightColumn) return rightColumn - leftColumn;
+      const leftIsInsertion = left.operation.type === "insertTableColumn";
+      const rightIsInsertion = right.operation.type === "insertTableColumn";
+      if (leftIsInsertion !== rightIsInsertion) return leftIsInsertion ? -1 : 1;
+      return right.index - left.index;
+    });
   const insertions = applied.filter((operation) => INSERTIONS.has(operation.type));
   return [
+    ...applied.filter((operation) => ANNOTATIONS.has(operation.type)).map((one) => [one]),
     // Insertions sharing a gap keep their input order, which is the batch's
     // own contract, so they are stated together the same way.
     ...(insertions.length > 0 ? [insertions] : []),
-    ...applied.filter((operation) => ANNOTATIONS.has(operation.type)).map((one) => [one]),
     ...rest.map(({ operation }) => [operation]),
+    ...columns.map(({ operation }) => [operation]),
   ];
 };
 

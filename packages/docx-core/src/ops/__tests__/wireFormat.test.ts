@@ -13,7 +13,7 @@
 import { expect, test } from "bun:test";
 import path from "node:path";
 
-import type { Document, Paragraph } from "../../model/document";
+import type { Document, Paragraph, TableRow } from "../../model/document";
 import { applyDocumentOp } from "../apply";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -196,6 +196,56 @@ const envelopes = (): DocumentOpEnvelope[] => {
       }),
     );
     for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
+  }
+  const row = (paraId: string): TableRow => ({
+    type: "tableRow",
+    cells: [
+      {
+        type: "tableCell",
+        content: [
+          {
+            type: "paragraph",
+            paraId,
+            content: [{ type: "run", content: [{ type: "text", text: "Cell" }] }],
+          },
+        ],
+      },
+    ],
+  });
+  let rowDocument: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "table", rows: [row("00000020"), row("00000021")] },
+          { type: "paragraph", paraId: "00000022", content: [] },
+        ],
+      },
+    },
+  };
+  const rowOps = [
+    {
+      type: DOCUMENT_OP_TYPES.INSERT_ROW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000020",
+      at: 1,
+      row: row("00000023"),
+      revision: stamp(200),
+      newIds: { revision: [201] },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.DELETE_ROW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000021",
+      revision: stamp(202),
+      newIds: { revision: [203] },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of rowOps) {
+    const result = applyDocumentOp(rowDocument, op);
+    if (result.isErr()) throw result.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of result.value.inverse) out.push(toOpEnvelope(inverse));
+    rowDocument = result.value.document;
   }
   return out;
 };
