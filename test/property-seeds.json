@@ -1,13 +1,5 @@
 {
   "$comment": "Seeds that once failed, replayed first by assertProperty (test/property-testing.ts) in every environment. Key: <repo-relative test file>::<test title as written>. A nightly failure issue carries the entry to add.",
-  "packages/core/src/prosemirror/commands/verticalMergeResolution.property.test.ts::resolved vertical merges match the reader across content and row shapes": [
-    {
-      "seed": 381901026,
-      "path": "0:1:1:1:1:1",
-      "note": "Collapsed continuation chains transported shared revision metadata as an aliased hidden graph",
-      "date": "2026-09-30"
-    }
-  ],
   "packages/docx-core/src/ops/__tests__/tableRows.property.test.ts::${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality": [
     {
       "seed": -989506751,
@@ -143,12 +135,6 @@
   "packages/core/src/ai-edits/tableOperations.property.test.ts::keep every value, agree across modes and readers, and reject cleanly": [
     {
       "seed": -1930932135,
-      "path": "101:7:9:12:12:8:8:8:35:36:36:36",
-      "note": "Retained merge continuations saved without a restart above after shared reader projection",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": -1930932135,
       "note": "#1159: tracked final paragraphs and batched rows",
       "date": "2026-09-28"
     },
@@ -202,6 +188,18 @@
       "path": "682:0:0:6:6:6:6:3:3:3:6:6:5:13:5:5:6:5:4:5:5:5:6:9:7:10:6:7:9:7:12:10",
       "note": "nested merged table: an emptied row survived a batch that moved its table",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 1343423521,
+      "path": "440:10:9:5:4:8:4:4:4:22:4:19:7:7:7:22:23:24:28:25:25:25:29:25:23:34:27:27:29:29:32:27:27:27:30:30:30:30",
+      "note": "a batch edit filled a cell a vertical merge folds: applied directly, refused tracked (path at factor 5)",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -1930932135,
+      "path": "101:7:9:12:12:8:8:8:35:36:36:36",
+      "note": "Retained merge continuations saved without a restart above after shared reader projection",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/internal/revisionResolutionStep.integration.test.ts::bulk resolution JSON replay and undo match its cached result": [
@@ -243,6 +241,14 @@
       "seed": -1097168474,
       "path": "2789:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:4:7:8:7:8:8:8:8:8:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:13:39:0:5:38:32:31:33:32:31:33:31:31:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
       "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts::a planned tracked deletion removes only the author's own insertions": [
+    {
+      "seed": 1491020740,
+      "path": "196:2:1:1:1:3:3:3:7:8:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:10:11:12:10:15:11:10:11:13:11:11:5:9:10:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9",
+      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
       "date": "2026-09-30"
     }
   ],
@@ -338,17 +344,46 @@
       "date": "2026-09-30"
     }
   ],
+  "packages/core/src/ai-edits/insertedTableFinalParagraphResolution.property.test.ts::generated table rows and following paragraphs preserve resolution laws": [
+    {
+      "seed": 1595037221,
+      "note": "An inserted table before final added paragraphs must not discard their break revisions.",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/core/src/docx/selectiveXmlPatch.property.test.ts::nested paragraph edits never apply overlapping source ranges": [
+    {
+      "seed": -1844025400,
+      "path": "0:0:0:0",
+      "note": "overlapping host and text-box paragraph replacements used stale source offsets",
+      "date": "2026-09-30"
+    }
+  ],
   "packages/core/src/prosemirror/tableCellPaste.property.test.ts::pasted vertical spans resolve like direct replacement across table sizes": [
     {
       "seed": 1109375221,
       "path": "0",
-      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept; shared projection must establish its implicit origin before folding empty continuations",
+      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept",
       "date": "2026-09-30"
     },
     {
       "seed": 118726139,
       "path": "0",
       "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1109375221,
+      "path": "0",
+      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept; shared projection must establish its implicit origin before folding empty continuations",
+      "date": "2026-09-30"
+    }
+  ],
+  "packages/core/src/prosemirror/commands/verticalMergeResolution.property.test.ts::resolved vertical merges match the reader across content and row shapes": [
+    {
+      "seed": 381901026,
+      "path": "0:1:1:1:1:1",
+      "note": "Collapsed continuation chains transported shared revision metadata as an aliased hidden graph",
       "date": "2026-09-30"
     }
   ]

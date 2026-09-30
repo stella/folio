@@ -4,7 +4,12 @@
 // is no decision for a host to learn about. A normalisation added here would
 // need the context; the guard above is the reminder.
 
-import { DocxArchiveError, type DocxArchive, loadDocxArchive } from "./boundedArchive";
+import {
+  DocxArchiveError,
+  type DocxArchive,
+  type DocxArchiveOptions,
+  loadDocxArchive,
+} from "./boundedArchive";
 import { escapeTableCell } from "../../markdown/escape";
 import { parseRelationships, RELATIONSHIP_TYPES } from "../relsParser";
 import {
@@ -920,11 +925,18 @@ const createEmptyResult = (): ExtractedDocxText => ({
   view: "accepted",
 });
 
+/** Options for {@link extractDocxText}. */
+export type ExtractDocxTextOptions = {
+  /** Archive limits, applied before and while each part is inflated. */
+  readonly archive?: DocxArchiveOptions;
+};
+
 /** Extract paragraph text and formatting metadata from a DOCX archive. */
 export const extractDocxText = async (
   bytes: ArrayBuffer | Uint8Array,
+  options: ExtractDocxTextOptions = {},
 ): Promise<ExtractedDocxText> => {
-  const archive = await loadDocxArchive(bytes);
+  const archive = await loadDocxArchive(bytes, options.archive);
   const documentXml = await archive.readEntryString("word/document.xml");
   if (documentXml === null) {
     return createEmptyResult();

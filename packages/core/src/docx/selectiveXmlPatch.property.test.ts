@@ -12,12 +12,17 @@
  *      on Set iteration order).
  *   5. Paragraph count must be invariant across patch.
  *   6. `findParagraphOffsets` returns a well-formed span.
+ *   7. Nested paragraph changes cannot splice overlapping source ranges.
  */
 
 import { describe, setDefaultTimeout, test, expect } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 import {
   buildPatchedDocumentXml,
@@ -102,6 +107,25 @@ describe("buildPatchedDocumentXml property invariants", () => {
         expect(result).toBe(xml);
       }),
       propertyConfig({ numRuns: 50 }),
+    );
+  });
+
+  test("nested paragraph edits never apply overlapping source ranges", () => {
+    assertProperty(
+      fc.property(paraTextArb, paraTextArb, fc.boolean(), (before, after, reversed) => {
+        const renderNested = (text: string) =>
+          `${XML_DECL}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:body>` +
+          `<w:p w14:paraId="A0000001"><w:r><w:pict><w:txbxContent>` +
+          renderParagraph({ id: "A0000002", text, marks: [], list: false }) +
+          `</w:txbxContent></w:pict></w:r></w:p>` +
+          renderParagraph({ id: "A0000003", text: "Tail", marks: [], list: false }) +
+          `</w:body></w:document>`;
+        const ids = reversed ? ["A0000002", "A0000001"] : ["A0000001", "A0000002"];
+        expect(
+          buildPatchedDocumentXml(renderNested(before), renderNested(after), new Set(ids)),
+        ).toBeNull();
+      }),
+      { numRuns: 50 },
     );
   });
 

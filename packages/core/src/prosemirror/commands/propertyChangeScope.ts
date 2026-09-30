@@ -42,6 +42,11 @@ import type {
 import { expectParagraphAttrs } from "../attrs";
 import { directParagraphAlignment } from "../paragraphAlignment";
 import {
+  PARAGRAPH_FORMATTING_WRITE_BACK,
+  STYLE_RESOLVED_PARAGRAPH_FIELDS,
+} from "../paragraphFormattingProvenance";
+import { sameFormattingValue } from "../runFormattingFromMarks";
+import {
   directParagraphSpacing,
   paragraphSpacingAttrPatch,
   paragraphSpacingFromFormatting,
@@ -180,12 +185,46 @@ const PPR_SPACING_ATTR_KEYS: ReadonlySet<keyof ParagraphAttrs> = new Set([
   "_autospacingBase",
 ]);
 
+/**
+ * Whether the attr holds only what the paragraph's style resolves to: the
+ * paragraph does not state it (its source `w:pPr` has no such field) and the
+ * value is the style's. The same test a save applies before writing it.
+ */
+const styleSuppliedParagraphValue = (attrs: ParagraphAttrs, key: string): boolean => {
+  if (!STYLE_RESOLVED_ATTR_FIELDS.has(key)) {
+    return false;
+  }
+  const field = key as keyof ParagraphFormatting;
+  const inherited: unknown = attrs._resolvedFormatting?.[field];
+  return (
+    attrs._originalFormatting?.[field] === undefined &&
+    inherited !== undefined &&
+    inherited !== null &&
+    sameFormattingValue(Reflect.get(attrs, key), inherited)
+  );
+};
+
+/** Fields whose attr carries the style-resolved value under the field's own name. */
+const STYLE_RESOLVED_ATTR_FIELDS: ReadonlySet<string> = new Set(
+  STYLE_RESOLVED_PARAGRAPH_FIELDS.filter(
+    (field) => PARAGRAPH_FORMATTING_WRITE_BACK[field].attr === field,
+  ),
+);
+
 /** The in-scope paragraph properties as they stand, for a `w:pPrChange` record. */
 export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnapshot => {
   const attrs = expectParagraphAttrs(node);
   const snapshot: Record<string, unknown> = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
     if (key === "alignment" || PPR_SPACING_ATTR_KEYS.has(key)) {
+      continue;
+    }
+    // A value the style lends is not the paragraph's own `w:pPr`: a record
+    // holds what the paragraph states, as a save would write it.
+    if (styleSuppliedParagraphValue(attrs, key)) {
+      continue;
+    }
+    if (key === "hangingIndent" && styleSuppliedParagraphValue(attrs, "indentFirstLine")) {
       continue;
     }
     const value: unknown = attrs[key];
@@ -266,8 +305,9 @@ const PPR_CHANGE_SCOPED_FORMATTING_KEYS = [
 
 /**
  * Build the attr patch that rejecting one pPrChange applies to a paragraph:
- * every in-scope key set to the stored previous value, or reset to `null`
- * when the stored old pPr does not carry it. Keys the record captured beyond
+ * every in-scope key set to the stored previous value, or to what the style
+ * (`inheritedFormatting`) supplies when the stored old pPr does not carry it,
+ * `null` when neither does. Keys the record captured beyond
  * the scoped set (editor-created list suggestions snapshot list-rendering
  * bookkeeping attrs) merge through 1:1 so their pre-change values restore too.
  */
@@ -278,7 +318,17 @@ export function paragraphRejectAttrPatch(
   const prev: ParagraphPropertySnapshot = previousFormatting ?? {};
   const patch: AttrPatch = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    patch[key] = Object.hasOwn(prev, key) ? (prev[key] ?? null) : null;
+    if (Object.hasOwn(prev, key)) {
+      patch[key] = prev[key] ?? null;
+    } else if (STYLE_RESOLVED_ATTR_FIELDS.has(key)) {
+      // The old pPr does not state it: the paragraph reads its style's value.
+      patch[key] = Reflect.get(inheritedFormatting ?? {}, key) ?? null;
+    } else {
+      patch[key] = null;
+    }
+  }
+  if (!Object.hasOwn(prev, "indentFirstLine") && !Object.hasOwn(prev, "hangingIndent")) {
+    patch["hangingIndent"] = inheritedFormatting?.hangingIndent ?? null;
   }
   if (!Object.hasOwn(prev, "alignment")) {
     patch["alignment"] = inheritedFormatting?.alignment ?? null;
