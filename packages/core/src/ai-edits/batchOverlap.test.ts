@@ -32,6 +32,7 @@ import {
   type FolioDocumentOperation,
   type FolioDocumentOperationResult,
 } from "../document-operations";
+import type { ParagraphFormatting } from "../types/document";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
@@ -183,10 +184,10 @@ type Span = { block: number; first: number; last: number };
 type GeneratedOperation =
   | ({ kind: "replaceInBlock" | "replaceRange" | "formatRange" | "commentOnRange" } & Span)
   | { kind: "splitBlock"; block: number; before: number }
+  | { kind: "mergeBlockWithNext"; block: number; separator?: string }
   | {
       kind:
         | "commentOnBlock"
-        | "mergeBlockWithNext"
         | "deleteBlock"
         | "replaceBlock"
         | "setBlockParagraphProperties"
@@ -299,6 +300,12 @@ const materialize = (
         : { id, type: "splitBlock", blockId, offset: at + previous.length, separator: " " };
     }
     case "mergeBlockWithNext":
+      return {
+        id,
+        type: generated.kind,
+        blockId,
+        ...(generated.separator !== undefined && { separator: generated.separator }),
+      };
     case "deleteBlock":
       return { id, type: generated.kind, blockId };
     case "replaceBlock":
@@ -340,15 +347,41 @@ const freshSession = async (): Promise<OperationSession> => {
  * must leave the same document, and a block no operation names must keep its
  * text. Returns what went wrong, if anything, naming the batch.
  */
-const batchAgainstOneAtATime = async (
-  generated: readonly GeneratedOperation[],
-  mode: Mode,
-): Promise<string[]> => {
+type BatchAgainstOneAtATimeOptions = {
+  generated: readonly GeneratedOperation[];
+  mode: Mode;
+  alignments?: readonly ParagraphFormatting["alignment"][];
+};
+
+const batchAgainstOneAtATime = async ({
+  generated,
+  mode,
+  alignments,
+}: BatchAgainstOneAtATimeOptions): Promise<string[]> => {
   const problems: string[] = [];
   const report = (problem: string) => {
     problems.push(`${mode} ${JSON.stringify(generated)}: ${problem}`);
   };
-  const batch = await freshSession();
+  const initializedSession = async () => {
+    const session = await freshSession();
+    if (!alignments) return session;
+    const blocks = session.snapshot().blocks;
+    const operations = alignments.flatMap((alignment, index) => {
+      const block = blocks.at(index);
+      if (!block || alignment === undefined) return [];
+      return [
+        {
+          id: `initial-${index}`,
+          type: "setBlockParagraphProperties" as const,
+          blockId: block.id,
+          properties: { alignment },
+        },
+      ];
+    });
+    session.apply("direct", operations);
+    return session;
+  };
+  const batch = await initializedSession();
   const blockIds = batch.snapshot().blocks.map((block) => block.id);
   const operations = generated.flatMap((operation, index) => {
     const materialized = materialize(batch, blockIds, operation, index);
@@ -369,7 +402,7 @@ const batchAgainstOneAtATime = async (
     appliedIds.has(`op${String(index)}`) ? [{ operation, index }] : [],
   );
 
-  const oracle = await freshSession();
+  const oracle = await initializedSession();
   const materializeAll = (entries: readonly { operation: GeneratedOperation; index: number }[]) =>
     entries.flatMap(({ operation, index }) => {
       const materialized = materialize(oracle, blockIds, operation, index);
@@ -534,8 +567,8 @@ describe("a batch of two operations on one block or its neighbours", () => {
       const problems: string[] = [];
       for (const first of KIND_SAMPLES) {
         for (const second of [...KIND_SAMPLES, ...NEIGHBOUR_SAMPLES]) {
-          problems.push(...(await batchAgainstOneAtATime([first, second], mode)));
-          problems.push(...(await batchAgainstOneAtATime([second, first], mode)));
+          problems.push(...(await batchAgainstOneAtATime({ generated: [first, second], mode })));
+          problems.push(...(await batchAgainstOneAtATime({ generated: [second, first], mode })));
         }
       }
       expect(problems).toEqual([]);
@@ -584,7 +617,7 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
         { kind: "replaceInBlock", block: 0, first: 0, last: 0 },
       ];
       for (const generated of [...orders, found, insertedBefore, deletedWithEarlierEdit]) {
-        problems.push(...(await batchAgainstOneAtATime(generated, mode)));
+        problems.push(...(await batchAgainstOneAtATime({ generated, mode })));
       }
       expect(problems).toEqual([]);
     });
@@ -637,7 +670,7 @@ describe("a merge into blocks the batch deletes", () => {
   for (const mode of MODES) {
     for (const [name, generated] of Object.entries(cases)) {
       test(`${name}: as one at a time would (${mode})`, async () => {
-        expect(await batchAgainstOneAtATime(generated, mode)).toEqual([]);
+        expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
       });
     }
   }
@@ -683,7 +716,49 @@ describe("a merge into blocks the batch deletes", () => {
       { kind: "deleteBlock", block: 3 },
       { kind: "mergeBlockWithNext", block: 0 },
     ];
-    expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
+    expect(await batchAgainstOneAtATime({ generated, mode: "tracked-changes" })).toEqual([]);
+  });
+});
+
+// Pairwise operation sweeps miss the deferred final-break dependency. Exercise
+// the merge/format/delete topology with both equal and different carrier properties.
+describe("a merge past a break retired by the same batch", () => {
+  const alignments = [
+    [undefined, undefined, undefined, undefined],
+    ["left", "left", "center", "left"],
+    ["right", "left", "center", "right"],
+    ["center", "right", "left", "center"],
+  ] as const;
+  const orders = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ];
+  test.each(MODES)("matches one-at-a-time property ownership (%s)", async (mode) => {
+    const problems: string[] = [];
+    for (const initial of alignments) {
+      for (const merge of [0, 1]) {
+        for (const block of [0, 1, 2]) {
+          for (const separator of ["", " · "]) {
+            const trio = [
+              { kind: "mergeBlockWithNext", block: merge, separator },
+              { kind: "setBlockParagraphProperties", block },
+              { kind: "deleteBlock", block: BLOCK_COUNT - 1 },
+            ] as const satisfies readonly GeneratedOperation[];
+            for (const order of orders) {
+              const generated = order.flatMap((index) => trio.at(index) ?? []);
+              problems.push(
+                ...(await batchAgainstOneAtATime({ generated, mode, alignments: initial })),
+              );
+            }
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([]);
   });
 });
 
@@ -825,7 +900,7 @@ describe("a random batch with overlapping, nested and duplicate targets", () => 
         fc.array(operationArbitrary, { minLength: 2, maxLength: 7 }),
         fc.constantFrom(...MODES),
         async (generated, mode) => {
-          expect(await batchAgainstOneAtATime(generated, mode)).toEqual([]);
+          expect(await batchAgainstOneAtATime({ generated, mode })).toEqual([]);
         },
       ),
       { numRuns: 150 },

@@ -72,6 +72,12 @@
       "path": "585:5:6:0:3",
       "note": "#1221: deleting the last block carries its predecessor's properties from before the batch set them",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 252563079,
+      "path": "588:3",
+      "note": "A tracked merge must account for the final break retired by a later deletion (path at factor 5).",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (${name})": [
