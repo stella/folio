@@ -1,3 +1,8 @@
+/**
+ * Immediate PM-shape assertions missed resolution drift on reopen. Generate
+ * content and whole-row continuation shapes against the reader, then demand
+ * the same topology from both resolution paths and repeated saves.
+ */
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
