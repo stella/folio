@@ -352,5 +352,19 @@
       "note": "overlapping host and text-box paragraph replacements used stale source offsets",
       "date": "2026-09-30"
     }
+  ],
+  "packages/core/src/prosemirror/tableCellPaste.property.test.ts::pasted vertical spans resolve like direct replacement across table sizes": [
+    {
+      "seed": 1109375221,
+      "path": "0",
+      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 118726139,
+      "path": "0",
+      "note": "Pasted vertical span over nonempty cells stayed split and repeated its text on accept",
+      "date": "2026-09-30"
+    }
   ]
 }

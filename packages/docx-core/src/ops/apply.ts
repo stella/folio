@@ -119,6 +119,7 @@ import {
 } from "./refusal";
 import { resolveRevision } from "./resolve";
 import { applyRowOp } from "./tableRows";
+import { applyTableOp } from "./tables";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -1896,6 +1897,10 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return resolveRevision(document, op, applyDocumentOps);
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+      return applyTableOp(document, op);
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
@@ -1929,6 +1934,9 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return undefined;
     default: {
       const unreachable: never = op;

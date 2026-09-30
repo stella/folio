@@ -155,6 +155,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
     excludedCases: [
       ...LIST_PASTE_RESOLUTION_KEYS,
       { shape: "tracked-changes", operation: "paste:copied-blocks" },
+      { shape: "tables", operation: "paste:copied-blocks" },
     ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],

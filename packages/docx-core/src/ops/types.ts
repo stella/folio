@@ -32,12 +32,15 @@ import type {
   ParagraphPropertyChange,
   TextFormatting,
   TableRow,
+  Table,
+  BlockContent,
 } from "../model/document";
 
 /**
  * The operation schema this module reads and writes.
  *
- * Version 4 adds paragraph deletion through `deleteBlocks`.
+ * Version 4 adds paragraph deletion through `deleteBlocks`, direct whole-table
+ * operations and their exact structural inverse.
  * Version 3 adds paragraph insertion through `insertBlocks` and the table-row
  * operations `insertRow`, `deleteRow` and `setTableRows`.
  * Version 2 added tracked changes: the `revision` stamp on the text, formatting
@@ -178,6 +181,9 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   SET_PARAGRAPH_REVIEW: "setParagraphReview",
   REPLACE_INLINE: "replaceInline",
   RESOLVE_REVISION: "resolveRevision",
+  INSERT_TABLE: "insertTable",
+  DELETE_TABLE: "deleteTable",
+  SET_CONTAINER_BLOCKS: "setContainerBlocks",
   INSERT_ROW: "insertRow",
   DELETE_ROW: "deleteRow",
   SET_TABLE_ROWS: "setTableRows",
@@ -557,8 +563,8 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
  *   a join at a section break.
  * - Row insertions and deletions are resolved after inline changes and before
  *   paragraph marks. Keeping a row clears its structural revision; removing
- *   it also removes its nested revisions. Removing every row requires a
- *   whole-table operation and is refused as `untrackable`.
+ *   it also removes its nested revisions. Removing every row removes the
+ *   table, preserving the surrounding paragraphs.
  * - Records the resolution leaves meeting are merged as far as they are
  *   alike: the pieces a change cut apart are one record again.
  *
@@ -592,8 +598,8 @@ export type InsertRowOp = {
 /**
  * Remove the row holding `blockId`, or record a row and cell-content deletion
  * with `revision`. The innermost containing row is selected. `expected`, when
- * present, refuses a stale row. Removing the last row requires a table
- * operation and is refused; tracked deletion keeps a row not pending deletion.
+ * present, refuses a stale row. Direct removal of the last row removes its
+ * table; tracked deletion keeps a row not pending deletion.
  */
 export type DeleteRowOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_ROW;
@@ -606,9 +612,8 @@ export type DeleteRowOp = {
 
 /**
  * Replace a table's rows exactly, with a structural staleness precondition.
- * This is the inverse and resolution primitive for row operations. The table
- * holding `blockId` must retain at least one row; whole-table removal is a
- * separate operation.
+ * This is the inverse and resolution primitive for row operations. An empty
+ * row list removes the table, with an exact structural inverse.
  */
 export type SetTableRowsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
@@ -618,9 +623,44 @@ export type SetTableRowsOp = {
   rows: readonly TableRow[];
 };
 
+/** Insert a table before or after a paragraph, preserving a final paragraph. */
+export type InsertTableOp = {
+  type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+  story: OpStory;
+  at: BlockInsertionPoint;
+  table: Table;
+};
+
+/**
+ * Remove the innermost table holding the addressed paragraph. Its block list
+ * must retain a paragraph for the inverse; resolve terminal cell marks first.
+ */
+export type DeleteTableOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_TABLE;
+  story: OpStory;
+  blockId: string;
+  expected?: Table;
+};
+
+/**
+ * Exact structural inverse for table edits. The addressed paragraph must
+ * remain in the same block list; unrelated edits in that list make it stale.
+ * Surrounding blocks, section boundaries and container-final marks are preserved.
+ */
+export type SetContainerBlocksOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
+  story: OpStory;
+  blockId: string;
+  expected: readonly BlockContent[];
+  blocks: readonly BlockContent[];
+};
+
 /** A schema-version-4 document operation. */
 export type DocumentOp =
   | DeleteBlocksOp
+  | InsertTableOp
+  | DeleteTableOp
+  | SetContainerBlocksOp
   | InsertBlocksOp
   | InsertTextOp
   | InsertContentOp
