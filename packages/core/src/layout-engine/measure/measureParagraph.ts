@@ -27,6 +27,7 @@ import {
   DEFAULT_FONT_SIZE,
   DEFAULT_LINE_HEIGHT_MULTIPLIER,
   WIDTH_TOLERANCE,
+  canonicalLineWidth,
   runToFontStyle,
   isTextRun,
   isTabRun,
@@ -442,7 +443,7 @@ export function measureParagraph(
       fromChar: currentLine.fromChar,
       toRun: currentLine.toRun,
       toChar: currentLine.toChar,
-      width: Math.max(0, currentLine.width - currentLine.trailingWhitespaceWidth),
+      width: canonicalLineWidth(currentLine.width - currentLine.trailingWhitespaceWidth),
       ...finalTypography,
       ...(currentLine.justificationPaint !== undefined
         ? { justificationPaint: currentLine.justificationPaint }

@@ -247,7 +247,9 @@ function markRangeAsDeleted(
     const lastPos = doc === tr.doc ? $last.before() : tr.mapping.map($last.before());
     const lastMark = tr.doc.nodeAt(lastPos)?.attrs["pPrMark"] as { kind?: unknown } | null;
     const lastGoes = lastMark?.kind === "del" || lastMark?.kind === "moveFrom";
-    const survivorPos = lastGoes ? (paragraphLeftAfter(tr.doc, lastPos) ?? lastPos) : lastPos;
+    const survivorPos = lastGoes
+      ? (paragraphLeftAfter({ doc: tr.doc, paragraphPos: lastPos }) ?? lastPos)
+      : lastPos;
     carryIntoParagraphLeft(joinState, tr, $first.parent, survivorPos, {
       id: delAttrs.revisionId,
       author: delAttrs.author,
@@ -468,7 +470,7 @@ export function handleSuggestionPaste(
     }
     const firstPos = tr.mapping.map($from.before());
     const mark = tr.doc.nodeAt(firstPos)?.attrs["pPrMark"] as ParagraphMarkAttr | null | undefined;
-    const survivorPos = paragraphLeftAfter(tr.doc, firstPos);
+    const survivorPos = paragraphLeftAfter({ doc: tr.doc, paragraphPos: firstPos });
     if (mark?.kind === "del" && survivorPos !== null) {
       carryIntoParagraphLeft(view.state, tr, $from.parent, survivorPos, mark.info);
     }
@@ -1023,7 +1025,8 @@ function applyPPrDel(
     view.state,
     tr,
     targetNode,
-    paragraphLeftAfter(tr.doc, targetParagraphPos) ?? targetParagraphPos + targetNode.nodeSize,
+    paragraphLeftAfter({ doc: tr.doc, paragraphPos: targetParagraphPos }) ??
+      targetParagraphPos + targetNode.nodeSize,
     markInfo.info,
   );
   view.dispatch(tr.scrollIntoView());

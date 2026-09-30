@@ -16,6 +16,7 @@ import type { EditorView } from "prosemirror-view";
 
 import { expectHyperlinkMarkAttrs } from "../attrs";
 import { normalizeUserUrl } from "../../utils/urlSecurity";
+import { removeHyperlinkInRange } from "../hyperlinkRemoval";
 
 type HyperlinkRange = { start: number; end: number };
 
@@ -186,7 +187,7 @@ export const removeHyperlinkAtCursor = (
     return false;
   }
 
-  const tr = view.state.tr.removeMark(targetRange.start, targetRange.end, hlType);
+  const tr = removeHyperlinkInRange(view.state, view.state.tr, targetRange.start, targetRange.end);
   view.dispatch(tr.scrollIntoView());
   return true;
 };

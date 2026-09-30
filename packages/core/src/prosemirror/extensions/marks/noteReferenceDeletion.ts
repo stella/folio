@@ -41,3 +41,19 @@ export const expandNoteReferenceDeletionRange = (
 
   return intersectsReference ? { from: expandedFrom, to: expandedTo } : null;
 };
+
+/** Each whole note reference [`from`, `to`) of `doc` touches, in document order. */
+export const noteReferenceRanges = (doc: PMNode, from: number, to: number): DeletionRange[] => {
+  const ranges: DeletionRange[] = [];
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText || !node.marks.some((mark) => mark.type.name === "footnoteRef")) {
+      return;
+    }
+    const whole = expandNoteReferenceDeletionRange(doc, pos, pos + node.nodeSize);
+    const last = ranges.at(-1);
+    if (whole && (!last || whole.from >= last.to)) {
+      ranges.push(whole);
+    }
+  });
+  return ranges;
+};
