@@ -1827,7 +1827,11 @@ function clearActiveVerticalMerges(
   }
 }
 
-function tableCellHasMeaningfulContent(cell: TableCell): boolean {
+/**
+ * Whether a cell carries content a vertical-merge continuation must not hide.
+ * The reader keeps such a continuation as a cell of its own.
+ */
+export function tableCellHasMeaningfulContent(cell: TableCell): boolean {
   return cell.content.some(blockHasMeaningfulContent);
 }
 

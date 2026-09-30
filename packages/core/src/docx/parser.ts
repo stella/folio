@@ -1376,7 +1376,7 @@ export function fullParseDocx(
  * Faster than full parse when you only need variables
  */
 export async function getDocxVariables(buffer: ArrayBuffer): Promise<string[]> {
-  const raw = await unzipDocx(buffer);
+  const raw = await unzipDocx(buffer, {}, { verifyUnreadEntries: false });
 
   if (!raw.documentXml) {
     return [];
@@ -1400,7 +1400,7 @@ export async function getDocxSummary(buffer: ArrayBuffer): Promise<{
   mediaCount: number;
   variableCount: number;
 }> {
-  const raw = await unzipDocx(buffer);
+  const raw = await unzipDocx(buffer, {}, { verifyUnreadEntries: false });
   const variables = raw.documentXml
     ? extractAllTemplateVariables(parseDocumentBody(raw.documentXml).content)
     : [];

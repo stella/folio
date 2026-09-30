@@ -211,6 +211,18 @@ describe("validateDocxConformance", () => {
     expect(report.issues.at(0)?.code).toBe("archive-too-many-entries");
   });
 
+  test("fails packages whose parts pass the compression-ratio limit", async () => {
+    const zip = await JSZip.loadAsync(await createEmptyDocx());
+    zip.file("word/header1.xml", `<w:hdr>${"x".repeat(5 * 1024 * 1024)}</w:hdr>`);
+    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+
+    const report = await validateDocxConformance(bytes);
+
+    expect(report.status).toBe("invalid");
+    expect(checkStatus(report, "archive-safety")).toBe("failed");
+    expect(report.issues.at(0)?.code).toBe("archive-compression-ratio-exceeded");
+  });
+
   test("fails invalid archive limits before package loading", async () => {
     const report = await validateDocxConformance(await createEmptyDocx(), {
       archive: { maxEntries: Number.NaN },
