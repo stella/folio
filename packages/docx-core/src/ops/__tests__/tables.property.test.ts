@@ -361,11 +361,11 @@ describe("whole table operation properties", () => {
   }
 
   test(
-    "final cell marks refuse whole-table insertion and removal without mutation",
+    "unowned final cell marks refuse whole-table insertion and removal without mutation",
     () => {
       assertProperty(
         fc.property(shapes, (shape) => {
-          const markedShape = { ...shape, markPlacement: "final" } as const;
+          const markedShape = { ...shape, rowReview: "none", markPlacement: "final" } as const;
           for (const family of [
             "insertTable",
             "deleteTable",
@@ -376,7 +376,8 @@ describe("whole table operation properties", () => {
             expect(contractViolation(document)).toBeUndefined();
             const snapshot = structuredClone(document);
             const result = applyDocumentOp(document, op);
-            if (result.isOk()) throw new Error("Final cell paragraph marks must be refused.");
+            if (result.isOk())
+              throw new Error("Unowned final cell paragraph marks must be refused.");
             expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK);
             expect(document).toStrictEqual(snapshot);
           }
