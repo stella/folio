@@ -1,11 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
-import {
-  expectInlineWrapperMarkAttrs,
-  expectTrackedChangeMarkAttrs,
-  type InlineWrapperLayer,
-  type TrackedRevisionAncestor,
-} from "./attrs";
+import { expectInlineWrapperMarkAttrs, expectTrackedChangeMarkAttrs } from "./attrs";
+import type { InlineWrapperLayer, TrackedRevisionAncestor } from "./schema/marks";
 import { INLINE_WRAPPER_MARK_NAME } from "./extensions/marks/InlineWrapperExtension";
 
 /** The wrappers `node` sits inside, outermost first; empty when it sits in none. */
