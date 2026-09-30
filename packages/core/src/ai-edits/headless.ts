@@ -77,8 +77,10 @@ import {
 } from "../prosemirror/commands/comments";
 import { proseDocToBlocks, updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
 import {
+  deleteNoteWithReference,
   noteDeletionRevisions,
   noteKeysReferencedIn,
+  noteReferenceStates,
   noteReferencesRestored,
   referenceDeletions,
   referencedNotes,
@@ -144,6 +146,7 @@ import type {
   FolioWordDiffOptions,
 } from "./apply";
 import { buildAnnotatedBlockTextWithNoteReferences } from "./clean-text";
+import { noteReferenceEditsAllowed } from "./note-references";
 import {
   anchoredCommentIdsInBlocks,
   anchoredCommentIdsInProseDoc,
@@ -1776,7 +1779,18 @@ export class FolioDocxReviewer {
     });
   }
 
-  private applyDocumentOperationsInternal({
+  /** Apply a batch; the notes whose references it deletes or removes follow them. */
+  private applyDocumentOperationsInternal(
+    options: ApplyDocumentOperationsInternalOptions,
+  ): FolioDocumentOperationResult {
+    // A comparison states each note's own changes as a story of its own.
+    if (noteReferenceEditsAllowed()) return this.applyDocumentOperationsToStoryState(options);
+    return this.withNotesFollowingReferences(() =>
+      this.applyDocumentOperationsToStoryState(options),
+    );
+  }
+
+  private applyDocumentOperationsToStoryState({
     story,
     batch,
     author,
@@ -1896,7 +1910,10 @@ export class FolioDocxReviewer {
       return { status: "rejected", undoHandle, reason: "documentChanged" };
     }
 
-    this.setEditableStoryState(entry.story, entry.beforeState);
+    // A note whose reference the batch deleted gets its text back.
+    this.withNotesFollowingReferences(() =>
+      this.setEditableStoryState(entry.story, entry.beforeState),
+    );
     this.createdComments.length = entry.createdCommentsLengthBefore;
     this.documentOperationUndoEntries.pop();
     return { status: "undone", undoHandle };
@@ -2559,13 +2576,15 @@ export class FolioDocxReviewer {
   }
 
   /**
-   * Resolve body changes the way a note follows its reference: a note whose
+   * Change the body the way a note follows its reference: a note whose
    * reference goes, goes too, as a note no text refers to does; a note whose
-   * reference's deletion is rejected gets back the text that deletion took.
+   * reference an edit deletes as a tracked change has its text deleted with
+   * it; a note whose reference's deletion is rejected gets back the text that
+   * deletion took.
    */
-  private withNotesFollowingReferences<T>(resolve: () => T): T {
+  private withNotesFollowingReferences<T>(change: () => T): T {
     const before = this.state.doc;
-    const result = resolve();
+    const result = change();
     const after = this.state.doc;
     const referencedAfter = referencedNoteKeys(after);
     // A reference back in the body (a reject after an accept) brings its note back.
@@ -2592,7 +2611,35 @@ export class FolioDocxReviewer {
         this.runStoryCommand(rejectAIEditRevision(revisions), handle);
       }
     }
+    this.deleteNotesWithTheirReferences(before, after);
     return result;
+  }
+
+  /** Delete the text of each note whose reference went from live to a tracked deletion. */
+  private deleteNotesWithTheirReferences(before: PMNode, after: PMNode): void {
+    const was = noteReferenceStates(before);
+    const deletions = referenceDeletions(after);
+    for (const [key, state] of noteReferenceStates(after)) {
+      if (state !== "deleted" || was.get(key) !== "live") continue;
+      const reference = deletions.get(key);
+      // A suggestion stays the body's own until it is accepted, and a moved
+      // reference keeps its note.
+      if (
+        !reference ||
+        reference.attrs["provenance"] === "suggested" ||
+        reference.attrs["moveKind"] != null
+      ) {
+        continue;
+      }
+      const handle = noteStoryHandleOf(key);
+      if (!handle || this.removedNoteStories.has(noteStoryKey(handle))) continue;
+      this.runStoryCommand((storyState, dispatch) => {
+        const transaction = deleteNoteWithReference(storyState.tr, reference);
+        if (!transaction.docChanged) return false;
+        dispatch?.(transaction);
+        return true;
+      }, handle);
+    }
   }
 
   /**

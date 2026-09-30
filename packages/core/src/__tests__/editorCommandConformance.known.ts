@@ -9,6 +9,7 @@
  */
 
 import type { ViolationKind } from "./editorCommandConformance";
+import { LIST_PASTE_RESOLUTION_KEYS } from "./editorCommandConformance.listPaste";
 import type { EditorMode, SelectionPlacement } from "./editorHarness";
 
 export type ConformanceCaseKey = {
@@ -62,8 +63,6 @@ const REPLACING_OPERATIONS = [
   "command:insertHyperlink",
   "command:insertFootnote",
   "command:insertEndnote",
-  "paste:paragraphs",
-  "paste:copied-blocks",
 ] as const;
 
 const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
@@ -145,16 +144,18 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
   {
     reason:
-      "Suggesting mode does not record the paragraph marks a multi-paragraph paste, Enter over a selection, a cross-paragraph delete, an inserted table or an inserted table of contents create or remove, so rejecting or accepting every change leaves the paragraphs split or unjoined",
+      "Suggesting mode does not record the paragraph marks a multi-paragraph paste, Enter over a selection, a cross-paragraph delete or an inserted table of contents create or remove, so rejecting or accepting every change leaves the paragraphs split or unjoined",
     operations: [
       "paste:paragraphs",
       "paste:copied-blocks",
       "key:Enter",
       "key:Delete",
       "command:generateTOC",
-      "command:insertTable",
     ],
-    excludedCases: [{ shape: "tracked-changes", operation: "paste:copied-blocks" }],
+    excludedCases: [
+      ...LIST_PASTE_RESOLUTION_KEYS,
+      { shape: "tracked-changes", operation: "paste:copied-blocks" },
+    ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
   },
@@ -188,21 +189,6 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
   },
 
   // -------------------------------------------------------------- other --
-  {
-    reason:
-      "A note added to a package that already has a notes part is not written into that part on save, so the reopened document references a missing note",
-    operations: ["command:insertFootnote", "command:insertEndnote"],
-    shapes: ["notes"],
-    kinds: ["readback-blocks", "reject-mismatch"],
-  },
-
-  {
-    reason: "Suggesting mode removes a hyperlink or a note reference's mark directly",
-    operations: ["command:removeHyperlink", "command:deleteNoteRef"],
-    shapes: ["fields-links-bookmarks", "notes"],
-    modes: ["suggesting"],
-    kinds: ["reject-mismatch"],
-  },
   {
     reason:
       "A hyperlink or a character-format change applied across a field drops the field's result text on save, or on rejecting the change",

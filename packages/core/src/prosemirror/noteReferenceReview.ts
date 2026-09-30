@@ -177,6 +177,40 @@ export const referenceDeletions = (doc: PMNode): Map<NoteKey, Mark> => {
 };
 
 /**
+ * Delete a note's text and its paragraph marks along with its reference: by
+ * the reference deletion's author at its date, so resolving the reference
+ * resolves them too (see {@link noteDeletionRevisions}).
+ */
+export const deleteNoteWithReference = <T extends Transform>(transform: T, reference: Mark): T => {
+  const doc = transform.doc;
+  const markInfo = {
+    id: mintRevisionId(),
+    author: String(reference.attrs["author"] ?? ""),
+    date: String(reference.attrs["date"] ?? ""),
+  };
+  // The note's own deletion, by the same author at the same date: not the
+  // wrappers or ancestors the reference's run has in the body.
+  const { utcDate, initials } = reference.attrs;
+  const deletion = (doc.type.schema.marks["deletion"] ?? reference.type).create({
+    revisionId: mintRevisionId(),
+    author: markInfo.author,
+    date: markInfo.date,
+    ...(utcDate != null && { utcDate }),
+    ...(initials != null && { initials }),
+  });
+  doc.descendants((node, position) => {
+    if (node.type.name === "paragraph" && expectParagraphAttrs(node).pPrMark == null) {
+      transform.setNodeAttribute(position, "pPrMark", { kind: "del", info: markInfo });
+    }
+    if (node.isInline && !deletion.type.isInSet(node.marks)) {
+      transform.addMark(position, position + node.nodeSize, deletion);
+    }
+    return !node.isInline;
+  });
+  return transform;
+};
+
+/**
  * A note whose reference was deleted: its text and its paragraph marks are
  * deleted too, by the reference's author at the reference's date.
  */
@@ -190,22 +224,7 @@ const deletedNote = <TNote extends Footnote | Endnote>(
     ...(styles !== undefined && { styles }),
     ...(theme !== undefined && { theme }),
   });
-  const deletion = reference.type.create({ ...reference.attrs, revisionId: mintRevisionId() });
-  const markInfo = {
-    id: mintRevisionId(),
-    author: String(reference.attrs["author"] ?? ""),
-    date: String(reference.attrs["date"] ?? ""),
-  };
-  const transform = new Transform(doc);
-  doc.descendants((node, position) => {
-    if (node.type.name === "paragraph" && expectParagraphAttrs(node).pPrMark == null) {
-      transform.setNodeAttribute(position, "pPrMark", { kind: "del", info: markInfo });
-    }
-    if (node.isInline && !deletion.type.isInSet(node.marks)) {
-      transform.addMark(position, position + node.nodeSize, deletion);
-    }
-    return !node.isInline;
-  });
+  const transform = deleteNoteWithReference(new Transform(doc), reference);
   if (!transform.docChanged) return note;
   return { ...note, content: proseDocToBlocks(transform.doc, note.content, styles) };
 };

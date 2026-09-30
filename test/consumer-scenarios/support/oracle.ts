@@ -247,7 +247,14 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
       // The paragraph left by a join is the one whose mark stays: the block
       // the joined ones run into, which keeps its identity.
       const survivor = model.rows[indexOf(row.id)];
-      if (joining && survivor) survivor.pendingJoin = true;
+      if (survivor?.pre) {
+        // Text and block properties in `rows` are the accepted projection,
+        // but operations target the live snapshot. A pending table-row
+        // deletion can renumber the accepted projection's surviving rows;
+        // keep the live table coordinates for source-anchor placement.
+        survivor.pre = { ...survivor.pre, ...(row.table !== undefined && { table: row.table }) };
+        if (joining) survivor.pendingJoin = true;
+      }
       joining = false;
       previous = row.id;
       continue;

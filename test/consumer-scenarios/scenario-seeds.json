@@ -66,6 +66,48 @@
       "title": "does what it asked and saves it"
     },
     {
+      "seed": 1055367443,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps revision wrapper groups across save"
+    },
+    {
+      "seed": 893838598,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps revision wrapper groups across save"
+    },
+    {
+      "seed": 1047663642,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps revision wrapper groups across save"
+    },
+    {
+      "seed": 1914231241,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps revision wrapper groups across save"
+    },
+    {
+      "seed": 34068695,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "keeps revision wrapper groups across save"
+    },
+    {
+      "seed": 1047663642,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "keeps revision wrapper groups across save"
+    },
+    {
       "seed": 1185,
       "steps": 10,
       "kind": "collisions",
@@ -94,6 +136,20 @@
       "kind": "random",
       "generation": "targeted",
       "title": "accepting a merged paragraph mark keeps run formatting across save"
+    },
+    {
+      "seed": 1016403979,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "row insertion beside a pending deleted row uses live coordinates"
+    },
+    {
+      "seed": 871572631,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "mixed row and column batches preserve source cell payloads"
     },
     {
       "seed": 20260937,
