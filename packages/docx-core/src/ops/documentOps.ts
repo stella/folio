@@ -24,6 +24,8 @@ export {
   REVISION_DECISIONS,
   SPLIT_HALVES,
   toOpEnvelope,
+  type BlockInsertionPoint,
+  type InsertBlocksOp,
   type DeleteRangeOp,
   type DocumentOp,
   type DocumentOpEnvelope,

@@ -2,7 +2,7 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 
 import type { TextFormatting } from "../types/document";
 import { mergeTextFormatting } from "../utils/textFormattingMerge";
-import { marksToTextFormatting } from "./conversion/fromProseDoc";
+import { marksToTextFormatting } from "./runFormattingFromMarks";
 import { textFormattingToMarks } from "./extensions/marks/markUtils";
 import { expectCharacterStyleMarkAttrs } from "./attrs";
 import { RUN_FORMATTING_MARK_NAMES } from "./runFormattingMarkNames";
