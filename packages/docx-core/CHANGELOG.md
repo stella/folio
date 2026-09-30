@@ -1,5 +1,29 @@
 # @stll/docx-core
 
+## 0.29.0
+
+### Minor Changes
+
+- [#1212](https://github.com/stella/folio/pull/1212) [`f545ef1`](https://github.com/stella/folio/commit/f545ef1526264870550ae4300288d43b5c48d5cd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add `resolveRevision` to `@stll/docx-core/ops`: accept or reject tracked insertions, deletions, moves, run and paragraph property changes and paragraph marks by revision id, applied as primitive operations with an exact inverse.
+
+- [#1211](https://github.com/stella/folio/pull/1211) [`3a7d1c0`](https://github.com/stella/folio/commit/3a7d1c0ee2f0b9b9cbfbf625a9daa8aea00c7592) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add tracked changes to `@stll/docx-core/ops`: a `revision` stamp on the text, formatting and paragraph operations records the edit as a tracked insertion, deletion, property change or paragraph mark, with an exact inverse. `planTrackedDeletion` plans a tracked deletion around the author's own insertions, and `revisionIdDemand` counts the revision ids an operation takes. The operation schema is now version 2.
+
+- [#1257](https://github.com/stella/folio/pull/1257) [`c80cb40`](https://github.com/stella/folio/commit/c80cb40f19165f466da9bfb113798ba2446167bc) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add direct and tracked paragraph insertion with reversible review and operation schema version 3.
+
+- [#1263](https://github.com/stella/folio/pull/1263) [`5c625cb`](https://github.com/stella/folio/commit/5c625cbfd950906c1e0cd6d357fb3af6def0baee) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Add direct and tracked table-row operations with exact undo and revision resolution.
+
+### Patch Changes
+
+- [#1279](https://github.com/stella/folio/pull/1279) [`d5a9ba3`](https://github.com/stella/folio/commit/d5a9ba3d0a9500afaf76ad720b016f43a694c10c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align shared dependency versions: jszip 3.10.2, valibot 1.5.0, @base-ui/react 1.8.0.
+
+- [#1285](https://github.com/stella/folio/pull/1285) [`d890ce9`](https://github.com/stella/folio/commit/d890ce998ece231903b94b138d22bd3624f94f45) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Bound archive inflation when opening documents. A document now fails to open when one of its parts inflates past the size the archive declares for it, or when a markup part or the package as a whole exceeds the compression-ratio limit; `maxCompressionRatio` in the archive and unzip options adjusts that limit.
+
+- [#1277](https://github.com/stella/folio/pull/1277) [`dc334e2`](https://github.com/stella/folio/commit/dc334e2256f129f1d202124bde894334254c33c3) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep empty content controls when resolving tracked changes: only a container the resolution itself emptied merges into an alike neighbour, inline and across a removed paragraph mark.
+
+- [#1244](https://github.com/stella/folio/pull/1244) [`003d387`](https://github.com/stella/folio/commit/003d387c4cabf72f160367ca536ed0757f9ae5a7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Normalize empty revision wrappers before applying document operations, preserving meaningful zero-width markup.
+
+- [#1271](https://github.com/stella/folio/pull/1271) [`1c68631`](https://github.com/stella/folio/commit/1c68631782a0590d53de969184e596d249fe4ba7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Resolving a revision now merges the seam inside the alike records it merges, so an accepted tracked insertion agrees with the direct one when an empty wrapper meets its alike neighbour inside a hyperlink.
+
 ## 0.28.1
 
 ### Patch Changes

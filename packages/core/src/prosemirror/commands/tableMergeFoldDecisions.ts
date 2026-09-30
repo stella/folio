@@ -3,6 +3,11 @@ import type { Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 
 import { calculateRowSpans } from "../../docx/verticalMergeProjection";
+import {
+  isCellMergeContinuation,
+  isCellMergeStart,
+  isTableCellMergeRevisionContinuation,
+} from "../../docx/tableParser";
 import { expectTableCellAttrs } from "../attrs";
 import { fromProseDoc } from "../conversion/fromProseDoc";
 import type { TableCell } from "../../types/document";
@@ -32,7 +37,7 @@ export const tableMergeFoldDecisions = ({
         continue;
       const continuation = mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal;
       cell.formatting = { ...cell.formatting };
-      if (continuation === "continue") cell.formatting.vMerge = "continue";
+      if (isTableCellMergeRevisionContinuation(continuation)) cell.formatting.vMerge = "continue";
       else delete cell.formatting.vMerge;
       delete cell.structuralChange;
     }
@@ -62,7 +67,9 @@ export const tableMergeFoldDecisions = ({
     if (
       marker?.kind !== "merge" ||
       (revisionSet !== null && !revisionSet.has(marker.info.revisionId)) ||
-      (mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal) !== "continue"
+      !isTableCellMergeRevisionContinuation(
+        mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal,
+      )
     )
       continue;
     const row = Math.floor(index / map.width);
@@ -77,7 +84,7 @@ export const tableMergeFoldDecisions = ({
       invalid.add(position);
       continue;
     }
-    if (above.formatting?.vMerge === "continue" || above.formatting?.vMerge === "restart") continue;
+    if (isCellMergeContinuation(above) || isCellMergeStart(above)) continue;
     const abovePosition = map.map[index - map.width];
     if (abovePosition === undefined) return panic("Merge resolution lost its origin");
     above.formatting = { ...above.formatting, vMerge: "restart" };
@@ -125,7 +132,7 @@ export const resolvedVisibleTableCellMergeAttrs = ({
   const continuation = mode === "accept" ? marker.verticalMerge : marker.verticalMergeOriginal;
   const formatting = { ...attrs._originalFormatting };
   if (origin) formatting.vMerge = "restart";
-  else if (continuation === "continue") formatting.vMerge = "continue";
+  else if (isTableCellMergeRevisionContinuation(continuation)) formatting.vMerge = "continue";
   else delete formatting.vMerge;
   return {
     ...cell.attrs,

@@ -1,5 +1,7 @@
 /** Row edits and their exact inverse, addressed through a paragraph in the row. */
 import { Result, panic } from "better-result";
+import { applyTableOp } from "./tables";
+import { locateTableRow, type TableRowLocation } from "./tableLocation";
 
 import type {
   BlockContent,
@@ -10,13 +12,11 @@ import type {
   TableRow,
 } from "../model/document";
 import {
-  blockListAt,
   endsItsContainer,
   storyBody,
   storyParagraphs,
   updateBlockList,
   withBodyContent,
-  type ParagraphLocation,
 } from "./blocks";
 import { validateOpsDocument } from "./contract";
 import type { DocumentEdit } from "./edits";
@@ -52,47 +52,13 @@ import {
 } from "./types";
 
 type RowOp = InsertRowOp | DeleteRowOp | SetTableRowsOp;
-type RowRefusalOptions = { op: RowOp; reason: DocumentOpRefusal["reason"]; message: string };
+type RowRefusalOptions = {
+  op: RowOp;
+  reason: DocumentOpRefusal["reason"];
+  message: string;
+};
 const refused = ({ op, reason, message }: RowRefusalOptions) =>
   Result.err(new DocumentOpRefusal({ opType: op.type, reason, message }));
-
-export type TableRowLocation = {
-  list: ParagraphLocation["list"];
-  index: number;
-  rowIndex: number;
-  table: Table;
-};
-
-/** A paragraph selects its innermost table, even through block wrappers. */
-export const locateTableRow = (
-  document: Document,
-  op: RowOp,
-): Result<TableRowLocation, DocumentOpRefusal> => {
-  const body = storyBody(document, op.story);
-  const location = storyParagraphs(body).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(op.blockId),
-  );
-  if (location === undefined) {
-    return refused({
-      op: op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
-      message: `No paragraph is ${op.blockId}.`,
-    });
-  }
-  const stepIndex = location.list.findLastIndex((step) => step.kind === "tableCell");
-  const step = location.list[stepIndex];
-  if (step?.kind !== "tableCell") {
-    return refused({
-      op: op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      message: "The paragraph is not in a table row.",
-    });
-  }
-  const list = location.list.slice(0, stepIndex);
-  const table = blockListAt(body.content, list)[step.block];
-  if (table?.type !== "table") return panic("A table-cell path must name a table.");
-  return Result.ok({ list, index: step.block, rowIndex: step.row, table });
-};
 
 const paragraphsIn = (rows: readonly TableRow[]): Paragraph[] =>
   storyParagraphs({ content: [{ type: "table", rows: [...rows] }] }).map(
@@ -324,11 +290,19 @@ const commitRows = ({
   rows,
 }: CommitRowsOptions): Result<DocumentEdit, DocumentOpRefusal> => {
   if (rows.length === 0) {
-    return refused({
-      op: op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "Removing the last row requires a table operation.",
-    });
+    return applyTableOp(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+      story: op.story,
+      blockId: op.blockId,
+      expected: location.table,
+    }).mapError(
+      (error) =>
+        new DocumentOpRefusal({
+          opType: op.type,
+          reason: error.reason,
+          message: error.message,
+        }),
+    );
   }
   const before = location.table.rows;
   if (structurallyEqual(before, rows)) {
@@ -516,6 +490,9 @@ export const applyRowOp = (
           message: "The row to remove has changed.",
         });
       }
+      if (op.revision === undefined && before.length === 1) {
+        return commitRows({ document, op, location, rows: [] });
+      }
       if (needsTableEdit(location.table)) {
         return refused({
           op: op,
@@ -557,7 +534,11 @@ export const applyRowOp = (
           message: "The table rows have changed.",
         });
       }
-      if (op.rows.length !== before.length && needsTableEdit(location.table)) {
+      if (
+        op.rows.length > 0 &&
+        op.rows.length !== before.length &&
+        needsTableEdit(location.table)
+      ) {
         return refused({
           op: op,
           reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,

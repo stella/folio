@@ -52,6 +52,14 @@ export type DeleteRowOp = {
 };
 
 // @public
+export type DeleteTableOp = {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_TABLE;
+    story: OpStory;
+    blockId: string;
+    expected?: Table;
+};
+
+// @public
 export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly BLOCK_NOT_FOUND: "blockNotFound";
     readonly INVALID_OFFSET: "invalidOffset";
@@ -99,13 +107,16 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
     readonly REPLACE_INLINE: "replaceInline";
     readonly RESOLVE_REVISION: "resolveRevision";
+    readonly INSERT_TABLE: "insertTable";
+    readonly DELETE_TABLE: "deleteTable";
+    readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
     readonly INSERT_ROW: "insertRow";
     readonly DELETE_ROW: "deleteRow";
     readonly SET_TABLE_ROWS: "setTableRows";
 }>;
 
 // @public
-export type DocumentOp = InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
+export type DocumentOp = InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -185,6 +196,14 @@ export type InsertRowOp = {
     row: TableRow;
     revision?: RevisionStamp;
     newIds?: NewIds;
+};
+
+// @public
+export type InsertTableOp = {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+    story: OpStory;
+    at: BlockInsertionPoint;
+    table: Table;
 };
 
 // @public
@@ -315,6 +334,15 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public
+export type SetContainerBlocksOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
+    story: OpStory;
+    blockId: string;
+    expected: readonly BlockContent[];
+    blocks: readonly BlockContent[];
+};
 
 // @public
 export type SetParagraphPropsOp = {

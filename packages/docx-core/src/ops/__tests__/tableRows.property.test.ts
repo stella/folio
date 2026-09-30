@@ -9,7 +9,6 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { paragraphIdsIn } from "../ids";
-import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp, type RevisionStamp } from "../types";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
@@ -238,18 +237,23 @@ const assertTrackedRow = (
 const operationFamilies = ["insertRow", "deleteRow", "setTableRows"] as const;
 
 describe("table row operation properties", () => {
-  test("refuses to remove a table's final row", () => {
+  test("removing a table's final row removes the table with an exact inverse", () => {
     const fixture = fixtureFor({ rows: 1, cells: 1, paragraphs: 1, text: 0, formatting: 0 });
     const onlyRow = fixture.rows.at(0);
     if (onlyRow === undefined) throw new Error("Generated table has its only row.");
-    const result = applyDocumentOp(fixture.document, {
+    const result = applied(fixture.document, {
       type: DOCUMENT_OP_TYPES.DELETE_ROW,
       story: OP_STORIES.MAIN,
       blockId: operationTarget(onlyRow),
       expected: onlyRow,
     });
-    if (result.isOk()) throw new Error("Removing the final table row must be refused.");
-    expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    expect(result.document.package.document.content.map((block) => block.type)).toEqual([
+      "paragraph",
+      "paragraph",
+    ]);
+    const undone = applyDocumentOps(result.document, result.inverse);
+    if (undone.isErr()) throw undone.error;
+    expect(undone.value.document).toStrictEqual(fixture.document);
   });
 
   for (const kind of operationFamilies) {
