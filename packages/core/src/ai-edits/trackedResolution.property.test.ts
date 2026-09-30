@@ -332,6 +332,27 @@ const caseArbitrary = fc.record({
 
 let comparedWithDirect = 0;
 
+test("reject restores heading properties when an insertion interrupts a pending merge", async () => {
+  const original = read(await open());
+  const reviewer = await open();
+  const heading = reviewer.getContent().at(0);
+  const following = reviewer.getContent().at(1);
+  if (!heading || !following) throw new Error("Missing heading and following paragraph");
+  const edit = (operation: Operation) =>
+    expect(apply(reviewer, "tracked-changes", operation)).toBe(true);
+  edit({ type: "insertAfterBlock", blockId: following.id, text: "Inserted clause." });
+  edit({ type: "deleteBlock", blockId: following.id });
+  edit({ type: "insertAfterBlock", blockId: following.id, text: "Inserted clause." });
+  edit({ type: "mergeBlockWithNext", blockId: heading.id, separator: " " });
+  edit({ type: "insertBeforeBlock", blockId: following.id, text: "Inserted clause." });
+  const saved = await reopen(reviewer);
+  reviewer.rejectAll();
+  expect(read(reviewer)).toEqual(original);
+  expect(read(await reopen(reviewer))).toEqual(original);
+  saved.rejectAll();
+  expect(read(saved)).toEqual(original);
+});
+
 describe("resolving random tracked work", () => {
   test("reject restores, accept equals direct, and both survive a save", async () => {
     const original = read(await open());

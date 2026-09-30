@@ -2937,6 +2937,29 @@ const withRotatedAddedFinalBreaks = ({
   };
   collectSupersededDeletedBreaks(tr.doc, 0);
   for (const { preceding, inserted, deletedMark, precedingMark } of supersededDeletedBreaks) {
+    const insertionRevisionId = addedBreakRevisionId(precedingMark);
+    if (insertionRevisionId !== null) {
+      const previous = tr.doc.nodeAt(preceding);
+      const current = tr.doc.nodeAt(inserted);
+      if (!previous || !current) panic("A shifted paragraph break lost its carrier");
+      const previousFormatting = paragraphPropertiesOnReject(previous);
+      const existing = expectParagraphAttrs(current)._propertyChanges;
+      // Rejecting the shifted insertion joins the preceding words into this
+      // paragraph, so its surviving mark must restore the preceding pPr too.
+      if (
+        !hasSerializableParagraphPropertyChange(existing) &&
+        JSON.stringify(previousFormatting) !== JSON.stringify(paragraphPropertiesSnapshot(current))
+      ) {
+        tr.setNodeAttribute(inserted, "_propertyChanges", [
+          ...(Array.isArray(existing) ? existing : []),
+          {
+            type: "paragraphPropertyChange",
+            info: { id: insertionRevisionId, author, date, ...(initials ? { initials } : {}) },
+            previousFormatting,
+          } satisfies ParagraphPropertyChangeAttrs,
+        ]);
+      }
+    }
     tr.setNodeAttribute(preceding, "pPrMark", precedingMark);
     tr.setNodeAttribute(inserted, "pPrMark", deletedMark);
   }
