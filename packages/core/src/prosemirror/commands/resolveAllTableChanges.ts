@@ -610,7 +610,7 @@ const resolvePureTableMerges = ({
         row: rowIndex,
         sourcePosition: initial.sourcePosition,
         mapSourcePosition: initial.mapSourcePosition,
-        touched: initial.touched || mergeDecisions.origins.has(cellOffset),
+        touched: initial.touched,
         continuation: null,
       };
       elementAt(rowCells, rowIndex).set(left, entry);
