@@ -1,15 +1,6 @@
-/**
- * Read a run's formatting back from its ProseMirror marks: what the run
- * states directly, told apart from what its styles and paragraph give it.
- *
- * Kept apart from the rest of the ProseMirror-to-model conversion, which
- * reaches the shared schema, so run-formatting code the editor extensions use
- * can read formatting without depending on the schema those extensions build.
- */
-
 import type { Mark } from "prosemirror-model";
-import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
-import type { TextFormatting, ColorValue } from "../../types/document";
+import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
+import type { TextFormatting, ColorValue } from "../types/document";
 import {
   expectCharacterSpacingMarkAttrs,
   expectCharacterStyleMarkAttrs,
@@ -24,24 +15,24 @@ import {
   expectStrikeMarkAttrs,
   expectTextColorMarkAttrs,
   expectUnderlineMarkAttrs,
-} from "../attrs";
+} from "./attrs";
 import {
   authoredRunFormattingFromAttrs,
   hasAuthoredRunFormattingProvenance,
-} from "../runFormattingProvenance";
+} from "./runFormattingProvenance";
 import {
   paragraphFormattingForRun,
   resolveEffectiveRunStyleFormatting,
   suppressParagraphMarkFormatting,
   type RunStyleResolver,
-} from "../runStyleFormatting";
+} from "./runStyleFormatting";
 import {
   applyRunFormattingOverrideAttrs,
   buildRunFormattingOverrideAttrs,
-} from "../extensions/marks/RunFormattingOverrideExtension";
-import type { RunFormattingOverrideAttrs } from "../schema/marks";
-import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./runShadingMark";
-import { mergeTextFormatting } from "../../utils/textFormattingMerge";
+} from "./extensions/marks/RunFormattingOverrideExtension";
+import type { RunFormattingOverrideAttrs } from "./schema/marks";
+import { runShadingAttrsToShading, shadingToRunShadingAttrs } from "./conversion/runShadingMark";
+import { mergeTextFormatting } from "../utils/textFormattingMerge";
 
 /**
  * Convert ProseMirror marks to TextFormatting

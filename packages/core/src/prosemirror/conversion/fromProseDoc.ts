@@ -14,6 +14,13 @@ import { panic } from "better-result";
 import { DRAWING_RAW_XML_MODES, relationshipIdOf } from "@stll/docx-core/model";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 import { Fragment } from "prosemirror-model";
+import {
+  marksToTextFormatting,
+  sameFormattingValue,
+  type MarksToTextFormattingOptions,
+} from "../runFormattingFromMarks";
+
+export { marksToTextFormatting } from "../runFormattingFromMarks";
 
 import {
   isStyleSourcedParagraphNumbering,
@@ -63,6 +70,7 @@ import { canonicalJson } from "../../utils/canonicalJson";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { unchangedAlternateContentXml } from "../alternateContentAttrs";
+
 import { readAuthoredTransform } from "../authoredTransformAttrs";
 import { parseShapeGeometryAdjustments } from "../shapeGeometryAdjustments";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
@@ -131,6 +139,7 @@ import { bookmarkMarkerFromAttrs, expectBookmarkBoundaryAttrs } from "../bookmar
 import { expectCommentReferenceAttrs } from "../commentReferenceAttrs";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
+import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
 import { expectRangeAnchorAttrs } from "../rangeAnchorAttrs";
 import {
   expectCharacterStyleMarkAttrs,
@@ -171,12 +180,14 @@ import {
   removeParagraphPropertyChanges,
 } from "../commands/propertyChangeScope";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
+
 import {
   paragraphFormattingForRun,
   paragraphRunStyleContext,
   resolveEffectiveRunStyleFormatting,
   type RunStyleResolver,
 } from "../runStyleFormatting";
+
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
@@ -205,6 +216,7 @@ import {
 import { resolveNumberedRefFields } from "../numberedRefFields";
 import { expectTextBoxAnchorAttrs } from "../textBoxAnchorAttrs";
 import { textBoxHostParagraph } from "../textBoxHostParagraph";
+
 import { mergeTextFormatting } from "../../utils/textFormattingMerge";
 import { decodeSdtListItems, sdtPropertiesFromAttrs, sdtPropertiesMatchAttrs } from "./sdtAttrs";
 import { hasSinkChildren } from "./preservedSinkCarriers";
@@ -215,14 +227,6 @@ import { hasSinkChildren } from "./preservedSinkCarriers";
 // references, so there is no initialization-order hazard.
 // oxlint-disable-next-line import/no-cycle
 import { textFormattingToMarks } from "../extensions/marks/markUtils";
-import { expectMoveRangeBoundaryAttrs } from "../moveRangeBoundaryAttrs";
-import {
-  marksToTextFormatting,
-  sameFormattingValue,
-  type MarksToTextFormattingOptions,
-} from "./marksToTextFormatting";
-
-export { marksToTextFormatting };
 
 /**
  * The dash an `outlineStyle` attribute names.

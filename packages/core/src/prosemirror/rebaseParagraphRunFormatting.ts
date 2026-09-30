@@ -62,33 +62,12 @@ export const rebaseParagraphRuns = <T extends Transform>({
   styleResolver,
   tr,
 }: RebaseParagraphRunsOptions<T>): T => {
-  const nextContext = paragraphRunStyleContext(paragraphAt(tr, paragraphPosition), styleResolver);
+  const paragraph = paragraphAt(tr, paragraphPosition);
+  const nextContext = paragraphRunStyleContext(paragraph, styleResolver);
   // An unchanged cascade leaves the runs, their carriers and provenance as they are.
   if (sameRunStyleContext(previousContext, nextContext)) {
     return tr;
   }
-  return reresolveParagraphRuns({
-    nextContext,
-    previousContext,
-    paragraphPosition,
-    ...(range ? { range } : {}),
-    ...(shouldRebase ? { shouldRebase } : {}),
-    styleResolver,
-    tr,
-  });
-};
-
-/** {@link rebaseParagraphRuns} without the unchanged-cascade shortcut. */
-const reresolveParagraphRuns = <T extends Transform>({
-  nextContext,
-  previousContext,
-  paragraphPosition,
-  range,
-  shouldRebase,
-  styleResolver,
-  tr,
-}: RebaseParagraphRunsOptions<T> & { nextContext: ParagraphRunStyleContext }): T => {
-  const paragraph = paragraphAt(tr, paragraphPosition);
   const changes: {
     attrs: Readonly<Record<string, unknown>>;
     currentFormattingMarks: readonly Mark[];
@@ -201,45 +180,4 @@ export const setParagraphAttrsWithRebasedRunFormatting = ({
     styleResolver,
     tr,
   });
-};
-
-/**
- * Re-resolve the runs in [`from`, `to`) of `tr.doc` (those `shouldRebase`
- * picks, when given) in their paragraph's current style context: after
- * direct formatting is removed, what the run's styles paint shows again
- * instead of nothing.
- */
-export const rebaseRunFormattingInRange = <T extends Transform>(
-  tr: T,
-  from: number,
-  to: number,
-  styleResolver: RunStyleResolver,
-  shouldRebase?: (node: PMNode) => boolean,
-): T => {
-  const paragraphs: number[] = [];
-  tr.doc.nodesBetween(from, to, (node, position) => {
-    if (node.type.name === "paragraph") {
-      paragraphs.push(position);
-      return false;
-    }
-    return true;
-  });
-  for (const paragraphPosition of paragraphs) {
-    const paragraph = paragraphAt(tr, paragraphPosition);
-    const context = paragraphRunStyleContext(paragraph, styleResolver);
-    const start = paragraphPosition + 1;
-    tr = reresolveParagraphRuns({
-      nextContext: context,
-      previousContext: context,
-      paragraphPosition,
-      range: {
-        from: Math.max(0, from - start),
-        to: Math.min(paragraph.content.size, to - start),
-      },
-      ...(shouldRebase ? { shouldRebase } : {}),
-      styleResolver,
-      tr,
-    });
-  }
-  return tr;
 };
