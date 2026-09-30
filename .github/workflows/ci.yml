@@ -692,13 +692,13 @@ jobs:
       # into a project outside the workspace, typechecks the scenarios against
       # the published declarations, and runs them against public entry points
       # only: synthetic documents, act, save, reopen, compare every reader.
-      # Report-only in the queue for now: a generated fuzz run's failure is
-      # logged with its marker and kept in the log artifact, not failed on;
-      # continuous-fuzz.yml files it from main. Pinned flows still fail.
+      # Generated runs belong to nightly and continuous fuzz; pinned seeds,
+      # corpus flows and known-issue regressions block PRs and merge groups.
       - name: Scenarios over packed tarballs
         id: scenarios
         env:
-          FOLIO_SCENARIO_FUZZ_REPORT_ONLY: ${{ github.event_name == 'merge_group' && '1' || '' }}
+          FOLIO_SCENARIO_FUZZ_RUNS: "0"
+          FOLIO_SCENARIO_COLLISION_RUNS: "0"
         run: |
           set -o pipefail
           mkdir -p test-results
