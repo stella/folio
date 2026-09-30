@@ -2,6 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { ParagraphFormatting, SectionProperties } from "../../types/document";
 import type { NumberingMap } from "../../docx/numberingParser";
 import { expectParagraphAttrs } from "../attrs";
+import { styleResolvedParagraphFormatting } from "../paragraphFormattingProvenance";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
 import { rejectedListRenderingPatch } from "../listRendering";
 import type { RunStyleResolver } from "../runStyleFormatting";
@@ -64,18 +65,31 @@ export const resolveParagraphChangeAttrs = ({
         // propertyChangeScope.ts. Earlier removed runs were folded
         // into the next retained entry, so only a removed trailing
         // run changes the live properties now.
-        const inheritedAlignment = expectParagraphAttrs(node).alignmentFromStyle;
+        const currentAttrs = expectParagraphAttrs(node);
+        const inheritedAlignment = currentAttrs.alignmentFromStyle;
+        const restoredStyleId = rejection.previousFormatting?.styleId ?? undefined;
+        const sameStyle = restoredStyleId === (currentAttrs.styleId ?? undefined);
         let previousFormattingFromStyle: ParagraphFormatting | undefined;
+        // What the restored style lends the fields a save filters, so the
+        // paragraph reads them from the style and keeps them out of its pPr.
+        let resolvedFromStyle = sameStyle ? currentAttrs._resolvedFormatting : undefined;
         if (styleResolver) {
-          previousFormattingFromStyle = styleResolver.resolveParagraphStyle(
-            rejection.previousFormatting?.styleId,
-          ).paragraphFormatting;
+          previousFormattingFromStyle =
+            styleResolver.resolveParagraphStyle(restoredStyleId).paragraphFormatting;
+          if (!sameStyle) {
+            resolvedFromStyle = styleResolvedParagraphFormatting(previousFormattingFromStyle);
+            nextAttrs["_resolvedFormatting"] = resolvedFromStyle;
+          }
         } else if (inheritedAlignment !== undefined) {
           previousFormattingFromStyle = { alignment: inheritedAlignment };
         }
+        const inheritedFormatting =
+          previousFormattingFromStyle === undefined && resolvedFromStyle === undefined
+            ? undefined
+            : { ...previousFormattingFromStyle, ...resolvedFromStyle };
         Object.assign(
           nextAttrs,
-          paragraphRejectAttrPatch(rejection.previousFormatting, previousFormattingFromStyle),
+          paragraphRejectAttrPatch(rejection.previousFormatting, inheritedFormatting),
           rejectedListRenderingPatch({
             current: expectParagraphAttrs(node),
             previousFormatting: rejection.previousFormatting,

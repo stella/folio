@@ -324,6 +324,13 @@
       "date": "2026-09-30"
     }
   ],
+  "packages/core/src/ai-edits/insertedTableFinalParagraphResolution.property.test.ts::generated table rows and following paragraphs preserve resolution laws": [
+    {
+      "seed": 1595037221,
+      "note": "An inserted table before final added paragraphs must not discard their break revisions.",
+      "date": "2026-09-30"
+    }
+  ],
   "packages/core/src/docx/selectiveXmlPatch.property.test.ts::nested paragraph edits never apply overlapping source ranges": [
     {
       "seed": -1844025400,
