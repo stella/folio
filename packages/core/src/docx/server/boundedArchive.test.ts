@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
+import {
+  compressibleArchive,
+  manyEntryArchive,
+  understatedEntryArchive,
+} from "../__tests__/archiveInflationFixtures";
 import { DocxArchiveError, loadDocxArchive } from "./boundedArchive";
 
 const makeZip = async (entries: Record<string, string | Uint8Array>): Promise<Uint8Array> => {
@@ -199,6 +204,83 @@ describe("loadDocxArchive on a platform without Node streams", () => {
       await expect(archive.readEntryString("a")).rejects.toMatchObject({
         reason: "total-too-large",
       });
+    });
+  });
+});
+
+describe("loadDocxArchive inflation limits", () => {
+  test("stops a read that inflates past the entry's declared size", async () => {
+    const archive = await loadDocxArchive(await understatedEntryArchive("word/header1.xml"));
+
+    const error = await rejection(archive.readEntryUint8("word/header1.xml"));
+
+    expect(error).toBeInstanceOf(DocxArchiveError);
+    expect(error).toMatchObject({
+      reason: "entry-too-large",
+      message: 'DOCX entry "word/header1.xml" inflated past its declared size',
+    });
+  });
+
+  test("refuses an entry whose declared expansion passes the ratio cap, before any read", async () => {
+    const bytes = await compressibleArchive({
+      entryPath: "word/header1.xml",
+      inflatedMebibytes: 5,
+    });
+
+    const error = await rejection(loadDocxArchive(bytes));
+
+    expect(error).toMatchObject({ reason: "compression-ratio-exceeded" });
+  });
+
+  test("refuses a package whose entries together pass the ratio cap", async () => {
+    const zip = new JSZip();
+    for (const index of [1, 2, 3]) {
+      zip.file(`word/header${String(index)}.xml`, "x".repeat(2 * 1024 * 1024));
+    }
+    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+
+    const error = await rejection(loadDocxArchive(bytes));
+
+    expect(error).toMatchObject({
+      reason: "compression-ratio-exceeded",
+      message: "DOCX archive declares more than 200 bytes per archive byte",
+    });
+  });
+
+  test("leaves a highly compressible binary entry to the byte and package limits", async () => {
+    const zip = new JSZip();
+    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff), {
+      compression: "DEFLATE",
+    });
+    // Incompressible padding keeps the package as a whole under the ratio cap.
+    zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)));
+    const archive = await loadDocxArchive(await zip.generateAsync({ type: "uint8array" }));
+
+    expect(await archive.readEntryUint8("word/media/image1.bmp")).toHaveLength(5 * 1024 * 1024);
+  });
+
+  test("takes a tighter or looser ratio cap from the caller", async () => {
+    const bytes = await compressibleArchive({
+      entryPath: "word/header1.xml",
+      inflatedMebibytes: 5,
+    });
+
+    const archive = await loadDocxArchive(bytes, { maxCompressionRatio: 2000 });
+    expect(await archive.readEntryUint8("word/header1.xml")).toHaveLength(5 * 1024 * 1024);
+    expect(await rejection(loadDocxArchive(bytes, { maxCompressionRatio: 2 }))).toMatchObject({
+      reason: "compression-ratio-exceeded",
+    });
+    expect(await rejection(loadDocxArchive(bytes, { maxCompressionRatio: -1 }))).toMatchObject({
+      reason: "invalid-options",
+    });
+  });
+
+  test("counts archive records before the archive is parsed", async () => {
+    const error = await rejection(loadDocxArchive(await manyEntryArchive(40), { maxEntries: 10 }));
+
+    expect(error).toMatchObject({
+      reason: "too-many-entries",
+      message: "DOCX archive holds more than 10 entries",
     });
   });
 });

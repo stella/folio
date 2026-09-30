@@ -171,14 +171,11 @@ describe("pasting table cells into a merged table", () => {
     await saveHarnessState(view.state, base);
   });
 
-  test.each([
-    ["into a cell", "editing", "caret-end"],
-    ["over everything, suggesting", "suggesting", "document"],
-  ] as const)(
-    "a pasted copy of a merged cell does not claim the stored continuation of its source (%s)",
-    async (_label, mode, placement) => {
+  test.each(["caret-end", "document"] as const)(
+    "copied merged blocks accept as direct paste and reject as original (%s)",
+    async (placement) => {
       const base = await loadTables();
-      const state = placeSelection(createHarnessState(base, mode), "Cell C2", placement);
+      const state = placeSelection(createHarnessState(base, "suggesting"), "Cell C2", placement);
       if (!state) {
         throw new Error("No caret");
       }
@@ -191,10 +188,23 @@ describe("pasting table cells into a merged table", () => {
         throw new Error("No blocks to copy");
       }
       // "Cell C2" through "Cell A3", whose cell stores the continuation of A3:A4.
-      view.paste(view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size));
+      const slice = view.state.doc.slice(first.pos + 1, second.pos + 1 + second.node.content.size);
+      view.paste(slice);
+      const direct = placeSelection(createHarnessState(base, "editing"), "Cell C2", placement);
+      if (!direct) throw new Error("No direct selection");
+      const editing = new HeadlessEditorView(direct);
+      editing.paste(slice);
 
-      layout(view.state.doc);
-      await saveHarnessState(view.state, base);
+      const saved = await saveHarnessState(view.state, base);
+      const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "suggesting");
+      for (const candidate of [view.state, reopened]) {
+        expect(summarizeState(resolveAllChanges(candidate, "accept"))).toEqual(
+          summarizeState(editing.state),
+        );
+        expect(summarizeState(resolveAllChanges(candidate, "reject"))).toEqual(
+          summarizeState(createHarnessState(base, "editing")),
+        );
+      }
     },
   );
 

@@ -1,6 +1,12 @@
 import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
+import {
+  countCentralDirectoryRecords,
+  createInflationBudget,
+  DOCX_MAX_COMPRESSION_RATIO,
+  inflateEntryWithinLimits,
+} from "./archiveInflation";
 import { elementToXml, getLocalName, parseXmlDocument } from "./xmlParser";
 
 export const FOLIO_DOCUMENT_METADATA_PROPERTIES = Object.freeze([
@@ -120,6 +126,14 @@ const loadPrivacyArchive = async (buffer: ArrayBuffer): Promise<JSZip> => {
       reason: "input-too-large",
     });
   }
+  if (
+    countCentralDirectoryRecords(new Uint8Array(buffer), MAX_ARCHIVE_ENTRIES) > MAX_ARCHIVE_ENTRIES
+  ) {
+    throw new FolioDocumentPrivacyArchiveError({
+      message: "Document privacy input exceeded the package-entry limit",
+      reason: "too-many-entries",
+    });
+  }
   let zip: JSZip;
   try {
     zip = await JSZip.loadAsync(buffer);
@@ -198,6 +212,28 @@ const rewriteCorePropertiesPrivacy = (
   };
 };
 
+/**
+ * Read the core-properties part within its size limit. The declared size was
+ * checked when the archive loaded, but only the inflation itself can show that
+ * the part is no larger than it claims.
+ */
+const readCoreProperties = async (entry: JSZip.JSZipObject): Promise<string> => {
+  const result = await inflateEntryWithinLimits({
+    entry,
+    maxEntryBytes: MAX_CORE_PROPERTIES_BYTES,
+    maxCompressionRatio: DOCX_MAX_COMPRESSION_RATIO,
+    budget: createInflationBudget(MAX_CORE_PROPERTIES_BYTES),
+  });
+  if (!result.ok) {
+    throw new FolioDocumentPrivacyArchiveError({
+      message: "Document privacy core properties exceeded the part-size limit",
+      reason: "core-properties-too-large",
+    });
+  }
+  // `ignoreBOM` keeps a leading U+FEFF, as the previous string read did.
+  return new TextDecoder("utf-8", { ignoreBOM: true }).decode(result.bytes);
+};
+
 /** Rewrite selected package metadata fields without changing other package parts. */
 export const rewriteDocxMetadataPrivacy = async (
   buffer: ArrayBuffer,
@@ -213,7 +249,7 @@ export const rewriteDocxMetadataPrivacy = async (
     };
   }
   const rewritten = rewriteCorePropertiesPrivacy(
-    await coreProperties.async("text"),
+    await readCoreProperties(coreProperties),
     appliedTransforms,
   );
   if (rewritten.removedMetadataProperties.length === 0) {
