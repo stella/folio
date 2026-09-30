@@ -9,6 +9,7 @@
  */
 
 import type { ViolationKind } from "./editorCommandConformance";
+import { LIST_PASTE_RESOLUTION_KEYS } from "./editorCommandConformance.listPaste";
 import type { EditorMode, SelectionPlacement } from "./editorHarness";
 
 export type ConformanceCaseKey = {
@@ -27,6 +28,8 @@ export type KnownConformanceGap = {
   shapes?: readonly string[];
   /** Placements covered; every placement when omitted. */
   placements?: readonly SelectionPlacement[];
+  /** Shape/operation pairs that have complete resolution coverage. */
+  excludedCases?: readonly Pick<ConformanceCaseKey, "shape" | "operation">[];
   modes?: readonly EditorMode[];
   kinds: readonly ViolationKind[];
   /**
@@ -60,8 +63,6 @@ const REPLACING_OPERATIONS = [
   "command:insertHyperlink",
   "command:insertFootnote",
   "command:insertEndnote",
-  "paste:paragraphs",
-  "paste:copied-blocks",
 ] as const;
 
 const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
@@ -152,6 +153,7 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "command:generateTOC",
       "command:insertTable",
     ],
+    excludedCases: LIST_PASTE_RESOLUTION_KEYS,
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
   },
@@ -234,4 +236,7 @@ export const gapCovers = (
 export const gapApplies = (gap: KnownConformanceGap, key: ConformanceCaseKey): boolean =>
   (gap.operations === undefined || gap.operations.includes(key.operation)) &&
   (gap.shapes === undefined || gap.shapes.includes(key.shape)) &&
-  (gap.placements === undefined || gap.placements.includes(key.placement));
+  (gap.placements === undefined || gap.placements.includes(key.placement)) &&
+  !gap.excludedCases?.some(
+    ({ shape, operation }) => shape === key.shape && operation === key.operation,
+  );
