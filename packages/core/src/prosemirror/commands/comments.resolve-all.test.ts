@@ -227,26 +227,46 @@ describe("resolve-all command equivalence", () => {
   });
 
   test("matches a pending vertical split and a row revision in the same table", () => {
-    const cell = (text: string, attrs?: Record<string, unknown>) =>
-      schema.node("tableCell", attrs, [schema.node("paragraph", null, schema.text(text))]);
-    const doc = schema.node("doc", null, [
-      schema.node("paragraph", null, schema.text("leading")),
-      schema.node("table", null, [
-        schema.node("tableRow", null, [cell("top")]),
-        schema.node("tableRow", null, [
-          cell("restored", {
-            cellMarker: {
-              kind: "merge",
-              info: { revisionId: 201, author: AUTHOR, date: null },
-              verticalMergeOriginal: "continue",
-            },
-          }),
-        ]),
-        schema.node("tableRow", { trIns: revision(202) }, [cell("new row")]),
-      ]),
-      schema.node("paragraph", null, schema.text("trailing")),
-    ]);
-    expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin] }));
+    // The previous fixture covered one split but no empty continuations,
+    // explicit origins, or deleted rows. Compare tracker state across the class.
+    for (const rowMarker of ["trIns", "trDel"] as const) {
+      for (const origin of ["plain", "restart"] as const) {
+        for (const continuationText of ["restored", ""]) {
+          const cell = (text: string, attrs?: Record<string, unknown>) =>
+            schema.node("tableCell", attrs, [
+              schema.node("paragraph", null, text ? schema.text(text) : []),
+            ]);
+          const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, schema.text("leading")),
+            schema.node("table", null, [
+              schema.node("tableRow", null, [
+                cell(
+                  "top",
+                  origin === "restart"
+                    ? {
+                        _originalFormatting: { vMerge: "restart" },
+                        _preserveVMergeRestart: true,
+                      }
+                    : undefined,
+                ),
+              ]),
+              schema.node("tableRow", null, [
+                cell(continuationText, {
+                  cellMarker: {
+                    kind: "merge",
+                    info: { revisionId: 201, author: AUTHOR, date: null },
+                    verticalMergeOriginal: "continue",
+                  },
+                }),
+              ]),
+              schema.node("tableRow", { [rowMarker]: revision(202) }, [cell("new row")]),
+            ]),
+            schema.node("paragraph", null, schema.text("trailing")),
+          ]);
+          expectEquivalent(EditorState.create({ schema, doc, plugins: [trackerPlugin] }));
+        }
+      }
+    }
   });
 
   test("matches a pending vertical merge stored in a collapsed continuation cell", () => {

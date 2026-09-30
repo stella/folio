@@ -676,7 +676,8 @@ const resolvePureTableMerges = ({
       )
         return failedTableResolution(table);
       if (!joinsAbove) {
-        entry.touched = true;
+        // A retained merge changes cell metadata, not its paragraph content.
+        // Keep any earlier property edit's touched state, as range resolution does.
         entry.node = entry.node.type.create(
           resolvedVisibleTableCellMergeAttrs({
             cell: entry.node,
