@@ -1,5 +1,5 @@
 ---
-"@stll/folio-core": patch
+"@stll/folio-core": minor
 "@stll/docx-core": patch
 ---
 
