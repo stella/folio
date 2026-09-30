@@ -45,25 +45,15 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
-import type { BlockContent, Document, Paragraph, ParagraphFormatting } from "../../model/document";
+import type { BlockContent, Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { IDENTITY_SPACES, identityKeysIn, idKey, paragraphIdsIn } from "../ids";
 import { gapAfterInserted } from "../inline";
-import {
-  asParagraphContent,
-  childNodes,
-  compareGaps,
-  defaultInsertionGap,
-  type Gap,
-  type InlineNode,
-  leafSpans,
-  rebuildNode,
-} from "../leaves";
+import { compareGaps, defaultInsertionGap, type Gap, leafSpans } from "../leaves";
 import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
-import { mergeAtSeam } from "../resolve";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { isTrackedWrapper, sameParagraphProperties, stampedRevisionIds } from "../review";
 import {
@@ -71,12 +61,12 @@ import {
   type DocumentOp,
   type DocumentOpType,
   OP_STORIES,
-  PARAGRAPH_MARK_FORMATTING_KEYS,
   REVISION_DECISIONS,
   type RevisionDecision,
   type RevisionStamp,
   SPLIT_HALVES,
 } from "../types";
+import { projectReview } from "./reviewProjection";
 import {
   GENERATED_TRACKED_OP_KINDS,
   independentCopy,
@@ -120,106 +110,10 @@ const expectEveryKindChecked = (tally: Tally, runs: number): void => {
 // π and π′
 // ---------------------------------------------------------------------------
 
-const canonicalList = (nodes: readonly InlineNode[]): InlineNode[] => {
-  const out: InlineNode[] = [];
-  for (const node of nodes) {
-    const children = childNodes(node);
-    const own = children === undefined ? node : rebuildNode(node, canonicalList(children));
-    const last = out.at(-1);
-    if (last === undefined) {
-      out.push(own);
-      continue;
-    }
-    // Merged as resolution merges records it leaves meeting.
-    out.splice(-1, 1, ...mergeAtSeam(last, own));
-  }
-  return out;
-};
-
-const MARK_KEYS: ReadonlySet<string> = new Set(PARAGRAPH_MARK_FORMATTING_KEYS);
-
-const withoutMarkFormatting = (formatting: ParagraphFormatting): ParagraphFormatting =>
-  // SAFETY: a subset of a property set's own entries.
-  Object.fromEntries(
-    Object.entries(formatting).filter(([key]) => !MARK_KEYS.has(key)),
-  ) as ParagraphFormatting;
-
 type Projection = "π" | "π′";
 
-const canonicalParagraph = (paragraph: Paragraph, projection: Projection): Paragraph => {
-  const next: Paragraph = {
-    ...paragraph,
-    content: asParagraphContent(canonicalList(paragraph.content)),
-  };
-  delete next.listRendering;
-  delete next.renderedPageBreakBefore;
-  if (projection === "π′") {
-    delete next.paraId;
-    delete next.textId;
-    delete next.preservedAttributes;
-    const formatting =
-      next.formatting === undefined ? undefined : withoutMarkFormatting(next.formatting);
-    if (formatting === undefined || Object.keys(formatting).length === 0) {
-      delete next.formatting;
-    } else {
-      next.formatting = formatting;
-    }
-  }
-  return next;
-};
-
-const canonicalBlocks = (blocks: readonly BlockContent[], projection: Projection): BlockContent[] =>
-  blocks.map((block): BlockContent => {
-    switch (block.type) {
-      case "paragraph":
-        return canonicalParagraph(block, projection);
-      case "table":
-        return {
-          ...block,
-          rows: block.rows.map((row) => ({
-            ...row,
-            cells: row.cells.map((cell) => ({
-              ...cell,
-              content: canonicalBlocks(cell.content, projection),
-            })),
-          })),
-        };
-      case "blockSdt":
-      case "blockCustomXml":
-        return { ...block, content: canonicalBlocks(block.content, projection) };
-      default:
-        return block;
-    }
-  });
-
-/** Revision and content-control ids numbered in document order. */
-const renumbered = (value: unknown, ids: Map<string, number>): unknown => {
-  if (Array.isArray(value)) return value.map((item) => renumbered(item, ids));
-  if (typeof value !== "object" || value === null) return value;
-  const out: Record<string, unknown> = {};
-  for (const [key, field] of Object.entries(value)) out[key] = renumbered(field, ids);
-  const number = (key: string): number => {
-    const known = ids.get(key);
-    if (known !== undefined) return known;
-    ids.set(key, ids.size + 1);
-    return ids.size;
-  };
-  const info = out["info"];
-  if (
-    typeof info === "object" &&
-    info !== null &&
-    typeof Reflect.get(info, "author") === "string"
-  ) {
-    out["info"] = { ...info, id: number(`r:${String(Reflect.get(info, "id"))}`) };
-  }
-  if (typeof out["sdtType"] === "string" && typeof out["id"] === "number") {
-    out["id"] = number(`c:${out["id"]}`);
-  }
-  return out;
-};
-
 const projected = (document: Document, projection: Projection = "π"): unknown =>
-  renumbered(canonicalBlocks(document.package.document.content, projection), new Map());
+  projectReview({ document, projection });
 
 const expectEquivalent = (
   actual: Document,
