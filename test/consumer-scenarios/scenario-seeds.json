@@ -118,6 +118,27 @@
       "title": "#1191 collision flow"
     },
     {
+      "seed": 23384585,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "style-numbered headings keep bold after tracked edits"
+    },
+    {
+      "seed": 23384582,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "list edits preserve heading levels"
+    },
+    {
+      "seed": 1595037222,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "style-numbered headings keep levels in suggestions"
+    },
+    {
       "seed": 1250352735,
       "steps": 10,
       "kind": "random",
