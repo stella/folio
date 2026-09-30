@@ -24,6 +24,7 @@ import {
   EXTENDED_CORPUS_INVARIANTS,
   familyOf,
   isGatingFamily,
+  isZeroFamily,
 } from "./corpus-invariants/contract";
 import {
   FAMILY_BASELINE_FAMILIES,
@@ -102,6 +103,12 @@ const rowIssues = (
       issues.push({ file, detail: `${row.signature} records ${row.files} files` });
     }
     const owning = familyOf(row.invariant);
+    if (isZeroFamily(owning)) {
+      issues.push({
+        file,
+        detail: `${row.signature} belongs to a fixed-zero family and cannot be baselined`,
+      });
+    }
     if (!isGatingFamily(owning)) {
       issues.push({
         file,
