@@ -117,6 +117,7 @@ import {
   type DocumentOpRefusalReason,
 } from "./refusal";
 import { resolveRevision } from "./resolve";
+import { applyRowOp } from "./tableRows";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -1892,6 +1893,10 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return resolveRevision(document, op, applyDocumentOps);
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+    case DOCUMENT_OP_TYPES.DELETE_ROW:
+    case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+      return applyRowOp(document, op);
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -1910,6 +1915,8 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+    case DOCUMENT_OP_TYPES.DELETE_ROW:
       return op.revision;
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
@@ -1917,6 +1924,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+    case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return undefined;
     default: {
       const unreachable: never = op;
@@ -1935,7 +1943,18 @@ const recordedRevisions = (
   const paragraphs = storyParagraphs(edit.document.package.document)
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
-  return stampedRevisionIds(paragraphs, stamp, new Set(packageIdentityKeys(before.package)));
+  const known = new Set(packageIdentityKeys(before.package));
+  const revisions = stampedRevisionIds(paragraphs, stamp, known);
+  // Row structure precedes cell content in document order.
+  const structuralKey = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
+  if (
+    !known.has(structuralKey) &&
+    packageIdentityKeys(edit.document.package).includes(structuralKey) &&
+    !revisions.includes(stamp.id)
+  ) {
+    revisions.unshift(stamp.id);
+  }
+  return revisions;
 };
 
 /** Apply one operation to a document that meets the seed contract. */

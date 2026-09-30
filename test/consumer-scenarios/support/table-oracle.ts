@@ -3,6 +3,11 @@
 import type { Operation } from "./operations.ts";
 import type { Row } from "./oracle.ts";
 
+/** The scenarios run as a consumer of the published packages, so no extra dependencies. */
+function panic(message: string): never {
+  throw new Error(message);
+}
+
 type Location = NonNullable<Row["table"]>;
 type Cell = {
   row: number;
@@ -12,8 +17,18 @@ type Cell = {
   /** Only new cells have known text; pre-existing text may be edited elsewhere in a batch. */
   paragraphs?: string[];
 };
-type Table = { cells: Cell[]; height: number; width: number };
-type Source = { table: Table; cell: Cell };
+type CellGeometry = Readonly<Pick<Cell, "row" | "column" | "columnSpan" | "rowSpan">>;
+type Table = {
+  cells: Cell[];
+  height: number;
+  width: number;
+  /** The source grid is immutable while `cells` composes this batch. */
+  sourceCells: readonly CellGeometry[];
+  sourceWidth: number;
+  /** Original columns; null marks one added during this batch. */
+  sourceColumns: (number | null)[];
+};
+type Source = { table: Table; cell: Cell; row: number };
 
 export type TableModel = {
   tables: Table[];
@@ -41,7 +56,14 @@ export const modelFromRows = (rows: readonly Row[]): TableModel => {
   for (const row of rows) {
     const location = row.table;
     if (!location) continue;
-    const table = (tables[location.tableIndex] ??= { cells: [], height: 0, width: 0 });
+    const table = (tables[location.tableIndex] ??= {
+      cells: [],
+      height: 0,
+      width: 0,
+      sourceCells: [],
+      sourceWidth: 0,
+      sourceColumns: [],
+    });
     const key = cellKey(location);
     let cell = cells.get(key);
     if (!cell) {
@@ -56,9 +78,22 @@ export const modelFromRows = (rows: readonly Row[]): TableModel => {
     }
     table.height = Math.max(table.height, cell.row + cell.rowSpan);
     table.width = Math.max(table.width, cell.column + cell.columnSpan);
-    sources.set(row.id, { table, cell });
+    while (table.sourceColumns.length < table.width) {
+      table.sourceColumns.push(table.sourceColumns.length);
+    }
+    sources.set(row.id, { table, cell, row: location.rowIndex });
   }
   if (tables.some((table) => !table)) unsupported("a table has no readable cells");
+  for (const table of tables) {
+    if (!table) unsupported("a table has no readable cells");
+    table.sourceWidth = table.width;
+    table.sourceCells = table.cells.map(({ row, column, columnSpan, rowSpan }) => ({
+      row,
+      column,
+      columnSpan,
+      rowSpan,
+    }));
+  }
   return { tables, sources, rows };
 };
 
@@ -71,7 +106,24 @@ const sourceOf = (model: TableModel, blockId: unknown): Source => {
   ) {
     return unsupported(`the table anchor ${String(blockId)} no longer names a cell`);
   }
+  if (
+    source.table.sourceColumns.length !== source.table.width ||
+    source.table.sourceWidth < 1 ||
+    source.table.sourceCells.length === 0
+  ) {
+    panic(
+      `Table oracle source coordinates diverged: width ${source.table.width}, source columns ${source.table.sourceColumns.length}, source width ${source.table.sourceWidth}, source cells ${source.table.sourceCells.length}`,
+    );
+  }
   return source;
+};
+
+const sourceColumnAt = (table: Table, column: number): number | null => {
+  const sourceColumn = table.sourceColumns.at(column);
+  if (sourceColumn === undefined) {
+    panic(`Table oracle has no source coordinate for column ${column}.`);
+  }
+  return sourceColumn;
 };
 
 const tableInsertIndex = (model: TableModel, blockId: unknown, position: "before" | "after") => {
@@ -101,18 +153,27 @@ const rectangularTable = (rows: readonly (readonly string[])[]): Table => {
   if (width === 0 || rows.some((row) => row.length !== width)) {
     unsupported("the inserted table is not a nonempty rectangle");
   }
+  const cells = rows.flatMap((row, rowIndex) =>
+    row.map((text, column) => ({
+      row: rowIndex,
+      column,
+      columnSpan: 1,
+      rowSpan: 1,
+      paragraphs: lines(text),
+    })),
+  );
   return {
     width,
     height: rows.length,
-    cells: rows.flatMap((row, rowIndex) =>
-      row.map((text, column) => ({
-        row: rowIndex,
-        column,
-        columnSpan: 1,
-        rowSpan: 1,
-        paragraphs: lines(text),
-      })),
-    ),
+    sourceWidth: width,
+    sourceCells: cells.map(({ row, column, columnSpan, rowSpan }) => ({
+      row,
+      column,
+      columnSpan,
+      rowSpan,
+    })),
+    sourceColumns: Array.from({ length: width }, (_, column) => column),
+    cells,
   };
 };
 
@@ -233,6 +294,14 @@ export const applyTableOperation = (model: TableModel, operation: Operation): bo
         cells,
         height: 1,
         width: cells.length,
+        sourceWidth: cells.length,
+        sourceCells: cells.map(({ row, column, columnSpan, rowSpan }) => ({
+          row,
+          column,
+          columnSpan,
+          rowSpan,
+        })),
+        sourceColumns: cells.map((_, column) => column),
       });
       return true;
     }
@@ -242,7 +311,7 @@ export const applyTableOperation = (model: TableModel, operation: Operation): bo
       return true;
     }
     case "insertTableRow": {
-      const { table, cell } = sourceOf(model, operation["blockId"]);
+      const { table, cell, row: sourceRow } = sourceOf(model, operation["blockId"]);
       const boundary = cell.row + (operation["position"] === "before" ? 0 : 1);
       const crossing = table.cells.filter(
         (candidate) => candidate.row < boundary && candidate.row + candidate.rowSpan > boundary,
@@ -259,16 +328,40 @@ export const applyTableOperation = (model: TableModel, operation: Operation): bo
           ),
       );
       const texts = (operation["cellTexts"] as string[] | undefined) ?? [];
-      if (texts.length > free.length) unsupported("more row texts than new cells");
-      free.forEach((column, index) =>
+      const sourceBoundary = sourceRow + (operation["position"] === "before" ? 0 : 1);
+      const sourceCrossing = table.sourceCells.filter(
+        (candidate) =>
+          candidate.row < sourceBoundary && candidate.row + candidate.rowSpan > sourceBoundary,
+      );
+      const sourceFree = Array.from({ length: table.sourceWidth }, (_, column) => column).filter(
+        (column) =>
+          !sourceCrossing.some(
+            (candidate) =>
+              candidate.column <= column && candidate.column + candidate.columnSpan > column,
+          ),
+      );
+      if (texts.length > sourceFree.length) unsupported("more row texts than new cells");
+      const textBySourceColumn = new Map(
+        sourceFree.map((column, index) => [column, texts[index] ?? ""]),
+      );
+      free.forEach((column) => {
+        const sourceColumn = sourceColumnAt(table, column);
+        let text = "";
+        if (sourceColumn !== null) {
+          const sourceText = textBySourceColumn.get(sourceColumn);
+          if (sourceText === undefined) {
+            panic(`Table oracle source column ${sourceColumn} has no row payload slot.`);
+          }
+          text = sourceText;
+        }
         table.cells.push({
           row: boundary,
           column,
           rowSpan: 1,
           columnSpan: 1,
-          paragraphs: lines(texts[index] ?? ""),
-        }),
-      );
+          paragraphs: lines(text),
+        });
+      });
       table.height++;
       return true;
     }
@@ -311,6 +404,7 @@ export const applyTableOperation = (model: TableModel, operation: Operation): bo
           paragraphs: lines(texts[index] ?? ""),
         }),
       );
+      table.sourceColumns.splice(boundary, 0, null);
       table.width++;
       return true;
     }
@@ -326,6 +420,7 @@ export const applyTableOperation = (model: TableModel, operation: Operation): bo
         }
         return true;
       });
+      table.sourceColumns.splice(column, 1);
       table.width--;
       return true;
     }
