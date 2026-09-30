@@ -9,6 +9,7 @@
  */
 
 import type { BlockContent, Endnote, Footnote, Paragraph, Run } from "../types/document";
+import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 
 type NoteKind = "footnote" | "endnote";
 
@@ -53,7 +54,9 @@ export const withNoteReferenceMark = (
   }
   const paragraph = content[index] as Paragraph;
   return content.map((block, position) =>
-    position === index ? { ...paragraph, content: [mark, ...paragraph.content] } : block,
+    position === index
+      ? cloneParagraphWithPropertySource(paragraph, { content: [mark, ...paragraph.content] })
+      : block,
   );
 };
 
