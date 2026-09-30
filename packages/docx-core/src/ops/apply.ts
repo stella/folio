@@ -25,6 +25,7 @@
  * | `splitBlock`        | `joinBlocks`, then the kept half's review fields         |
  * | `joinBlocks`        | `splitBlock` with the retired paragraph's fields, then  |
  * |                     | the survivor's review fields                              |
+ * | `insertBlocks`      | an anchored `replaceBlocks`                              |
  * | `replaceBlocks`     | `replaceBlocks`                                           |
  * | `setParagraphReview`| `setParagraphReview`                                      |
  * | `replaceInline`     | `replaceInline`                                           |
@@ -53,6 +54,7 @@ import {
   type RunPropertyChange,
 } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { insertBlocks } from "./blockInsertion";
 import {
   endsItsContainer,
   type ParagraphLocation,
@@ -1862,6 +1864,8 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
 
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+      return insertBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
       return insertText(document, op);
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -1898,6 +1902,7 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
 /** The stamp of a tracked operation; `undefined` for a direct one. */
 export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.DELETE_RANGE:
