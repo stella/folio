@@ -4,9 +4,9 @@ import type { Operation } from "./operations.ts";
 import type { Row } from "./oracle.ts";
 
 /** The scenarios run as a consumer of the published packages, so no extra dependencies. */
-const panic = (message: string): never => {
+function panic(message: string): never {
   throw new Error(message);
-};
+}
 
 type Location = NonNullable<Row["table"]>;
 type Cell = {
