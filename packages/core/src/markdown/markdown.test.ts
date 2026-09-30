@@ -516,14 +516,22 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(md([first, para([run(" world")])])).toBe("Hello\n\n world");
   });
 
-  test("the merged paragraph keeps the first paragraph's heading style", () => {
+  test("the merged paragraph is the next one, with its properties", () => {
     const heading: Paragraph = {
       type: "paragraph",
       content: [run("Title")],
       formatting: { styleId: "Heading1" },
       pPrMark: delMark(),
     };
-    expect(md([heading, para([run(" tail")])], clean)).toBe("# Title tail");
+    // The heading's mark goes: the paragraph left ends with the body's mark.
+    expect(md([heading, para([run(" tail")])], clean)).toBe("Title tail");
+    const body: Paragraph = { ...para([run("Body ")]), pPrMark: delMark() };
+    const title: Paragraph = {
+      type: "paragraph",
+      content: [run("title")],
+      formatting: { styleId: "Heading1" },
+    };
+    expect(md([body, title], clean)).toBe("# Body title");
   });
 
   test("a wholly deleted paragraph leaves the next paragraph's properties alone", () => {
@@ -572,21 +580,33 @@ describe("toMarkdown — clean preset for skills", () => {
     expect(md([a, b, para([run("C")])], clean)).toBe("ABC");
   });
 
-  test("a deleted mark before a table is left unmerged (no structural join)", () => {
+  test("a deleted mark before a table runs its words into the first cell", () => {
     const para1: Paragraph = {
       type: "paragraph",
       content: [run("Lead")],
       pPrMark: delMark(),
     };
-    const table: BlockContent = {
+    const table = (pending: boolean): BlockContent => ({
       type: "table",
       rows: [
         {
           type: "tableRow",
+          ...(pending && {
+            structuralChange: { type: "tableRowInsertion", info: { id: 5, author: "A" } },
+          }),
           cells: [{ type: "tableCell", content: [para([run("X")])] }],
         },
       ],
+    });
+    expect(md([para1, table(false)], clean)).toBe("| LeadX |\n| --- |");
+    // A pending row may not keep the cell: the paragraph keeps its place.
+    expect(md([para1, table(true)], clean)).toBe("Lead\n\n| X |\n| --- |");
+    // Words before an emptied paragraph stop there; the emptied one goes.
+    const emptied: Paragraph = {
+      type: "paragraph",
+      content: [{ type: "deletion", info: { id: 2, author: "A" }, content: [run("Gone")] }],
+      pPrMark: delMark(),
     };
-    expect(md([para1, table], clean)).toBe("Lead\n\n| X |\n| --- |");
+    expect(md([para1, emptied, table(false)], clean)).toBe("Lead\n\n| X |\n| --- |");
   });
 });

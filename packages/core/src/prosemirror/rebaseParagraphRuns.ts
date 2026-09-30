@@ -17,7 +17,8 @@ import {
   type RunStyleResolver,
 } from "./runStyleFormatting";
 
-const sameRunStyleContext = (
+/** Two contexts that lend runs the same formatting: rebasing between them changes nothing. */
+export const sameRunStyleContext = (
   source: ParagraphRunStyleContext,
   target: ParagraphRunStyleContext,
 ): boolean =>

@@ -19,6 +19,7 @@ import { Mark } from "prosemirror-model";
 import { isHistoryTransaction } from "prosemirror-history";
 import { Mapping, ReplaceStep } from "prosemirror-transform";
 import { rebaseParagraphRuns } from "../rebaseParagraphRuns";
+import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { Plugin, type EditorState, type Transaction } from "prosemirror-state";
 
 import type { StyleDefinitions } from "../../types/document";
@@ -46,6 +47,7 @@ const rebaseEditedParagraphJoins = (
     // Revision resolution and formatting commands already own their run rebases.
     if (
       isHistoryTransaction(transaction) ||
+      transaction.getMeta(JOINED_RUNS_RESTYLED_META) === true ||
       !transaction.steps.every((step) => step instanceof ReplaceStep)
     ) {
       offset += transaction.steps.length;

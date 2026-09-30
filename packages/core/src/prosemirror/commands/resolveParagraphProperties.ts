@@ -3,7 +3,7 @@ import type { ParagraphFormatting, SectionProperties } from "../../types/documen
 import type { NumberingMap } from "../../docx/numberingParser";
 import { expectParagraphAttrs } from "../attrs";
 import { resolveParagraphDefaultTextFormatting } from "../styles/paragraphStyleCascade";
-import { rejectedListRenderingPatch } from "../listNumbering";
+import { rejectedListRenderingPatch } from "../listRendering";
 import type { RunStyleResolver } from "../runStyleFormatting";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
 import {

@@ -838,6 +838,28 @@ describe("compareDocx", () => {
     });
   });
 
+  test("a relocation with edited neighbours stays within its touched-block budget", async () => {
+    const base = readFixture("upstream-complex-styles.docx");
+    const baseBlocks = await blocksOf(base);
+    const script: EditScript = [
+      { type: "replaceWords", blockIndex: 2, find: "Heading", replace: "AAA" },
+      { type: "replaceWords", blockIndex: 1, find: "This", replace: "aaa" },
+      { type: "moveParagraph", blockIndex: 3, beforeBlockIndex: 0 },
+    ];
+    const scripted = await applyEditScript(base, script);
+    if (scripted.isErr()) throw scripted.error;
+    expect(scripted.value.unresolved).toEqual([]);
+    const { changes } = await compareOrThrow(base, scripted.value.buffer);
+    expect(changes.length).toBeLessThanOrEqual(
+      await touchedBlockBudget({ base, applied: scripted.value.applied, baseBlocks }),
+    );
+    expect(
+      changes.filter(
+        (change) => change.kind === "delete" && change.before === baseBlocks.at(0)?.text,
+      ),
+    ).toEqual([]);
+  });
+
   test("two relocations that cross are not fused into a rewrite", async () => {
     // The counterexample the change-count property found at PROPERTY_TEST_SEED=9.
     // Each relocation swaps a paragraph with its neighbour, so each contributes

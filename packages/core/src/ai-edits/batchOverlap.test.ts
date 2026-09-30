@@ -35,6 +35,7 @@ import {
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
 import { fromMarkdown } from "../markdown";
+import { resolveAllChangesInHeadlessState } from "../prosemirror/commands/comments";
 import type { FolioDocxReviewer } from "./headless";
 import { createFolioAITextRangeHandle } from "./snapshot";
 import type { FolioAIEditSnapshot } from "./types";
@@ -458,6 +459,19 @@ const batchAgainstOneAtATime = async (
       named.add(joined + 1);
     }
   }
+  // Tracked, deleting the story's last paragraph removes the break before it
+  // instead (that paragraph ends nothing), so once accepted the words of the
+  // last paragraph the batch keeps end in the deleted one's paragraph, whose
+  // mark is the one that stays: that paragraph goes by the deleted one's id.
+  const lastIndex = BLOCK_COUNT - 1;
+  const insertsAfterLast = applied.some(
+    ({ operation }) => operation.kind === "insertAfterBlock" && operation.block === lastIndex,
+  );
+  if (mode !== "direct" && deletes(lastIndex) && !insertsAfterLast) {
+    let kept = lastIndex - 1;
+    while (kept >= 0 && deletes(kept)) kept--;
+    if (kept >= 0) named.add(kept);
+  }
   if (mode !== "direct") {
     // Both redlines accept, and to the same document.
     const accepts = (session: OperationSession, whose: string): boolean => {
@@ -559,7 +573,17 @@ describe("a batch that deletes the story's last paragraph and inserts after it",
         { kind: "splitBlock", block: 0, before: 1 },
         { kind: "setBlockParagraphProperties", block: last },
       ];
-      for (const generated of [...orders, found]) {
+      // Found once the paragraph a removed break leaves became the one after it.
+      const insertedBefore: GeneratedOperation[] = [
+        { kind: "insertBeforeBlock", block: last },
+        { kind: "setBlockParagraphProperties", block: last },
+        { kind: "deleteBlock", block: last },
+      ];
+      const deletedWithEarlierEdit: GeneratedOperation[] = [
+        { kind: "deleteBlock", block: last },
+        { kind: "replaceInBlock", block: 0, first: 0, last: 0 },
+      ];
+      for (const generated of [...orders, found, insertedBefore, deletedWithEarlierEdit]) {
         problems.push(...(await batchAgainstOneAtATime(generated, mode)));
       }
       expect(problems).toEqual([]);
@@ -652,6 +676,77 @@ describe("a merge into blocks the batch deletes", () => {
     const accepted = session.snapshot().blocks.map(({ text }) => text);
     expect(accepted.at(-1)).toBe(blockText(last - 1));
   });
+
+  test("deleting the last block carries its predecessor's properties from before the batch set them", async () => {
+    const generated: GeneratedOperation[] = [
+      { kind: "setBlockParagraphProperties", block: 2 },
+      { kind: "deleteBlock", block: 3 },
+      { kind: "mergeBlockWithNext", block: 0 },
+    ];
+    expect(await batchAgainstOneAtATime(generated, "tracked-changes")).toEqual([]);
+  });
+});
+
+describe("deleting the last paragraph right after a paragraph added before it", () => {
+  // The added paragraph's break is retracted: it joins the emptied last one
+  // at once. Accepted, that reads as the deletion applied directly, which
+  // keeps the added paragraph and its properties; rejected, as nothing done.
+  const last = BLOCK_COUNT - 1;
+  type Centred = "never" | "before the edits" | "tracked, in an earlier batch";
+  const CENTRED: readonly Centred[] = ["never", "before the edits", "tracked, in an earlier batch"];
+  const centre = (session: OperationSession, mode: Mode, blockId: string) =>
+    session.apply(mode, [
+      {
+        id: "center",
+        type: "setBlockParagraphProperties",
+        blockId,
+        properties: { alignment: "center" },
+      },
+    ]);
+  const start = async (centred: Centred) => {
+    const session = await freshSession();
+    if (centred === "before the edits") {
+      centre(session, "direct", session.snapshot().blocks[last]?.id ?? "");
+    }
+    return session;
+  };
+  const run = async (mode: Mode, centred: Centred) => {
+    const session = await start(centred);
+    const lastId = session.snapshot().blocks[last]?.id ?? "";
+    session.apply(mode, [
+      { id: "insert", type: "insertBeforeBlock", blockId: lastId, text: "Added." },
+    ]);
+    if (centred === "tracked, in an earlier batch") {
+      centre(session, mode, lastId);
+    }
+    const result = session.apply(mode, [{ id: "delete", type: "deleteBlock", blockId: lastId }]);
+    expect(result.skipped).toEqual([]);
+    return session;
+  };
+
+  test.each(CENTRED)(
+    "accepts to the direct result (last paragraph centred: %s)",
+    async (centred) => {
+      const direct = await run("direct", centred);
+      const tracked = await run("tracked-changes", centred);
+      tracked.acceptAll();
+      expect(tracked.presentation({ withAnchors: false })).toEqual(
+        direct.presentation({ withAnchors: false }),
+      );
+    },
+  );
+
+  test.each(CENTRED)(
+    "rejects to the document it started from (last paragraph centred: %s)",
+    async (centred) => {
+      const original = await start(centred);
+      const tracked = await run("tracked-changes", centred);
+      tracked.state = resolveAllChangesInHeadlessState(tracked.state, "reject");
+      expect(tracked.presentation({ withAnchors: false })).toEqual(
+        original.presentation({ withAnchors: false }),
+      );
+    },
+  );
 });
 
 const spanArbitrary = fc

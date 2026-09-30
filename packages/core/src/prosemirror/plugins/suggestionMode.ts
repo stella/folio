@@ -16,7 +16,7 @@ import { undoInputRule } from "prosemirror-inputrules";
 import type { Node as PMNode, MarkType, Slice } from "prosemirror-model";
 import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { Mapping } from "prosemirror-transform";
+import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
@@ -28,7 +28,17 @@ import { handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
 import { encloseWholeControls } from "../contentControlRevisions";
+import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
 import { canCarryTrackedRunMark } from "../trackedRunInlineAtoms";
+import {
+  carryParagraphProperties,
+  paragraphLeftAfter,
+  recordReplacedParagraphProperties,
+} from "../paragraphPropertyCarry";
+import { rebaseParagraphRuns } from "../rebaseParagraphRunFormatting";
+import { paragraphRunStyleContext } from "../runStyleFormatting";
+import { getDocumentNumbering } from "./documentNumbering";
+import { getDocumentStyleResolver } from "./documentStyles";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
@@ -74,6 +84,30 @@ export function makeRevisionInfo(
     author: attrs.author,
     date: attrs.date,
   };
+}
+
+/**
+ * A removed paragraph mark leaves the paragraph after it once accepted. An
+ * edit that reads as the paragraph before it (Backspace or Delete at the
+ * break, a deletion running from inside one paragraph into another) gives the
+ * paragraph left that paragraph's properties now, under the mark's revision:
+ * accepting reads as the edit made directly, rejecting restores its own.
+ */
+function carryIntoParagraphLeft(
+  state: EditorState,
+  tr: Transaction,
+  source: PMNode,
+  survivorPos: number,
+  info: TrackedChangeInfo,
+): void {
+  carryParagraphProperties({
+    tr,
+    position: survivorPos,
+    source,
+    styleResolver: getDocumentStyleResolver(state),
+    numbering: getDocumentNumbering(state),
+    revision: { id: info.id, author: info.author ?? "", date: info.date ?? "" },
+  });
 }
 
 function makeParagraphMarkInfo(pluginState: SuggestionModeState): TrackedChangeInfo {
@@ -143,6 +177,8 @@ function markRangeAsDeleted(
   insertionType: MarkType,
   deletionType: MarkType,
   pluginState: SuggestionModeState,
+  /** Set for a deletion the user made across paragraphs (Delete, cut, typing over). */
+  joinState?: EditorState,
 ): void {
   const ranges: { from: number; to: number; isOwnInsert: boolean }[] = [];
 
@@ -172,6 +208,7 @@ function markRangeAsDeleted(
     findAdjacentRevisionForRange(doc, from, to, "deletion", pluginState.author) ||
     makeMarkAttrs(pluginState);
 
+  let removedMark = false;
   doc.nodesBetween(from, to, (node, pos) => {
     if (
       node.type.name === "tableRow" &&
@@ -191,8 +228,32 @@ function markRangeAsDeleted(
         kind: "del",
         info: { id: delAttrs.revisionId, author: delAttrs.author, date: delAttrs.date },
       });
+      removedMark = true;
     }
   });
+  // Words of the first paragraph stay in front of the joined text, so the
+  // paragraph left reads as the first one. A deletion that takes the first
+  // paragraph whole leaves the last one as it was.
+  const $first = doc.resolve(from);
+  const $last = doc.resolve(to);
+  if (
+    joinState &&
+    removedMark &&
+    $first.parent.type.name === "paragraph" &&
+    $last.parent.type.name === "paragraph" &&
+    $first.parent !== $last.parent &&
+    from > $first.start()
+  ) {
+    const lastPos = doc === tr.doc ? $last.before() : tr.mapping.map($last.before());
+    const lastMark = tr.doc.nodeAt(lastPos)?.attrs["pPrMark"] as { kind?: unknown } | null;
+    const lastGoes = lastMark?.kind === "del" || lastMark?.kind === "moveFrom";
+    const survivorPos = lastGoes ? (paragraphLeftAfter(tr.doc, lastPos) ?? lastPos) : lastPos;
+    carryIntoParagraphLeft(joinState, tr, $first.parent, survivorPos, {
+      id: delAttrs.revisionId,
+      author: delAttrs.author,
+      date: delAttrs.date,
+    });
+  }
 
   if (ranges.length === 0) {
     return;
@@ -328,9 +389,10 @@ export function handleSuggestionPaste(
   const wholeBlocks =
     beforeStruck && $to.parent.isTextblock && $to.parentOffset === $to.parent.content.size;
   // The paragraph a container ends with never carries a tracked mark, so it
-  // cannot be struck whole. The paste goes after it instead: a closing table
-  // then follows it, and its mark can be struck like any other; closing
-  // paragraphs take its place, see `rotateIntoFinalParagraph`.
+  // cannot be struck whole. Only its words are struck, and a table goes in
+  // front of it: accepting leaves the table and the emptied paragraph after
+  // it, which still ends the container. Closing paragraphs take its place
+  // instead, see `rotateIntoFinalParagraph`.
   const endsContainer =
     wholeBlocks && paragraphEndsItsContainer(doc.resolve($to.before()), $to.parent.type.name);
   const rotates =
@@ -339,15 +401,47 @@ export function handleSuggestionPaste(
     slice.content.lastChild?.type === $to.parent.type;
 
   // 1. Strike through the replaced selection (or retract own pending inserts).
-  markRangeAsDeleted(
-    tr,
-    doc,
-    from,
-    wholeBlocks && !rotates ? $to.after() : to,
-    insertionType,
-    deletionType,
-    pluginState,
-  );
+  //    A table going in front of a container's last paragraph is placed
+  //    first: struck before, the paragraphs it lands in front of would lose
+  //    their struck marks' undo to the insertion at their position.
+  const tableFirst = endsContainer && !rotates;
+  if (!tableFirst) {
+    markRangeAsDeleted(
+      tr,
+      doc,
+      from,
+      wholeBlocks && !endsContainer ? $to.after() : to,
+      insertionType,
+      deletionType,
+      pluginState,
+    );
+  }
+
+  // A paste over words running from inside one paragraph into another removes
+  // the first one's break: the paragraph its words now run on into takes its
+  // properties, under that break's revision, as a deletion across the break
+  // does. Pasted words go in after, so they read in those properties as they
+  // are; pasted paragraphs first, so the paragraph left is found past them.
+  const carryAcross = () => {
+    if (
+      selectsAll ||
+      $from.parent.type.name !== "paragraph" ||
+      $from.parent === $to.parent ||
+      from <= $from.start()
+    ) {
+      return;
+    }
+    const firstPos = tr.mapping.map($from.before());
+    const mark = tr.doc.nodeAt(firstPos)?.attrs["pPrMark"] as ParagraphMarkAttr | null | undefined;
+    const survivorPos = paragraphLeftAfter(tr.doc, firstPos);
+    if (mark?.kind === "del" && survivorPos !== null) {
+      carryIntoParagraphLeft(view.state, tr, $from.parent, survivorPos, mark.info);
+    }
+  };
+  const inlineSlice = slice.content.firstChild?.isInline === true;
+  if (inlineSlice) {
+    carryAcross();
+  }
 
   // 2. Insert the pasted slice beside the struck-through selection.
   //    `replaceRange` fits the slice's open sides into the surrounding content
@@ -355,8 +449,10 @@ export function handleSuggestionPaste(
   //    copied table or whole paragraphs) is placed structurally instead of
   //    failing or dropping nodes as a raw `replace` at an inline point would.
   let at = tr.mapping.map(to);
-  if (endsContainer) {
+  if (rotates) {
     at = tr.mapping.map($to.after());
+  } else if (tableFirst) {
+    at = $from.before();
   } else if (beforeStruck) {
     at = tr.mapping.map(from, -1);
   }
@@ -376,6 +472,21 @@ export function handleSuggestionPaste(
   });
   let insertFrom = placed.length === 0 ? at : Math.min(...placed.map((range) => range.from));
   let insertTo = placed.length === 0 ? at : Math.max(...placed.map((range) => range.to));
+  if (tableFirst) {
+    const struck = tr.steps.length;
+    markRangeAsDeleted(
+      tr,
+      tr.doc,
+      tr.mapping.map(from),
+      tr.mapping.map(to),
+      insertionType,
+      deletionType,
+      pluginState,
+    );
+    const since = tr.mapping.slice(struck);
+    insertFrom = since.map(insertFrom, -1);
+    insertTo = since.map(insertTo, -1);
+  }
 
   // 3. Mark the pasted content as a tracked insertion; drop any inherited
   //    deletion marks first so new content is never shown struck through.
@@ -384,9 +495,37 @@ export function handleSuggestionPaste(
     findAdjacentRevision(doc, from, "insertion", pluginState.author) || makeMarkAttrs(pluginState);
   markRangeAsInserted(tr, tr.doc, insertFrom, insertTo, insertionType, deletionType, insertAttrs);
 
+  if (!inlineSlice) {
+    carryAcross();
+  }
+
+  // Paragraphs pasted into one split it: its break ends the last part, which
+  // reads as the last pasted paragraph. Rejecting the pasted breaks leaves
+  // that part, so it records what the paragraph read as.
+  if (!closedBlocks && $from.parent === $to.parent && $from.parent.type.name === "paragraph") {
+    const $end = tr.doc.resolve(tr.mapping.map(to));
+    if ($end.parent.type.name === "paragraph" && $end.before() !== tr.mapping.map($from.before())) {
+      recordReplacedParagraphProperties({
+        tr,
+        position: $end.before(),
+        replaced: $from.parent,
+        revision: {
+          id: insertAttrs.revisionId,
+          author: insertAttrs.author,
+          date: insertAttrs.date,
+        },
+      });
+    }
+  }
+
   if (rotates) {
     const rotation = tr.steps.length;
-    const joined = rotateIntoFinalParagraph(tr, tr.mapping.map($to.before()), insertAttrs);
+    const joined = rotateIntoFinalParagraph(
+      view.state,
+      tr,
+      tr.mapping.map($to.before()),
+      insertAttrs,
+    );
     insertFrom = Math.min(tr.mapping.slice(rotation).map(insertFrom, -1), joined);
     insertTo = tr.mapping.slice(rotation).map(insertTo);
   }
@@ -476,7 +615,12 @@ export function handleSuggestionTableCellPaste(
  * pasted break back into one paragraph that returns to its old formatting.
  * Returns the position of the joined paragraph.
  */
-function rotateIntoFinalParagraph(tr: Transaction, replacedPos: number, attrs: MarkAttrs): number {
+function rotateIntoFinalParagraph(
+  state: EditorState,
+  tr: Transaction,
+  replacedPos: number,
+  attrs: MarkAttrs,
+): number {
   const replaced = tr.doc.nodeAt(replacedPos);
   const first = replaced ? tr.doc.nodeAt(replacedPos + replaced.nodeSize) : null;
   if (!replaced || !first) {
@@ -489,22 +633,26 @@ function rotateIntoFinalParagraph(tr: Transaction, replacedPos: number, attrs: M
   };
   const { _sectionProperties: sectionProperties } = replaced.attrs;
   tr.join(replacedPos + replaced.nodeSize);
-  // Rejecting the pasted breaks closes them into this paragraph, which keeps
-  // its own formatting; the change recorded here returns it to the replaced one.
-  tr.setNodeMarkup(replacedPos, undefined, {
-    ...first.attrs,
-    _propertyChanges: [
-      ...(expectParagraphAttrs(first)._propertyChanges ?? []),
-      {
-        type: "paragraphPropertyChange",
-        info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
-        previousFormatting,
-      } satisfies ParagraphPropertyChangeAttrs,
-    ],
-  });
+  tr.setNodeMarkup(replacedPos, undefined, first.attrs);
+  // The struck words now sit in the first pasted paragraph: what the replaced
+  // paragraph's style lent them is re-read in that one's.
+  const styleResolver = getDocumentStyleResolver(state);
+  if (styleResolver && replaced.content.size > 0) {
+    rebaseParagraphRuns({
+      previousContext: paragraphRunStyleContext(replaced, styleResolver),
+      paragraphPosition: replacedPos,
+      range: { from: 0, to: replaced.content.size },
+      styleResolver,
+      tr,
+    });
+  }
 
   // The paragraph that now ends the container carries the replaced one's
-  // section, and no mark.
+  // section, and no mark. Rejecting the pasted breaks closes every pasted
+  // paragraph into it, the one whose break stays, so the change recorded here
+  // returns it to the replaced paragraph's formatting. It is the paragraph's
+  // only one: a change the pasted paragraph brought records formatting the
+  // document never had here, and a paragraph holds one w:pPrChange.
   const $joined = tr.doc.resolve(replacedPos);
   const container = $joined.parent;
   let finalPos = replacedPos;
@@ -512,11 +660,18 @@ function rotateIntoFinalParagraph(tr: Transaction, replacedPos: number, attrs: M
     finalPos += container.child(index).nodeSize;
   }
   const final = tr.doc.nodeAt(finalPos);
-  if (final && (final.attrs["pPrMark"] != null || sectionProperties != null)) {
+  if (final) {
     tr.setNodeMarkup(finalPos, undefined, {
       ...final.attrs,
       pPrMark: null,
       ...(sectionProperties == null ? {} : { _sectionProperties: sectionProperties }),
+      _propertyChanges: [
+        {
+          type: "paragraphPropertyChange",
+          info: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+          previousFormatting,
+        } satisfies ParagraphPropertyChangeAttrs,
+      ],
     });
   }
   return replacedPos;
@@ -541,6 +696,21 @@ function applySuggestionInsert(
   tr.setMeta(SUGGESTION_META, true);
   tr.setMeta(SUGGESTED_TEXT_INPUT_META, text);
 
+  // Select-all spans the block boundaries around the content; typing replaces
+  // the text span inside them, as over a text selection of the whole document:
+  // the typed text lands in the last paragraph, whose break is the one that
+  // stays, formatted as the first character it replaces.
+  const selectsAll = view.state.selection instanceof AllSelection;
+  if (selectsAll) {
+    from = Math.max(from, Selection.atStart(view.state.doc).from);
+    to = Math.min(to, Selection.atEnd(view.state.doc).to);
+  }
+  const replacedFormatting = selectsAll
+    ? (view.state.doc.resolve(from).nodeAfter?.marks ?? []).filter(({ type }) =>
+        RUN_FORMATTING_MARK_NAMES.has(type.name),
+      )
+    : null;
+
   const insertAttrs =
     findAdjacentRevision(view.state.doc, from, "insertion", pluginState.author) ||
     makeMarkAttrs(pluginState);
@@ -548,7 +718,16 @@ function applySuggestionInsert(
   if (from !== to) {
     const deletionType = view.state.schema.marks["deletion"];
     if (deletionType) {
-      markRangeAsDeleted(tr, view.state.doc, from, to, insertionType, deletionType, pluginState);
+      markRangeAsDeleted(
+        tr,
+        view.state.doc,
+        from,
+        to,
+        insertionType,
+        deletionType,
+        pluginState,
+        view.state,
+      );
     }
   }
 
@@ -567,9 +746,66 @@ function applySuggestionInsert(
   // the continuous mark span. We intentionally do NOT removeMark(insertionType)
   // first, because that fragments the mark span and creates a nested change.
   tr.addMark(insertAt, insertAt + text.length, insertionType.create(insertAttrs));
+  if (replacedFormatting) {
+    for (const mark of tr.doc.resolve(insertAt).nodeAfter?.marks ?? []) {
+      if (RUN_FORMATTING_MARK_NAMES.has(mark.type.name)) {
+        tr.removeMark(insertAt, insertAt + text.length, mark.type);
+      }
+    }
+    for (const mark of replacedFormatting) {
+      tr.addMark(insertAt, insertAt + text.length, mark);
+    }
+  }
+  separateSplitStretch(tr, insertAt, insertAt + text.length, insertAttrs.revisionId);
+  if (view.state.selection instanceof AllSelection) {
+    // The caret follows the typed text, as after typing over any selection.
+    tr.setSelection(TextSelection.create(tr.doc, insertAt + text.length));
+  }
 
   view.dispatch(tr.scrollIntoView());
   return true;
+}
+
+/**
+ * Text typed inside another revision leaves that revision in two stretches.
+ * A saved package writes each stretch as a wrapper of its own with its own
+ * `w:id`, so the stretch after the typed text gets a fresh id now: the editor
+ * lists, resolves and saves the same changes a reopened package does.
+ */
+function separateSplitStretch(tr: Transaction, from: number, to: number, typedId: number): void {
+  const $from = tr.doc.resolve(from);
+  const $to = tr.doc.resolve(to);
+  const before = $from.nodeBefore;
+  if (!before || $to.parent !== $from.parent) {
+    return;
+  }
+  const parent = $to.parent;
+  const start = $to.start();
+  for (const mark of before.marks) {
+    if (mark.type.name !== "insertion" && mark.type.name !== "deletion") {
+      continue;
+    }
+    const revisionId = mark.attrs["revisionId"];
+    if (revisionId === typedId || typeof revisionId !== "number") {
+      continue;
+    }
+    // The stretch after the typed text: the same revision, uninterrupted.
+    let end = to;
+    let offset = to - start;
+    while (offset < parent.content.size) {
+      const child = parent.childAfter(offset).node;
+      if (!child?.marks.some((candidate) => candidate.eq(mark))) {
+        break;
+      }
+      offset += child.nodeSize;
+      end = start + offset;
+    }
+    if (end === to) {
+      continue;
+    }
+    tr.removeMark(to, end, mark);
+    tr.addMark(to, end, mark.type.create({ ...mark.attrs, revisionId: mintRevisionId() }));
+  }
 }
 
 /**
@@ -630,6 +866,17 @@ export function handleSuggestionEnter(view: EditorView, pluginState: SuggestionM
         info: makeParagraphMarkInfo(pluginState),
       };
       tr.setNodeAttribute(sourcePos, "pPrMark", markInfo);
+      // The new paragraph holds the source's break: rejecting the inserted
+      // one leaves it, so it records what the source read as.
+      const $caret = tr.selection.$from;
+      if ($caret.parent.type.name === "paragraph" && $caret.before() !== sourcePos) {
+        recordReplacedParagraphProperties({
+          tr,
+          position: $caret.before(),
+          replaced: $from.parent,
+          revision: markInfo.info,
+        });
+      }
     }
   }
   view.dispatch(tr.scrollIntoView());
@@ -738,6 +985,13 @@ function applyPPrDel(
     info: makeParagraphMarkInfo(pluginState),
   };
   tr.setNodeAttribute(targetParagraphPos, "pPrMark", markInfo);
+  carryIntoParagraphLeft(
+    view.state,
+    tr,
+    targetNode,
+    paragraphLeftAfter(tr.doc, targetParagraphPos) ?? targetParagraphPos + targetNode.nodeSize,
+    markInfo.info,
+  );
   view.dispatch(tr.scrollIntoView());
   return true;
 }
@@ -796,7 +1050,7 @@ function handleSuggestionDelete(
       )
       .sort((a, b) => b.from - a.from);
     for (const { from, to } of ranges) {
-      markRangeAsDeleted(tr, state.doc, from, to, insertionType, deletionType, pluginState);
+      markRangeAsDeleted(tr, state.doc, from, to, insertionType, deletionType, pluginState, state);
     }
     // Collapse cursor to after the marked/retracted content
     const cursorPos = tr.mapping.map($to.pos);
@@ -943,6 +1197,53 @@ function markComposedAsInsertion(
   const caret = tr.mapping.map(to, 1);
   tr.setSelection(TextSelection.create(tr.doc, caret));
   view.dispatch(tr);
+}
+
+/**
+ * Paragraphs inserted into one (a paste at the caret) split it: its break ends
+ * the last part, which reads as the last inserted paragraph. Rejecting the
+ * inserted breaks leaves that part, so it records what the paragraph read as.
+ */
+function recordSplitParagraph(
+  tr: Transaction,
+  before: PMNode | undefined,
+  step: Step,
+  insertedFrom: number,
+  insertedTo: number,
+  attrs: MarkAttrs,
+): void {
+  if (!(step instanceof ReplaceStep) || !before) {
+    return;
+  }
+  // Content goes in, taking at most the paragraph's own end with it.
+  const $at = before.resolve(step.from);
+  if (
+    $at.parent.type.name !== "paragraph" ||
+    step.to > $at.after() ||
+    before.textBetween(step.from, step.to) !== ""
+  ) {
+    return;
+  }
+  const split = $at.parent;
+  const $first = tr.doc.resolve(insertedFrom);
+  const $last = tr.doc.resolve(insertedTo);
+  // The last part ends the inserted range, or, when the paste ends on a
+  // closed paragraph, is the paragraph right before its end.
+  let lastPos: number | null = null;
+  if ($last.parent.type.name === "paragraph") {
+    lastPos = $last.before();
+  } else if ($last.nodeBefore?.type.name === "paragraph") {
+    lastPos = insertedTo - $last.nodeBefore.nodeSize;
+  }
+  if ($first.parent.type.name !== "paragraph" || lastPos === null || lastPos === $first.before()) {
+    return;
+  }
+  recordReplacedParagraphProperties({
+    tr,
+    position: lastPos,
+    replaced: split,
+    revision: { id: attrs.revisionId, author: attrs.author, date: attrs.date },
+  });
 }
 
 /**
@@ -1207,6 +1508,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
                 markAttrs,
               );
             }
+            recordSplitParagraph(tr, userTr.docs[stepIndex], step, newFrom, newTo, markAttrs);
           }
         });
       }

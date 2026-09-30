@@ -795,7 +795,7 @@ describe("paragraph alignment comparison", () => {
       expect(rejectedXml).not.toContain("<w:pPrChange");
       expect(rejectedXml).not.toContain("w:hanging");
       expect(untrackedParagraphProperties(firstParagraphXml(rejectedXml))).toBe(
-        expectedPreservedParagraphProperties(undefined),
+        expectedParagraphProperties(undefined),
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(
@@ -923,7 +923,7 @@ describe("paragraph alignment comparison", () => {
     ]);
     const rejected = await rejecting.toBuffer();
     expect(untrackedParagraphProperties(firstParagraphXml(await mainDocumentXml(rejected)))).toBe(
-      expectedPreservedParagraphProperties("center"),
+      expectedParagraphProperties("center"),
     );
     const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
     expect(
@@ -1080,7 +1080,7 @@ describe("paragraph alignment comparison", () => {
       const rejectedParagraph = firstParagraphXml(await mainDocumentXml(rejected));
       expect(rejectedParagraph).not.toContain("<w:pPrChange");
       expect(untrackedParagraphProperties(rejectedParagraph)).toBe(
-        expectedPreservedParagraphProperties("center"),
+        expectedParagraphProperties("center"),
       );
       const reopenedRejected = await FolioDocxReviewer.fromBuffer(rejected);
       expect(reopenedRejected.snapshot().blocks.at(0)).toEqual(

@@ -107,6 +107,10 @@ import {
   twipsToPixels,
 } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
+import {
+  createNoteReferenceFollower,
+  withoutUnreferencedNotes,
+} from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import {
   getChangedParagraphIds,
@@ -800,6 +804,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // ---- Debounced PM → Document writeback ----------------------------------
 
   let docChangeTimer: number | null = null;
+  // A note follows its reference: a reference whose deletion the written-back
+  // edits rejected gives its note back its text, and deleting it again (as
+  // undoing that reject does) takes the text with it.
+  const noteFollower = createNoteReferenceFollower();
 
   function flushDocumentChangeNotification(): void {
     if (docChangeTimer !== null) {
@@ -812,7 +820,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       return;
     }
     try {
-      const updated = fromProseDoc(view.state.doc, base);
+      const updated = noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
       docModel.value = updated;
       headerFooterManager.sync();
       noteEditorManager.sync();
@@ -946,8 +954,16 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     { flush: "post" },
   );
 
-  function handleTransaction({ newState, docChanged }: HiddenEditorTransactionUpdate): void {
+  function handleTransaction({
+    newState,
+    docChanged,
+    transactions,
+  }: HiddenEditorTransactionUpdate): void {
     editorState.value = newState;
+    const before = transactions[0]?.before;
+    if (docChanged && before) {
+      noteFollower.noteBase(before);
+    }
     if (docChanged) {
       isDirty.value = true;
       syncCoordinator.incrementStateSeq();
@@ -1189,6 +1205,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   function loadDocument(doc: Document): void {
     parseError.value = null;
     docModel.value = doc;
+    noteFollower.reset();
     remountForNewDocument();
   }
 
@@ -1202,6 +1219,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   async function serializeCurrentDocx(
     serializationOptions?: FolioGetDocxOptions,
   ): Promise<SerializedDocxResult | null> {
+    // A write-back still pending may owe the notes a restore or a deletion.
+    if (docChangeTimer !== null) {
+      flushDocumentChangeNotification();
+    }
     const view = editorView.value;
     const currentDocument = docModel.value;
     if (!view || !currentDocument) {
@@ -1220,7 +1241,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
 
-    const updatedDoc = fromProseDoc(state.doc, base);
+    // A note goes with its reference: one nothing refers to any more is not saved.
+    const updatedDoc = withoutUnreferencedNotes(fromProseDoc(state.doc, base));
     const baselineBuffer = updatedDoc.originalBuffer ?? null;
 
     // The tripwire observes the selective path independently of the user-visible

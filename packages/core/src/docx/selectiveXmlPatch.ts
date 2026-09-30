@@ -1194,6 +1194,27 @@ export function buildPatchedNotePartXml({
     }
   }
 
+  // A note the model no longer has went with its reference: its element goes.
+  for (const [id, baselineSyntaxEntries] of baselineElements) {
+    if (currentElements.has(id) || baselineSyntaxEntries.length !== 1) {
+      continue;
+    }
+    const originalSyntaxEntries = originalElements.get(id);
+    const originalSyntax =
+      originalSyntaxEntries?.length === 1 ? originalSyntaxEntries[0] : undefined;
+    const originalOffsets = originalSyntax && findNoteElement(originalXml, originalSyntax, id);
+    if (!originalOffsets) {
+      return { type: "refused", reason: "unroutable-paragraph" };
+    }
+    const removal: XmlSplice = {
+      start: originalOffsets.start,
+      end: originalOffsets.end,
+      newXml: "",
+    };
+    paragraphSplices.push(removal);
+    noteSplices.push(removal);
+  }
+
   if (unroutedChangedParaIds.size > 0) {
     return { type: "refused", reason: "unroutable-paragraph" };
   }

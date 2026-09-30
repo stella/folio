@@ -60,6 +60,18 @@
       "path": "308:1:4",
       "note": "formatting a last paragraph the batch deletes and inserts before (path at factor 5)",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 1166263764,
+      "path": "281:2:5:5:8:8:8",
+      "note": "tracked insertion before, formatting and deletion of the last block",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": 699625871,
+      "path": "585:5:6:0:3",
+      "note": "#1221: deleting the last block carries its predecessor's properties from before the batch set them",
+      "date": "2026-09-29"
     }
   ],
   "packages/core/src/compare/compare.property.test.ts::the change count never exceeds the blocks the script touched (${name})": [
@@ -80,6 +92,16 @@
       "path": "1:0:1",
       "note": "#1127: upstream-complex-styles.docx",
       "date": "2026-09-27"
+    },
+    {
+      "seed": -1791229527,
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 752725439,
+      "note": "A recreated relocation displaced a persisted exact anchor and split neighbouring edits into deletion/insertion changes. Found on upstream-complex-styles.docx; pinned by seed alone since the key covers every fixture.",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/ai-edits/tableOperations.property.test.ts::keep every value, agree across modes and readers, and reject cleanly": [
@@ -183,6 +205,14 @@
       "seed": 2609260,
       "path": "5:2:1:1:5:5:5:4:4:4:4:4:4",
       "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
+      "date": "2026-09-29"
+    }
+  ],
+  "packages/core/src/ai-edits/commentLifecycle.property.test.ts::over generated sessions across a table and a note": [
+    {
+      "seed": -2009672347,
+      "path": "133:0:0:10:9:9:9:9:9:9",
+      "note": "#1221: accepting a note reference's deletion drops the note and the comment anchored in it",
       "date": "2026-09-29"
     }
   ]

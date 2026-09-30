@@ -586,6 +586,9 @@ describe("accepted suggested container-final paragraphs", () => {
 
         expect(getTrackedChangesFromDoc(view.state.doc)).toEqual([]);
         expect(revisedFinalParagraphMarks(documentModel(view.state))).toEqual([]);
+        // Rejecting the second suggestion removes the break it added, which
+        // ends the first one's words: they run on into the second paragraph,
+        // and its mark and properties are what stay. The same in every order.
         expect(terminalChainState(view.state, containerKind)).toEqual([
           {
             text: CARRIER_TEXT,
@@ -595,7 +598,7 @@ describe("accepted suggested container-final paragraphs", () => {
           },
           {
             text: FIRST_ADJACENT_TEXT,
-            alignment: "right",
+            alignment: "center",
             markId: null,
             propertyChanges: [],
           },

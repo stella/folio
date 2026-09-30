@@ -2406,8 +2406,13 @@ async function serializeNotesToZip({
   changedNoteParaIds,
 }: SerializeNotesToZipOptions): Promise<void> {
   const footnotes = doc.package.footnotes ?? [];
-  if (footnotes.length > 0) {
-    if (findNotePartEntry(originalZip, "word/footnotes.xml")) {
+  // A part the model emptied is patched too: its notes went with their references.
+  const originalFootnotes =
+    doc.package.footnotes === undefined
+      ? null
+      : findNotePartEntry(originalZip, "word/footnotes.xml");
+  if (footnotes.length > 0 || originalFootnotes) {
+    if (originalFootnotes) {
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/footnotes.xml",
         currentXml: serializeFootnotes(footnotes),
@@ -2431,8 +2436,11 @@ async function serializeNotesToZip({
     }
   }
   const endnotes = doc.package.endnotes ?? [];
-  if (endnotes.length > 0) {
-    if (findNotePartEntry(originalZip, "word/endnotes.xml")) {
+  // A part the model emptied is patched too: its notes went with their references.
+  const originalEndnotes =
+    doc.package.endnotes === undefined ? null : findNotePartEntry(originalZip, "word/endnotes.xml");
+  if (endnotes.length > 0 || originalEndnotes) {
+    if (originalEndnotes) {
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/endnotes.xml",
         currentXml: serializeEndnotes(endnotes),

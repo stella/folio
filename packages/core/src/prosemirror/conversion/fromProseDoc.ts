@@ -192,7 +192,6 @@ import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStac
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
-import { schema } from "../schema";
 import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
 import type {
@@ -815,10 +814,14 @@ function stripSuggestedInlineMarks(
       : paragraphFormatting;
     const effectivePreviousFormatting = mergeTextFormatting(styleFormatting, previousFormatting);
     next = next.filter((mark) => !RUN_FORMATTING_MARK_NAMES.has(mark.type.name));
-    for (const restored of textFormattingToMarks(effectivePreviousFormatting, schema, {
-      overrideFormatting: previousFormatting,
-      directFormatting: previousFormatting,
-    })) {
+    for (const restored of textFormattingToMarks(
+      effectivePreviousFormatting,
+      suggestedRunPropertyChange.type.schema,
+      {
+        overrideFormatting: previousFormatting,
+        directFormatting: previousFormatting,
+      },
+    )) {
       next = restored.addToSet(next);
     }
     if (previousFormatting?.styleId) {

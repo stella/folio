@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { panic } from "better-result";
-import { Schema } from "prosemirror-model";
+import { Schema, type MarkSpec } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
@@ -13,10 +12,11 @@ import {
   rejectAIEditRevision,
   rejectAllChanges,
 } from "../prosemirror/commands/comments";
+import { RUN_FORMATTING_MARK_NAMES } from "../prosemirror/runFormattingMarkNames";
+import { schema as editorSchema } from "../prosemirror/schema";
 import { applyFolioAIEditOperations, type FolioWordDiffOptions } from "./apply";
 import { resolveFolioAITextRange } from "./blockRange";
 import { getTrackedChangesFromDoc } from "./read";
-import { schema as folioSchema } from "../prosemirror/schema";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
 import {
   createFolioAIEditSnapshot,
@@ -26,9 +26,17 @@ import {
 import type { FolioAIEditApplyMode, FolioAIEditOperation } from "./types";
 import { createScopedWordDiffOptions } from "./word-diff";
 
-const runFormattingOverrideSpec =
-  folioSchema.spec.marks.get("runFormattingOverride") ??
-  panic("The editor schema has no runFormattingOverride mark");
+/**
+ * The test's own marks, plus the editor's run-formatting marks it lacks:
+ * formatting is written with the marks of the schema the text belongs to.
+ */
+const withEditorRunMarks = (own: Record<string, MarkSpec>): Record<string, MarkSpec> => {
+  const marks = { ...own };
+  editorSchema.spec.marks.forEach((name, spec) => {
+    if (!(name in marks) && RUN_FORMATTING_MARK_NAMES.has(name)) marks[name] = spec;
+  });
+  return marks;
+};
 
 const schema = new Schema({
   nodes: {
@@ -105,7 +113,7 @@ const schema = new Schema({
       },
     },
   },
-  marks: {
+  marks: withEditorRunMarks({
     insertion: {
       attrs: {
         revisionId: {},
@@ -159,10 +167,7 @@ const schema = new Schema({
       },
       toDOM: () => ["u", 0],
     },
-    // Formatting commands record which run properties are direct on this
-    // carrier; a document can only hold it when its schema declares it.
-    runFormattingOverride: runFormattingOverrideSpec,
-  },
+  }),
 });
 
 type BlockSpec =

@@ -82,6 +82,13 @@
       "title": "keeps surviving comments"
     },
     {
+      "seed": 185578404,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "accepting a merged paragraph mark keeps run formatting across save"
+    },
+    {
       "seed": 20260937,
       "steps": 10,
       "kind": "random",

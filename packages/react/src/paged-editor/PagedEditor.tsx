@@ -100,6 +100,10 @@ import {
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
+import {
+  createNoteReferenceFollower,
+  type NoteReferenceFollower,
+} from "@stll/folio-core/prosemirror/noteReferenceReview";
 import { clickToPosition } from "@stll/folio-core/layout-bridge/engine/clickToPosition";
 import {
   hitTestFragment,
@@ -2037,6 +2041,13 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }
     const documentChangeNotifyTimerRef = useRef<number | null>(null);
+    // A note follows its reference: a reference whose deletion the reported
+    // edits rejected gives its note back its text, and deleting it again (as
+    // undoing that reject does) takes the text with it.
+    const [noteFollower] = useState<NoteReferenceFollower>(createNoteReferenceFollower);
+    useEffect(() => {
+      noteFollower.reset();
+    }, [documentIdentity, noteFollower]);
 
     const flushDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2044,12 +2055,16 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         documentChangeNotifyTimerRef.current = null;
       }
 
-      const newDoc = hiddenPMRef.current?.getDocument();
+      let newDoc = hiddenPMRef.current?.getDocument();
+      const body = hiddenPMRef.current?.getState()?.doc;
+      if (newDoc && body) {
+        newDoc = noteFollower.reconcile(newDoc, body);
+      }
       if (newDoc) {
         onDocumentChangeRef.current?.(newDoc);
         folioEmitterRef.current.emit("docChange", newDoc);
       }
-    }, []);
+    }, [noteFollower]);
 
     const scheduleDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -2787,7 +2802,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
      * Handle PM transaction - re-layout on content/selection change.
      */
     const handleTransaction = useCallback(
-      ({ newState, docChanged }: HiddenEditorTransactionUpdate) => {
+      ({ newState, docChanged, transactions }: HiddenEditorTransactionUpdate) => {
+        const before = transactions[0]?.before;
+        if (docChanged && before) {
+          noteFollower.noteBase(before);
+        }
+
         // Keep the anonymization match list mirrored in a ref so the
         // overlay recompute reads the latest set without depending on
         // a state setter inside its useCallback closure. We pull off
@@ -2920,6 +2940,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         updateAISuggestionsOverlay,
         passageHighlightOverlayRequestGate,
         syncCoordinator,
+        noteFollower,
       ],
       // NOTE: onDocumentChange removed from dependencies - accessed via ref to prevent infinite loops
     );
@@ -5577,7 +5598,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor;
         },
         getDocument() {
-          const current = folioEditor.getDocument();
+          // A write-back still pending may owe the notes a restore or a
+          // deletion: write it back now, and read the notes it wrote even
+          // before the host hands the document back.
+          if (documentChangeNotifyTimerRef.current !== null) {
+            flushDocumentChangeNotification();
+          }
+          const editorDocument = folioEditor.getDocument();
+          const current = editorDocument ? noteFollower.withPending(editorDocument) : null;
           return current ? (noteEditorRef.current?.snapshotDocument(current) ?? current) : null;
         },
         getState() {
@@ -5749,8 +5777,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       }),
       [
         ensureHiddenEditorView,
+        flushDocumentChangeNotification,
         folioEditor,
         getActiveEditorStory,
+        noteFollower,
         getScrollContainer,
         refreshBodyImeCaretAnchor,
         scrollToPageImpl,
