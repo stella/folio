@@ -491,7 +491,7 @@ export const sequentialGroups = (
     const targetId = blockIdOf(operation);
     const target = preRows.find((row) => row.id === targetId);
     if (!target?.table)
-      return panic(`Applied ${operation.type} anchor ${targetId} has no source table.`);
+      throw new Error(`Applied ${operation.type} anchor ${targetId} has no source table.`);
     const sourceColumn = target.table.gridColumnIndex;
     const column =
       operation.type === "insertTableColumn" && operation["position"] !== "before"
