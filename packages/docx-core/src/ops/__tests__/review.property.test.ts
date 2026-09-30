@@ -49,7 +49,7 @@ import type { BlockContent, Document, Paragraph, ParagraphFormatting } from "../
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp, stampOf } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
-import { IDENTITY_SPACES, identityKeysIn, idKey } from "../ids";
+import { IDENTITY_SPACES, identityKeysIn, idKey, paragraphIdsIn } from "../ids";
 import { gapAfterInserted } from "../inline";
 import {
   asParagraphContent,
@@ -1012,6 +1012,12 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
           paraId === undefined ? [] : [idKey(paraId)],
         ),
       );
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+      return new Set([idKey(op.blockId), ...paragraphIdsIn(op.row).map(idKey)]);
+    case DOCUMENT_OP_TYPES.DELETE_ROW:
+      return new Set([idKey(op.blockId), ...paragraphIdsIn(op.expected ?? []).map(idKey)]);
+    case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+      return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.rows]).map(idKey)]);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return new Set();
     default: {

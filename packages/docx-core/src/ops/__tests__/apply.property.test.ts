@@ -30,6 +30,7 @@ import type { BlockContent, Document, Paragraph, TextFormatting } from "../../mo
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
+import { paragraphIdsIn } from "../ids";
 import { sameRunFormatting } from "../inline";
 import {
   childrenOf,
@@ -158,6 +159,12 @@ const namedIds = (op: DocumentOp): Set<string> => {
           paraId === undefined ? [] : [paraId],
         ),
       );
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+      return new Set([op.blockId, ...paragraphIdsIn(op.row)]);
+    case DOCUMENT_OP_TYPES.DELETE_ROW:
+      return new Set([op.blockId, ...paragraphIdsIn(op.expected ?? [])]);
+    case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+      return new Set([op.blockId, ...paragraphIdsIn([op.expected, op.rows])]);
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -515,6 +522,9 @@ describe("document operations", () => {
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
           case DOCUMENT_OP_TYPES.REPLACE_INLINE:
           case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+          case DOCUMENT_OP_TYPES.INSERT_ROW:
+          case DOCUMENT_OP_TYPES.DELETE_ROW:
+          case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
             break;
           default: {
             const unreachable: never = op;

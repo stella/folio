@@ -178,7 +178,7 @@ export const endsItsContainer = (
   }
 };
 
-const updateBlockList = (
+export const updateBlockList = (
   blocks: readonly BlockContent[],
   list: readonly BlockListStep[],
   update: (blocks: readonly BlockContent[]) => BlockContent[],

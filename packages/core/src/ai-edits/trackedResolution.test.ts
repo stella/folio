@@ -44,6 +44,14 @@ const reopen = async (reviewer: FolioDocxReviewer): Promise<FolioDocxReviewer> =
 const texts = (reviewer: FolioDocxReviewer): string[] =>
   reviewer.getContent().map(({ text }) => text);
 
+/** Each block's kind and text: a restyled paragraph reads differently. */
+const kinds = (reviewer: FolioDocxReviewer): string[] =>
+  reviewer.getContent().map(({ kind, text }) => `${kind}: ${text}`);
+
+const ORIGINAL_KINDS = ORIGINAL.map(
+  (text, index) => `${index === 0 ? "heading" : "paragraph"}: ${text}`,
+);
+
 const idOf = (reviewer: FolioDocxReviewer, prefix: string): string => {
   const block = reviewer.getContent().find(({ text }) => text.startsWith(prefix));
   if (!block) {
@@ -114,6 +122,44 @@ describe("a tracked merge of a break that is itself a pending insertion", () => 
     apply({ type: "mergeBlockWithNext", blockId: idOf(reviewer, "The Supplier"), separator: " " });
     reviewer.rejectAll();
     expect(texts(reviewer)).toEqual(ORIGINAL);
+  });
+
+  // Seed 386876854: the split's first half reads as the heading merged into
+  // it; merging that half on hands the heading to the paragraph left, which
+  // must go back to a body paragraph when rejected.
+  describe("merging a split half that reads as the heading merged into it", () => {
+    const restyledHalfMerged = async (): Promise<FolioDocxReviewer> => {
+      const reviewer = await open();
+      const apply = applier(reviewer);
+      apply({ type: "splitBlock", blockId: idOf(reviewer, "This agreement"), offset: 5 });
+      apply({ type: "mergeBlockWithNext", blockId: idOf(reviewer, "Service"), separator: " " });
+      apply({ type: "mergeBlockWithNext", blockId: idOf(reviewer, "This "), separator: " " });
+      return reviewer;
+    };
+
+    test("rejects to the original body paragraph, live and saved", async () => {
+      const reviewer = await restyledHalfMerged();
+      const saved = await reopen(reviewer);
+      reviewer.rejectAll();
+      expect(kinds(reviewer)).toEqual(ORIGINAL_KINDS);
+      expect(kinds(await reopen(reviewer))).toEqual(ORIGINAL_KINDS);
+      saved.rejectAll();
+      expect(kinds(saved)).toEqual(ORIGINAL_KINDS);
+    });
+
+    test("accepts to the heading, live and saved", async () => {
+      const reviewer = await restyledHalfMerged();
+      const saved = await reopen(reviewer);
+      const expected = [
+        "heading: Service Agreement This  agreement is made between the parties named below.",
+        ...ORIGINAL_KINDS.slice(2),
+      ];
+      reviewer.acceptAll();
+      expect(kinds(reviewer)).toEqual(expected);
+      expect(kinds(await reopen(reviewer))).toEqual(expected);
+      saved.acceptAll();
+      expect(kinds(saved)).toEqual(expected);
+    });
   });
 });
 

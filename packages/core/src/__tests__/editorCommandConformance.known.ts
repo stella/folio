@@ -9,6 +9,7 @@
  */
 
 import type { ViolationKind } from "./editorCommandConformance";
+import { LIST_PASTE_RESOLUTION_KEYS } from "./editorCommandConformance.listPaste";
 import type { EditorMode, SelectionPlacement } from "./editorHarness";
 
 export type ConformanceCaseKey = {
@@ -62,8 +63,6 @@ const REPLACING_OPERATIONS = [
   "command:insertHyperlink",
   "command:insertFootnote",
   "command:insertEndnote",
-  "paste:paragraphs",
-  "paste:copied-blocks",
 ] as const;
 
 const RANGE_PLACEMENTS: readonly SelectionPlacement[] = [
@@ -153,7 +152,10 @@ export const KNOWN_CONFORMANCE_GAPS: readonly KnownConformanceGap[] = [
       "key:Delete",
       "command:generateTOC",
     ],
-    excludedCases: [{ shape: "tracked-changes", operation: "paste:copied-blocks" }],
+    excludedCases: [
+      ...LIST_PASTE_RESOLUTION_KEYS,
+      { shape: "tracked-changes", operation: "paste:copied-blocks" },
+    ],
     modes: ["suggesting"],
     kinds: ["reject-mismatch", "accept-mismatch"],
   },

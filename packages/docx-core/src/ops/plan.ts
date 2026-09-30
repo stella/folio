@@ -49,6 +49,8 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.INSERT_ROW:
+    case DOCUMENT_OP_TYPES.DELETE_ROW:
       return { ...op, newIds };
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
@@ -56,6 +58,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+    case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return op;
     default: {
       const unreachable: never = op;

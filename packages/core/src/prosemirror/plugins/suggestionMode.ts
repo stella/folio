@@ -535,21 +535,44 @@ export function handleSuggestionPaste(
     carryAcross();
   }
 
-  // Paragraphs pasted into one split it: its break ends the last part, which
-  // reads as the last pasted paragraph. Rejecting the pasted breaks leaves
-  // that part, so it records what the paragraph read as.
-  if (!closedBlocks && $from.parent === $to.parent && $from.parent.type.name === "paragraph") {
+  // An open paste splits the paragraph at its end: its original break ends
+  // the last pasted part. Rejecting the inserted breaks leaves that part, so
+  // it must record the end paragraph's properties even for a cross-paragraph
+  // replacement. A carry onto the first pasted part cannot survive that join.
+  if (!closedBlocks && $to.parent.type.name === "paragraph") {
     const $end = tr.doc.resolve(tr.mapping.map(to));
     if ($end.parent.type.name === "paragraph" && $end.before() !== tr.mapping.map($from.before())) {
       recordReplacedParagraphProperties({
         tr,
         position: $end.before(),
-        replaced: $from.parent,
+        replaced: $to.parent,
         revision: {
           id: insertAttrs.revisionId,
           author: insertAttrs.author,
           date: insertAttrs.date,
         },
+      });
+    }
+  }
+
+  // Replacing the whole document with an open slice takes the first pasted
+  // paragraph's properties. Inserting beside the struck selection instead
+  // initially keeps the old final paragraph's properties on that first part.
+  const firstPasted = slice.content.firstChild;
+  if (selectsAll && !closedBlocks && firstPasted?.type.name === "paragraph") {
+    const $first = tr.doc.resolve(insertFrom);
+    if ($first.parent.type.name === "paragraph") {
+      carryParagraphProperties({
+        tr,
+        position: $first.before(),
+        source: firstPasted,
+        revision: {
+          id: insertAttrs.revisionId,
+          author: insertAttrs.author,
+          date: insertAttrs.date,
+        },
+        styleResolver: getDocumentStyleResolver(view.state),
+        numbering: getDocumentNumbering(view.state),
       });
     }
   }
