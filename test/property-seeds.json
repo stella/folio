@@ -324,6 +324,13 @@
       "date": "2026-09-30"
     }
   ],
+  "packages/core/src/ai-edits/insertedTableFinalParagraphResolution.property.test.ts::generated table rows and following paragraphs preserve resolution laws": [
+    {
+      "seed": 1595037221,
+      "note": "An inserted table before final added paragraphs must not discard their break revisions.",
+      "date": "2026-09-30"
+    }
+  ],
   "packages/core/src/prosemirror/tableCellPaste.property.test.ts::pasted vertical spans resolve like direct replacement across table sizes": [
     {
       "seed": 1109375221,

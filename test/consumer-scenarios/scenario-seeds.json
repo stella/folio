@@ -123,6 +123,13 @@
       "title": "keeps comment ranges stable on save"
     },
     {
+      "seed": 1595037221,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "rejecting insertions after a wholly inserted table restores the original"
+    },
+    {
       "seed": 20260933,
       "steps": 10,
       "kind": "collisions",

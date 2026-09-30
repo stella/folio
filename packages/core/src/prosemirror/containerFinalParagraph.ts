@@ -85,29 +85,37 @@ const marksAnAddedBreak = (node: PMNode): boolean => {
   return mark.kind === "ins" || mark.kind === "moveTo";
 };
 
+type AddedBreakCarrierBeforeOptions = {
+  at: ResolvedPos;
+  paragraphTypeName: string;
+  canCrossTable?: (table: PMNode) => boolean;
+};
+
 /**
  * The paragraph an added break can rotate BACK onto from the one at `at`: the
  * paragraph the run of inserted ones was appended after.
  *
  * The walk crosses the inserted paragraphs — their own marks stay where they
  * are, and only which paragraph is left markless changes — and stops at the
- * first one whose mark is free. `null` when there is none: a table in between,
- * which no mark joins across; a paragraph whose mark says something else,
- * which the rotation must not overwrite; or a container whose every paragraph
- * is new.
+ * first one whose mark is free. A table blocks the walk unless the caller
+ * authorizes a wholly inserted table: rejecting it removes that barrier too.
+ * `null` when there is no carrier: a table the caller cannot cross, a
+ * paragraph whose mark the rotation must not overwrite, or a container whose
+ * every paragraph is new.
  */
-export const addedBreakCarrierBefore = (
-  at: ResolvedPos,
-  paragraphTypeName: string,
-): { position: number; node: PMNode } | null => {
+export const addedBreakCarrierBefore = ({
+  at,
+  paragraphTypeName,
+  canCrossTable,
+}: AddedBreakCarrierBeforeOptions): { position: number; node: PMNode } | null => {
   let position = at.pos;
   for (let index = at.index() - 1; index >= 0; index--) {
     const sibling = at.parent.child(index);
     position -= sibling.nodeSize;
     if (sibling.type.name !== paragraphTypeName) {
-      // A table stops the walk; a node the file does not hold here at all — a
-      // text box — is not between the two paragraphs in the first place.
-      if (isAContainerChild(sibling, paragraphTypeName)) {
+      // Existing and partially inserted tables stop the walk. A text box is
+      // not between these paragraphs in the file's container at all.
+      if (isAContainerChild(sibling, paragraphTypeName) && !canCrossTable?.(sibling)) {
         return null;
       }
       continue;
