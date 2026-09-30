@@ -133,12 +133,12 @@ describe("corpus operation invariants", () => {
       expect(sameOpModel(sequence, replay)).toBe(true);
     }
     expect([...exercised].sort()).toEqual([...OP_SEQUENCE_FAMILIES].sort());
-    expect([...OP_SEQUENCE_FAMILIES].sort()).toEqual(
+    expect(
       Object.entries(OP_GENERATOR_ROLES)
         .filter(([, role]) => role === "generated")
         .map(([type]) => type)
         .sort(),
-    );
+    ).toEqual([...OP_SEQUENCE_FAMILIES].sort());
     expect(Object.keys(OP_GENERATOR_ROLES).sort()).toEqual(Object.values(DOCUMENT_OP_TYPES).sort());
     expect(sameOpModel(document, snapshot)).toBe(true);
   });

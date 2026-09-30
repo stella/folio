@@ -73,17 +73,14 @@ const unrelatedModel = (document: Document): unknown => ({
   },
 });
 
-const projected = (document: Document, touched: ReadonlySet<string>): Document => ({
-  ...document,
-  package: {
-    ...document.package,
-    document: {
-      ...document.package.document,
-      content: untouchedBlocks(document.package.document.content, touched),
-      sections: undefined,
-    },
-  },
-});
+const projected = (document: Document, touched: ReadonlySet<string>): Document => {
+  const body = {
+    ...document.package.document,
+    content: untouchedBlocks(document.package.document.content, touched),
+  };
+  delete body.sections;
+  return { ...document, package: { ...document.package, document: body } };
+};
 
 /** Check the producer's declared touched set, never infer it from observed differences. */
 export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): string[] => {
