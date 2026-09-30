@@ -57,6 +57,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { deleteSelectionAsSuggestion } from "../prosemirror/plugins/suggestionMode";
 import type { ResolvedStyleAttrs } from "../prosemirror/extensions/core/ParagraphExtension";
 import { createStyleResolver } from "../prosemirror/styles/styleResolver";
+import { createNote } from "../docx/noteReferenceMark";
 import type { BlockContent, Comment, Document } from "../types/document";
 
 // ============================================================================
@@ -133,16 +134,13 @@ const insertNoteLikeHost = (kind: "footnote" | "endnote"): ConformanceOperation 
         const content: BlockContent[] = [
           {
             type: "paragraph",
-            // A new paragraph carries its id, as a note editor gives it one;
-            // the save finds the notes a part gained by their paragraphs.
-            paraId: (0x4e_00_00_00 + id).toString(16).toUpperCase(),
             content: [{ type: "run", content: [{ type: "text", text: "A note." }] }],
           },
         ];
         if (kind === "footnote") {
-          base.package.footnotes = [...footnotes, { type: "footnote", id, content }];
+          base.package.footnotes = [...footnotes, createNote("footnote", id, content)];
         } else {
-          base.package.endnotes = [...endnotes, { type: "endnote", id, content }];
+          base.package.endnotes = [...endnotes, createNote("endnote", id, content)];
         }
       }
       return applied;

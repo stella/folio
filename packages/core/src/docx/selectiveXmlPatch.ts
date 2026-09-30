@@ -1090,10 +1090,29 @@ export function buildPatchedNotePartXml({
   const unroutedChangedParaIds = new Set(
     [...effectiveChangedParaIds].filter((paraId) => serializedParaIds.has(paraId)),
   );
+  /** Notes the model has and the part does not: new notes, appended to the part. */
+  const addedNotes: { note: string; syntax: NoteElementSyntax }[] = [];
 
   for (const [id, currentSyntaxEntries] of currentElements) {
     const originalSyntaxEntries = originalElements.get(id);
     const replacementSyntaxEntries = replacementElements.get(id);
+    if (originalSyntaxEntries === undefined) {
+      const replacementSyntax =
+        currentSyntaxEntries.length === 1 && replacementSyntaxEntries?.length === 1
+          ? replacementSyntaxEntries[0]
+          : undefined;
+      const replacementNote = replacementSyntax
+        ? extractNoteElement(replacementXml, replacementSyntax, id)
+        : null;
+      if (!replacementSyntax || !replacementNote) {
+        return { type: "refused", reason: "unroutable-paragraph" };
+      }
+      for (const paraId of collectParaIds(replacementNote).keys()) {
+        unroutedChangedParaIds.delete(paraId);
+      }
+      addedNotes.push({ note: replacementNote, syntax: replacementSyntax });
+      continue;
+    }
     if (
       currentSyntaxEntries.length !== 1 ||
       originalSyntaxEntries?.length !== 1 ||
@@ -1218,6 +1237,16 @@ export function buildPatchedNotePartXml({
   if (unroutedChangedParaIds.size > 0) {
     return { type: "refused", reason: "unroutable-paragraph" };
   }
+  if (addedNotes.length > 0) {
+    const appended = appendNotesSplice(originalXml, originalElements, addedNotes, {
+      sourceXmlnsDeclarations: replacementXmlnsDeclarations,
+    });
+    if (!appended) {
+      return { type: "refused", reason: "unroutable-paragraph" };
+    }
+    paragraphSplices.push(appended);
+    noteSplices.push(appended);
+  }
   const patched = spliceXml(originalXml, paragraphSplices);
   if (patched !== null) {
     return { type: "patched", xml: patched };
@@ -1227,6 +1256,40 @@ export function buildPatchedNotePartXml({
     ? { type: "refused", reason: "comment-range-balance" }
     : { type: "patched", xml: wholeNotes };
 }
+
+/**
+ * Insert new notes after the part's last note, spelled with that note's
+ * prefixes. Null when the part holds no note to follow.
+ */
+const appendNotesSplice = (
+  originalXml: string,
+  originalElements: ReadonlyMap<string, readonly NoteElementSyntax[]>,
+  addedNotes: readonly { note: string; syntax: NoteElementSyntax }[],
+  { sourceXmlnsDeclarations }: { sourceXmlnsDeclarations: Record<string, string> },
+): XmlSplice | null => {
+  let last: { end: number; syntax: NoteElementSyntax } | null = null;
+  for (const [id, entries] of originalElements) {
+    for (const syntax of entries) {
+      const offsets = findNoteElement(originalXml, syntax, id);
+      if (offsets && (!last || offsets.end > last.end)) {
+        last = { end: offsets.end, syntax };
+      }
+    }
+  }
+  if (!last) {
+    return null;
+  }
+  const target = last.syntax;
+  return {
+    start: last.end,
+    end: last.end,
+    newXml: addedNotes
+      .map(({ note, syntax }) =>
+        rewriteWordprocessingPrefixes(note, { source: syntax, target, sourceXmlnsDeclarations }),
+      )
+      .join(""),
+  };
+};
 
 /**
  * The full range of the first `<openLiteral …>…</closeTag>` element, or null.

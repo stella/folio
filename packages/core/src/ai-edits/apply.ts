@@ -2572,18 +2572,19 @@ const finalBreakCarrierBefore = (
   return null;
 };
 
+/** A paragraph location, mapped from the transaction step that recorded it. */
+type BatchParagraphPosition = { position: number; mappedFrom: number };
+
 /** A container-ending paragraph a tracked `deleteBlock` emptied, as it recorded it. */
-type DeletedFinalParagraph = {
+type DeletedFinalParagraph = BatchParagraphPosition & {
   operationId: string;
-  /** Where the paragraph was when the deletion ran, mapped from `mappedFrom`. */
-  position: number;
-  mappedFrom: number;
   revisionExtras: { initials?: string; provenance?: "suggested"; suggestionId?: string };
 };
 
 type RetireFinalParagraphsOptions = {
   tr: Transaction;
   deletions: readonly DeletedFinalParagraph[];
+  mergedPropertyTargets: readonly BatchParagraphPosition[];
   /** Operations the batch applied: a deletion that changed nothing is not one. */
   appliedIds: ReadonlySet<string>;
   batchRevisionIds: ReadonlySet<number>;
@@ -2601,6 +2602,38 @@ type RetiredFinalParagraphs = {
   addedRevisions: { operationId: string; revisionId: number }[];
   /** Batch revisions a retracted inserted break took out of the document. */
   retractedRevisionIds: number[];
+};
+
+/** The preceding paragraph whose break a final deletion can retire. */
+const finalParagraphPredecessor = (doc: PMNode, at: number) => {
+  const emptied = doc.nodeAt(at);
+  if (emptied?.type.name !== "paragraph") return null;
+  const $emptied = doc.resolve(at);
+  if (!paragraphEndsItsContainer($emptied, emptied.type.name)) return null;
+  let position = at;
+  for (let index = $emptied.index() - 1; index >= 0; index--) {
+    const node = $emptied.parent.child(index);
+    position -= node.nodeSize;
+    if (node.type !== emptied.type) return null;
+    if (isPlainDeletedPPrMark(node.attrs["pPrMark"]) && holdsOnlyDeletedContent(node)) continue;
+    return { node, position };
+  }
+  return null;
+};
+
+/** Pending retirements, read after the merge has mapped any inserted separator. */
+const pendingRemovedFinalBreakPositions = (
+  tr: Transaction,
+  deletions: readonly DeletedFinalParagraph[],
+) => {
+  const positions = new Set<number>();
+  for (const deletion of deletions) {
+    const at = tr.mapping.slice(deletion.mappedFrom).map(deletion.position);
+    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    if (!predecessor || predecessor.node.attrs["pPrMark"] != null) continue;
+    positions.add(predecessor.position);
+  }
+  return positions;
 };
 
 /**
@@ -2629,6 +2662,7 @@ type RetiredFinalParagraphs = {
 const withRetiredFinalParagraphs = ({
   tr,
   deletions,
+  mergedPropertyTargets,
   appliedIds,
   batchRevisionIds,
   revisionSeed,
@@ -2657,39 +2691,38 @@ const withRetiredFinalParagraphs = ({
     if (emptied?.type.name !== "paragraph") {
       continue;
     }
-    const $emptied = tr.doc.resolve(at);
-    if (!paragraphEndsItsContainer($emptied, emptied.type.name)) {
-      continue;
-    }
-    let position = at;
-    for (let index = $emptied.index() - 1; index >= 0; index--) {
-      const previous = $emptied.parent.child(index);
-      position -= previous.nodeSize;
-      if (previous.type.name !== emptied.type.name) {
-        // A table, or a text box: directly, the paragraph stays too.
-        break;
-      }
-      const mark: unknown = previous.attrs["pPrMark"];
-      if (mark == null) {
-        const revisionId = nextRevisionId++;
-        tr.setNodeAttribute(position, "pPrMark", {
-          kind: "del",
-          info: { id: revisionId, author, date, ...revisionExtras },
-        });
-        // Accepted, the removed break leaves the emptied carrier, which ends
-        // the container: it takes this paragraph's properties as part of the
-        // same change, so the words that stay read as they did.
-        // What this batch set on the paragraph came after the break went, as
-        // one operation at a time does it: the carried properties are the
-        // ones it had before the batch changed them.
-        const beforeBatch = resolveParagraphChangeAttrs({
-          node: previous,
-          mode: "reject",
-          boundaryCovered: true,
-          revisionSet: batchRevisionIds,
-          styleResolver,
-          numbering,
-        });
+    const predecessor = finalParagraphPredecessor(tr.doc, at);
+    if (!predecessor) continue;
+    const { node: previous, position } = predecessor;
+    const mark: unknown = previous.attrs["pPrMark"];
+    if (mark == null) {
+      const revisionId = nextRevisionId++;
+      tr.setNodeAttribute(position, "pPrMark", {
+        kind: "del",
+        info: { id: revisionId, author, date, ...revisionExtras },
+      });
+      // Accepted, the removed break leaves the emptied carrier, which ends
+      // the container: it takes this paragraph's properties as part of the
+      // same change, so the words that stay read as they did.
+      // What this batch set on the paragraph came after the break went, as
+      // one operation at a time does it: the carried properties are the
+      // ones it had before the batch changed them.
+      const beforeBatch = resolveParagraphChangeAttrs({
+        node: previous,
+        mode: "reject",
+        boundaryCovered: true,
+        revisionSet: batchRevisionIds,
+        styleResolver,
+        numbering,
+      });
+      const mergedProperties = mergedPropertyTargets.some(({ position: target, mappedFrom }) => {
+        const mapped = tr.mapping.slice(mappedFrom).mapResult(target);
+        return !mapped.deleted && mapped.pos === at;
+      });
+      // The final deletion precedes the merge in execution order. A merge
+      // has already given this carrier its later properties, even if that
+      // transfer changed no values; do not replay the earlier transfer over it.
+      if (!mergedProperties) {
         carryParagraphProperties({
           tr,
           position: at,
@@ -2701,67 +2734,59 @@ const withRetiredFinalParagraphs = ({
           revision: { id: revisionId, author, date, ...revisionExtras },
           keep: propertiesSetInBatch(emptied, batchRevisionIds),
         });
-        resolvedOperationIds.add(operationId);
-        addedRevisions.push({ operationId, revisionId });
-        break;
       }
-      if (isPlainDeletedPPrMark(mark)) {
-        // A wholly deleted paragraph joins the final carrier when accepted.
-        // Retire the earlier surviving paragraph's break as well, so a chain
-        // of deleted trailing paragraphs leaves no empty final paragraph.
-        if (holdsOnlyDeletedContent(previous)) continue;
-        break;
-      }
-      if (isInsertedPPrMark(mark)) {
-        const following = tr.doc.nodeAt(position + previous.nodeSize);
-        if (following?.type.name !== emptied.type.name) {
-          break;
-        }
-        const previousFormatting = paragraphPropertiesBeforePendingChanges(following);
-        const formattingChanges =
-          JSON.stringify(previousFormatting) !==
-          JSON.stringify(paragraphPropertiesSnapshot(previous));
-        const existing = expectParagraphAttrs(previous)._propertyChanges;
-        if (formattingChanges && hasSerializableParagraphPropertyChange(existing)) {
-          // One w:pPrChange per paragraph: the emptied paragraph stays.
-          break;
-        }
-        joinAtParagraphMark({
-          tr,
-          paragraphPos: position,
-          paragraph: previous,
-          next: following,
-          styleResolver,
-        });
-        resolvedOperationIds.add(operationId);
-        const retracted = addedBreakRevisionId(mark);
-        if (retracted !== null) {
-          retractedRevisionIds.push(retracted);
-        }
-        // The join leaves the emptied paragraph, with its own properties;
-        // the words that stay read as the added paragraph did, as the
-        // deletion applied directly leaves them, but for what this batch set
-        // on the emptied one. A pending change the emptied paragraph already
-        // had records what rejecting puts back; otherwise this change does.
-        const revisionId = nextRevisionId;
-        const carried = carryParagraphProperties({
-          tr,
-          position,
-          source: previous,
-          styleResolver,
-          numbering,
-          revision: { id: revisionId, author, date, ...revisionExtras },
-          keep: propertiesSetInBatch(following, batchRevisionIds),
-        });
-        if (carried.tracked) {
-          nextRevisionId++;
-          addedRevisions.push({ operationId, revisionId });
-        }
-        break;
-      }
-      // A relocation's end: left as it is.
-      break;
+      resolvedOperationIds.add(operationId);
+      addedRevisions.push({ operationId, revisionId });
+      continue;
     }
+    if (isInsertedPPrMark(mark)) {
+      const following = tr.doc.nodeAt(position + previous.nodeSize);
+      if (following?.type.name !== emptied.type.name) {
+        continue;
+      }
+      const previousFormatting = paragraphPropertiesBeforePendingChanges(following);
+      const formattingChanges =
+        JSON.stringify(previousFormatting) !==
+        JSON.stringify(paragraphPropertiesSnapshot(previous));
+      const existing = expectParagraphAttrs(previous)._propertyChanges;
+      if (formattingChanges && hasSerializableParagraphPropertyChange(existing)) {
+        // One w:pPrChange per paragraph: the emptied paragraph stays.
+        continue;
+      }
+      joinAtParagraphMark({
+        tr,
+        paragraphPos: position,
+        paragraph: previous,
+        next: following,
+        styleResolver,
+      });
+      resolvedOperationIds.add(operationId);
+      const retracted = addedBreakRevisionId(mark);
+      if (retracted !== null) {
+        retractedRevisionIds.push(retracted);
+      }
+      // The join leaves the emptied paragraph, with its own properties;
+      // the words that stay read as the added paragraph did, as the
+      // deletion applied directly leaves them, but for what this batch set
+      // on the emptied one. A pending change the emptied paragraph already
+      // had records what rejecting puts back; otherwise this change does.
+      const revisionId = nextRevisionId;
+      const carried = carryParagraphProperties({
+        tr,
+        position,
+        source: previous,
+        styleResolver,
+        numbering,
+        revision: { id: revisionId, author, date, ...revisionExtras },
+        keep: propertiesSetInBatch(following, batchRevisionIds),
+      });
+      if (carried.tracked) {
+        nextRevisionId++;
+        addedRevisions.push({ operationId, revisionId });
+      }
+      continue;
+    }
+    // A relocation's end or a surviving deleted break stays as it is.
   }
   return { nextRevisionId, resolvedOperationIds, addedRevisions, retractedRevisionIds };
 };
@@ -3684,6 +3709,7 @@ const applyFolioAIEditOperationsInternal = ({
   const deletedTextBoxAnchorIds = new Set<string>();
   /** Container-ending paragraphs a tracked `deleteBlock` emptied: see `withRetiredFinalParagraphs`. */
   const deletedFinalParagraphs: DeletedFinalParagraph[] = [];
+  const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
   let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor;
@@ -5249,11 +5275,22 @@ const applyFolioAIEditOperationsInternal = ({
             const insertedOnly = holdsOnlyInsertedContent(paragraph);
             // When the paragraph it joined has its own break pending deletion,
             // accepting leaves the paragraph after that break: that one reads
-            // as the first, as a chain of pending merges does.
+            // as the first, as a chain of pending merges does. A break this
+            // batch's final deletion will retire counts as pending already:
+            // one at a time, that deletion has run before the merge.
             const joinedMark: unknown = tr.doc.nodeAt(item.blockFrom)?.attrs["pPrMark"];
-            const carryPos = isDeletedPPrMark(joinedMark)
-              ? (paragraphLeftAfter(tr.doc, item.blockFrom) ?? item.blockFrom)
-              : item.blockFrom;
+            const removedBreakPositions = pendingRemovedFinalBreakPositions(
+              tr,
+              deletedFinalParagraphs,
+            );
+            const carryPos =
+              isDeletedPPrMark(joinedMark) || removedBreakPositions.has(item.blockFrom)
+                ? (paragraphLeftAfter({
+                    doc: tr.doc,
+                    paragraphPos: item.blockFrom,
+                    removedBreakPositions,
+                  }) ?? item.blockFrom)
+                : item.blockFrom;
             const carried = carryParagraphProperties({
               tr,
               position: carryPos,
@@ -5280,7 +5317,15 @@ const applyFolioAIEditOperationsInternal = ({
             // accepting gives what the direct merge gives, rejecting restores
             // its own.
             // A chain of pending merges ends in the paragraph whose break stays.
-            const survivorPos = paragraphLeftAfter(tr.doc, item.blockFrom) ?? joinPos;
+            const survivorPos =
+              paragraphLeftAfter({
+                doc: tr.doc,
+                paragraphPos: item.blockFrom,
+                removedBreakPositions: pendingRemovedFinalBreakPositions(
+                  tr,
+                  deletedFinalParagraphs,
+                ),
+              }) ?? joinPos;
             const carried = carryParagraphProperties({
               tr,
               position: survivorPos,
@@ -5322,6 +5367,12 @@ const applyFolioAIEditOperationsInternal = ({
           if (appliedProperties.revisionIds.length > 0) {
             appliedRevisionIds.push(...appliedProperties.revisionIds);
           }
+        }
+        if (mode !== "direct") {
+          mergedPropertyTargets.push({
+            position: mergedPropertiesAt,
+            mappedFrom: tr.mapping.maps.length,
+          });
         }
         break;
       }
@@ -5421,6 +5472,7 @@ const applyFolioAIEditOperationsInternal = ({
     const retired = withRetiredFinalParagraphs({
       tr,
       deletions: deletedFinalParagraphs,
+      mergedPropertyTargets,
       appliedIds: new Set(applied.map(({ id }) => id)),
       batchRevisionIds,
       revisionSeed,

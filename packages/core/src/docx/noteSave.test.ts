@@ -457,4 +457,51 @@ describe("footnote / endnote body write path (full repack)", () => {
     expect(noteBodyText(reparsed.package.footnotes?.[0])).toBe(ORIGINAL_FOOTNOTE_TEXT);
     expect(noteBodyText(reparsed.package.endnotes?.[0])).toBe(ORIGINAL_ENDNOTE_TEXT);
   });
+
+  test("a note added to a part that already exists is written, and the part's notes stay byte-exact", async () => {
+    const buffer = await createNotesFixture();
+    const originalFootnotesXml = await readPart(buffer, "word/footnotes.xml");
+    const originalEndnotesXml = await readPart(buffer, "word/endnotes.xml");
+
+    const doc = await parseDocx(buffer, { preloadFonts: false });
+    const added = (text: string) => [
+      {
+        type: "paragraph" as const,
+        content: [{ type: "run" as const, content: [{ type: "text" as const, text }] }],
+      },
+    ];
+    doc.package.footnotes = [
+      ...(doc.package.footnotes ?? []),
+      { type: "footnote", id: 2, content: added("Added footnote") },
+    ];
+    doc.package.endnotes = [
+      ...(doc.package.endnotes ?? []),
+      { type: "endnote", id: 2, content: added("Added endnote") },
+    ];
+    const result = await repackDocx(doc);
+
+    const savedFootnotesXml = await readPart(result, "word/footnotes.xml");
+    const savedEndnotesXml = await readPart(result, "word/endnotes.xml");
+    // Everything the part held is kept as it was; the new note follows it.
+    const originalFootnotes = originalFootnotesXml.slice(
+      0,
+      originalFootnotesXml.indexOf("</w:footnotes>"),
+    );
+    const originalEndnotes = originalEndnotesXml.slice(
+      0,
+      originalEndnotesXml.indexOf("</w:endnotes>"),
+    );
+    expect(savedFootnotesXml.startsWith(originalFootnotes)).toBe(true);
+    expect(savedEndnotesXml.startsWith(originalEndnotes)).toBe(true);
+
+    const reparsed = await parseDocx(result, { preloadFonts: false });
+    expect(reparsed.package.footnotes?.map(noteBodyText)).toEqual([
+      ORIGINAL_FOOTNOTE_TEXT,
+      "Added footnote",
+    ]);
+    expect(reparsed.package.endnotes?.map(noteBodyText)).toEqual([
+      ORIGINAL_ENDNOTE_TEXT,
+      "Added endnote",
+    ]);
+  });
 });

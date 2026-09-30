@@ -586,6 +586,29 @@ const MATRIX_CASES = FOLIO_RESOLVED_REVIEWED_VIEWS.flatMap((view) =>
 );
 
 describe("body revision enumeration", () => {
+  test("keeps discontiguous wrappers with one logical revision id separate", async () => {
+    const document = createEmptyDocument();
+    document.package.document.content = [
+      {
+        type: "paragraph",
+        paraId: "10000200",
+        content: [
+          { type: "deletion", info: revisionInfo(321), content: paragraphContent("Before") },
+          ...paragraphContent(" kept "),
+          { type: "deletion", info: revisionInfo(321), content: paragraphContent("After") },
+        ],
+      },
+    ];
+    const live = getTrackedChangesFromDoc(toProseDoc(document));
+    expect(live.map(({ id, type, text }) => ({ id, type, text }))).toEqual([
+      { id: 321, type: "deletion", text: "Before" },
+      { id: 321, type: "deletion", text: "After" },
+    ]);
+    const reopened = await FolioDocxReviewer.fromBuffer(await createDocx(document));
+    const view = (changes: typeof live) => changes.map(({ id: _id, ...change }) => change);
+    expect(view(reopened.getChanges())).toEqual(view(live));
+  });
+
   test("enumerates every property and paragraph-mark carrier the resolver supports", () => {
     const doc = toProseDoc(revisionDocument());
     const walk = doc.descendants.bind(doc);
