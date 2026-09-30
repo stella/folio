@@ -54,6 +54,7 @@ import {
   type RunPropertyChange,
 } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
   endsItsContainer,
@@ -118,6 +119,7 @@ import {
 } from "./refusal";
 import { resolveRevision } from "./resolve";
 import { applyRowOp } from "./tableRows";
+import { applyTableOp } from "./tables";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -1865,6 +1867,8 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
 
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return deleteBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return insertBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
@@ -1893,6 +1897,10 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
       return replaceInline(document, op);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return resolveRevision(document, op, applyDocumentOps);
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+      return applyTableOp(document, op);
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
@@ -1907,6 +1915,7 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
 /** The stamp of a tracked operation; `undefined` for a direct one. */
 export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -1925,6 +1934,9 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return undefined;
     default: {
       const unreachable: never = op;

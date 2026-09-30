@@ -130,6 +130,8 @@ const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
 
 const namedIds = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return new Set(op.blockIds);
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         op.at.blockId,
@@ -159,6 +161,12 @@ const namedIds = (op: DocumentOp): Set<string> => {
           paraId === undefined ? [] : [paraId],
         ),
       );
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+      return new Set([op.at.blockId, ...paragraphIdsIn(op.table)]);
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+      return new Set([op.blockId, ...paragraphIdsIn(op.expected ?? [])]);
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+      return new Set([op.blockId, ...paragraphIdsIn([op.expected, op.blocks])]);
     case DOCUMENT_OP_TYPES.INSERT_ROW:
       return new Set([op.blockId, ...paragraphIdsIn(op.row)]);
     case DOCUMENT_OP_TYPES.DELETE_ROW:
@@ -517,11 +525,15 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
           case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
           case DOCUMENT_OP_TYPES.REPLACE_INLINE:
           case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+          case DOCUMENT_OP_TYPES.INSERT_TABLE:
+          case DOCUMENT_OP_TYPES.DELETE_TABLE:
+          case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
           case DOCUMENT_OP_TYPES.INSERT_ROW:
           case DOCUMENT_OP_TYPES.DELETE_ROW:
           case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:

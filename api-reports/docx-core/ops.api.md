@@ -31,6 +31,15 @@ export type BlockInsertionPoint = {
 };
 
 // @public
+export type DeleteBlocksOp = {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_BLOCKS;
+    story: OpStory;
+    blockIds: readonly string[];
+    revision?: RevisionStamp;
+    newIds?: NewIds;
+};
+
+// @public
 export type DeleteRangeOp = {
     type: typeof DOCUMENT_OP_TYPES.DELETE_RANGE;
     from: TextPosition;
@@ -49,6 +58,14 @@ export type DeleteRowOp = {
     expected?: TableRow;
     revision?: RevisionStamp;
     newIds?: NewIds;
+};
+
+// @public
+export type DeleteTableOp = {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_TABLE;
+    story: OpStory;
+    blockId: string;
+    expected?: Table;
 };
 
 // @public
@@ -81,10 +98,11 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 3;
+export const DOCUMENT_OP_SCHEMA_VERSION = 4;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
+    readonly DELETE_BLOCKS: "deleteBlocks";
     readonly INSERT_BLOCKS: "insertBlocks";
     readonly INSERT_TEXT: "insertText";
     readonly INSERT_CONTENT: "insertContent";
@@ -99,13 +117,16 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_PARAGRAPH_REVIEW: "setParagraphReview";
     readonly REPLACE_INLINE: "replaceInline";
     readonly RESOLVE_REVISION: "resolveRevision";
+    readonly INSERT_TABLE: "insertTable";
+    readonly DELETE_TABLE: "deleteTable";
+    readonly SET_CONTAINER_BLOCKS: "setContainerBlocks";
     readonly INSERT_ROW: "insertRow";
     readonly DELETE_ROW: "deleteRow";
     readonly SET_TABLE_ROWS: "setTableRows";
 }>;
 
 // @public
-export type DocumentOp = InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
+export type DocumentOp = DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -185,6 +206,14 @@ export type InsertRowOp = {
     row: TableRow;
     revision?: RevisionStamp;
     newIds?: NewIds;
+};
+
+// @public
+export type InsertTableOp = {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+    story: OpStory;
+    at: BlockInsertionPoint;
+    table: Table;
 };
 
 // @public
@@ -315,6 +344,15 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public
+export type SetContainerBlocksOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
+    story: OpStory;
+    blockId: string;
+    expected: readonly BlockContent[];
+    blocks: readonly BlockContent[];
+};
 
 // @public
 export type SetParagraphPropsOp = {

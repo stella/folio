@@ -875,6 +875,8 @@ describe("tracked operations and their resolution", () => {
 /** The paragraphs an operation names. */
 const namedParagraphs = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return new Set(op.blockIds.map(idKey));
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         idKey(op.at.blockId),
@@ -902,6 +904,12 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
           paraId === undefined ? [] : [idKey(paraId)],
         ),
       );
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+      return new Set([idKey(op.at.blockId), ...paragraphIdsIn(op.table).map(idKey)]);
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
+      return new Set([idKey(op.blockId), ...paragraphIdsIn(op.expected ?? []).map(idKey)]);
+    case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+      return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.blocks]).map(idKey)]);
     case DOCUMENT_OP_TYPES.INSERT_ROW:
       return new Set([idKey(op.blockId), ...paragraphIdsIn(op.row).map(idKey)]);
     case DOCUMENT_OP_TYPES.DELETE_ROW:

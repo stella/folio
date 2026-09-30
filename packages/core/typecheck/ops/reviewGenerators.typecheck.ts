@@ -246,6 +246,13 @@ export const operations = {
     revision: stamp,
     newIds,
   }),
+  [DOCUMENT_OP_TYPES.DELETE_BLOCKS]: ({ seed }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+    story: OP_STORIES.MAIN,
+    blockIds: seed.offset % 2 === 0 ? [FIRST_ID] : [FIRST_ID, SECOND_ID],
+    revision: stamp,
+    newIds,
+  }),
   [DOCUMENT_OP_TYPES.INSERT_ROW]: ({ seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.INSERT_ROW,
     story: OP_STORIES.MAIN,
