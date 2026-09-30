@@ -6,7 +6,7 @@ import { storyBody, storyParagraphs } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
-import { locateTableRow } from "./tableRows";
+import { locateTableRow } from "./tableLocation";
 import {
   DOCUMENT_OP_TYPES,
   REVISION_DECISIONS,

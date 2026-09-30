@@ -1,6 +1,520 @@
 [
   {
-    "schema": 3,
+    "schema": 4,
+    "op": {
+      "type": "insertBlocks",
+      "story": "main",
+      "at": {
+        "type": "before",
+        "blockId": "00000001"
+      },
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "0000000D",
+          "content": []
+        }
+      ]
+    }
+  },
+  {
+    "schema": 4,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "0000000D",
+          "content": []
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000001",
+          "formatting": {
+            "alignment": "center"
+          },
+          "preservedAttributes": [
+            {
+              "name": "rsidR",
+              "value": "00A1B2C3"
+            }
+          ],
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alpha "
+                }
+              ]
+            },
+            {
+              "type": "bookmarkStart",
+              "id": 1,
+              "name": "_Ref1"
+            },
+            {
+              "type": "insertion",
+              "info": {
+                "id": 5,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+              },
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "beta"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bookmarkEnd",
+              "id": 1
+            },
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": " gamma"
+                },
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "00000001",
+          "formatting": {
+            "alignment": "center"
+          },
+          "preservedAttributes": [
+            {
+              "name": "rsidR",
+              "value": "00A1B2C3"
+            }
+          ],
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alpha "
+                }
+              ]
+            },
+            {
+              "type": "bookmarkStart",
+              "id": 1,
+              "name": "_Ref1"
+            },
+            {
+              "type": "insertion",
+              "info": {
+                "id": 5,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+              },
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "beta"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bookmarkEnd",
+              "id": 1
+            },
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": " gamma"
+                },
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema": 4,
+    "op": {
+      "type": "deleteBlocks",
+      "story": "main",
+      "blockIds": ["0000000D"],
+      "revision": {
+        "id": 81,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      }
+    }
+  },
+  {
+    "schema": 4,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "0000000D",
+          "content": [],
+          "pPrMark": {
+            "kind": "del",
+            "info": {
+              "id": 81,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000001",
+          "formatting": {
+            "alignment": "center"
+          },
+          "preservedAttributes": [
+            {
+              "name": "rsidR",
+              "value": "00A1B2C3"
+            }
+          ],
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alpha "
+                }
+              ]
+            },
+            {
+              "type": "bookmarkStart",
+              "id": 1,
+              "name": "_Ref1"
+            },
+            {
+              "type": "insertion",
+              "info": {
+                "id": 5,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+              },
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "beta"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bookmarkEnd",
+              "id": 1
+            },
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": " gamma"
+                },
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "0000000D",
+          "content": []
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000001",
+          "formatting": {
+            "alignment": "center"
+          },
+          "preservedAttributes": [
+            {
+              "name": "rsidR",
+              "value": "00A1B2C3"
+            }
+          ],
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alpha "
+                }
+              ]
+            },
+            {
+              "type": "bookmarkStart",
+              "id": 1,
+              "name": "_Ref1"
+            },
+            {
+              "type": "insertion",
+              "info": {
+                "id": 5,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+              },
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "beta"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bookmarkEnd",
+              "id": 1
+            },
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": " gamma"
+                },
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema": 4,
+    "op": {
+      "type": "resolveRevision",
+      "story": "main",
+      "revisionIds": [81],
+      "decision": "accept"
+    }
+  },
+  {
+    "schema": 4,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "00000001",
+          "formatting": {
+            "alignment": "center"
+          },
+          "preservedAttributes": [
+            {
+              "name": "rsidR",
+              "value": "00A1B2C3"
+            }
+          ],
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alpha "
+                }
+              ]
+            },
+            {
+              "type": "bookmarkStart",
+              "id": 1,
+              "name": "_Ref1"
+            },
+            {
+              "type": "insertion",
+              "info": {
+                "id": 5,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+              },
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "beta"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bookmarkEnd",
+              "id": 1
+            },
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": " gamma"
+                },
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "0000000D",
+          "content": [],
+          "pPrMark": {
+            "kind": "del",
+            "info": {
+              "id": 81,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        },
+        {
+          "type": "paragraph",
+          "paraId": "00000001",
+          "formatting": {
+            "alignment": "center"
+          },
+          "preservedAttributes": [
+            {
+              "name": "rsidR",
+              "value": "00A1B2C3"
+            }
+          ],
+          "content": [
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Alpha "
+                }
+              ]
+            },
+            {
+              "type": "bookmarkStart",
+              "id": 1,
+              "name": "_Ref1"
+            },
+            {
+              "type": "insertion",
+              "info": {
+                "id": 5,
+                "author": "A",
+                "date": "2026-01-02T03:04:05Z"
+              },
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "beta"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "bookmarkEnd",
+              "id": 1
+            },
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": " gamma"
+                },
+                {
+                  "type": "tab"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema": 4,
     "op": {
       "type": "insertBlocks",
       "story": "main",
@@ -24,7 +538,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceBlocks",
       "story": "main",
@@ -183,7 +697,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "insertText",
       "at": {
@@ -198,7 +712,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "deleteRange",
       "from": {
@@ -235,7 +749,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "deleteRange",
       "from": {
@@ -251,7 +765,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "insertContent",
       "at": {
@@ -305,7 +819,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "splitInline",
       "at": {
@@ -317,7 +831,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "joinInline",
       "at": {
@@ -330,7 +844,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "joinInline",
       "at": {
@@ -342,7 +856,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "splitInline",
       "at": {
@@ -355,7 +869,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setRunProps",
       "from": {
@@ -375,7 +889,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setRunProps",
       "from": {
@@ -404,7 +918,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphProps",
       "story": "main",
@@ -415,7 +929,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphProps",
       "story": "main",
@@ -430,7 +944,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "splitBlock",
       "at": {
@@ -445,7 +959,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "joinBlocks",
       "story": "main",
@@ -466,7 +980,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "joinBlocks",
       "story": "main",
@@ -475,7 +989,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "splitBlock",
       "at": {
@@ -500,7 +1014,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphReview",
       "story": "main",
@@ -518,7 +1032,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "insertText",
       "at": {
@@ -540,7 +1054,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "deleteRange",
       "from": {
@@ -588,7 +1102,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "deleteRange",
       "from": {
@@ -613,7 +1127,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceInline",
       "story": "main",
@@ -828,7 +1342,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setRunProps",
       "from": {
@@ -858,7 +1372,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceInline",
       "story": "main",
@@ -1041,7 +1555,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphProps",
       "story": "main",
@@ -1058,7 +1572,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphReview",
       "story": "main",
@@ -1091,7 +1605,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "splitBlock",
       "at": {
@@ -1112,7 +1626,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "joinBlocks",
       "story": "main",
@@ -1133,7 +1647,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "joinBlocks",
       "story": "main",
@@ -1151,7 +1665,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphReview",
       "story": "main",
@@ -1178,7 +1692,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphReview",
       "story": "main",
@@ -1225,7 +1739,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "resolveRevision",
       "story": "main",
@@ -1234,7 +1748,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphReview",
       "story": "main",
@@ -1266,7 +1780,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceInline",
       "story": "main",
@@ -1479,7 +1993,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceInline",
       "story": "main",
@@ -1600,7 +2114,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceInline",
       "story": "main",
@@ -1659,7 +2173,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "resolveRevision",
       "story": "main",
@@ -1668,7 +2182,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceBlocks",
       "story": "main",
@@ -1789,7 +2303,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setParagraphReview",
       "story": "main",
@@ -1816,7 +2330,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceBlocks",
       "story": "main",
@@ -1855,7 +2369,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "replaceBlocks",
       "story": "main",
@@ -1894,7 +2408,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "insertRow",
       "story": "main",
@@ -1937,7 +2451,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setTableRows",
       "story": "main",
@@ -2094,7 +2608,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "deleteRow",
       "story": "main",
@@ -2111,7 +2625,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setTableRows",
       "story": "main",
@@ -2333,7 +2847,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "insertTable",
       "story": "main",
@@ -2374,7 +2888,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setContainerBlocks",
       "story": "main",
@@ -2496,7 +3010,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "deleteTable",
       "story": "main",
@@ -2534,7 +3048,7 @@
     }
   },
   {
-    "schema": 3,
+    "schema": 4,
     "op": {
       "type": "setContainerBlocks",
       "story": "main",

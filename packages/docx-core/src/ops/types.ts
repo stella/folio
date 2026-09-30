@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 3: text, formatting and review edits on
+ * Document operations, schema version 4: text, formatting and review edits on
  * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -32,18 +32,22 @@ import type {
   ParagraphPropertyChange,
   TextFormatting,
   TableRow,
+  Table,
+  BlockContent,
 } from "../model/document";
 
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 4 adds paragraph deletion through `deleteBlocks`, direct whole-table
+ * operations and their exact structural inverse.
  * Version 3 adds paragraph insertion through `insertBlocks` and the table-row
  * operations `insertRow`, `deleteRow` and `setTableRows`.
  * Version 2 added tracked changes: the `revision` stamp on the text, formatting
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 3;
+export const DOCUMENT_OP_SCHEMA_VERSION = 4;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
@@ -160,8 +164,9 @@ export type SplitParagraphFields = Omit<
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
 
-/** The operation kinds of schema version 3. */
+/** The operation kinds of schema version 4. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
   INSERT_TEXT: "insertText",
   INSERT_CONTENT: "insertContent",
@@ -176,6 +181,9 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   SET_PARAGRAPH_REVIEW: "setParagraphReview",
   REPLACE_INLINE: "replaceInline",
   RESOLVE_REVISION: "resolveRevision",
+  INSERT_TABLE: "insertTable",
+  DELETE_TABLE: "deleteTable",
+  SET_CONTAINER_BLOCKS: "setContainerBlocks",
   INSERT_ROW: "insertRow",
   DELETE_ROW: "deleteRow",
   SET_TABLE_ROWS: "setTableRows",
@@ -455,6 +463,27 @@ export type InsertBlocksOp = {
 };
 
 /**
+ * Delete adjacent paragraphs in one block list. A following paragraph keeps
+ * its identity and fields. At the end of a block list, the last selected
+ * paragraph survives: it takes the preceding paragraph's content and
+ * paragraph properties when present, keeping its own mark properties and id;
+ * without a preceding paragraph it becomes empty.
+ *
+ * With `revision`, selected content is wrapped in deletions and the removed
+ * breaks are marked. The container-final paragraph never receives a mark.
+ * Section boundaries, non-paragraph following blocks and conflicting
+ * paragraph reviews are refused rather than partially removed. Tracked deletion
+ * of content carrying revision or content-control ids is also unsupported.
+ */
+export type DeleteBlocksOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_BLOCKS;
+  story: OpStory;
+  blockIds: readonly string[];
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
+/**
  * Replace a run of adjacent paragraphs with other paragraphs.
  *
  * `expected` is the paragraphs as they stand: they are found by `paraId` and
@@ -534,8 +563,8 @@ export type RevisionDecision = (typeof REVISION_DECISIONS)[keyof typeof REVISION
  *   a join at a section break.
  * - Row insertions and deletions are resolved after inline changes and before
  *   paragraph marks. Keeping a row clears its structural revision; removing
- *   it also removes its nested revisions. Removing every row requires a
- *   whole-table operation and is refused as `untrackable`.
+ *   it also removes its nested revisions. Removing every row removes the
+ *   table, preserving the surrounding paragraphs.
  * - Records the resolution leaves meeting are merged as far as they are
  *   alike: the pieces a change cut apart are one record again.
  *
@@ -569,8 +598,8 @@ export type InsertRowOp = {
 /**
  * Remove the row holding `blockId`, or record a row and cell-content deletion
  * with `revision`. The innermost containing row is selected. `expected`, when
- * present, refuses a stale row. Removing the last row requires a table
- * operation and is refused; tracked deletion keeps a row not pending deletion.
+ * present, refuses a stale row. Direct removal of the last row removes its
+ * table; tracked deletion keeps a row not pending deletion.
  */
 export type DeleteRowOp = {
   type: typeof DOCUMENT_OP_TYPES.DELETE_ROW;
@@ -583,9 +612,8 @@ export type DeleteRowOp = {
 
 /**
  * Replace a table's rows exactly, with a structural staleness precondition.
- * This is the inverse and resolution primitive for row operations. The table
- * holding `blockId` must retain at least one row; whole-table removal is a
- * separate operation.
+ * This is the inverse and resolution primitive for row operations. An empty
+ * row list removes the table, with an exact structural inverse.
  */
 export type SetTableRowsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
@@ -595,8 +623,44 @@ export type SetTableRowsOp = {
   rows: readonly TableRow[];
 };
 
-/** A schema-version-3 document operation. */
+/** Insert a table before or after a paragraph, preserving a final paragraph. */
+export type InsertTableOp = {
+  type: typeof DOCUMENT_OP_TYPES.INSERT_TABLE;
+  story: OpStory;
+  at: BlockInsertionPoint;
+  table: Table;
+};
+
+/**
+ * Remove the innermost table holding the addressed paragraph. Its block list
+ * must retain a paragraph for the inverse; resolve terminal cell marks first.
+ */
+export type DeleteTableOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_TABLE;
+  story: OpStory;
+  blockId: string;
+  expected?: Table;
+};
+
+/**
+ * Exact structural inverse for table edits. The addressed paragraph must
+ * remain in the same block list; unrelated edits in that list make it stale.
+ * Surrounding blocks, section boundaries and container-final marks are preserved.
+ */
+export type SetContainerBlocksOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS;
+  story: OpStory;
+  blockId: string;
+  expected: readonly BlockContent[];
+  blocks: readonly BlockContent[];
+};
+
+/** A schema-version-4 document operation. */
 export type DocumentOp =
+  | DeleteBlocksOp
+  | InsertTableOp
+  | DeleteTableOp
+  | SetContainerBlocksOp
   | InsertBlocksOp
   | InsertTextOp
   | InsertContentOp
