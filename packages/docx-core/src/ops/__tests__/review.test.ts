@@ -716,3 +716,76 @@ describe("C5: undoing a tracked split after a later edit never drops a mark sile
     expect(undone.isErr() && undone.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
   });
 });
+
+describe("an empty content control is content: resolution never merges it away", () => {
+  const control = (id: number, content: ParagraphContent[]): ParagraphContent => ({
+    type: "inlineSdt",
+    properties: { sdtType: "richText", id, tag: "clause" },
+    content,
+  });
+
+  test("rejecting a tracked deletion keeps an empty control beside an alike one", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, []), control(2, [run("ab")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const op = {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: { ...at("00000001", 0), zeroWidthBefore: 0 },
+      to: at("00000001", 1),
+      revision: stamp(1),
+      newIds: { revision: [2] },
+    } as const satisfies DocumentOp;
+    const tracked = applied(document, op);
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT)).toStrictEqual(
+      applied(document, directly(op)).document,
+    );
+  });
+
+  test("rejecting a tracked split keeps an empty control that ends the first half", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, []), control(2, [run("a")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const tracked = applied(document, {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: { ...at("00000001", 0), zeroWidthBefore: 1 },
+      newBlockId: "00000002",
+      revision: stamp(1),
+    });
+    expect(resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.REJECT)).toStrictEqual(
+      document,
+    );
+  });
+
+  test("a piece of a cut control that resolution empties still goes back into it", () => {
+    const document = documentOf(
+      paragraph("00000001", [control(1, [run("a")])]),
+      paragraph("00000009", [run("next")]),
+    );
+    const typed = applied(document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: at("00000001", 0),
+      text: "x",
+      runProps: {},
+      revision: stamp(1),
+    });
+    // The field goes between the control's two pieces, the first holding only the insertion.
+    const field = applied(typed.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 1),
+      slice: {
+        content: [{ type: "simpleField", instruction: "PAGE", content: [run("3")] }],
+        openStart: 0,
+        openEnd: 0,
+      },
+      revision: { ...stamp(2), date: "2026-05-06T07:08:10Z" },
+      newIds: { control: [7] },
+    });
+    const ids = [...typed.revisions, ...field.revisions];
+    expect(resolved(field.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
+  });
+});

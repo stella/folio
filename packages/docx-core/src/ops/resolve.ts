@@ -114,7 +114,17 @@ const removePropertyChanges = <Change extends PropertyChange>(
   return { kind: "restore", remaining, previous: removedPrevious };
 };
 
-type Resolution = { ids: ReadonlySet<number>; decision: RevisionDecision };
+/** Records resolution emptied, as distinct from ones that held nothing before it. */
+type Emptied = { has: (node: InlineNode) => boolean };
+
+const NOTHING_EMPTIED: Emptied = { has: () => false };
+
+type Resolution = {
+  ids: ReadonlySet<number>;
+  decision: RevisionDecision;
+  /** The containers this resolution has emptied so far. */
+  emptied: WeakSet<InlineNode>;
+};
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
   const changes = run.propertyChanges ?? [];
@@ -147,10 +157,11 @@ const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
 
 /**
  * Whether `empty` is a piece of `other` that resolution left with nothing: a
- * container of the same kind and fields, holding nothing, where the other
- * holds something.
+ * container of the same kind and fields that the resolution emptied, where
+ * the other holds something. A container that held nothing before (an empty
+ * content control or hyperlink) is markup of its own and is never merged.
  */
-const emptyPieceOf = (empty: InlineNode, other: InlineNode): boolean => {
+const emptyPieceOf = (empty: InlineNode, other: InlineNode, emptied: Emptied): boolean => {
   const emptyChildren = childNodes(empty);
   const otherChildren = childNodes(other);
   return (
@@ -159,33 +170,42 @@ const emptyPieceOf = (empty: InlineNode, other: InlineNode): boolean => {
     otherChildren !== undefined &&
     emptyChildren.length === 0 &&
     otherChildren.length > 0 &&
+    emptied.has(empty) &&
     sameOwnFields(empty, other)
   );
 };
 
 /**
  * Two records meeting where a change was resolved, merged as far as they are
- * alike. A piece of a cut container that resolution emptied goes into the
- * piece it was cut from, which keeps the first one's ids.
+ * alike. A piece of a cut container that resolution emptied (one `emptied`
+ * holds) goes into the piece it was cut from, which keeps the first one's ids.
  */
-export const mergeAtSeam = (left: InlineNode, right: InlineNode): InlineNode[] => {
+export const mergeAtSeam = (
+  left: InlineNode,
+  right: InlineNode,
+  emptied: Emptied = NOTHING_EMPTIED,
+): InlineNode[] => {
   if (alikeDepth(left, right) > 0) {
     return mergeAlike([left], [right]);
   }
-  if (emptyPieceOf(left, right)) {
+  if (emptyPieceOf(left, right, emptied)) {
     return [rebuildNode(left, childNodes(right) ?? [])];
   }
-  return emptyPieceOf(right, left) ? [left] : [left, right];
+  return emptyPieceOf(right, left, emptied) ? [left] : [left, right];
 };
 
 /** Two lists end to end, merged at the seam as {@link mergeAtSeam} merges. */
-const mergedAtSeam = (left: readonly InlineNode[], right: readonly InlineNode[]): InlineNode[] => {
+const mergedAtSeam = (
+  left: readonly InlineNode[],
+  right: readonly InlineNode[],
+  emptied: Emptied,
+): InlineNode[] => {
   const last = left.at(-1);
   const first = right.at(0);
   if (last === undefined || first === undefined) {
     return [...left, ...right];
   }
-  return [...left.slice(0, -1), ...mergeAtSeam(last, first), ...right.slice(1)];
+  return [...left.slice(0, -1), ...mergeAtSeam(last, first, emptied), ...right.slice(1)];
 };
 
 type ResolvedList = { nodes: InlineNode[]; changed: boolean };
@@ -230,7 +250,9 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       seams.push(out.length);
       continue;
     }
-    out.push(rebuildNode(node, inner.nodes));
+    const rebuilt = rebuildNode(node, inner.nodes);
+    if (inner.nodes.length === 0) resolution.emptied.add(rebuilt);
+    out.push(rebuilt);
   }
   if (!changed) {
     return { nodes: out, changed };
@@ -239,7 +261,7 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    out.splice(seam - 1, 2, ...mergeAtSeam(left, right));
+    out.splice(seam - 1, 2, ...mergeAtSeam(left, right, resolution.emptied));
   }
   return { nodes: out, changed };
 };
@@ -305,10 +327,26 @@ const reachableIds = (paragraph: Paragraph): Set<number> => {
 
 type JoinPlan = { op: ResolveRevisionOp; story: OpStory; paraId: string; added: boolean };
 
-/** The operations that remove a paragraph's resolved mark, against the document as it stands. */
+/** Whether a paragraph's first and last records are containers resolution emptied. */
+type EmptiedEnds = { first: boolean; last: boolean };
+
+const NO_EMPTIED_ENDS: EmptiedEnds = { first: false, last: false };
+
+/**
+ * The emptied ends of each paragraph resolution changed, by paragraph id.
+ * Staging the inline changes copies their records, so a join finds them by
+ * position rather than by identity.
+ */
+type EmptiedEndsById = Map<string, EmptiedEnds>;
+
+/**
+ * The operations that remove a paragraph's resolved mark, against the document
+ * as it stands. `ends` is updated for the paragraph a join leaves.
+ */
 const joinOps = (
   document: Document,
   { op, story, paraId, added }: JoinPlan,
+  ends: EmptiedEndsById,
 ): Result<DocumentOp[], DocumentOpRefusal> => {
   const body = storyBody(document, story);
   const location = storyParagraphs(body).find(
@@ -335,9 +373,21 @@ const joinOps = (
   if (next?.type === "paragraph") {
     // The mark that goes takes the paragraph's properties with it: the next
     // paragraph is left, whole, with the first's content before its own.
+    const firstEnds = ends.get(idKey(paraId)) ?? NO_EMPTIED_ENDS;
+    const nextId = idKey(next.paraId ?? "");
+    const nextEnds = ends.get(nextId) ?? NO_EMPTIED_ENDS;
+    const emptied = new Set<InlineNode>();
+    const last = paragraph.content.at(-1);
+    const first = next.content.at(0);
+    if (firstEnds.last && last !== undefined) emptied.add(last);
+    if (nextEnds.first && first !== undefined) emptied.add(first);
+    ends.set(nextId, {
+      first: paragraph.content.length === 0 ? nextEnds.first : firstEnds.first,
+      last: next.content.length === 0 ? firstEnds.last : nextEnds.last,
+    });
     const survivor: Paragraph = {
       ...next,
-      content: asParagraphContent(mergedAtSeam(paragraph.content, next.content)),
+      content: asParagraphContent(mergedAtSeam(paragraph.content, next.content, emptied)),
     };
     return Result.ok([
       {
@@ -417,7 +467,7 @@ export const resolveRevision = (
       touched: { modified: [], inserted: [], removed: [] },
     });
   }
-  const resolution: Resolution = { ids, decision: op.decision };
+  const resolution: Resolution = { ids, decision: op.decision, emptied: new WeakSet() };
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set(paragraphs.flatMap(({ paragraph }) => [...reachableIds(paragraph)]));
   const unreachable = [...ids].find((id) => !reachable.has(id));
@@ -433,10 +483,17 @@ export const resolveRevision = (
 
   const inline: DocumentOp[] = [];
   const joins: JoinPlan[] = [];
+  const emptiedEnds: EmptiedEndsById = new Map();
   for (const { paragraph } of paragraphs) {
     const paraId = paragraph.paraId ?? "";
     const resolved = resolveList(paragraph.content, resolution);
     if (resolved.changed) {
+      const first = resolved.nodes.at(0);
+      const last = resolved.nodes.at(-1);
+      emptiedEnds.set(idKey(paraId), {
+        first: first !== undefined && resolution.emptied.has(first),
+        last: last !== undefined && resolution.emptied.has(last),
+      });
       inline.push({
         type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
         story: op.story,
@@ -471,7 +528,7 @@ export const resolveRevision = (
   const edits: DocumentEdit[] = [staged.value];
   let current = staged.value.document;
   for (const join of joins.toReversed()) {
-    const planned = joinOps(current, join);
+    const planned = joinOps(current, join, emptiedEnds);
     if (planned.isErr()) {
       return Result.err(planned.error);
     }
