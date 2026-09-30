@@ -1,7 +1,7 @@
 /**
- * Immediate PM-shape assertions missed resolution drift on reopen. Generate
- * content, implicit origins, chains, and whole-row continuation shapes against
- * the reader, then demand the same topology from both paths and repeated saves.
+ * Generate content, implicit origins, chains, whole-row continuations and
+ * optional dates. Targeted and bulk resolution must preserve the same spans
+ * and payloads; saved content must match the reader across repeated saves.
  */
 import { expect, test } from "bun:test";
 import fc from "fast-check";
@@ -28,6 +28,7 @@ type CaseOptions = {
   decision: "accept" | "reject";
   origin?: "plain" | "restart";
   continuations?: number;
+  date?: "present" | "absent" | "null";
 };
 
 const paragraph = (text: string) =>
@@ -40,6 +41,7 @@ const documentFor = ({
   decision,
   origin = "restart",
   continuations = 1,
+  date = "present",
 }: CaseOptions): Document => ({
   package: {
     document: {
@@ -70,7 +72,7 @@ const documentFor = ({
                             : {},
                         structuralChange: {
                           type: "tableCellMerge",
-                          info: INFO,
+                          info: date === "present" ? INFO : { id: INFO.id, author: INFO.author },
                           verticalMerge: decision === "accept" ? "continue" : "rest",
                           verticalMergeOriginal: decision === "reject" ? "continue" : "rest",
                         },
@@ -124,8 +126,39 @@ const exercise = async (options: CaseOptions) => {
     }
   }
   const expected = shape(toProseDoc(expectedDocument));
+  const folds = options.cells.map(
+    ({ continuation, text }) => continuation && (options.decision === "reject" || !text),
+  );
+  const continuations = options.continuations ?? 1;
+  const expectedResolved = [
+    options.cells.map((_cell, column) => ({
+      text: `Top ${column}`,
+      rowspan: folds.at(column) ? continuations + 1 : 1,
+      colspan: 1,
+    })),
+    ...Array.from({ length: continuations }, (_value, row) =>
+      options.cells.flatMap(({ text }, column) =>
+        folds.at(column)
+          ? []
+          : [{ text: text ? `Below ${row}-${column}` : "", rowspan: 1, colspan: 1 }],
+      ),
+    ),
+  ];
+  let targeted: PMNode | undefined;
   for (const path of ["targeted", "bulk"] as const) {
     let state = EditorState.create({ doc: toProseDoc(document) });
+    if (options.date === "null") {
+      const tr = state.tr;
+      state.doc.descendants((node, pos) => {
+        const marker = node.attrs["cellMarker"];
+        if (marker?.kind === "merge")
+          tr.setNodeAttribute(pos, "cellMarker", {
+            ...marker,
+            info: { ...marker.info, date: null },
+          });
+      });
+      state = state.apply(tr);
+    }
     const commands = {
       accept: { targeted: acceptAIEditRevision(INFO.id), bulk: acceptAllChanges() },
       reject: { targeted: rejectAIEditRevision(INFO.id), bulk: rejectAllChanges() },
@@ -136,9 +169,13 @@ const exercise = async (options: CaseOptions) => {
         state = state.apply(tr);
       }),
     ).toBe(true);
-    expect(shape(state.doc)).toEqual(expected);
+    expect(shape(state.doc)).toEqual(expectedResolved);
+    if (path === "targeted") targeted = state.doc;
+    else expect(state.doc.toJSON()).toEqual(targeted?.toJSON());
     state.doc.check();
     const saved = fromProseDoc(state.doc, document);
+    // The reader's visible cells include stored continuation payload content.
+    expect(shape(toProseDoc(saved))).toEqual(expected);
     const reopened = await parseDocx(await createDocx(saved));
     expect(shape(toProseDoc(reopened))).toEqual(expected);
     const reopenedAgain = await parseDocx(
@@ -148,7 +185,7 @@ const exercise = async (options: CaseOptions) => {
   }
 };
 
-test("reject retains a continuation with text beside an ordinary cell", async () => {
+test("reject folds a continuation with text beside an ordinary cell", async () => {
   await exercise({
     cells: [
       { continuation: true, text: true },
@@ -158,7 +195,7 @@ test("reject retains a continuation with text beside an ordinary cell", async ()
   });
 });
 
-test("reject retains the sole continuation in a single-column row", async () => {
+test("reject folds the sole continuation in a single-column row", async () => {
   await exercise({ cells: [{ continuation: true, text: false }], decision: "reject" });
 });
 
@@ -173,13 +210,14 @@ test(
         }),
         fc.constantFrom("plain", "restart"),
         fc.integer({ min: 1, max: 3 }),
-        async (generated, origin, continuations) => {
+        fc.constantFrom("present", "absent", "null"),
+        async (generated, origin, continuations, date) => {
           const cells = generated.map((cell, index) => ({
             continuation: index === 0 || cell.continuation,
             text: cell.text,
           }));
           for (const decision of ["accept", "reject"] as const)
-            await exercise({ cells, decision, origin, continuations });
+            await exercise({ cells, decision, origin, continuations, date });
         },
       ),
       { numRuns: 30 },

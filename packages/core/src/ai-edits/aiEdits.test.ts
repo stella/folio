@@ -4967,7 +4967,8 @@ describe("Folio AI edit operations", () => {
     expect(splitTable.child(2).childCount).toBe(1);
     expect(splitTable.child(1).child(0).textContent).toBe("Second");
     expect(splitTable.child(2).child(0).textContent).toBe("Third");
-    expect(splitTable.child(1).child(0).attrs).toMatchObject({
+    // Bun's toMatchObject mutates nested attrs, so assert a copy of the live node.
+    expect(structuredClone(splitTable.child(1).child(0).attrs)).toMatchObject({
       cellMarker: {
         kind: "merge",
         info: {
@@ -4979,7 +4980,7 @@ describe("Folio AI edit operations", () => {
       },
       _originalFormatting: { verticalAlign: "bottom" },
     });
-    expect(splitTable.child(2).child(0).attrs).toMatchObject({
+    expect(structuredClone(splitTable.child(2).child(0).attrs)).toMatchObject({
       cellMarker: {
         kind: "merge",
         info: { revisionId },

@@ -147,7 +147,7 @@ test("alternating removed cells retain their authored column widths", () => {
   );
 });
 
-test("rejecting a visible merge keeps continuation content visible", () => {
+test("rejecting a visible merge restores one spanning cell", () => {
   const table = schema.node("table", null, [
     row([cell("top")]),
     row([
@@ -163,12 +163,9 @@ test("rejecting a visible merge keeps continuation content visible", () => {
   const result = resolveAllTableChanges({ table, mode: "reject" });
 
   expect(result.failed).toBe(false);
-  expect(result.node?.child(0).firstChild?.attrs["rowspan"]).toBe(1);
-  expect(result.node?.child(1).childCount).toBe(1);
-  expect(result.node?.child(1).firstChild?.textContent).toBe("continuation");
-  expect(result.node?.child(1).firstChild?.attrs["_originalFormatting"]).toMatchObject({
-    vMerge: "continue",
-  });
+  expect(result.node?.child(0).firstChild?.attrs["rowspan"]).toBe(2);
+  expect(result.node?.child(1).childCount).toBe(0);
+  expect(result.node?.child(0).firstChild?.attrs["_docxVMergeContinuationCells"]).toHaveLength(1);
 });
 
 test("rejecting a collapsed merge restores continuation cells", () => {
@@ -240,8 +237,10 @@ test("a chain of visible splits preserves continuation order", () => {
   const result = resolveAllTableChanges({ table, mode: "reject" });
 
   expect(result.failed).toBe(false);
-  expect(result.node?.firstChild?.firstChild?.attrs["rowspan"]).toBe(1);
-  expect(result.node?.childCount).toBe(65);
-  expect(result.node?.child(1).firstChild?.textContent).toBe("continuation 1");
-  expect(result.node?.child(64).firstChild?.textContent).toBe("continuation 64");
+  expect(result.node?.firstChild?.firstChild?.attrs["rowspan"]).toBe(65);
+  const continuationCells =
+    result.node?.firstChild?.firstChild?.attrs["_docxVMergeContinuationCells"];
+  expect(continuationCells).toHaveLength(64);
+  expect(continuationCells[0].content[0].content[0].content[0].text).toBe("continuation 1");
+  expect(continuationCells[63].content[0].content[0].content[0].text).toBe("continuation 64");
 });

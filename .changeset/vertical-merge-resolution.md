@@ -2,4 +2,4 @@
 "@stll/folio-core": patch
 ---
 
-Keep vertical-merge continuations with content or otherwise empty rows visible when resolving tracked cell changes.
+Preserve tracked vertical-merge resolution and continuation content without converting unrelated table revisions.
