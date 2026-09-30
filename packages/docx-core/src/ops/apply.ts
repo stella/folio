@@ -54,6 +54,7 @@ import {
   type RunPropertyChange,
 } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
+import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
   endsItsContainer,
@@ -119,6 +120,7 @@ import {
 import { resolveRevision } from "./resolve";
 import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
+import { stampedTableRowRevisionIds } from "./tableTracking";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -1767,7 +1769,11 @@ const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Appli
   if (
     review.pPrMark !== undefined &&
     !structurallyEqual(review.pPrMark, paragraph.pPrMark) &&
-    endsItsContainer(storyBody(document, op.story), located.value)
+    endsItsContainer(storyBody(document, op.story), located.value) &&
+    !(
+      located.value.list.some((step) => step.kind === "tableCell") &&
+      (review.pPrMark.kind === "ins" || review.pPrMark.kind === "del")
+    )
   ) {
     return refuse(
       op,
@@ -1866,6 +1872,8 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
 
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return deleteBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return insertBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
@@ -1912,6 +1920,7 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
 /** The stamp of a tracked operation; `undefined` for a direct one. */
 export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
@@ -1922,6 +1931,8 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
       return op.revision;
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
@@ -1930,8 +1941,6 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
-    case DOCUMENT_OP_TYPES.INSERT_TABLE:
-    case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return undefined;
     default: {
@@ -1953,15 +1962,10 @@ const recordedRevisions = (
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = new Set(packageIdentityKeys(before.package));
   const revisions = stampedRevisionIds(paragraphs, stamp, known);
-  // Row structure precedes cell content in document order.
-  const structuralKey = slotKey({ space: IDENTITY_SPACES.REVISION, id: stamp.id });
-  if (
-    !known.has(structuralKey) &&
-    packageIdentityKeys(edit.document.package).includes(structuralKey) &&
-    !revisions.includes(stamp.id)
-  ) {
-    revisions.unshift(stamp.id);
-  }
+  // Every physical row record is reported, including later rows of a table.
+  revisions.unshift(
+    ...stampedTableRowRevisionIds(edit.document.package.document.content, stamp, known),
+  );
   return revisions;
 };
 

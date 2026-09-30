@@ -646,7 +646,7 @@ describe("tracked operations and their resolution", () => {
 
   test("L3: resolving a run's revisions at once equals resolving each operation's in turn", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(
         reviewDocumentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 6 }),
@@ -698,7 +698,7 @@ describe("tracked operations and their resolution", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS / 5 }),
+      { numRuns: NUM_RUNS / 5 },
     );
     expectEveryKindChecked(tally, NUM_RUNS / 5);
   });
@@ -985,6 +985,8 @@ describe("tracked operations and their resolution", () => {
 /** The paragraphs an operation names. */
 const namedParagraphs = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return new Set(op.blockIds.map(idKey));
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         idKey(op.at.blockId),

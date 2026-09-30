@@ -19,6 +19,7 @@ import {
   EXTENDED_INVARIANT_FAMILY,
   familyOf,
   isGatingFailure,
+  isZeroFailure,
 } from "./corpus-invariants/contract";
 import {
   CORPUS_EVIDENCE,
@@ -115,7 +116,7 @@ export const countedFailures = (
   distinctBySignature(
     evidence === CORPUS_EVIDENCE.gating
       ? failures
-      : failures.filter((failure) => !isGatingFailure(failure)),
+      : failures.filter((failure) => !isGatingFailure(failure) || isZeroFailure(failure)),
   );
 
 const keepSlowest = (into: StageTiming[], timing: StageTiming): void => {

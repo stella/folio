@@ -130,6 +130,8 @@ const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
 
 const namedIds = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
+      return new Set(op.blockIds);
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
       return new Set([
         op.at.blockId,
@@ -523,6 +525,7 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
           case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:

@@ -1,7 +1,7 @@
 /** Whole-table edits and their exact structural inverse. */
 import { Result, panic } from "better-result";
 
-import type { BlockContent, Document, Paragraph } from "../model/document";
+import type { BlockContent, Document, DocumentBody, Paragraph, Table } from "../model/document";
 import { hasIllegalXmlCharacters } from "../serialize/xmlEscape";
 import {
   blockListAt,
@@ -28,6 +28,9 @@ import {
   paragraphIdsIn,
 } from "./ids";
 import { textsIn } from "./leaves";
+import { freshenIdentities } from "./identity";
+import { stampInfo, WRAP_KINDS } from "./review";
+import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { locateTableRow } from "./tableLocation";
 import {
@@ -82,6 +85,18 @@ const validStructure = (blocks: readonly BlockContent[]): boolean =>
     }
   });
 
+/** Exact inverses may restore cell marks after independently resolved rows. */
+type StructuralCellMarkOptions = { body: DocumentBody; location: ParagraphLocation; op: TableOp };
+const permitsStructuralCellMark = ({ body, location, op }: StructuralCellMarkOptions): boolean => {
+  if (permitsCellFinalMark(body, location)) return true;
+  const mark = location.paragraph.pPrMark;
+  return (
+    op.type === DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS &&
+    location.list.some((step) => step.kind === "tableCell") &&
+    (mark?.kind === "ins" || mark?.kind === "del")
+  );
+};
+
 type CommitBlocksOptions = {
   document: Document;
   op: TableOp;
@@ -132,12 +147,12 @@ const commitBlocks = ({
     });
   }
   const fixedBlocks = (items: readonly BlockContent[]) =>
-    items.filter((block) => block.type !== "table");
+    items.filter((block) => block.type !== "table" && block.type !== "paragraph");
   if (!structurallyEqual(fixedBlocks(before), fixedBlocks(blocks))) {
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-      message: "A table structural inverse preserves every surrounding block.",
+      message: "A table structural inverse preserves surrounding block wrappers and markers.",
     });
   }
   const beforeParagraphs = paragraphsIn(before);
@@ -195,6 +210,7 @@ const commitBlocks = ({
       paragraph.pPrMark !== undefined &&
       beforeById.has(idKey(paragraph.paraId ?? "")) &&
       endsItsContainer(body, location) &&
+      !permitsStructuralCellMark({ body, location, op }) &&
       !structurallyEqual(paragraph.pPrMark, afterById.get(idKey(paragraph.paraId ?? ""))?.pPrMark)
     ) {
       return refuse({
@@ -288,6 +304,7 @@ const commitBlocks = ({
     if (
       paragraph.pPrMark !== undefined &&
       endsItsContainer(nextBody, location) &&
+      !permitsStructuralCellMark({ body: nextBody, location, op }) &&
       !structurallyEqual(
         paragraph.pPrMark,
         previousParagraphs.get(idKey(paragraph.paraId ?? ""))?.pPrMark,
@@ -355,7 +372,106 @@ export const applyTableOp = (
           message: "The table insertion anchor does not exist.",
         });
       const blocks = [...blockListAt(body.content, anchor.list)];
-      blocks.splice(anchor.index + (op.at.type === "after" ? 1 : 0), 0, op.table);
+      const terminal = op.at.type === "after" && endsItsContainer(body, anchor);
+      if (op.terminal !== undefined && !terminal) {
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          message: "A terminal insertion must follow its container's final paragraph.",
+        });
+      }
+      if (terminal && op.terminal === undefined) {
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          message: "A terminal table insertion supplies the preceding paragraph id.",
+        });
+      }
+      let preceding: Paragraph | undefined;
+      if (op.terminal !== undefined) {
+        if (op.revision !== undefined && anchor.paragraph.pPrMark !== undefined) {
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+            message: "The final paragraph already carries a mark revision.",
+          });
+        }
+        preceding = {
+          type: "paragraph",
+          paraId: op.terminal.beforeBlockId,
+          ...(anchor.paragraph.formatting === undefined
+            ? {}
+            : { formatting: anchor.paragraph.formatting }),
+          content: anchor.paragraph.content,
+        };
+        blocks.splice(anchor.index, 1, preceding, op.table, { ...anchor.paragraph, content: [] });
+      } else {
+        blocks.splice(anchor.index + (op.at.type === "after" ? 1 : 0), 0, op.table);
+      }
+      if (op.revision === undefined) return commitBlocks({ document, op, anchor, blocks });
+      if (
+        op.table.preserved !== undefined ||
+        op.table.bookmarks !== undefined ||
+        op.table.carrierStack !== undefined ||
+        (op.table.propertyChanges?.length ?? 0) > 0
+      ) {
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          message:
+            "Tracked table construction does not support captured markup or table property revisions.",
+        });
+      }
+      const tracked = trackTableRows({
+        document,
+        op,
+        rows: op.table.rows,
+        revision: op.revision,
+        newIds: op.newIds,
+        kind: WRAP_KINDS.INSERTION,
+      });
+      if (tracked.isErr()) return Result.err(tracked.error);
+      const direct = commitBlocks({ document, op, anchor, blocks });
+      if (direct.isErr()) return direct;
+      const table: Table = { ...op.table, rows: tracked.value };
+      const tableIndex = anchor.index + (op.at.type === "after" ? 1 : 0);
+      blocks[tableIndex] = table;
+      if (preceding !== undefined) {
+        const outside = new Set(packageIdentityKeys(document.package));
+        for (const key of identityKeysIn(anchor.paragraph)) outside.delete(key);
+        for (const key of identityKeysIn(table)) outside.add(key);
+        const fresh = freshenIdentities({
+          before: [anchor.paragraph],
+          after: [{ ...preceding, pPrMark: { kind: "ins", info: stampInfo(op.revision) } }],
+          newIds: op.newIds ?? {},
+          usedElsewhere: () => outside,
+        });
+        switch (fresh.kind) {
+          case "needsIds":
+            return refuse({
+              op,
+              reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+              message: "The preceding table break needs an additional revision id.",
+            });
+          case "invalidId":
+            return refuse({
+              op,
+              reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+              message: "The preceding table break has an invalid revision id.",
+            });
+          case "fresh": {
+            const paragraph = fresh.paragraphs.at(0);
+            if (paragraph === undefined)
+              return panic("A terminal table insertion must retain its preceding paragraph.");
+            blocks[anchor.index] = paragraph;
+            break;
+          }
+          default: {
+            const unreachable: never = fresh;
+            return unreachable;
+          }
+        }
+      }
       return commitBlocks({ document, op, anchor, blocks });
     }
     case DOCUMENT_OP_TYPES.DELETE_TABLE: {
@@ -378,7 +494,33 @@ export const applyTableOp = (
           message: "Removing a table requires a surviving paragraph in its block list.",
         });
       const blocks = [...blockListAt(body.content, location.list)];
-      blocks.splice(location.index, 1);
+      if (op.revision === undefined) {
+        blocks.splice(location.index, 1);
+      } else {
+        if (
+          location.table.preserved !== undefined ||
+          location.table.bookmarks !== undefined ||
+          location.table.carrierStack !== undefined ||
+          (location.table.propertyChanges?.length ?? 0) > 0
+        ) {
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            message:
+              "Tracked table deletion does not support captured markup or table property revisions.",
+          });
+        }
+        const tracked = trackTableRows({
+          document,
+          op,
+          rows: location.table.rows,
+          revision: op.revision,
+          newIds: op.newIds,
+          kind: WRAP_KINDS.DELETION,
+        });
+        if (tracked.isErr()) return Result.err(tracked.error);
+        blocks[location.index] = { ...location.table, rows: tracked.value };
+      }
       return commitBlocks({ document, op, anchor, blocks });
     }
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS: {

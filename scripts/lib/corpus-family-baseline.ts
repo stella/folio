@@ -22,7 +22,9 @@ import { type FamilyCensus, type FamilySignature } from "./corpus-family-census"
 import {
   type CorpusInvariantFamily,
   EXTENDED_INVARIANT_FAMILY,
-  isGatingFamily,
+  CORPUS_FAMILY_GATING,
+  isZeroFamily,
+  isZeroFailure,
 } from "./corpus-invariants/contract";
 import { CORPUS_DIRECTORY, writeJsonFile } from "./corpus-manifest";
 import type { CorpusInvariant } from "./corpus-signature";
@@ -37,13 +39,13 @@ export const familyBaselinePath = (family: CorpusInvariantFamily): string =>
   path.join(FAMILY_BASELINE_DIRECTORY, `${family}.json`);
 
 /**
- * The families that own a file here: every extended one that gates, never
- * `core` and never a report-only family, which is measured but not compared.
+ * The families that own a file here: every extended one that ratchets, never
+ * `core`, a fixed-zero family, or a report-only family.
  */
 export const FAMILY_BASELINE_FAMILIES: readonly CorpusInvariantFamily[] = [
   ...new Set(Object.values(EXTENDED_INVARIANT_FAMILY)),
 ]
-  .filter((family) => isGatingFamily(family))
+  .filter((family) => CORPUS_FAMILY_GATING[family] === "gating")
   .sort();
 
 export type FamilyBaselineEntry = {
@@ -73,29 +75,49 @@ const signaturesOf = (census: FamilyCensus, family: CorpusInvariantFamily): Fami
 export const familyBaselineFromCensus = (
   census: FamilyCensus,
   family: CorpusInvariantFamily,
-): FamilyBaseline => ({
-  schemaVersion: 1,
-  family,
-  lockDigest: census.lockDigest,
-  reportOnlyDigest: census.reportOnlyDigest,
-  files: census.totals[family]?.files ?? 0,
-  failedFiles: census.totals[family]?.failedFiles ?? 0,
-  entries: signaturesOf(census, family)
-    .map(({ signature, invariant, message, frame, files, producers }) => ({
-      signature,
-      invariant,
-      message,
-      frame,
-      files,
-      producers,
-    }))
-    .sort((left, right) => (left.signature < right.signature ? -1 : 1)),
-});
+): FamilyBaseline => {
+  if (isZeroFamily(family)) {
+    throw new CorpusFamilyBaselineError({
+      message: `${family} has a fixed zero threshold and owns no writable baseline`,
+    });
+  }
+  return {
+    schemaVersion: 1,
+    family,
+    lockDigest: census.lockDigest,
+    reportOnlyDigest: census.reportOnlyDigest,
+    files: census.totals[family]?.files ?? 0,
+    failedFiles: census.totals[family]?.failedFiles ?? 0,
+    entries: signaturesOf(census, family)
+      .map(({ signature, invariant, message, frame, files, producers }) => ({
+        signature,
+        invariant,
+        message,
+        frame,
+        files,
+        producers,
+      }))
+      .sort((left, right) => (left.signature < right.signature ? -1 : 1)),
+  };
+};
+
+/** Compare before dispositions: no baseline or exemption may allow these findings. */
+export const compareZeroFamilies = (
+  census: Pick<FamilyCensus, "signatures">,
+): BaselineViolation[] =>
+  census.signatures.filter(isZeroFailure).map(({ signature, files, examples, family }) => ({
+    kind: "new-signature",
+    signature,
+    detail: `${family} requires zero findings; ${files} file(s), e.g. ${examples.at(0)?.sourceId ?? "-"}/${examples.at(0)?.path ?? "-"}`,
+  }));
 
 export const compareFamilyToBaseline = (
   baseline: FamilyBaseline,
   census: FamilyCensus,
 ): BaselineViolation[] => {
+  if (isZeroFamily(baseline.family)) {
+    return compareZeroFamilies({ signatures: signaturesOf(census, baseline.family) });
+  }
   if (baseline.lockDigest !== census.lockDigest) {
     return [
       {
@@ -177,6 +199,11 @@ export const loadFamilyBaseline = async (
 };
 
 export const writeFamilyBaselines = async (census: FamilyCensus): Promise<void> => {
+  if (compareZeroFamilies(census).length > 0) {
+    throw new CorpusFamilyBaselineError({
+      message: "Operation invariant findings cannot be written into a baseline allowance",
+    });
+  }
   await Promise.all(
     FAMILY_BASELINE_FAMILIES.map((family) =>
       writeJsonFile(familyBaselinePath(family), familyBaselineFromCensus(census, family)),

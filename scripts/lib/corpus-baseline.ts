@@ -15,7 +15,7 @@
  */
 
 import type { CorpusCensus } from "./corpus-census";
-import { isGatingFailure } from "./corpus-invariants/contract";
+import { isGatingFailure, isZeroFailure } from "./corpus-invariants/contract";
 import type { CorpusInvariant } from "./corpus-signature";
 
 /**
@@ -26,7 +26,7 @@ import type { CorpusInvariant } from "./corpus-signature";
  */
 const gatingSignatures = <T extends { invariant: CorpusInvariant }>(
   signatures: readonly T[],
-): T[] => signatures.filter(isGatingFailure);
+): T[] => signatures.filter((signature) => isGatingFailure(signature) && !isZeroFailure(signature));
 
 export type CorpusBaselineEntry = {
   signature: string;

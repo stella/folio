@@ -2,11 +2,11 @@
 import { Result } from "better-result";
 
 import type { BlockContent, Document, Table } from "../model/document";
-import { storyBody, storyParagraphs } from "./blocks";
+import { storyBody } from "./blocks";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
-import { locateTableRow } from "./tableLocation";
+import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import {
   DOCUMENT_OP_TYPES,
   REVISION_DECISIONS,
@@ -82,9 +82,7 @@ export const resolveTableRows = ({
     ) {
       continue;
     }
-    const blockId = storyParagraphs({ content: [table] }).find(
-      ({ list }) => list.filter((step) => step.kind === "tableCell").length === 1,
-    )?.paragraph.paraId;
+    const blockId = tableRowAnchor(table.rows);
     if (blockId === undefined) {
       return Result.err(
         new DocumentOpRefusal({

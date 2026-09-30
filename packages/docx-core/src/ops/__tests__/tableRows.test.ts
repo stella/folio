@@ -4,6 +4,8 @@ import type { Document, Paragraph, Table, TableCell, TableRow } from "../../mode
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { revisionIdDemand } from "../plan";
+import { permitsCellFinalMark } from "../tableTracking";
+import { storyParagraphs } from "../blocks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS, type DocumentOp } from "../types";
 
@@ -119,7 +121,7 @@ describe("table row review", () => {
     }
   });
 
-  test("tracked insertion in an empty cell needs only the row stamp", () => {
+  test("tracked insertion in an empty cell records a separate final mark", () => {
     const empty: TableRow = {
       type: "tableRow",
       cells: [{ type: "tableCell", content: [makeParagraph("00000011", "")] }],
@@ -132,12 +134,21 @@ describe("table row review", () => {
       at: 1,
       row: empty,
       revision,
+      newIds: { revision: [101] },
     });
-    expect(result.revisions).toEqual([revision.id]);
+    expect(result.revisions).toEqual([revision.id, 101]);
     const table = result.document.package.document.content.find((block) => block.type === "table");
     if (table?.type !== "table") throw new Error("Fixture table remains present.");
     expect(rowAt(table, 1)).toStrictEqual({
       ...empty,
+      cells: [
+        {
+          ...firstCell(empty),
+          content: [
+            { ...firstParagraph(empty), pPrMark: { kind: "ins", info: { ...revision, id: 101 } } },
+          ],
+        },
+      ],
       structuralChange: { type: "tableRowInsertion", info: revision },
     });
   });
@@ -171,12 +182,16 @@ describe("table row review", () => {
         content: [
           {
             type: "deletion",
-            info: { ...revision, id: 101 },
+            info: { ...revision, id: 102 },
             content: foreign.content,
           },
         ],
       },
     ]);
+    expect(trackedParagraph.pPrMark).toStrictEqual({
+      kind: "del",
+      info: { ...revision, id: 101 },
+    });
     const rejected = applyDocumentOp(result.document, {
       type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
       story: OP_STORIES.MAIN,
@@ -185,6 +200,184 @@ describe("table row review", () => {
     });
     if (rejected.isErr()) throw rejected.error;
     expect(rejected.value.document).toStrictEqual(document);
+  });
+
+  test("tracked deletion of the final row accepts to table removal and rejects exactly", () => {
+    const row = makeRow("00000010");
+    const document = documentOf(tableOf(row));
+    const result = applied(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_ROW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+      expected: row,
+      revision,
+      newIds,
+    });
+    for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+      const resolved = applied(result.document, {
+        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+        story: OP_STORIES.MAIN,
+        revisionIds: result.revisions,
+        decision,
+      });
+      expect(resolved.document).toStrictEqual(
+        decision === REVISION_DECISIONS.REJECT
+          ? document
+          : {
+              package: {
+                document: {
+                  content: [
+                    makeParagraph("00000001", "before"),
+                    makeParagraph("00000002", "after"),
+                  ],
+                },
+              },
+            },
+      );
+    }
+  });
+
+  test("row identities allocate deterministically around existing and repeated ids", () => {
+    const document = documentOf(tableOf(makeRow("00000010")));
+    document.package.document.content.unshift(
+      makeParagraph("00000003", "", {
+        pPrMark: { kind: "ins", info: { id: 50, author: "Other" } },
+      }),
+    );
+    const op = {
+      type: DOCUMENT_OP_TYPES.INSERT_ROW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+      at: 1,
+      row: makeRow("00000020"),
+      revision,
+      newIds: { revision: [100, 50, 101, 101, 102] },
+    } as const satisfies DocumentOp;
+    const result = applied(document, op);
+    expect(result.revisions).toEqual([100, 101, 102]);
+    expect(applied(structuredClone(document), op).document).toStrictEqual(result.document);
+  });
+
+  test.each([
+    ["ins", DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT],
+    ["del", DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT],
+    ["moveFrom", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+    ["moveTo", DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+  ] as const)(
+    "a pre-existing cell-final %s mark refuses a tracked row operation",
+    (kind, reason) => {
+      const row: TableRow = {
+        ...makeRow("00000010"),
+        cells: [
+          {
+            type: "tableCell",
+            content: [
+              makeParagraph("00000010", "", {
+                pPrMark: { kind, info: { id: 50, author: "Other" } },
+              }),
+            ],
+          },
+        ],
+      };
+      const document = documentOf(tableOf(row));
+      expectRefusalWithoutMutation(
+        document,
+        {
+          type: DOCUMENT_OP_TYPES.DELETE_ROW,
+          story: OP_STORIES.MAIN,
+          blockId: "00000010",
+          revision,
+          newIds,
+        },
+        reason,
+      );
+    },
+  );
+
+  test("direct empty row insertion retains an unmarked paragraph and rejects a bare final mark", () => {
+    const empty: TableRow = {
+      type: "tableRow",
+      cells: [{ type: "tableCell", content: [makeParagraph("00000020", "")] }],
+    };
+    const document = documentOf(tableOf(makeRow("00000010")));
+    const op = {
+      type: DOCUMENT_OP_TYPES.INSERT_ROW,
+      story: OP_STORIES.MAIN,
+      blockId: "00000010",
+      at: 1,
+      row: empty,
+    } as const satisfies DocumentOp;
+    const result = applied(document, op);
+    expect(result.revisions).toEqual([]);
+    expect(
+      storyParagraphs(result.document.package.document).find(
+        ({ paragraph }) => paragraph.paraId === "00000020",
+      )?.paragraph,
+    ).toStrictEqual(firstParagraph(empty));
+    expectRefusalWithoutMutation(
+      document,
+      {
+        ...op,
+        row: {
+          ...empty,
+          cells: [
+            {
+              ...firstCell(empty),
+              content: [{ ...firstParagraph(empty), pPrMark: { kind: "ins", info: revision } }],
+            },
+          ],
+        },
+      },
+      DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK,
+    );
+  });
+
+  test("cell-final mark ownership follows the innermost row and checks kind and metadata", () => {
+    const inner = makeRow("00000031");
+    const outer: TableRow = {
+      type: "tableRow",
+      structuralChange: { type: "tableRowInsertion", info: revision },
+      cells: [
+        {
+          type: "tableCell",
+          content: [tableOf(inner), makeParagraph("00000030")],
+        },
+      ],
+    };
+    for (const owner of ["outer", "inner"] as const) {
+      for (const mismatch of ["none", "author", "date", "initials", "kind", "id"] as const) {
+        const row = structuredClone(inner);
+        if (owner === "inner") {
+          row.structuralChange = { type: "tableRowInsertion", info: revision };
+        }
+        const mark = {
+          kind: mismatch === "kind" ? "del" : "ins",
+          info: {
+            ...revision,
+            id: mismatch === "id" ? 100 : 101,
+            author: mismatch === "author" ? "Other" : revision.author,
+            date: mismatch === "date" ? "2026-01-01T00:00:00Z" : revision.date,
+            ...(mismatch === "initials" ? { initials: "X" } : {}),
+          },
+        } as const;
+        firstParagraph(row).pPrMark = mark;
+        const nested = {
+          ...outer,
+          cells: [
+            {
+              ...firstCell(outer),
+              content: [tableOf(row), makeParagraph("00000030")],
+            },
+          ],
+        };
+        const body = documentOf(tableOf(nested)).package.document;
+        const location = storyParagraphs(body).find(
+          ({ paragraph }) => paragraph.paraId === "00000031",
+        );
+        if (location === undefined) throw new Error("Fixture nested paragraph exists.");
+        expect(permitsCellFinalMark(body, location)).toBe(owner === "inner" && mismatch === "none");
+      }
+    }
   });
 
   test("an inverse is stale when another row changes", () => {
@@ -237,7 +430,7 @@ describe("table row review", () => {
       revision,
     };
     const demand = revisionIdDemand(document, op);
-    expect(demand.isOk() ? demand.value : undefined).toBe(2);
+    expect(demand.isOk() ? demand.value : undefined).toBe(3);
     expectRefusalWithoutMutation(document, op, DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
     expectRefusalWithoutMutation(
       document,
@@ -246,7 +439,7 @@ describe("table row review", () => {
     );
     expectRefusalWithoutMutation(
       document,
-      { ...op, newIds: { revision: [0x8000_0000, 102] } },
+      { ...op, newIds: { revision: [0x8000_0000, 102, 103] } },
       DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
     );
   });
