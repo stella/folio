@@ -5269,10 +5269,10 @@ const applyFolioAIEditOperationsInternal = ({
               next,
               styleResolver,
             });
-            // It reads as the first paragraph, as a direct merge does. When
-            // the first's words were all inserted, rejecting takes them away
-            // and with them those properties.
-            const insertedOnly = holdsOnlyInsertedContent(paragraph);
+            // It reads as the first paragraph, as a direct merge does, under
+            // a property change recording what the paragraph left had:
+            // rejecting restores its own, whether or not the first's words
+            // were inserted.
             // When the paragraph it joined has its own break pending deletion,
             // accepting leaves the paragraph after that break: that one reads
             // as the first, as a chain of pending merges does. A break this
@@ -5297,9 +5297,7 @@ const applyFolioAIEditOperationsInternal = ({
               source: paragraph,
               styleResolver,
               numbering,
-              ...((insertedOnly || carryPos !== item.blockFrom) && {
-                revision: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
-              }),
+              revision: { id: revisionIdMark, author, date, ...trackedRevisionExtras },
             });
             mergedPropertiesAt = carryPos;
             tr = carried.tr;

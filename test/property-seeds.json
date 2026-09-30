@@ -278,5 +278,50 @@
       "note": "Nested pending insertions split a later deletion into separate revision wrappers.",
       "date": "2026-09-30"
     }
+  ],
+  "packages/core/src/ai-edits/trackedResolution.property.test.ts::reject restores, accept equals direct, and both survive a save": [
+    {
+      "seed": -425480671,
+      "note": "#1189: moved from the test file's own seed list",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": 2055257210,
+      "note": "#1159: moved from the test file's own seed list",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": -1401551044,
+      "note": "#1159: moved from the test file's own seed list",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": -1401551044,
+      "path": "414:2:3:9:9:9",
+      "note": "#1190: a table before a pending deletion of the story's last paragraph",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": -751467822,
+      "path": "181:4:6:6:8:9:12:12:11:12",
+      "note": "#1221: merging an inserted paragraph into one whose own break a pending merge already removed",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -304239210,
+      "note": "#1159: moved from the test file's own seed list",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": 115449810,
+      "note": "#1165: moved from the test file's own seed list",
+      "date": "2026-09-28"
+    },
+    {
+      "seed": 386876854,
+      "path": "10:5:3:3:6:5:5:15:16:18:5:17:17:17:19:19:19:24:24:17:20:20",
+      "note": "merging a split half restyled as the heading into the paragraph after it carried the heading untracked; rejecting left the body paragraph a heading",
+      "date": "2026-09-30"
+    }
   ]
 }
