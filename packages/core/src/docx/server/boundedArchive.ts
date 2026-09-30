@@ -2,6 +2,7 @@ import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import {
+  compressionRatioLimitFor,
   countCentralDirectoryRecords,
   createInflationBudget,
   DOCX_MAX_COMPRESSION_RATIO,
@@ -42,9 +43,10 @@ export type DocxArchiveOptions = {
   maxTotalBytes?: number;
   maxEntries?: number;
   /**
-   * Most inflated bytes allowed per compressed byte, for each entry and for
-   * the package as a whole. Entries and packages under 4 MiB inflated are
-   * exempt. Defaults to 200.
+   * Most inflated bytes allowed per compressed byte, for each markup or text
+   * entry and for the package as a whole. Binary entries are bounded by the
+   * byte limits and the package ratio only, and entries and packages under
+   * 4 MiB inflated are exempt. Defaults to 200.
    */
   maxCompressionRatio?: number;
   /**
@@ -109,6 +111,7 @@ const readLimitError = ({
         reason: "entry-too-large",
       });
     case "total":
+    case "aborted":
       return new DocxArchiveError({
         message: `DOCX archive exceeded the ${maxTotalBytes}-byte cumulative limit while reading "${path}"`,
         reason: "total-too-large",
@@ -222,7 +225,7 @@ export const loadDocxArchive = async (
       exceedsCompressionRatio({
         inflatedBytes: uncompressedBytes,
         compressedBytes,
-        maxRatio: maxCompressionRatio,
+        maxRatio: compressionRatioLimitFor(entry.name, maxCompressionRatio),
       })
     ) {
       throw new DocxArchiveError({
@@ -276,7 +279,7 @@ export const loadDocxArchive = async (
       const result = await inflateEntryWithinLimits({
         entry,
         maxEntryBytes: entryLimit,
-        maxCompressionRatio,
+        maxCompressionRatio: compressionRatioLimitFor(path, maxCompressionRatio),
         budget: inflationBudget,
       });
       if (!result.ok) {

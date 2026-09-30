@@ -169,6 +169,18 @@ describe("validateDocxPackage archive inflation limits", () => {
     });
   });
 
+  test("leaves a highly compressible binary entry to the byte and archive limits", async () => {
+    const zip = await JSZip.loadAsync(await packageWithDocument(documentOfSize(16)));
+    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff));
+    // Incompressible padding keeps the archive as a whole under the ratio cap.
+    zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)), {
+      compression: "STORE",
+    });
+    const bytes = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+
+    expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
+  });
+
   test("counts archive records before the archive is parsed", async () => {
     const zip = new JSZip();
     for (let index = 0; index < 4100; index += 1) {

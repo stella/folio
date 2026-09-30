@@ -78,9 +78,12 @@ const VALIDATE_DOCX_MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 const VALIDATE_DOCX_MAX_TOTAL_BYTES = 256 * 1024 * 1024;
 const VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES = 32 * 1024 * 1024;
 /**
- * Inflated bytes allowed per compressed byte, for an entry and for the whole
- * archive, once either passes the grace size. Real document parts stay far below
- * this; an entry of one repeated byte sits near DEFLATE's 1032:1 ceiling.
+ * Inflated bytes allowed per compressed byte, for a markup or text entry and
+ * for the whole archive, once either passes the grace size. Real document
+ * parts stay far below this; an entry of one repeated byte sits near
+ * DEFLATE's 1032:1 ceiling. Binary entries can legitimately compress that far
+ * (an uncompressed bitmap of one colour), so only the archive-wide ratio and
+ * the byte limits bound them.
  */
 const VALIDATE_DOCX_MAX_COMPRESSION_RATIO = 200;
 const VALIDATE_DOCX_COMPRESSION_RATIO_GRACE_BYTES = 4 * 1024 * 1024;
@@ -111,6 +114,21 @@ const getCompressedSize = (file: JSZip.JSZipObject): number | null => {
   const metadata = (file as JSZip.JSZipObject & ZipEntryWithMetadata)._data;
   return typeof metadata?.compressedSize === "number" ? metadata.compressedSize : null;
 };
+
+const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
+  "xml",
+  "rels",
+  "vml",
+  "txt",
+  "htm",
+  "html",
+  "mht",
+  "mhtml",
+  "rtf",
+]);
+
+const isRatioBoundedPart = (path: string): boolean =>
+  RATIO_BOUNDED_EXTENSIONS.has(path.slice(path.lastIndexOf(".") + 1).toLowerCase());
 
 const exceedsCompressionRatio = (inflatedBytes: number, compressedBytes: number | null): boolean =>
   compressedBytes !== null &&
@@ -233,7 +251,10 @@ const checkDocxArchiveBounds = (zip: JSZip, archiveBytes: number): string | null
     if (declaredBytes > VALIDATE_DOCX_MAX_ENTRY_BYTES) {
       return `Generated DOCX entry "${entry.name}" declares ${declaredBytes} uncompressed bytes, over the ${VALIDATE_DOCX_MAX_ENTRY_BYTES}-byte limit.`;
     }
-    if (exceedsCompressionRatio(declaredBytes, getCompressedSize(entry))) {
+    if (
+      isRatioBoundedPart(entry.name) &&
+      exceedsCompressionRatio(declaredBytes, getCompressedSize(entry))
+    ) {
       return `Generated DOCX entry "${entry.name}" declares more than ${VALIDATE_DOCX_MAX_COMPRESSION_RATIO} uncompressed bytes per compressed byte.`;
     }
     totalUncompressedBytes += declaredBytes;

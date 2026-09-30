@@ -28,12 +28,14 @@ import JSZip from "jszip";
 
 import { bytesToDataUrl } from "../utils/base64";
 import {
+  compressionRatioLimitFor,
   countCentralDirectoryRecords,
   createInflationBudget,
   DOCX_MAX_COMPRESSION_RATIO,
   exceedsCompressionRatio,
   getZipEntrySizes,
   inflateEntryWithinLimits,
+  isStoredZipEntry,
   type InflateEntryResult,
   type InflationBudget,
   type InflationLimit,
@@ -79,8 +81,10 @@ export type DocxUnzipLimits = {
    */
   maxTotalUncompressedBytes: number;
   /**
-   * Inflated bytes allowed per compressed byte, for each entry and for the
-   * package as a whole. Entries and packages under 4 MiB inflated are exempt.
+   * Inflated bytes allowed per compressed byte, for each markup or text entry
+   * and for the package as a whole. Binary entries are bounded by the byte
+   * limits and the package ratio only, and entries and packages under 4 MiB
+   * inflated are exempt.
    */
   maxCompressionRatio: number;
   /** Elements allowed in one XML part, counted before any tree is built. */
@@ -280,6 +284,20 @@ export type RawDocxContent = {
   wasEncrypted: boolean;
 };
 
+/** How {@link unzipDocx} treats the parts it does not extract. */
+export type UnzipDocxBehavior = {
+  /**
+   * Inflate every part the unzip does not extract, within its declared size,
+   * so a later read of the returned package can trust that size. Callers
+   * that discard the package after reading the extracted parts can skip it.
+   * Defaults to `true`.
+   */
+  verifyUnreadEntries?: boolean;
+};
+
+/** Entries inflated at once; the rest wait for a slot. */
+const EXTRACTION_CONCURRENCY = 6;
+
 /**
  * Extract all content from a DOCX file
  *
@@ -289,6 +307,7 @@ export type RawDocxContent = {
 export async function unzipDocx(
   buffer: ArrayBuffer,
   options: DocxUnzipOptions = {},
+  { verifyUnreadEntries = true }: UnzipDocxBehavior = {},
 ): Promise<RawDocxContent> {
   const limits = createUnzipLimits(options);
   if (buffer.byteLength > limits.maxInputBytes) {
@@ -361,8 +380,13 @@ export async function unzipDocx(
 
   // A part this parser never reads is still inflated by a later save or a
   // lazy part read, which trust its declared size. Inflating it once here,
-  // within that declared size, is what makes the size worth trusting.
+  // within that declared size, is what makes the size worth trusting. A
+  // stored part reads back only the bytes the archive carries, so it cannot
+  // expand and needs no check.
   const verifyEntry = (file: JSZip.JSZipObject, path: string) => {
+    if (!verifyUnreadEntries || isStoredZipEntry(file)) {
+      return;
+    }
     extractionTasks.push(async () => {
       await verifyEntryWithinLimits({ file, path, limits, budget: inflationBudget });
       return null;
@@ -375,7 +399,7 @@ export async function unzipDocx(
     await inflateEntryWithinLimits({
       entry: file,
       maxEntryBytes,
-      maxCompressionRatio: limits.maxCompressionRatio,
+      maxCompressionRatio: compressionRatioLimitFor(file.name, limits.maxCompressionRatio),
       budget: inflationBudget,
     });
 
@@ -402,7 +426,7 @@ export async function unzipDocx(
         exceedsCompressionRatio({
           inflatedBytes: declaredSize,
           compressedBytes,
-          maxRatio: limits.maxCompressionRatio,
+          maxRatio: compressionRatioLimitFor(path, limits.maxCompressionRatio),
         })
       ) {
         throw new DocxSecurityError(`DOCX entry exceeds the maximum compression ratio: ${path}`);
@@ -494,7 +518,7 @@ export async function unzipDocx(
   }
 
   const xmlBudget = createXmlPackageBudget();
-  for (const extracted of await Promise.all(extractionTasks.map((extract) => extract()))) {
+  for (const extracted of await runExtractionTasks(extractionTasks, inflationBudget)) {
     if (!extracted) {
       continue;
     }
@@ -592,7 +616,47 @@ function inflationLimitError(limit: InflationLimit, path: string): DocxSecurityE
       return new DocxSecurityError(`DOCX entry exceeds maximum size: ${path}`);
     case "total":
       return new DocxSecurityError("DOCX file expands beyond the maximum allowed size");
+    case "aborted":
+      return new DocxSecurityError(`DOCX entry was not read after another entry failed: ${path}`);
   }
+}
+
+/**
+ * Run extraction tasks a few at a time, in order, keeping their results in
+ * task order. The first failure marks the shared budget aborted, which stops
+ * the streams still running at their next chunk and leaves the queued tasks
+ * unstarted.
+ */
+async function runExtractionTasks(
+  tasks: readonly (() => Promise<ExtractedEntry | null>)[],
+  budget: InflationBudget,
+): Promise<(ExtractedEntry | null)[]> {
+  const results: (ExtractedEntry | null)[] = Array.from({ length: tasks.length }, () => null);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < tasks.length && !budget.aborted) {
+      const index = next;
+      next += 1;
+      const task = tasks[index];
+      if (!task) {
+        return;
+      }
+      try {
+        // oxlint-disable-next-line no-await-in-loop -- each worker runs its share of the queue one task at a time
+        results[index] = await task();
+      } catch (error) {
+        budget.aborted = true;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(EXTRACTION_CONCURRENCY, tasks.length) },
+      async () => await worker(),
+    ),
+  );
+  return results;
 }
 
 type VerifyEntryOptions = {
@@ -619,7 +683,7 @@ async function verifyEntryWithinLimits({
     result = await inflateEntryWithinLimits({
       entry: file,
       maxEntryBytes: Number.POSITIVE_INFINITY,
-      maxCompressionRatio: limits.maxCompressionRatio,
+      maxCompressionRatio: compressionRatioLimitFor(path, limits.maxCompressionRatio),
       budget,
       retain: false,
     });
@@ -775,9 +839,17 @@ function findLastSignature(view: DataView, byteLength: number, signature: number
 }
 
 function createUnzipLimits(options: PartialDocxUnzipLimits): DocxUnzipLimits {
+  const { maxCompressionRatio } = options;
+  if (
+    maxCompressionRatio !== undefined &&
+    (!Number.isSafeInteger(maxCompressionRatio) || maxCompressionRatio < 0)
+  ) {
+    throw new RangeError("DOCX compression ratio limit must be a non-negative safe integer");
+  }
   return {
     ...DEFAULT_UNZIP_LIMITS,
     ...options,
+    maxCompressionRatio: maxCompressionRatio ?? DEFAULT_UNZIP_LIMITS.maxCompressionRatio,
     allowedMediaMimeTypes: options.allowedMediaMimeTypes
       ? new Set(options.allowedMediaMimeTypes)
       : DEFAULT_UNZIP_LIMITS.allowedMediaMimeTypes,

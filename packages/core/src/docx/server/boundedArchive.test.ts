@@ -247,6 +247,18 @@ describe("loadDocxArchive inflation limits", () => {
     });
   });
 
+  test("leaves a highly compressible binary entry to the byte and package limits", async () => {
+    const zip = new JSZip();
+    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff), {
+      compression: "DEFLATE",
+    });
+    // Incompressible padding keeps the package as a whole under the ratio cap.
+    zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)));
+    const archive = await loadDocxArchive(await zip.generateAsync({ type: "uint8array" }));
+
+    expect(await archive.readEntryUint8("word/media/image1.bmp")).toHaveLength(5 * 1024 * 1024);
+  });
+
   test("takes a tighter or looser ratio cap from the caller", async () => {
     const bytes = await compressibleArchive({
       entryPath: "word/header1.xml",

@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import JSZip from "jszip";
 
 import {
+  archiveWithRawDeflate,
   compressibleArchive,
   manyEntryArchive,
+  rawDeflateOfZeros,
   understatedEntryArchive,
   withDeclaredSize,
 } from "./__tests__/archiveInflationFixtures";
@@ -388,10 +390,95 @@ describe("unzipDocx archive inflation limits", () => {
 
   test("counts archive records before the archive is parsed", async () => {
     const buffer = toArrayBuffer(await manyEntryArchive(40));
+    const loadAsync = spyOn(JSZip, "loadAsync");
 
-    const error = await getRejectedError(unzipDocx(buffer, { maxFiles: 10 }));
+    try {
+      const error = await getRejectedError(unzipDocx(buffer, { maxFiles: 10 }));
 
-    expect(error).toHaveProperty("message", "DOCX file contains too many entries");
+      expect(error).toHaveProperty("message", "DOCX file contains too many entries");
+      expect(loadAsync).not.toHaveBeenCalled();
+    } finally {
+      loadAsync.mockRestore();
+    }
+  });
+
+  test("stops a part declared at 64 bytes that would inflate to a gibibyte", async () => {
+    const buffer = toArrayBuffer(
+      await archiveWithRawDeflate({
+        entryPath: "word/embeddings/object1.bin",
+        deflated: rawDeflateOfZeros(1024),
+        declaredBytes: 64,
+      }),
+    );
+
+    const error = await getRejectedError(unzipDocx(buffer));
+
+    expect(error).toHaveProperty(
+      "message",
+      "DOCX entry inflates past its declared size: word/embeddings/object1.bin",
+    );
+  });
+
+  test("refuses parts that together pass the cumulative limit", async () => {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", "<Types/>");
+    zip.file("word/document.xml", `<w:document>${"a".repeat(600)}</w:document>`);
+    zip.file("word/header1.xml", `<w:hdr>${"b".repeat(600)}</w:hdr>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+
+    await expect(unzipDocx(buffer, { maxTotalUncompressedBytes: 1000 })).rejects.toHaveProperty(
+      "message",
+      "DOCX file expands beyond the maximum allowed size",
+    );
+    await expect(unzipDocx(buffer, { maxTotalUncompressedBytes: 2000 })).resolves.toBeDefined();
+  });
+
+  test("still opens a package whose unread part cannot be decompressed", async () => {
+    const buffer = toArrayBuffer(
+      await archiveWithRawDeflate({
+        entryPath: "word/embeddings/object1.bin",
+        deflated: new Uint8Array([0xff, 0xff, 0xff, 0xff]),
+        declaredBytes: 100,
+      }),
+    );
+
+    const content = await unzipDocx(buffer);
+
+    expect(content.documentXml).toBe("<w:document/>");
+  });
+
+  test("leaves a highly compressible binary part to the byte and package limits", async () => {
+    const zip = new JSZip();
+    zip.file("[Content_Types].xml", "<Types/>");
+    zip.file("word/document.xml", "<w:document/>");
+    zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff), {
+      compression: "DEFLATE",
+    });
+    // Incompressible padding keeps the package as a whole under the ratio cap.
+    const padding = crypto.getRandomValues(new Uint8Array(64 * 1024));
+    zip.file("word/embeddings/padding.bin", padding);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+
+    await expect(unzipDocx(buffer)).resolves.toBeDefined();
+  });
+
+  test("rejects an invalid ratio limit", async () => {
+    const buffer = toArrayBuffer(await manyEntryArchive(1));
+
+    for (const maxCompressionRatio of [Number.NaN, -1, 1.5]) {
+      // oxlint-disable-next-line no-await-in-loop -- each case is independent and tiny
+      expect(await getRejectedError(unzipDocx(buffer, { maxCompressionRatio }))).toBeInstanceOf(
+        RangeError,
+      );
+    }
+  });
+
+  test("can leave unread parts unchecked for a caller that discards the package", async () => {
+    const buffer = toArrayBuffer(await understatedEntryArchive("word/embeddings/object1.bin"));
+
+    const content = await unzipDocx(buffer, {}, { verifyUnreadEntries: false });
+
+    expect(content.documentXml).toBe("<w:document/>");
   });
 
   test("parseDocx refuses the same packages", async () => {

@@ -1,13 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { manyEntryArchive, understatedEntryArchive } from "./__tests__/archiveInflationFixtures";
 import {
+  archiveWithRawDeflate,
+  manyEntryArchive,
+  rawDeflateOfZeros,
+  understatedEntryArchive,
+} from "./__tests__/archiveInflationFixtures";
+import {
+  compressionRatioLimitFor,
   countCentralDirectoryRecords,
   createInflationBudget,
   DOCX_MAX_COMPRESSION_RATIO,
   inflateEntryWithinLimits,
+  isRatioBoundedPart,
+  isStoredZipEntry,
 } from "./archiveInflation";
+
+const MEBIBYTE = 1024 * 1024;
+
+/** Count every byte the entry's stream produces, whether or not it is kept. */
+const observeInflatedBytes = (entry: JSZip.JSZipObject): (() => number) => {
+  let seen = 0;
+  const openStream = entry.internalStream.bind(entry);
+  entry.internalStream = (type) =>
+    openStream(type).on("data", (chunk) => {
+      seen += chunk.length;
+    });
+  return () => seen;
+};
 
 const loadEntry = async (bytes: Uint8Array, path: string): Promise<JSZip.JSZipObject> => {
   const entry = (await JSZip.loadAsync(bytes)).file(path);
@@ -96,5 +117,87 @@ describe("inflateEntryWithinLimits", () => {
 
     expect(result).toEqual({ ok: true, bytes: new Uint8Array(0) });
     expect(budget.inflatedBytes).toBe(5);
+  });
+
+  test("stops an entry declared at 64 bytes that would inflate to a gibibyte", async () => {
+    // About 1 MiB of DEFLATE data that inflates to 1 GiB of zeros.
+    const deflated = rawDeflateOfZeros(1024);
+    expect(deflated.byteLength).toBeLessThan(2 * MEBIBYTE);
+    const entry = await loadEntry(
+      await archiveWithRawDeflate({ entryPath: "zeros.bin", deflated, declaredBytes: 64 }),
+      "zeros.bin",
+    );
+    const inflatedBytes = observeInflatedBytes(entry);
+    const budget = createInflationBudget(Number.MAX_SAFE_INTEGER);
+
+    const result = await inflateEntryWithinLimits({
+      entry,
+      maxEntryBytes: Number.MAX_SAFE_INTEGER,
+      maxCompressionRatio: Number.POSITIVE_INFINITY,
+      budget,
+    });
+
+    expect(result).toEqual({ ok: false, limit: "declared-size" });
+    // One compressed chunk can still inflate after the stream is paused; the
+    // point is that the rest of the entry never is.
+    expect(inflatedBytes()).toBeLessThan(32 * MEBIBYTE);
+    expect(budget.inflatedBytes).toBe(0);
+  });
+
+  test("refunds only the entry that stops when inflations share a budget", async () => {
+    const understated = await understatedEntryArchive("word/header1.xml");
+    const budget = createInflationBudget(Number.MAX_SAFE_INTEGER);
+    const inflate = async (path: string) =>
+      await inflateEntryWithinLimits({
+        entry: await loadEntry(understated, path),
+        maxEntryBytes: Number.MAX_SAFE_INTEGER,
+        maxCompressionRatio: DOCX_MAX_COMPRESSION_RATIO,
+        budget,
+      });
+
+    const [kept, stopped] = await Promise.all([
+      inflate("word/document.xml"),
+      inflate("word/header1.xml"),
+    ]);
+
+    expect(kept).toEqual({ ok: true, bytes: new TextEncoder().encode("<w:document/>") });
+    expect(stopped).toEqual({ ok: false, limit: "declared-size" });
+    expect(budget.inflatedBytes).toBe("<w:document/>".length);
+  });
+
+  test("stops at the next chunk once the shared budget is aborted", async () => {
+    const bytes = await storedArchive({ a: "12345" });
+    const budget = createInflationBudget(100);
+    budget.aborted = true;
+
+    const result = await inflateEntryWithinLimits({
+      entry: await loadEntry(bytes, "a"),
+      maxEntryBytes: 100,
+      maxCompressionRatio: DOCX_MAX_COMPRESSION_RATIO,
+      budget,
+    });
+
+    expect(result).toEqual({ ok: false, limit: "aborted" });
+    expect(budget.inflatedBytes).toBe(0);
+  });
+});
+
+describe("entry classification", () => {
+  test("tells stored entries from compressed ones", async () => {
+    const zip = new JSZip();
+    zip.file("stored", "abc", { compression: "STORE" });
+    zip.file("compressed", "abc", { compression: "DEFLATE" });
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+
+    expect(isStoredZipEntry(await loadEntry(bytes, "stored"))).toBe(true);
+    expect(isStoredZipEntry(await loadEntry(bytes, "compressed"))).toBe(false);
+  });
+
+  test("applies the per-entry ratio to markup and text parts only", () => {
+    expect(isRatioBoundedPart("word/document.xml")).toBe(true);
+    expect(isRatioBoundedPart("word/_rels/document.xml.rels")).toBe(true);
+    expect(isRatioBoundedPart("word/media/image1.BMP")).toBe(false);
+    expect(compressionRatioLimitFor("word/media/image1.emf", 200)).toBe(Number.POSITIVE_INFINITY);
+    expect(compressionRatioLimitFor("word/header1.xml", 200)).toBe(200);
   });
 });

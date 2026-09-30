@@ -2,8 +2,10 @@ import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
 import {
+  archiveWithRawDeflate,
   compressibleArchive,
   manyEntryArchive,
+  rawDeflateOfZeros,
   understatedEntryArchive,
 } from "../__tests__/archiveInflationFixtures";
 import { RELATIONSHIP_TYPES } from "../relsParser";
@@ -634,5 +636,18 @@ describe("extractDocxText archive limits", () => {
     await expect(
       extractDocxText(await manyEntryArchive(40), { archive: { maxEntries: 10 } }),
     ).rejects.toMatchObject({ _tag: "DocxArchiveError", reason: "too-many-entries" });
+  });
+
+  test("stops a main document part declared at 64 bytes that would inflate to a gibibyte", async () => {
+    const bytes = await archiveWithRawDeflate({
+      entryPath: "word/document.xml",
+      deflated: rawDeflateOfZeros(1024),
+      declaredBytes: 64,
+    });
+
+    await expect(extractDocxText(bytes)).rejects.toMatchObject({
+      _tag: "DocxArchiveError",
+      reason: "entry-too-large",
+    });
   });
 });

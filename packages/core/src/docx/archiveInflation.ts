@@ -102,6 +102,51 @@ export const getZipEntrySizes = (entry: JSZip.JSZipObject): ZipEntrySizes => {
   };
 };
 
+const STORED_COMPRESSION_MAGIC = "\x00\x00";
+
+/**
+ * Whether a loaded entry is stored rather than compressed. A stored entry
+ * reads back exactly the bytes the archive carries, so it cannot expand.
+ */
+export const isStoredZipEntry = (entry: JSZip.JSZipObject): boolean => {
+  const data: unknown = "_data" in entry ? entry._data : undefined;
+  if (typeof data !== "object" || data === null || !("compression" in data)) {
+    return false;
+  }
+  const { compression } = data;
+  return (
+    typeof compression === "object" &&
+    compression !== null &&
+    "magic" in compression &&
+    compression.magic === STORED_COMPRESSION_MAGIC
+  );
+};
+
+const RATIO_BOUNDED_EXTENSIONS: ReadonlySet<string> = new Set([
+  "xml",
+  "rels",
+  "vml",
+  "txt",
+  "htm",
+  "html",
+  "mht",
+  "mhtml",
+  "rtf",
+]);
+
+/**
+ * Whether the per-entry ratio cap applies to a part. Markup and text parts
+ * never compress anywhere near the cap. Binary parts can: an uncompressed
+ * bitmap of one colour compresses like a run of one byte. Those stay bounded
+ * by the byte caps and the package-wide ratio instead.
+ */
+export const isRatioBoundedPart = (path: string): boolean =>
+  RATIO_BOUNDED_EXTENSIONS.has(path.slice(path.lastIndexOf(".") + 1).toLowerCase());
+
+/** The per-entry ratio cap for `path`: `maxRatio`, or none for a binary part. */
+export const compressionRatioLimitFor = (path: string, maxRatio: number): number =>
+  isRatioBoundedPart(path) ? maxRatio : Number.POSITIVE_INFINITY;
+
 type CompressionRatioCheck = {
   inflatedBytes: number;
   compressedBytes: number | null;
@@ -122,15 +167,21 @@ export const exceedsCompressionRatio = ({
   inflatedBytes > DOCX_COMPRESSION_RATIO_GRACE_BYTES &&
   inflatedBytes > compressedBytes * maxRatio;
 
-/** Inflated bytes charged across one package. */
+/**
+ * Inflated bytes charged across one package. `aborted` stops every inflation
+ * sharing the budget at its next chunk, once one of them has failed the
+ * package.
+ */
 export type InflationBudget = {
   readonly maxTotalBytes: number;
   inflatedBytes: number;
+  aborted: boolean;
 };
 
 export const createInflationBudget = (maxTotalBytes: number): InflationBudget => ({
   maxTotalBytes,
   inflatedBytes: 0,
+  aborted: false,
 });
 
 /**
@@ -140,8 +191,9 @@ export const createInflationBudget = (maxTotalBytes: number): InflationBudget =>
  * - `compression-ratio` — the entry passed the ratio cap for its compressed size.
  * - `entry` — the entry passed the per-entry cap the caller set.
  * - `total` — the package passed its cumulative budget.
+ * - `aborted` — another inflation sharing the budget already failed.
  */
-export type InflationLimit = "declared-size" | "compression-ratio" | "entry" | "total";
+export type InflationLimit = "declared-size" | "compression-ratio" | "entry" | "total" | "aborted";
 
 export type InflateEntryResult =
   | { readonly ok: true; readonly bytes: Uint8Array<ArrayBuffer> }
@@ -151,6 +203,7 @@ export type InflateEntryOptions = {
   entry: JSZip.JSZipObject;
   /** Most bytes this entry may inflate to. */
   maxEntryBytes: number;
+  /** Ratio cap while streaming; see {@link compressionRatioLimitFor}. */
   maxCompressionRatio: number;
   budget: InflationBudget;
   /**
@@ -221,6 +274,9 @@ export const inflateEntryWithinLimits = async ({
       resolve({ ok: false, limit });
     };
     const limitFor = (): InflationLimit | null => {
+      if (budget.aborted) {
+        return "aborted";
+      }
       if (uncompressedBytes !== null && entryBytes > uncompressedBytes) {
         return "declared-size";
       }
