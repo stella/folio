@@ -420,9 +420,10 @@ export const appendTrackedDeletion = ({
     const appended = plan.append(op);
     if (appended.isErr()) return appended;
     const simulated = applyDocumentOp(direct, {
-      ...op,
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: from.story,
+      blockId: leading.at.blockId,
       nextBlockId: to.blockId,
-      revision: undefined,
     });
     if (simulated.isErr()) return Result.err(simulated.error);
     direct = simulated.value.document;

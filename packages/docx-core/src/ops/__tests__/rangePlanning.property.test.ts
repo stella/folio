@@ -14,7 +14,8 @@ import { endsItsContainer, storyParagraphs } from "../blocks";
 import { contractViolation } from "../contract";
 import { sameRunFormatting } from "../inline";
 import { paragraphLogicalText } from "../offsets";
-import { planTrackedDeletion, planTrackedReplace } from "../plan";
+import { planTrackedDeletion } from "../plan";
+import { planTrackedReplace } from "../rangeReplacement";
 import {
   DOCUMENT_OP_TYPES,
   OP_STORIES,
