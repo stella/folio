@@ -123,6 +123,13 @@
       "title": "keeps comment ranges stable on save"
     },
     {
+      "seed": 1595037221,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "rejecting insertions after a wholly inserted table restores the original"
+    },
+    {
       "seed": 20260933,
       "steps": 10,
       "kind": "collisions",
@@ -138,11 +145,18 @@
       "title": "accepting a merged paragraph mark keeps run formatting across save"
     },
     {
-      "seed": 1595037221,
+      "seed": 1016403979,
       "steps": 10,
-      "kind": "collisions",
+      "kind": "random",
       "generation": "targeted",
-      "title": "rejecting insertions after a wholly inserted table restores the original"
+      "title": "row insertion beside a pending deleted row uses live coordinates"
+    },
+    {
+      "seed": 871572631,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "mixed row and column batches preserve source cell payloads"
     },
     {
       "seed": 20260937,

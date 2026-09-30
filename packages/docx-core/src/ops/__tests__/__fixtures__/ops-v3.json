@@ -1892,5 +1892,444 @@
         }
       ]
     }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "insertRow",
+      "story": "main",
+      "blockId": "00000020",
+      "at": 1,
+      "row": {
+        "type": "tableRow",
+        "cells": [
+          {
+            "type": "tableCell",
+            "content": [
+              {
+                "type": "paragraph",
+                "paraId": "00000023",
+                "content": [
+                  {
+                    "type": "run",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Cell"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "revision": {
+        "id": 200,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      },
+      "newIds": {
+        "revision": [201]
+      }
+    }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "setTableRows",
+      "story": "main",
+      "blockId": "00000020",
+      "expected": [
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000020",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000023",
+                  "content": [
+                    {
+                      "type": "insertion",
+                      "info": {
+                        "id": 201,
+                        "author": "Reviewer",
+                        "date": "2026-02-03T04:05:06Z",
+                        "initials": "R"
+                      },
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "structuralChange": {
+            "type": "tableRowInsertion",
+            "info": {
+              "id": 200,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000021",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "rows": [
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000020",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000021",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "deleteRow",
+      "story": "main",
+      "blockId": "00000021",
+      "revision": {
+        "id": 202,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      },
+      "newIds": {
+        "revision": [203]
+      }
+    }
+  },
+  {
+    "schema": 3,
+    "op": {
+      "type": "setTableRows",
+      "story": "main",
+      "blockId": "00000020",
+      "expected": [
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000020",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000023",
+                  "content": [
+                    {
+                      "type": "insertion",
+                      "info": {
+                        "id": 201,
+                        "author": "Reviewer",
+                        "date": "2026-02-03T04:05:06Z",
+                        "initials": "R"
+                      },
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "structuralChange": {
+            "type": "tableRowInsertion",
+            "info": {
+              "id": 200,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000021",
+                  "content": [
+                    {
+                      "type": "deletion",
+                      "info": {
+                        "id": 203,
+                        "author": "Reviewer",
+                        "date": "2026-02-03T04:05:06Z",
+                        "initials": "R"
+                      },
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "structuralChange": {
+            "type": "tableRowDeletion",
+            "info": {
+              "id": 202,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        }
+      ],
+      "rows": [
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000020",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000023",
+                  "content": [
+                    {
+                      "type": "insertion",
+                      "info": {
+                        "id": 201,
+                        "author": "Reviewer",
+                        "date": "2026-02-03T04:05:06Z",
+                        "initials": "R"
+                      },
+                      "content": [
+                        {
+                          "type": "run",
+                          "content": [
+                            {
+                              "type": "text",
+                              "text": "Cell"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "structuralChange": {
+            "type": "tableRowInsertion",
+            "info": {
+              "id": 200,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        },
+        {
+          "type": "tableRow",
+          "cells": [
+            {
+              "type": "tableCell",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "00000021",
+                  "content": [
+                    {
+                      "type": "run",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "Cell"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
   }
 ]
