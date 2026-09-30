@@ -73,6 +73,6 @@ test("the revision census reserves every grid revision id and detects collisions
       if (valid.isErr())
         expect(valid.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID);
     }),
-    propertyConfig({ numRuns: 10_000 }),
+    propertyConfig({ numRuns: 2_000 }),
   );
 });

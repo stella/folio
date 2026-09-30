@@ -14,7 +14,8 @@ import { DOCUMENT_OP_TYPES, OP_STORIES, type DocumentOp, type RevisionStamp } fr
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
-const NUM_RUNS = 10_000;
+// CI scales runs (5x on PRs, 10x nightly), so the laws still see 10^4+ cases per run there.
+const NUM_RUNS = 2_000;
 const DATE = "2026-05-06T07:08:09Z";
 const stamp = (id: number): RevisionStamp => ({ id, author: "Reviewer", date: DATE });
 const newIds = (start: number) => ({
