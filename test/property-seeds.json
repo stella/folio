@@ -215,5 +215,12 @@
       "note": "#1221: accepting a note reference's deletion drops the note and the comment anchored in it",
       "date": "2026-09-29"
     }
+  ],
+  "packages/core/src/ai-edits/revisionWrapperEnumeration.property.test.ts::tracked replacements followed by paragraph deletion preserve the revision census across save": [
+    {
+      "seed": 34068695,
+      "note": "Nested pending insertions split a later deletion into separate revision wrappers.",
+      "date": "2026-09-30"
+    }
   ]
 }
