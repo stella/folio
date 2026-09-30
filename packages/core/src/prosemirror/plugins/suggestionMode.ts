@@ -693,11 +693,7 @@ function rotateIntoFinalParagraph(
   if (!replaced || !first) {
     return replacedPos;
   }
-  const replacedAttrs = expectParagraphAttrs(replaced);
-  const previousFormatting: Record<string, unknown> = {
-    ...paragraphPropertiesSnapshot(replaced),
-    numPr: replacedAttrs.numPr ?? null,
-  };
+  const previousFormatting = paragraphPropertiesSnapshot(replaced);
   const { _sectionProperties: sectionProperties } = replaced.attrs;
   tr.join(replacedPos + replaced.nodeSize);
   tr.setNodeMarkup(replacedPos, undefined, first.attrs);

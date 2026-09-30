@@ -498,7 +498,12 @@ function resolveChange(
           const resolved =
             op.source === "collapsed"
               ? resolveCollapsedTableCellMerge(tr, mappedPos, op.mode, op.revisionSet)
-              : resolveVisibleTableCellMerge(tr, mappedPos, op.mode);
+              : resolveVisibleTableCellMerge({
+                  tr,
+                  cellPos: mappedPos,
+                  mode: op.mode,
+                  revisionSet: op.revisionSet,
+                });
           if (!resolved) {
             failedTableCellMergeResolution = true;
             break;

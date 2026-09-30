@@ -12,10 +12,12 @@ import {
 import { isTableCellMergeRevisionContinuation } from "../../docx/tableParser";
 import type { TableCell, TableCellFormatting } from "../../types/document";
 import { standaloneTableCellFromProseMirror } from "../conversion/fromProseDoc";
+import { standaloneTableCellToProseMirror } from "../conversion/toProseDoc";
 import {
-  standaloneTableCellToProseMirror,
-  tableCellHasMeaningfulContent,
-} from "../conversion/toProseDoc";
+  tableMergeFoldDecisions,
+  resolvedVisibleTableCellMergeAttrs,
+  resolvedTableMergeOriginAttrs,
+} from "./tableMergeFoldDecisions";
 import { removeRowsWithoutCellsInRange } from "../tableGridMutation";
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 
@@ -93,49 +95,55 @@ const tableCellContext = (doc: PMNode, cellPos: number): TableCellContext | null
   return null;
 };
 
-/**
- * Whether accepting a pending vertical merge folds the cell into the one above.
- * The saved `w:vMerge` continuation is read back as its own cell when it carries
- * content, so accepting such a merge keeps the cell standing; folding it would
- * hide text that reappears when the document is reopened.
- */
-export const acceptedMergeFoldsIntoCellAbove = (cell: PMNode): boolean =>
-  !tableCellHasMeaningfulContent(standaloneTableCellFromProseMirror(cell));
+type ResolveVisibleTableCellMergeOptions = {
+  tr: Transaction;
+  cellPos: number;
+  mode: "accept" | "reject";
+  revisionSet: ReadonlySet<number> | null;
+};
 
-export const resolveVisibleTableCellMerge = (
-  tr: Transaction,
-  cellPos: number,
-  mode: "accept" | "reject",
-): boolean => {
+export const resolveVisibleTableCellMerge = ({
+  tr,
+  cellPos,
+  mode,
+  revisionSet,
+}: ResolveVisibleTableCellMergeOptions): boolean => {
   const cell = tr.doc.nodeAt(cellPos);
   const marker = cell?.attrs["cellMarker"];
   if (!cell || !isTableCellMergeRevisionAttr(marker)) {
     return false;
   }
+  const context = tableCellContext(tr.doc, cellPos);
+  if (!context) return false;
+  const map = TableMap.get(context.table);
+  const rectangle = map.findCell(context.relativeCellPos);
   if (
-    mode === "accept"
-      ? isTableCellMergeRevisionContinuation(marker.verticalMerge) &&
-        acceptedMergeFoldsIntoCellAbove(cell)
-      : isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal)
-  ) {
-    return mergeTableCellWithCellAbove(tr, cellPos);
+    mode === "reject" &&
+    isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal) &&
+    rectangle.top === 0
+  )
+    return false;
+  const decisions = tableMergeFoldDecisions({ table: context.table, mode, revisionSet });
+  if (decisions.invalid.has(context.relativeCellPos)) return false;
+  const folds = decisions.folds.get(context.relativeCellPos);
+  if (folds === undefined) return panic("Merge resolution lost its cell");
+  for (const origin of decisions.origins) {
+    if (origin === context.relativeCellPos) continue;
+    const originPos = context.tableStart + origin;
+    const originCell = tr.doc.nodeAt(originPos);
+    if (!originCell) return panic("Merge resolution lost its origin");
+    tr.setNodeMarkup(originPos, undefined, resolvedTableMergeOriginAttrs(originCell));
   }
-  if (mode === "accept") {
-    tr.setNodeAttribute(cellPos, "cellMarker", null);
-    return true;
-  }
-
-  const originalFormatting = cell.attrs["_originalFormatting"];
-  let nextOriginalFormatting = originalFormatting;
-  if (typeof originalFormatting === "object" && originalFormatting !== null) {
-    nextOriginalFormatting = { ...originalFormatting };
-    delete nextOriginalFormatting.vMerge;
-  }
-  tr.setNodeMarkup(cellPos, undefined, {
-    ...cell.attrs,
-    cellMarker: null,
-    _originalFormatting: nextOriginalFormatting,
-  });
+  if (folds) return mergeTableCellWithCellAbove(tr, cellPos);
+  tr.setNodeMarkup(
+    cellPos,
+    undefined,
+    resolvedVisibleTableCellMergeAttrs({
+      cell,
+      mode,
+      origin: decisions.origins.has(context.relativeCellPos),
+    }),
+  );
   return true;
 };
 

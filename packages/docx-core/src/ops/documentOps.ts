@@ -8,6 +8,7 @@
 export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
 export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
 export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
+export { planTrackedReplace, type PlanTrackedReplaceOptions } from "./rangeReplacement";
 export { planTrackedDeletion, type PlanTrackedDeletionOptions, revisionIdDemand } from "./plan";
 export {
   DOCUMENT_OP_REFUSAL_REASONS,

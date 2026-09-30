@@ -8,7 +8,8 @@ import { Result } from "better-result";
 
 import { type Document, MAX_REVISION_ID } from "../model/document";
 import { applyDocumentOp, stampOf } from "./apply";
-import { storyBody, storyParagraphs } from "./blocks";
+import { blockListAt, sameBlockList, storyBody, storyParagraphs } from "./blocks";
+import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
   type IdentitySpace,
@@ -16,6 +17,7 @@ import {
   idKey,
   packageIdentityKeys,
 } from "./ids";
+import { paragraphLength } from "./offsets";
 import {
   compareGaps,
   isCommentAnchor,
@@ -25,10 +27,15 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { isRemovedRevisionNode, isTrackedWrapper } from "./review";
+import { isRemovedRevisionNode, isTrackedWrapper, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
   type DeleteRangeOp,
+  type InsertContentOp,
+  type JoinBlocksOp,
+  type SetParagraphPropsOp,
+  type SplitBlockOp,
+  EMPTY_PROPERTY_SETS,
   type DocumentOp,
   type NewIds,
   type RevisionStamp,
@@ -236,77 +243,237 @@ const outOfIds = (): Result<never, DocumentOpRefusal> =>
     }),
   );
 
-/**
- * The operations a tracked deletion of a range is made of, to apply in
- * order as one batch: a direct `deleteRange` for each stretch of the author's
- * own insertions (retracting a suggestion removes it), and a tracked one for
- * each other stretch, split around comment boundaries and references, which
- * no tracked change can hold and which therefore stay. Stretches go from the
- * last to the first, so each position still names what it named in the
- * input. The positions default their `zeroWidthBefore` as `deleteRange` does.
- *
- * The first tracked deletion carries the stamp's id. Each later one takes the
- * next id of `newIds.revision` the package does not use for its stamp, then
- * the ones it needs for the records it cuts.
- */
-export const planTrackedDeletion = (
-  document: Document,
-  options: PlanTrackedDeletionOptions,
-): Result<DocumentOp[], DocumentOpRefusal> => {
-  const { from, to, revision, newIds } = options;
-  // The direct deletion of the range validates its positions.
-  const check = applyDocumentOp(document, { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from, to });
-  if (check.isErr()) {
-    return Result.err(check.error);
-  }
-  const location = storyParagraphs(storyBody(document, from.story)).find(
-    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
-  );
-  if (location === undefined) {
-    return Result.ok([]);
-  }
-  const { content } = location.paragraph;
-  const start: Gap = {
-    offset: from.offset,
-    zeroWidthBefore: from.zeroWidthBefore ?? zeroWidthLeavesAt(content, from.offset).length,
-  };
-  const end: Gap = { offset: to.offset, zeroWidthBefore: to.zeroWidthBefore ?? 0 };
-  const segments = segmentsOf(leafSpans(content), start, end, revision.author);
+/** Operations whose stamps the range planners allocate from one shared pool. */
+type PlannedReviewOp =
+  | DeleteRangeOp
+  | InsertContentOp
+  | JoinBlocksOp
+  | SplitBlockOp
+  | SetParagraphPropsOp;
 
+type TrackedPlanOptions = {
+  document: Document;
+  revision: RevisionStamp;
+  newIds: NewIds | undefined;
+};
+
+/** Shared allocation and simulation for all pieces of one planned edit. */
+export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOptions) => {
   const used = usedIds(document, IDENTITY_SPACES.REVISION);
-  const pool = (newIds?.revision ?? []).filter((id) => !used.has(id) && id !== revision.id);
+  const pool = [...new Set(newIds?.revision ?? [])].filter(
+    (id) => !used.has(id) && id !== revision.id,
+  );
   let taken = 0;
-  const take = (count: number): number[] | undefined => {
+  let stampUsed = false;
+  let current = document;
+  const ops: DocumentOp[] = [];
+  const take = (count: number) => {
     if (taken + count > pool.length) return undefined;
     const ids = pool.slice(taken, taken + count);
     taken += count;
     return ids;
   };
-
-  const ops: DocumentOp[] = [];
-  let current = document;
-  let stampUsed = false;
-  for (const segment of segments.toReversed()) {
-    let op: DeleteRangeOp = {
-      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-      from: positionOf(from, segment.from),
-      to: positionOf(from, segment.to),
-    };
-    if (segment.plan === "tracked") {
-      const stampId = stampUsed ? take(1)?.[0] : revision.id;
+  const append = (input: PlannedReviewOp): Result<void, DocumentOpRefusal> => {
+    let op: DocumentOp = input;
+    if (input.revision !== undefined) {
+      const stampId = stampUsed ? take(1)?.at(0) : revision.id;
       if (stampId === undefined) return outOfIds();
-      stampUsed = true;
-      op = { ...op, revision: { ...revision, id: stampId } };
+      op = { ...input, revision: { ...revision, id: stampId } };
       const demand = revisionIdDemand(current, op);
       if (demand.isErr()) return Result.err(demand.error);
       const ids = take(demand.value);
       if (ids === undefined) return outOfIds();
-      if (ids.length > 0) op = { ...op, newIds: { revision: ids } };
+      const controls = usedIds(current, IDENTITY_SPACES.CONTROL);
+      op = withNewIds(op, {
+        revision: ids,
+        control: (newIds?.control ?? []).filter((id) => !controls.has(id)),
+      });
     }
     const applied = applyDocumentOp(current, op);
     if (applied.isErr()) return Result.err(applied.error);
+    stampUsed ||= applied.value.revisions.length > 0;
     current = applied.value.document;
     ops.push(op);
+    return Result.ok(undefined);
+  };
+  return { append, document: () => current, ops };
+};
+
+type TrackedPlan = ReturnType<typeof createTrackedPlan>;
+
+type PlanDeletionOptions = {
+  document: Document;
+  options: PlanTrackedDeletionOptions;
+  plan: TrackedPlan;
+};
+
+/** Validate and segment each paragraph before planning any edits. */
+export const appendTrackedDeletion = ({
+  document,
+  options,
+  plan,
+}: PlanDeletionOptions): Result<void, DocumentOpRefusal> => {
+  const { from, to, revision } = options;
+  const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
+    Result.err(new DocumentOpRefusal({ reason, message, opType: DOCUMENT_OP_TYPES.DELETE_RANGE }));
+  if (from.story !== to.story)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A planned range must stay in one story.",
+    );
+  const body = storyBody(document, from.story);
+  const paragraphs = storyParagraphs(body);
+  const first = paragraphs.find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
+  );
+  const last = paragraphs.find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+  );
+  if (first === undefined || last === undefined)
+    return refuse(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "A range endpoint does not exist.");
+  if (!sameBlockList(first.list, last.list))
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A planned range must stay in one block list.",
+    );
+  if (first.index > last.index)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.NOT_ADJACENT,
+      "Range endpoints must be in document order.",
+    );
+  const list = blockListAt(body.content, first.list);
+  const ranges = [];
+  for (let index = first.index; index <= last.index; index += 1) {
+    const paragraph = list[index];
+    if (paragraph?.type !== "paragraph")
+      return refuse(
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "A planned range cannot cross a non-paragraph block.",
+      );
+    const at = { story: from.story, blockId: paragraph.paraId ?? "", offset: 0 };
+    const start = index === first.index ? from : { ...at, zeroWidthBefore: 0 };
+    const end =
+      index === last.index
+        ? to
+        : {
+            ...at,
+            offset: paragraphLength(paragraph),
+            zeroWidthBefore: zeroWidthLeavesAt(paragraph.content, paragraphLength(paragraph))
+              .length,
+          };
+    const check = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: start,
+      to: end,
+    });
+    if (check.isErr()) return Result.err(check.error);
+    if (first.index !== last.index) {
+      if (index < last.index && paragraph.sectionProperties !== undefined)
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          "A planned range cannot cross a section boundary.",
+        );
+      if ((paragraph.propertyChanges?.length ?? 0) > 0)
+        return refuse(
+          DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          "Cross-paragraph planning cannot replace an existing property review.",
+        );
+    }
+    const content = paragraph.content;
+    const segments = segmentsOf(
+      leafSpans(content),
+      {
+        offset: start.offset,
+        zeroWidthBefore: start.zeroWidthBefore ?? zeroWidthLeavesAt(content, start.offset).length,
+      },
+      { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
+      revision.author,
+    );
+    ranges.push({ paragraph, at, segments });
   }
-  return Result.ok(ops);
+  // Direct simulation gives the surviving paragraph's authored properties,
+  // independent of tracked-deleted content that still occupies offsets.
+  let direct = document;
+  for (const { at, segments } of ranges.toReversed()) {
+    for (const segment of segments.toReversed()) {
+      const op = {
+        type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+        from: positionOf(at, segment.from),
+        to: positionOf(at, segment.to),
+      } satisfies DeleteRangeOp;
+      const appended = plan.append(segment.plan === "tracked" ? { ...op, revision } : op);
+      if (appended.isErr()) return appended;
+      const simulated = applyDocumentOp(direct, op);
+      if (simulated.isErr()) return Result.err(simulated.error);
+      direct = simulated.value.document;
+    }
+  }
+  if (first.index === last.index) return Result.ok(undefined);
+  for (let index = ranges.length - 2; index >= 0; index -= 1) {
+    const leading = ranges[index];
+    const following = ranges[index + 1];
+    if (leading === undefined || following === undefined)
+      return refuse(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE, "A planned join has no endpoint.");
+    const op = {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: from.story,
+      blockId: leading.at.blockId,
+      nextBlockId: following.at.blockId,
+      revision,
+    } satisfies JoinBlocksOp;
+    const appended = plan.append(op);
+    if (appended.isErr()) return appended;
+    const simulated = applyDocumentOp(direct, {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: from.story,
+      blockId: leading.at.blockId,
+      nextBlockId: to.blockId,
+    });
+    if (simulated.isErr()) return Result.err(simulated.error);
+    direct = simulated.value.document;
+  }
+  const survivor = storyParagraphs(storyBody(direct, from.story)).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+  );
+  const trackedSurvivor = storyParagraphs(storyBody(plan.document(), from.story)).find(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+  );
+  if (survivor === undefined || trackedSurvivor === undefined)
+    return refuse(
+      DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+      "The planned survivor does not exist.",
+    );
+  const current = paragraphPropertiesOf(trackedSurvivor.paragraph.formatting);
+  const desired = paragraphPropertiesOf(survivor.paragraph.formatting);
+  if (structurallyEqual(current, desired)) return Result.ok(undefined);
+  const patch = Object.fromEntries([
+    ...Object.keys(current ?? {}).map((key) => [key, null]),
+    ...Object.entries(desired ?? {}),
+  ]);
+  return plan.append({
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: from.story,
+    blockId: to.blockId,
+    patch,
+    whenEmpty:
+      survivor.paragraph.formatting === undefined
+        ? EMPTY_PROPERTY_SETS.OMIT
+        : EMPTY_PROPERTY_SETS.KEEP,
+    revision,
+  });
+};
+
+/**
+ * Plan a same-list range as inline deletions followed by tracked paragraph
+ * joins. Own insertions are retracted directly; comment anchors remain.
+ * Inline ranges run in reverse order, then joins run from last to first.
+ * All physical revision ids come from one pool for the complete batch.
+ */
+export const planTrackedDeletion = (
+  document: Document,
+  options: PlanTrackedDeletionOptions,
+): Result<DocumentOp[], DocumentOpRefusal> => {
+  const plan = createTrackedPlan({ document, revision: options.revision, newIds: options.newIds });
+  const appended = appendTrackedDeletion({ document, options, plan });
+  return appended.isErr() ? Result.err(appended.error) : Result.ok(plan.ops);
 };

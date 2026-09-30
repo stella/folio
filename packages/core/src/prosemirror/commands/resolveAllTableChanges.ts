@@ -17,13 +17,17 @@ import { isTableCellRetainedInReviewView } from "../tableCellRevisionVisibility"
 import { getTableCellMergeChange } from "../tableCellMergeRevision";
 import { nodePropertyRevisionSites, propertyRevisionRecords } from "../revisionCarriers";
 import {
-  acceptedMergeFoldsIntoCellAbove,
   createRestoredTableCell,
   hasMatchingCollapsedTableCellMerge,
   tableCellContinuationCells,
   tableCellContinuationFromNode,
   tableCellContinuationPayload,
 } from "./tableCellMergeResolution";
+import {
+  tableMergeFoldDecisions,
+  resolvedVisibleTableCellMergeAttrs,
+  resolvedTableMergeOriginAttrs,
+} from "./tableMergeFoldDecisions";
 import { resolveAllNodePropertyChangeAttrs } from "./resolveNodePropertyChangeAttrs";
 
 // TableMap.findCell scans the grid for each lookup. Index each rectangle once
@@ -568,6 +572,8 @@ const resolvePureTableMerges = ({
   sourceTable,
 }: ResolvePureTableMergesOptions): ResolvedTableChanges => {
   const map = TableMap.get(table);
+  const mergeDecisions = tableMergeFoldDecisions({ table, mode, revisionSet: null });
+  if (mergeDecisions.invalid.size > 0) return failedTableResolution(table);
   const cellRectangle = indexedTableCells(map);
   const rows = Array.from({ length: table.childCount }, (_, index) => table.child(index));
   const rowCells = rows.map(() => new Map<number, MutableCell>());
@@ -596,7 +602,9 @@ const resolvePureTableMerges = ({
       }
       const initial = elementAt(elementAt(rowMetadata, rowIndex).cells, cellIndex);
       const entry: MutableCell = {
-        node,
+        node: mergeDecisions.origins.has(cellOffset)
+          ? node.type.create(resolvedTableMergeOriginAttrs(node), node.content, node.marks)
+          : node,
         position: cellOffset,
         left,
         row: rowIndex,
@@ -659,29 +667,23 @@ const resolvePureTableMerges = ({
         }
       }
     } else if (marker?.kind === "merge") {
-      const joinsAbove =
-        mode === "accept"
-          ? isTableCellMergeRevisionContinuation(marker.verticalMerge) &&
-            acceptedMergeFoldsIntoCellAbove(entry.node)
-          : isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal);
-      if (mode === "accept" && !joinsAbove) {
-        entry.touched = true;
+      const joinsAbove = mergeDecisions.folds.get(entry.position);
+      if (joinsAbove === undefined) return panic("Merge resolution lost its cell");
+      if (
+        mode === "reject" &&
+        isTableCellMergeRevisionContinuation(marker.verticalMergeOriginal) &&
+        cellRectangle(entry.position).top === 0
+      )
+        return failedTableResolution(table);
+      if (!joinsAbove) {
+        // A retained merge changes cell metadata, not its paragraph content.
+        // Keep any earlier property edit's touched state, as range resolution does.
         entry.node = entry.node.type.create(
-          { ...entry.node.attrs, cellMarker: null },
-          entry.node.content,
-          entry.node.marks,
-        );
-      } else if (!joinsAbove) {
-        entry.touched = true;
-        const original = entry.node.attrs["_originalFormatting"];
-        let formatting: unknown = original;
-        if (typeof original === "object" && original !== null) {
-          const copy: Record<string, unknown> = { ...original };
-          delete copy["vMerge"];
-          formatting = copy;
-        }
-        entry.node = entry.node.type.create(
-          { ...entry.node.attrs, cellMarker: null, _originalFormatting: formatting },
+          resolvedVisibleTableCellMergeAttrs({
+            cell: entry.node,
+            mode,
+            origin: mergeDecisions.origins.has(entry.position),
+          }),
           entry.node.content,
           entry.node.marks,
         );

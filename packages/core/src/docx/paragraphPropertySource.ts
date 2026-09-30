@@ -1047,7 +1047,9 @@ const tableCellParagraphPropertySourceBindingForTransport = (
 export const transportTableCellsWithParagraphPropertySources = (
   cells: TableCell[],
 ): TableCell[] => {
-  const cloned = structuredClone(cells);
+  // Model cells can share revision metadata. Each transported cell owns its
+  // graph; cloning the array together would preserve cross-cell aliases.
+  const cloned = cells.map((cell) => structuredClone(cell));
   const sources = paragraphsInTableCells(cells);
   const targets = paragraphsInTableCells(cloned);
   if (sources.length !== targets.length) {

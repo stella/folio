@@ -305,6 +305,17 @@ export type PlanTrackedDeletionOptions = {
 };
 
 // @public
+export const planTrackedReplace: (document: Document_2, options: PlanTrackedReplaceOptions) => Result<DocumentOp[], DocumentOpRefusal>;
+
+// @public
+export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+    replacement: {
+        paragraphs: readonly Paragraph[];
+        tail: InlineSlice;
+    };
+};
+
+// @public
 export type ReplaceBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
     story: OpStory;

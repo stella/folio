@@ -39,6 +39,7 @@ import type {
   TableRowFormatting,
 } from "../../types/document";
 
+import { isStyleSourcedParagraphNumbering } from "../../internal/paragraphFormattingSerialization";
 import { expectParagraphAttrs } from "../attrs";
 import { directParagraphAlignment } from "../paragraphAlignment";
 import {
@@ -216,7 +217,19 @@ export const paragraphPropertiesSnapshot = (node: PMNode): ParagraphPropertySnap
   const attrs = expectParagraphAttrs(node);
   const snapshot: Record<string, unknown> = {};
   for (const key of PPR_CHANGE_SCOPED_ATTR_KEYS) {
-    if (key === "alignment" || PPR_SPACING_ATTR_KEYS.has(key)) {
+    if (
+      key === "alignment" ||
+      PPR_SPACING_ATTR_KEYS.has(key) ||
+      (key === "numPr" && isStyleSourcedParagraphNumbering(attrs.numPr, attrs.numPrFromStyle))
+    ) {
+      continue;
+    }
+    // A value the style lends is not the paragraph's own `w:pPr`: a record
+    // holds what the paragraph states, as a save would write it.
+    if (styleSuppliedParagraphValue(attrs, key)) {
+      continue;
+    }
+    if (key === "hangingIndent" && styleSuppliedParagraphValue(attrs, "indentFirstLine")) {
       continue;
     }
     // A value the style lends is not the paragraph's own `w:pPr`: a record
