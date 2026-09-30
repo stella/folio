@@ -253,6 +253,21 @@ export const operations = {
     revision: stamp,
     newIds,
   }),
+  [DOCUMENT_OP_TYPES.INSERT_TABLE]: ({ seed }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.INSERT_TABLE,
+    story: OP_STORIES.MAIN,
+    at: { type: seed.offset % 2 === 0 ? "before" : "after", blockId: FIRST_ID },
+    table: { type: "table", rows: [insertedRow(seed)] },
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.DELETE_TABLE]: ({ seed }: OperationOptions) => ({
+    type: DOCUMENT_OP_TYPES.DELETE_TABLE,
+    story: OP_STORIES.MAIN,
+    blockId: seed.container === "cell" ? FIRST_ID : ROW_ID,
+    revision: stamp,
+    newIds,
+  }),
   [DOCUMENT_OP_TYPES.INSERT_ROW]: ({ seed }: OperationOptions) => ({
     type: DOCUMENT_OP_TYPES.INSERT_ROW,
     story: OP_STORIES.MAIN,
