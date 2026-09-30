@@ -253,8 +253,16 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       continue;
     }
     changed = true;
-    // A tracked change the resolution emptied goes.
-    if (isTrackedWrapper(node) && inner.nodes.length === 0 && children.length > 0) {
+    // A tracked change the resolution emptied goes. So does any record an
+    // acceptance empties: it removes content as a direct deletion does, which
+    // leaves no record with nothing. Kept, the record could not tell a later
+    // resolution it was emptied rather than empty before, and would stay where
+    // accepting the same changes at once folds it into an alike neighbour.
+    if (
+      (isTrackedWrapper(node) || resolution.decision === REVISION_DECISIONS.ACCEPT) &&
+      inner.nodes.length === 0 &&
+      children.length > 0
+    ) {
       seams.push(out.length);
       continue;
     }

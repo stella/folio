@@ -862,4 +862,58 @@ describe("an empty content control is content: resolution never merges it away",
     const ids = [...typed.revisions, ...first.revisions, ...second.revisions];
     expect(resolved(second.document, ids, REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
+
+  // The L3 generator accepted a deletion that emptied one piece of a cut
+  // wrapper before the insertion cutting it was resolved: kept, the empty
+  // piece later met the other one and stayed beside it, where accepting
+  // everything at once folded it in. Accepting leaves no record it empties.
+  test("accepting in turn and at once agree on a piece an acceptance empties", () => {
+    const wrapper = (content: ParagraphContent[]): ParagraphContent => ({
+      type: "inlineWrapper",
+      kind: "bidi",
+      control: "embedding",
+      content,
+    });
+    const later = (id: number, second: number): RevisionStamp => ({
+      ...stamp(id),
+      date: `2026-05-06T07:08:${String(second).padStart(2, "0")}Z`,
+    });
+    const document = documentOf(paragraph("00000001", [wrapper([run("ab")])]));
+    const deleted = applied(document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 0),
+      to: at("00000001", 1),
+      revision: later(1, 10),
+    });
+    // A closed slice cuts the wrapper: its first piece holds only the deletion.
+    const inserted = applied(deleted.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: at("00000001", 1),
+      slice: { content: [run("x")], openStart: 0, openEnd: 0 },
+      revision: later(2, 11),
+    });
+    const removed = applied(inserted.document, {
+      type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+      from: at("00000001", 1),
+      to: at("00000001", 2),
+      revision: later(3, 12),
+    });
+    expect(blocks(removed.document)).toEqual([
+      paragraph("00000001", [
+        wrapper([{ type: "deletion", info: later(1, 10), content: [run("a")] }]),
+        {
+          type: "insertion",
+          info: later(2, 11),
+          content: [{ type: "deletion", info: later(3, 12), content: [run("x")] }],
+        },
+        wrapper([run("b")]),
+      ]),
+    ]);
+    const runs = [deleted.revisions, inserted.revisions, removed.revisions];
+    const atOnce = resolved(removed.document, runs.flat(), REVISION_DECISIONS.ACCEPT);
+    let inTurn = removed.document;
+    for (const ids of runs) inTurn = resolved(inTurn, ids, REVISION_DECISIONS.ACCEPT);
+    expect(blocks(atOnce)).toEqual([paragraph("00000001", [wrapper([run("b")])])]);
+    expect(inTurn).toStrictEqual(atOnce);
+  });
 });
