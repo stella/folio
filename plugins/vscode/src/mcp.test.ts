@@ -48,19 +48,29 @@ describe("buildMcpLaunch", () => {
     const launch = buildMcpLaunch({
       runtime,
       roots: ["/Users/me/My Documents"],
-      author: undefined,
+      author: "Ada",
       version: "1.0.0",
     });
 
     expect(launch?.args).toContain("/Users/me/My Documents");
   });
 
-  test("leaves the author to the server's fallbacks when the setting is blank", () => {
-    for (const author of [undefined, "", "   "]) {
-      const launch = buildMcpLaunch({ runtime, roots: ["/work"], author, version: "1.0.0" });
+  test("always passes the resolved author", () => {
+    const launch = buildMcpLaunch({
+      runtime,
+      roots: ["/work"],
+      author: "Git Name",
+      version: "1.0.0",
+    });
 
-      expect(launch?.args).toEqual(["/ext/dist/cli/folio.mjs", "mcp", "--root", "/work"]);
-    }
+    expect(launch?.args).toEqual([
+      "/ext/dist/cli/folio.mjs",
+      "mcp",
+      "--root",
+      "/work",
+      "--author",
+      "Git Name",
+    ]);
   });
 
   test("offers no server without a folder to root it in", () => {

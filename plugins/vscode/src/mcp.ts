@@ -26,8 +26,8 @@ export type McpLaunchOptions = {
   readonly runtime: CliRuntime;
   /** Absolute paths of the workspace folders on disk, in workspace order. */
   readonly roots: readonly string[];
-  /** The `folio.author` setting. Blank leaves the server to its own fallbacks. */
-  readonly author: string | undefined;
+  /** The resolved author, always passed to the server. */
+  readonly author: string;
   /** Changing it tells the editor the server's tools may have changed. */
   readonly version: string;
 };
@@ -51,11 +51,11 @@ export const buildMcpLaunch = ({
   const unique = [...new Set(roots)];
   const first = unique.at(0);
   if (first === undefined) return null;
-  const name = configuredAuthor(author);
   const { command, args, env } = cliCommand(runtime, [
     "mcp",
     ...unique.flatMap((root) => ["--root", root]),
-    ...(name === undefined ? [] : ["--author", name]),
+    "--author",
+    author,
   ]);
   return { label: FOLIO_MCP_LABEL, command, args, env, cwd: first, version };
 };

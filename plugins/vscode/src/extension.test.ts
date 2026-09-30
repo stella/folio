@@ -41,13 +41,17 @@ class McpStdioServerDefinition {
 
 type Provider = {
   onDidChangeMcpServerDefinitions: (listener: Listener) => unknown;
-  provideMcpServerDefinitions: () => McpStdioServerDefinition[];
+  provideMcpServerDefinitions: () => Promise<McpStdioServerDefinition[]>;
+  resolveMcpServerDefinition?: unknown;
 };
 
 const state = {
   trusted: true,
   folders: [] as { uri: { scheme: string; fsPath: string } }[],
   author: "" as string | undefined,
+  git: undefined as string | undefined,
+  os: undefined as string | undefined,
+  warnings: 0,
   providers: new Map<string, Provider>(),
   editors: new Map<string, { options: unknown }>(),
   commands: new Set<string>(),
@@ -73,6 +77,10 @@ void mock.module("vscode", () => ({
     },
   },
   window: {
+    showWarningMessage: () => {
+      state.warnings += 1;
+      return Promise.resolve(undefined);
+    },
     registerCustomEditorProvider: (viewType: string, _provider: unknown, options: unknown) => {
       state.editors.set(viewType, { options });
       return disposable;
@@ -101,6 +109,13 @@ void mock.module("vscode", () => ({
   },
 }));
 
+const actualSettings = await import("./editor-settings");
+void mock.module("./editor-settings", () => ({
+  ...actualSettings,
+  readGitUserName: () => Promise.resolve(state.git),
+  osUserName: () => state.os,
+}));
+
 const { activate } = await import("./extension");
 
 const context = {
@@ -114,6 +129,9 @@ beforeEach(() => {
   state.trusted = true;
   state.folders = [{ uri: { scheme: "file", fsPath: "/work/contracts" } }];
   state.author = "Ada Lovelace";
+  state.git = undefined;
+  state.os = undefined;
+  state.warnings = 0;
   state.providers.clear();
   state.editors.clear();
   state.commands.clear();
@@ -121,7 +139,8 @@ beforeEach(() => {
   activate(context as never);
 });
 
-const definitions = () => state.providers.get("folio.mcp")?.provideMcpServerDefinitions() ?? [];
+const definitions = async () =>
+  (await state.providers.get("folio.mcp")?.provideMcpServerDefinitions()) ?? [];
 
 describe("activate", () => {
   test("registers the editor, its read-only command, and the MCP provider", () => {
@@ -147,8 +166,8 @@ describe("activate", () => {
     });
   });
 
-  test("defines the server as the bundled CLI under the editor's Node.js", () => {
-    const [definition] = definitions();
+  test("defines the server as the bundled CLI under the editor's Node.js", async () => {
+    const [definition] = await definitions();
 
     expect(definition).toBeDefined();
     expect(definition?.label).toBe("Folio");
@@ -166,19 +185,19 @@ describe("activate", () => {
     expect(definition?.cwd).toEqual({ fsPath: "/work/contracts" });
   });
 
-  test("offers no server in an untrusted workspace", () => {
+  test("offers no server in an untrusted workspace", async () => {
     state.trusted = false;
 
-    expect(definitions()).toEqual([]);
+    expect(await definitions()).toEqual([]);
   });
 
-  test("roots the server only in folders on disk", () => {
+  test("roots the server only in folders on disk", async () => {
     state.folders = [
       { uri: { scheme: "vscode-vfs", fsPath: "/remote" } },
       { uri: { scheme: "file", fsPath: "/work/b" } },
     ];
 
-    expect(definitions()[0]?.args).toEqual([
+    expect(await (await definitions())[0]?.args).toEqual([
       "/ext/dist/cli/folio.mjs",
       "mcp",
       "--root",
@@ -188,15 +207,47 @@ describe("activate", () => {
     ]);
   });
 
-  test("offers no server without a folder, and says so when folders change", () => {
+  test("offers no server without a folder, and says so when folders change", async () => {
     state.folders = [];
     let changes = 0;
     state.providers.get("folio.mcp")?.onDidChangeMcpServerDefinitions(() => {
       changes += 1;
     });
 
-    expect(definitions()).toEqual([]);
+    expect(await definitions()).toEqual([]);
     for (const listener of state.onFolders) listener();
     expect(changes).toBe(1);
+  });
+
+  test("names agent changes by the setting before git and the OS", async () => {
+    state.git = "Git Name";
+    state.os = "osuser";
+
+    expect((await definitions())[0]?.args.slice(-2)).toEqual(["--author", "Ada Lovelace"]);
+  });
+
+  test("falls back to git user.name when the setting is blank", async () => {
+    state.author = "  ";
+    state.git = "Git Name";
+    state.os = "osuser";
+
+    expect((await definitions())[0]?.args.slice(-2)).toEqual(["--author", "Git Name"]);
+  });
+
+  test("falls back to the OS user name without a setting or git name", async () => {
+    state.author = "";
+    state.os = "osuser";
+
+    expect((await definitions())[0]?.args.slice(-2)).toEqual(["--author", "osuser"]);
+    expect(state.warnings).toBe(0);
+  });
+
+  test("never asks for folio.author", async () => {
+    state.author = "";
+    await definitions();
+    const provider = state.providers.get("folio.mcp");
+
+    expect(provider?.resolveMcpServerDefinition).toBeUndefined();
+    expect(state.warnings).toBe(0);
   });
 });

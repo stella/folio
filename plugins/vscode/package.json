@@ -63,7 +63,7 @@
         "folio.author": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Name recorded on every tracked change, comment, and reply, by the `.docx` editor and by the MCP server. When empty, the editor uses `git config user.name`, then your OS account name; the server uses `FOLIO_AUTHOR`, then `git config user.name`, and refuses changes if neither is set."
+          "markdownDescription": "Name recorded on every tracked change, comment, and reply, by the `.docx` editor and by the MCP server. When empty, defaults to `git config user.name`, then your OS account name."
         },
         "folio.editor.trackChanges": {
           "type": "string",

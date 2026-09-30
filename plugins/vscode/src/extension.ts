@@ -7,6 +7,7 @@ import path from "node:path";
 import * as vscode from "vscode";
 
 import { registerEditor, type EditorTestHooks } from "./editor";
+import { osUserName, readGitUserName, resolveEditorAuthor } from "./editor-settings";
 import { buildMcpLaunch, configuredAuthor, FOLIO_MCP_PROVIDER_ID } from "./mcp";
 import type { CliRuntime } from "./runtime";
 
@@ -30,33 +31,31 @@ const diskRoots = (): string[] =>
     .filter((folder) => folder.uri.scheme === "file")
     .map((folder) => folder.uri.fsPath);
 
-/** Point the reader at `folio.author`; the server still starts without it. */
-const suggestAuthorSetting = async (): Promise<void> => {
-  const choice = await vscode.window.showWarningMessage(
-    "Folio: set folio.author to the name recorded on tracked changes and comments. Until then the MCP server uses git user.name, and refuses changes if that is unset too.",
-    "Open Settings",
-  );
-  if (choice === "Open Settings") {
-    await vscode.commands.executeCommand("workbench.action.openSettings", AUTHOR_SETTING);
-  }
-};
+/**
+ * The name on agent changes, resolved as the editor does: the setting (or
+ * `FOLIO_AUTHOR`), then git's `user.name` for the first root, then the OS
+ * account name.
+ */
+const mcpAuthor = async (root: string): Promise<string> =>
+  resolveEditorAuthor({
+    setting: configuredAuthor(authorSetting()) ?? process.env["FOLIO_AUTHOR"],
+    gitUserName: await readGitUserName(root),
+    osUserName: osUserName(),
+  });
 
 const registerMcp = (context: vscode.ExtensionContext, runtime: CliRuntime): vscode.Disposable => {
   const changed = new vscode.EventEmitter<void>();
   const version = extensionVersion(context);
-  let warnedAboutAuthor = false;
 
   const provider: vscode.McpServerDefinitionProvider<vscode.McpStdioServerDefinition> = {
     onDidChangeMcpServerDefinitions: changed.event,
-    provideMcpServerDefinitions: () => {
+    provideMcpServerDefinitions: async () => {
       // The server changes files; an untrusted workspace does not get it.
       if (!vscode.workspace.isTrusted) return [];
-      const launch = buildMcpLaunch({
-        runtime,
-        roots: diskRoots(),
-        author: authorSetting(),
-        version,
-      });
+      const roots = diskRoots();
+      const first = roots.at(0);
+      if (first === undefined) return [];
+      const launch = buildMcpLaunch({ runtime, roots, author: await mcpAuthor(first), version });
       if (launch === null) return [];
       const definition = new vscode.McpStdioServerDefinition(
         launch.label,
@@ -67,16 +66,6 @@ const registerMcp = (context: vscode.ExtensionContext, runtime: CliRuntime): vsc
       );
       definition.cwd = vscode.Uri.file(launch.cwd);
       return [definition];
-    },
-    resolveMcpServerDefinition: (server) => {
-      const unnamed =
-        configuredAuthor(authorSetting()) === undefined &&
-        configuredAuthor(process.env["FOLIO_AUTHOR"]) === undefined;
-      if (unnamed && !warnedAboutAuthor) {
-        warnedAboutAuthor = true;
-        void suggestAuthorSetting();
-      }
-      return server;
     },
   };
 
