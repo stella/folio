@@ -970,14 +970,13 @@ function makeApplyStyle() {
 
           tr = tr.setNodeMarkup(pos, undefined, newAttrs);
 
-          if (resolvedAttrs) {
-            rebaseParagraphRuns({
-              tr,
-              position: pos,
-              previous: node,
-              styleResolver: getDocumentStyleResolver(state),
-            });
-          }
+          rebaseParagraphRuns({
+            tr,
+            position: pos,
+            previous: node,
+            styleResolver: getDocumentStyleResolver(state),
+            storedMarks: state.storedMarks ?? state.selection.$from.marks(),
+          });
         }
       });
 
@@ -1083,10 +1082,7 @@ export const ParagraphExtension = createNodeExtension({
         clearStyle: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
           const resolver = getDocumentStyleResolver(state);
           if (!resolver) {
-            return setParagraphAttrsCmd({ styleId: null, _tableOfContentsLevel: null })(
-              state,
-              dispatch,
-            );
+            return applyStyleFn(null)(state, dispatch);
           }
           // Clearing the style applies the default paragraph style, so the
           // paragraph reads what a reopen resolves for it.

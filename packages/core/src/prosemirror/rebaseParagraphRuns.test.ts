@@ -11,7 +11,7 @@ import { toProseDoc } from "./conversion/toProseDoc";
 import { createDocumentStylesPlugin } from "./plugins/documentStyles";
 import { singletonManager, schema } from "./schema";
 import { rebaseParagraphRunContent, rebaseParagraphRuns } from "./rebaseParagraphRuns";
-import { expectTextColorMarkAttrs } from "./attrs";
+import { expectFontSizeMarkAttrs, expectTextColorMarkAttrs } from "./attrs";
 
 type LinkedDocumentOptions = { color: string | undefined; paragraphStyleId: "Normal" | "Heading1" };
 const linkedDocument = ({ color, paragraphStyleId }: LinkedDocumentOptions): Document => ({
@@ -171,6 +171,64 @@ test(
         expect(tr.doc).toBe(state.doc);
       }),
       { numRuns: 32 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
+  "paragraph style commands carry pending cursor formatting through changed and equal cascades",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.constantFrom("applyStyle", "clearStyle", "sameStyle"),
+        fc.constantFrom(1, 2, 4),
+        async (operation, cursor) => {
+          const model = linkedDocument({ color: undefined, paragraphStyleId: "Normal" });
+          model.package.document.content = [
+            {
+              type: "paragraph",
+              formatting: { styleId: operation === "clearStyle" ? "Heading1" : "Normal" },
+              content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+            },
+          ];
+          const base = await parseDocx(await createDocx(model), {
+            preloadFonts: false,
+            detectVariables: false,
+          });
+          const doc = toProseDoc(base);
+          let state = EditorState.create({
+            doc,
+            selection: TextSelection.create(doc, cursor),
+            plugins: [createDocumentStylesPlugin(base.package.styles)],
+          });
+          const italic = singletonManager.requireCommand("toggleItalic")();
+          expect(
+            italic(state, (tr) => {
+              state = state.apply(tr);
+            }),
+          ).toBe(true);
+          expect(state.storedMarks?.some((mark) => mark.type.name === "italic")).toBe(true);
+          const command =
+            operation === "clearStyle"
+              ? singletonManager.requireCommand("clearStyle")()
+              : singletonManager.requireCommand("applyStyle")(
+                  operation === "sameStyle" ? "Normal" : "Heading1",
+                );
+          expect(
+            command(state, (tr) => {
+              state = state.apply(tr);
+            }),
+          ).toBe(true);
+          const marks = state.storedMarks ?? [];
+          expect(marks.some((mark) => mark.type.name === "italic")).toBe(true);
+          expect(marks.some((mark) => mark.type.name === "bold")).toBe(operation === "applyStyle");
+          const size = marks.find((mark) => mark.type.name === "fontSize");
+          if (!size) throw new Error("Stored font size is missing");
+          expect(expectFontSizeMarkAttrs(size).size).toBe(operation === "applyStyle" ? 32 : 22);
+        },
+      ),
+      { numRuns: 27 },
     );
   },
   propertyTestTimeout(30_000),
