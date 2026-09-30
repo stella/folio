@@ -89,6 +89,13 @@
       "title": "accepting a merged paragraph mark keeps run formatting across save"
     },
     {
+      "seed": 1595037221,
+      "steps": 10,
+      "kind": "collisions",
+      "generation": "targeted",
+      "title": "rejecting insertions after a wholly inserted table restores the original"
+    },
+    {
       "seed": 20260937,
       "steps": 10,
       "kind": "random",
