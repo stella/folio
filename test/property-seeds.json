@@ -216,6 +216,14 @@
       "date": "2026-09-29"
     }
   ],
+  "packages/core/src/prosemirror/rebaseParagraphRuns.test.ts::paragraph style commands carry pending cursor formatting through changed and equal cascades": [
+    {
+      "seed": -142224918,
+      "path": "0:0",
+      "note": "a paragraph style command discarded pending cursor formatting",
+      "date": "2026-09-30"
+    }
+  ],
   "packages/core/src/docx/selectiveXmlPatch.property.test.ts::nested paragraph edits never apply overlapping source ranges": [
     {
       "seed": -1844025400,

@@ -985,6 +985,11 @@ describe("tracked operations and their resolution", () => {
 /** The paragraphs an operation names. */
 const namedParagraphs = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+      return new Set([
+        idKey(op.at.blockId),
+        ...op.blocks.flatMap(({ paraId }) => (paraId === undefined ? [] : [idKey(paraId)])),
+      ]);
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:

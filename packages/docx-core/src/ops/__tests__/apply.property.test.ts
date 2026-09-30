@@ -129,6 +129,11 @@ const blockHolds = (block: BlockContent, ids: ReadonlySet<string>): boolean => {
 
 const namedIds = (op: DocumentOp): Set<string> => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
+      return new Set([
+        op.at.blockId,
+        ...op.blocks.flatMap(({ paraId }) => (paraId === undefined ? [] : [paraId])),
+      ]);
     case DOCUMENT_OP_TYPES.INSERT_TEXT:
     case DOCUMENT_OP_TYPES.INSERT_CONTENT:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
@@ -505,6 +510,7 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
           case DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW:
           case DOCUMENT_OP_TYPES.REPLACE_INLINE:

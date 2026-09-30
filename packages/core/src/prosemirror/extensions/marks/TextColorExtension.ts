@@ -9,7 +9,8 @@ import { expectTextColorMarkAttrs } from "../../attrs";
 import type { TextColorAttrs } from "../../schema/marks";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
-import { setMark, removeMark } from "./markUtils";
+import { clearRunColor } from "../../clearRunColor";
+import { setMark } from "./markUtils";
 
 export const TextColorExtension = createMarkExtension({
   name: "textColor",
@@ -51,11 +52,11 @@ export const TextColorExtension = createMarkExtension({
       commands: {
         setTextColor: (attrs: TextColorAttrs) => {
           if (!attrs.rgb && !attrs.themeColor) {
-            return removeMark(textColorType);
+            return clearRunColor();
           }
           return setMark(textColorType, attrs as Record<string, unknown>);
         },
-        clearTextColor: () => removeMark(textColorType),
+        clearTextColor: () => clearRunColor(),
       },
     };
   },
