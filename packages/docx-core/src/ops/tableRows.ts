@@ -1,7 +1,7 @@
 /** Row edits and their exact inverse, addressed through a paragraph in the row. */
 import { Result, panic } from "better-result";
 import { applyTableOp } from "./tables";
-import { locateTableRow, type TableRowLocation } from "./tableLocation";
+import { locateTableRow, tableRowAnchor, type TableRowLocation } from "./tableLocation";
 
 import type {
   BlockContent,
@@ -405,8 +405,14 @@ const commitRows = ({
       .flatMap(paragraphIdsIn)
       .map(idKey),
   );
-  const anchor = afterParagraphIds.at(0);
-  if (anchor === undefined) return panic("A row list must have an addressable paragraph.");
+  const anchor = tableRowAnchor(rows);
+  if (anchor === undefined) {
+    return refused({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message: "The table has no paragraph that can address its rows.",
+    });
+  }
   return Result.ok({
     document: next,
     inverse: [
