@@ -9,7 +9,10 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 
-import { hashFolioAIBlockText } from "@stll/folio-core/server";
+import {
+  FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+  hashFolioAIBlockText,
+} from "@stll/folio-core/server";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 
 import {
@@ -275,6 +278,70 @@ describe("the requested-outcome oracle", () => {
     const problems = compareComments(model, [old], [{ ...old, anchor: "New", blockId: "b" }]);
     assert.match(problems.join("\n"), /no comment/u);
     assert.match(problems.join("\n"), /outlived the block it anchored/u);
+  });
+
+  test("a replaced paragraph's comment survives rejecting its tracked deletion", async () => {
+    const reviewer = await openReviewer(await plainDocument());
+    const block = reviewer.getContent().find(({ text }) => text.length > 0);
+    assert.ok(block);
+    const note = "Review this paragraph.";
+    const apply = (batch: Omit<Parameters<Reviewer["applyDocumentOperations"]>[0], "version">) => {
+      const result = reviewer.applyDocumentOperations({
+        version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+        ...batch,
+      });
+      assert.equal(result.applied.length, batch.operations.length);
+      assert.deepEqual(result.skipped, []);
+    };
+    apply({
+      mode: "direct",
+      operations: [
+        { id: "comment", type: "commentOnBlock", blockId: block.id, comment: { text: note } },
+      ],
+    });
+    apply({
+      mode: "tracked-changes",
+      operations: [
+        { id: "replace", type: "replaceBlock", blockId: block.id, text: "Replacement." },
+      ],
+    });
+    apply({
+      mode: "tracked-changes",
+      operations: [{ id: "delete", type: "deleteBlock", blockId: block.id }],
+    });
+    const bytes = new Uint8Array(await reviewer.toBuffer());
+    const accepted = await openReviewer(bytes);
+    accepted.acceptAll();
+    assert.equal(
+      accepted.getComments().some(({ text }) => text === note),
+      false,
+    );
+    const rejected = await openReviewer(bytes);
+    rejected.rejectAll();
+    const restored = rejected.getComments().find(({ text }) => text === note);
+    assert.ok(restored);
+    assert.equal(restored.anchoredText, block.text);
+  });
+
+  test("stable comment ids use accepted anchors when live quotes include deleted text", () => {
+    const accepted = "Written";
+    for (const old of ["Old", "Written before", "before Written after"]) {
+      for (const liveAnchor of [old + accepted, accepted + old]) {
+        const comment = { id: 1, text: "review", anchor: accepted, blockId: "b" };
+        const live = { ...comment, anchor: liveAnchor };
+        const model = modelOf([row("b", accepted)], [row("b", accepted)]);
+        expectOperation(model, { type: "deleteBlock", blockId: "b" });
+        assert.deepEqual(compareComments(model, [comment], [], [live], "tracked-changes"), []);
+        assert.match(
+          compareComments(model, [comment], [comment], [live], "tracked-changes").join("\n"),
+          /outlived the block it anchored/u,
+        );
+        assert.match(
+          compareComments(model, [comment], [], [live], "suggested").join("\n"),
+          /no comment/u,
+        );
+      }
+    }
   });
 
   test("uses live anchors and ids when an accepted pending join moves one of three equal comments", () => {

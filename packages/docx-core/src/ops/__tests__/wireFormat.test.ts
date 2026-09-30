@@ -69,6 +69,13 @@ const document: Document = { package: { document: { content: [first, second] } }
 /** Each operation, applied in turn to what the previous one produced. */
 const OPS: readonly DocumentOp[] = [
   {
+    type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+    story: OP_STORIES.MAIN,
+    at: { type: "before", blockId: "00000001" },
+    blocks: [{ type: "paragraph", paraId: "0000000C", content: [] }],
+    revision: stamp(80),
+  },
+  {
     type: DOCUMENT_OP_TYPES.INSERT_TEXT,
     at: at("00000001", 3),
     text: "X",
