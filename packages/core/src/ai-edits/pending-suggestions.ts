@@ -4,7 +4,7 @@ import {
 } from "../document-operations";
 import { getFolioParaIdFromBlockId } from "../types/block-id";
 import { canonicalJson } from "../utils/canonicalJson";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import { rejectAllSuggestions } from "../prosemirror/commands/comments";
 import type { EditorState } from "prosemirror-state";
 import {

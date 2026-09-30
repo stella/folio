@@ -9,7 +9,8 @@ import type { Document } from "../types/document";
 import { fromProseDoc } from "./conversion/fromProseDoc";
 import { toProseDoc } from "./conversion/toProseDoc";
 import { createDocumentStylesPlugin } from "./plugins/documentStyles";
-import { singletonManager } from "./schema";
+import { singletonManager, schema } from "./schema";
+import { rebaseParagraphRunContent, rebaseParagraphRuns } from "./rebaseParagraphRuns";
 import { expectTextColorMarkAttrs } from "./attrs";
 
 type LinkedDocumentOptions = { color: string | undefined; paragraphStyleId: "Normal" | "Heading1" };
@@ -124,6 +125,52 @@ test(
         },
       ),
       { numRuns: 24 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+test(
+  "an unchanged cascade preserves run carriers and their authored provenance",
+  () => {
+    assertProperty(
+      fc.property(fc.boolean(), fc.boolean(), fc.boolean(), (bold, rtl, explicit) => {
+        const marks = [
+          ...(bold ? [schema.mark("bold")] : []),
+          ...(rtl ? [schema.mark("rtl")] : []),
+          ...(explicit
+            ? [schema.mark("runFormattingOverride", { _authoredOn: ["bold", "rtl"] })]
+            : []),
+        ];
+        const paragraph = schema.nodes["paragraph"]!.create({ paraId: "source" }, [
+          schema.text("Text", marks),
+          schema.nodes["tab"]!.create(null, null, marks),
+        ]);
+        const target = schema.nodes["paragraph"]!.create({ paraId: "target" });
+        let rebases = 0;
+        const content = rebaseParagraphRunContent({
+          paragraph,
+          target,
+          position: 0,
+          styleResolver: null,
+          onRebased: () => {
+            rebases += 1;
+          },
+        });
+        expect(content).toBe(paragraph.content);
+        expect(rebases).toBe(0);
+        const state = EditorState.create({ doc: schema.node("doc", null, paragraph) });
+        const tr = rebaseParagraphRuns({
+          tr: state.tr,
+          position: 0,
+          previous: paragraph,
+          target,
+          styleResolver: null,
+        });
+        expect(tr.steps).toHaveLength(0);
+        expect(tr.doc).toBe(state.doc);
+      }),
+      { numRuns: 32 },
     );
   },
   propertyTestTimeout(30_000),

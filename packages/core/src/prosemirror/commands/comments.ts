@@ -56,7 +56,7 @@ import {
   withoutResolvedEnclosures,
 } from "../contentControlRevisions";
 import { getDocumentNumbering } from "../plugins/documentNumbering";
-import { getDocumentStyleResolver } from "../plugins/documentStyles";
+import { getDocumentStyleResolver } from "../plugins/documentStyleState";
 import { paragraphRunStyleContextAt } from "../runStyleFormatting";
 import { reconstructRejectedRunFormattingMarks } from "../runPropertyChangeResolution";
 import { holdsNoContent } from "../zeroWidthAnchors";
@@ -66,6 +66,7 @@ import {
   moveTextBoxesPastNextParagraph,
 } from "../anchoredTextBoxes";
 import { joinAtParagraphMark } from "../paragraphMarkJoin";
+import { rebaseParagraphRuns } from "../rebaseParagraphRuns";
 import { rejoinRunsAt } from "../rejoinRunCarriers";
 import { getFolioNodeRevisionCarriers, nodePropertyRevisionSites } from "../revisionCarriers";
 import { RUN_FORMATTING_MARK_NAMES } from "../runFormattingMarkNames";
@@ -601,21 +602,34 @@ function resolveChange(
         // Section properties live on the paragraph mark. Resolving that mark
         // away removes its section endpoint, so the joined paragraph keeps
         // only a section endpoint already owned by the following paragraph.
+        // The surviving paragraph owns the joined style cascade. Rebuild the
+        // following runs from their authored properties, as a direct merge does.
+        if (!holdsNoContent(paragraph)) {
+          rebaseParagraphRuns({
+            tr,
+            position: nextPos,
+            previous: nextNode,
+            target: paragraph,
+            styleResolver,
+          });
+        }
+        const joinedNext = tr.doc.nodeAt(nextPos);
+        if (!joinedNext) panic("A resolved paragraph join lost its following paragraph");
         try {
           if (boundaries.length > 0) {
             const emptyFirstParagraph = holdsNoContent(paragraph);
-            const formattingOwner = emptyFirstParagraph ? nextNode : paragraph;
+            const formattingOwner = emptyFirstParagraph ? joinedNext : paragraph;
             const joinedAttrs = {
               ...formattingOwner.attrs,
-              pPrMark: nextNode.attrs["pPrMark"],
-              _sectionProperties: nextNode.attrs["_sectionProperties"],
+              pPrMark: joinedNext.attrs["pPrMark"],
+              _sectionProperties: joinedNext.attrs["_sectionProperties"],
             };
             const leftToken = getProseParagraphPropertySourceToken(paragraph);
-            const rightToken = getProseParagraphPropertySourceToken(nextNode);
+            const rightToken = getProseParagraphPropertySourceToken(joinedNext);
             const inlineBookmarks = inlineBookmarksForParagraphJoin({
               first: paragraph,
               boundaries,
-              second: nextNode,
+              second: joinedNext,
             });
             if (!inlineBookmarks) continue;
             tr.replaceWith(joinPos - 1, nextPos + 1, inlineBookmarks);
@@ -628,7 +642,7 @@ function resolveChange(
                 },
               ]);
           } else {
-            joinAtParagraphMark({ tr, paragraphPos: mappedPos, paragraph, next: nextNode });
+            joinAtParagraphMark({ tr, paragraphPos: mappedPos, paragraph, next: joinedNext });
           }
           if (ownsSectionEndpoint(paragraph)) {
             removedSectionEndpointCount++;

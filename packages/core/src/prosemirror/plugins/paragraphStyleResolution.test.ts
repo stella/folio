@@ -1,3 +1,5 @@
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { describe, expect, test } from "bun:test";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
@@ -208,3 +210,69 @@ describe("paragraphs an edit creates resolve their style cascade", () => {
     expect(after.doc.firstChild?.attrs).toEqual(loaded.doc.firstChild?.attrs);
   });
 });
+
+test(
+  "replacement joins preserve authored formatting across style cascades and undo",
+  () => {
+    assertProperty(
+      fc.property(
+        fc.integer({ min: 0, max: 5 }),
+        fc.boolean(),
+        fc.boolean(),
+        (cut, headingFirst, explicitBold) => {
+          const model: Document = {
+            package: {
+              styles: STYLES,
+              document: {
+                content: [
+                  {
+                    ...loadedParagraph("Before"),
+                    formatting: { styleId: headingFirst ? "Heading1" : "Normal" },
+                  },
+                  {
+                    type: "paragraph",
+                    formatting: { styleId: headingFirst ? "Normal" : "Heading1" },
+                    content: [
+                      {
+                        type: "run",
+                        ...(explicitBold ? { formatting: { bold: false } } : {}),
+                        content: [{ type: "text", text: "After!" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          };
+          const state = EditorState.create({
+            doc: toProseDoc(model),
+            plugins: [history(), createDocumentStylesPlugin(STYLES)],
+          });
+          const boundary = state.doc.firstChild!.nodeSize;
+          const joined = state.apply(state.tr.delete(boundary - 1, boundary + 1 + cut));
+          expect(joined.doc.childCount).toBe(1);
+          expect(joined.doc.textContent).toBe("Before" + "After!".slice(cut));
+          const saved = fromProseDoc(joined.doc, model);
+          const reopened = toProseDoc(saved);
+          expect(reopened.textContent).toBe(joined.doc.textContent);
+          const tail = joined.doc.firstChild!.lastChild!;
+          expect(tail.marks.some(({ type }) => type.name === "bold")).toBe(
+            headingFirst && !explicitBold,
+          );
+          expect(
+            reopened.firstChild!.lastChild!.marks.some(({ type }) => type.name === "bold"),
+          ).toBe(headingFirst && !explicitBold);
+          let undone = joined;
+          expect(
+            undo(joined, (tr) => {
+              undone = joined.apply(tr);
+            }),
+          ).toBe(true);
+          expect(undone.doc.toJSON()).toEqual(state.doc.toJSON());
+        },
+      ),
+      { numRuns: 48 },
+    );
+  },
+  propertyTestTimeout(),
+);

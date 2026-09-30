@@ -32,7 +32,10 @@ import type {
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../../../types/documentEnumValues";
 import { paragraphToStyle } from "../../../utils/formatToStyle";
 import { BUILT_IN_STYLE_NAME } from "../../../docx/builtInStyles";
-import { getDocumentBuiltInStyles, getDocumentStyleResolver } from "../../plugins/documentStyles";
+import {
+  getDocumentBuiltInStyles,
+  getDocumentStyleResolver,
+} from "../../plugins/documentStyleState";
 import { isStyleSourcedParagraphNumbering } from "../../../internal/paragraphFormattingSerialization";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../../listMarker";
 import { collectHeadings } from "../../../utils/headingCollector";

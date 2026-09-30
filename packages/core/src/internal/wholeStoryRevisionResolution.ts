@@ -20,6 +20,7 @@ import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,
 } from "../prosemirror/runFormattingReconciliation";
+import { rebaseParagraphRunContent } from "../prosemirror/rebaseParagraphRuns";
 import { expandRunFormattingCarrier } from "../prosemirror/runFormattingInlineCarriers";
 import { resolveInlineRevisions, type RevisionResolutionMode } from "./revisionResolutionInline";
 import type { RemovedSectionReference } from "./sectionEndpointResolution";
@@ -126,6 +127,7 @@ const resolveProperties = ({
 };
 
 type StructuralContext = {
+  styleResolver: RunStyleResolver | null;
   mode: RevisionResolutionMode;
   deleted: { from: number; to: number }[];
   steps: Step[];
@@ -273,7 +275,11 @@ const removedEndpoint = (node: PMNode, context: StructuralContext): void => {
 
 type ParagraphChain = {
   node: PMNode;
-  chunks: Fragment[];
+  formattingOwnerPosition: number;
+  chunks: (
+    | { type: "paragraph"; source: PMNode; position: number }
+    | { type: "bookmarks"; content: Fragment }
+  )[];
   position: number;
   before: PMNode;
   joinBoundaries: { closing: number; bookmarks: Fragment }[];
@@ -310,8 +316,29 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
     let final = chain.node;
     if (chain.chunks.length > 1) {
       const children: PMNode[] = [];
-      for (let index = chain.chunks.length - 1; index >= 0; index--)
-        chain.chunks[index]?.forEach((child) => children.push(child));
+      for (let index = chain.chunks.length - 1; index >= 0; index--) {
+        const chunk = chain.chunks[index];
+        if (!chunk) continue;
+        // The surviving owner keeps its own marks, as the single-change join
+        // does. Rebuilding them would change provenance without a style change.
+        let content = chunk.type === "paragraph" ? chunk.source.content : chunk.content;
+        if (chunk.type === "paragraph" && chunk.position !== chain.formattingOwnerPosition) {
+          content = rebaseParagraphRunContent({
+            paragraph: chunk.source,
+            target: chain.node,
+            position: chunk.position,
+            styleResolver: context.styleResolver,
+            onRebased: ({ before, after, position: runPosition }) =>
+              recordNodeResolution({
+                before,
+                after,
+                position: runPosition,
+                steps: context.steps,
+              }),
+          });
+        }
+        content.forEach((child) => children.push(child));
+      }
       final = rebuild(chain.node, { content: Fragment.fromArray(children) });
     }
     if (!chain.before.sameMarkup(final))
@@ -394,11 +421,12 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           return null;
         }
         bookmarks = Fragment.fromArray(inline);
-        chain.chunks.push(bookmarks);
+        chain.chunks.push({ type: "bookmarks", content: bookmarks });
         pendingBookmarks = [];
       }
       const empty = holdsNoContent(paragraph);
       const owner = empty ? chain.node : paragraph;
+      if (!empty) chain.formattingOwnerPosition = entry.position;
       const next = chain.node;
       if (empty) {
         const displacedToken = getProseParagraphPropertySourceToken(paragraph);
@@ -415,7 +443,7 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
           _sectionProperties: next.attrs["_sectionProperties"],
         },
       });
-      chain.chunks.push(paragraph.content);
+      chain.chunks.push({ type: "paragraph", source: paragraph, position: entry.position });
       chain.position = entry.position;
       chain.before = paragraph;
       chain.joinBoundaries.push({
@@ -441,7 +469,8 @@ const resolveStructure = ({ node, position, context }: ResolveStructureOptions):
       : paragraph;
     chain = {
       node: resolved,
-      chunks: [resolved.content],
+      formattingOwnerPosition: entry.position,
+      chunks: [{ type: "paragraph", source: resolved, position: entry.position }],
       position: entry.position,
       before: paragraph,
       joinBoundaries: [],
@@ -581,6 +610,7 @@ export const resolveWholeStory = ({
   });
   const context: StructuralContext = {
     mode,
+    styleResolver,
     steps: [],
     changedRanges: [],
     deleted: [],

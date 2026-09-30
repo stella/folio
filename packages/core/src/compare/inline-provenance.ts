@@ -16,7 +16,7 @@ import {
   type RunFormattingCarrier,
   type RunFormattingCarrierRepresentation,
 } from "../prosemirror/runFormattingInlineCarriers";
-import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyles";
+import { getDocumentStyleResolver } from "../prosemirror/plugins/documentStyleState";
 import {
   readAuthoredRunFormatting,
   reconcileRunFormattingMarks,

@@ -118,6 +118,13 @@
       "title": "#1192 random flow"
     },
     {
+      "seed": 407184130,
+      "steps": 10,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "accepted paragraph merges keep run formatting across save"
+    },
+    {
       "seed": 764128763,
       "steps": 10,
       "kind": "random",

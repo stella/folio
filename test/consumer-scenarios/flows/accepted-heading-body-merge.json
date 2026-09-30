@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "plain",
+  "mode": "tracked-changes",
+  "seed": 407184130,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2046926352,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "1108F4A8",
+          "separator": " "
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 1223267091
+    }
+  ],
+  "title": "accepted paragraph merges keep run formatting across save"
+}
