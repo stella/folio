@@ -57,7 +57,7 @@ const documentFixture = () =>
           },
           {
             type: "blockSdt",
-            properties: { id: 9001, tag: "corpus-sequence" },
+            properties: { sdtType: "richText", id: 9001, tag: "corpus-sequence" },
             content: [makeParagraph("60000007", "Inside a content control")],
           },
           {
