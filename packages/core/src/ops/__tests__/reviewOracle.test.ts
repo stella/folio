@@ -82,7 +82,14 @@ test("empty formatting is neutral while explicit false remains authored", () => 
   paragraph.formatting = { runProperties: {} };
   run.formatting = {};
   row.formatting = { sourceXml: "<w:trPr/>" };
+  table.formatting = {
+    sourceXml: "<w:tblPr/>",
+    gridSourceXml: "<w:tblGrid><w:gridCol/></w:tblGrid>",
+  };
   expect(reviewDifferences(original, changed)).toEqual({ messages: [], omitted: 0 });
+  table.formatting.bidi = false;
+  expect(reviewDifferences(original, changed).messages).not.toEqual([]);
+  delete table.formatting.bidi;
   run.formatting = { bold: false };
   expect(reviewDifferences(original, changed).messages).not.toEqual([]);
 });

@@ -15,10 +15,12 @@ import { mergeAtSeam } from "../packages/docx-core/src/ops/resolve";
 import { IDENTITY_SPACES, identityKeysIn } from "../packages/docx-core/src/ops/ids";
 import { PARAGRAPH_MARK_FORMATTING_KEYS } from "../packages/docx-core/src/ops/types";
 
-/** Empty formatting containers (including a captured empty trPr) state no properties. */
+/** XML captures in an otherwise empty formatting container state no authored properties. */
 const authoredFormatting = <Formatting extends object>(formatting: Formatting | undefined) =>
   formatting &&
-  Object.entries(formatting).some(([key, value]) => key !== "sourceXml" && value !== undefined)
+  Object.entries(formatting).some(
+    ([key, value]) => key !== "sourceXml" && key !== "gridSourceXml" && value !== undefined,
+  )
     ? formatting
     : undefined;
 
@@ -92,8 +94,8 @@ export const canonicalReviewBlocks = (blocks: readonly BlockContent[]): BlockCon
     switch (block.type) {
       case "paragraph":
         return canonicalParagraph(block);
-      case "table":
-        return {
+      case "table": {
+        const table = {
           ...block,
           rows: block.rows.map((row) => {
             const next = {
@@ -107,6 +109,9 @@ export const canonicalReviewBlocks = (blocks: readonly BlockContent[]): BlockCon
             return next;
           }),
         };
+        if (table.formatting && !authoredFormatting(table.formatting)) delete table.formatting;
+        return table;
+      }
       case "blockSdt":
       case "blockCustomXml":
         return { ...block, content: canonicalReviewBlocks(block.content) };
