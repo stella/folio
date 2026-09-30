@@ -166,11 +166,17 @@ const emptyPieceOf = (empty: InlineNode, other: InlineNode): boolean => {
 /**
  * Two records meeting where a change was resolved, merged as far as they are
  * alike. A piece of a cut container that resolution emptied goes into the
- * piece it was cut from, which keeps the first one's ids.
+ * piece it was cut from, which keeps the first one's ids. Two alike
+ * containers merged meet inside too, and that seam is merged the same way,
+ * so a merge leaves no seam it would merge again.
  */
 export const mergeAtSeam = (left: InlineNode, right: InlineNode): InlineNode[] => {
   if (alikeDepth(left, right) > 0) {
-    return mergeAlike([left], [right]);
+    const leftChildren = childNodes(left);
+    const rightChildren = childNodes(right);
+    return leftChildren === undefined || rightChildren === undefined
+      ? mergeAlike([left], [right])
+      : [rebuildNode(left, mergedAtSeam(leftChildren, rightChildren))];
   }
   if (emptyPieceOf(left, right)) {
     return [rebuildNode(left, childNodes(right) ?? [])];

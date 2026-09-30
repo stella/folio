@@ -11,6 +11,7 @@ import {
   normalizeUserUrl,
   sanitizeExternalUrl,
 } from "../../../utils/urlSecurity";
+import { removeHyperlinkInRange } from "../../hyperlinkRemoval";
 import { createMarkExtension } from "../create";
 import type { ExtensionContext, ExtensionRuntime } from "../types";
 import { isMarkActive } from "./markUtils";
@@ -243,13 +244,13 @@ export const HyperlinkExtension = createMarkExtension({
         });
 
         if (dispatch) {
-          dispatch(state.tr.removeMark(start, end, hlType).scrollIntoView());
+          dispatch(removeHyperlinkInRange(state, state.tr, start, end).scrollIntoView());
         }
         return true;
       }
 
       if (dispatch) {
-        dispatch(state.tr.removeMark(from, to, hlType).scrollIntoView());
+        dispatch(removeHyperlinkInRange(state, state.tr, from, to).scrollIntoView());
       }
 
       return true;

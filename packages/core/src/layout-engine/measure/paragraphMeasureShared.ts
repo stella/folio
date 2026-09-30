@@ -27,6 +27,22 @@ export const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1; // OOXML spec default: single s
 // Prevents premature line breaks due to measurement rounding
 export const WIDTH_TOLERANCE = 0.5;
 
+/** Grid a finished line's width snaps to: 1/1024 px, exact in binary floating point. */
+const LINE_WIDTH_GRID = 1024;
+
+/**
+ * The width a finished line reports. A line's width is a floating-point sum
+ * of per-token measurements, and the same text can reach it through different
+ * token groupings, e.g. a run split where a hidden revision sat measures
+ * "confirm" + "ation" where the resolved text measures "confirmation". Those
+ * sums agree only up to the last few bits, so the result snaps to a
+ * binary-exact 1/1024 px grid (under 0.0005 px, far below a device pixel):
+ * the same text yields the same width whichever grouping summed it, and the
+ * alignment offsets derived from it agree too.
+ */
+export const canonicalLineWidth = (width: number): number =>
+  Math.round(Math.max(0, width) * LINE_WIDTH_GRID) / LINE_WIDTH_GRID;
+
 /**
  * Typography metrics for a line
  */

@@ -191,6 +191,7 @@ import {
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
+import { enclosingInsertionAncestors, inlineWrapperStackOf } from "../trackedRevisionPath";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
 import { PRESERVED_XML_LEVELS } from "../schema/nodes";
@@ -2388,12 +2389,6 @@ type InlineWrapperHyperlinkOrigin = {
   stackStart: number;
 };
 
-/** The wrappers `node` sits inside, outermost first; empty when it sits in none. */
-const inlineWrapperStackOf = (node: PMNode): readonly InlineWrapperLayer[] => {
-  const mark = node.marks.find((candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME);
-  return mark ? expectInlineWrapperMarkAttrs(mark).stack : [];
-};
-
 /** The authored hyperlink that owns a suffix of the node's wrapper stack. */
 const inlineWrapperHyperlinkOriginOf = (node: PMNode): InlineWrapperHyperlinkOrigin | undefined => {
   const mark = node.marks.find((candidate) => candidate.type.name === INLINE_WRAPPER_MARK_NAME);
@@ -2531,38 +2526,6 @@ const sameRevisionLayer = (
   left.utcDate === right.utcDate &&
   left.initials === right.initials &&
   left.outerWrapperCount === right.outerWrapperCount;
-
-type EnclosingInsertionAncestorsOptions = {
-  /** The insertion a deletion mark shares its text with, if any. */
-  insertionMark: Mark | undefined;
-  ancestors: readonly TrackedRevisionAncestor[];
-  node: PMNode;
-};
-
-/** The deletion's ancestor path, with the insertion it sits in as the outermost layer. */
-const enclosingInsertionAncestors = ({
-  insertionMark,
-  ancestors,
-  node,
-}: EnclosingInsertionAncestorsOptions): readonly TrackedRevisionAncestor[] => {
-  if (!insertionMark) {
-    return ancestors;
-  }
-  const attrs = expectTrackedChangeMarkAttrs(insertionMark);
-  if (ancestors.some(({ revisionId }) => revisionId === attrs.revisionId)) {
-    return ancestors;
-  }
-  const layer: TrackedRevisionAncestor = {
-    type: attrs.moveKind === "moveTo" ? "moveTo" : "insertion",
-    revisionId: attrs.revisionId,
-    author: attrs.author || "Unknown",
-    ...(attrs.date ? { date: attrs.date } : {}),
-    ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
-    ...(attrs.initials ? { initials: attrs.initials } : {}),
-    outerWrapperCount: attrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
-  };
-  return [layer, ...ancestors];
-};
 
 const revisionInfoFromLayer = (layer: TrackedRevisionAncestor): TrackedChangeInfo => ({
   id: layer.revisionId,

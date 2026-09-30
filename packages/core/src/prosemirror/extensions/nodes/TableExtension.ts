@@ -43,6 +43,7 @@ import {
   mergeTableRowAttrs,
 } from "../../attrs";
 import type { TableAttrs, TableCellAttrs } from "../../schema/nodes";
+import { makeRevisionInfo } from "../../plugins/suggestionMode";
 import { insertTableColumn, removeTableColumns, removeTableRow } from "../../tableGridMutation";
 import { pastedSliceWithNewTableCells, pasteTableCells } from "../../tableCellPaste";
 import { setTableLookFlags } from "../../../docx/tableLook";
@@ -1227,8 +1228,30 @@ export const TablePluginExtension = createExtension({
               break;
             }
           }
-          const table = createTable(state.schema, rows, cols, borderColor, contentWidthTwips);
-          const emptyParagraph = documentTableTypes(state.schema).paragraph.create();
+          let table = createTable(state.schema, rows, cols, borderColor, contentWidthTwips);
+          let emptyParagraph = documentTableTypes(state.schema).paragraph.create();
+          // Suggesting, the table's rows and the paragraphs it brings are
+          // tracked insertions, so rejecting them leaves the document as it was.
+          const revision = makeRevisionInfo(state);
+          if (revision) {
+            const rowRevision = {
+              revisionId: revision.id,
+              author: revision.author,
+              date: revision.date,
+            };
+            const rowsWithRevision: PMNode[] = [];
+            // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+            table.forEach((row) => {
+              rowsWithRevision.push(
+                row.type.create({ ...row.attrs, trIns: rowRevision }, row.content),
+              );
+            });
+            table = table.type.create(table.attrs, rowsWithRevision);
+            emptyParagraph = emptyParagraph.type.create({
+              ...emptyParagraph.attrs,
+              pPrMark: { kind: "ins", info: revision },
+            });
+          }
 
           const $insert = state.doc.resolve(insertPos);
           const needsLeadingParagraph = $insert.nodeBefore?.type.name === "table";
