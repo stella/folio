@@ -476,6 +476,18 @@ const joinOps = (
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
+  if (
+    next?.type === "table" &&
+    next.rows.some((row) => row.structuralChange?.type === "tableRowInsertion")
+  ) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+        "Resolve the inserted table before removing its preceding paragraph break.",
+      ),
+    );
+  }
   if (next?.type === "paragraph") {
     // The mark that goes takes the paragraph's properties with it: the next
     // paragraph is left, whole, with the first's content before its own.
@@ -517,7 +529,10 @@ const joinOps = (
     );
   }
   // No paragraph to join: a table follows, or the paragraph ends its container.
-  const canGo = added || !endsItsContainer(body, location);
+  // A cell-ending mark describes the terminator, not a paragraph to retire.
+  const cellFinal =
+    endsItsContainer(body, location) && location.list.some((step) => step.kind === "tableCell");
+  const canGo = !cellFinal && (added || !endsItsContainer(body, location));
   if (empty && canGo && blocks.length > 1) {
     return Result.err(
       refusal(

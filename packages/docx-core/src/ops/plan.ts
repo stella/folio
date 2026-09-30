@@ -52,6 +52,8 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
     case DOCUMENT_OP_TYPES.INSERT_ROW:
     case DOCUMENT_OP_TYPES.DELETE_ROW:
+    case DOCUMENT_OP_TYPES.INSERT_TABLE:
+    case DOCUMENT_OP_TYPES.DELETE_TABLE:
       return { ...op, newIds };
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
@@ -60,8 +62,6 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
-    case DOCUMENT_OP_TYPES.INSERT_TABLE:
-    case DOCUMENT_OP_TYPES.DELETE_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return op;
     default: {
