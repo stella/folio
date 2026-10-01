@@ -343,7 +343,7 @@ jobs:
         run: bun run typecheck
 
       - name: Focused unit tests
-        run: bun test scripts/ci-plan.test.ts scripts/ci-result.test.mjs packages/docx-core/src/ops/__tests__/contract.test.ts packages/docx-core/src/projection.test.ts
+        run: bun test scripts/ci-plan.test.ts scripts/ci-result.test.mjs scripts/editor-scroll-root.test.ts scripts/scroll-root-fixture.test.ts packages/core/src/paged-layout/editorScrollRoot.test.ts packages/docx-core/src/ops/__tests__/contract.test.ts packages/docx-core/src/projection.test.ts
 
       - name: Full test suite
         id: full-suite
@@ -620,6 +620,9 @@ jobs:
             /etc/apt/sources.list.d/microsoft-prod.list \
             /etc/apt/sources.list.d/microsoft-prod.sources
           bunx playwright install --with-deps chromium
+
+      - name: Scroll navigation parity
+        run: bunx playwright test --project=parity tests/parity/scroll-root.spec.ts --workers=1
 
       - name: Run fixed-seed browser fuzzer
         run: bunx playwright test --project=browser-fuzzer --workers=1

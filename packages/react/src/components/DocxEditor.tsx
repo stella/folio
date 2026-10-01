@@ -63,6 +63,7 @@ import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx
 import { normalizeBaseDirection } from "@stll/folio-core/docx/normalizeBaseDirection";
 import { getCachedNumberingMap } from "@stll/folio-core/docx/numberingParser";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
+import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { updateScrollPageTotal } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import type { ScrollToParaIdOptions } from "@stll/folio-core/paged-layout/paragraphFlash";
 // ProseMirror editor
@@ -833,9 +834,35 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         return;
       }
       lastReportedViewRef.current = view;
+      if (view && initialScrollTop !== undefined) {
+        const initialScroll = initialScrollRef.current;
+        switch (initialScroll.status) {
+          case "scheduled":
+            cancelAnimationFrame(initialScroll.frame);
+            scrollEditorTo(scrollContainerRef.current, {
+              top: initialScrollTop,
+              behavior: "instant",
+            });
+            initialScrollRef.current = { status: "applied" };
+            break;
+          case "waiting":
+            scrollEditorTo(scrollContainerRef.current, {
+              top: initialScrollTop,
+              behavior: "instant",
+            });
+            initialScrollRef.current = { status: "applied" };
+            break;
+          case "applied":
+            break;
+          default: {
+            const exhaustive: never = initialScroll;
+            return exhaustive;
+          }
+        }
+      }
       onEditorViewReady(view);
     },
-    [onEditorViewReady],
+    [onEditorViewReady, initialScrollTop],
   );
   useLayoutEffect(() => {
     if (!onEditorViewReady) {
@@ -924,7 +951,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const imageInputRef = useRef<HTMLInputElement>(null);
   const editorContentRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const initialScrollAppliedRef = useRef(false);
+  type InitialScrollState =
+    | { status: "waiting" }
+    | { status: "scheduled"; frame: number }
+    | { status: "applied" };
+  const initialScrollRef = useRef<InitialScrollState>({ status: "waiting" });
   const [widestLaidOutPageWidth, setWidestLaidOutPageWidth] = useState<number | null>(null);
   const hasDocument = history.state !== null;
   useEffect(() => {
@@ -1239,10 +1270,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     onError,
     onCompatibilityChange,
     onReset: useCallback(() => {
-      initialScrollAppliedRef.current = false;
+      const initialScroll = initialScrollRef.current;
+      if (initialScroll.status === "scheduled") cancelAnimationFrame(initialScroll.frame);
+      initialScrollRef.current = { status: "waiting" };
       if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = 0;
-        scrollContainerRef.current.scrollLeft = 0;
+        scrollEditorTo(scrollContainerRef.current, { top: 0, left: 0, behavior: "instant" });
       }
       commentsDirtyRef.current = false;
       commentsLoadedRef.current = false;
@@ -1303,20 +1335,23 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     if (
       initialScrollTop === undefined ||
       state.documentLoad.status !== "ready" ||
-      initialScrollAppliedRef.current
+      initialScrollRef.current.status !== "waiting"
     ) {
       return undefined;
     }
 
-    initialScrollAppliedRef.current = true;
     const frame = requestAnimationFrame(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = initialScrollTop;
-      }
+      initialScrollRef.current = { status: "applied" };
+      scrollEditorTo(scrollContainerRef.current, { top: initialScrollTop, behavior: "instant" });
     });
+    initialScrollRef.current = { status: "scheduled", frame };
 
     return () => {
-      cancelAnimationFrame(frame);
+      const initialScroll = initialScrollRef.current;
+      if (initialScroll.status === "scheduled" && initialScroll.frame === frame) {
+        cancelAnimationFrame(frame);
+        initialScrollRef.current = { status: "waiting" };
+      }
     };
   }, [initialScrollTop, loadedDocumentIdentity, state.documentLoad.status]);
 
