@@ -11,7 +11,7 @@ import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
-import { reviewDifferences } from "../../../core/src/ops/__tests__/reviewOracle";
+import { reviewDifferences } from "../../../../test/reviewDifferences";
 
 const { useDocxEditor } = await import("./useDocxEditor");
 

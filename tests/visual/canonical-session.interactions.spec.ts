@@ -4,7 +4,7 @@ import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { toProseDoc } from "../../packages/core/src/prosemirror/conversion/toProseDoc";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
-import type { buildCanonicalBridge } from "../../packages/playground/src/canonicalBridge";
+import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;

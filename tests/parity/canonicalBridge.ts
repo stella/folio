@@ -1,5 +1,5 @@
 import type { Document } from "@stll/folio-core";
-import type { FolioEditor } from "../../core/src/controller/folioEditor";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 
 type CanonicalPlaygroundRef = {
   getDocument: () => Document | null;

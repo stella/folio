@@ -46,7 +46,7 @@ import type {
 
 import type { FolioParityBridge } from "./parityBridge";
 import { buildParityBridge } from "./parityBridge";
-import { buildCanonicalBridge } from "../../playground/src/canonicalBridge";
+import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 
 declare global {
   // eslint-disable-next-line no-var

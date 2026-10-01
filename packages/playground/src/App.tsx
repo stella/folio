@@ -31,7 +31,7 @@ import type {
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
 import { CollaborationApp } from "./CollaborationApp";
-import { buildCanonicalBridge } from "./canonicalBridge";
+import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 import {
   IDLE_PLAYGROUND_STATUS,
   PLAYGROUND_STATUS_CLASS_NAME,
