@@ -1,6 +1,6 @@
 # Saved OOXML validity oracle
 
-Consumer save/reopen invariants and browser fuzz saves run `validateDocxPackage` before reopening. Swarm and long consumer flows inherit the same save boundary. Cross-host and canonical lanes should call the same validator at every saved-output checkpoint when their stacked harnesses land.
+Consumer save/reopen invariants and browser fuzz saves run `validateDocxPackage` before reopening. Swarm and long consumer flows inherit the same save boundary. The pending cross-host, host-API and canonical stacks call the same existing validator at their saved-output checkpoints; this change strengthens those calls when the stacks land. Metamorphic save helpers also validate each output.
 
 The validator bounds archive inflation, checks all XML parts for syntax, checks WordprocessingML attributes against committed ECMA-376 graph facts, and checks OPC content types, relationship targets and relationship references. Required inherited attributes, enumerations, supported lexical patterns and integer facets are generated offline. Unknown extension vocabularies remain available for round trips. This is a targeted validity profile, not a complete XSD content-model validator.
 

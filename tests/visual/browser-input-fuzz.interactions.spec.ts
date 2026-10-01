@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
-import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+import { validateDocxPackage } from "@stll/docx-core";
 
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
@@ -384,6 +384,12 @@ const save = async (page: Page) => {
   return new Uint8Array(bytes).buffer;
 };
 
+const reopenSaved = async (buffer: ArrayBuffer) => {
+  const validity = await validateDocxPackage(buffer);
+  expect(validity.valid, validity.valid ? "" : validity.error).toBe(true);
+  return FolioDocxReviewer.fromBuffer(buffer);
+};
+
 const runMode = async (
   page: Page,
   source: ArrayBuffer,
@@ -397,9 +403,7 @@ const runMode = async (
   const live = await liveBlocks(page);
   const painted = await page.locator(".layout-page-content").allTextContents();
   const buffer = await save(page);
-  const validity = await validateDocxPackage(buffer);
-  expect(validity.valid, validity.valid ? "" : validity.error).toBe(true);
-  const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+  const reopened = await reopenSaved(buffer);
   expect(projectLive(project(reopened))).toEqual(live);
   await page.evaluate(
     async (saved) => {
@@ -522,11 +526,11 @@ for (const seed of config.seeds) {
         const suggested = await runMode(page, source, baseline, trace, true);
         const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         accepting.acceptAll();
-        const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+        const accepted = await reopenSaved(await accepting.toBuffer());
         expect(project(accepted)).toEqual(edited.blocks);
         const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         rejecting.rejectAll();
-        const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+        const rejected = await reopenSaved(await rejecting.toBuffer());
         expect(project(rejected)).toEqual(baseline);
         if (JSON.stringify(edited.blocks) !== JSON.stringify(baseline)) {
           expect(suggested.changes.length).toBeGreaterThan(0);
