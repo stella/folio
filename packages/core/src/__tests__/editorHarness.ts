@@ -328,17 +328,7 @@ export const textblocks = (doc: PMNode): TextblockMatch[] => {
   return found;
 };
 
-export type SelectionPlacement =
-  | "caret-start"
-  | "caret-middle"
-  | "caret-end"
-  | "word"
-  | "paragraph"
-  | "cross-paragraph"
-  | "node"
-  | "document";
-
-export const SELECTION_PLACEMENTS: readonly SelectionPlacement[] = [
+export const SELECTION_PLACEMENTS = [
   "caret-start",
   "caret-middle",
   "caret-end",
@@ -347,7 +337,8 @@ export const SELECTION_PLACEMENTS: readonly SelectionPlacement[] = [
   "cross-paragraph",
   "node",
   "document",
-];
+] as const;
+export type SelectionPlacement = (typeof SELECTION_PLACEMENTS)[number];
 
 /**
  * Place the selection relative to the textblock holding `focus`. Returns null
