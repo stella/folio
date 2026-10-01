@@ -37,8 +37,22 @@ jobs:
           bunx playwright install --with-deps chromium
 
       - name: Run nightly browser fuzzer
-        run: bunx playwright test --project=browser-fuzzer --workers=1
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bunx playwright test --project=browser-fuzzer --workers=1 2>&1 | tee test-results/browser-fuzz.log
         env:
           CI: "true"
+          FOLIO_FUZZ_LANE: "nightly"
           FOLIO_FUZZ_SEEDS: "11,29,47,83,131,197,263,347,431,557"
           FOLIO_FUZZ_RUNS: "20"
+
+      - name: Keep minimized traces and browser artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-input-fuzzer
+          path: |
+            test-results
+            playwright-report
+          retention-days: 14

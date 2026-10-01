@@ -234,13 +234,29 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       return;
     case "imeReplacement": {
       const cdp = await page.context().newCDPSession(page);
-      await cdp.send("Input.imeSetComposition", {
-        text: action.text,
-        selectionStart: action.text.length,
-        selectionEnd: action.text.length,
-      });
-      await cdp.send("Input.insertText", { text: action.text });
-      await cdp.detach();
+      try {
+        for (const text of action.updates) {
+          await cdp.send("Input.imeSetComposition", {
+            text,
+            // CDP offsets count UTF-16 code units, including surrogate pairs.
+            selectionStart: text.length,
+            selectionEnd: text.length,
+          });
+        }
+        if (action.completion === "commit") {
+          const text = action.updates.at(-1);
+          if (text === undefined) throw new Error("IME lifecycle has no updates");
+          await cdp.send("Input.insertText", { text });
+        } else {
+          await cdp.send("Input.imeSetComposition", {
+            text: "",
+            selectionStart: 0,
+            selectionEnd: 0,
+          });
+        }
+      } finally {
+        await cdp.detach();
+      }
       return;
     }
     case "cut":
@@ -256,6 +272,11 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       return;
     case "redo":
       await page.keyboard.press(`${MODIFIER}+Shift+z`);
+      return;
+    case "historyBurst":
+      for (const key of action.keys) {
+        await page.keyboard.press(key === "undo" ? `${MODIFIER}+z` : `${MODIFIER}+Shift+z`);
+      }
       return;
     case "selectionDrag":
       if (!(await selectTarget(page, action.target))) {
