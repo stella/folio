@@ -143,6 +143,37 @@ test.each(["mixed-lists", "image", "notes"])(
   },
 );
 
+test("plain paste followed by backward and forward deletion preserves bookmark review equivalence", async () => {
+  const shape =
+    DOCUMENT_SHAPES.find(({ id }) => id === "fields-links-bookmarks") ??
+    panic("Missing bookmarked shape");
+  const bytes = await shape.build();
+  const base = await parseShapeDocument(bytes);
+  const baseline = project(await FolioDocxReviewer.fromBuffer(bytes.slice().buffer));
+  const saved = [];
+  for (const mode of ["editing", "suggesting"] as const) {
+    const view = new HeadlessEditorView(createHarnessState(base, mode));
+    view.paste(new Slice(Fragment.from(paragraph("alpha")), 1, 1));
+    view.pressKey("Backspace");
+    view.pressKey("Delete");
+    saved.push(await saveHarnessState(view.state, base));
+  }
+
+  const edited = saved.at(0) ?? panic("Missing direct output");
+  const suggested = saved.at(1) ?? panic("Missing tracked output");
+  const accepted = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
+  accepted.acceptAll();
+  const direct = await FolioDocxReviewer.fromBuffer(edited.bytes.slice().buffer);
+  expect(project(direct).at(0)?.text).toBe("alphookmarked heading text");
+  expect(project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer()))).toEqual(
+    project(direct),
+  );
+
+  const rejected = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
+  rejected.rejectAll();
+  expect(project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()))).toEqual(baseline);
+});
+
 test.each([1, 2, 3, 4, 5])(
   "table paste after %s tracked deletions removes the same leading break as direct paste",
   (count) => {
