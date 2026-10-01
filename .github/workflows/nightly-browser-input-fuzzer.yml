@@ -41,6 +41,7 @@ jobs:
 
       - name: Run nightly browser fuzzer
         id: fuzz
+        timeout-minutes: 35
         continue-on-error: true
         run: |
           set -o pipefail
@@ -50,9 +51,22 @@ jobs:
           bunx playwright test --project=browser-fuzzer --workers=1 --output=fuzz-playwright/browser 2>&1 | tee fuzz-artifacts/browser/browser-fuzz.log
         env:
           CI: "true"
+          FOLIO_FUZZ_HEALTH: "1"
           FOLIO_FUZZ_LANE: "nightly"
           FOLIO_FUZZ_SEEDS: "11,29,47,83,131,197,263,347,431,557"
           FOLIO_FUZZ_RUNS: "20"
+
+      - name: Check fuzz health
+        if: always()
+        run: |
+          if ! command -v bun >/dev/null || [ ! -f scripts/fuzz-health-check.ts ]; then
+            echo "::error::Fuzz infrastructure unavailable before health reporting"
+            echo "Fuzz health: **infrastructure**; setup failed before health reporting." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          bun scripts/fuzz-health-check.ts fuzz-artifacts/browser/browser-fuzz.log
+        env:
+          FUZZ_STEP_OUTCOME: ${{ steps.fuzz.outcome }}
 
       - name: Random AI and human revision interleaving
         if: always()
@@ -79,7 +93,7 @@ jobs:
             fuzz-playwright/interleaving
           retention-days: 14
 
-      - name: Keep minimized traces and browser artifacts
+      - name: Keep health log and minimized traces
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

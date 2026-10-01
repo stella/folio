@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
 
+import { classifyFuzzRun } from "../../test/fuzz-health";
+import { reportFuzzHealth } from "../../test/consumer-scenarios/support/fuzz-health";
+
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
@@ -510,6 +513,7 @@ for (const seed of config.seeds) {
   test(`seed ${seed}: browser input preserves readers, fresh render, and suggesting equivalence`, async ({
     page,
   }) => {
+    reportFuzzHealth({ status: "started", completed: 0 });
     const verdict = await fc.check(
       fc.asyncProperty(INPUT_TRACE, async (trace) => {
         checkFreshRender(trace);
@@ -531,6 +535,11 @@ for (const seed of config.seeds) {
       }),
       { seed, numRuns: config.runs, endOnFailure: false },
     );
+    const health = classifyFuzzRun(verdict);
+    reportFuzzHealth(health);
+    if (health.status === "infrastructure") {
+      throw new Error(`Fuzz infrastructure: ${health.detail}`);
+    }
     if (verdict.failed) {
       const failure = verdict.errorInstance;
       const trace = verdict.counterexample?.at(0);
