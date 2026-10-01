@@ -173,7 +173,7 @@ const paragraphProps = properties(paragraphPropertyFields);
 const paragraphPatch = properties(paragraphPropertyFields, true);
 const runContent: Validator = (value) => {
   if (!isRecord(value)) return false;
-  switch (value.type) {
+  switch (value["type"]) {
     case "text":
       return object({ type: literal("text"), text: string })(value);
     case "tab":
@@ -181,7 +181,7 @@ const runContent: Validator = (value) => {
     case "softHyphen":
     case "noBreakHyphen":
     case "renderedPageBreak":
-      return object({ type: literal(value.type) })(value);
+      return object({ type: literal(value["type"]) })(value);
     case "break":
       return object({
         type: literal("break"),
@@ -322,8 +322,8 @@ export const BATCH_WIRE_OP_TYPES = Object.freeze(
 );
 
 const isDocumentOp = (value: unknown): value is DocumentOp => {
-  if (!isRecord(value) || typeof value.type !== "string") return false;
-  const entry = Object.entries(operationFields).find(([type]) => type === value.type);
+  if (!isRecord(value) || typeof value["type"] !== "string") return false;
+  const entry = Object.entries(operationFields).find(([type]) => type === value["type"]);
   const fields = entry?.at(1);
   return typeof fields === "object" && fields !== null && object(fields)(value);
 };
@@ -376,7 +376,7 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
     effects: optional(
       array((effect) => {
         if (!isRecord(effect)) return false;
-        switch (effect.type) {
+        switch (effect["type"]) {
           case "none":
             return object({ type: literal("none") })(effect);
           case "splitBlock":
@@ -434,7 +434,7 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
 const decodeDocumentBatch = (
   value: Record<string, unknown>,
 ): Result<DocumentBatch, BatchRejection> => {
-  if (value.schema !== DOCUMENT_OP_SCHEMA_VERSION) {
+  if (value["schema"] !== DOCUMENT_OP_SCHEMA_VERSION) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA,
@@ -442,7 +442,7 @@ const decodeDocumentBatch = (
       }),
     );
   }
-  if (!Array.isArray(value.ops) || !value.ops.every(isDocumentOp)) {
+  if (!Array.isArray(value["ops"]) || !value["ops"].every(isDocumentOp)) {
     return Result.err(
       new BatchRejection({
         reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
@@ -467,16 +467,16 @@ const decodeDocumentBatch = (
       !effects.every((effect: unknown, index: number) => {
         if (!isRecord(effect)) return false;
         const op = value.ops.at(index);
-        if (effect.type === "none")
+        if (effect["type"] === "none")
           return (
             op?.type !== "splitBlock" &&
             op?.type !== "joinBlocks" &&
             op?.type !== "deleteBlocks" &&
             op?.type !== "resolveRevision"
           );
-        if (effect.type === "touchedBlocks")
+        if (effect["type"] === "touchedBlocks")
           return op?.type === "deleteBlocks" || op?.type === "resolveRevision";
-        return effect.type === op?.type;
+        return effect["type"] === op?.type;
       })
     ) {
       return Result.err(
