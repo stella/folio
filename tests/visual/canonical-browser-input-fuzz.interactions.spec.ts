@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
+import { validateDocxPackage } from "@stll/docx-core";
 import { appendFileSync } from "node:fs";
 
 import { createDocx } from "../../packages/core/src/docx/rezip";
@@ -159,6 +160,7 @@ for (const seed of config.seeds) {
           }
           const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
           if (!saved) throw new TypeError("Canonical save unavailable");
+          expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
           const reopened = await parseDocx(new Uint8Array(saved), {
             preloadFonts: false,
             detectVariables: false,

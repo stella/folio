@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
+import { validateDocxPackage } from "@stll/docx-core";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
@@ -120,6 +121,9 @@ test(
             state = publishCanonicalProjection({ state, session, commit: prepared.value }).unwrap()
               .state;
             checkProjection();
+            const expectedText =
+              paragraph.textContent.slice(0, from - 1) + text + paragraph.textContent.slice(to - 1);
+            expect(state.doc.firstChild?.textContent).toBe(expectedText);
             const after = {
               document: session.document,
               projection: state.doc.toJSON(),
@@ -143,7 +147,9 @@ test(
             expect(session.document).toEqual(after.document);
             expect(state.doc.toJSON()).toEqual(after.projection);
             expect(state.selection.toJSON()).toEqual(after.selection);
-            const reopened = await parseDocx(await createDocx(session.document), {
+            const saved = await createDocx(session.document);
+            expect(await validateDocxPackage(saved)).toEqual({ valid: true });
+            const reopened = await parseDocx(saved, {
               preloadFonts: false,
               detectVariables: false,
             });
