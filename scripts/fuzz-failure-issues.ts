@@ -181,6 +181,12 @@ export const readState = (body: string): IssueState | null => {
   return null;
 };
 
+type IssueFingerprintOptions = { title: string; body: string | null };
+
+/** Human-filed findings may keep terse titles and carry identity in their state. */
+export const issueFingerprint = ({ title, body }: IssueFingerprintOptions): string | null =>
+  fingerprintOfTitle(title) ?? readState(body ?? "")?.fingerprint ?? null;
+
 /** The state after this run saw `finding` (`previous` is the issue's, if filed). */
 export const nextState = (
   finding: Finding,
@@ -327,7 +333,7 @@ export const fileFindings = async (
   };
   // Newest first, so an open issue wins over an older closed one.
   for (const issue of pages.flat().sort((a, b) => b.number - a.number)) {
-    const fingerprint = fingerprintOfTitle(issue.title);
+    const fingerprint = issueFingerprint(issue);
     if (fingerprint === null) continue;
     keep(filed, fingerprint, issue);
     keep(byPrimary, readState(issue.body ?? "")?.primary ?? fingerprint, issue);

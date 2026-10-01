@@ -8,6 +8,7 @@ import {
   collectFindings,
   fingerprintOfTitle,
   issueBody,
+  issueFingerprint,
   issueTitle,
   nextState,
   parseFailureRecord,
@@ -76,6 +77,19 @@ describe("fuzz failure issues", () => {
     expect(fingerprintOfTitle("Nightly property failure: x")).toBeNull();
     const [long] = collectFindings([], [marker(1, `step 1: ${"x".repeat(400)}`)]);
     expect(issueTitle(long!).length).toBeLessThanOrEqual(240);
+  });
+
+  test("terse manually filed titles deduplicate through the existing body state", () => {
+    const [finding] = collectFindings([], [marker(7)]);
+    if (!finding) throw new Error("fixture has no finding");
+    const body = issueBody(finding, nextState(finding, null, context.date), context);
+    expect(
+      issueFingerprint({ title: "Document operations: formatting differs after insertion", body }),
+    ).toBe(finding.record.marker.fingerprint);
+    expect(issueFingerprint({ title: issueTitle(finding), body: null })).toBe(
+      finding.record.marker.fingerprint,
+    );
+    expect(issueFingerprint({ title: "Other issue", body: null })).toBeNull();
   });
 
   test("a recurrence updates the count and seeds kept in the body", () => {
