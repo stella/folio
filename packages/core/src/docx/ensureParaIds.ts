@@ -640,7 +640,11 @@ const ensureParaIdsInternal = async (
     }
     assigned += scan.assigned;
     deduplicated += scan.deduplicated;
-    mintedParaIds.push(...scan.minted);
+    // One push per id: spreading a large part's ids as arguments can exceed
+    // the engine's argument limit.
+    for (const id of scan.minted) {
+      mintedParaIds.push(id);
+    }
     updates.set(
       partPath,
       applySplices(
