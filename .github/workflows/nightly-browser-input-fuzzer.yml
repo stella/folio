@@ -61,7 +61,7 @@ jobs:
         env:
           CI: "true"
           FOLIO_FUZZ_LANE: "nightly"
-          FOLIO_FUZZ_SEEDS: ${{ github.run_number }}
+          FOLIO_FUZZ_SEEDS: "11,29,${{ github.run_number }}"
           FOLIO_FUZZ_RUNS: "10"
         run: |
           set -o pipefail
@@ -120,6 +120,9 @@ jobs:
           --sha "$GITHUB_SHA" --source nightly-browser-input
 
   interleaving-report:
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
     name: File AI and human revision interleaving findings
     needs: browser-input-fuzzer
     if: always() && needs.browser-input-fuzzer.outputs.interleaving_findings == 'true'
