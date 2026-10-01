@@ -27,6 +27,7 @@ export const SELECTION_TYPES = [
   "cross-paragraph",
   "whole-document",
   "cell-selection",
+  "node-selection",
   "none",
 ] as const;
 export type SelectionType = (typeof SELECTION_TYPES)[number];
@@ -126,6 +127,7 @@ export const shapeFeatureSignature = (features: readonly string[]): DocumentFeat
 
 export const placementSelection = (placement: string, isCellSelection = false): SelectionType => {
   if (isCellSelection) return "cell-selection";
+  if (placement === "node") return "node-selection";
   if (placement.startsWith("caret-")) return "caret";
   if (placement === "word" || placement === "paragraph") return "paragraph-range";
   if (placement === "cross-paragraph") return "cross-paragraph";

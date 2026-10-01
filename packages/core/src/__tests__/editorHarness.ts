@@ -13,7 +13,12 @@
  */
 
 import type { Node as PMNode, Slice } from "prosemirror-model";
-import { AllSelection, EditorState as PMEditorState, TextSelection } from "prosemirror-state";
+import {
+  AllSelection,
+  EditorState as PMEditorState,
+  NodeSelection,
+  TextSelection,
+} from "prosemirror-state";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
@@ -330,6 +335,7 @@ export type SelectionPlacement =
   | "word"
   | "paragraph"
   | "cross-paragraph"
+  | "node"
   | "document";
 
 export const SELECTION_PLACEMENTS: readonly SelectionPlacement[] = [
@@ -339,6 +345,7 @@ export const SELECTION_PLACEMENTS: readonly SelectionPlacement[] = [
   "word",
   "paragraph",
   "cross-paragraph",
+  "node",
   "document",
 ];
 
@@ -365,6 +372,17 @@ export const placeSelection = (
       ),
     );
   switch (placement) {
+    case "node": {
+      let position: number | undefined;
+      target.node.descendants((node, offset) => {
+        if (position !== undefined) return false;
+        if (node.isAtom && NodeSelection.isSelectable(node)) position = start + offset;
+        return !node.isAtom;
+      });
+      return position === undefined
+        ? null
+        : state.apply(state.tr.setSelection(NodeSelection.create(state.doc, position)));
+    }
     case "caret-start": {
       return create(start, start);
     }
