@@ -67,10 +67,17 @@ export const readToolInput = ({
   const unknown: ToolInputIssue[] = [];
   for (const [key, entry] of Object.entries(value ?? {})) {
     if (entry === undefined) continue;
-    if (!(key in properties)) {
+    // Own properties only: `toString` or `__proto__` is not a parameter.
+    if (!Object.hasOwn(properties, key)) {
       unknown.push({ path: key, message: `Unknown parameter: ${key}` });
     } else if (entry !== null || required.includes(key)) {
-      input[key] = entry;
+      // Defined, not assigned, so no key can reach the object's prototype.
+      Object.defineProperty(input, key, {
+        value: entry,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
   }
   if (unknown.length > 0) {

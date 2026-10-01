@@ -233,6 +233,26 @@ describe("capability tools", () => {
     expect(second.body["items"]).toEqual([{ id: "explode", summary: "Throw.", access: "read" }]);
   });
 
+  test("pages ids in one ordinal order, whatever their case, digits or underscores", async () => {
+    const names = ["b_tool", "B2", "a10", "a9", "A_x", "item", "Item_2", "_z"];
+    const mixed = createToolSurface({ tools: names.map((name) => ({ ...STATS, name })) });
+    const seen: string[] = [];
+    let cursor: unknown;
+    for (let page = 0; page <= names.length; page += 1) {
+      const result = await mixed.callTool(
+        CAPABILITY_TOOL_NAMES.list,
+        { limit: 3, ...(typeof cursor === "string" && { cursor }) },
+        { calls: [] },
+      );
+      const body = payload(result);
+      seen.push(...(body["items"] as { id: string }[]).map(({ id }) => id));
+      cursor = body["nextCursor"];
+      if (cursor === null) break;
+    }
+
+    expect(seen).toEqual(names.toSorted());
+  });
+
   test("its own arguments are read strictly", async () => {
     const typo = await call(CAPABILITY_TOOL_NAMES.list, { domian: "items" });
     const stringy = await call(CAPABILITY_TOOL_NAMES.invoke, {
@@ -325,6 +345,26 @@ describe("calling a tool", () => {
     const { calls } = await call("archive_item", { id: "a", mode: null, force: "true" });
 
     expect(calls).toEqual([{ name: "archive_item", args: { id: "a", force: "true" } }]);
+  });
+
+  test("refuses inherited names such as toString and __proto__ as parameters", async () => {
+    // JSON.parse makes `__proto__` an own key, as a client's arguments would.
+    const args: unknown = JSON.parse('{"query":"x","toString":"y","__proto__":{"polluted":true}}');
+    const tool = await call("search", args);
+    const meta = await call(
+      CAPABILITY_TOOL_NAMES.describe,
+      JSON.parse('{"capability":"search","__proto__":{"detail":"full"},"constructor":1}'),
+    );
+
+    expect(tool.result.isError).toBe(true);
+    expect(tool.body).toMatchObject({
+      error: { issues: [{ path: "toString" }, { path: "__proto__" }] },
+    });
+    expect(tool.calls).toEqual([]);
+    expect(meta.body).toMatchObject({
+      error: { issues: [{ path: "__proto__" }, { path: "constructor" }] },
+    });
+    expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
 
   test("refuses unknown and missing arguments without running", async () => {

@@ -127,6 +127,15 @@ const parameterOutline = (schema: JsonSchema): Record<string, string> => {
   );
 };
 
+/**
+ * Ordinal (code unit) order: the one order both the listing and its cursor
+ * use, so a page never skips or repeats an id whatever its case or symbols.
+ */
+const compareIds = (a: string, b: string): number => {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+};
+
 const encodeCursor = (id: string): string => Buffer.from(id, "utf8").toString("base64url");
 
 const decodeCursor = (cursor: string): string | null => {
@@ -163,7 +172,7 @@ const readMetaArgs = (
   const args: Record<string, unknown> = {};
   const issues: { path: string; message: string }[] = [];
   for (const [key, entry] of Object.entries(value ?? {})) {
-    const property = schema.properties[key];
+    const property = Object.hasOwn(schema.properties, key) ? schema.properties[key] : undefined;
     if (property === undefined) {
       issues.push({ path: key, message: `Unknown parameter: ${key}` });
       continue;
@@ -212,7 +221,7 @@ export const createToolSurface = <Context>({
   }
   const lazy = tools
     .filter((tool) => tool.direct === undefined)
-    .toSorted((a, b) => a.name.localeCompare(b.name));
+    .toSorted((a, b) => compareIds(a.name, b.name));
   const names = [...byName.keys()];
 
   const unknownCapability = (id: string): ToolOutcome =>
@@ -271,7 +280,7 @@ export const createToolSurface = <Context>({
       (tool) =>
         (domain === undefined || tool.domain === domain) &&
         (access === "all" || tool.access === (access as ToolAccess)) &&
-        (after === undefined || tool.name > after),
+        (after === undefined || compareIds(tool.name, after) > 0),
     );
     const page = matching.slice(0, limit);
     const last = page.at(-1);
