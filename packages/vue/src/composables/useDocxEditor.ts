@@ -1305,6 +1305,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
+    const savedView = editorView.value;
+    const savedState = savedView?.state;
     const result = await serializeCurrentDocx({
       mode:
         saveOptions?.selective === false
@@ -1320,10 +1322,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // refresh the story managers, and clear the document dirty signal only
     // after serialization succeeds. The ref API owns comment-dirty reset and
     // the host's onSave callback.
-    docModel.value = result.document;
-    headerFooterManager.sync();
-    noteEditorManager.sync();
-    isDirty.value = false;
+    if (editorView.value === savedView && savedView?.state.doc === savedState?.doc) {
+      docModel.value = result.document;
+      headerFooterManager.sync();
+      noteEditorManager.sync();
+      isDirty.value = false;
+    }
 
     return new Blob([result.buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

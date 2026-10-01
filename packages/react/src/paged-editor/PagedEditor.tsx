@@ -5654,20 +5654,30 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return historyUndo(target.view.state, target.view.dispatch);
+          return target.type === "body"
+            ? (hiddenPMRef.current?.undo() ?? false)
+            : historyUndo(target.view.state, target.view.dispatch);
         },
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return historyRedo(target.view.state, target.view.dispatch);
+          return target.type === "body"
+            ? (hiddenPMRef.current?.redo() ?? false)
+            : historyRedo(target.view.state, target.view.dispatch);
         },
         canUndo() {
           const target = getActiveEditorStory();
-          return target.type === "none" ? false : historyUndo(target.view.state);
+          if (target.type === "none") return false;
+          return target.type === "body"
+            ? (hiddenPMRef.current?.canUndo() ?? false)
+            : historyUndo(target.view.state);
         },
         canRedo() {
           const target = getActiveEditorStory();
-          return target.type === "none" ? false : historyRedo(target.view.state);
+          if (target.type === "none") return false;
+          return target.type === "body"
+            ? (hiddenPMRef.current?.canRedo() ?? false)
+            : historyRedo(target.view.state);
         },
         setSelection(anchor: number, head?: number) {
           folioEditor.setSelection(anchor, head);

@@ -22,7 +22,7 @@
       :title="t('undoShortcut')"
       :aria-label="t('undo')"
       :disabled="!canUndo"
-      @mousedown.prevent="execCommand('undo')"
+      @mousedown.prevent="undo"
     >
       <MaterialSymbol name="undo" />
     </button>
@@ -30,7 +30,7 @@
       :title="t('redoShortcut')"
       :aria-label="t('redo')"
       :disabled="!canRedo"
-      @mousedown.prevent="execCommand('redo')"
+      @mousedown.prevent="redo"
     >
       <MaterialSymbol name="redo" />
     </button>
@@ -567,6 +567,11 @@ const props = withDefaults(
     view?: EditorView | null;
     getCommands?: () => Record<string, CommandFactory>;
     stateTick?: number;
+    /** History availability and commands from the owning editor session. */
+    canUndo?: boolean;
+    canRedo?: boolean;
+    onUndo?: () => void;
+    onRedo?: () => void;
     zoomPercent?: number;
     isMinZoom?: boolean;
     isMaxZoom?: boolean;
@@ -747,17 +752,16 @@ const { resolvedParagraphStyles, currentStyleLabel } = useParagraphStyleOptions(
   t,
 });
 
-// Mirror React Toolbar's `canUndo` / `canRedo` props (Toolbar.tsx:81-82).
-// React threads them in from a parent hook; Vue computes them straight from the
-// prosemirror-history plugin state via undoDepth/redoDepth so the buttons grey
-// out the same way without needing extra plumbing in DocxEditor.
+// Standalone toolbars use PM history; an owning session supplies its journal.
 const canUndo = computed(() => {
   void props.stateTick;
+  if (props.canUndo !== undefined) return props.canUndo;
   const v = props.view;
   return v ? undoDepth(v.state) > 0 : false;
 });
 const canRedo = computed(() => {
   void props.stateTick;
+  if (props.canRedo !== undefined) return props.canRedo;
   const v = props.view;
   return v ? redoDepth(v.state) > 0 : false;
 });
@@ -826,6 +830,22 @@ const fontGroups = computed(() => [
 // =========================================================================
 // Command helpers
 // =========================================================================
+
+function undo(): void {
+  if (props.onUndo) {
+    props.onUndo();
+    return;
+  }
+  execCommand("undo");
+}
+
+function redo(): void {
+  if (props.onRedo) {
+    props.onRedo();
+    return;
+  }
+  execCommand("redo");
+}
 
 function execCommand(name: string, ...args: unknown[]) {
   const v = props.view;

@@ -2857,6 +2857,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       let savedBuffer: ArrayBuffer | null = null;
 
       try {
+        const view = pagedEditorRef.current?.getView();
+        const editorState = view?.state;
+        const baselineBuffer = originalBufferRef.current;
         // Build current document from PM editor state. A note goes with its
         // reference: one nothing refers to any more is not saved.
         const current = buildCurrentDocument();
@@ -2875,12 +2878,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const useSelectiveForSave =
           flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
         const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
-        const view = pagedEditorRef.current?.getView();
-        const baselineBuffer = originalBufferRef.current;
         let selectiveBuffer: ArrayBuffer | null = null;
 
-        if (shouldAttemptSelective && view && baselineBuffer) {
-          const editorState = view.state;
+        if (shouldAttemptSelective && editorState && baselineBuffer) {
           const attemptSelectiveSave = await loadAttemptSelectiveSave();
           selectiveBuffer = await attemptSelectiveSave(doc, baselineBuffer, {
             changedParaIds: getChangedParagraphIds(editorState),
@@ -2899,9 +2899,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
           const repack = () => repackDocx(repackSourceDoc);
-          return view
+          return editorState
             ? repackWithEditorSectionRemovals({
-                state: view.state,
+                state: editorState,
                 document: repackSourceDoc,
                 repack,
               })
@@ -2934,7 +2934,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         // Clear change tracker after successful save
-        if (view) {
+        if (
+          view &&
+          pagedEditorRef.current?.getView() === view &&
+          view.state.doc === editorState?.doc
+        ) {
           originalBufferRef.current = buffer;
           view.dispatch(clearTrackedChanges(view.state));
         }
