@@ -39,6 +39,9 @@ jobs:
             /etc/apt/sources.list.d/microsoft-prod.sources
           bunx playwright install --with-deps chromium
 
+      - name: Run canonical session property flows
+        run: bun test test/canonical-session-fuzz.test.ts
+
       - name: Run nightly browser fuzzer
         id: fuzz
         continue-on-error: true

@@ -31,6 +31,7 @@ import type {
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
 import { CollaborationApp } from "./CollaborationApp";
+import { recordCanonicalFuzzError } from "../../../tests/parity/canonicalFuzzErrors";
 import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 import {
   IDLE_PLAYGROUND_STATUS,
@@ -806,6 +807,7 @@ export function App() {
   }, [fileName]);
 
   const handleError = useCallback((error: Error) => {
+    recordCanonicalFuzzError(error);
     setStatus({ type: PLAYGROUND_STATUS_TYPE.ERROR, message: error.message });
   }, []);
 
