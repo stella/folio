@@ -236,7 +236,6 @@ import {
   applyCommentMarkRange,
   collectCommentIdsFromSources,
   countOpenCommentThreads,
-  createComment,
   findSelectionYPosition,
   getCommentAuthorKey,
   getFallbackCommentYPosition,
@@ -983,6 +982,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   const {
     comments,
+    createComment,
     setComments,
     commentsRef,
     commentsDirtyRef,
@@ -3628,6 +3628,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       loadBuffer,
       updateComments,
       replaceComments,
+      createComment,
       commentsRef,
       commentsDirtyRef,
       getActiveEditorStory,
@@ -4028,7 +4029,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     (id: number, text: string) => {
       updateComments((previous) => [...previous, createComment(text, author, id)]);
     },
-    [author, updateComments],
+    [author, createComment, updateComments],
   );
   const handleAddComment = useCallback(
     (addText: string) => {
@@ -4067,6 +4068,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [
       author,
       commentSelectionRange,
+      createComment,
       setActiveCommentId,
       setAddCommentYPosition,
       setCommentSelectionRange,
@@ -4080,7 +4082,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     (revisionId: number, text: string) => {
       updateComments((previous) => [...previous, createComment(text, author, revisionId)]);
     },
-    [author, updateComments],
+    [author, createComment, updateComments],
   );
   const handleCancelAddComment = useCallback(() => {
     const view = pagedEditorRef.current?.getView();

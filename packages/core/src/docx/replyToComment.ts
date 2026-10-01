@@ -9,6 +9,7 @@
  * {@link applyReplyThreadMarkers}, so no anchor work is needed here.
  */
 
+import { allocateCommentId, seedCommentIdAbove } from "../prosemirror/commentIdAllocator";
 import type { Comment, Document, Paragraph } from "../types/document";
 import { generateHexId } from "../utils/hexId";
 
@@ -18,16 +19,6 @@ export type CreateCommentReplyInput = {
   initials?: string;
   /** ISO date; defaults to now. */
   date?: string;
-};
-
-const nextCommentId = (comments: readonly Comment[]): number => {
-  let max = 0;
-  for (const comment of comments) {
-    if (comment.id > max) {
-      max = comment.id;
-    }
-  }
-  return max + 1;
 };
 
 const usedParaIds = (comments: readonly Comment[]): Set<string> => {
@@ -83,6 +74,9 @@ export const createReply = (
     return null;
   }
 
+  for (const { id } of comments) {
+    seedCommentIdAbove(id);
+  }
   const used = usedParaIds(comments);
   // The root's last paragraph must carry a paraId so the reply can reference it
   // via `w15:paraIdParent`; a doc authored without paraIds gets one now.
@@ -98,7 +92,7 @@ export const createReply = (
   };
 
   return {
-    id: nextCommentId(comments),
+    id: allocateCommentId(),
     author: input.author,
     date: input.date ?? new Date().toISOString(),
     parentId: threadRootId,

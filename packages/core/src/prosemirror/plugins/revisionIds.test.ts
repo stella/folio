@@ -12,7 +12,15 @@ import { Schema } from "prosemirror-model";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
 
-import { mintRevisionId, seedRevisionIdsAbove, seedRevisionIdsFromDoc } from "./revisionIds";
+import {
+  claimRevisionIds,
+  mintRevisionId,
+  nextRevisionId,
+  revisionIdSeedAbove,
+  RevisionIdAllocationError,
+  seedRevisionIdsAbove,
+  seedRevisionIdsFromDoc,
+} from "./revisionIds";
 
 const schema = new Schema({
   nodes: {
@@ -26,11 +34,28 @@ const schema = new Schema({
     text: { group: "inline" },
   },
   marks: {
+    runPropertyChange: {
+      attrs: { changes: { default: [] } },
+      toDOM: () => ["span", 0],
+    },
     insertion: {
       attrs: { revisionId: { default: 0 }, author: { default: "" }, date: { default: "" } },
       toDOM: () => ["ins", 0],
     },
   },
+});
+
+test("deterministic revision seeds prefer valid ids above loaded values and skip occupied rollover intervals", () => {
+  expect(revisionIdSeedAbove([])).toBe(1);
+  expect(revisionIdSeedAbove([0, 2, 40])).toBe(41);
+  expect(revisionIdSeedAbove([Number.NaN, -1, MAX_REVISION_ID + 1, 8])).toBe(9);
+  const occupied = [0, 1, 3, MAX_REVISION_ID];
+  const seed = revisionIdSeedAbove(occupied);
+  expect(seed).toBe(4);
+  expect(revisionIdSeedAbove(occupied.toReversed())).toBe(seed);
+  mintRevisionId();
+  expect(revisionIdSeedAbove(occupied)).toBe(seed);
+  expect(seed).toBeLessThanOrEqual(MAX_REVISION_ID);
 });
 
 describe("mintRevisionId", () => {
@@ -116,13 +141,42 @@ describe("seedRevisionIdsFromDoc", () => {
   });
 });
 
-// MUST run last in this file: these drive the module counter to the very top of
-// the range, so any later test in this file that expects a specific low value
-// would see a wrapped counter.
+test("reserves every loaded run-property revision, including on rollover", () => {
+  const changes = [
+    { info: { id: 7_000_000, author: "Author" } },
+    { info: { id: MAX_REVISION_ID, author: "Author" } },
+  ];
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [
+      schema.text("x", [schema.marks["runPropertyChange"]!.create({ changes })]),
+    ]),
+  ]);
+  seedRevisionIdsFromDoc(doc);
+  const id = mintRevisionId();
+  expect(id).not.toBe(7_000_000);
+  expect(id).not.toBe(MAX_REVISION_ID);
+  expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+});
+
 describe("range top boundary", () => {
-  test("seeding at the max id does not push the counter past the range", () => {
+  test("wrap skips loaded and previously issued ids", () => {
+    const issued = mintRevisionId();
     seedRevisionIdsAbove(MAX_REVISION_ID - 1);
+    const boundaryId = mintRevisionId();
+    expect(boundaryId).toBeLessThanOrEqual(MAX_REVISION_ID);
+    expect(boundaryId).not.toBe(issued);
     seedRevisionIdsAbove(MAX_REVISION_ID);
-    expect(mintRevisionId()).toBe(MAX_REVISION_ID);
+    const wrapped = mintRevisionId();
+    expect(wrapped).toBeGreaterThan(0);
+    expect(wrapped).not.toBe(issued);
+    expect(wrapped).not.toBe(MAX_REVISION_ID);
+  });
+
+  test("rejects an overflowing batch before reserving it", () => {
+    const before = nextRevisionId();
+    expect(() => claimRevisionIds(MAX_REVISION_ID, MAX_REVISION_ID + 2)).toThrow(
+      RevisionIdAllocationError,
+    );
+    expect(nextRevisionId()).toBe(before);
   });
 });
