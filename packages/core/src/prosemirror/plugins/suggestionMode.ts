@@ -1309,12 +1309,21 @@ export const deleteSelectionAsSuggestion = (
  * committed range safely. `markRangeAsInserted` skips nodes that already carry a
  * tracked-change mark, so this is idempotent. eigenpal/docx-editor#938.
  */
-function markComposedAsInsertion(
-  view: EditorView,
-  from: number,
-  pluginState: SuggestionModeState,
-  replaced: Slice | null,
-): void {
+type MarkComposedAsInsertionOptions = {
+  view: EditorView;
+  from: number;
+  pluginState: SuggestionModeState;
+  replaced: Slice | null;
+  compositionId: number | null;
+};
+
+function markComposedAsInsertion({
+  view,
+  from,
+  pluginState,
+  replaced,
+  compositionId,
+}: MarkComposedAsInsertionOptions): void {
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
   if (!insertionType || !deletionType) {
@@ -1328,6 +1337,9 @@ function markComposedAsInsertion(
 
   const tr = view.state.tr;
   tr.setMeta(SUGGESTION_META, true);
+  // Keep the deferred annotation in its native composition's history event.
+  // Mark-only steps have no adjacency range for history to infer this from.
+  if (compositionId !== null) tr.setMeta("composition", compositionId);
   if (replaced) {
     // ProseMirror lets the browser own the composing DOM. Reinsert the original
     // selection only after that DOM has settled; changing it at compositionstart
@@ -1471,6 +1483,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
   let composing = false;
   let compositionFrom: number | null = null;
   let compositionReplaced: Slice | null = null;
+  let compositionId: number | null = null;
 
   return new Plugin({
     key: suggestionModeKey,
@@ -1484,6 +1497,10 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         return { active: initialActive, author };
       },
       apply(tr, state): SuggestionModeState {
+        const nativeCompositionId = tr.getMeta("composition");
+        if (composing && tr.docChanged && typeof nativeCompositionId === "number") {
+          compositionId = nativeCompositionId;
+        }
         const meta = tr.getMeta(suggestionModeKey);
         if (meta) {
           return { ...state, ...meta };
@@ -1521,6 +1538,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
             return false;
           }
           composing = true;
+          compositionId = null;
           const { from, to } = view.state.selection;
           compositionFrom = from;
           compositionReplaced = from === to ? null : view.state.doc.slice(from, to);
@@ -1539,6 +1557,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
           compositionReplaced = null;
           if (!pluginState?.active || from == null) {
             composing = false;
+            compositionId = null;
             return false;
           }
           queueMicrotask(() => {
@@ -1546,11 +1565,19 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
               // Re-read state: suggestion mode may have been toggled off (or the
               // author changed) between scheduling and running this callback.
               const current = suggestionModeKey.getState(view.state);
+              const nativeCompositionId = compositionId;
               if (current?.active) {
-                markComposedAsInsertion(view, from, current, replaced);
+                markComposedAsInsertion({
+                  view,
+                  from,
+                  pluginState: current,
+                  replaced,
+                  compositionId: nativeCompositionId,
+                });
               }
             } finally {
               composing = false;
+              compositionId = null;
             }
           });
           return false;
