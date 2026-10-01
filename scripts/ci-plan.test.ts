@@ -75,23 +75,38 @@ describe("CI plan", () => {
     expect(Object.keys(triggers)).toContain("push");
   });
 
-  for (const file of ["oracle-mutation-check.yml", "vscode-extension.yml"]) {
-    test(`${file} runs heavy jobs only for merge groups`, () => {
+  const heavyWorkflowPolicies = [
+    {
+      file: "oracle-mutation-check.yml",
+      triggers: ["merge_group", "pull_request", "workflow_dispatch"],
+      condition: "github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch'",
+    },
+    {
+      file: "vscode-extension.yml",
+      triggers: ["merge_group", "pull_request"],
+      condition: "github.event_name == 'merge_group'",
+    },
+  ] as const;
+  for (const { file, triggers: expectedTriggers, condition } of heavyWorkflowPolicies) {
+    test(`${file} excludes heavy jobs from pull requests`, () => {
       const workflow = readWorkflow(file);
       const triggers = workflow["on"];
       const heavyJobs = workflow["jobs"];
       if (!isRecord(triggers) || !isRecord(heavyJobs)) {
         throw new Error(`${file} is missing triggers or jobs`);
       }
-      expect(Object.keys(triggers).toSorted()).toEqual(["merge_group", "pull_request"]);
+      expect(Object.keys(triggers).toSorted()).toEqual(expectedTriggers);
       expect(triggers["pull_request"]).toEqual({
         types: ["opened", "synchronize", "reopened", "ready_for_review"],
       });
       expect(triggers["merge_group"]).toEqual({ types: ["checks_requested"] });
+      if (file === "oracle-mutation-check.yml") {
+        expect(triggers["workflow_dispatch"]).toBeNull();
+      }
       expect(Object.keys(heavyJobs).length).toBeGreaterThan(0);
       for (const job of Object.values(heavyJobs)) {
         if (!isRecord(job)) throw new Error(`${file} contains an invalid job`);
-        expect(job["if"]).toBe("github.event_name == 'merge_group'");
+        expect(job["if"]).toBe(condition);
       }
     });
   }
