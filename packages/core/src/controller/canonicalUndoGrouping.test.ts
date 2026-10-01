@@ -17,7 +17,7 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(120_000));
 
-const seed = (): Document => ({
+const seed = (runLength = 50): Document => ({
   package: {
     document: {
       content: [
@@ -29,12 +29,12 @@ const seed = (): Document => ({
             {
               type: "run",
               formatting: { bold: true },
-              content: [{ type: "text", text: "a".repeat(50) }],
+              content: [{ type: "text", text: "a".repeat(runLength) }],
             },
             {
               type: "run",
               formatting: { italic: true },
-              content: [{ type: "text", text: "b".repeat(50) }],
+              content: [{ type: "text", text: "b".repeat(runLength) }],
             },
           ],
         },
@@ -71,144 +71,188 @@ describe("canonical semantic undo partition", () => {
       fc.asyncProperty(
         fc.array(actionArbitrary, { minLength: 20, maxLength: 40 }),
         async (generated) => {
-          const session = createCanonicalSession(seed()).unwrap();
-          let state = EditorState.create({ schema, doc: session.projection.doc });
-          const initial = session.document;
-          const groups: {
-            before: Document;
-            after: Document;
-            preSelection: ReturnType<typeof state.selection.toJSON>;
-            postSelection: ReturnType<typeof state.selection.toJSON>;
-          }[] = [];
-          let previous:
-            | { semantic: CanonicalInputSemantic; eligible: boolean; time: number; caret: number }
-            | undefined;
-          let time = 1_000;
-          // Every declared intent is exercised in each trace, followed by arbitrary transitions.
-          const actions = [
-            ...semantics.map((semantic) => ({
-              semantic,
-              delay: 1,
-              selection: "keep",
-              offset: 0,
-              text: "X",
-            })),
-            ...generated,
-          ];
-          const exercised = new Set<CanonicalInputSemantic>();
-          for (const action of actions) {
-            exercised.add(action.semantic);
-            time += action.delay;
-            const paragraph =
-              session.projection.paragraph("12345678") ?? panic("Missing test paragraph");
-            const gaps = [paragraph.start];
-            let position = paragraph.start;
-            for (const unit of paragraph.text) {
-              position += unit.length;
-              gaps.push(position);
-            }
-            const selected = action.selection !== "keep";
-            let caret = state.selection.head;
-            if (action.selection === "move" || action.selection === "range") {
-              caret = gaps.at(action.offset % gaps.length) ?? panic("Missing generated caret");
-              const head =
-                action.selection === "range"
-                  ? (gaps.at((action.offset + 1) % gaps.length) ?? panic("Missing generated head"))
-                  : caret;
-              state = state.apply(
-                state.tr.setSelection(TextSelection.create(state.doc, caret, head)),
-              );
-            }
-            if (action.selection === "roundtrip") {
-              const previousCaret = state.selection.head;
-              const away =
-                gaps.find((gap) => gap !== previousCaret) ?? panic("Missing roundtrip gap");
-              state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, away)));
-              state = state.apply(
-                state.tr.setSelection(TextSelection.create(state.doc, previousCaret)),
-              );
-            }
-            if (selected) session.breakUndoGroup();
-            const preSelection = state.selection.toJSON();
-            const before = session.document;
-            let from = state.selection.from;
-            let to = state.selection.to;
-            const text =
-              action.semantic === "deleteBackward" || action.semantic === "deleteForward"
-                ? ""
-                : action.text;
-            if (text.length === 0 && state.selection.empty) {
-              const index = gaps.indexOf(caret);
-              if (action.semantic === "deleteBackward") {
-                if (index === 0) {
-                  caret = gaps.at(1) ?? panic("Missing backward caret");
-                  state = state.apply(
-                    state.tr.setSelection(TextSelection.create(state.doc, caret)),
-                  );
-                }
-                to = caret;
-                from =
-                  gaps.at(Math.max(0, gaps.indexOf(caret) - 1)) ?? panic("Missing backward gap");
-              } else {
-                if (index === gaps.length - 1) {
-                  caret = gaps.at(-2) ?? panic("Missing forward caret");
-                  state = state.apply(
-                    state.tr.setSelection(TextSelection.create(state.doc, caret)),
-                  );
-                }
-                from = caret;
-                to = gaps.at(gaps.indexOf(caret) + 1) ?? panic("Missing forward gap");
+          // Exercise the same trace from empty, short and multi-run paragraphs.
+          for (const runLength of [0, 1, 50]) {
+            const session = createCanonicalSession(seed(runLength)).unwrap();
+            let state = EditorState.create({ schema, doc: session.projection.doc });
+            const initial = session.document;
+            const groups: {
+              before: Document;
+              after: Document;
+              preSelection: ReturnType<typeof state.selection.toJSON>;
+              postSelection: ReturnType<typeof state.selection.toJSON>;
+            }[] = [];
+            let previous:
+              | { semantic: CanonicalInputSemantic; eligible: boolean; time: number; caret: number }
+              | undefined;
+            let time = 1_000;
+            // Every declared intent is exercised in each trace, followed by arbitrary transitions.
+            const actions = [
+              ...(
+                [
+                  "deleteBackward",
+                  "deleteForward",
+                  "typing",
+                  "deleteBackward",
+                  "deleteForward",
+                ] as const
+              ).map((semantic) => ({
+                semantic,
+                delay: 1,
+                selection: "roundtrip",
+                offset: 0,
+                text: "X",
+              })),
+              ...semantics.map((semantic) => ({
+                semantic,
+                delay: 1,
+                selection: "keep",
+                offset: 0,
+                text: "X",
+              })),
+              ...generated,
+            ];
+            const exercised = new Set<CanonicalInputSemantic>();
+            for (const action of actions) {
+              exercised.add(action.semantic);
+              time += action.delay;
+              const paragraph =
+                session.projection.paragraph("12345678") ?? panic("Missing test paragraph");
+              const gaps = [paragraph.start];
+              let position = paragraph.start;
+              for (const unit of paragraph.text) {
+                position += unit.length;
+                gaps.push(position);
               }
+              const selected =
+                action.selection !== "keep" &&
+                (action.selection !== "roundtrip" || gaps.length > 1);
+              let caret = state.selection.head;
+              if (action.selection === "move" || action.selection === "range") {
+                caret = gaps.at(action.offset % gaps.length) ?? panic("Missing generated caret");
+                const head =
+                  action.selection === "range"
+                    ? (gaps.at((action.offset + 1) % gaps.length) ??
+                      panic("Missing generated head"))
+                    : caret;
+                state = state.apply(
+                  state.tr.setSelection(TextSelection.create(state.doc, caret, head)),
+                );
+              }
+              if (action.selection === "roundtrip" && gaps.length > 1) {
+                const previousCaret = state.selection.head;
+                const away =
+                  gaps.find((gap) => gap !== previousCaret) ?? panic("Missing roundtrip gap");
+                state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, away)));
+                state = state.apply(
+                  state.tr.setSelection(TextSelection.create(state.doc, previousCaret)),
+                );
+              }
+              if (selected) session.breakUndoGroup();
+              const preSelection = state.selection.toJSON();
+              const before = session.document;
+              let from = state.selection.from;
+              let to = state.selection.to;
+              const text =
+                action.semantic === "deleteBackward" || action.semantic === "deleteForward"
+                  ? ""
+                  : action.text;
+              if (text.length === 0 && gaps.length === 1) {
+                const version = session.version;
+                const projection = session.projection;
+                const canUndo = session.canUndo;
+                const canRedo = session.canRedo;
+                const refused = session.prepareReplace(state, {
+                  from,
+                  to,
+                  text,
+                  semantic: action.semantic,
+                  time,
+                });
+                if (refused.isOk()) panic("Empty deletion unexpectedly staged a commit.");
+                expect(refused.error.message).toBe("The input makes no text change.");
+                expect(session.document).toStrictEqual(before);
+                expect(session.projection).toBe(projection);
+                expect(session.version).toBe(version);
+                expect(session.canUndo).toBe(canUndo);
+                expect(session.canRedo).toBe(canRedo);
+                expect(state.selection.toJSON()).toEqual(preSelection);
+                if (selected) previous = undefined;
+                continue;
+              }
+              if (text.length === 0 && state.selection.empty) {
+                const index = gaps.indexOf(caret);
+                if (action.semantic === "deleteBackward") {
+                  if (index === 0) {
+                    caret = gaps.at(1) ?? panic("Missing backward caret");
+                    state = state.apply(
+                      state.tr.setSelection(TextSelection.create(state.doc, caret)),
+                    );
+                  }
+                  to = caret;
+                  from =
+                    gaps.at(Math.max(0, gaps.indexOf(caret) - 1)) ?? panic("Missing backward gap");
+                } else {
+                  if (index === gaps.length - 1) {
+                    caret = gaps.at(-2) ?? panic("Missing forward caret");
+                    state = state.apply(
+                      state.tr.setSelection(TextSelection.create(state.doc, caret)),
+                    );
+                  }
+                  from = caret;
+                  to = gaps.at(gaps.indexOf(caret) + 1) ?? panic("Missing forward gap");
+                }
+              }
+              const actualPreSelection = state.selection.toJSON();
+              const eligible =
+                state.selection.empty &&
+                (action.semantic === "typing" ||
+                  action.semantic === "deleteBackward" ||
+                  action.semantic === "deleteForward");
+              const joins =
+                previous !== undefined &&
+                eligible &&
+                previous.eligible &&
+                previous.semantic === action.semantic &&
+                !selected &&
+                previous.caret === state.selection.head &&
+                time >= previous.time &&
+                time - previous.time <= 500;
+              state = accept(
+                session,
+                state,
+                session
+                  .prepareReplace(state, { from, to, text, semantic: action.semantic, time })
+                  .unwrap(),
+              );
+              const after = session.document;
+              const postSelection = state.selection.toJSON();
+              if (joins) {
+                const group = groups.at(-1) ?? panic("Missing expected group");
+                group.after = after;
+                group.postSelection = postSelection;
+              } else {
+                groups.push({ before, after, preSelection: actualPreSelection, postSelection });
+              }
+              previous = { semantic: action.semantic, eligible, time, caret: state.selection.head };
+              // Range direction is part of the selection oracle, not a min/max-only address.
+              if (action.selection === "range") expect(actualPreSelection).toEqual(preSelection);
             }
-            const actualPreSelection = state.selection.toJSON();
-            const eligible =
-              state.selection.empty &&
-              (action.semantic === "typing" ||
-                action.semantic === "deleteBackward" ||
-                action.semantic === "deleteForward");
-            const joins =
-              previous !== undefined &&
-              eligible &&
-              previous.eligible &&
-              previous.semantic === action.semantic &&
-              !selected &&
-              previous.caret === state.selection.head &&
-              time >= previous.time &&
-              time - previous.time <= 500;
-            state = accept(
-              session,
-              state,
-              session
-                .prepareReplace(state, { from, to, text, semantic: action.semantic, time })
-                .unwrap(),
-            );
-            const after = session.document;
-            const postSelection = state.selection.toJSON();
-            if (joins) {
-              const group = groups.at(-1) ?? panic("Missing expected group");
-              group.after = after;
-              group.postSelection = postSelection;
-            } else {
-              groups.push({ before, after, preSelection: actualPreSelection, postSelection });
+            expect([...exercised].sort()).toEqual([...semantics].sort());
+            for (const group of groups.toReversed()) {
+              state = accept(session, state, session.prepareUndo(state).unwrap());
+              expect(session.document).toStrictEqual(group.before);
+              expect(state.selection.toJSON()).toEqual(group.preSelection);
             }
-            previous = { semantic: action.semantic, eligible, time, caret: state.selection.head };
-            // Range direction is part of the selection oracle, not a min/max-only address.
-            if (action.selection === "range") expect(actualPreSelection).toEqual(preSelection);
+            expect(session.canUndo).toBe(false);
+            expect(session.document).toStrictEqual(initial);
+            for (const group of groups) {
+              state = accept(session, state, session.prepareRedo(state).unwrap());
+              expect(session.document).toStrictEqual(group.after);
+              expect(state.selection.toJSON()).toEqual(group.postSelection);
+            }
+            expect(session.canRedo).toBe(false);
           }
-          expect([...exercised].sort()).toEqual([...semantics].sort());
-          for (const group of groups.toReversed()) {
-            state = accept(session, state, session.prepareUndo(state).unwrap());
-            expect(session.document).toStrictEqual(group.before);
-            expect(state.selection.toJSON()).toEqual(group.preSelection);
-          }
-          expect(session.canUndo).toBe(false);
-          expect(session.document).toStrictEqual(initial);
-          for (const group of groups) {
-            state = accept(session, state, session.prepareRedo(state).unwrap());
-            expect(session.document).toStrictEqual(group.after);
-            expect(state.selection.toJSON()).toEqual(group.postSelection);
-          }
-          expect(session.canRedo).toBe(false);
         },
       ),
       { numRuns: 75 },
