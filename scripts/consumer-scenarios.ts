@@ -16,7 +16,8 @@
 //   --coverage-out <file>  where to write the coverage ledger summary
 //                      (default: test-results/consumer-scenarios-coverage.json)
 //   --feature-coverage-out <file>  operation × feature × selection report
-//   -- <files>         scenario files to run (default: all)
+//   [--] <files>       scenario files to run (default: all); Bun consumes a
+//                      leading `--`, so bare file names are accepted too
 //
 // Coverage: every scenario process records which operation types met which
 // stories, modes, target features and sessions (support/coverage.ts). The
@@ -117,6 +118,7 @@ const parseArgs = (argv: readonly string[]): Args => {
     else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
     else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
     else if (arg === "--") args.files.push(...argv.slice(index + 1));
+    else if (arg !== undefined && !arg.startsWith("-")) args.files.push(arg);
     else panic(`consumer-scenarios: unknown argument ${arg}`);
     if (arg === "--") break;
   }
