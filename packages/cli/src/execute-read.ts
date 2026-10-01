@@ -68,14 +68,40 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const blockIdOf = (block: unknown): string | undefined =>
   isRecord(block) && typeof block["blockId"] === "string" ? block["blockId"] : undefined;
 
-/** Label each block of a read with where its id comes from. */
-const labelBlocks = (blocks: readonly unknown[], sources: BlockIdSources): unknown[] =>
+/** Where a block inside a table sits: zero-based table, row, and cell indexes. */
+export type FolioTableCell = { table: number; row: number; cell: number };
+
+type TableCells = ReadonlyMap<string, FolioTableCell>;
+
+/** The table cell of every block that sits in one. */
+export const tableCells = ({ reviewer }: OpenedDocument): TableCells =>
+  new Map(
+    reviewer
+      .snapshot()
+      .blocks.flatMap(({ id, table }) =>
+        table === undefined
+          ? []
+          : [[id, { table: table.tableIndex, row: table.rowIndex, cell: table.cellIndex }]],
+      ),
+  );
+
+/** Label each block of a read with where its id comes from and, in a table, its cell. */
+const labelBlocks = (
+  blocks: readonly unknown[],
+  sources: BlockIdSources,
+  cells: TableCells = new Map(),
+): unknown[] =>
   blocks.map((block) => {
     const blockId = blockIdOf(block);
     if (blockId === undefined || !isRecord(block)) {
       return block;
     }
-    return { ...block, blockIdSource: sources.get(blockId) ?? "synthetic" };
+    const cell = cells.get(blockId);
+    return {
+      ...block,
+      blockIdSource: sources.get(blockId) ?? "synthetic",
+      ...(cell !== undefined && { tableCell: cell }),
+    };
   });
 
 type ReadCursor = { fileVersion: string; afterBlockId: string };
@@ -112,6 +138,7 @@ type ReadDocumentPage = {
 type PageReadDocumentOptions = {
   blocks: readonly unknown[];
   sources: BlockIdSources;
+  cells?: TableCells;
   fileVersion: string;
   args: Readonly<Record<string, unknown>>;
   bounds: FolioReadBounds;
@@ -130,6 +157,7 @@ const PAGE_ENVELOPE_RESERVE_BYTES = 512;
 export const pageReadDocument = ({
   blocks,
   sources,
+  cells,
   fileVersion,
   args,
   bounds,
@@ -169,7 +197,7 @@ export const pageReadDocument = ({
   }
   const limit = typeof maxBlocks === "number" ? maxBlocks : bounds.defaultMaxBlocks;
   const end = limit === null ? blocks.length : Math.min(blocks.length, start + limit);
-  const labelled = labelBlocks(blocks.slice(start, end), sources);
+  const labelled = labelBlocks(blocks.slice(start, end), sources, cells);
   const page: unknown[] = [];
   let bytes = 0;
   for (const block of labelled) {
@@ -245,6 +273,7 @@ const runAgentRead = ({
     return pageReadDocument({
       blocks: result,
       sources: blockIdSources(opened),
+      cells: tableCells(opened),
       fileVersion,
       args,
       bounds,
@@ -257,7 +286,7 @@ const runAgentRead = ({
     }
     return Result.ok({
       ...result,
-      blocks: labelBlocks(result["blocks"], blockIdSources(opened)),
+      blocks: labelBlocks(result["blocks"], blockIdSources(opened), tableCells(opened)),
     });
   }
   if (tool.agentTool === FOLIO_AGENT_TOOL_NAMES.findText) {

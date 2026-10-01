@@ -249,11 +249,30 @@ describe("capability tools", () => {
     expect(stringy.calls).toEqual([]);
   });
 
-  test("describe_capability returns the full schema and guidance of any tool", async () => {
-    const lazy = await call(CAPABILITY_TOOL_NAMES.describe, { capability: "archive_item" });
-    const direct = await call(CAPABILITY_TOOL_NAMES.describe, { capability: "search" });
+  test("describe_capability outlines any tool, and gives its full schema on request", async () => {
+    const compact = await call(CAPABILITY_TOOL_NAMES.describe, { capability: "archive_item" });
+    const lazy = await call(CAPABILITY_TOOL_NAMES.describe, {
+      capability: "archive_item",
+      detail: "full",
+    });
+    const direct = await call(CAPABILITY_TOOL_NAMES.describe, {
+      capability: "search",
+      detail: "full",
+    });
     const unknown = await call(CAPABILITY_TOOL_NAMES.describe, { capability: "archive" });
+    const badDetail = await call(CAPABILITY_TOOL_NAMES.describe, {
+      capability: "search",
+      detail: "everything",
+    });
 
+    expect(compact.body).toEqual({
+      id: "archive_item",
+      description: "Archive an item.",
+      access: "write",
+      destructive: true,
+      parameters: { id: "string (required)", mode: '"soft" | "hard"', force: "boolean" },
+      more: 'detail: "full" returns the full input schema.',
+    });
     expect(lazy.body).toEqual({
       id: "archive_item",
       description: "Archive an item.\nArchived items can be restored within 30 days.",
@@ -262,6 +281,7 @@ describe("capability tools", () => {
       inputSchema: ARCHIVE.inputSchema,
     });
     expect(direct.body["inputSchema"]).toEqual(SEARCH.inputSchema);
+    expect(badDetail.body).toMatchObject({ error: { issues: [{ path: "detail" }] } });
     expect(unknown.body).toMatchObject({
       error: { code: "not_found", retryable: false },
     });

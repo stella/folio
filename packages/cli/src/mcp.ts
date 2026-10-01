@@ -17,6 +17,10 @@ import { panic, Result } from "better-result";
 import type { Readable, Writable } from "node:stream";
 
 import { FOLIO_DOCUMENT_OPERATION_BATCH_JSON_SCHEMA } from "@stll/folio-agents/operation-schema";
+import {
+  describeSuggestChangesCapabilities,
+  SUGGEST_CHANGES_OPERATION_TYPES,
+} from "@stll/folio-agents/tools";
 import { FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE } from "@stll/folio-core/server";
 import {
   ProtocolError,
@@ -70,9 +74,12 @@ const ABOUT_URI = "folio://about";
 const OPERATIONS_SCHEMA_URI = "folio://schema/operations";
 
 const instructionsFor = (author: string | undefined): string =>
-  "Reads and edits .docx files. A read returns the fileVersion; a write needs the latest one and " +
-  "returns the next. Block ids stay valid across edits, so chain calls without re-reading. Edits " +
-  "are tracked changes. " +
+  "Reads and edits .docx files. read_document returns the fileVersion and a `[blockId] text` line " +
+  "per block; a write needs the latest fileVersion and returns the next. Block ids stay valid " +
+  "across edits, so chain calls without re-reading. Edits are tracked changes. One suggest_changes " +
+  "batch can do a whole review: replaceAll {find, replace} renames everywhere, tables included; " +
+  "addComment {comment, quote or blockId} comments alongside. A successful write is authoritative " +
+  "(fileVersion, author, applied counts): no verification read or shell check is needed. " +
   (author === undefined
     ? "No author is configured, so writes are refused. "
     : `Every change and comment is recorded under the author ${JSON.stringify(author)}. `) +
@@ -153,7 +160,7 @@ const MCP_ONLY_PROPERTIES: Readonly<Record<string, Readonly<Record<string, unkno
     formatting: {
       type: "boolean",
       description:
-        "Return each block's fields (kind, displayLabel, headingLevel, listLevel, blockTextHash, blockIdSource) instead of `[id] text` lines.",
+        "Return each block's fields (kind, displayLabel, headingLevel, listLevel, blockTextHash, blockIdSource, tableCell) instead of `[id] text` lines.",
     },
   },
 };
@@ -198,7 +205,7 @@ type DirectTool = {
 const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
   read_document: {
     summary:
-      "Read blocks as `[id] text` lines, with the fileVersion writes need. When `nextCursor` is set, pass it as `cursor` for the next page.",
+      "Read blocks as `[id] text` lines (a table row as `| [id] cell | [id] cell |`), with the fileVersion writes need. When `nextCursor` is set, pass it as `cursor` for the next page.",
     properties: {
       path: STRING,
       cursor: STRING,
@@ -215,11 +222,11 @@ const DIRECT_TOOLS: Readonly<Record<string, DirectTool>> = {
   },
   suggest_changes: {
     summary:
-      "Apply edits as tracked changes in one batch; returns the new fileVersion. Operations: " +
-      "replaceInBlock {blockId, find, replace}; replaceRange {range, replace}; replaceBlock {blockId, text}; " +
-      "insertAfterBlock / insertBeforeBlock {blockId, text}; deleteBlock {blockId}; " +
-      "commentOnRange {range, comment}. The batch lands whole or not at all. Splits, merges, " +
-      "tables and formatting: describe_capability.",
+      "Apply edits as tracked changes in one batch that lands whole or not at all; returns the new " +
+      "fileVersion. Operations: replaceAll {find, replace, matchCase?, wholeWord?} (every match); " +
+      "replaceInBlock {blockId, find, replace}; replaceRange {range, replace}; replaceBlock " +
+      "{blockId, text}; insertAfterBlock / insertBeforeBlock {blockId, text}; deleteBlock {blockId}; " +
+      "addComment {comment, quote or blockId}; commentOnRange {range, comment}. Others: describe_capability.",
     properties: {
       path: STRING,
       fileVersion: STRING,
@@ -395,6 +402,39 @@ const blockLine = (block: unknown): string => {
   return `[${String(row["blockId"])}] ${heading}${number}${String(row["text"] ?? "")}`;
 };
 
+/**
+ * Blocks as lines, a table row on one line: `| [id] cell | [id] cell |`,
+ * a cell's paragraphs side by side. Empty cells hold no block and show none.
+ */
+const blockLines = (blocks: readonly unknown[]): string => {
+  const lines: string[] = [];
+  let row: { key: string; cells: string[][]; cell: unknown } | undefined;
+  const flush = (): void => {
+    if (row !== undefined) lines.push(`| ${row.cells.map((cell) => cell.join(" ")).join(" | ")} |`);
+    row = undefined;
+  };
+  for (const block of blocks) {
+    const location = recordOf(recordOf(block)["tableCell"]);
+    if (typeof location["table"] !== "number") {
+      flush();
+      lines.push(blockLine(block));
+      continue;
+    }
+    const key = `${location["table"]}:${String(location["row"])}`;
+    if (row?.key !== key) {
+      flush();
+      row = { key, cells: [], cell: undefined };
+    }
+    if (row.cell !== location["cell"] || row.cells.length === 0) {
+      row.cells.push([]);
+      row.cell = location["cell"];
+    }
+    row.cells.at(-1)?.push(blockLine(block));
+  }
+  flush();
+  return lines.join("\n");
+};
+
 /** A main-story range without the fields the server fills back in. */
 const compactRange = (range: unknown): unknown => {
   const { type, story, ...rest } = recordOf(range);
@@ -435,15 +475,13 @@ const changeLine = (change: unknown): string => {
   ].join(" ");
 };
 
-const commentIdOf = (receipts: unknown): unknown => {
-  for (const receipt of arrayOf(receipts)) {
-    for (const affected of arrayOf(recordOf(receipt)["affected"])) {
+const commentIdsOf = (receipts: unknown): string[] =>
+  arrayOf(receipts).flatMap((receipt) =>
+    arrayOf(recordOf(receipt)["affected"]).flatMap((affected) => {
       const entry = recordOf(affected);
-      if (entry["type"] === "comment") return String(entry["commentId"]);
-    }
-  }
-  return undefined;
-};
+      return entry["type"] === "comment" ? [String(entry["commentId"])] : [];
+    }),
+  );
 
 type CompactOptions = { tool: FolioFileToolSpec; input: Readonly<Record<string, unknown>> };
 
@@ -457,7 +495,7 @@ const compactRead = ({ tool, input }: CompactOptions, data: Record<string, unkno
       const blocks = arrayOf(page["blocks"]);
       return {
         fileVersion,
-        blocks: input["formatting"] === true ? blocks : blocks.map(blockLine).join("\n"),
+        blocks: input["formatting"] === true ? blocks : blockLines(blocks),
         ...(page["nextCursor"] !== undefined && {
           nextCursor: page["nextCursor"],
           totalBlocks: page["totalBlocks"],
@@ -500,15 +538,19 @@ const compactWrite = (
   switch (tool.name) {
     case "suggest_changes": {
       const normalizations = arrayOf(result["normalizations"]);
+      const replaced = arrayOf(result["replaced"]);
+      const commentIds = commentIdsOf(result["receipts"]);
       return {
         ...base,
         applied: arrayOf(result["applied"]).length,
+        ...(replaced.length > 0 && { replaced }),
+        ...(commentIds.length > 0 && { commentIds }),
         ...(normalizations.length > 0 && { normalizations }),
       };
     }
     case "add_comment":
     case "reply_comment":
-      return { ...base, commentId: commentIdOf(result["receipts"]) };
+      return { ...base, commentId: commentIdsOf(result["receipts"]).at(0) };
     case "resolve_changes":
       return { ...base, resolved: result["resolved"], remaining: result["remaining"] };
     case "compare_documents":
@@ -570,16 +612,44 @@ const HIDDEN_OPERATION_KEYS: ReadonlySet<string> = new Set(["type", "suggestionI
  * The fields each operation type accepts, one line per type. The described
  * schema lists every field once for all types, without their descriptions.
  */
-const OPERATION_FIELDS = Object.entries(FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE)
-  .map(
-    ([type, keys]) =>
-      `${type}: ${keys.filter((key) => !HIDDEN_OPERATION_KEYS.has(key)).join(", ")}`,
-  )
-  .join("\n");
+const OPERATION_FIELDS = [
+  "replaceAll: id, find, replace, matchCase, wholeWord, severity, area",
+  "addComment: id, comment, blockId, quote, severity, area",
+  ...SUGGEST_CHANGES_OPERATION_TYPES.map(
+    (type) =>
+      `${type}: ${FOLIO_DOCUMENT_OPERATION_KEYS_BY_TYPE[type]
+        .filter((key) => !HIDDEN_OPERATION_KEYS.has(key))
+        .join(", ")}`,
+  ),
+].join("\n");
+
+/** What the compact `describe_capability` says about suggest_changes. */
+const SUGGEST_CHANGES_BRIEF = [
+  "Fields (* required):",
+  "replaceAll {find*, replace*, matchCase, wholeWord}: every match in the body and tables; run formatting is kept",
+  "replaceInBlock {blockId*, find*, replace*}: find must occur once in the block",
+  "replaceRange {range*, replace*}: range from find_text",
+  "replaceBlock {blockId*, text*, preserveFormatting}",
+  "insertAfterBlock | insertBeforeBlock {blockId*, text*, styleId}",
+  "deleteBlock {blockId*}",
+  "addComment {comment*, blockId | quote}: a quote alone anchors to the one block containing it",
+  "commentOnRange {range*, comment*}",
+  "formatRange {range*, formatting* {bold, italic, underline}}",
+  'Edits take an optional comment. mode "direct" edits without tracking. Split, merge and table operations: detail "full".',
+].join("\n");
+
+const SUGGEST_CHANGES_EXAMPLE = {
+  path: "contract.docx",
+  fileVersion: "<from read_document>",
+  operations: [
+    { type: "replaceAll", find: "Supplier", replace: "Provider", matchCase: true, wholeWord: true },
+    { type: "addComment", quote: "total liability", comment: "Is this cap acceptable?" },
+  ],
+};
 
 const guideOf = (tool: FolioFileToolSpec): string =>
   tool.name === "suggest_changes"
-    ? `${tool.description}\nFields by operation type:\n${OPERATION_FIELDS}`
+    ? `${describeSuggestChangesCapabilities()}\nFields by operation type:\n${OPERATION_FIELDS}`
     : tool.description;
 
 const toKitTool = (tool: FolioFileToolSpec): ToolDefinition<ToolCallContext> => {
@@ -591,6 +661,10 @@ const toKitTool = (tool: FolioFileToolSpec): ToolDefinition<ToolCallContext> => 
     name: tool.name,
     summary,
     guide: guideOf(tool),
+    ...(tool.name === "suggest_changes" && {
+      brief: SUGGEST_CHANGES_BRIEF,
+      example: SUGGEST_CHANGES_EXAMPLE,
+    }),
     access: access === "read" ? "read" : "write",
     destructive: access !== "read",
     ...(lazy !== undefined && { domain: lazy.domain }),

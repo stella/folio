@@ -11,6 +11,8 @@ import { panic } from "better-result";
 import { getFolioToolDefinitions } from "@stll/folio-agents/tools";
 import { FOLIO_AGENT_TOOL_NAMES, type FolioAgentToolName } from "@stll/folio-agents/types";
 
+import { withBatchOperations } from "./batch-operations";
+
 export type JsonObjectSchema = {
   readonly type: "object";
   readonly properties: Readonly<Record<string, unknown>>;
@@ -138,13 +140,17 @@ const agentWrite = ({
   editMode,
 }: AgentToolOptions & { editMode: "tracked-or-direct" | "fixed" }) => {
   const { description, schema } = agentDefinition(agentTool);
+  const argsSchema = agentArgsSchema(schema, {});
   return {
     type: "agentWrite",
     name: agentTool,
     agentTool,
     editMode,
     description,
-    argsSchema: agentArgsSchema(schema, {}),
+    argsSchema:
+      agentTool === FOLIO_AGENT_TOOL_NAMES.suggestChanges
+        ? withBatchOperations(argsSchema)
+        : argsSchema,
     commands,
   } as const satisfies FolioFileToolSpec;
 };

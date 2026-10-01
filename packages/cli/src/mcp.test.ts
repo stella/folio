@@ -114,7 +114,13 @@ describe("folio mcp", () => {
       expect([...LISTED, ...ids].toSorted()).toEqual(
         [...FOLIO_FILE_TOOLS.map(({ name }) => name), ...LISTED.slice(-3)].toSorted(),
       );
-      const described = await call("describe_capability", { capability: "suggest_changes" });
+      const outlined = await call("describe_capability", { capability: "suggest_changes" });
+      expect(outlined.data?.["parameters"]).toMatchObject({ destination: "string" });
+      expect(outlined.data?.["description"]).toContain("replaceAll");
+      const described = await call("describe_capability", {
+        capability: "suggest_changes",
+        detail: "full",
+      });
       const schema = described.data?.["inputSchema"] as { properties: Record<string, unknown> };
       expect(Object.keys(schema.properties)).toContain("destination");
       expect(described.data?.["description"]).toContain("replaceInBlock");

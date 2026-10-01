@@ -69,6 +69,14 @@ bare array. The operation types and fields are those of `suggest_changes` in
 targets come from a read of the same `fileVersion`. Edits are tracked changes;
 `--direct` edits the text instead and must be asked for.
 
+Two more operations are expanded against the file before the batch applies:
+`{ "type": "replaceAll", "find", "replace", "matchCase"?, "wholeWord"? }`
+replaces every match in the body, tables included, keeping each run's
+formatting (refused when nothing matches); and
+`{ "type": "addComment", "comment", "blockId"?, "quote"? }` comments on a
+block, or with only `quote` on the one block containing that text
+(`ambiguous_target` when several do).
+
 Every change commits, so there is no separate save:
 
 - **Destination.** Exactly one of `--in-place` or `-o <path>`, and only a
@@ -289,8 +297,9 @@ frequent tools, with compact schemas: `read_document`, `find_text`,
 rest (`get_document_outline`, `read_section`, `list_stories`, `read_story`,
 `reply_comment`, `resolve_comment`, `resolve_changes`, and
 `compare_documents`) are reached through `list_capabilities`,
-`describe_capability` (a tool's full input schema and guidance, listed tools
-included), and `invoke_capability` (`{ capability, input, validate_only }`).
+`describe_capability` (a tool's parameter outline, short guidance and an
+example, listed tools included; `detail: "full"` for its full input schema),
+and `invoke_capability` (`{ capability, input, validate_only }`).
 Every tool is also callable by name. Each takes its folio-agents arguments
 plus a file envelope:
 
@@ -319,9 +328,11 @@ pages with `nextCursor`, and a result that cannot be paged is refused with
 `too_large` and a hint to narrow it.
 
 Results carry what the next call needs. `read_document` returns
-`[id] text` lines (`formatting: true` for each block's fields), a write
-returns the new `fileVersion` plus what it produced (`applied`, `commentId`,
-...), and block ids stay valid across writes. A failure is
+`[id] text` lines, a table row as `| [id] cell | [id] cell |`
+(`formatting: true` for each block's fields), a write returns the new
+`fileVersion` plus what it produced (`applied`, `replaced`, `commentIds`,
+...), and block ids stay valid across writes, so a successful write needs no
+verification read. A failure is
 `{ "error": { code, message, hint, retryable } }` with `isError` set.
 Arguments are read leniently (`"true"`, `"20"`, an enum value in another
 case) with an `Input read:` note; an unknown or ambiguous argument is refused

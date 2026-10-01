@@ -36,8 +36,12 @@ export type ToolDefinition<Context> = {
   readonly name: string;
   /** One short sentence. A direct tool sends it on every turn, so every word costs. */
   readonly summary: string;
-  /** Longer guidance, sent only by `describe_capability`. */
+  /** Longer guidance, sent only by `describe_capability` with `detail: "full"`. */
   readonly guide?: string;
+  /** Short guidance for the default, compact `describe_capability`. */
+  readonly brief?: string;
+  /** One example call's arguments, shown by the compact `describe_capability`. */
+  readonly example?: unknown;
   readonly access: ToolAccess;
   /** Whether a call can destroy or replace state. Defaults to `access === "write"`. */
   readonly destructive?: boolean;

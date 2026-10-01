@@ -4,8 +4,9 @@
  * through three capability tools, so a turn pays only for what is listed:
  *
  * - `list_capabilities` pages the unlisted tools: id, summary, access.
- * - `describe_capability` returns one tool's full input schema and guidance
- *   (listed tools included, whose listed schema is the compact one).
+ * - `describe_capability` returns one tool's parameter outline, short
+ *   guidance and an example; with `detail: "full"`, its full input schema and
+ *   guidance (listed tools included, whose listed schema is the compact one).
  * - `invoke_capability` runs one by id with `input` checked against that
  *   full schema; `validate_only` checks without running.
  *
@@ -54,9 +55,14 @@ const LIST_SCHEMA = {
   },
 } as const;
 
+const DESCRIBE_DETAILS = ["compact", "full"] as const;
+
 const DESCRIBE_SCHEMA = {
   type: "object",
-  properties: { capability: { type: "string" } },
+  properties: {
+    capability: { type: "string" },
+    detail: { type: "string", enum: DESCRIBE_DETAILS },
+  },
   required: ["capability"],
 } as const;
 
@@ -92,6 +98,33 @@ const listedSchema = (schema: JsonSchema): ListedTool["inputSchema"] => ({
   ...compactSchema(schema),
   type: "object",
 });
+
+/** One property as a short type: `string`, `object[]`, `"a" | "b"`. */
+const typeOutline = (schema: unknown): string => {
+  if (!isRecord(schema)) return "any";
+  if (Array.isArray(schema["enum"])) {
+    return schema["enum"].map((value) => JSON.stringify(value)).join(" | ");
+  }
+  const type = schema["type"];
+  if (type === "array") return `${typeOutline(schema["items"])}[]`;
+  if (typeof type === "string") return type;
+  if (Array.isArray(type)) return type.join(" | ");
+  const variants = schema["oneOf"] ?? schema["anyOf"];
+  if (Array.isArray(variants)) return [...new Set(variants.map(typeOutline))].join(" | ");
+  return "any";
+};
+
+/** Each parameter's type, required ones marked: what a compact description shows. */
+const parameterOutline = (schema: JsonSchema): Record<string, string> => {
+  const properties = isRecord(schema["properties"]) ? schema["properties"] : {};
+  const required = new Set(Array.isArray(schema["required"]) ? schema["required"] : []);
+  return Object.fromEntries(
+    Object.entries(properties).map(([key, property]) => [
+      key,
+      `${typeOutline(property)}${required.has(key) ? " (required)" : ""}`,
+    ]),
+  );
+};
 
 const encodeCursor = (id: string): string => Buffer.from(id, "utf8").toString("base64url");
 
@@ -259,12 +292,23 @@ export const createToolSurface = <Context>({
     const id = String(read.args["capability"]);
     const tool = byName.get(id);
     if (tool === undefined) return unknownCapability(id);
+    if (read.args["detail"] === "full") {
+      return success({
+        id: tool.name,
+        description: tool.guide === undefined ? tool.summary : `${tool.summary}\n${tool.guide}`,
+        access: tool.access,
+        destructive: destructiveOf(tool),
+        inputSchema: tool.describedSchema ?? tool.inputSchema,
+      });
+    }
     return success({
       id: tool.name,
-      description: tool.guide === undefined ? tool.summary : `${tool.summary}\n${tool.guide}`,
+      description: tool.brief === undefined ? tool.summary : `${tool.summary}\n${tool.brief}`,
       access: tool.access,
       destructive: destructiveOf(tool),
-      inputSchema: tool.describedSchema ?? tool.inputSchema,
+      parameters: parameterOutline(tool.inputSchema),
+      ...(tool.example !== undefined && { example: tool.example }),
+      more: 'detail: "full" returns the full input schema.',
     });
   };
 
@@ -305,7 +349,8 @@ export const createToolSurface = <Context>({
       },
       {
         name: CAPABILITY_TOOL_NAMES.describe,
-        description: "Full input schema and guidance for any tool, by id.",
+        description:
+          'Parameters, guidance and an example for any tool, by id; detail: "full" for the whole schema.',
         inputSchema: listedSchema(DESCRIBE_SCHEMA),
         annotations: READ_ONLY,
       },
