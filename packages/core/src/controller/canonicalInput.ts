@@ -16,6 +16,7 @@ type ReplaceTextInput = {
 
 type CanonicalInputOptions = {
   replace: (input: ReplaceTextInput) => void;
+  breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
   endComposition?: () => void;
   undo: () => boolean;
@@ -38,6 +39,11 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   });
   let proposal: NativeProposal = { type: "idle" };
   let authorizedInput: { view: EditorView; state: EditorState } | null = null;
+  const beginGesture = () => {
+    proposal = { type: "idle" };
+    authorizedInput = null;
+  };
+  const closeGroup = () => options.breakUndoGroup?.();
   const repaint = (view: EditorView) => {
     queueMicrotask(() => {
       if (!view.isDestroyed) view.updateState(view.state);
@@ -45,6 +51,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   };
   const refuseEvent = (event: Event, reason: string) => {
     event.preventDefault();
+    closeGroup();
     if (!composition.active && proposal.type !== "refused") options.refuse(reason);
     if (!composition.active) proposal = { type: "refused" };
     return true;
@@ -119,6 +126,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
+      beginGesture();
       if (composition.active) {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -132,6 +140,8 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return false;
       }
       const modifier = event.metaKey || event.ctrlKey;
+      if (modifier || event.altKey || /^(?:Arrow|Home$|End$|Page|Escape$|Tab$)/u.test(event.key))
+        closeGroup();
       if (modifier && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) options.redo();
@@ -162,13 +172,16 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       if (event.key !== "Backspace" && event.key !== "Delete") return false;
       event.preventDefault();
       if (modifier || event.altKey || view.composing || composition.active) {
+        closeGroup();
         if (!composition.active)
           options.refuse("Only plain character deletion is available in this session.");
         return true;
       }
       const range = deletionRange(view.state, event.key === "Backspace" ? "backward" : "forward");
-      if (range.isErr()) options.refuse(range.error.message);
-      else
+      if (range.isErr()) {
+        closeGroup();
+        options.refuse(range.error.message);
+      } else
         options.replace({
           ...range.value,
           text: "",
@@ -178,7 +191,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
     },
     handleDOMEvents: {
       compositionstart: (view: EditorView) => {
-        proposal = { type: "idle" };
+        beginGesture();
         composition.start(view);
         return false;
       },
@@ -186,13 +199,21 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         composition.ended(view);
         return false;
       },
+      mousedown: (view: EditorView) => {
+        composition.recover(view);
+        beginGesture();
+        closeGroup();
+        return false;
+      },
       blur: (view: EditorView) => {
         composition.recover(view);
-        proposal = { type: "idle" };
+        beginGesture();
+        closeGroup();
         repaint(view);
         return false;
       },
       beforeinput: (view: EditorView, event: InputEvent) => {
+        beginGesture();
         if (
           event.isComposing ||
           event.inputType === "insertCompositionText" ||
@@ -295,12 +316,18 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         });
         return false;
       },
-      paste: (_view: EditorView, event: Event) =>
-        refuseEvent(event, "Paste is unavailable in this session."),
-      cut: (_view: EditorView, event: Event) =>
-        refuseEvent(event, "Cut is unavailable in this session."),
-      drop: (_view: EditorView, event: Event) =>
-        refuseEvent(event, "Drop is unavailable in this session."),
+      paste: (_view: EditorView, event: Event) => {
+        beginGesture();
+        return refuseEvent(event, "Paste is unavailable in this session.");
+      },
+      cut: (_view: EditorView, event: Event) => {
+        beginGesture();
+        return refuseEvent(event, "Cut is unavailable in this session.");
+      },
+      drop: (_view: EditorView, event: Event) => {
+        beginGesture();
+        return refuseEvent(event, "Drop is unavailable in this session.");
+      },
     },
     /** Returns a classified intent only; the proposed PM document is never authoritative. */
     takeNativeProposal,

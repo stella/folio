@@ -40,8 +40,12 @@ const createRig = (from = 2, to = from) => {
   const compositionTransitions: string[] = [];
   const refusals: string[] = [];
   const history: string[] = [];
+  const groupBoundaries: number[] = [];
   const boundary = createCanonicalInputBoundary({
     replace: (input) => inputs.push(input),
+    breakUndoGroup: () => {
+      groupBoundaries.push(1);
+    },
     beginComposition: () => {
       compositionTransitions.push("begin");
       return true;
@@ -76,7 +80,7 @@ const createRig = (from = 2, to = from) => {
     },
   });
   views.push(view);
-  return { boundary, view, inputs, refusals, history, compositionTransitions };
+  return { boundary, view, inputs, refusals, history, compositionTransitions, groupBoundaries };
 };
 
 beforeAll(() => GlobalRegistrator.register());
@@ -91,6 +95,57 @@ afterEach(() => {
 afterAll(() => GlobalRegistrator.unregister());
 
 describe("canonical input boundary", () => {
+  test.each(["keydown", "mousedown", "blur", "paste", "cut", "drop", "compositionstart"] as const)(
+    "%s expires the preceding gesture's native proposal",
+    (gesture) => {
+      const { boundary, view, inputs } = createRig();
+      boundary.handleDOMEvents.beforeinput(
+        view,
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: "x",
+        }),
+      );
+      const proposed = view.state.tr.insertText("x", 2);
+      if (gesture === "keydown")
+        boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+      else if (gesture === "paste" || gesture === "cut" || gesture === "drop")
+        boundary.handleDOMEvents[gesture](view, new Event(gesture, { cancelable: true }));
+      else boundary.handleDOMEvents[gesture](view);
+      expect(boundary.takeNativeProposal(view.state, proposed)).toBeNull();
+      expect(inputs).toEqual([]);
+      boundary.reset();
+    },
+  );
+
+  test("each refused keyboard gesture surfaces its own refusal without a browser input event", () => {
+    const { boundary, view, refusals, groupBoundaries } = createRig();
+    for (let index = 0; index < 3; index++) {
+      boundary.handleKeyDown(
+        view,
+        new KeyboardEvent("keydown", { key: "Enter", cancelable: true }),
+      );
+    }
+    expect(refusals).toHaveLength(3);
+    expect(groupBoundaries).toHaveLength(3);
+  });
+
+  test("typing gestures preserve runs; navigation and refused clipboard gestures close them", () => {
+    const { boundary, view, groupBoundaries } = createRig();
+    for (const key of ["a", "b", "Backspace", "Delete"]) {
+      boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key }));
+    }
+    expect(groupBoundaries).toEqual([]);
+    for (const key of ["ArrowLeft", "Home", "Tab"]) {
+      boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key }));
+    }
+    expect(groupBoundaries).toHaveLength(3);
+    boundary.handleDOMEvents.paste(view, new Event("paste", { cancelable: true }));
+    boundary.handleDOMEvents.cut(view, new Event("cut", { cancelable: true }));
+    boundary.handleDOMEvents.drop(view, new Event("drop", { cancelable: true }));
+    expect(groupBoundaries).toHaveLength(6);
+  });
+
   test("cancelable beforeinput emits one classified intent without a PM edit", () => {
     const { boundary, view, inputs } = createRig(2, 4);
     const original = view.state;

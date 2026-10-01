@@ -571,6 +571,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     return publishCommit(prepared.value);
   };
   const input = createCanonicalInputBoundary({
+    breakUndoGroup: () => {
+      if (editorSession.type === "canonical") editorSession.session.breakUndoGroup();
+    },
     beginComposition: () => {
       if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
       const begun = editorSession.session.beginComposition();
@@ -728,6 +731,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         blur: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.blur(pmView) : false,
         ...createHiddenEditorClipboardHandlers(deps),
+        mousedown: (pmView) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.mousedown(pmView) : false,
         compositionstart: (pmView) =>
           editorSession.type === "canonical"
             ? input.handleDOMEvents.compositionstart(pmView)
