@@ -4,7 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { commitSeed } from "./commit-seed";
-import { failureMarker, logFailureMarker } from "./consumer-scenarios/support/failure-fingerprints";
+import {
+  failureMarker,
+  failureRecord,
+  logFailureMarker,
+  writeFailureRecord,
+} from "./consumer-scenarios/support/failure-fingerprints";
 
 /**
  * Shared fast-check configuration for the repo's property tests. Every
@@ -305,7 +310,7 @@ const replayCommand = (identity: PropertyIdentity, replay: Replay): string => {
       ? ""
       : `cd ${path.relative(REPO_ROOT, packageDir).replaceAll("\\", "/")} && `;
   const filter = title === undefined ? "" : ` -t ${shellQuote(titlePattern(title))}`;
-  return `${cd}${env.join(" ")} bun test ${file}${filter}`;
+  return `${cd}${env.join(" ")} bun test ./${file}${filter}`;
 };
 
 const truncate = (text: string, max: number): string =>
@@ -350,15 +355,20 @@ const replayReporter =
       );
     }
     if (isCi()) {
-      logFailureMarker(
-        failureMarker({
-          test: identity.key ?? identity.title ?? "property",
-          seed: details.seed,
-          path: counterexamplePath,
-          repro: replay,
-          failure: details.errorInstance,
-        }),
-      );
+      const directory = process.env["FOLIO_PROPERTY_FAILURES_DIR"];
+      const marker = failureMarker({
+        test: identity.key ?? identity.title ?? "property",
+        seed: details.seed,
+        path: counterexamplePath,
+        repro: replay,
+        failure: details.errorInstance,
+      });
+      logFailureMarker(marker);
+      if (directory !== undefined)
+        writeFailureRecord(
+          directory,
+          failureRecord(marker, details.errorInstance, { flow: details.counterexample }),
+        );
       console.error(
         `PROPERTY_FAILURE ${JSON.stringify({
           file: identity.site?.file ?? null,

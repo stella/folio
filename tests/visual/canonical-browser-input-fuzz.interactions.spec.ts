@@ -1,12 +1,19 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
-import { validateDocxPackage } from "@stll/docx-core";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { appendFileSync } from "node:fs";
 
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
+import {
+  failureMarker,
+  failureRecord,
+  logFailureMarker,
+  shellQuote,
+  writeFailureRecord,
+} from "../../test/consumer-scenarios/support/failure-fingerprints";
 import {
   commonActionArbitraries,
   parseBrowserInputTraceConfig,
@@ -192,7 +199,14 @@ for (const seed of config.seeds) {
         expect(reloaded.canUndo).toBe(false);
         completed++;
       }),
-      { seed, numRuns: config.runs, endOnFailure: false },
+      {
+        seed,
+        numRuns: config.runs,
+        endOnFailure: false,
+        ...(process.env["FOLIO_FUZZ_PATH"] === undefined
+          ? {}
+          : { path: process.env["FOLIO_FUZZ_PATH"] }),
+      },
     );
     await info.attach("canonical-missing-ops", {
       body: JSON.stringify({
@@ -214,9 +228,40 @@ for (const seed of config.seeds) {
       `Canonical seed ${seed}: ${completed} completed traces, ${applied} applied edits\n${missing.markdown()}`,
     );
     if (verdict.failed) {
+      const flow = verdict.counterexample?.at(0);
+      const failure = verdict.errorInstance;
+      const detail =
+        failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
+      const message = failure instanceof Error ? failure.message : detail;
+      if (
+        flow !== undefined &&
+        failure !== undefined &&
+        failure !== null &&
+        message.trim() !== "" &&
+        message !== "undefined"
+      ) {
+        const repro = `FOLIO_FUZZ_LANE=nightly FOLIO_FUZZ_SEEDS=${verdict.seed} FOLIO_FUZZ_RUNS=${config.runs}${verdict.counterexamplePath === null ? "" : ` FOLIO_FUZZ_PATH=${shellQuote(verdict.counterexamplePath)}`} bunx playwright test --project=browser-fuzzer tests/visual/canonical-browser-input-fuzz.interactions.spec.ts --workers=1`;
+        const marker = failureMarker({
+          test: "canonical browser input: projection, exact history and save/reopen",
+          seed: verdict.seed,
+          path: verdict.counterexamplePath,
+          repro,
+          failure,
+          flow: flow.map(({ kind }) => kind).join(" → "),
+        });
+        logFailureMarker(marker);
+        const artifact = writeFailureRecord(
+          process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "test-results/fuzz-failures",
+          failureRecord(marker, failure, { flow }),
+        );
+        await info.attach("canonical-failure-record", {
+          path: artifact,
+          contentType: "application/json",
+        });
+      }
       throw new Error(
-        `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample)}\n${fc.stringify(verdict.errorInstance)}`,
-        { cause: verdict.errorInstance },
+        `seed=${verdict.seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(flow)}\n${detail}`,
+        { cause: failure },
       );
     }
     expect(completed).toBeGreaterThan(0);

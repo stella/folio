@@ -478,7 +478,7 @@
       "date": "2026-09-30"
     }
   ],
-  "test/canonical-session-fuzz.test.ts::canonical property flows preserve projection, exact history and saved content": [
+  "test/canonical-session.fuzz.ts::canonical property flows preserve projection, exact history and saved content": [
     {
       "seed": -347416988,
       "note": "Canonical generated fixtures require paragraph identities before serialization",

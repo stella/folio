@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
-import { validateDocxPackage } from "@stll/docx-core";
+import { validateDocxPackage } from "../packages/docx-core/src/validate/docx";
 import { EditorState, TextSelection } from "prosemirror-state";
 
 import {
