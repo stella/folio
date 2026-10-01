@@ -50,6 +50,7 @@ jobs:
           set -o pipefail
           bun run test:property 2>&1 | tee property-test.log
         env:
+          FOLIO_DOCUMENT_OPS_RANDOM: "1"
           PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '10' }}
           PROPERTY_TEST_SEED_SALT: ${{ github.run_id }}
 

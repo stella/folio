@@ -10,7 +10,12 @@ import {
   normalizeForOps,
   OP_STORIES,
 } from "@stll/docx-core/ops";
-import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertPinnedProperty,
+  assertProperty,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
+import { OOXML_NAMESPACES } from "../docx/serializer/partNamespaces";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -88,7 +93,9 @@ test("rendered differential oracle detects text, formatting and preserved metada
   }
   const attributeRemainder = identity.create(
     runIdentityAttrs(42, {
-      preservedAttributes: [{ namespace: "urn:folio:test", name: "retained", value: "value" }],
+      preservedAttributes: [
+        { namespace: OOXML_NAMESPACES.w.uri, name: "rsidR", value: "00112233" },
+      ],
     }),
   );
   expect(contentView(state.tr.addMark(from, to, attributeRemainder).doc)).not.toEqual(before);
@@ -101,69 +108,74 @@ test("rendered differential oracle detects text, formatting and preserved metada
 });
 
 test("PM and Document ops agree after every generated text and formatting step", () => {
-  assertProperty(
-    fc.property(flowArbitrary, ({ source, steps }) => {
-      const original = fromMarkdown(source);
-      let state = createHarnessState(original, "editing");
-      let model = normalizeForOps(fromProseDoc(state.doc, original));
-      expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
-      for (const step of steps) {
-        const blocks = textblocks(state.doc);
-        const target = blocks.at(step.block % blocks.length);
-        if (!target) throw new Error("generated document has no textblock");
-        const blockId: unknown = target.node.attrs["paraId"];
-        if (typeof blockId !== "string") throw new Error("generated textblock has no paraId");
-        // The portable contract rejects offsets between UTF-16 surrogate halves.
-        // Draw both endpoints in the same valid coordinate space for both paths.
-        const boundaries = [0];
-        for (const character of target.node.textContent) {
-          boundaries.push((boundaries.at(-1) ?? 0) + character.length);
-        }
-        const startIndex = step.start % boundaries.length;
-        const offset = boundaries.at(startIndex) ?? 0;
-        const end =
-          boundaries.at(Math.min(boundaries.length - 1, startIndex + step.width)) ?? offset;
-        const at = { story: OP_STORIES.MAIN, blockId, offset };
-        const to = { story: OP_STORIES.MAIN, blockId, offset: end };
-        const fromPosition = target.pos + 1 + offset;
-        const toPosition = target.pos + 1 + end;
-        let transaction = state.tr;
-        const operation = (() => {
-          switch (step.kind) {
-            case "insert":
-              transaction = transaction.insertText(step.text, fromPosition, fromPosition);
-              return {
-                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-                at,
-                text: step.text,
-                runProps: INHERIT_RUN_PROPS,
-              } as const;
-            case "delete":
-              transaction = transaction.delete(fromPosition, toPosition);
-              return { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at, to } as const;
-            case "bold":
-            case "italic": {
-              const mark = state.schema.marks[step.kind];
-              if (!mark) throw new Error(`missing ${step.kind} mark`);
-              transaction = transaction.addMark(fromPosition, toPosition, mark.create());
-              const patch = step.kind === "bold" ? { bold: true } : { italic: true };
-              return { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS, from: at, to, patch } as const;
-            }
-            default: {
-              const unreachable: never = step.kind;
-              return unreachable;
-            }
-          }
-        })();
-        // Empty range edits are PM no-ops; they need no model operation.
-        if (step.kind !== "insert" && offset === end) continue;
-        const result = applyDocumentOp(model, operation);
-        if (result.isErr()) throw result.error;
-        model = result.value.document;
-        state = state.apply(transaction);
-        expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
+  const property = fc.property(flowArbitrary, ({ source, steps }) => {
+    const original = fromMarkdown(source);
+    let state = createHarnessState(original, "editing");
+    let model = normalizeForOps(fromProseDoc(state.doc, original));
+    expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
+    for (const step of steps) {
+      const blocks = textblocks(state.doc);
+      const target = blocks.at(step.block % blocks.length);
+      if (!target) throw new Error("generated document has no textblock");
+      const blockId: unknown = target.node.attrs["paraId"];
+      if (typeof blockId !== "string") throw new Error("generated textblock has no paraId");
+      // The portable contract rejects offsets between UTF-16 surrogate halves.
+      // Draw both endpoints in the same valid coordinate space for both paths.
+      const boundaries = [0];
+      for (const character of target.node.textContent) {
+        boundaries.push((boundaries.at(-1) ?? 0) + character.length);
       }
-    }),
-    { numRuns: 100 },
-  );
+      const startIndex = step.start % boundaries.length;
+      const offset = boundaries.at(startIndex) ?? 0;
+      const end = boundaries.at(Math.min(boundaries.length - 1, startIndex + step.width)) ?? offset;
+      const at = { story: OP_STORIES.MAIN, blockId, offset };
+      const to = { story: OP_STORIES.MAIN, blockId, offset: end };
+      const fromPosition = target.pos + 1 + offset;
+      const toPosition = target.pos + 1 + end;
+      let transaction = state.tr;
+      const operation = (() => {
+        switch (step.kind) {
+          case "insert":
+            transaction = transaction.insertText(step.text, fromPosition, fromPosition);
+            return {
+              type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+              at,
+              text: step.text,
+              runProps: INHERIT_RUN_PROPS,
+            } as const;
+          case "delete":
+            transaction = transaction.delete(fromPosition, toPosition);
+            return { type: DOCUMENT_OP_TYPES.DELETE_RANGE, from: at, to } as const;
+          case "bold":
+          case "italic": {
+            const mark = state.schema.marks[step.kind];
+            if (!mark) throw new Error(`missing ${step.kind} mark`);
+            transaction = transaction.addMark(fromPosition, toPosition, mark.create());
+            const patch = step.kind === "bold" ? { bold: true } : { italic: true };
+            return { type: DOCUMENT_OP_TYPES.SET_RUN_PROPS, from: at, to, patch } as const;
+          }
+          default: {
+            const unreachable: never = step.kind;
+            return unreachable;
+          }
+        }
+      })();
+      // Empty range edits are PM no-ops; they need no model operation.
+      if (step.kind !== "insert" && offset === end) continue;
+      const result = applyDocumentOp(model, operation);
+      if (result.isErr()) throw result.error;
+      model = result.value.document;
+      state = state.apply(transaction);
+      expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
+    }
+  });
+  if (process.env["FOLIO_DOCUMENT_OPS_RANDOM"] === "1") {
+    const event = process.env["GITHUB_EVENT_NAME"];
+    if (event === "pull_request" || event === "merge_group") {
+      throw new Error("Random differential flows run only in the nightly lane");
+    }
+    assertProperty(property, { numRuns: 100 });
+    return;
+  }
+  assertPinnedProperty(property);
 });
