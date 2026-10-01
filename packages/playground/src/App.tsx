@@ -30,6 +30,9 @@ import type {
 } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
+import { buildScrollParityBridge } from "../../playground-vue/src/scrollParityBridge";
+import type { ScrollParityBridge } from "../../playground-vue/src/scrollParityBridge";
+
 import { CollaborationApp } from "./CollaborationApp";
 import {
   IDLE_PLAYGROUND_STATUS,
@@ -79,6 +82,7 @@ declare global {
   // Cross-adapter E2E bridge: identical surface in the React and Vue
   // playgrounds so the `tests/parity` specs drive both editors through one API.
   var __folioParity: FolioParityBridge | undefined;
+  var __folioScrollParity: ScrollParityBridge | undefined;
 }
 
 /**
@@ -694,6 +698,7 @@ export function App() {
   }
 
   const editorRef = useRef<DocxEditorRef>(null);
+  const scrollParityHost = useRef(buildScrollParityBridge(() => editorRef.current)).current;
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
@@ -902,6 +907,7 @@ export function App() {
     globalThis.__folioPlayground = {
       getEditorRef: () => editorRef.current,
     };
+    globalThis.__folioScrollParity = scrollParityHost;
     globalThis.__folioParity = buildParityBridge(
       () => editorRef.current,
       (kind) => clipboardCallbackCountsRef.current[kind],
@@ -909,6 +915,7 @@ export function App() {
     return () => {
       globalThis.__folioPlayground = undefined;
       globalThis.__folioParity = undefined;
+      globalThis.__folioScrollParity = undefined;
     };
   }, []);
 
@@ -926,6 +933,8 @@ export function App() {
             documentBuffer={documentBuffer}
             author="Folio User"
             {...(parityFonts !== undefined ? { fonts: parityFonts } : {})}
+            onEditorViewReady={scrollParityHost.onViewReady}
+            preserveDocumentWhileLoading={query.has("readyScroll")}
             onError={handleError}
             showToolbar={true}
             showRuler={true}
