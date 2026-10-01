@@ -16,6 +16,14 @@ import type { DocxEditorRef } from "@stll/folio-vue";
  * body drives both adapters. See tests/parity/parity-fixture.ts.
  */
 export type FolioParityBridge = {
+  /** Drive generated batches through the public ref and return the saved package. */
+  runGeneratedFlow: (
+    source: number[],
+    batches: Parameters<DocxEditorRef["applyDocumentOperations"]>[0]["batch"][],
+  ) => Promise<{
+    bytes: number[];
+    results: ReturnType<DocxEditorRef["applyDocumentOperations"]>[];
+  }>;
   /** Total laid-out pages (0 before the first layout). */
   getTotalPages: () => number;
   /** Force-create the deferred editor view (no focus steal). */
@@ -119,6 +127,20 @@ export function buildParityBridge(
   const autocompleteRequestId = "parity-autocomplete";
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
   return {
+    runGeneratedFlow: async (source, batches) => {
+      const ref = getRef();
+      if (!ref) throw new Error("Generated flow requires an editor ref");
+      await ref.loadDocumentBuffer(new Uint8Array(source));
+      ref.ensureEditorView({ focus: false });
+      const results = batches.map((batch) => {
+        const snapshot = ref.createAIEditSnapshot();
+        if (!snapshot) throw new Error("Generated flow requires a snapshot");
+        return ref.applyDocumentOperations({ snapshot, batch });
+      });
+      const saved = await ref.save();
+      if (!saved) throw new Error("Generated flow did not save");
+      return { bytes: [...new Uint8Array(saved)], results };
+    },
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,

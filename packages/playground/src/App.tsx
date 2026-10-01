@@ -191,6 +191,20 @@ function buildParityBridge(
   const autocompleteRequestId = "parity-autocomplete";
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
   return {
+    runGeneratedFlow: async (source, batches) => {
+      const ref = getRef();
+      if (!ref) throw new Error("Generated flow requires an editor ref");
+      await ref.loadDocumentBuffer(new Uint8Array(source));
+      ref.ensureEditorView({ focus: false });
+      const results = batches.map((batch) => {
+        const snapshot = ref.createAIEditSnapshot();
+        if (!snapshot) throw new Error("Generated flow requires a snapshot");
+        return ref.applyDocumentOperations({ snapshot, batch });
+      });
+      const saved = await ref.save();
+      if (!saved) throw new Error("Generated flow did not save");
+      return { bytes: [...new Uint8Array(saved)], results };
+    },
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,

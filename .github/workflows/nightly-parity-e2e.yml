@@ -6,6 +6,15 @@ on:
     # two jobs don't contend for runners at the same minute.
     - cron: "37 5 * * *"
   workflow_dispatch:
+    inputs:
+      seed:
+        description: Replay a PROPERTY_TEST_SEED (blank searches a fresh seed)
+        required: false
+        type: string
+      path:
+        description: Replay a PROPERTY_TEST_PATH after shrinking
+        required: false
+        type: string
 
 permissions: {}
 
@@ -47,4 +56,20 @@ jobs:
       # and the static React<->Vue parity gates (check:parity-contract,
       # check:export-parity) already guard the API surface on every PR.
       - name: Parity e2e specs
-        run: bun run test:e2e:parity
+        run: bun run test:e2e:parity --workers=1 --grep-invert "generated flow saves equivalent"
+
+      - name: Generated four-host differential
+        env:
+          PROPERTY_TEST_NUM_RUNS_FACTOR: "4"
+          PROPERTY_TEST_SEED_SALT: ${{ github.run_id }}
+          PROPERTY_TEST_SEED: ${{ inputs.seed }}
+          PROPERTY_TEST_PATH: ${{ inputs.path }}
+        run: bunx playwright test --project=parity tests/parity/cross-host-flow.spec.ts --workers=1
+
+      - name: Upload differential repro artifacts
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-host-differential-repro
+          path: test-results/
+          retention-days: 14
