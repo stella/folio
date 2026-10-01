@@ -198,6 +198,7 @@ export type {
   BreakContent,
   SymbolContent,
   NoteReferenceContent,
+  NoteMarkerContent,
   FieldCharContent,
   InstrTextContent,
   SoftHyphenContent,

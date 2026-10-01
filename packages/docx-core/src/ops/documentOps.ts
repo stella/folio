@@ -1,3 +1,6 @@
+export { noteUsesCustomMark } from "./noteMarks";
+export { sectionPropertiesAt } from "./storyLifecycle";
+export { storyBody, findStoryBody, documentStories, sameStory } from "./stories";
 /**
  * `@stll/docx-core/ops`: document operations over the typed model.
  *
@@ -25,6 +28,14 @@ export {
   REVISION_DECISIONS,
   SPLIT_HALVES,
   toOpEnvelope,
+  type HeaderFooterStory,
+  type NoteStory,
+  type CreateHeaderFooterOp,
+  type RemoveHeaderFooterOp,
+  type AddNoteOp,
+  type RemoveNoteOp,
+  type SetSectionPropsOp,
+  type RestoreStoryPartsOp,
   type BlockInsertionPoint,
   type InsertBlocksOp,
   type DeleteBlocksOp,

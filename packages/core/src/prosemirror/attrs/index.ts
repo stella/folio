@@ -1034,6 +1034,8 @@ const isFieldCodeContent = (value: unknown): boolean => {
     case "footnoteRef":
     case "endnoteRef":
       return typeof value["id"] === "number";
+    case "noteMarker":
+      return value["kind"] === "footnote" || value["kind"] === "endnote";
     case "drawing":
       return isRecord(value["image"]);
     case "shape":

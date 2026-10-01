@@ -1,6 +1,11 @@
 import { describe, expect, test, setDefaultTimeout, spyOn } from "bun:test";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 
+import {
+  createParagraphChangeTrackerPlugin,
+  hasUntrackedChanges,
+  clearTrackedChanges,
+} from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "../prosemirror/schema";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { normalizeForOps, DOCUMENT_OP_TYPES, OP_STORIES } from "@stll/docx-core/ops";
@@ -66,6 +71,153 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 describe("canonical session", () => {
+  test("undo can remove the story containing the active editor", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    const initial = structuredClone(session.document);
+    const footer = { kind: "footer", rId: "rIdFooterFirst" } as const;
+    const bodyState = stateFor(session);
+    accept(
+      bodyState,
+      session
+        .prepareOperations(bodyState, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: footer,
+            referenceType: "first",
+            content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+          },
+        ])
+        .unwrap(),
+    );
+    const footerState = EditorState.create({
+      schema,
+      doc: session.projectStory(footer).unwrap().doc,
+    });
+    const removed = session.prepareUndo(footerState, footer).unwrap();
+    accept(footerState, removed);
+    expect(session.document).toStrictEqual(initial);
+    expect(session.projectStory(footer).isErr()).toBe(true);
+    const restored = session.prepareRedo(stateFor(session)).unwrap();
+    accept(stateFor(session), restored);
+    expect(session.projectStory(footer).isOk()).toBe(true);
+  });
+  test("package-only canonical commits require full save until the saved tracker clears", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    let state = EditorState.create({
+      schema,
+      doc: session.projection.doc,
+      plugins: [createParagraphChangeTrackerPlugin()],
+    });
+    const text = session.prepareReplace(state, { from: 1, to: 1, text: "Text" }).unwrap();
+    state = accept(state, text);
+    expect(hasUntrackedChanges(state)).toBe(false);
+    const properties = session
+      .prepareOperations(state, [
+        { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { titlePg: true } },
+      ])
+      .unwrap();
+    expect(properties.transaction.docChanged).toBe(false);
+    state = accept(state, properties);
+    expect(hasUntrackedChanges(state)).toBe(true);
+    state = state.apply(clearTrackedChanges(state));
+    expect(hasUntrackedChanges(state)).toBe(false);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(hasUntrackedChanges(state)).toBe(true);
+  });
+  test("story creation and edits share exact canonical undo and redo", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    const initial = structuredClone(session.document);
+    let state = stateFor(session);
+    const header = { kind: "header", rId: "rIdHeader1" } as const;
+    state = accept(
+      state,
+      session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: header,
+            referenceType: "default",
+            content: [
+              {
+                type: "paragraph",
+                paraId: "34567890",
+                content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+              },
+            ],
+          },
+        ])
+        .unwrap(),
+    );
+    const headerProjection = session.projectStory(header).unwrap();
+    let headerState = EditorState.create({ schema, doc: headerProjection.doc });
+    headerState = accept(
+      headerState,
+      session
+        .prepareReplace(headerState, { from: 1, to: 7, text: "Edited", story: header })
+        .unwrap(),
+    );
+    expect(headerState.doc.textContent).toBe("Edited");
+    expect(session.projection.doc.textContent).toBe("Body");
+    state = stateFor(session);
+    state = accept(
+      state,
+      session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: { kind: "footer", rId: "rIdFooter1" },
+            referenceType: "first",
+            content: [{ type: "paragraph", paraId: "45678901", content: [] }],
+          },
+        ])
+        .unwrap(),
+    );
+    expect(session.document.package.document.finalSectionProperties?.titlePg).toBe(true);
+    state = accept(
+      state,
+      session
+        .prepareOperations(state, [
+          {
+            type: DOCUMENT_OP_TYPES.ADD_NOTE,
+            at: { story: OP_STORIES.MAIN, blockId: "12345678", offset: 4 },
+            note: {
+              type: "footnote",
+              id: 12,
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "56789012",
+                  content: [{ type: "run", content: [{ type: "text", text: "Note" }] }],
+                },
+              ],
+            },
+          },
+        ])
+        .unwrap(),
+    );
+    const noteStory = { kind: "footnote", id: 12 } as const;
+    const noteProjection = session.projectStory(noteStory).unwrap();
+    let noteState = EditorState.create({ schema, doc: noteProjection.doc });
+    noteState = accept(
+      noteState,
+      session
+        .prepareReplace(noteState, { from: 1, to: 5, text: "Edited note", story: noteStory })
+        .unwrap(),
+    );
+    expect(noteState.doc.textContent).toBe("Edited note");
+    const final = structuredClone(session.document);
+    state = stateFor(session);
+    for (let count = 0; count < 5; count++)
+      state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(initial);
+    for (let count = 0; count < 5; count++)
+      state = accept(state, session.prepareRedo(state).unwrap());
+    expect(session.document).toStrictEqual(final);
+    expect(session.projection.doc.eq(state.doc)).toBe(true);
+  });
   test("canonical input sequences keep the projection, inverse history and refusal atomic", async () => {
     await assertProperty(
       fc.asyncProperty(

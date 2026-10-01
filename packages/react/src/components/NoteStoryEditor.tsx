@@ -14,6 +14,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import { setSuggestionMode } from "@stll/folio-core/prosemirror/plugins/suggestionMode";
 import type { Document, StyleDefinitions, Theme } from "@stll/folio-core/types/document";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 
 import "prosemirror-view/style/prosemirror.css";
 
@@ -26,6 +27,9 @@ export type NoteStoryEditorRef = {
 
 export type NoteStoryEditorProps = {
   document: Document | null;
+  experimentalSession?: "canonical";
+  getCanonicalApi?: () => HiddenEditorApi | null;
+  onSessionRefusal?: (reason: string) => void;
   onActiveChange: (story: NoteStoryKey | null) => void;
   onDocumentChange: (document: Document) => void;
   onStoryChange: (view: EditorView, docChanged: boolean, selectionChanged: boolean) => void;
@@ -73,6 +77,9 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
   function NoteStoryEditor(
     {
       document,
+      experimentalSession,
+      getCanonicalApi,
+      onSessionRefusal,
       onActiveChange,
       onDocumentChange,
       onStoryChange,
@@ -89,6 +96,12 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
     const isSuggestionModeActive = suggestionModeActive ?? false;
     const hostRef = useRef<HTMLDivElement>(null);
     const documentRef = useRef(document);
+    const canonicalApiRef = useRef(getCanonicalApi);
+    const sessionRef = useRef(experimentalSession);
+    canonicalApiRef.current = getCanonicalApi;
+    sessionRef.current = experimentalSession;
+    const refusalRef = useRef(onSessionRefusal);
+    refusalRef.current = onSessionRefusal;
     const stylesRef = useRef(styles);
     const themeRef = useRef(theme);
     const pluginsRef = useRef(resolvedPlugins);
@@ -115,13 +128,21 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
           getPlugins: () => pluginsRef.current,
           getStyles: () => stylesRef.current,
           getTheme: () => themeRef.current,
+          getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+          getExperimentalSession: () => sessionRef.current,
+          onSessionRefusal: (reason) => refusalRef.current?.(reason),
           onTransaction: ({ docChanged, selectionChanged, view }) => {
             if (docChanged) {
-              const current = documentRef.current;
-              if (current) {
-                onDocumentChangeRef.current(
-                  managerRef.current?.snapshotDocument(current) ?? current,
-                );
+              if (sessionRef.current === "canonical") {
+                const canonical = canonicalApiRef.current?.()?.getCanonicalDocument();
+                if (canonical) onDocumentChangeRef.current(canonical);
+              } else {
+                const current = documentRef.current;
+                if (current) {
+                  onDocumentChangeRef.current(
+                    managerRef.current?.snapshotDocument(current) ?? current,
+                  );
+                }
               }
             }
             onStoryChangeRef.current(view, docChanged, selectionChanged);

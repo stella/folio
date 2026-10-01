@@ -978,6 +978,18 @@ function parseRunContents(
         contents.push(parseEndnoteReference(child));
         break;
 
+      case "footnoteRef":
+      case "endnoteRef":
+        if (WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")) {
+          contents.push({
+            type: "noteMarker",
+            kind: localName === "footnoteRef" ? "footnote" : "endnote",
+          });
+        } else {
+          contents.push(preserveRunChild(child));
+        }
+        break;
+
       case "fldChar":
         // Field character (begin/separate/end)
         contents.push(parseFieldChar(child));
@@ -1186,7 +1198,7 @@ function parseRunContents(
       default:
         // Every remaining child goes to the verbatim sink, at its source
         // position: `w:ruby`, `w:contentPart`, `w:pgNum`, `w:annotationRef`,
-        // the note markers `w:footnoteRef`/`w:endnoteRef`, the note separators,
+        // the note separators,
         // the date placeholders, a foreign namespace, an element a later OOXML
         // revision adds. `w:rPr` is excluded above because
         // `parseRunProperties` reads the same element.

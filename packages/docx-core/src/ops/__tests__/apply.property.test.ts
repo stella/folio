@@ -89,6 +89,20 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
  * paragraph keeping its id its own review fields back.
  */
 const INVERSE_KINDS = {
+  createHeaderFooter: ["restoreStoryParts"],
+  removeHeaderFooter: ["restoreStoryParts"],
+  addNote: ["restoreStoryParts"],
+  removeNote: ["restoreStoryParts"],
+  setSectionProps: ["restoreStoryParts"],
+  restoreStoryParts: ["restoreStoryParts"],
+  deleteBlocks: ["insertBlocks", "replaceBlocks", "replaceInline", "setParagraphReview"],
+  insertBlocks: ["replaceBlocks"],
+  insertTable: ["setContainerBlocks"],
+  deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
+  setContainerBlocks: ["setContainerBlocks"],
+  insertRow: ["setTableRows"],
+  deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
+  setTableRows: ["setTableRows"],
   insertText: ["deleteRange"],
   insertContent: ["deleteRange"],
   deleteRange: ["insertContent"],
@@ -175,6 +189,13 @@ const namedIds = (op: DocumentOp): Set<string> => {
       return new Set([op.blockId, ...paragraphIdsIn(op.expected ?? [])]);
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return new Set([op.blockId, ...paragraphIdsIn([op.expected, op.rows])]);
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return new Set();
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -686,6 +707,12 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+          case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+          case DOCUMENT_OP_TYPES.ADD_NOTE:
+          case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+          case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+          case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
           case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
           case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:

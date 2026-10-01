@@ -54,6 +54,7 @@ const RUN_CONTENT_TYPES = {
   symbol: true,
   footnoteRef: true,
   endnoteRef: true,
+  noteMarker: true,
   fieldChar: true,
   instrText: true,
   softHyphen: true,

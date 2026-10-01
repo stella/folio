@@ -42,6 +42,7 @@ import {
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { Document, Theme, StyleDefinitions } from "@stll/folio-core/types/document";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 // Import ProseMirror CSS
 import "prosemirror-view/style/prosemirror.css";
 
@@ -107,7 +108,14 @@ export type HiddenProseMirrorProps = {
   onReadOnlyEditAttempt?: () => void;
 };
 
-export type HiddenProseMirrorRef = {
+export type HiddenProseMirrorRef = Pick<
+  HiddenEditorApi,
+  | "applyCanonicalOperations"
+  | "getCanonicalStoryProjection"
+  | "getCanonicalStorySelection"
+  | "replaceCanonicalStoryText"
+  | "applyCanonicalStoryHistory"
+> & {
   /** Request the off-screen EditorView (idempotent; creates it when possible). */
   ensureView: () => void;
   /** Whether view creation has been requested. */
