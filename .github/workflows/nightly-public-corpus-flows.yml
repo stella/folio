@@ -2,7 +2,6 @@ name: Nightly Public Corpus Flows
 
 on:
   workflow_call:
-  workflow_call:
   schedule:
     - cron: "47 4 * * *"
   workflow_dispatch:

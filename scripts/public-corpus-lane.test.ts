@@ -5,14 +5,32 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dir, "..");
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-const workflow = (file: string) => {
-  const parsed: unknown = Bun.YAML.parse(
-    readFileSync(path.join(ROOT, ".github/workflows", file), "utf8"),
-  );
+const parseWorkflow = (source: string) => {
+  const parsed: unknown = Bun.YAML.parse(source);
   if (!isRecord(parsed) || !isRecord(parsed["on"]) || !isRecord(parsed["jobs"]))
-    throw new TypeError(`Invalid workflow ${file}`);
+    throw new TypeError("Invalid workflow structure");
+  // Bun folds duplicate keys; bind the block-style trigger declarations to its result.
+  const section = /^on:\n([\s\S]*?)(?=^\S|$(?![\s\S]))/mu.exec(source)?.at(1);
+  if (section === undefined) throw new TypeError("Missing block-style workflow triggers");
+  const declarations = [...section.matchAll(/^  ([a-z_]+):/gmu)].map((match) => match[1]);
+  if (new Set(declarations).size !== declarations.length)
+    throw new TypeError("Duplicate workflow trigger declaration");
+  expect(declarations.toSorted()).toEqual(Object.keys(parsed["on"]).toSorted());
   return { triggers: parsed["on"], jobs: parsed["jobs"] };
 };
+const workflow = (file: string) =>
+  parseWorkflow(readFileSync(path.join(ROOT, ".github/workflows", file), "utf8"));
+
+test("duplicate declarations of every configured trigger are rejected before parser folding", () => {
+  const source = readFileSync(
+    path.join(ROOT, ".github/workflows/nightly-public-corpus-flows.yml"),
+    "utf8",
+  );
+  for (const trigger of Object.keys(parseWorkflow(source).triggers)) {
+    const duplicate = source.replace("on:\n", `on:\n  ${trigger}:\n`);
+    expect(() => parseWorkflow(duplicate)).toThrow("Duplicate workflow trigger declaration");
+  }
+});
 
 // A reusable dispatcher must preserve both lanes after they share this workflow.
 test("public corpus dispatch preserves the merged long-flow lane and avoids ordinary jobs", () => {
