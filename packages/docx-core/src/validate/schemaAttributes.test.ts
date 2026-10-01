@@ -94,6 +94,36 @@ describe("schema-derived story attribute oracle", () => {
     );
   });
 
+  test.each([TRANSITIONAL, STRICT])(
+    "applies schema whitespace per union member under %s",
+    (namespace) => {
+      const part = (tag: string, value: string) =>
+        `<w:${tag} xmlns:w="${namespace}" w:val="${value}"/>`;
+      // ST_Jc derives from xs:string: ASCII padding is part of the enum value.
+      for (const value of [" center ", "&#x9;center&#xA;", "&#xA0;center&#xA0;"]) {
+        expect(validateSchemaAttributes(part("jc", value))).toContain("Invalid attribute value");
+      }
+      for (const value of [" 1 ", "&#x9;1&#xD;&#xA;"]) {
+        expect(
+          validateSchemaAttributes(`<w:commentReference xmlns:w="${namespace}" w:id="${value}"/>`),
+        ).toBeNull();
+      }
+      for (const value of ["&#xA0;1&#xA0;", "&#x2003;1&#x2003;"]) {
+        expect(
+          validateSchemaAttributes(`<w:commentReference xmlns:w="${namespace}" w:id="${value}"/>`),
+        ).toContain("Invalid attribute value");
+      }
+      // ST_OnOff unions a collapsing xs:boolean with a preserving string enum.
+      expect(validateSchemaAttributes(part("b", " true "))).toBeNull();
+      expect(validateSchemaAttributes(part("b", " on "))).toContain("Invalid attribute value");
+      expect(validateSchemaAttributes(part("b", "&#xA0;true&#xA0;"))).toContain(
+        "Invalid attribute value",
+      );
+      expect(validateSchemaAttributes(part("sz", " 12 "))).toBeNull();
+      expect(validateSchemaAttributes(part("sz", " 12pt "))).toContain("Invalid attribute value");
+    },
+  );
+
   test("decodes XML entities before checking enums", () => {
     expect(
       validateSchemaAttributes(`<w:jc xmlns:w="${TRANSITIONAL}" w:val="c&#101;nter"/>`),

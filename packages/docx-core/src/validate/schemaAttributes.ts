@@ -3,11 +3,12 @@ import { XMLParser, XMLValidator } from "fast-xml-parser";
 
 import { SCHEMA_ATTRIBUTE_FACTS } from "./schemaAttributes.gen";
 
+type Whitespace = "preserve" | "replace" | "collapse";
 type Constraint =
-  | { type: "any" }
-  | { type: "enum"; values: readonly string[] }
-  | { type: "pattern"; patterns: readonly string[] }
-  | { type: "integer"; min?: string; max?: string }
+  | { type: "any"; whitespace: Whitespace }
+  | { type: "enum"; values: readonly string[]; whitespace: Whitespace }
+  | { type: "pattern"; patterns: readonly string[]; whitespace: Whitespace }
+  | { type: "integer"; min?: string; max?: string; whitespace: Whitespace }
   | { type: "union"; members: readonly Constraint[] };
 type Attribute = { name: string; required: boolean; constraint: Constraint; fixed?: string };
 type Model = {
@@ -51,21 +52,39 @@ const resolveName = ({ name, scope, attribute }: ResolveNameOptions): string | n
   return `{${namespaceIndex.get(canonical) ?? canonical}}${local}`;
 };
 
+/** XSD whiteSpace recognizes XML's four ASCII whitespace characters only. */
+const normalizeWhitespace = (value: string, policy: Whitespace): string => {
+  switch (policy) {
+    case "preserve":
+      return value;
+    case "replace":
+      return value.replace(/[\t\n\r]/g, " ");
+    case "collapse":
+      return value.replace(/[\t\n\r ]+/g, " ").replace(/^ | $/g, "");
+    default: {
+      const exhaustive: never = policy;
+      return exhaustive;
+    }
+  }
+};
+
 const accepts = (constraint: Constraint, value: string): boolean => {
+  const normalized =
+    constraint.type === "union" ? value : normalizeWhitespace(value, constraint.whitespace);
   switch (constraint.type) {
     case "any":
       return true;
     case "enum":
-      return constraint.values.includes(value);
+      return constraint.values.includes(normalized);
     case "pattern":
       return constraint.patterns.every((pattern) =>
-        new RegExp(`^(?:${pattern})$`, "u").test(value),
+        new RegExp(`^(?:${pattern})$`, "u").test(normalized),
       );
     case "union":
       return constraint.members.some((member) => accepts(member, value));
     case "integer": {
-      if (!/^[+-]?\d+$/.test(value)) return false;
-      const integer = BigInt(value);
+      if (!/^[+-]?\d+$/.test(normalized)) return false;
+      const integer = BigInt(normalized);
       return (
         (constraint.min === undefined || integer >= BigInt(constraint.min)) &&
         (constraint.max === undefined || integer <= BigInt(constraint.max))
@@ -92,7 +111,7 @@ const validateAttributes = (model: Model, values: ReadonlyMap<string, string>): 
     }
     if (attribute.fixed !== undefined && value !== attribute.fixed)
       return `Invalid fixed attribute ${attribute.name}`;
-    if (!accepts(attribute.constraint, value.trim()))
+    if (!accepts(attribute.constraint, value))
       return `Invalid attribute value for ${attribute.name}`;
   }
   return null;

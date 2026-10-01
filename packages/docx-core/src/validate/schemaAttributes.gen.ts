@@ -25,28 +25,32 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}abstractNumId",
    "required": true,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}name",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}val",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}caption",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -59,10 +63,12 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
       "type": "enum",
       "values": [
        "auto"
-      ]
+      ],
+      "whitespace": "preserve"
      },
      {
-      "type": "any"
+      "type": "any",
+      "whitespace": "collapse"
      }
     ]
    }
@@ -90,7 +96,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "none",
      "text1",
      "text2"
-    ]
+    ],
+    "whitespace": "preserve"
+   }
+  },
+  {
+   "name": "{15}val",
+   "required": true,
+   "constraint": {
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
@@ -101,21 +116,24 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "ltr",
      "rtl"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}colFirst",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}colLast",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -126,7 +144,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "next",
      "prev"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -134,6 +153,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "required": true,
    "constraint": {
     "type": "integer",
+    "whitespace": "collapse",
     "min": "-2147483648",
     "max": "2147483647"
    }
@@ -151,14 +171,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -176,14 +198,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -194,7 +218,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "constraint": {
     "type": "integer",
     "min": "0",
-    "max": "18446744073709551615"
+    "max": "18446744073709551615",
+    "whitespace": "collapse"
    }
   },
   {
@@ -203,7 +228,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "constraint": {
     "type": "integer",
     "min": "0",
-    "max": "18446744073709551615"
+    "max": "18446744073709551615",
+    "whitespace": "collapse"
    }
   },
   {
@@ -405,7 +431,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "zanyTriangles",
      "zigZag",
      "zigZagStitch"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -418,7 +445,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "left",
      "none",
      "right"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -430,7 +458,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "column",
      "page",
      "textWrapping"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -453,7 +482,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "saka",
      "taiwan",
      "thai"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -469,14 +499,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -485,7 +517,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}heading",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -501,14 +534,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -582,7 +617,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "upperLetter",
      "upperRoman",
      "vietnameseCounting"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -595,7 +631,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "below",
      "left",
      "right"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -609,14 +646,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "enDash",
      "hyphen",
      "period"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}author",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -627,7 +666,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "cont",
      "rest"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -638,7 +678,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "cont",
      "rest"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -650,7 +691,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "compressPunctuation",
      "compressPunctuationAndJapaneseKana",
      "doNotCompress"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -666,14 +708,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -691,14 +735,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -716,14 +762,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -741,14 +789,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -766,14 +816,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -791,14 +843,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -816,14 +870,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -841,14 +897,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -866,14 +924,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -891,14 +951,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -916,14 +978,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -941,14 +1005,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -960,7 +1026,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "pattern",
     "patterns": [
      "[01]*"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -973,10 +1040,12 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
       "type": "enum",
       "values": [
        "auto"
-      ]
+      ],
+      "whitespace": "preserve"
      },
      {
-      "type": "any"
+      "type": "any",
+      "whitespace": "collapse"
      }
     ]
    }
@@ -999,7 +1068,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1020,7 +1090,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1041,7 +1112,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1062,7 +1134,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1083,7 +1156,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1104,7 +1178,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1125,7 +1200,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1146,7 +1222,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1167,7 +1244,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1188,7 +1266,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1209,7 +1288,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1230,7 +1310,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hyperlink",
      "light1",
      "light2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1242,13 +1323,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1262,13 +1345,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1286,14 +1371,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1302,7 +1389,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}num",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -1318,14 +1406,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1334,28 +1424,32 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}element",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}storeItemID",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}xpath",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}val",
    "required": true,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -1365,13 +1459,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?%"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1380,14 +1476,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}charSpace",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}linePitch",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -1400,7 +1498,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "lines",
      "linesAndChars",
      "snapToChars"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1412,7 +1511,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "content",
      "p",
      "pg"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1459,7 +1559,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "tbls",
      "txtBox",
      "watermarks"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1475,14 +1576,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1500,7 +1603,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "normal",
      "speller",
      "toolbar"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1516,14 +1620,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1536,14 +1642,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "custom",
      "hash"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}cryptAlgorithmSid",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -1554,7 +1662,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "custom",
      "typeAny"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1566,14 +1675,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "custom",
      "rsaAES",
      "rsaFull"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}cryptSpinCount",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -1587,7 +1698,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "none",
      "readOnly",
      "trackedChanges"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1603,14 +1715,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1628,14 +1742,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1644,7 +1760,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}spinCount",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -1655,7 +1772,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "strict",
      "transitional"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1671,14 +1789,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1694,7 +1814,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "none",
      "round",
      "square"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1702,6 +1823,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "required": false,
    "constraint": {
     "type": "integer",
+    "whitespace": "collapse",
     "min": "-2147483648",
     "max": "2147483647"
    }
@@ -1719,14 +1841,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1744,14 +1868,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1764,7 +1890,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "docEnd",
      "sectEnd"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1778,7 +1905,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "dot",
      "none",
      "underDot"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1789,7 +1917,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "autoText",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1804,7 +1933,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "date",
      "number",
      "regular"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1816,13 +1946,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1840,14 +1972,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1861,7 +1995,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "begin",
      "end",
      "separate"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1877,14 +2012,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1901,14 +2038,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "roman",
      "script",
      "swiss"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{8}id",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -1924,14 +2063,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -1950,7 +2091,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "minorBidi",
      "minorEastAsia",
      "minorHAnsi"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1967,7 +2109,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "minorBidi",
      "minorEastAsia",
      "minorHAnsi"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -1984,7 +2127,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "minorBidi",
      "minorEastAsia",
      "minorHAnsi"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2001,7 +2145,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "minorBidi",
      "minorEastAsia",
      "minorHAnsi"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2012,49 +2157,56 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "default",
      "eastAsia"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}csb0",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}csb1",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}usb0",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}usb1",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}usb2",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}usb3",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2066,7 +2218,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "cols",
      "none",
      "rows"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2082,14 +2235,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2103,7 +2258,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "drop",
      "margin",
      "none"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2115,13 +2271,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2135,7 +2293,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "margin",
      "page",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2147,7 +2306,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "atLeast",
      "auto",
      "exact"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2159,13 +2319,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2174,7 +2336,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}lines",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2186,7 +2349,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "margin",
      "page",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2198,13 +2362,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2221,7 +2387,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "notBeside",
      "through",
      "tight"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2231,13 +2398,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2253,7 +2422,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "left",
      "outside",
      "right"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2263,13 +2433,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2286,7 +2458,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "inside",
      "outside",
      "top"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2298,7 +2471,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "auto",
      "off",
      "on"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2311,7 +2485,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "continuationSeparator",
      "normal",
      "separator"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2327,14 +2502,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2349,7 +2526,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "docEnd",
      "pageBottom",
      "sectEnd"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2361,7 +2539,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "default",
      "even",
      "first"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2373,13 +2552,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2407,7 +2588,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "red",
      "white",
      "yellow"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2418,7 +2600,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "continue",
      "restart"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2434,14 +2617,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2453,13 +2638,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2468,7 +2655,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}endChars",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2480,13 +2668,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2495,7 +2685,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}firstLineChars",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2507,13 +2698,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2522,7 +2715,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}hangingChars",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2532,13 +2726,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2547,7 +2743,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}leftChars",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2557,13 +2754,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2572,7 +2771,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}rightChars",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2582,13 +2782,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2597,7 +2799,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}startChars",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2618,7 +2821,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "right",
      "start",
      "thaiDistribute"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2632,21 +2836,24 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "left",
      "right",
      "start"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}lang",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}count",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2662,14 +2869,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2687,14 +2896,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2712,14 +2923,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2728,7 +2941,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}defUIPriority",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2744,14 +2958,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2765,7 +2981,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "nothing",
      "space",
      "tab"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2781,14 +2998,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2797,7 +3016,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}countBy",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2809,13 +3029,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2829,14 +3051,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "continuous",
      "newPage",
      "newSection"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}start",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2849,7 +3073,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "sdtContentLocked",
      "sdtLocked",
      "unlocked"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -2865,14 +3090,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2890,14 +3117,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2915,14 +3144,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2931,7 +3162,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}uiPriority",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2947,14 +3179,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -2963,7 +3197,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}ilvl",
    "required": true,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -2979,14 +3214,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3004,14 +3241,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3023,13 +3262,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3043,13 +3284,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3064,7 +3307,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "fax",
      "newDocument",
      "printer"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3079,7 +3323,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "fax",
      "formLetters",
      "mailingLabels"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3090,7 +3335,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "dbColumn",
      "null"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3108,14 +3354,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "master",
      "native",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}date",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3127,14 +3375,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "hybridMultilevel",
      "multilevel",
      "singleLevel"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}numId",
    "required": true,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3206,14 +3456,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "upperLetter",
      "upperRoman",
      "vietnameseCounting"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}numPicBulletId",
    "required": true,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3225,7 +3477,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "continuous",
      "eachPage",
      "eachSect"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3237,13 +3490,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3257,13 +3512,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3276,7 +3533,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "content",
      "icon"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3292,14 +3550,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3312,7 +3572,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "always",
      "onCall"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3328,14 +3589,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3349,7 +3612,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "allPages",
      "firstPage",
      "notFirstPage"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3360,7 +3624,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "page",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3371,7 +3636,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "back",
      "front"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3381,13 +3647,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3401,13 +3669,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3421,13 +3691,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3441,13 +3713,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3461,13 +3735,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3481,13 +3757,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3499,13 +3777,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3521,14 +3801,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "enDash",
      "hyphen",
      "period"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}chapStyle",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3600,14 +3882,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "upperLetter",
      "upperRoman",
      "vietnameseCounting"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}code",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3618,28 +3902,32 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "landscape",
      "portrait"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
    "name": "{15}first",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}other",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
    "name": "{15}id",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -3655,7 +3943,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "everyone",
      "none",
      "owners"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3667,7 +3956,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "default",
      "fixed",
      "variable"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3676,7 +3966,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "constraint": {
     "type": "integer",
     "min": "0",
-    "max": "18446744073709551615"
+    "max": "18446744073709551615",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3687,7 +3978,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "clean",
      "dirty"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3698,7 +3990,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "clean",
      "dirty"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3711,7 +4004,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "gramStart",
      "spellEnd",
      "spellStart"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3723,7 +4017,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "center",
      "left",
      "right"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3737,7 +4032,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "middleDot",
      "none",
      "underscore"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3748,7 +4044,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "indent",
      "margin"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3764,14 +4061,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3783,13 +4082,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?%"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3800,7 +4101,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "constraint": {
     "type": "integer",
     "min": "0",
-    "max": "18446744073709551615"
+    "max": "18446744073709551615",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3809,7 +4111,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "constraint": {
     "type": "integer",
     "min": "0",
-    "max": "18446744073709551615"
+    "max": "18446744073709551615",
+    "whitespace": "collapse"
    }
   },
   {
@@ -3824,7 +4127,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "left",
      "right",
      "rightVertical"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3836,7 +4140,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "date",
      "dateTime",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3852,14 +4157,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3875,7 +4182,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "nextColumn",
      "nextPage",
      "oddPage"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3888,10 +4196,12 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
       "type": "enum",
       "values": [
        "auto"
-      ]
+      ],
+      "whitespace": "preserve"
      },
      {
-      "type": "any"
+      "type": "any",
+      "whitespace": "collapse"
      }
     ]
    }
@@ -3919,7 +4229,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "none",
      "text1",
      "text2"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3966,7 +4277,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "thinReverseDiagStripe",
      "thinVertStripe",
      "vertStripe"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -3976,13 +4288,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -3991,7 +4305,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}instr",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -4003,13 +4318,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4027,14 +4344,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4043,7 +4362,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}afterLines",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -4055,13 +4375,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4079,14 +4401,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4095,7 +4419,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}beforeLines",
    "required": false,
    "constraint": {
-    "type": "integer"
+    "type": "integer",
+    "whitespace": "collapse"
    }
   },
   {
@@ -4105,13 +4430,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4125,7 +4452,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "atLeast",
      "auto",
      "exact"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4141,14 +4469,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4166,14 +4496,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4188,7 +4520,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "numbering",
      "paragraph",
      "table"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4204,14 +4537,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4229,14 +4564,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4254,14 +4591,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4279,14 +4618,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4304,14 +4645,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4329,14 +4672,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4354,14 +4699,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4379,14 +4726,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4404,14 +4753,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4429,14 +4780,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4454,14 +4807,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4479,14 +4834,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4504,14 +4861,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4529,14 +4888,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4554,14 +4915,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4584,7 +4947,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "name",
      "priority",
      "type"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4599,7 +4963,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "middleDot",
      "none",
      "underscore"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4609,13 +4974,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4635,7 +5002,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "num",
      "right",
      "start"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4655,7 +5023,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "640x480",
      "720x512",
      "800x600"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4666,7 +5035,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "autofit",
      "fixed"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4682,14 +5052,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4707,14 +5079,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4727,7 +5101,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "values": [
      "never",
      "overlap"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4739,13 +5114,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4759,7 +5136,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "margin",
      "page",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4771,13 +5149,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4791,13 +5171,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4809,13 +5191,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4831,7 +5215,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "left",
      "outside",
      "right"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4841,13 +5226,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4864,7 +5251,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "inside",
      "outside",
      "top"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4876,13 +5264,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      {
       "type": "integer",
       "min": "0",
-      "max": "18446744073709551615"
+      "max": "18446744073709551615",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4896,7 +5286,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "margin",
      "page",
      "text"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4918,7 +5309,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "seCell",
      "swCell",
      "wholeTable"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4931,7 +5323,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "dxa",
      "nil",
      "pct"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4944,13 +5337,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
       "type": "union",
       "members": [
        {
-        "type": "integer"
+        "type": "integer",
+        "whitespace": "collapse"
        },
        {
         "type": "pattern",
         "patterns": [
          "-?[0-9]+(\\.[0-9]+)?%"
-        ]
+        ],
+        "whitespace": "preserve"
        }
       ]
      },
@@ -4958,7 +5353,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?(mm|cm|in|pt|pc|pi)"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -4974,7 +5370,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "bottom",
      "center",
      "top"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -4988,7 +5385,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "firstLineOnly",
      "lastLineOnly",
      "none"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5009,7 +5407,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "tbRl",
      "tbRlV",
      "tbV"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5025,7 +5424,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "none",
      "shimmer",
      "sparkle"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5038,10 +5438,12 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
       "type": "pattern",
       "patterns": [
        "0*(600|([0-5]?[0-9]?[0-9]))%"
-      ]
+      ],
+      "whitespace": "preserve"
      },
      {
       "type": "integer",
+      "whitespace": "collapse",
       "min": "0",
       "max": "600"
      }
@@ -5061,14 +5463,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5086,14 +5490,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5111,14 +5517,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5136,14 +5544,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5172,7 +5582,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "wavyDouble",
      "wavyHeavy",
      "words"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5184,7 +5595,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "baseline",
      "subscript",
      "superscript"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5197,7 +5609,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "bottom",
      "center",
      "top"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5212,7 +5625,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "outline",
      "print",
      "web"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   },
   {
@@ -5228,14 +5642,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5244,7 +5660,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}appName",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -5260,14 +5677,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5276,7 +5695,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}dllVersion",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -5292,14 +5712,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
        "1",
        "false",
        "true"
-      ]
+      ],
+      "whitespace": "collapse"
      },
      {
       "type": "enum",
       "values": [
        "off",
        "on"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5308,7 +5730,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "name": "{15}vendorID",
    "required": true,
    "constraint": {
-    "type": "any"
+    "type": "any",
+    "whitespace": "preserve"
    }
   },
   {
@@ -5318,13 +5741,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     "type": "union",
     "members": [
      {
-      "type": "integer"
+      "type": "integer",
+      "whitespace": "collapse"
      },
      {
       "type": "pattern",
       "patterns": [
        "-?[0-9]+(\\.[0-9]+)?%"
-      ]
+      ],
+      "whitespace": "preserve"
      }
     ]
    }
@@ -5339,7 +5764,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
      "fullPage",
      "none",
      "textFit"
-    ]
+    ],
+    "whitespace": "preserve"
    }
   }
  ],
@@ -7291,13 +7717,13 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "7": {
    "attributes": [
-    2
+    6
    ],
    "children": {}
   },
   "8": {
    "attributes": [
-    6
+    7
    ],
    "children": {
     "{15}customXml": [
@@ -7348,69 +7774,69 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "10": {
    "attributes": [
-    7,
     8,
     9,
     10,
+    11,
     1
    ],
    "children": {}
   },
   "11": {
    "attributes": [
-    7,
     8,
     9,
-    10
+    10,
+    11
    ],
    "children": {}
   },
   "12": {
    "attributes": [
     4,
-    11,
     12,
     13,
     14,
+    15,
     5,
-    15
+    16
    ],
    "children": {}
   },
   "13": {
    "attributes": [
     4,
-    11,
     12,
     13,
     14,
+    15,
     5,
-    15
+    16
    ],
    "children": {}
   },
   "14": {
    "attributes": [
-    16,
-    17
+    17,
+    18
    ],
    "children": {}
   },
   "15": {
    "attributes": [
-    18
+    19
    ],
    "children": {}
   },
   "16": {
    "attributes": [
-    19,
     20,
-    1,
     21,
+    1,
     22,
     23,
-    24
+    24,
+    25
    ],
    "children": {}
   },
@@ -7420,16 +7846,16 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "18": {
    "attributes": [
-    25,
-    10,
     26,
-    27
+    11,
+    27,
+    28
    ],
    "children": {}
   },
   "19": {
    "attributes": [
-    28
+    29
    ],
    "children": {}
   },
@@ -7439,7 +7865,6 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "21": {
    "attributes": [
-    29,
     30,
     31,
     32,
@@ -7451,20 +7876,20 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     38,
     39,
     40,
-    41
+    41,
+    42
    ],
    "children": {}
   },
   "22": {
    "attributes": [
     5,
-    42
+    43
    ],
    "children": {}
   },
   "23": {
    "attributes": [
-    43,
     44,
     45,
     46,
@@ -7475,30 +7900,31 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     51,
     52,
     53,
-    54
+    54,
+    55
    ],
    "children": {}
   },
   "24": {
    "attributes": [
-    55,
-    56
+    56,
+    57
    ],
    "children": {}
   },
   "25": {
    "attributes": [
-    57,
     58,
     59,
-    55
+    60,
+    56
    ],
    "children": {}
   },
   "26": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}customXml": [
@@ -7539,7 +7965,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "31": {
    "attributes": [
-    60
+    61
    ],
    "children": {
     "{15}customXml": [
@@ -7564,7 +7990,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "32": {
    "attributes": [
-    60
+    61
    ],
    "children": {
     "{15}customXml": [
@@ -7597,7 +8023,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "34": {
    "attributes": [
-    60
+    61
    ],
    "children": {
     "{15}customXml": [
@@ -7622,7 +8048,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "35": {
    "attributes": [
-    60
+    61
    ],
    "children": {
     "{15}customXml": [
@@ -7647,26 +8073,26 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "36": {
    "attributes": [
-    61,
-    62
+    62,
+    63
    ],
    "children": {}
   },
   "37": {
    "attributes": [
-    63
+    64
    ],
    "children": {}
   },
   "38": {
    "attributes": [
-    64
+    65
    ],
    "children": {}
   },
   "39": {
    "attributes": [
-    6
+    7
    ],
    "children": {
     "{15}customXml": [
@@ -7691,7 +8117,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "40": {
    "attributes": [
-    10
+    11
    ],
    "children": {}
   },
@@ -7722,9 +8148,9 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "44": {
    "attributes": [
-    65,
     66,
-    67
+    67,
+    68
    ],
    "children": {}
   },
@@ -7734,7 +8160,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "46": {
    "attributes": [
-    68
+    69
    ],
    "children": {}
   },
@@ -7752,13 +8178,13 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "49": {
    "attributes": [
-    69
+    70
    ],
    "children": {}
   },
   "50": {
    "attributes": [
-    70,
+    71,
     2
    ],
    "children": {}
@@ -7784,13 +8210,13 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "53": {
    "attributes": [
-    71
+    72
    ],
    "children": {}
   },
   "54": {
    "attributes": [
-    72
+    73
    ],
    "children": {
     "{15}type": [
@@ -7800,7 +8226,6 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "55": {
    "attributes": [
-    73,
     74,
     75,
     76,
@@ -7808,7 +8233,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     78,
     79,
     80,
-    81
+    81,
+    82
    ],
    "children": {}
   },
@@ -7824,7 +8250,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "58": {
    "attributes": [
-    82
+    83
    ],
    "children": {}
   },
@@ -7849,11 +8275,11 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "63": {
    "attributes": [
-    83,
     84,
     85,
     86,
-    87
+    87,
+    88
    ],
    "children": {}
   },
@@ -7870,7 +8296,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "65": {
    "attributes": [
-    88
+    89
    ],
    "children": {}
   },
@@ -7884,7 +8310,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "67": {
    "attributes": [
-    89
+    90
    ],
    "children": {}
   },
@@ -7926,7 +8352,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "73": {
    "attributes": [
-    90
+    91
    ],
    "children": {}
   },
@@ -7936,7 +8362,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "75": {
    "attributes": [
-    90
+    91
    ],
    "children": {}
   },
@@ -7953,22 +8379,22 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "77": {
    "attributes": [
-    91
+    92
    ],
    "children": {}
   },
   "78": {
    "attributes": [
-    85,
-    92
+    86,
+    93
    ],
    "children": {}
   },
   "79": {
    "attributes": [
-    93,
     94,
-    95
+    95,
+    96
    ],
    "children": {}
   },
@@ -7980,35 +8406,35 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "81": {
    "attributes": [
-    96
+    97
    ],
    "children": {}
   },
   "82": {
    "attributes": [
-    97,
-    98
+    98,
+    99
    ],
    "children": {}
   },
   "83": {
    "attributes": [
-    99,
     100,
     101,
     102,
-    103
+    103,
+    104
    ],
    "children": {}
   },
   "84": {
    "attributes": [
-    104,
     105,
     106,
     107,
     108,
-    109
+    109,
+    110
    ],
    "children": {}
   },
@@ -8037,13 +8463,12 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "88": {
    "attributes": [
-    110
+    111
    ],
    "children": {}
   },
   "89": {
    "attributes": [
-    111,
     112,
     113,
     114,
@@ -8052,18 +8477,19 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     117,
     118,
     119,
-    56,
     120,
+    57,
     121,
     122,
     123,
-    124
+    124,
+    125
    ],
    "children": {}
   },
   "90": {
    "attributes": [
-    125
+    126
    ],
    "children": {}
   },
@@ -8096,8 +8522,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "94": {
    "attributes": [
-    10,
-    126
+    11,
+    127
    ],
    "children": {
     "{15}customXml": [
@@ -8122,20 +8548,20 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "95": {
    "attributes": [
-    127,
-    10
+    128,
+    11
    ],
    "children": {}
   },
   "96": {
    "attributes": [
-    10
+    11
    ],
    "children": {}
   },
   "97": {
    "attributes": [
-    128
+    129
    ],
    "children": {}
   },
@@ -8180,8 +8606,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "102": {
    "attributes": [
-    97,
-    129
+    98,
+    130
    ],
    "children": {}
   },
@@ -8191,32 +8617,32 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "104": {
    "attributes": [
-    115,
-    130
+    116,
+    131
    ],
    "children": {}
   },
   "105": {
    "attributes": [
-    131
+    132
    ],
    "children": {}
   },
   "106": {
    "attributes": [
-    132
+    133
    ],
    "children": {}
   },
   "107": {
    "attributes": [
-    92
+    93
    ],
    "children": {}
   },
   "108": {
    "attributes": [
-    133
+    134
    ],
    "children": {
     "{15}customXml": [
@@ -8241,7 +8667,6 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "109": {
    "attributes": [
-    134,
     135,
     136,
     137,
@@ -8252,25 +8677,26 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     142,
     143,
     144,
-    145
+    145,
+    146
    ],
    "children": {}
   },
   "110": {
    "attributes": [
-    146
+    147
    ],
    "children": {}
   },
   "111": {
    "attributes": [
-    147
+    148
    ],
    "children": {}
   },
   "112": {
    "attributes": [
-    148,
+    149,
     2
    ],
    "children": {}
@@ -8287,63 +8713,63 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "115": {
    "attributes": [
-    149,
     150,
     151,
     152,
     153,
-    154
+    154,
+    155
    ],
    "children": {}
   },
   "116": {
    "attributes": [
-    155
+    156
    ],
    "children": {}
   },
   "117": {
    "attributes": [
-    156
+    157
    ],
    "children": {}
   },
   "118": {
    "attributes": [
-    157,
     158,
     159,
-    160
+    160,
+    161
    ],
    "children": {}
   },
   "119": {
    "attributes": [
-    161
+    162
    ],
    "children": {}
   },
   "120": {
    "attributes": [
-    2
+    6
    ],
    "children": {}
   },
   "121": {
    "attributes": [
-    162,
-    1,
     163,
+    1,
     164,
     165,
-    166
+    166,
+    167
    ],
    "children": {}
   },
   "122": {
    "attributes": [
-    167,
-    168
+    168,
+    169
    ],
    "children": {
     "{15}start": [
@@ -8359,9 +8785,9 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "123": {
    "attributes": [
-    169,
     170,
-    171
+    171,
+    172
    ],
    "children": {}
   },
@@ -8383,45 +8809,45 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "127": {
    "attributes": [
-    172
+    173
    ],
    "children": {}
   },
   "128": {
    "attributes": [
-    173
+    174
    ],
    "children": {}
   },
   "129": {
    "attributes": [
-    174
+    175
    ],
    "children": {}
   },
   "130": {
    "attributes": [
-    175
+    176
    ],
    "children": {}
   },
   "131": {
    "attributes": [
-    10
+    11
    ],
    "children": {}
   },
   "132": {
    "attributes": [
-    9,
-    10
+    10,
+    11
    ],
    "children": {}
   },
   "133": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}rPr": [
@@ -8431,8 +8857,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "134": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}del": [
@@ -8445,25 +8871,25 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "135": {
    "attributes": [
-    25,
-    7,
+    26,
     8,
-    176,
     9,
+    177,
     10,
+    11,
     1
    ],
    "children": {}
   },
   "136": {
    "attributes": [
-    177
+    178
    ],
    "children": {}
   },
   "137": {
    "attributes": [
-    178
+    179
    ],
    "children": {}
   },
@@ -8473,19 +8899,19 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "139": {
    "attributes": [
-    179
+    180
    ],
    "children": {}
   },
   "140": {
    "attributes": [
-    167
+    168
    ],
    "children": {}
   },
   "141": {
    "attributes": [
-    180
+    181
    ],
    "children": {}
   },
@@ -8499,30 +8925,30 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "143": {
    "attributes": [
-    181
+    182
    ],
    "children": {}
   },
   "144": {
    "attributes": [
-    182,
-    183
+    183,
+    184
    ],
    "children": {}
   },
   "145": {
    "attributes": [
-    97,
-    184
+    98,
+    185
    ],
    "children": {}
   },
   "146": {
    "attributes": [
-    97,
-    184,
+    98,
     185,
-    186
+    186,
+    187
    ],
    "children": {}
   },
@@ -8550,13 +8976,13 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "149": {
    "attributes": [
-    187
+    188
    ],
    "children": {}
   },
   "150": {
    "attributes": [
-    187
+    188
    ],
    "children": {}
   },
@@ -8589,20 +9015,20 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   "152": {
    "attributes": [
     4,
-    11,
     12,
     13,
     14,
+    15,
     5,
-    15
+    16
    ],
    "children": {}
   },
   "153": {
    "attributes": [
-    188,
     189,
-    190
+    190,
+    191
    ],
    "children": {
     "{15}top": [
@@ -8621,44 +9047,44 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "154": {
    "attributes": [
-    191,
     192,
     193,
     194,
     195,
     196,
-    197
+    197,
+    198
    ],
    "children": {}
   },
   "155": {
    "attributes": [
-    198,
     199,
     200,
-    160
+    201,
+    161
    ],
    "children": {}
   },
   "156": {
    "attributes": [
-    201,
-    113,
     202,
-    56
+    114,
+    203,
+    57
    ],
    "children": {}
   },
   "157": {
    "attributes": [
-    2
+    6
    ],
    "children": {}
   },
   "158": {
    "attributes": [
-    203,
-    204
+    204,
+    205
    ],
    "children": {}
   },
@@ -8693,8 +9119,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "160": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}rPr": [
@@ -8747,18 +9173,18 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "163": {
    "attributes": [
-    9,
-    205
+    10,
+    206
    ],
    "children": {}
   },
   "164": {
    "attributes": [
-    7,
     8,
     9,
-    206,
-    205
+    10,
+    207,
+    206
    ],
    "children": {}
   },
@@ -8768,13 +9194,13 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "166": {
    "attributes": [
-    207
+    208
    ],
    "children": {}
   },
   "167": {
    "attributes": [
-    208
+    209
    ],
    "children": {}
   },
@@ -8816,8 +9242,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "171": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}pPr": [
@@ -8846,22 +9272,22 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "174": {
    "attributes": [
-    209,
-    210
+    210,
+    211
    ],
    "children": {}
   },
   "175": {
    "attributes": [
-    211
+    212
    ],
    "children": {}
   },
   "176": {
    "attributes": [
-    212,
     213,
-    214
+    214,
+    215
    ],
    "children": {}
   },
@@ -8878,10 +9304,10 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "178": {
    "attributes": [
-    215,
     216,
     217,
-    218
+    218,
+    219
    ],
    "children": {}
   },
@@ -8899,7 +9325,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "181": {
    "attributes": [
-    97
+    98
    ],
    "children": {}
   },
@@ -8951,8 +9377,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "184": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}rPr": [
@@ -8988,7 +9414,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "188": {
    "attributes": [
-    219
+    220
    ],
    "children": {}
   },
@@ -9015,8 +9441,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "191": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}customXml": [
@@ -9161,7 +9587,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "201": {
    "attributes": [
-    220
+    221
    ],
    "children": {}
   },
@@ -9214,7 +9640,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "209": {
    "attributes": [
-    221
+    222
    ],
    "children": {}
   },
@@ -9248,8 +9674,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "212": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}sectPr": [
@@ -9259,7 +9685,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "213": {
    "attributes": [
-    222
+    223
    ],
    "children": {}
   },
@@ -9281,30 +9707,30 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   "216": {
    "attributes": [
     4,
-    223,
-    5,
     224,
-    225
+    5,
+    225,
+    226
    ],
    "children": {}
   },
   "217": {
    "attributes": [
-    226
+    227
    ],
    "children": {}
   },
   "218": {
    "attributes": [
-    226
+    227
    ],
    "children": {}
   },
   "219": {
    "attributes": [
-    93,
-    95,
-    227
+    94,
+    96,
+    228
    ],
    "children": {
     "{15}customXml": [
@@ -9333,7 +9759,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "221": {
    "attributes": [
-    60
+    61
    ],
    "children": {
     "{15}customXml": [
@@ -9362,14 +9788,14 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "223": {
    "attributes": [
-    228,
     229,
     230,
     231,
     232,
     233,
     234,
-    235
+    235,
+    236
    ],
    "children": {}
   },
@@ -9381,9 +9807,9 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "225": {
    "attributes": [
-    236,
     237,
-    238
+    238,
+    239
    ],
    "children": {
     "{15}name": [
@@ -9408,7 +9834,6 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "226": {
    "attributes": [
-    239,
     240,
     241,
     242,
@@ -9422,7 +9847,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     250,
     251,
     252,
-    253
+    253,
+    254
    ],
    "children": {}
   },
@@ -9436,7 +9862,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "228": {
    "attributes": [
-    254
+    255
    ],
    "children": {}
   },
@@ -9454,15 +9880,15 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "231": {
    "attributes": [
-    255,
     256,
-    257
+    257,
+    258
    ],
    "children": {}
   },
   "232": {
    "attributes": [
-    258
+    259
    ],
    "children": {}
   },
@@ -9551,7 +9977,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "238": {
    "attributes": [
-    10
+    11
    ],
    "children": {
     "{15}tblGrid": [
@@ -9561,36 +9987,35 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "239": {
    "attributes": [
-    56
+    57
    ],
    "children": {}
   },
   "240": {
    "attributes": [
-    259
+    260
    ],
    "children": {}
   },
   "241": {
    "attributes": [
-    31,
     32,
-    35,
+    33,
     36,
-    260,
-    261
+    37,
+    261,
+    262
    ],
    "children": {}
   },
   "242": {
    "attributes": [
-    262
+    263
    ],
    "children": {}
   },
   "243": {
    "attributes": [
-    263,
     264,
     265,
     266,
@@ -9599,7 +10024,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
     269,
     270,
     271,
-    272
+    272,
+    273
    ],
    "children": {}
   },
@@ -9621,8 +10047,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "246": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}tblPr": [
@@ -9648,8 +10074,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "249": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}tblPrEx": [
@@ -9659,7 +10085,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "250": {
    "attributes": [
-    273
+    274
    ],
    "children": {
     "{15}pPr": [
@@ -9681,8 +10107,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "251": {
    "attributes": [
-    274,
-    275
+    275,
+    276
    ],
    "children": {}
   },
@@ -9768,8 +10194,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "257": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}tcPr": [
@@ -9787,75 +10213,75 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "260": {
    "attributes": [
-    276
+    277
    ],
    "children": {}
   },
   "261": {
    "attributes": [
-    277
+    278
    ],
    "children": {}
   },
   "262": {
    "attributes": [
-    278
+    279
    ],
    "children": {}
   },
   "263": {
    "attributes": [
-    279
+    280
    ],
    "children": {}
   },
   "264": {
    "attributes": [
-    280
+    281
    ],
    "children": {}
   },
   "265": {
    "attributes": [
     4,
-    11,
     12,
     13,
     14,
+    15,
     5,
-    15
+    16
    ],
    "children": {}
   },
   "266": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {}
   },
   "267": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {}
   },
   "268": {
    "attributes": [
-    25,
-    9,
-    10
+    26,
+    10,
+    11
    ],
    "children": {}
   },
   "269": {
    "attributes": [
-    281,
-    80,
     282,
+    81,
     283,
-    284
+    284,
+    285
    ],
    "children": {}
   },
@@ -9883,8 +10309,8 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "272": {
    "attributes": [
-    25,
-    10
+    26,
+    11
    ],
    "children": {
     "{15}trPr": [
@@ -9894,7 +10320,7 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "273": {
    "attributes": [
-    92
+    93
    ],
    "children": {}
   },
@@ -9925,37 +10351,37 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
    "attributes": [
     4,
     5,
-    285
+    286
    ],
    "children": {}
   },
   "276": {
    "attributes": [
-    208
+    209
    ],
    "children": {}
   },
   "277": {
    "attributes": [
-    286
+    287
    ],
    "children": {}
   },
   "278": {
    "attributes": [
-    287
+    288
    ],
    "children": {}
   },
   "279": {
    "attributes": [
-    288
+    289
    ],
    "children": {}
   },
   "280": {
    "attributes": [
-    132
+    133
    ],
    "children": {}
   },
@@ -9965,31 +10391,31 @@ export const SCHEMA_ATTRIBUTE_FACTS: SchemaAttributeFacts = {
   },
   "282": {
    "attributes": [
-    73,
     74,
     75,
     76,
     77,
-    289,
-    81
+    78,
+    290,
+    82
    ],
    "children": {}
   },
   "283": {
    "attributes": [
-    290,
     291,
     292,
-    148,
     293,
-    294
+    149,
+    294,
+    295
    ],
    "children": {}
   },
   "284": {
    "attributes": [
-    295,
-    296
+    296,
+    297
    ],
    "children": {}
   }

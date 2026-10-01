@@ -15,11 +15,12 @@ const OUTPUT = path.join(ROOT, "packages/docx-core/src/validate/schemaAttributes
 const XSD = "http://www.w3.org/2001/XMLSchema";
 const WML = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 
+type Whitespace = "preserve" | "replace" | "collapse";
 type Constraint =
-  | { type: "any" }
-  | { type: "enum"; values: string[] }
-  | { type: "pattern"; patterns: string[] }
-  | { type: "integer"; min?: string; max?: string }
+  | { type: "any"; whitespace: Whitespace }
+  | { type: "enum"; values: string[]; whitespace: Whitespace }
+  | { type: "pattern"; patterns: string[]; whitespace: Whitespace }
+  | { type: "integer"; min?: string; max?: string; whitespace: Whitespace }
   | { type: "union"; members: Constraint[] };
 type Attribute = { name: string; required: boolean; constraint: Constraint; fixed?: string };
 type Model = { attributes: Attribute[]; children: Record<string, string[]> };
@@ -46,17 +47,37 @@ export const generateFuzzSchema = (graph: OoxmlSchemaGraph): string => {
   const inheritance = new Map(graph.inheritance.map((edge) => [edge.derived, edge.base]));
   const attributes = Map.groupBy(graph.attributes, (attribute) => attribute.owner);
   const children = Map.groupBy(graph.children, (child) => child.owner);
-  const constraintFor = (qname: string | undefined, visiting = new Set<string>()): Constraint => {
-    if (!qname || visiting.has(qname)) return { type: "any" };
+  const whitespaceFor = (qname: string | undefined, visiting = new Set<string>()): Whitespace => {
+    if (!qname || visiting.has(qname)) return "preserve";
     visiting.add(qname);
-    if (qname === `{${XSD}}boolean`) return { type: "enum", values: ["0", "1", "false", "true"] };
+    if (qname.startsWith(`{${XSD}}`)) {
+      const name = qname.slice(XSD.length + 2);
+      if (name === "string" || name === "anySimpleType") return "preserve";
+      return name === "normalizedString" ? "replace" : "collapse";
+    }
+    const symbol = symbols.get(`simpleType:${qname}`);
+    const facet = symbol?.facets?.find(({ kind }) => kind === "whiteSpace");
+    if (!facet) return whitespaceFor(symbol?.base, visiting);
+    if (facet.value === "preserve" || facet.value === "replace" || facet.value === "collapse")
+      return facet.value;
+    throw new FuzzSchemaGenerationError({
+      message: `Unknown whiteSpace facet on ${qname}: ${facet.value}`,
+    });
+  };
+  const constraintFor = (qname: string | undefined, visiting = new Set<string>()): Constraint => {
+    const whitespace = whitespaceFor(qname);
+    if (!qname || visiting.has(qname)) return { type: "any", whitespace };
+    visiting.add(qname);
+    if (qname === `{${XSD}}boolean`)
+      return { type: "enum", values: ["0", "1", "false", "true"], whitespace };
     const builtin = qname.startsWith(`{${XSD}}`)
       ? INTEGER_BOUNDS[qname.slice(XSD.length + 2)]
       : undefined;
-    if (builtin) return { type: "integer", ...builtin };
+    if (builtin) return { type: "integer", ...builtin, whitespace };
     const symbol = symbols.get(`simpleType:${qname}`);
-    if (!symbol) return { type: "any" };
-    if (symbol.enumValues) return { type: "enum", values: [...symbol.enumValues].sort() };
+    if (!symbol) return { type: "any", whitespace };
+    if (symbol.enumValues)
+      return { type: "enum", values: [...symbol.enumValues].sort(), whitespace };
     if (symbol.memberTypes)
       return {
         type: "union",
@@ -69,7 +90,8 @@ export const generateFuzzSchema = (graph: OoxmlSchemaGraph): string => {
     // These WML lexical patterns use ordinary character classes, grouping,
     // quantifiers and escaped dots/braces; XSD-only regex syntax is excluded.
     if (patterns.length && patterns.every((pattern) => !/\\[ipPcCsSwW]|\[.*-\[/.test(pattern)))
-      return { type: "pattern", patterns };
+      return { type: "pattern", patterns, whitespace };
+    if (base.type !== "union") base.whitespace = whitespace;
     if (base.type !== "integer") return base;
     for (const facet of symbol.facets ?? []) {
       if (facet.kind === "minInclusive") base.min = facet.value;
@@ -103,7 +125,11 @@ export const generateFuzzSchema = (graph: OoxmlSchemaGraph): string => {
       const global = attribute.ref ? symbols.get(`attribute:${attribute.ref}`) : undefined;
       const name = attribute.ref ?? qualify(attribute.namespace ?? "", attribute.name ?? "");
       const constraint = attribute.enumValues
-        ? { type: "enum" as const, values: [...attribute.enumValues].sort() }
+        ? {
+            type: "enum" as const,
+            values: [...attribute.enumValues].sort(),
+            whitespace: whitespaceFor(attribute.type ?? global?.type),
+          }
         : constraintFor(attribute.type ?? global?.type);
       // ECMA's xs:integer has no bound. Annotation interoperability uses a signed
       // 32-bit interoperability policy; this is deliberately not an XSD facet.
