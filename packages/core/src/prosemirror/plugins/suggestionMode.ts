@@ -643,21 +643,44 @@ export function handleSuggestionTableCellPaste(
         const insertFrom = tr.mapping.slice(mapFrom).map(to);
         const sizeBefore = tr.doc.content.size;
         tr.replaceRange(insertFrom, insertFrom, content);
-        const insertTo = insertFrom + (tr.doc.content.size - sizeBefore);
-        enclosePastedRunRevisions({ tr, from: insertFrom, to: insertTo, revision });
+        let insertTo = insertFrom + (tr.doc.content.size - sizeBefore);
+        let pastedFrom = insertFrom;
+        // Retracting our pasted words also retracts their empty paragraphs.
+        // Keep paragraphs carrying original struck content for rejection; the
+        // new paste now supplies the required final paragraph of the cell.
+        const emptyInsertions: { from: number; to: number }[] = [];
+        const replacedCell = tr.doc.nodeAt(cellPos);
+        // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+        replacedCell?.forEach((node, offset) => {
+          const pos = cellPos + 1 + offset;
+          if (
+            pos < pastedFrom &&
+            node.type.name === "paragraph" &&
+            node.content.size === 0 &&
+            isCurrentAuthorParagraphInsertion(node.attrs["pPrMark"], pluginState.author)
+          ) {
+            emptyInsertions.push({ from: pos, to: pos + node.nodeSize });
+          }
+        });
+        const retraction = tr.mapping.maps.length;
+        for (const range of emptyInsertions.toReversed()) tr.delete(range.from, range.to);
+        const retracted = tr.mapping.slice(retraction);
+        pastedFrom = retracted.map(pastedFrom);
+        insertTo = retracted.map(insertTo);
+        enclosePastedRunRevisions({ tr, from: pastedFrom, to: insertTo, revision });
         markRangeAsInserted(
           tr,
           tr.doc,
-          insertFrom,
+          pastedFrom,
           insertTo,
           insertionType,
           deletionType,
           revision,
         );
-        tr.doc.nodesBetween(insertFrom, insertTo, (node, pos) => {
+        tr.doc.nodesBetween(pastedFrom, insertTo, (node, pos) => {
           if (
             node.type.name === "paragraph" &&
-            pos >= insertFrom &&
+            pos >= pastedFrom &&
             pos + node.nodeSize <= insertTo &&
             node.attrs["pPrMark"] == null
           ) {

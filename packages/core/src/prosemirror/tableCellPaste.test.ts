@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { Fragment, Slice, type Node as PMNode } from "prosemirror-model";
 import { EditorState as PMEditorState, TextSelection, type EditorState } from "prosemirror-state";
 import { CellSelection, TableMap } from "prosemirror-tables";
@@ -95,6 +96,57 @@ const pasteAtCell = (base: Document, mode: "editing" | "suggesting", text: strin
 };
 
 describe("pasting table cells into a merged table", () => {
+  // Single-paste tests missed retraction of a previous paste's paragraph
+  // marks. Cross sequence lengths and clipboard heights with both resolution
+  // oracles, before and after serialization.
+  test.each([1, 2, 3].flatMap((count) => [1, 2].map((height) => [count, height] as const)))(
+    "%s pastes of %s rows over selected merged cells preserve resolution equivalence",
+    async (count, height) => {
+      const base = await loadTables();
+      const views = (["editing", "suggesting"] as const).map((mode) => {
+        const view = new HeadlessEditorView(createHarnessState(base, mode));
+        const cells: number[] = [];
+        view.state.doc.descendants((node, pos) => {
+          if (node.type.name === "tableCell") cells.push(pos);
+          return node.type.name !== "tableCell";
+        });
+        const [anchor, head] = cells;
+        if (anchor === undefined || head === undefined) panic("Missing selected cells");
+        view.dispatch(
+          view.state.tr.setSelection(CellSelection.create(view.state.doc, anchor, head)),
+        );
+        for (let index = 0; index < count; index++) {
+          const { schema } = view.state;
+          const rows = Array.from({ length: height }, (_, row) =>
+            schema.node(
+              "tableRow",
+              null,
+              ["Left", "Right"].map((text) =>
+                schema.node("tableCell", null, [
+                  schema.node("paragraph", null, schema.text(`${text} ${index}:${row}`)),
+                ]),
+              ),
+            ),
+          );
+          view.paste(new Slice(Fragment.from(schema.node("table", null, rows)), 0, 0));
+        }
+        return view;
+      });
+      const [editing, suggesting] = views;
+      if (!editing || !suggesting) panic("Missing paste views");
+      const saved = await saveHarnessState(suggesting.state, base);
+      const reopened = createHarnessState(await parseShapeDocument(saved.bytes), "suggesting");
+      for (const state of [suggesting.state, reopened]) {
+        expect(summarizeState(resolveAllChanges(state, "accept"))).toEqual(
+          summarizeState(editing.state),
+        );
+        expect(summarizeState(resolveAllChanges(state, "reject"))).toEqual(
+          summarizeState(createHarnessState(base, "editing")),
+        );
+      }
+    },
+  );
+
   test("splits the merge a pasted block cuts through and keeps the grid tiled", async () => {
     const base = await loadTables();
     const view = pasteAtCell(base, "editing", "Cell C2");
