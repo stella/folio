@@ -918,17 +918,14 @@ export function handleSuggestionEnter(view: EditorView, pluginState: SuggestionM
         // The split reads only the style resolver from plugin state. Preserve
         // its explicit key while omitting transaction hooks from the preview.
         const styles = documentStylesKey.get(state);
-        const preview = state.reconfigure({
-          plugins: styles
-            ? [
-                new Plugin({
-                  ...styles.spec,
-                  appendTransaction: undefined,
-                  filterTransaction: undefined,
-                }),
-              ]
-            : [],
-        });
+        const plugins = [];
+        if (styles) {
+          const spec = { ...styles.spec };
+          delete spec.appendTransaction;
+          delete spec.filterTransaction;
+          plugins.push(new Plugin(spec));
+        }
+        const preview = state.reconfigure({ plugins });
         splitState = preview.apply(tr);
       },
       "forward",
