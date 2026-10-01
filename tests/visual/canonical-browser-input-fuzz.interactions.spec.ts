@@ -140,6 +140,15 @@ for (const seed of config.seeds) {
             expect(after.canRedo).toBe(before.canRedo);
             continue;
           }
+          if (action.kind === "typing") {
+            if (!before.selection || before.text === null)
+              throw new TypeError("Missing input selection");
+            expect(after.text).toBe(
+              before.text.slice(0, before.selection.from - 1) +
+                action.text +
+                before.text.slice(before.selection.to - 1),
+            );
+          }
           if (
             action.kind !== "undo" &&
             action.kind !== "redo" &&
