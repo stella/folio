@@ -215,7 +215,7 @@
     },
     {
       "id": "npoi",
-      "title": "NPOI test-data Word documents",
+      "title": "NPOI test-data WordprocessingML documents",
       "publisher": "NPOI project",
       "repository": "https://github.com/nissl-lab/NPOI",
       "commit": "8c9b7ce4d455c0b4d3f541c2fe97fae571fcc148",

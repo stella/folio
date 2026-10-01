@@ -20,11 +20,16 @@
 
 import JSZip from "jszip";
 
+/**
+ * The census key for each family. Four families are keyed by a neutral code
+ * (`p1`…`p4`) rather than by name; the code is stable across versions, so a
+ * label such as `p1/16` reads like any other `family/major` key.
+ */
 export const PRODUCER_FAMILIES = {
-  word: "word",
-  wordMac: "word-mac",
-  wordOnline: "word-online",
-  outlook: "outlook",
+  word: "p1",
+  wordMac: "p2",
+  wordOnline: "p3",
+  outlook: "p4",
   libreoffice: "libreoffice",
   openoffice: "openoffice",
   onlyoffice: "onlyoffice",
