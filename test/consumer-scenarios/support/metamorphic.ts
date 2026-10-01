@@ -56,6 +56,7 @@ import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
 import { createRandom, type Random } from "./random.ts";
+import { RELATIONS, type Relation } from "./relation-contract.ts";
 import { blocksOfStory } from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -65,15 +66,7 @@ type AnyOperation = { id: string; type: string } & Record<string, unknown>;
 type Story = FolioDocumentStoryHandle;
 const MAIN: Story = { type: "main" };
 
-export const RELATIONS = [
-  "directTracked",
-  "rejectAll",
-  "saveIdempotent",
-  "undo",
-  "batchSequential",
-  "readerStability",
-] as const;
-export type Relation = (typeof RELATIONS)[number];
+export { RELATIONS, type Relation } from "./relation-contract.ts";
 
 const parseRelations = (value: string | undefined): ReadonlySet<Relation> => {
   if (value === undefined || value === "" || value === "all") return new Set(RELATIONS);
