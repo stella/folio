@@ -21,6 +21,7 @@ import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
+import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -1032,7 +1033,22 @@ function applyPPrDel(
     const joined = view.state.doc.nodeAt(joinPos);
     try {
       tr.join(joinPos);
-      tr.setNodeAttribute(targetParagraphPos, "pPrMark", null);
+      // Retracting this break leaves the following paragraph's closing mark.
+      // Keep the editing join's formatting, but retain what that paragraph
+      // read as so rejecting the remaining inserted breaks restores it.
+      tr.setNodeAttribute(
+        targetParagraphPos,
+        "pPrMark",
+        joined?.type === targetNode.type ? expectParagraphAttrs(joined).pPrMark : null,
+      );
+      if (joined?.type === targetNode.type) {
+        recordReplacedParagraphProperties({
+          tr,
+          position: targetParagraphPos,
+          replaced: joined,
+          revision: existingMark.info,
+        });
+      }
       // The paragraph keeps its own properties, so the words the retraction
       // brings in drop what their old paragraph's style lent them and read in
       // this one's: a run with no formatting of its own stays without any.
@@ -1480,6 +1496,21 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
             expectParagraphAttrs($from.parent).numPr?.kind === "reference"
           ) {
             return false;
+          }
+          if (
+            event.key === "Backspace" &&
+            clearIndentOnBackspace(view.state, (tr) => {
+              const revision = makeMarkAttrs(pluginState);
+              recordReplacedParagraphProperties({
+                tr,
+                position: $from.before(),
+                replaced: $from.parent,
+                revision: { id: revision.revisionId, author: revision.author, date: revision.date },
+              });
+              view.dispatch(tr.setMeta(SUGGESTION_META, true));
+            })
+          ) {
+            return true;
           }
           const boundaryTarget = paragraphBoundaryTarget(
             view.state,
