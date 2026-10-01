@@ -16,11 +16,13 @@ import { undoInputRule } from "prosemirror-inputrules";
 import { Slice, type Node as PMNode, type MarkType } from "prosemirror-model";
 import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
 import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 
 import type { TrackedChangeInfo } from "../../types/document";
 import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
+import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
@@ -690,6 +692,36 @@ export function handleSuggestionTableCellPaste(
         tr.replaceRange(insertFrom, insertFrom, content);
         let insertTo = insertFrom + (tr.doc.content.size - sizeBefore);
         let pastedFrom = insertFrom;
+        // An open paste splits the cell's final paragraph. Its old closing
+        // mark belongs to the last pasted part; the new break before that is
+        // an insertion, even when the old paragraph was already struck.
+        const finalParagraph = cell.lastChild;
+        const $pasteFrom = tr.doc.resolve(pastedFrom);
+        const $pasteTo = tr.doc.resolve(insertTo);
+        if (
+          content.openStart > 0 &&
+          content.openEnd > 0 &&
+          finalParagraph?.type.name === "paragraph" &&
+          $pasteFrom.parent.type.name === "paragraph" &&
+          $pasteTo.parent.type.name === "paragraph" &&
+          $pasteFrom.before() !== $pasteTo.before()
+        ) {
+          tr.setNodeAttribute($pasteFrom.before(), "pPrMark", {
+            kind: "ins",
+            info: { id: revision.revisionId, author: revision.author, date: revision.date },
+          });
+          tr.setNodeAttribute($pasteTo.before(), "pPrMark", finalParagraph.attrs["pPrMark"]);
+          recordReplacedParagraphProperties({
+            tr,
+            position: $pasteTo.before(),
+            replaced: finalParagraph,
+            revision: {
+              id: revision.revisionId,
+              author: revision.author,
+              date: revision.date,
+            },
+          });
+        }
         // Retracting our pasted words also retracts their empty paragraphs.
         // Keep paragraphs carrying original struck content for rejection; the
         // new paste now supplies the required final paragraph of the cell.
@@ -1133,7 +1165,22 @@ function applyPPrDel(
     const joined = view.state.doc.nodeAt(joinPos);
     try {
       tr.join(joinPos);
-      tr.setNodeAttribute(targetParagraphPos, "pPrMark", null);
+      // Retracting this break leaves the following paragraph's closing mark.
+      // Keep the editing join's formatting, but retain what that paragraph
+      // read as so rejecting the remaining inserted breaks restores it.
+      tr.setNodeAttribute(
+        targetParagraphPos,
+        "pPrMark",
+        joined?.type === targetNode.type ? expectParagraphAttrs(joined).pPrMark : null,
+      );
+      if (joined?.type === targetNode.type) {
+        recordReplacedParagraphProperties({
+          tr,
+          position: targetParagraphPos,
+          replaced: joined,
+          revision: existingMark.info,
+        });
+      }
       // The paragraph keeps its own properties, so the words the retraction
       // brings in drop what their old paragraph's style lent them and read in
       // this one's: a run with no formatting of its own stays without any.
@@ -1235,9 +1282,15 @@ function handleSuggestionDelete(
     for (const { from, to } of ranges) {
       markRangeAsDeleted(tr, state.doc, from, to, insertionType, deletionType, pluginState, state);
     }
-    // Collapse cursor to after the marked/retracted content
-    const cursorPos = tr.mapping.map($to.pos);
-    tr.setSelection(TextSelection.near(tr.doc.resolve(cursorPos)));
+    // Clearing cells preserves the rectangle, as the table deletion command
+    // does, so the next input still acts on those cells. Text deletion instead
+    // collapses the cursor after the marked/retracted content.
+    if (state.selection instanceof CellSelection) {
+      tr.setSelection(state.selection.map(tr.doc, tr.mapping));
+    } else {
+      const cursorPos = tr.mapping.map($to.pos);
+      tr.setSelection(TextSelection.near(tr.doc.resolve(cursorPos)));
+    }
     dispatch(tr.scrollIntoView());
     return true;
   }
@@ -1632,6 +1685,21 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
             expectParagraphAttrs($from.parent).numPr?.kind === "reference"
           ) {
             return false;
+          }
+          if (
+            event.key === "Backspace" &&
+            clearIndentOnBackspace(view.state, (tr) => {
+              const revision = makeMarkAttrs(pluginState);
+              recordReplacedParagraphProperties({
+                tr,
+                position: $from.before(),
+                replaced: $from.parent,
+                revision: { id: revision.revisionId, author: revision.author, date: revision.date },
+              });
+              view.dispatch(tr.setMeta(SUGGESTION_META, true));
+            })
+          ) {
+            return true;
           }
           const boundaryTarget = paragraphBoundaryTarget(
             view.state,
