@@ -37,6 +37,25 @@ export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<
 
 const refuse = (message: string) => Result.err(new CanonicalSessionError({ message }));
 
+const operationChangesPackage = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return true;
+    default: {
+      if ("story" in op) return !sameStory(op.story, OP_STORIES.MAIN);
+      if ("at" in op) return !sameStory(op.at.story, OP_STORIES.MAIN);
+      if ("from" in op) return !sameStory(op.from.story, OP_STORIES.MAIN);
+      const unreachable: never = op;
+      return unreachable;
+    }
+  }
+};
+
 export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
 export type CanonicalOrigin = "input" | "undo" | "redo";
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -622,21 +641,7 @@ class CanonicalSession {
       origin,
       version: this.version + 1,
     });
-    if (
-      ops.some(
-        (op) =>
-          op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER ||
-          op.type === DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER ||
-          op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
-          op.type === DOCUMENT_OP_TYPES.REMOVE_NOTE ||
-          op.type === DOCUMENT_OP_TYPES.SET_SECTION_PROPS ||
-          op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS ||
-          ("story" in op && !sameStory(op.story, OP_STORIES.MAIN)) ||
-          ("at" in op && typeof op.at === "object" && !sameStory(op.at.story, OP_STORIES.MAIN)) ||
-          ("from" in op && !sameStory(op.from.story, OP_STORIES.MAIN)),
-      )
-    )
-      markPackageChange(transaction);
+    if (ops.some(operationChangesPackage)) markPackageChange(transaction);
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;
     authorizedProjections.set(transaction, {

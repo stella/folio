@@ -5,6 +5,7 @@ import {
   createParagraphChangeTrackerPlugin,
   hasUntrackedChanges,
   clearTrackedChanges,
+  paragraphChangeTrackerKey,
 } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
 import { schema } from "../prosemirror/schema";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -124,6 +125,41 @@ describe("canonical session", () => {
     expect(hasUntrackedChanges(state)).toBe(false);
     state = accept(state, session.prepareUndo(state).unwrap());
     expect(hasUntrackedChanges(state)).toBe(true);
+  });
+  test.each([
+    [OP_STORIES.MAIN, false],
+    [{ kind: "header", rId: "rIdHeader1" }, true],
+  ] as const)("block insertion in %s tracks the operation's story", (story, packageChange) => {
+    const source = seed("Body");
+    source.package.headers = new Map([
+      [
+        "rIdHeader1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+        },
+      ],
+    ]);
+    const session = createCanonicalSession(source).unwrap();
+    const original = structuredClone(session.document);
+    const state = stateFor(session);
+    const commit = session
+      .prepareOperations(state, [
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+          story,
+          at: { type: "after", blockId: story === OP_STORIES.MAIN ? "12345678" : "34567890" },
+          blocks: [{ type: "paragraph", paraId: "45678901", content: [] }],
+        },
+      ])
+      .unwrap();
+    expect(commit.transaction.getMeta(paragraphChangeTrackerKey)).toBe(
+      packageChange ? "package-change" : undefined,
+    );
+    const inserted = accept(state, commit);
+    accept(inserted, session.prepareUndo(inserted).unwrap());
+    expect(session.document).toStrictEqual(original);
   });
   test("story creation and edits share exact canonical undo and redo", () => {
     const session = createCanonicalSession(seed("Body")).unwrap();
