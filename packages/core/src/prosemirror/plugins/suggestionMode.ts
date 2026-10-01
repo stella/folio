@@ -397,13 +397,53 @@ export function handleSuggestionPaste(
 ): boolean {
   const { selection } = view.state;
   const selectsAll = selection instanceof AllSelection;
-  if (!(selection instanceof TextSelection || selectsAll) || selection.empty) {
+  if (!(selection instanceof TextSelection || selectsAll)) {
     return false;
   }
   const insertionType = view.state.schema.marks["insertion"];
   const deletionType = view.state.schema.marks["deletion"];
   if (!insertionType || !deletionType) {
     return false;
+  }
+
+  if (selection.empty) {
+    const { $from } = selection;
+    const closedTable =
+      slice.openStart === 0 &&
+      slice.openEnd === 0 &&
+      slice.content.firstChild?.type.name === "table" &&
+      slice.content.lastChild?.type.name === "table";
+    const prefix = $from.parent.content.cut(0, $from.parentOffset);
+    let deletedPrefix = prefix.size > 0;
+    prefix.forEach((node) => {
+      if (!node.marks.some((mark) => mark.type === deletionType)) deletedPrefix = false;
+    });
+    if (!closedTable || $from.parent.type.name !== "paragraph" || !deletedPrefix) {
+      return false;
+    }
+    // The caret is at the visible start of this paragraph. Fit the table
+    // before it, as direct paste does after deleting the prefix; fitting at
+    // the physical caret instead splits off a paragraph of only struck runs.
+    const tr = view.state.tr.setMeta(SUGGESTION_META, true).setMeta("paste", true);
+    const at = $from.before();
+    tr.replaceRange(at, at, slice);
+    const revision = makeMarkAttrs(pluginState);
+    const end = tr.mapping.map(at, 1);
+    enclosePastedRunRevisions({ tr, from: at, to: end, revision });
+    markRangeAsInserted(tr, tr.doc, at, end, insertionType, deletionType, revision);
+    if (
+      $from.parentOffset === $from.parent.content.size &&
+      $from.parent.attrs["pPrMark"] == null &&
+      !paragraphEndsItsContainer($from.doc.resolve($from.before()), "paragraph")
+    ) {
+      tr.setNodeAttribute(tr.mapping.map($from.before()), "pPrMark", {
+        kind: "del",
+        info: makeParagraphMarkInfo(pluginState),
+      });
+    }
+    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(selection.from)));
+    view.dispatch(tr.scrollIntoView());
+    return true;
   }
 
   // Fit open block clipboard edges against the same container boundaries as
@@ -1248,16 +1288,40 @@ function markComposedAsInsertion(
     // selection only after that DOM has settled; changing it at compositionstart
     // makes a subsequent IME update reconcile against stale nodes and lose the
     // deletion revision.
-    tr.insert(from, replaced.content);
+    // Preserve the open edges: the native replacement joined the surrounding
+    // paragraphs. Inserting the closed fragment splits them again around an
+    // extra empty paragraph instead of restoring the selected range.
+    tr.replaceRange(from, from, replaced);
     markRangeAsDeleted(
       tr,
       tr.doc,
       from,
-      from + replaced.content.size,
+      tr.mapping.map(from, 1),
       insertionType,
       deletionType,
       pluginState,
     );
+    // Native composition keeps the starting paragraph's properties even when
+    // the selection starts at its first character. Carry that committed
+    // formatting to the restored end paragraph; rejection restores its own.
+    const restoredEnd = tr.doc.resolve(tr.mapping.map(from, 1));
+    const restoredStart = tr.doc.resolve(from);
+    if (
+      restoredStart.parent.type.name === "paragraph" &&
+      restoredEnd.parent.type.name === "paragraph" &&
+      restoredStart.parent !== restoredEnd.parent
+    ) {
+      const mark = expectParagraphAttrs(restoredStart.parent).pPrMark;
+      if (mark?.kind === "del") {
+        carryIntoParagraphLeft(
+          view.state,
+          tr,
+          view.state.doc.resolve(from).parent,
+          restoredEnd.before(),
+          mark.info,
+        );
+      }
+    }
   }
   const insertionFrom = tr.mapping.map(from, 1);
   const insertionTo = tr.mapping.map(to, 1);
