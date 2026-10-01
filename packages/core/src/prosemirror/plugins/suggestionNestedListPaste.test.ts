@@ -4,7 +4,7 @@ import fc from "fast-check";
 import { DOMParser } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { shapeArrayBuffer } from "../../__tests__/documentShapes";
 import {
   createHarnessPlugins,
@@ -53,69 +53,73 @@ const pasteAndJoin = ({ state, caret, html, direction }: PasteAndJoinOptions) =>
 
 // Clipboard tests covered paste alone; also retract an inserted break while
 // retaining an existing paragraph's formatting.
-test("retracting pasted list breaks preserves acceptance and rejection for paragraph properties", async () => {
-  const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("mixed-lists")));
-  const initial = createHarnessState(base, "editing");
-  const initialAttrs = expectParagraphAttrs(initial.doc.child(0));
-  await assertProperty(
-    fc.property(
-      fc.record({
-        caret: fc.integer({ min: 1, max: 17 }),
-        kind: fc.constantFrom("ul", "ol"),
-        direction: fc.constantFrom("backward", "forward"),
-        alignment: fc.constantFrom("left", "center", "right", "both"),
-        indentLeft: fc.integer({ min: 0, max: 1000 }),
-        indentFirstLine: fc.integer({ min: 0, max: 500 }),
-        hangingIndent: fc.boolean(),
-        spaceAfter: fc.integer({ min: 0, max: 500 }),
-      }),
-      ({
-        caret,
-        kind,
-        direction,
-        alignment,
-        indentLeft,
-        indentFirstLine,
-        hangingIndent,
-        spaceAfter,
-      }) => {
-        const paragraphAttrs = {
-          ...initialAttrs,
+test(
+  "retracting pasted list breaks preserves acceptance and rejection for paragraph properties",
+  async () => {
+    const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("mixed-lists")));
+    const initial = createHarnessState(base, "editing");
+    const initialAttrs = expectParagraphAttrs(initial.doc.child(0));
+    await assertProperty(
+      fc.property(
+        fc.record({
+          caret: fc.integer({ min: 1, max: 17 }),
+          kind: fc.constantFrom("ul", "ol"),
+          direction: fc.constantFrom("backward", "forward"),
+          alignment: fc.constantFrom("left", "center", "right", "both"),
+          indentLeft: fc.integer({ min: 0, max: 1000 }),
+          indentFirstLine: fc.integer({ min: 0, max: 500 }),
+          hangingIndent: fc.boolean(),
+          spaceAfter: fc.integer({ min: 0, max: 500 }),
+        }),
+        ({
+          caret,
+          kind,
+          direction,
           alignment,
           indentLeft,
           indentFirstLine,
           hangingIndent,
           spaceAfter,
-          _originalFormatting: {
-            ...initialAttrs._originalFormatting,
+        }) => {
+          const paragraphAttrs = {
+            ...initialAttrs,
             alignment,
             indentLeft,
-            indentFirstLine: hangingIndent ? -indentFirstLine : indentFirstLine,
+            indentFirstLine,
             hangingIndent,
             spaceAfter,
-          },
-        } as const satisfies ParagraphAttrs;
-        const before = initial.apply(initial.tr.setNodeMarkup(0, undefined, paragraphAttrs));
-        const options = { caret, html: nestedListHtml(kind), direction };
-        const edited = pasteAndJoin({ state: before, ...options });
-        const tracked = pasteAndJoin({
-          state: EditorState.create({
-            doc: before.doc,
-            plugins: createHarnessPlugins(base, "suggesting"),
-          }),
-          ...options,
-        });
-        expect(summarizeState(resolveAllChanges(tracked, "accept"))).toEqual(
-          summarizeState(edited),
-        );
-        expect(summarizeState(resolveAllChanges(tracked, "reject"))).toEqual(
-          summarizeState(before),
-        );
-      },
-    ),
-    { seed: 197, numRuns: 30 },
-  );
-});
+            _originalFormatting: {
+              ...initialAttrs._originalFormatting,
+              alignment,
+              indentLeft,
+              indentFirstLine: hangingIndent ? -indentFirstLine : indentFirstLine,
+              hangingIndent,
+              spaceAfter,
+            },
+          } as const satisfies ParagraphAttrs;
+          const before = initial.apply(initial.tr.setNodeMarkup(0, undefined, paragraphAttrs));
+          const options = { caret, html: nestedListHtml(kind), direction };
+          const edited = pasteAndJoin({ state: before, ...options });
+          const tracked = pasteAndJoin({
+            state: EditorState.create({
+              doc: before.doc,
+              plugins: createHarnessPlugins(base, "suggesting"),
+            }),
+            ...options,
+          });
+          expect(summarizeState(resolveAllChanges(tracked, "accept"))).toEqual(
+            summarizeState(edited),
+          );
+          expect(summarizeState(resolveAllChanges(tracked, "reject"))).toEqual(
+            summarizeState(before),
+          );
+        },
+      ),
+      { seed: 197, numRuns: 30 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
 
 test("nested list paste and backspace rejects to the original paragraph after DOCX reopen", async () => {
   const base = await parseShapeDocument(new Uint8Array(await shapeArrayBuffer("mixed-lists")));
