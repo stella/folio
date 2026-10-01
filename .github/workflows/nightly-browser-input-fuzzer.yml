@@ -45,7 +45,8 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p test-results
-          export FOLIO_FUZZ_SEEDS="${FOLIO_FUZZ_SEEDS},$(date +%s)"
+          fresh_seed=$(date +%s)
+          export FOLIO_FUZZ_SEEDS="${FOLIO_FUZZ_SEEDS},${fresh_seed}"
           bunx playwright test --project=browser-fuzzer --workers=1 2>&1 | tee test-results/browser-fuzz.log
         env:
           CI: "true"
@@ -89,7 +90,7 @@ jobs:
   report:
     name: File browser fuzz findings
     needs: browser-input-fuzzer
-    if: always() && needs.browser-input-fuzzer.outputs.findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.findings == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -125,7 +126,7 @@ jobs:
       cancel-in-progress: false
     name: File AI and human revision interleaving findings
     needs: browser-input-fuzzer
-    if: always() && needs.browser-input-fuzzer.outputs.interleaving_findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.interleaving_findings == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

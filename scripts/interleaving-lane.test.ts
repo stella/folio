@@ -35,6 +35,26 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
     "workflow_dispatch",
   ]);
   const job = requireRecord(requireRecord(workflow["jobs"])["browser-input-fuzzer"]);
+  const source = readFileSync(".github/workflows/nightly-browser-input-fuzzer.yml", "utf8");
+  expect(source.match(/^    outputs:$/gmu)).toHaveLength(1);
+  expect(job["outputs"]).toEqual({
+    findings: "${{ steps.fuzz.outcome == 'failure' }}",
+    interleaving_findings: "${{ steps.interleaving.outcome == 'failure' }}",
+  });
+  expect(job["permissions"]).toEqual({ contents: "read" });
+  for (const [name, output] of [
+    ["report", "findings"],
+    ["interleaving-report", "interleaving_findings"],
+  ]) {
+    const reporter = requireRecord(requireRecord(workflow["jobs"])[name]);
+    expect(reporter["if"]).toBe(
+      `always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.${output} == 'true'`,
+    );
+    expect(reporter["concurrency"]).toEqual({
+      group: "fuzz-failure-issues",
+      "cancel-in-progress": false,
+    });
+  }
   const rawSteps = job["steps"];
   if (!Array.isArray(rawSteps)) throw new Error("Workflow steps unavailable");
   const steps = rawSteps.map(requireRecord);
