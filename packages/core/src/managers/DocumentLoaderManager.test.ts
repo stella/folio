@@ -48,6 +48,23 @@ const makeCallbacks = (): { callbacks: DocumentLoaderCallbacks; recorded: Record
 };
 
 describe("DocumentLoaderManager", () => {
+  test.each([undefined, "provided-password"])(
+    "canonical byte loads refuse encrypted containers before ZIP normalization (%s)",
+    async (password) => {
+      const { callbacks, recorded } = makeCallbacks();
+      callbacks.getExperimentalSession = () => "canonical";
+      const manager = new DocumentLoaderManager(callbacks);
+      const compoundHeader = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+      await manager.loadBuffer(compoundHeader, { password });
+      expect(recorded.history.state).toBeNull();
+      expect(recorded.errors).toHaveLength(1);
+      expect(recorded.errors.at(0)?.message).toBe(
+        "Password-protected documents are unavailable in the experimental canonical session.",
+      );
+      expect(recorded.loadStates.at(-1)?.status).toBe("error");
+    },
+  );
+
   test("canonical byte loads establish unique paragraph IDs before parsing", async () => {
     const { callbacks, recorded } = makeCallbacks();
     callbacks.getExperimentalSession = () => "canonical";

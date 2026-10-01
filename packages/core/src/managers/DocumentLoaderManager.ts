@@ -13,8 +13,7 @@
 import { inspectDocxCompatibility } from "../docx/compatibility";
 import type { DocxCompatibility } from "../docx/compatibility";
 import { parseDocx } from "../docx/parser";
-import { ensureParaIds } from "../docx/ensureParaIds";
-import { toArrayBuffer } from "../utils/docxInput";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
 import { resetAuthorColors } from "../utils/authorColors";
@@ -124,7 +123,7 @@ export class DocumentLoaderManager {
       try {
         const input =
           this.callbacks.getExperimentalSession?.() === "canonical"
-            ? (await ensureParaIds(await toArrayBuffer(buffer))).docx
+            ? (await prepareCanonicalDocxInput(buffer)).unwrap()
             : buffer;
         doc = await parseDocx(input, {
           detectVariables: false,

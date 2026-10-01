@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { EditorState } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import { createEmptyDocument } from "../utils/createDocument";
 import { schema } from "../prosemirror/schema";
 import { createHiddenEditorApi, type HiddenEditorApiDeps } from "./hiddenEditorApi";
 
@@ -38,6 +40,25 @@ const makeDeps = (view: StubView | null, isDestroying = false): HiddenEditorApiD
 });
 
 describe("createHiddenEditorApi", () => {
+  test.each(["getDocument", "getCanonicalDocument"] as const)(
+    "%s returns an owned canonical snapshot that cannot corrupt the authority",
+    (method) => {
+      const canonical = createEmptyDocument({ initialText: "Owned text" });
+      const original = structuredClone(canonical);
+      const api = createHiddenEditorApi({
+        ...makeDeps(makeStubView()),
+        getCanonicalDocument: () => canonical,
+      });
+      const snapshot = api[method]();
+      expect(snapshot).toEqual(original);
+      expect(snapshot).not.toBe(canonical);
+      if (!snapshot) panic("Expected canonical snapshot");
+      snapshot.package.document.content.length = 0;
+      expect(canonical).toEqual(original);
+      expect(api[method]()).toEqual(original);
+    },
+  );
+
   test("canonical history is used for mutations and availability without PM history", () => {
     const calls: string[] = [];
     const api = createHiddenEditorApi({

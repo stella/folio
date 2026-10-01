@@ -27,7 +27,7 @@ import fc from "fast-check";
 import { panic } from "better-result";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { BlockContent, Document, Paragraph, TextFormatting } from "../../model/document";
+import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
@@ -269,7 +269,7 @@ describe("document operations", () => {
     fc.assert(
       fc.property(
         documentArbitrary,
-        plainInputArbitrary,
+        fc.tuple(plainInputArbitrary, plainInputArbitrary).map((parts) => parts.join("")),
         fc.array(replaceInputArbitrary, { minLength: 8, maxLength: 24 }),
         (generated, initialText, inputs) => {
           const first = storyParagraphs(generated.package.document).at(0);
@@ -287,7 +287,14 @@ describe("document operations", () => {
                   {
                     type: "paragraph",
                     paraId: blockId,
-                    content: [{ type: "run", content: [{ type: "text", text: initialText }] }],
+                    content: [...initialText].map(
+                      (point, index) =>
+                        ({
+                          type: "run",
+                          formatting: index % 2 === 0 ? { bold: true } : { italic: true },
+                          content: [{ type: "text", text: point }],
+                        }) satisfies Run,
+                    ),
                   },
                 ],
               },
@@ -305,6 +312,19 @@ describe("document operations", () => {
             const to = input.kind === "insert" ? anchor : Math.max(anchor, head);
             const replacement = input.kind === "delete" ? "" : input.text;
             const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+            const source = storyParagraphs(current.package.document).at(0)?.paragraph;
+            if (!source) panic("Generated authored input paragraph disappeared");
+            const authoredUnit = from === to && from > 0 ? from - 1 : from;
+            let runProps: TextFormatting = {};
+            let end = 0;
+            for (const run of source.content) {
+              if (run.type !== "run") panic("Generated authored input encountered a wrapper");
+              end += run.content.reduce((width, child) => width + runContentWidth(child), 0);
+              if (authoredUnit < end) {
+                runProps = run.formatting ?? {};
+                break;
+              }
+            }
             const ops: DocumentOp[] = [];
             if (to > from) {
               ops.push({
@@ -318,7 +338,7 @@ describe("document operations", () => {
                 type: DOCUMENT_OP_TYPES.INSERT_TEXT,
                 at: position(from),
                 text: replacement,
-                runProps: INHERIT_RUN_PROPS,
+                runProps,
               });
             }
             if (input.kind === "reject") {
@@ -345,6 +365,16 @@ describe("document operations", () => {
             const paragraph = storyParagraphs(current.package.document).at(0)?.paragraph;
             if (!paragraph) panic("Generated paragraph disappeared");
             expect(paragraphLogicalText(paragraph)).toBe(text);
+            // Every inserted UTF-16 unit carries the pre-deletion authored formatting.
+            let runOffset = 0;
+            for (const run of paragraph.content) {
+              if (run.type !== "run") panic("Generated authored input produced a wrapper");
+              const runEnd =
+                runOffset + run.content.reduce((width, child) => width + runContentWidth(child), 0);
+              if (runEnd > from && runOffset < from + replacement.length)
+                expect(run.formatting ?? {}).toStrictEqual(runProps);
+              runOffset = runEnd;
+            }
             expectRestores(applied.value, before);
             journal.push(applied.value);
           }

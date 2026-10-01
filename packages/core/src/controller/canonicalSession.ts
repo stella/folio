@@ -15,6 +15,7 @@ import { hasIllegalXmlCharacters } from "@stll/docx-core";
 
 import { splitsGraphemeCluster, splitsSurrogatePair } from "../ai-edits/character-boundaries";
 import {
+  cloneDocumentWithParagraphPropertySources,
   copyDocumentParagraphPropertySourceContract,
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
@@ -261,6 +262,43 @@ export const isCanonicalProjectionTransaction = (
   );
 };
 
+type PublishCanonicalProjectionOptions = {
+  state: EditorState;
+  commit: CanonicalCommit;
+  session: CanonicalSession;
+};
+
+/** The model publishes only after PM and every plugin accept its exact projection. */
+export const publishCanonicalProjection = ({
+  state,
+  commit,
+  session,
+}: PublishCanonicalProjectionOptions) => {
+  if (!isCanonicalProjectionTransaction(commit.transaction, session))
+    return refuse("The staged canonical projection is unauthorized.");
+  const applied = Result.try({
+    try: () => state.applyTransaction(commit.transaction),
+    catch: (cause) =>
+      new CanonicalSessionError({
+        message: `Canonical plugin staging failed: ${cause instanceof Error ? cause.message : String(cause)}`,
+      }),
+  });
+  if (applied.isErr()) return applied;
+  const staged = applied.value;
+  if (
+    !staged.transactions.includes(commit.transaction) ||
+    !staged.state.doc.eq(commit.projection.doc) ||
+    staged.transactions.some(
+      (transaction) =>
+        transaction.docChanged && !isCanonicalProjectionTransaction(transaction, session),
+    )
+  )
+    return refuse("A plugin refused or changed the canonical projection.");
+  const published = commit.publish();
+  if (published.isErr()) return published;
+  return Result.ok(staged);
+};
+
 type StageOptions = {
   state: EditorState;
   ops: readonly DocumentOp[];
@@ -289,7 +327,7 @@ class CanonicalSession {
   constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
     this.currentDocument = document;
     this.currentProjection = projection;
-    this.styles = styles;
+    this.styles = styles == null ? styles : structuredClone(styles);
   }
 
   get document(): Document {
@@ -487,8 +525,9 @@ export const createCanonicalSession = (
       "Canonical sessions currently require main-story plain paragraphs without secondary stories or revisions.",
     );
   }
-  const normalized = normalizeForOps(document);
-  preservePropertySources(normalized, document);
+  const owned = cloneDocumentWithParagraphPropertySources(document);
+  const normalized = normalizeForOps(owned);
+  preservePropertySources(normalized, owned);
   const validated = validateOpsDocument(normalized);
   if (validated.isErr()) return refuse(validated.error.message);
   const projected = project(normalized, styles);

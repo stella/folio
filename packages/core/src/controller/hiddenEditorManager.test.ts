@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
-import { dispatchEditorTextInput } from "../prosemirror/textInput";
 import { createEmptyDocument } from "../utils/createDocument";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -206,7 +205,15 @@ test("canonical manager refuses transaction bypasses and shares one input journa
     expect(view).not.toBeNull();
     if (!view) return;
     const initial = manager.api.getCanonicalDocument();
-    dispatchEditorTextInput(view, { from: 6, to: 6, text: "!" });
+    manager.api.setSelection(6);
+    view.dom.dispatchEvent(
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "!",
+        cancelable: true,
+        bubbles: true,
+      }),
+    );
     const accepted = manager.api.getCanonicalDocument();
     expect(view.state.doc.textContent).toBe("Start!");
     expect(manager.api.canUndo()).toBe(true);
@@ -214,7 +221,7 @@ test("canonical manager refuses transaction bypasses and shares one input journa
     view.dispatch(view.state.tr.insertText("bypass", 1));
     expect(reasons).toHaveLength(1);
     expect(view.state).toBe(state);
-    expect(manager.api.getCanonicalDocument()).toBe(accepted);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
     expect(manager.api.undo()).toBe(true);
     expect(manager.api.getDocument()).toEqual(initial);
     expect(view.state.doc.textContent).toBe("Start");
@@ -224,6 +231,36 @@ test("canonical manager refuses transaction bypasses and shares one input journa
   } finally {
     manager.destroyView();
     host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("a refused canonical activation reports once per loaded document across retries", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  const reasons: string[] = [];
+  let identity = "first";
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => createEmptyDocument(),
+    getDocumentIdentity: () => identity,
+    getExperimentalSession: () => "canonical",
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      manager.ensureView();
+      manager.retryViewCreation();
+      manager.syncExternalDocument();
+    }
+    expect(manager.getView()).toBeNull();
+    expect(reasons).toHaveLength(1);
+    identity = "second";
+    manager.retryViewCreation();
+    expect(reasons).toHaveLength(2);
+  } finally {
+    manager.destroyView();
     GlobalRegistrator.unregister();
   }
 });

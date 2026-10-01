@@ -52,7 +52,7 @@ import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
 import { createCanonicalInputBoundary } from "./canonicalInput";
 import {
   createCanonicalSession,
-  isCanonicalProjectionTransaction,
+  publishCanonicalProjection,
   type CanonicalSession,
   type CanonicalCommit,
 } from "./canonicalSession";
@@ -65,7 +65,7 @@ export class CanonicalSessionRefusalError extends TaggedError("CanonicalSessionR
 type EditorSession =
   | { type: "prosemirror" }
   | { type: "canonical"; session: CanonicalSession }
-  | { type: "refused"; reason: string };
+  | { type: "refused"; reason: string; documentIdentity: string | null };
 
 // Initial-load normalization. `appendTransaction` does not fire for the seed
 // document, so the paraId allocator and RTL base-direction detection are
@@ -500,9 +500,13 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       editorSession = { type: "prosemirror" };
       return true;
     }
+    const documentIdentity = deps.getDocumentIdentity();
+    if (editorSession.type === "refused" && editorSession.documentIdentity === documentIdentity) {
+      return false;
+    }
     if (deps.getEditingMode?.() === "suggesting") {
       const reason = "Suggesting is unavailable in the experimental canonical session.";
-      editorSession = { type: "refused", reason };
+      editorSession = { type: "refused", reason, documentIdentity };
       refuse(reason);
       return false;
     }
@@ -510,13 +514,13 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       const reason = deps.getCollaboration()
         ? "Canonical sessions do not support collaboration."
         : "Canonical sessions require a loaded Document.";
-      editorSession = { type: "refused", reason };
+      editorSession = { type: "refused", reason, documentIdentity };
       refuse(reason);
       return false;
     }
     const result = createCanonicalSession(document, deps.getStyles());
     if (result.isErr()) {
-      editorSession = { type: "refused", reason: result.error.message };
+      editorSession = { type: "refused", reason: result.error.message, documentIdentity };
       refuse(result.error.message);
       return false;
     }
@@ -539,21 +543,12 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       return false;
     }
     const session = editorSession.session;
-    const staged = view.state.applyTransaction(commit.transaction);
-    if (
-      !staged.state.doc.eq(commit.projection.doc) ||
-      staged.transactions.some(
-        (tr) => tr.docChanged && !isCanonicalProjectionTransaction(tr, session),
-      )
-    ) {
-      refuse("A plugin attempted an unclassified canonical document mutation.");
+    const result = publishCanonicalProjection({ state: view.state, commit, session });
+    if (result.isErr()) {
+      refuse(result.error.message);
       return false;
     }
-    const published = commit.publish();
-    if (published.isErr()) {
-      refuse(published.error.message);
-      return false;
-    }
+    const staged = result.value;
     view.updateState(staged.state);
     deps.onTransaction({
       transactions: staged.transactions,
@@ -652,9 +647,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
         if (editorSession.type === "refused") return;
         if (editorSession.type === "canonical" && transaction.docChanged) {
-          const intent = input.takeNativeProposal(view.state, transaction);
-          if (intent) input.handleTextInput(view, intent.from, intent.to, intent.text);
-          else refuse("Unclassified document edits are unavailable in this session.");
+          if (!input.commitNativeProposal(view, transaction)) {
+            input.refuseNativeMutation(view);
+          }
           // PM's DOM observer dirties the view before dispatching a native
           // proposal. Repaint from the committed state even on refusal.
           view.updateState(view.state);
@@ -715,7 +710,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
         focus: () => false,
-        blur: () => false,
+        blur: (pmView) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.blur(pmView) : false,
         ...createHiddenEditorClipboardHandlers(deps),
         compositionstart: (pmView, event) =>
           editorSession.type === "canonical"
@@ -723,7 +719,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
             : false,
         compositionend: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.compositionend(pmView) : false,
-        input: () => (editorSession.type === "canonical" ? input.handleDOMEvents.input() : false),
+        input: (pmView) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.input(pmView) : false,
         paste: (pmView, event) =>
           editorSession.type === "canonical"
             ? input.handleDOMEvents.paste(pmView, event)
@@ -811,7 +808,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const collaborationSourceChanged = currentCollaborationFragment !== lastCollaborationFragment;
 
     const sessionChanged =
-      (editorSession.type === "canonical") !== (deps.getExperimentalSession?.() === "canonical");
+      (editorSession.type !== "prosemirror") !== (deps.getExperimentalSession?.() === "canonical");
     if (collaboration && !collaborationSourceChanged && !sessionChanged) {
       return;
     }

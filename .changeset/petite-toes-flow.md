@@ -1,4 +1,4 @@
 ---
 ---
 
-Relocate shared test helpers to respect workspace package boundaries; no published runtime changes.
+Relocate shared test helpers and extend generated canonical sequence coverage; no published runtime changes.

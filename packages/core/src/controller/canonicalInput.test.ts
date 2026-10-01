@@ -43,6 +43,11 @@ const createRig = (from = 2, to = from) => {
     handleKeyDown: boundary.handleKeyDown,
     handleDOMEvents: boundary.handleDOMEvents,
     dispatchTransaction(transaction) {
+      if (transaction.docChanged) {
+        if (!boundary.commitNativeProposal(view, transaction)) boundary.refuseNativeMutation(view);
+        view.updateState(view.state);
+        return;
+      }
       view.updateState(view.state.apply(transaction));
     },
   });
@@ -62,10 +67,9 @@ afterEach(() => {
 afterAll(() => GlobalRegistrator.unregister());
 
 describe("canonical input boundary", () => {
-  test("typing and cancelable beforeinput each emit one intent without a PM edit", () => {
+  test("cancelable beforeinput emits one classified intent without a PM edit", () => {
     const { boundary, view, inputs } = createRig(2, 4);
     const original = view.state;
-    expect(boundary.handleTextInput(view, 2, 4, "é")).toBe(true);
     const event = new InputEvent("beforeinput", {
       inputType: "insertText",
       data: "𐐀",
@@ -73,11 +77,33 @@ describe("canonical input boundary", () => {
     });
     expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
     expect(event.defaultPrevented).toBe(true);
-    expect(inputs).toEqual([
-      { from: 2, to: 4, text: "é" },
-      { from: 2, to: 4, text: "𐐀" },
-    ]);
+    expect(inputs).toEqual([{ from: 2, to: 4, text: "𐐀" }]);
     expect(view.state).toBe(original);
+  });
+
+  test("cancelable beforeinput authorization expires before any later native flush", () => {
+    const { boundary, view, inputs, refusals } = createRig();
+    boundary.handleDOMEvents.beforeinput(
+      view,
+      new InputEvent("beforeinput", { inputType: "insertText", data: "a", cancelable: true }),
+    );
+    boundary.handleTextInput(view, 2, 2, "b");
+    expect(inputs).toEqual([{ from: 2, to: 2, text: "a" }]);
+    expect(refusals).toHaveLength(1);
+  });
+
+  test("an unaddressable cancelable replacement is refused before its DOM mutation", () => {
+    const { boundary, view, inputs, refusals } = createRig();
+    const event = new InputEvent("beforeinput", {
+      inputType: "insertReplacementText",
+      data: "x",
+      cancelable: true,
+    });
+    expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    boundary.handleTextInput(view, 2, 2, "x");
+    expect(inputs).toEqual([]);
+    expect(refusals).toHaveLength(1);
   });
 
   test.each([
@@ -182,7 +208,7 @@ describe("canonical input boundary", () => {
         cancelable: false,
       }),
     );
-    boundary.handleDOMEvents.input();
+    boundary.handleDOMEvents.input(view);
     await Promise.resolve();
     expect(boundary.takeNativeProposal(view.state, view.state.tr.insertText("x", 2))).toBeNull();
   });
@@ -205,11 +231,112 @@ describe("canonical input boundary", () => {
     boundary.handleDOMEvents.compositionend(view);
     boundary.handleTextInput(view, 2, 2, "契約");
     expect(inputs).toEqual([]);
-    expect(refusals).toHaveLength(4);
+    expect(refusals).toHaveLength(1);
     await Promise.resolve();
-    boundary.handleTextInput(view, 2, 2, "a");
+    boundary.handleDOMEvents.beforeinput(
+      view,
+      new InputEvent("beforeinput", { inputType: "insertText", data: "a", cancelable: true }),
+    );
     expect(inputs).toEqual([{ from: 2, to: 2, text: "a" }]);
   });
+
+  test.each(["foreign", "replacement", "composition"])(
+    "%s DOM text cannot commit through handleTextInput or a native transaction",
+    async (kind) => {
+      const { boundary, view, inputs, refusals } = createRig();
+      const original = view.state;
+      if (kind === "composition") {
+        boundary.handleDOMEvents.compositionstart(view, new Event("compositionstart"));
+        boundary.handleDOMEvents.compositionend(view);
+        await Promise.resolve();
+      }
+      if (kind !== "foreign") {
+        const event = new InputEvent("beforeinput", {
+          inputType: kind === "composition" ? "insertFromComposition" : "insertReplacementText",
+          data: "x",
+          cancelable: false,
+        });
+        expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
+        expect(event.defaultPrevented).toBe(false);
+      }
+      const textNode = view.dom.querySelector("p")?.firstChild;
+      expect(textNode).toBeDefined();
+      if (textNode) textNode.textContent = "Ax😀B";
+      expect(boundary.handleTextInput(view, 2, 2, "x")).toBe(true);
+      expect(boundary.commitNativeProposal(view, original.tr.insertText("x", 2))).toBe(false);
+      boundary.handleDOMEvents.input(view);
+      await Promise.resolve();
+      // The observer can flush again after the input microtask; it still lacks authorization.
+      boundary.handleTextInput(view, 2, 2, "x");
+      expect(inputs).toEqual([]);
+      expect(view.state).toBe(original);
+      expect(refusals.length).toBeLessThanOrEqual(2);
+    },
+  );
+
+  test.each(["state", "from", "to", "text", "match"])(
+    "native handleTextInput requires an exact originating %s proposal",
+    (change) => {
+      const { boundary, view, inputs } = createRig(2, 4);
+      boundary.handleDOMEvents.beforeinput(
+        view,
+        new InputEvent("beforeinput", { inputType: "insertText", data: "x" }),
+      );
+      if (change === "state") {
+        view.updateState(
+          view.state.apply(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1))),
+        );
+      }
+      boundary.handleTextInput(
+        view,
+        change === "from" ? 1 : 2,
+        change === "to" ? 2 : 4,
+        change === "text" ? "y" : "x",
+      );
+      expect(inputs).toEqual(change === "match" ? [{ from: 2, to: 4, text: "x" }] : []);
+      boundary.handleTextInput(view, 2, 4, "x");
+      expect(inputs).toHaveLength(change === "match" ? 1 : 0);
+    },
+  );
+
+  test("native transaction commits a classified proposal once", () => {
+    const { boundary, view, inputs } = createRig(2, 4);
+    boundary.handleDOMEvents.beforeinput(
+      view,
+      new InputEvent("beforeinput", { inputType: "insertText", data: "x" }),
+    );
+    const transaction = view.state.tr.insertText("x", 2, 4);
+    expect(boundary.commitNativeProposal(view, transaction)).toBe(true);
+    expect(boundary.commitNativeProposal(view, transaction)).toBe(false);
+    expect(inputs).toEqual([{ from: 2, to: 4, text: "x" }]);
+  });
+
+  test.each(["blur", "beforeinput"])(
+    "a missing compositionend recovers on %s without repeated refusals",
+    async (recovery) => {
+      const { boundary, view, inputs, refusals } = createRig();
+      boundary.handleDOMEvents.compositionstart(view, new Event("compositionstart"));
+      for (let index = 0; index < 5; index += 1) {
+        boundary.handleTextInput(view, 2, 2, "契");
+        boundary.handleDOMEvents.beforeinput(
+          view,
+          new InputEvent("beforeinput", { inputType: "insertCompositionText", data: "契" }),
+        );
+        boundary.handleDOMEvents.input(view);
+        await Promise.resolve();
+      }
+      expect(refusals).toHaveLength(1);
+      expect(inputs).toEqual([]);
+      if (recovery === "blur") boundary.handleDOMEvents.blur(view);
+      boundary.handleDOMEvents.beforeinput(
+        view,
+        new InputEvent("beforeinput", { inputType: "insertText", data: "a", cancelable: true }),
+      );
+      expect(inputs).toEqual([{ from: 2, to: 2, text: "a" }]);
+      boundary.handleDOMEvents.compositionstart(view, new Event("compositionstart"));
+      expect(refusals).toHaveLength(2);
+    },
+  );
 
   test.each(["insertParagraph", "insertFromPaste", "deleteByCut", "insertFromDrop"])(
     "%s is refused without an intent",

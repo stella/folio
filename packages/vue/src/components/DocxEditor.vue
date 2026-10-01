@@ -50,10 +50,7 @@
         :view="activeEditorView"
         :get-commands="getCommands"
         :state-tick="stateTick"
-        :can-undo="activeHistoryAvailability.canUndo"
-        :can-redo="activeHistoryAvailability.canRedo"
-        :on-undo="undoActiveStory"
-        :on-redo="redoActiveStory"
+        v-bind="canonicalHistoryProps"
         :zoom-percent="zoomPercent"
         :is-min-zoom="isMinZoom"
         :is-max-zoom="isMaxZoom"
@@ -312,7 +309,7 @@
             </div>
 
             <InlineHeaderFooterEditor
-              v-if="hfEdit"
+              v-if="hfEdit && props.experimentalSession !== 'canonical'"
               :edit="hfEdit"
               :get-view="getActiveHeaderFooterView"
               @close="handleHfSave"
@@ -390,17 +387,17 @@
               @close="dismissComments"
               @dismiss="dismissComments"
               @update:active-item-id="(id: string | null) => (activeSidebarItem = id)"
-              @add-comment="commentLifecycle.handleAddComment"
+              @add-comment="handleCommentAdd"
               @cancel-add-comment="commentLifecycle.handleCancelAddComment"
-              @comment-reply="commentManagement.handleReply"
-              @comment-resolve="commentManagement.handleResolve"
-              @comment-unresolve="commentManagement.handleUnresolve"
-              @comment-delete="commentManagement.handleDelete"
+              @comment-reply="handleCommentReply"
+              @comment-resolve="handleCommentResolve"
+              @comment-unresolve="handleCommentUnresolve"
+              @comment-delete="handleCommentDelete"
               @accept-change="commentManagement.handleAcceptChange"
               @reject-change="commentManagement.handleRejectChange"
               @accept-change-by-id="commentManagement.handleAcceptChangeById"
               @reject-change-by-id="commentManagement.handleRejectChangeById"
-              @tracked-change-reply="commentManagement.handleTrackedChangeReply"
+              @tracked-change-reply="handleTrackedChangeReply"
             />
 
             <button
@@ -413,7 +410,7 @@
               }"
               aria-label="Add comment"
               title="Add comment"
-              @mousedown.prevent.stop="commentLifecycle.startAddComment"
+              @mousedown.prevent.stop="handleStartAddComment"
             >
               <MaterialSymbol name="add_comment" :size="18" />
             </button>
@@ -494,6 +491,7 @@ import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/T
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
@@ -616,9 +614,24 @@ const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
 function notifyDocumentChange(doc: Document): void {
-  props.onChange?.(doc);
-  emit("change", doc);
-  emit("update:document", doc);
+  if (props.experimentalSession !== "canonical") {
+    props.onChange?.(doc);
+    emit("change", doc);
+    emit("update:document", doc);
+    return;
+  }
+  props.onChange?.(cloneDocumentWithParagraphPropertySources(doc));
+  emit("change", cloneDocumentWithParagraphPropertySources(doc));
+  emit("update:document", cloneDocumentWithParagraphPropertySources(doc));
+}
+
+function refuseCanonicalModelEdit(message: string): boolean {
+  if (props.experimentalSession !== "canonical") return false;
+  const error = new CanonicalSessionRefusalError({ message });
+  parseError.value = error.message;
+  props.onError?.(error);
+  emit("error", error);
+  return true;
 }
 
 const editorMode = ref<EditorMode>(props.mode);
@@ -974,7 +987,9 @@ const {
   imageInteracting,
   hyperlinkPopupData,
   readOnly,
-  showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
+  showHeaderFooterEditing: computed(
+    () => props.showHeaderFooterEditing && props.experimentalSession !== "canonical",
+  ),
   zoom,
   layout,
   tableResize: {
@@ -994,11 +1009,22 @@ const {
   getActiveNoteView,
   reLayout,
   onDocumentChange: notifyDocumentChange,
+  onHeaderFooterEditAttempt: () =>
+    refuseCanonicalModelEdit("Header and footer editing is unavailable in this session."),
   clearOverlay: selectionSync.clearOverlay,
 });
 
 const getActiveHeaderFooterView = () =>
   hfEdit.value?.rId ? getHeaderFooterView(hfEdit.value.rId) : null;
+
+watch(
+  () => props.experimentalSession,
+  (session) => {
+    if (session !== "canonical") return;
+    hfEdit.value = null;
+    closeNoteStory();
+  },
+);
 
 const activeHeaderFooterSelection = computed(() => {
   const edit = hfEdit.value;
@@ -1098,6 +1124,45 @@ const commentLifecycle = useCommentLifecycle({
     activeSidebarItem.value = id;
   },
 });
+
+function refuseCanonicalCommentEdit(): boolean {
+  return refuseCanonicalModelEdit("Comment changes are unavailable in this session.");
+}
+
+function handleStartAddComment(): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentLifecycle.startAddComment();
+}
+
+function handleCommentAdd(text: string): boolean {
+  if (refuseCanonicalCommentEdit()) return false;
+  return commentLifecycle.handleAddComment(text);
+}
+
+function handleCommentReply(parentId: number, text: string): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleReply(parentId, text);
+}
+
+function handleCommentResolve(commentId: number): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleResolve(commentId);
+}
+
+function handleCommentUnresolve(commentId: number): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleUnresolve(commentId);
+}
+
+function handleCommentDelete(commentId: number): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleDelete(commentId);
+}
+
+function handleTrackedChangeReply(revisionId: number, text: string): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleTrackedChangeReply(revisionId, text);
+}
 
 function handleHyperlinkPopupCopy(href: string): void {
   void navigator.clipboard?.writeText(href);
@@ -1373,11 +1438,11 @@ function handleInsertTOCAction(): void {
 // indent / tab-stop edits dispatch PM commands and already notify via the
 // transaction pipeline.
 const {
-  handlePageSetupApply,
-  handleLeftMarginChange,
-  handleRightMarginChange,
-  handleTopMarginChange,
-  handleBottomMarginChange,
+  handlePageSetupApply: applyPageSetup,
+  handleLeftMarginChange: applyLeftMarginChange,
+  handleRightMarginChange: applyRightMarginChange,
+  handleTopMarginChange: applyTopMarginChange,
+  handleBottomMarginChange: applyBottomMarginChange,
   handleIndentLeftChange,
   handleIndentRightChange,
   handleFirstLineIndentChange,
@@ -1390,6 +1455,31 @@ const {
   reLayout,
   onChange: notifyDocumentChange,
 });
+
+function handlePageSetupApply(properties: Partial<SectionProperties>): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyPageSetup(properties);
+}
+
+function handleLeftMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyLeftMarginChange(twips);
+}
+
+function handleRightMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyRightMarginChange(twips);
+}
+
+function handleTopMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyTopMarginChange(twips);
+}
+
+function handleBottomMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyBottomMarginChange(twips);
+}
 
 // Paragraph indent snapshot for the horizontal ruler's indent handles. Derived
 // from core's extractSelectionContext, re-run on every selection/doc tick.
@@ -1473,6 +1563,7 @@ function handleMenuAction(action: string): void {
 }
 
 function handleWatermarkApply(watermark: Watermark | undefined): void {
+  if (refuseCanonicalModelEdit("Watermark changes are unavailable in this session.")) return;
   if (readOnly.value) {
     return;
   }
@@ -1679,9 +1770,18 @@ const { exposed } = useDocxEditorRefApi({
   author: () => props.author,
   // Mint during the held operation, then publish applied comments after commit.
   createAIEditComment: (text, author) => commentManagement.createComment(text, undefined, author),
-  publishAIEditComments: commentManagement.appendComments,
-  getComments: () => commentManagement.comments.value,
-  setComments: commentManagement.setComments,
+  publishAIEditComments: (nextComments) => {
+    if (refuseCanonicalCommentEdit()) return;
+    commentManagement.appendComments(nextComments);
+  },
+  getComments: () =>
+    props.experimentalSession === "canonical"
+      ? commentManagement.comments.value.map((comment) => structuredClone(comment))
+      : commentManagement.comments.value,
+  setComments: (nextComments) => {
+    if (refuseCanonicalCommentEdit()) return;
+    commentManagement.setComments(nextComments);
+  },
   focus: () => activeEditorView.value?.focus(),
   getDocument,
   getActiveView: () => activeEditorView.value,
@@ -1699,6 +1799,16 @@ const activeHistoryAvailability = computed(() => {
   const paged = exposed.getEditorRef();
   return { canUndo: paged?.canUndo() ?? false, canRedo: paged?.canRedo() ?? false };
 });
+
+const canonicalHistoryProps = computed(() =>
+  props.experimentalSession === "canonical"
+    ? {
+        ...activeHistoryAvailability.value,
+        onUndo: undoActiveStory,
+        onRedo: redoActiveStory,
+      }
+    : {},
+);
 
 function undoActiveStory(): void {
   exposed.undo();

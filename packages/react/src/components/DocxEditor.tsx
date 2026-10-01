@@ -733,8 +733,19 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const history = useDocumentHistory<Document | null>(initialDocument || null, {
     maxEntries: 100,
     groupingInterval: 500,
-    enableKeyboardShortcuts: historyShortcuts === "editor",
+    enableKeyboardShortcuts: historyShortcuts === "editor" && experimentalSession !== "canonical",
   });
+
+  const refuseCanonicalModelEdit = useCallback(
+    (message: string) => {
+      if (experimentalSession !== "canonical") return false;
+      const error = new CanonicalSessionRefusalError({ message });
+      toast(error.message);
+      onError?.(error);
+      return true;
+    },
+    [experimentalSession, onError],
+  );
 
   // Extension manager — built once, provides schema + plugins + commands
   const extensionManager = useMemo(() => {
@@ -1077,6 +1088,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     canUndo: false,
   });
   const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(null);
+  const canEditHeaderFooter = showHeaderFooterEditing && experimentalSession !== "canonical";
 
   const pushDocument = useCallback(
     (document: Document) => {
@@ -1197,20 +1209,29 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   const handleActiveNoteStoryChange = useCallback(
     (story: NoteStoryKey | null) => {
+      if (
+        story &&
+        refuseCanonicalModelEdit("Footnote and endnote editing is unavailable in this session.")
+      ) {
+        return;
+      }
       setActiveNoteStory(story);
       if (story && hfEditPosition) {
         handleBodyClick();
       }
     },
-    [handleBodyClick, hfEditPosition],
+    [handleBodyClick, hfEditPosition, refuseCanonicalModelEdit],
   );
 
   const handleHeaderFooterStoryOpen = useCallback(
     (position: "header" | "footer", pageNumber?: number) => {
+      if (refuseCanonicalModelEdit("Header and footer editing is unavailable in this session.")) {
+        return;
+      }
       pagedEditorRef.current?.closeNoteStory();
       handleHeaderFooterDoubleClick(position, pageNumber);
     },
-    [handleHeaderFooterDoubleClick],
+    [handleHeaderFooterDoubleClick, refuseCanonicalModelEdit],
   );
 
   // Find/Replace hook
@@ -1372,7 +1393,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       };
       pushDocument(documentWithComments);
-      onChange?.(documentWithComments);
+      onChange?.(
+        experimentalSession === "canonical"
+          ? cloneDocumentWithParagraphPropertySources(documentWithComments)
+          : documentWithComments,
+      );
       // Update outline headings if sidebar is open (debounced — collectHeadings
       // descends the whole doc, expensive on large files).
       if (showOutlineRef.current) {
@@ -1399,7 +1424,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       extractTrackedChangesTimerRef.current = setTimeout(extractTrackedChanges, 300);
       requestAnimationFrame(refreshBodyHistoryAvailability);
     },
-    [onChange, pushDocument, extractTrackedChanges, refreshBodyHistoryAvailability, commentsRef],
+    [
+      onChange,
+      pushDocument,
+      extractTrackedChanges,
+      refreshBodyHistoryAvailability,
+      commentsRef,
+      experimentalSession,
+    ],
   );
 
   const buildCurrentDocument = useCallback(() => {
@@ -1408,7 +1440,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
 
     const canonical = pagedEditorRef.current?.getEditor().getCanonicalDocument();
-    if (canonical) return cloneDocumentWithParagraphPropertySources(canonical);
+    if (canonical) return canonical;
     if (experimentalSession === "canonical") return null;
 
     let doc = cloneDocumentWithParagraphPropertySources(history.state);
@@ -1486,6 +1518,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   const replaceComments = useCallback(
     (nextComments: Comment[]) => {
+      if (experimentalSession === "canonical") {
+        refuseCanonicalModelEdit("Comment changes are unavailable in this session.");
+        return;
+      }
+
       commentsDirtyRef.current = true;
       setComments(nextComments);
 
@@ -1496,7 +1533,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
       onChange?.(currentDocument);
     },
-    [buildCurrentDocument, commentsDirtyRef, onChange, setComments],
+    [
+      buildCurrentDocument,
+      commentsDirtyRef,
+      experimentalSession,
+      onChange,
+      refuseCanonicalModelEdit,
+      setComments,
+    ],
   );
 
   const updateComments = useCallback(
@@ -1894,6 +1938,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle footnote/endnote properties update
   const handleApplyFootnoteProperties = useCallback(
     (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
+      if (
+        refuseCanonicalModelEdit("Footnote and endnote properties are unavailable in this session.")
+      ) {
+        return;
+      }
       if (!history.state?.package) {
         return;
       }
@@ -1913,7 +1962,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       });
     },
-    [history, pushDocument],
+    [history, pushDocument, refuseCanonicalModelEdit],
   );
 
   // Handle table action from Toolbar - use ProseMirror commands
@@ -2797,6 +2846,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Page setup apply handler
   const handlePageSetupApply = useCallback(
     (props: Partial<SectionProperties>) => {
+      if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) {
+        return;
+      }
       if (!history.state || readOnly) {
         return;
       }
@@ -2815,7 +2867,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       handleDocumentChange(newDoc);
     },
-    [history.state, readOnly, handleDocumentChange],
+    [history.state, readOnly, handleDocumentChange, refuseCanonicalModelEdit],
   );
 
   // Ruler drag handlers. Page-margin drags go through the section-properties
@@ -2882,9 +2934,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       let savedBuffer: ArrayBuffer | null = null;
 
       try {
-        const view = pagedEditorRef.current?.getView();
-        const editorState = view?.state;
-        const baselineBuffer = originalBufferRef.current;
+        const captureSaveSnapshot = () => {
+          const view = pagedEditorRef.current?.getView();
+          return { view, editorState: view?.state, baselineBuffer: originalBufferRef.current };
+        };
+        const canonicalSnapshot =
+          experimentalSession === "canonical" ? captureSaveSnapshot() : null;
         // Build the current document from the selected session. A note goes with its
         // reference: one nothing refers to any more is not saved.
         const current = buildCurrentDocument();
@@ -2903,6 +2958,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const useSelectiveForSave =
           flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
         const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
+        const { view, editorState, baselineBuffer } = canonicalSnapshot ?? captureSaveSnapshot();
         let selectiveBuffer: ArrayBuffer | null = null;
 
         if (shouldAttemptSelective && editorState && baselineBuffer) {
@@ -2924,9 +2980,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
           const repack = () => repackDocx(repackSourceDoc);
-          return editorState
+          return view && editorState
             ? repackWithEditorSectionRemovals({
-                state: editorState,
+                state: experimentalSession === "canonical" ? editorState : view.state,
                 document: repackSourceDoc,
                 repack,
               })
@@ -2961,8 +3017,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         // Clear change tracker after successful save
         if (
           view &&
-          pagedEditorRef.current?.getView() === view &&
-          view.state.doc === editorState?.doc
+          (experimentalSession !== "canonical" ||
+            (pagedEditorRef.current?.getView() === view && view.state.doc === editorState?.doc))
         ) {
           originalBufferRef.current = buffer;
           view.dispatch(clearTrackedChanges(view.state));
@@ -2978,7 +3034,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       return savedBuffer;
     },
-    [buildCurrentDocument, onError, originalBufferRef, featureFlags, onSelectiveSaveTripwire],
+    [
+      buildCurrentDocument,
+      experimentalSession,
+      onError,
+      originalBufferRef,
+      featureFlags,
+      onSelectiveSaveTripwire,
+    ],
   );
 
   // Host-facing save keeps callback and dirty-state policy outside the
@@ -4033,14 +4096,16 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleCommentResolve = useCallback(
     (id: number) => {
+      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
       updateComments((previous) =>
         previous.map((comment) => (comment.id === id ? { ...comment, done: true } : comment)),
       );
     },
-    [updateComments],
+    [refuseCanonicalModelEdit, updateComments],
   );
   const handleCommentDelete = useCallback(
     (id: number) => {
+      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
       updateComments((previous) =>
         previous.filter((comment) => comment.id !== id && comment.parentId !== id),
       );
@@ -4048,16 +4113,20 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         setActiveCommentId(null);
       }
     },
-    [activeCommentId, setActiveCommentId, updateComments],
+    [activeCommentId, refuseCanonicalModelEdit, setActiveCommentId, updateComments],
   );
   const handleCommentReply = useCallback(
     (id: number, text: string) => {
+      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
       updateComments((previous) => [...previous, createComment(text, author, id)]);
     },
-    [author, updateComments],
+    [author, refuseCanonicalModelEdit, updateComments],
   );
   const handleAddComment = useCallback(
     (addText: string) => {
+      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) {
+        return false;
+      }
       const comment = createComment(addText, author);
       const view = pagedEditorRef.current?.getView();
       if (!view || !commentSelectionRange) {
@@ -4093,6 +4162,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [
       author,
       commentSelectionRange,
+      refuseCanonicalModelEdit,
       setActiveCommentId,
       setAddCommentYPosition,
       setCommentSelectionRange,
@@ -4104,9 +4174,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   );
   const handleTrackedChangeReply = useCallback(
     (revisionId: number, text: string) => {
+      if (refuseCanonicalModelEdit("Comment changes are unavailable in this session.")) return;
       updateComments((previous) => [...previous, createComment(text, author, revisionId)]);
     },
-    [author, updateComments],
+    [author, refuseCanonicalModelEdit, updateComments],
   );
   const handleCancelAddComment = useCallback(() => {
     const view = pagedEditorRef.current?.getView();
@@ -4543,7 +4614,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         <ErrorBoundary onError={handleEditorError}>
           <div
             ref={containerRef}
-            className={`folio-root folio-editor${displayMode !== "all-markup" ? ` folio-root--${displayMode}` : ""}${showHeaderFooterEditing ? "" : " folio-no-hf-edit"} ${className}`}
+            className={`folio-root folio-editor${displayMode !== "all-markup" ? ` folio-root--${displayMode}` : ""}${canEditHeaderFooter ? "" : " folio-no-hf-edit"} ${className}`}
             style={containerStyle}
             data-testid="folio-editor"
             data-folio-format-painter={formatPainterMode !== "off" ? "armed" : undefined}
@@ -4753,11 +4824,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           {...(history.state.package.styles
                             ? { styles: history.state.package.styles }
                             : {})}
-                          onHeaderFooterDoubleClick={
-                            showHeaderFooterEditing ? handleHeaderFooterStoryOpen : undefined
-                          }
-                          hfEditMode={hfEditPosition}
-                          activeHeaderFooterRId={activeHfRId}
+                          onHeaderFooterDoubleClick={handleHeaderFooterStoryOpen}
+                          hfEditMode={canEditHeaderFooter ? hfEditPosition : null}
+                          activeHeaderFooterRId={canEditHeaderFooter ? activeHfRId : null}
                           onBodyClick={handleBodyClick}
                           onActiveNoteStoryChange={handleActiveNoteStoryChange}
                           zoom={zoom}
@@ -4900,7 +4969,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                         )}
 
                         {/* Inline Header/Footer Editor — positioned over the target area */}
-                        {hfEditPosition &&
+                        {canEditHeaderFooter &&
+                          hfEditPosition &&
                           (() => {
                             const activeHf = (() => {
                               if (hfEditIsFirstPage) {

@@ -1,9 +1,11 @@
-import { describe, expect, test, setDefaultTimeout } from "bun:test";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { describe, expect, test, setDefaultTimeout, spyOn } from "bun:test";
+import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 
 import { schema } from "../prosemirror/schema";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { normalizeForOps } from "@stll/docx-core/ops";
+import { normalizeForOps, DOCUMENT_OP_TYPES, OP_STORIES } from "@stll/docx-core/ops";
+import * as documentOps from "@stll/docx-core/ops";
+import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { panic } from "better-result";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
@@ -18,12 +20,13 @@ import {
   getParagraphPropertySourceToken,
   paragraphPropertySourceBelongsToDocument,
 } from "../docx/paragraphPropertySource";
-import type { Document } from "../types/document";
+import type { Document, Run, StyleDefinitions } from "../types/document";
 import {
   CANONICAL_PROJECTION_META,
   createCanonicalSession,
   deletionRange,
   isCanonicalProjectionTransaction,
+  publishCanonicalProjection,
   type CanonicalCommit,
   type CanonicalSession,
 } from "./canonicalSession";
@@ -67,7 +70,7 @@ describe("canonical session", () => {
     await assertProperty(
       fc.asyncProperty(
         seedArbitrary,
-        fc.array(seedArbitrary, { minLength: 8, maxLength: 24 }),
+        fc.array(seedArbitrary, { minLength: 18, maxLength: 24 }),
         async (generated, inputs) => {
           const parsed = await fixture({ ...generated, container: "body", nesting: "plain" });
           const session = createCanonicalSession(
@@ -78,9 +81,20 @@ describe("canonical session", () => {
                 document: {
                   ...parsed.package.document,
                   sections: undefined,
-                  content: parsed.package.document.content.filter(
-                    (block) => block.type === "paragraph",
-                  ),
+                  content: parsed.package.document.content
+                    .filter((block) => block.type === "paragraph")
+                    .map((paragraph) =>
+                      Object.assign({}, paragraph, {
+                        content: [...generated.text].map(
+                          (text, index) =>
+                            ({
+                              type: "run",
+                              formatting: index % 2 === 0 ? { bold: true } : { italic: true },
+                              content: [{ type: "text", text }],
+                            }) satisfies Run,
+                        ),
+                      }),
+                    ),
                 },
               },
             }),
@@ -93,7 +107,17 @@ describe("canonical session", () => {
             preSelection: ReturnType<typeof state.selection.toJSON>;
             postSelection: ReturnType<typeof state.selection.toJSON>;
           }[] = [];
-          const kinds = ["insert", "delete", "replace", "reject"] as const;
+          const kinds = [
+            "insert",
+            "delete",
+            "replace",
+            "reject",
+            "op-refusal",
+            "projection-refusal",
+            "plugin-filter",
+            "plugin-append",
+            "plugin-throw",
+          ] as const;
           const exercised = new Set<(typeof kinds)[number]>();
           for (const [index, input] of inputs.entries()) {
             const kind = kinds.at(index % kinds.length) ?? panic("Missing generated input kind");
@@ -129,13 +153,101 @@ describe("canonical session", () => {
             const before = session.document;
             const preSelection = state.selection.toJSON();
             const version = session.version;
-            if (kind === "reject") {
+            if (kind !== "insert" && kind !== "delete" && kind !== "replace") {
               const projection = session.projection;
               const history = { undo: session.canUndo, redo: session.canRedo };
-              const invalidText = input.offset % 2 === 0 ? `${input.insertion}\n` : "\ud800";
-              expect(session.prepareReplace(state, { from, to, text: invalidText }).isErr()).toBe(
-                true,
-              );
+              const validInput = { from, to, text: input.insertion };
+              switch (kind) {
+                case "reject": {
+                  const invalidText = input.offset % 2 === 0 ? `${input.insertion}\n` : "\ud800";
+                  expect(
+                    session.prepareReplace(state, { from, to, text: invalidText }).isErr(),
+                  ).toBe(true);
+                  break;
+                }
+                case "op-refusal": {
+                  const apply = documentOps.applyDocumentOps;
+                  const injected = spyOn(documentOps, "applyDocumentOps").mockImplementation(
+                    (document, ops) =>
+                      apply(document, [
+                        ...ops,
+                        {
+                          type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                          from: {
+                            story: OP_STORIES.MAIN,
+                            blockId: FIRST_ID,
+                            offset: Number.MAX_SAFE_INTEGER - 1,
+                          },
+                          to: {
+                            story: OP_STORIES.MAIN,
+                            blockId: FIRST_ID,
+                            offset: Number.MAX_SAFE_INTEGER,
+                          },
+                        },
+                      ]),
+                  );
+                  try {
+                    const prepared = session.prepareReplace(state, validInput);
+                    expect(injected).toHaveBeenCalledTimes(1);
+                    expect(prepared.isErr()).toBe(true);
+                  } finally {
+                    injected.mockRestore();
+                  }
+                  break;
+                }
+                case "projection-refusal": {
+                  const injected = spyOn(conversion, "toProseDoc").mockReturnValue(
+                    schema.node("doc", null, [
+                      schema.node("paragraph", { paraId: FIRST_ID }, schema.text("foreign")),
+                    ]),
+                  );
+                  try {
+                    const prepared = session.prepareReplace(state, validInput);
+                    expect(injected).toHaveBeenCalledTimes(1);
+                    expect(prepared.isErr()).toBe(true);
+                  } finally {
+                    injected.mockRestore();
+                  }
+                  break;
+                }
+                case "plugin-filter":
+                case "plugin-append":
+                case "plugin-throw": {
+                  const plugin = (() => {
+                    switch (kind) {
+                      case "plugin-filter":
+                        return new Plugin({ filterTransaction: () => false });
+                      case "plugin-append":
+                        return new Plugin({
+                          appendTransaction: (_transactions, _oldState, nextState) =>
+                            nextState.tr.insertText(input.insertion, from),
+                        });
+                      case "plugin-throw":
+                        return new Plugin({
+                          filterTransaction: () => {
+                            throw new TypeError("Generated plugin staging refusal");
+                          },
+                        });
+                      default: {
+                        const unreachable: never = kind;
+                        return panic(`Unknown generated plugin ${unreachable}`);
+                      }
+                    }
+                  })();
+                  const stagedState = state.reconfigure({ plugins: [plugin] });
+                  const commit = session.prepareReplace(stagedState, validInput).unwrap();
+                  expect(
+                    publishCanonicalProjection({ state: stagedState, commit, session }).isErr(),
+                  ).toBe(true);
+                  expect(stagedState.doc).toBe(state.doc);
+                  expect(stagedState.selection.toJSON()).toEqual(preSelection);
+                  break;
+                }
+                default: {
+                  const unreachable: never = kind;
+                  panic(`Unknown generated refusal ${unreachable}`);
+                }
+              }
               expect(session.document).toBe(before);
               expect(session.projection).toBe(projection);
               expect(session.version).toBe(version);
@@ -147,10 +259,8 @@ describe("canonical session", () => {
             const commit = session.prepareReplace(state, { from, to, text }).unwrap();
             expect(session.document).toBe(before);
             expect(session.version).toBe(version);
-            const nextState = state.apply(commit.transaction);
             expect(commit.transaction.getMeta("addToHistory")).toBe(false);
-            expect(commit.publish().isOk()).toBe(true);
-            state = nextState;
+            state = publishCanonicalProjection({ state, commit, session }).unwrap().state;
             expect(session.version).toBe(version + 1);
             expect(state.doc.eq(toProseDoc(session.document))).toBe(true);
             expect(state.doc.eq(session.projection.doc)).toBe(true);
@@ -167,8 +277,7 @@ describe("canonical session", () => {
           for (const entry of journal.toReversed()) {
             const version = session.version;
             const commit = session.prepareUndo(state).unwrap();
-            state = state.apply(commit.transaction);
-            expect(commit.publish().isOk()).toBe(true);
+            state = publishCanonicalProjection({ state, commit, session }).unwrap().state;
             expect(session.document).toStrictEqual(entry.before);
             expect(state.selection.toJSON()).toEqual(entry.preSelection);
             expect(session.version).toBe(version + 1);
@@ -179,8 +288,7 @@ describe("canonical session", () => {
           for (const entry of journal) {
             const version = session.version;
             const commit = session.prepareRedo(state).unwrap();
-            state = state.apply(commit.transaction);
-            expect(commit.publish().isOk()).toBe(true);
+            state = publishCanonicalProjection({ state, commit, session }).unwrap().state;
             expect(session.document).toStrictEqual(entry.after);
             expect(state.selection.toJSON()).toEqual(entry.postSelection);
             expect(session.version).toBe(version + 1);
@@ -191,6 +299,51 @@ describe("canonical session", () => {
       ),
       { numRuns: 40 },
     );
+  });
+
+  test("host seed and style mutations cannot change the authority or its inverses", () => {
+    const document = seed();
+    const paragraph = document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Seed paragraph unavailable");
+    paragraph.formatting = { styleId: "HostStyle" };
+    const authoredStyle = { italic: true };
+    const hostStyles = {
+      styles: [{ styleId: "HostStyle", type: "paragraph", rPr: authoredStyle }],
+    } satisfies StyleDefinitions;
+    const session = createCanonicalSession(document, hostStyles).unwrap();
+    const initial = structuredClone(session.document);
+    const initialProjection = session.projection.doc;
+    const run = paragraph.content.at(0);
+    if (run?.type !== "run") panic("Seed run unavailable");
+    const leaf = run.content.at(0);
+    if (leaf?.type !== "text") panic("Seed text unavailable");
+    leaf.text = "host mutation";
+    run.formatting = { bold: false };
+    const hostStyle = hostStyles.styles.at(0);
+    if (!hostStyle) panic("Host style unavailable");
+    hostStyle.rPr.italic = false;
+    expect(session.document).toStrictEqual(initial);
+    expect(session.projection.doc).toBe(initialProjection);
+    let state = stateFor(session);
+    state = publishCanonicalProjection({
+      state,
+      session,
+      commit: session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+    }).unwrap().state;
+    expect(
+      state.doc.eq(
+        toProseDoc(session.document, {
+          styles: { styles: [{ styleId: "HostStyle", type: "paragraph", rPr: { italic: true } }] },
+        }),
+      ),
+    ).toBe(true);
+    state = publishCanonicalProjection({
+      state,
+      session,
+      commit: session.prepareUndo(state).unwrap(),
+    }).unwrap().state;
+    expect(session.document).toStrictEqual(initial);
+    expect(state.doc.eq(initialProjection)).toBe(true);
   });
 
   test("replacement stages immutable model/history and exact inverse restores IDs and selection", () => {

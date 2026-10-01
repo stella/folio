@@ -3,4 +3,4 @@
 "@stll/folio-vue": minor
 ---
 
-Expose opt-in canonical text sessions and serialize their canonical document snapshots.
+Expose opt-in canonical text sessions, reject unsupported model edits, and serialize owned canonical document snapshots.

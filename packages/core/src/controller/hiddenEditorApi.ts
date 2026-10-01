@@ -13,6 +13,7 @@ import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 
+import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
 
@@ -114,11 +115,14 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
 
     getView: () => deps.getView() ?? null,
 
-    getCanonicalDocument: () => deps.getCanonicalDocument?.() ?? null,
+    getCanonicalDocument: () => {
+      const canonical = deps.getCanonicalDocument?.();
+      return canonical ? cloneDocumentWithParagraphPropertySources(canonical) : null;
+    },
 
     getDocument: () => {
       const canonical = deps.getCanonicalDocument?.();
-      if (canonical) return canonical;
+      if (canonical) return cloneDocumentWithParagraphPropertySources(canonical);
       const view = deps.getView();
       if (!view) {
         return null;

@@ -85,6 +85,7 @@ export type UsePagesPointerOptions = {
   hyperlinkPopupData: Ref<HyperlinkPopupData | null>;
   readOnly: Ref<boolean>;
   showHeaderFooterEditing: Ref<boolean>;
+  onHeaderFooterEditAttempt?: (() => boolean) | undefined;
   zoom: Ref<number>;
   layout: Ref<Layout | null>;
   tableResize: TableResizeApi;
@@ -435,11 +436,15 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       opts.openNoteStory(noteStory);
       return;
     }
-    if (!opts.showHeaderFooterEditing.value || hfEdit.value) return;
+    if (hfEdit.value) return;
     const headerEl = target.closest<HTMLElement>(".layout-page-header");
     const footerEl = target.closest<HTMLElement>(".layout-page-footer");
     const hfEl = headerEl ?? footerEl;
     if (!hfEl) return;
+    if (!opts.showHeaderFooterEditing.value) {
+      opts.onHeaderFooterEditAttempt?.();
+      return;
+    }
 
     const position: "header" | "footer" = headerEl ? "header" : "footer";
 
@@ -505,6 +510,10 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleHfSave() {
+    if (opts.onHeaderFooterEditAttempt?.()) {
+      hfEdit.value = null;
+      return;
+    }
     saveAndCloseHeaderFooterEdit({
       editState: hfEdit,
       getDocument: opts.getDocument,
@@ -517,6 +526,10 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleHfRemove() {
+    if (opts.onHeaderFooterEditAttempt?.()) {
+      hfEdit.value = null;
+      return;
+    }
     const doc = opts.getDocument();
     const edit = hfEdit.value;
     if (!doc?.package || !edit || !edit.rId) {

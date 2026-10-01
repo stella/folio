@@ -17,28 +17,86 @@ type CanonicalInputOptions = {
 
 type NativeProposal =
   | { type: "idle" }
-  | { type: "composition" }
+  | { type: "composition"; phase: "active" | "ended" }
+  | { type: "refused" }
   | { type: "replacement"; state: EditorState; input: ReplaceTextInput };
 
 /** Native changes require a preceding, classified input event at the same state. */
 export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => {
   let proposal: NativeProposal = { type: "idle" };
+  let authorizedInput: { view: EditorView; state: EditorState } | null = null;
+  const repaint = (view: EditorView) => {
+    queueMicrotask(() => {
+      if (!view.isDestroyed) view.updateState(view.state);
+    });
+  };
   const refuseEvent = (event: Event, reason: string) => {
     event.preventDefault();
-    options.refuse(reason);
+    if (proposal.type !== "composition" && proposal.type !== "refused") options.refuse(reason);
+    if (proposal.type !== "composition") proposal = { type: "refused" };
     return true;
+  };
+
+  const refuseNativeMutation = (view: EditorView) => {
+    if (proposal.type !== "composition" && proposal.type !== "refused") {
+      options.refuse("Unclassified native text is unavailable in this session.");
+      proposal = { type: "refused" };
+    }
+    repaint(view);
+  };
+
+  const takeNativeProposal = (
+    state: EditorState,
+    transaction: Transaction,
+  ): ReplaceTextInput | null => {
+    const pending = proposal;
+    if (pending.type !== "replacement") return null;
+    proposal = { type: "idle" };
+    if (pending.state !== state || transaction.steps.length !== 1) return null;
+    const step = transaction.steps.at(0);
+    if (
+      !(step instanceof ReplaceStep) ||
+      ("structure" in step && step.structure === true) ||
+      step.from !== pending.input.from ||
+      step.to !== pending.input.to
+    )
+      return null;
+    if (step.slice.openStart !== 0 || step.slice.openEnd !== 0) return null;
+    let text = "";
+    let plain = true;
+    step.slice.content.forEach((node) => {
+      if (!node.isText) plain = false;
+      text += node.text ?? "";
+    });
+    if (!plain || text !== pending.input.text) return null;
+    // Marks, attrs and unrelated nodes cannot hitch a ride on classified input.
+    const expected = state.tr.insertText(text, step.from, step.to);
+    return expected.doc.eq(transaction.doc) ? pending.input : null;
   };
 
   return {
     reset: () => {
       proposal = { type: "idle" };
+      authorizedInput = null;
     },
-    handleTextInput: (_view: EditorView, from: number, to: number, text: string) => {
-      if (proposal.type === "composition") {
-        options.refuse("Composition is unavailable in the experimental canonical session.");
+    handleTextInput: (view: EditorView, from: number, to: number, text: string) => {
+      const pending = proposal;
+      if (authorizedInput?.view === view && authorizedInput.state === view.state) {
+        options.replace({ from, to, text });
         return true;
       }
-      options.replace({ from, to, text });
+      if (
+        pending.type === "replacement" &&
+        pending.state === view.state &&
+        pending.input.from === from &&
+        pending.input.to === to &&
+        pending.input.text === text
+      ) {
+        proposal = { type: "idle" };
+        options.replace(pending.input);
+        return true;
+      }
+      refuseNativeMutation(view);
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
@@ -72,8 +130,13 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       }
       if (event.key !== "Backspace" && event.key !== "Delete") return false;
       event.preventDefault();
+      if (proposal.type === "composition" && proposal.phase === "ended" && !view.composing) {
+        proposal = { type: "idle" };
+        repaint(view);
+      }
       if (modifier || event.altKey || view.composing || proposal.type === "composition") {
-        options.refuse("Only plain character deletion is available in this session.");
+        if (proposal.type !== "composition")
+          options.refuse("Only plain character deletion is available in this session.");
         return true;
       }
       const range = deletionRange(view.state, event.key === "Backspace" ? "backward" : "forward");
@@ -83,29 +146,53 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
     },
     handleDOMEvents: {
       compositionstart: (_view: EditorView, event: Event) => {
-        proposal = { type: "composition" };
-        return refuseEvent(
-          event,
-          "Composition is unavailable in the experimental canonical session.",
-        );
+        if (proposal.type !== "composition")
+          options.refuse("Composition is unavailable in the experimental canonical session.");
+        proposal = { type: "composition", phase: "active" };
+        event.preventDefault();
+        return true;
       },
       compositionend: (view: EditorView) => {
+        if (proposal.type === "composition") proposal = { type: "composition", phase: "ended" };
         const composition = proposal;
-        // Native IME owns the DOM until its final flush. Restore afterwards;
-        // neither its provisional nor final transaction may enter the model.
         queueMicrotask(() => {
           if (view.isDestroyed || proposal !== composition) return;
           view.updateState(view.state);
-          proposal = { type: "idle" };
         });
         return false;
       },
+      blur: (view: EditorView) => {
+        proposal = { type: "idle" };
+        repaint(view);
+        return false;
+      },
       beforeinput: (view: EditorView, event: InputEvent) => {
-        if (view.composing || event.isComposing || proposal.type === "composition") {
+        if (
+          view.composing ||
+          event.isComposing ||
+          event.inputType === "insertCompositionText" ||
+          event.inputType === "insertFromComposition" ||
+          event.inputType === "deleteCompositionText" ||
+          event.inputType === "deleteByComposition"
+        ) {
           return refuseEvent(event, "Composition is unavailable in this session.");
         }
+        // A new, non-composition event recovers an IME missing compositionend.
+        if (proposal.type === "composition") {
+          proposal = { type: "idle" };
+          repaint(view);
+        }
         if (event.inputType === "insertText" || event.inputType === "insertReplacementText") {
-          if (event.cancelable) return handleEditorBeforeInput(view, event);
+          if (event.cancelable) {
+            proposal = { type: "idle" };
+            authorizedInput = { view, state: view.state };
+            try {
+              if (handleEditorBeforeInput(view, event)) return true;
+              return refuseEvent(event, "This native replacement cannot be addressed safely.");
+            } finally {
+              authorizedInput = null;
+            }
+          }
           if (event.inputType !== "insertText" || event.data === null) {
             return refuseEvent(event, "This native replacement cannot be addressed safely.");
           }
@@ -147,9 +234,12 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return refuseEvent(event, `Input ${event.inputType} is unavailable in this session.`);
       },
       // A native DOM proposal is valid only until this event's observer flush.
-      input: () => {
+      input: (view: EditorView) => {
+        const pending = proposal;
         queueMicrotask(() => {
-          if (proposal.type === "replacement") proposal = { type: "idle" };
+          if (view.isDestroyed) return;
+          view.updateState(view.state);
+          if (proposal === pending && pending.type !== "composition") proposal = { type: "idle" };
         });
         return false;
       },
@@ -161,31 +251,13 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         refuseEvent(event, "Drop is unavailable in this session."),
     },
     /** Returns a classified intent only; the proposed PM document is never authoritative. */
-    takeNativeProposal: (state: EditorState, transaction: Transaction): ReplaceTextInput | null => {
-      const pending = proposal;
-      if (pending.type !== "replacement") return null;
-      proposal = { type: "idle" };
-      if (pending.state !== state || transaction.steps.length !== 1) return null;
-      const step = transaction.steps.at(0);
-      if (
-        !(step instanceof ReplaceStep) ||
-        ("structure" in step && step.structure === true) ||
-        step.from !== pending.input.from ||
-        step.to !== pending.input.to
-      )
-        return null;
-      if (step.slice.openStart !== 0 || step.slice.openEnd !== 0) return null;
-      let text = "";
-      let plain = true;
-      step.slice.content.forEach((node) => {
-        if (!node.isText) plain = false;
-        text += node.text ?? "";
-      });
-      if (!plain || text !== pending.input.text) return null;
-      // Compare the full expected proposal so marks, attrs and unrelated nodes
-      // cannot hitch a ride on a classified character input.
-      const expected = state.tr.insertText(text, step.from, step.to);
-      return expected.doc.eq(transaction.doc) ? pending.input : null;
+    takeNativeProposal,
+    refuseNativeMutation,
+    commitNativeProposal: (view: EditorView, transaction: Transaction) => {
+      const input = takeNativeProposal(view.state, transaction);
+      if (!input) return false;
+      options.replace(input);
+      return true;
     },
   };
 };

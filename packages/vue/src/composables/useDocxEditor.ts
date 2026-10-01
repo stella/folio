@@ -40,6 +40,8 @@ import {
 import type { PageRendererName } from "@stll/folio-core/display-list/editor/pageRenderer";
 import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type {
@@ -79,7 +81,6 @@ import {
   TRANSACTION_LAYOUT_TIMING,
 } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
-import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -143,7 +144,7 @@ import type {
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Footnote } from "@stll/folio-core/types/content";
 import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
-import { toArrayBuffer, type DocxInput } from "@stll/folio-core/utils/docxInput";
+import type { DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
 // ============================================================================
@@ -554,6 +555,16 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   // (it is the selective-save baseline; see the featureFlags parity note), so
   // this flag — not the tracker — is what surfaces pending edits to the ref API.
   const isDirty = ref(false);
+  const isCanonicalSession = () => toValue(experimentalSession) === "canonical";
+  const cloneForHost = (document: Document) =>
+    isCanonicalSession() ? cloneDocumentWithParagraphPropertySources(document) : document;
+  const refuseCanonicalModelEdit = (message: string) => {
+    if (!isCanonicalSession()) return false;
+    const error = new CanonicalSessionRefusalError({ message });
+    parseError.value = error.message;
+    onError?.(error);
+    return true;
+  };
 
   // ---- Long-lived controller singletons -----------------------------------
   // One ExtensionManager owns the schema + plugins + commands for the body view.
@@ -675,8 +686,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         if (current) {
           const updated = noteEditorManagerHolder.current?.snapshotDocument(current) ?? current;
           docModel.value = updated;
-          onChange?.(updated);
-          emitter.emit("docChange", updated);
+          onChange?.(cloneForHost(updated));
+          emitter.emit("docChange", cloneForHost(updated));
         }
         scheduler.schedule();
       }
@@ -688,6 +699,18 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     },
   });
   noteEditorManagerHolder.current = noteEditorManager;
+
+  const syncSecondaryStoryEditors = (): void => {
+    if (isCanonicalSession()) {
+      headerFooterManager.destroy();
+      noteEditorManager.destroy();
+      activeNoteStory.value = null;
+      return;
+    }
+    headerFooterManager.sync();
+    noteEditorManager.sync();
+  };
+  watch(() => toValue(experimentalSession), syncSecondaryStoryEditors, { immediate: true });
 
   // ---- Layout pipeline ----------------------------------------------------
 
@@ -829,10 +852,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         manager.api.getCanonicalDocument() ??
         noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
       docModel.value = updated;
-      headerFooterManager.sync();
-      noteEditorManager.sync();
-      onChange?.(updated);
-      emitter.emit("docChange", updated);
+      syncSecondaryStoryEditors();
+      onChange?.(cloneForHost(updated));
+      emitter.emit("docChange", cloneForHost(updated));
     } catch (err) {
       onError?.(err instanceof Error ? err : new Error(String(err)));
     }
@@ -1124,8 +1146,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     noteEditorManager.activate(null);
     scheduler.dispose();
     manager.destroyView();
-    headerFooterManager.sync();
-    noteEditorManager.sync();
+    syncSecondaryStoryEditors();
     manager.ensureView();
     if (!manager.getView()) {
       // Host not mounted yet: paint from a precomputed state so the pages show
@@ -1193,8 +1214,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       if (hiddenContainer.value && docModel.value && !manager.getView()) {
         mountView();
       }
-      headerFooterManager.sync();
-      noteEditorManager.sync();
+      syncSecondaryStoryEditors();
     },
     { flush: "post" },
   );
@@ -1205,10 +1225,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     parseError.value = null;
     isReady.value = false;
     try {
-      const source =
-        toValue(experimentalSession) === "canonical"
-          ? (await ensureParaIds(await toArrayBuffer(buffer))).docx
-          : buffer;
+      const source = isCanonicalSession()
+        ? (await prepareCanonicalDocxInput(buffer)).unwrap()
+        : buffer;
       const doc = await parseDocx(source, { password: toValue(password) });
       docModel.value = doc;
       remountForNewDocument();
@@ -1340,10 +1359,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // refresh the story managers, and clear the document dirty signal only
     // after serialization succeeds. The ref API owns comment-dirty reset and
     // the host's onSave callback.
-    if (editorView.value === savedView && savedView?.state.doc === savedState?.doc) {
+    if (
+      toValue(experimentalSession) !== "canonical" ||
+      (editorView.value === savedView && savedView?.state.doc === savedState?.doc)
+    ) {
       docModel.value = result.document;
-      headerFooterManager.sync();
-      noteEditorManager.sync();
+      syncSecondaryStoryEditors();
       isDirty.value = false;
     }
 
@@ -1357,29 +1378,38 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     if (canonical) return canonical;
     if (toValue(experimentalSession) === "canonical") return null;
     const document = docModel.value;
-    return document
-      ? noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(document))
-      : null;
+    if (!document) return null;
+    return cloneForHost(
+      noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(document)),
+    );
   }
 
   function setDocument(doc: Document): void {
+    if (
+      refuseCanonicalModelEdit("Direct document model changes are unavailable in this session.")
+    ) {
+      return;
+    }
     docModel.value = doc;
-    headerFooterManager.sync();
-    noteEditorManager.sync();
+    syncSecondaryStoryEditors();
     if (activeNoteStory.value && !noteEditorManager.getView(activeNoteStory.value)) {
       activeNoteStory.value = null;
     }
   }
 
   function getHeaderFooterView(rId: string): EditorView | null {
+    if (isCanonicalSession()) return null;
     return headerFooterManager.getView(rId);
   }
 
   function syncHeaderFooterViews(): void {
-    headerFooterManager.sync();
+    syncSecondaryStoryEditors();
   }
 
   function openNoteStory(story: NoteStoryKey): void {
+    if (refuseCanonicalModelEdit("Footnote and endnote editing is unavailable in this session.")) {
+      return;
+    }
     const view = noteEditorManager.activate(story);
     if (!view) return;
     syncSuggestionMode(view);
@@ -1393,6 +1423,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function getActiveNoteView(): EditorView | null {
+    if (isCanonicalSession()) return null;
     const story = activeNoteStory.value;
     return story ? noteEditorManager.getView(story) : null;
   }

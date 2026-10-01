@@ -134,16 +134,22 @@ export const useDocumentLoader = ({
     void api.loadBuffer(source.buffer, { password });
   }, [documentBuffer, initialDocument, password, experimentalSession, api]);
 
-  // A saved baseline belongs to this load; internal edits must not replace it.
+  // Canonical baselines belong to the loaded document, not adapter model updates.
   useEffect(() => {
-    if (originalBufferIdentityRef.current === loadedDocumentIdentity) return;
-    originalBufferIdentityRef.current = loadedDocumentIdentity;
+    if (experimentalSession === "canonical") {
+      if (originalBufferIdentityRef.current === loadedDocumentIdentity) return;
+      originalBufferIdentityRef.current = loadedDocumentIdentity;
+    }
     if (history.state?.originalBuffer) {
       originalBufferRef.current = history.state.originalBuffer;
       return;
     }
-    originalBufferRef.current = documentBuffer instanceof ArrayBuffer ? documentBuffer : null;
-  }, [history.state, documentBuffer, loadedDocumentIdentity]);
+    if (documentBuffer instanceof ArrayBuffer) {
+      originalBufferRef.current = documentBuffer;
+      return;
+    }
+    if (experimentalSession === "canonical") originalBufferRef.current = null;
+  }, [history.state, documentBuffer, loadedDocumentIdentity, experimentalSession]);
 
   return {
     loadBuffer: api.loadBuffer,
