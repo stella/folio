@@ -45,7 +45,11 @@ import { canonicalJson } from "../../utils/canonicalJson";
 import { normalizeHorizontalScalePercent } from "../../utils/horizontalScale";
 import { DRAWING_RAW_XML_MODES, isOoxmlSymbolCharacter, THEME_COLORS } from "@stll/docx-core/model";
 import { isParagraphDirection } from "../paragraphDirection";
-import { PRESERVED_XML_LEVELS, TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES } from "../schema/nodes";
+import {
+  PRESERVED_XML_LEVELS,
+  TEXT_BOX_TEXT_BODY_CONTENT_STATE_TYPES,
+  type NoteMarkerAttrs,
+} from "../schema/nodes";
 import type {
   BlockSdtAttrs,
   BlockCustomXmlAttrs,
@@ -69,7 +73,6 @@ import type {
   TabAttrs,
   SymbolAttrs,
   PreservedXmlAttrs,
-  NoteMarkerAttrs,
   PreservedBlockAttrs,
   ImageAttrs,
   MathAttrs,

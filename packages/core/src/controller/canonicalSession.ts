@@ -632,7 +632,7 @@ class CanonicalSession {
           op.type === DOCUMENT_OP_TYPES.SET_SECTION_PROPS ||
           op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS ||
           ("story" in op && !sameStory(op.story, OP_STORIES.MAIN)) ||
-          ("at" in op && !sameStory(op.at.story, OP_STORIES.MAIN)) ||
+          ("at" in op && typeof op.at === "object" && !sameStory(op.at.story, OP_STORIES.MAIN)) ||
           ("from" in op && !sameStory(op.from.story, OP_STORIES.MAIN)),
       )
     )

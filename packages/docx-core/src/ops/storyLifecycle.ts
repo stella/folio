@@ -1,5 +1,6 @@
 /** Explicit story lifecycle and section property edits, with exact JSON-safe inverses. */
 import { Result } from "better-result";
+import { DEFAULT_TAB_STOP_TWIPS } from "../model/document";
 import type {
   Document,
   DocumentBody,
@@ -231,8 +232,13 @@ export const applyStoryLifecycle = (
   if (op.type === DOCUMENT_OP_TYPES.SET_SECTION_PROPS) {
     const nextProps = applyFormattingPatch(properties, op.patch) ?? {};
     let next = withSectionProperties(document, op.sectionIndex, nextProps);
-    if (op.patch.evenAndOddHeaders !== undefined) {
-      const settings = { ...next.package.settings };
+    if (
+      op.patch.evenAndOddHeaders !== undefined &&
+      (op.patch.evenAndOddHeaders !== null || next.package.settings !== undefined)
+    ) {
+      const settings = {
+        ...(next.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+      };
       if (op.patch.evenAndOddHeaders === null) delete settings.evenAndOddHeaders;
       else settings.evenAndOddHeaders = op.patch.evenAndOddHeaders;
       next = { ...next, package: { ...next.package, settings } };
@@ -296,7 +302,13 @@ export const applyStoryLifecycle = (
   if (op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER && op.referenceType === "even")
     next = {
       ...next,
-      package: { ...next.package, settings: { ...next.package.settings, evenAndOddHeaders: true } },
+      package: {
+        ...next.package,
+        settings: {
+          ...(next.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+          evenAndOddHeaders: true,
+        },
+      },
     };
   if (next.package.document.sections) {
     const sections = next.package.document.sections.map((section, index): Section => {

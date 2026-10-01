@@ -6,9 +6,18 @@ import { OP_STORIES, type OpStory } from "./types";
 export const sameStory = (left: OpStory, right: OpStory): boolean => {
   if (left === OP_STORIES.MAIN || right === OP_STORIES.MAIN) return left === right;
   if (left.kind !== right.kind) return false;
-  if (left.kind === "header" || left.kind === "footer")
-    return (right.kind === "header" || right.kind === "footer") && left.rId === right.rId;
-  return (right.kind === "footnote" || right.kind === "endnote") && left.id === right.id;
+  switch (left.kind) {
+    case "header":
+    case "footer":
+      return (right.kind === "header" || right.kind === "footer") && left.rId === right.rId;
+    case "footnote":
+    case "endnote":
+      return (right.kind === "footnote" || right.kind === "endnote") && left.id === right.id;
+    default: {
+      const unreachable: never = left;
+      return unreachable;
+    }
+  }
 };
 
 export const findStoryBody = (document: Document, story: OpStory): DocumentBody | undefined => {

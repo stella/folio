@@ -4,6 +4,7 @@ import fc from "fast-check";
 import { panic } from "better-result";
 import { propertyConfig } from "../../../../../test/property-testing";
 import type { Document, Paragraph, HeaderFooter, SectionProperties } from "../../model/document";
+import { DEFAULT_TAB_STOP_TWIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { documentStories, findStoryBody, sameStory } from "../stories";
@@ -202,9 +203,20 @@ describe("all-story operation laws", () => {
         fc.constantFrom("default", "first", "even"),
         fc.constantFrom("footnote", "endnote"),
         fc.integer({ min: 1, max: 100 }),
-        (kind, referenceType, noteKind, id) => {
+        fc.option(
+          fc.record({
+            defaultTabStop: fc.integer({ min: 1, max: 2880 }),
+            mirrorMargins: fc.boolean(),
+            evenAndOddHeaders: fc.boolean(),
+          }),
+          { nil: undefined },
+        ),
+        (kind, referenceType, noteKind, id, settings) => {
           const document: Document = {
-            package: { document: { content: [paragraph("00000001", "body")] } },
+            package: {
+              document: { content: [paragraph("00000001", "body")] },
+              ...(settings === undefined ? {} : { settings }),
+            },
           };
           const created = expectExact(document, {
             type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
@@ -222,7 +234,11 @@ describe("all-story operation laws", () => {
           if (referenceType === "first")
             expect(created.document.package.document.finalSectionProperties?.titlePg).toBe(true);
           if (referenceType === "even")
-            expect(created.document.package.settings?.evenAndOddHeaders).toBe(true);
+            expect(created.document.package.settings).toEqual({
+              ...(settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+              evenAndOddHeaders: true,
+            });
+          else expect(created.document.package.settings).toEqual(settings);
           const at = { story: "main", blockId: "00000001", offset: 1 } as const;
           const added = expectExact(document, {
             type: DOCUMENT_OP_TYPES.ADD_NOTE,
@@ -239,6 +255,28 @@ describe("all-story operation laws", () => {
             sectionIndex: 0,
             patch: { footnotePr: { numStart: id }, marginTop: id * 20 },
           });
+          for (const evenAndOddHeaders of [true, false, null]) {
+            const changed = expectExact(document, {
+              type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+              sectionIndex: 0,
+              patch: { evenAndOddHeaders },
+            });
+            if (evenAndOddHeaders === null) {
+              expect(changed.document.package.settings).toEqual(
+                settings === undefined
+                  ? undefined
+                  : {
+                      defaultTabStop: settings.defaultTabStop,
+                      mirrorMargins: settings.mirrorMargins,
+                    },
+              );
+            } else {
+              expect(changed.document.package.settings).toEqual({
+                ...(settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+                evenAndOddHeaders,
+              });
+            }
+          }
         },
       ),
       propertyConfig({ numRuns: 100 }),
