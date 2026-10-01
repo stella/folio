@@ -59,8 +59,16 @@ test("PM and Document ops agree after every generated text and formatting step",
         if (!target) throw new Error("generated document has no textblock");
         const blockId: unknown = target.node.attrs["paraId"];
         if (typeof blockId !== "string") throw new Error("generated textblock has no paraId");
-        const offset = step.start % (target.node.content.size + 1);
-        const end = Math.min(target.node.content.size, offset + step.width);
+        // The portable contract rejects offsets between UTF-16 surrogate halves.
+        // Draw both endpoints in the same valid coordinate space for both paths.
+        const boundaries = [0];
+        for (const character of target.node.textContent) {
+          boundaries.push((boundaries.at(-1) ?? 0) + character.length);
+        }
+        const startIndex = step.start % boundaries.length;
+        const offset = boundaries.at(startIndex) ?? 0;
+        const end =
+          boundaries.at(Math.min(boundaries.length - 1, startIndex + step.width)) ?? offset;
         const at = { story: OP_STORIES.MAIN, blockId, offset };
         const to = { story: OP_STORIES.MAIN, blockId, offset: end };
         const fromPosition = target.pos + 1 + offset;
