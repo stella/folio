@@ -45,6 +45,7 @@ export const seedReplay = (seed: number, steps: number, kind: FlowKind): string 
   return words(
     `FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_FUZZ_STEPS=${steps} ${runs}`,
     relationEnv(),
+    process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "FOLIO_SCENARIO_SWARM=1" : "",
     `bun scripts/consumer-scenarios.ts --only '^${label} run 0 \\(' -- fuzz.test.ts`,
   );
 };

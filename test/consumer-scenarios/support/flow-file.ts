@@ -77,6 +77,8 @@ export type FlowFile = {
   /** The seed the flow's metamorphic relations sample with (a seeded flow's own seed). */
   seed: number;
   steps: FlowStep[];
+  /** Generated operation kinds enabled for this swarm; absent means all kinds. */
+  swarm?: string[];
   /** What the flow is: the seed it was drawn from, a corpus mutation, a shrink. */
   origin?: string;
   /** For a checked-in flow: what it guards. */
@@ -115,7 +117,7 @@ export const parseFlowFile = (value: unknown): FlowFile => {
   if (!isRecord(value) || value["version"] !== 1) {
     throw new TypeError("flow file: expected version 1");
   }
-  const { kind, generation, fixture, mode, seed, steps, origin, title } = value;
+  const { kind, generation, fixture, mode, seed, steps, origin, title, swarm } = value;
   if (!(FLOW_KINDS as readonly unknown[]).includes(kind)) {
     throw new TypeError(`flow file: unknown kind ${JSON.stringify(kind)}`);
   }
@@ -131,6 +133,15 @@ export const parseFlowFile = (value: unknown): FlowFile => {
   if (!Array.isArray(steps) || steps.length === 0) {
     throw new TypeError("flow file: expected at least one step");
   }
+  if (
+    swarm !== undefined &&
+    (!Array.isArray(swarm) ||
+      swarm.length === 0 ||
+      !swarm.every((type): type is string => typeof type === "string" && type.length > 0) ||
+      new Set(swarm).size !== swarm.length)
+  ) {
+    throw new TypeError("flow file: swarm must be a nonempty list of distinct operation kinds");
+  }
   return {
     version: 1,
     kind: kind as FlowKind,
@@ -139,6 +150,7 @@ export const parseFlowFile = (value: unknown): FlowFile => {
     mode,
     seed,
     steps: steps.map(parseStep),
+    ...(swarm === undefined ? {} : { swarm }),
     ...(typeof origin === "string" ? { origin } : {}),
     ...(typeof title === "string" ? { title } : {}),
   };
@@ -148,7 +160,15 @@ export const parseFlowFile = (value: unknown): FlowFile => {
 export const flowId = (flow: FlowFile): string =>
   createHash("sha256")
     .update(
-      JSON.stringify([flow.kind, flow.generation, flow.fixture, flow.mode, flow.seed, flow.steps]),
+      JSON.stringify([
+        flow.kind,
+        flow.generation,
+        flow.fixture,
+        flow.mode,
+        flow.seed,
+        flow.steps,
+        ...(flow.swarm === undefined ? [] : [flow.swarm]),
+      ]),
     )
     .digest("hex")
     .slice(0, 16);
