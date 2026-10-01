@@ -571,6 +571,18 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     return publishCommit(prepared.value);
   };
   const input = createCanonicalInputBoundary({
+    beginComposition: () => {
+      if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
+      const begun = editorSession.session.beginComposition();
+      if (begun.isErr()) {
+        refuse(begun.error.message);
+        return false;
+      }
+      return true;
+    },
+    endComposition: () => {
+      if (editorSession.type === "canonical") editorSession.session.endComposition();
+    },
     replace: (intent) => {
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
       const prepared = editorSession.session.prepareReplace(view.state, intent);
@@ -647,6 +659,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
         if (editorSession.type === "refused") return;
         if (editorSession.type === "canonical" && transaction.docChanged) {
+          if (input.acceptComposition(view, transaction)) return;
           if (!input.commitNativeProposal(view, transaction)) {
             input.refuseNativeMutation(view);
           }
@@ -655,6 +668,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           view.updateState(view.state);
           return;
         }
+        if (editorSession.type === "canonical" && transaction.selectionSet && !input.isComposing)
+          editorSession.session.breakUndoGroup();
         const applied = view.state.applyTransaction(transaction);
         if (editorSession.type === "canonical" && !applied.state.doc.eq(view.state.doc)) {
           refuse("A plugin attempted an unclassified canonical document mutation.");
@@ -713,9 +728,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         blur: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.blur(pmView) : false,
         ...createHiddenEditorClipboardHandlers(deps),
-        compositionstart: (pmView, event) =>
+        compositionstart: (pmView) =>
           editorSession.type === "canonical"
-            ? input.handleDOMEvents.compositionstart(pmView, event)
+            ? input.handleDOMEvents.compositionstart(pmView)
             : false,
         compositionend: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.compositionend(pmView) : false,
