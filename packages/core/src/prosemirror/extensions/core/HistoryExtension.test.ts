@@ -37,6 +37,7 @@ const createEditor = (historyShortcuts: HistoryShortcutOwner) => {
   views.push(view);
 
   return {
+    view,
     text: () => view.state.doc.textContent,
     type: (text: string) => view.dispatch(view.state.tr.insertText(text)),
     /**
@@ -92,4 +93,124 @@ describe("HistoryExtension shortcuts", () => {
       expect(editor.text()).toBe("typed");
     }
   });
+});
+
+describe("HistoryExtension input grouping", () => {
+  const input = (view: EditorView, inputType: string) => {
+    view.dom.dispatchEvent(new InputEvent("beforeinput", { inputType, bubbles: true }));
+  };
+
+  // Mark-only deletes have empty step maps; replacement deletes have ranges.
+  // Exercise both representations so grouping cannot depend on those maps.
+  for (const representation of ["replacement", "mark"] as const) {
+    for (const deleteInput of [
+      "deleteContentBackward",
+      "deleteContentForward",
+      "deleteWordBackward",
+    ]) {
+      test(`${representation}: typing and ${deleteInput} undo separately`, () => {
+        const editor = createEditor("editor");
+        input(editor.view, "insertText");
+        editor.type("alpha");
+        const typed = editor.view.state.doc;
+        input(editor.view, deleteInput);
+        const tr = editor.view.state.tr;
+        if (representation === "replacement") tr.delete(1, 2);
+        else tr.addMark(1, 2, editor.view.state.schema.mark("bold"));
+        editor.view.dispatch(tr);
+        editor.press(UNDO);
+        expect(editor.view.state.doc.eq(typed)).toBe(true);
+        editor.press(UNDO);
+        expect(editor.text()).toBe("");
+      });
+    }
+
+    test(`${representation}: consecutive deletion gestures undo independently`, () => {
+      const editor = createEditor("editor");
+      input(editor.view, "insertText");
+      editor.type("alpha");
+      input(editor.view, "deleteContentForward");
+      let tr = editor.view.state.tr;
+      if (representation === "replacement") tr.delete(1, 2);
+      else tr.addMark(1, 2, editor.view.state.schema.mark("bold"));
+      editor.view.dispatch(tr);
+      const firstDelete = editor.view.state.doc;
+      input(editor.view, "deleteContentForward");
+      tr = editor.view.state.tr;
+      if (representation === "replacement") tr.delete(1, 2);
+      else tr.addMark(2, 3, editor.view.state.schema.mark("bold"));
+      editor.view.dispatch(tr);
+      editor.press(UNDO);
+      expect(editor.view.state.doc.eq(firstDelete)).toBe(true);
+    });
+  }
+
+  test("keyboard boundaries run before a key handler consumes deletion", () => {
+    const editor = createEditor("editor");
+    input(editor.view, "insertText");
+    editor.type("alpha");
+    const typed = editor.view.state.doc;
+    editor.view.setProps({
+      handleKeyDown(view, event) {
+        if (event.key !== "Delete") return false;
+        view.dispatch(view.state.tr.delete(1, 2));
+        return true;
+      },
+    });
+    editor.view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Delete",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    editor.press(UNDO);
+    expect(editor.view.state.doc.eq(typed)).toBe(true);
+  });
+
+  test("each composition groups its updates and separates surrounding typing", () => {
+    const editor = createEditor("editor");
+    input(editor.view, "insertText");
+    editor.type("a");
+    for (const character of ["b", "c"]) {
+      editor.view.dom.dispatchEvent(new Event("compositionstart", { bubbles: true }));
+      input(editor.view, "insertCompositionText");
+      editor.type(character);
+      input(editor.view, "insertCompositionText");
+      editor.type(character);
+      editor.view.dom.dispatchEvent(new Event("compositionend", { bubbles: true }));
+    }
+    input(editor.view, "insertText");
+    editor.type("d");
+    for (const text of ["abbcc", "abb", "a", ""]) {
+      editor.press(UNDO);
+      expect(editor.text()).toBe(text);
+    }
+  });
+
+  test("continuous typing stays in one undo event", () => {
+    const editor = createEditor("editor");
+    for (const text of ["a", "l", "p", "h", "a"]) {
+      input(editor.view, "insertText");
+      editor.type(text);
+    }
+    editor.press(UNDO);
+    expect(editor.text()).toBe("");
+  });
+
+  for (const eventType of ["paste", "drop"]) {
+    test(`${eventType} separates edits on both sides`, () => {
+      const editor = createEditor("editor");
+      input(editor.view, "insertText");
+      editor.type("a");
+      editor.view.dom.dispatchEvent(new Event(eventType, { bubbles: true }));
+      editor.type("b");
+      input(editor.view, "insertText");
+      editor.type("c");
+      editor.press(UNDO);
+      expect(editor.text()).toBe("ab");
+      editor.press(UNDO);
+      expect(editor.text()).toBe("a");
+    });
+  }
 });
