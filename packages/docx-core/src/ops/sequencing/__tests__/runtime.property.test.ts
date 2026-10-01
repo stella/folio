@@ -241,6 +241,7 @@ const operation = ({
 };
 
 type Delivery =
+  | { client: number; type: "author" }
   | { client: number; type: "result"; result: BatchSubmission }
   | { client: number; type: "broadcast"; batch: SequencedBatch };
 type SimulationOptions = {
@@ -249,6 +250,8 @@ type SimulationOptions = {
   clientsCount: number;
   schedule: readonly number[];
   enqueueLater: boolean;
+  historyRounds?: number;
+  batchSize?: number;
 };
 const simulate = ({
   document,
@@ -256,17 +259,50 @@ const simulate = ({
   clientsCount,
   schedule,
   enqueueLater,
+  historyRounds = 0,
+  batchSize = 1,
 }: SimulationOptions) => {
   const sequencer = createSequencer(independentCopy(document));
   const clients = Array.from({ length: clientsCount }, () =>
     createClient(independentCopy(document)),
   );
   const submitted = new Set<string>();
+  const admitted = clients.map(() => new Set<string>());
   const delivery: Delivery[] = [];
   let id = 1;
   let scheduleIndex = 0;
   let accepted = 0;
+  let authored = 0;
+  let compound = 0;
   const choice = () => schedule.at(scheduleIndex++ % schedule.length) ?? 0;
+  const author = (index: number): void => {
+    const client = clients.at(index);
+    if (client === undefined) return;
+    const ops: DocumentOp[] = [];
+    let cursor = client.document;
+    for (let count = 0; count < batchSize; count += 1) {
+      const group = groups.at(choice() % groups.length);
+      if (group === undefined) return;
+      const op = operation({ document: cursor, group, role: choice(), seed: choice(), id: id++ });
+      const applied = applyDocumentOps(cursor, [op]);
+      if (applied.isErr()) break;
+      ops.push(op);
+      cursor = applied.value.document;
+    }
+    if (ops.length === 0) return;
+    const batch: DocumentBatch = {
+      schema: DOCUMENT_OP_SCHEMA_VERSION,
+      opId: `operation-${id++}`,
+      actor: `actor-${index}`,
+      baseRev: client.headRev,
+      ops,
+    };
+    expect(client.enqueue(batch).isOk()).toBe(true);
+    admitted.at(index)?.add(batch.opId);
+    expect(equalForStaleness(client.document, cursor)).toBe(true);
+    authored += 1;
+    if (ops.length > 1) compound += 1;
+  };
   for (const [index, client] of clients.entries()) {
     const group = groups.at(index % groups.length) ?? "insertInsert";
     const batch: DocumentBatch = {
@@ -286,6 +322,7 @@ const simulate = ({
       ],
     };
     expect(client.enqueue(batch).isOk()).toBe(true);
+    admitted.at(index)?.add(batch.opId);
     if (enqueueLater) {
       const later: DocumentBatch = {
         ...batch,
@@ -301,6 +338,7 @@ const simulate = ({
         ],
       };
       expect(client.enqueue(later).isOk()).toBe(true);
+      admitted.at(index)?.add(later.opId);
     }
   }
   const submit = (index: number): void => {
@@ -308,7 +346,9 @@ const simulate = ({
     const batch = client?.nextSubmission();
     if (batch === undefined) return;
     const before = sequencer.broadcasts.length;
+    const beforeDocument = sequencer.document;
     const result = sequencer.submit(batch);
+    expect(result.opId).toBe(batch.opId);
     submitted.add(batch.opId);
     expect(sequencer.submit(batch)).toEqual(result);
     expect(sequencer.broadcasts.length).toBe(before + (result.type === "ack" ? 1 : 0));
@@ -320,12 +360,18 @@ const simulate = ({
       if (broadcast !== undefined)
         for (let target = 0; target < clientsCount; target += 1)
           delivery.push({ client: target, type: "broadcast", batch: broadcast });
-    } else expect(result.headRev).toBe(sequencer.headRev);
+    } else {
+      expect(result.headRev).toBe(sequencer.headRev);
+      expect(equalForStaleness(sequencer.document, beforeDocument)).toBe(true);
+    }
   };
   const order = clients
     .map((_, index) => ({ index, priority: choice() }))
     .sort((a, b) => a.priority - b.priority);
   for (const { index } of order) submit(index);
+  for (let round = 0; round < historyRounds; round += 1)
+    for (let client = 0; client < clientsCount; client += 1)
+      delivery.push({ client, type: "author" });
   let steps = 0;
   while (delivery.length > 0) {
     expect(steps++).toBeLessThan(1000);
@@ -333,21 +379,32 @@ const simulate = ({
     if (event === undefined) continue;
     const client = clients.at(event.client);
     if (client === undefined) continue;
-    if (event.type === "broadcast") {
+    if (event.type === "author") {
+      author(event.client);
+    } else if (event.type === "broadcast") {
       const received = client.receiveBroadcast(event.batch);
       expect(received.isOk()).toBe(true);
       expect(client.receiveBroadcast(event.batch).isOk()).toBe(true);
-    } else if (event.result.type === "ack") client.receiveAck(event.result);
-    else client.receiveReject(event.result);
+    } else if (event.result.type === "ack") {
+      client.receiveAck(event.result);
+      client.receiveAck(event.result);
+    } else {
+      client.receiveReject(event.result);
+      client.receiveReject(event.result);
+    }
     for (let index = 0; index < clientsCount; index += 1) submit(index);
   }
-  for (const client of clients) {
+  const sequencedIds = new Set(sequencer.broadcasts.map(({ opId }) => opId));
+  for (const [index, client] of clients.entries()) {
     expect(client.headRev).toBe(sequencer.headRev);
     expect(client.pending).toHaveLength(0);
     expect(equalForStaleness(client.document, sequencer.document)).toBe(true);
     for (const notice of client.notices) expect(notice.ops).toBeDefined();
+    const droppedIds = new Set(client.notices.map(({ opId }) => opId));
+    for (const opId of admitted.at(index) ?? [])
+      expect(sequencedIds.has(opId) || droppedIds.has(opId)).toBe(true);
   }
-  return { accepted, submitted: submitted.size };
+  return { accepted, submitted: submitted.size, authored, compound };
 };
 
 const scheduleArbitrary = fc.array(fc.nat({ max: 100_000 }), { minLength: 10, maxLength: 100 });
@@ -406,6 +463,41 @@ describe("reference sequencing convergence", () => {
         ),
         propertyConfig({ numRuns: NUM_RUNS }),
       );
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test(
+    "compound batches authored during reordered delivery converge",
+    () => {
+      let compound = 0;
+      let authored = 0;
+      fc.assert(
+        fc.property(
+          generatedDocument,
+          fc.integer({ min: 2, max: 4 }),
+          fc.integer({ min: 2, max: 5 }),
+          fc.integer({ min: 2, max: 3 }),
+          scheduleArbitrary,
+          (document, clientsCount, historyRounds, batchSize, schedule) => {
+            const result = simulate({
+              document,
+              groups: GROUPS,
+              clientsCount,
+              schedule,
+              enqueueLater: true,
+              historyRounds,
+              batchSize,
+            });
+            compound += result.compound;
+            authored += result.authored;
+            expect(result.accepted).toBeGreaterThan(0);
+          },
+        ),
+        propertyConfig({ numRuns: NUM_RUNS }),
+      );
+      expect(authored).toBeGreaterThanOrEqual(NUM_RUNS);
+      expect(compound).toBeGreaterThan(0);
     },
     propertyTestTimeout(30_000),
   );
