@@ -3753,8 +3753,10 @@ function convertRunContent(
 ): PMNode[] {
   switch (content.type) {
     case "noteMarker":
-      // The note story owns its auto-number mark; it contributes no editable PM offset.
-      return [];
+      // PM gives the invisible atom a structural position; native story offsets
+      // still count the automatic mark as zero logical characters.
+      return [schema.node("noteMarker", { kind: content.kind }).mark(marks)];
+
     case "text":
       if (content.text) {
         return [schema.text(content.text, marks)];

@@ -45,7 +45,7 @@ type ParagraphAddress = {
   blockId: string;
   start: number;
   text: string;
-  boundaries: readonly number[];
+  boundaries: readonly (readonly number[])[];
   node: PMNode;
   source: Paragraph;
 };
@@ -74,19 +74,25 @@ class CanonicalProjection {
       ({ start, node }) => position >= start && position <= start + node.content.size,
     );
     if (paragraph === undefined) return refuse("The input is outside a plain paragraph.");
-    const offset = paragraph.boundaries.indexOf(position - paragraph.start);
+    const relative = position - paragraph.start;
+    const offset = paragraph.boundaries.findIndex((gaps) => gaps.includes(relative));
     if (offset < 0) return refuse("The input splits a note reference.");
     if (splitsSurrogatePair(paragraph.text, offset)) {
       return refuse("The input would split a surrogate pair.");
     }
-    return Result.ok({ story: this.story, blockId: paragraph.blockId, offset });
+    const gaps = paragraph.boundaries.at(offset) ?? panic("Missing canonical boundary");
+    return Result.ok({
+      story: this.story,
+      blockId: paragraph.blockId,
+      offset,
+      ...(gaps.length > 1 ? { zeroWidthBefore: gaps.indexOf(relative) } : {}),
+    });
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
     const paragraph = this.paragraphs.find(({ blockId }) => blockId === address.blockId);
     if (
       !sameStory(address.story, this.story) ||
-      (address.zeroWidthBefore !== undefined && address.zeroWidthBefore !== 0) ||
       paragraph === undefined ||
       !Number.isInteger(address.offset) ||
       address.offset < 0 ||
@@ -95,10 +101,11 @@ class CanonicalProjection {
     ) {
       return refuse("The canonical selection is outside a plain paragraph.");
     }
-    return Result.ok(
-      paragraph.start +
-        (paragraph.boundaries.at(address.offset) ?? panic("Missing canonical boundary")),
-    );
+    const gaps = paragraph.boundaries.at(address.offset) ?? panic("Missing canonical boundary");
+    const gapIndex = address.zeroWidthBefore ?? gaps.length - 1;
+    if (!Number.isInteger(gapIndex) || gapIndex < 0 || gapIndex >= gaps.length)
+      return refuse("The canonical selection is outside a paragraph gap.");
+    return Result.ok(paragraph.start + (gaps.at(gapIndex) ?? panic("Missing canonical gap")));
   }
 
   selectionAt(state: EditorState): Result<CanonicalSelection, CanonicalSessionError> {
@@ -242,7 +249,8 @@ const project = ({
     }
     let text = "";
     let renderedText = "";
-    const boundaries = [0];
+    let renderedSize = 0;
+    const boundaries: number[][] = [[0]];
     for (const run of source.content) {
       if (run.type !== "run") return;
       for (const child of run.content) {
@@ -250,12 +258,18 @@ const project = ({
           for (const unit of child.text.split("")) {
             text += unit;
             renderedText += unit;
-            boundaries.push(renderedText.length);
+            renderedSize += 1;
+            boundaries.push([renderedSize]);
           }
         } else if (child.type === "footnoteRef" || child.type === "endnoteRef") {
           text += "\uFFFC";
           renderedText += String(child.id);
-          boundaries.push(renderedText.length);
+          renderedSize += String(child.id).length;
+          boundaries.push([renderedSize]);
+        } else if (child.type === "noteMarker") {
+          renderedSize += 1;
+          const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
+          gaps.push(renderedSize);
         }
       }
     }
@@ -263,7 +277,7 @@ const project = ({
       node.type.name !== "paragraph" ||
       node.attrs["paraId"] !== source.paraId ||
       node.textContent !== renderedText ||
-      node.content.size !== renderedText.length
+      node.content.size !== renderedSize
     ) {
       failure = new CanonicalSessionError({
         message: "The paragraph cannot be projected as plain text.",
@@ -460,7 +474,13 @@ class CanonicalSession {
       });
       ops.push({ type: DOCUMENT_OP_TYPES.INSERT_TEXT, at: start.value, text, runProps });
     }
-    const caret = { ...start.value, offset: start.value.offset + text.length };
+    const caret = {
+      ...start.value,
+      offset: start.value.offset + text.length,
+      ...(text.length > 0 && start.value.zeroWidthBefore !== undefined
+        ? { zeroWidthBefore: 0 }
+        : {}),
+    };
     const postSelection = { anchor: caret, head: caret };
     return this.stage({
       state,
@@ -681,8 +701,14 @@ export const deletionRange = (
     return refuse("Canonical deletion requires a same-paragraph text selection.");
   }
   if (!selection.empty) return Result.ok({ from: selection.from, to: selection.to });
-  const text = selection.$from.parent.textContent;
+  const parent = selection.$from.parent;
+  // Invisible atoms still occupy PM positions; retain that space for grapheme boundaries.
+  const text = parent.textBetween(0, parent.content.size, "", "\uFFFC");
   const offset = selection.$from.parentOffset;
+  const adjacent =
+    direction === "backward" ? parent.childBefore(offset).node : parent.childAfter(offset).node;
+  if (adjacent?.type.name === "noteMarker")
+    return refuse("Automatic note marks cannot be deleted as characters.");
   if (splitsSurrogatePair(text, offset))
     return refuse("The deletion would split a surrogate pair.");
   if (splitsGraphemeCluster(text, offset)) {

@@ -25,7 +25,7 @@ import {
   getParagraphPropertySourceToken,
   paragraphPropertySourceBelongsToDocument,
 } from "../docx/paragraphPropertySource";
-import type { Document, Run, StyleDefinitions } from "../types/document";
+import type { Document, Paragraph, Run, StyleDefinitions } from "../types/document";
 import {
   CANONICAL_PROJECTION_META,
   createCanonicalSession,
@@ -201,10 +201,21 @@ describe("canonical session", () => {
     const noteStory = { kind: "footnote", id: 12 } as const;
     const noteProjection = session.projectStory(noteStory).unwrap();
     let noteState = EditorState.create({ schema, doc: noteProjection.doc });
+    const noteStart = noteProjection
+      .positionAt({ story: noteStory, blockId: "56789012", offset: 0 })
+      .unwrap();
+    const noteEnd = noteProjection
+      .positionAt({ story: noteStory, blockId: "56789012", offset: 4 })
+      .unwrap();
     noteState = accept(
       noteState,
       session
-        .prepareReplace(noteState, { from: 1, to: 5, text: "Edited note", story: noteStory })
+        .prepareReplace(noteState, {
+          from: noteStart,
+          to: noteEnd,
+          text: "Edited note",
+          story: noteStory,
+        })
         .unwrap(),
     );
     expect(noteState.doc.textContent).toBe("Edited note");
@@ -218,6 +229,63 @@ describe("canonical session", () => {
     expect(session.document).toStrictEqual(final);
     expect(session.projection.doc.eq(state.doc)).toBe(true);
   });
+  test.each(["footnote", "endnote"] as const)(
+    "%s marker gaps map exactly and insertion after a marker preserves it through history",
+    (kind) => {
+      const source = seed("Body");
+      const content = [
+        {
+          type: "paragraph",
+          paraId: "34567890",
+          content: [
+            { type: "run", content: [{ type: "noteMarker", kind }] },
+            { type: "run", content: [{ type: "text", text: "😀Note" }] },
+          ],
+        },
+      ] satisfies Paragraph[];
+      if (kind === "footnote") source.package.footnotes = [{ type: kind, id: 12, content }];
+      else source.package.endnotes = [{ type: kind, id: 12, content }];
+      const session = createCanonicalSession(source).unwrap();
+      const initial = structuredClone(session.document);
+      const story = { kind, id: 12 };
+      const projection = session.projectStory(story).unwrap();
+      for (const position of [1, 2, 4, 5, 6, 7, 8]) {
+        const address = projection.addressAt(position).unwrap();
+        expect(projection.positionAt(address).unwrap()).toBe(position);
+      }
+      expect(projection.addressAt(3).isErr()).toBe(true);
+      const afterMarker = projection.positionAt({ story, blockId: "34567890", offset: 0 }).unwrap();
+      expect(afterMarker).toBe(2);
+      const deletingState = (position: number) =>
+        EditorState.create({
+          schema,
+          doc: projection.doc,
+          selection: TextSelection.create(projection.doc, position),
+        });
+      expect(deletionRange(deletingState(2), "forward").unwrap()).toEqual({ from: 2, to: 4 });
+      expect(deletionRange(deletingState(4), "backward").unwrap()).toEqual({ from: 2, to: 4 });
+      expect(deletionRange(deletingState(2), "backward").isErr()).toBe(true);
+      expect(deletionRange(deletingState(1), "forward").isErr()).toBe(true);
+      let state = EditorState.create({
+        schema,
+        doc: projection.doc,
+        selection: TextSelection.create(projection.doc, afterMarker),
+      });
+      state = accept(
+        state,
+        session.prepareReplace(state, { from: 2, to: 2, text: "x", story }).unwrap(),
+      );
+      expect(state.selection.from).toBe(3);
+      expect(state.doc.firstChild?.firstChild?.type.name).toBe("noteMarker");
+      expect(state.doc.textContent).toBe("x😀Note");
+      const edited = structuredClone(session.document);
+      state = accept(state, session.prepareUndo(state, story).unwrap());
+      expect(session.document).toStrictEqual(initial);
+      state = accept(state, session.prepareRedo(state, story).unwrap());
+      expect(session.document).toStrictEqual(edited);
+      expect(state.selection.from).toBe(3);
+    },
+  );
   test("canonical input sequences keep the projection, inverse history and refusal atomic", async () => {
     await assertProperty(
       fc.asyncProperty(

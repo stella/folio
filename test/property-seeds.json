@@ -477,5 +477,13 @@
       "note": "Style numbering provenance across tracked paragraph and list changes, resolution, and save/reopen.",
       "date": "2026-09-30"
     }
+  ],
+  "packages/docx-core/src/ops/__tests__/rangePlanning.property.test.ts::cross-paragraph deletion and replacement plans satisfy generated review laws": [
+    {
+      "seed": 1580815063,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
+      "date": "2026-10-01"
+    }
   ]
 }

@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { panic } from "better-result";
 
+import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import type { BlockContent } from "../types/document";
+import type { BlockContent, Hyperlink } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
@@ -26,11 +27,17 @@ for (const namespace of [TRANSITIONAL, "http://purl.oclc.org/ooxml/wordprocessin
           { type: "noteMarker", kind },
           { type: "text", text: "note" },
         ]);
-        const prose = toProseDoc({
-          package: { document: { content: [{ type: "paragraph", content: [run] }] } },
-        });
+        const source = createEmptyDocument();
+        source.package.document.content = [{ type: "paragraph", content: [run] }];
+        const prose = toProseDoc(source);
         expect(prose.textContent).toBe("note");
-        expect(prose.content.size).toBe(6);
+        expect(prose.content.size).toBe(7);
+        const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source, {
+          reuse: "none",
+        });
+        const paragraph = restored.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph") panic("Expected restored paragraph");
+        expect(paragraph.content).toEqual([run]);
         const serialized = serializeRun(run);
         const wrapper =
           parseXmlDocument(`<root xmlns:w="${TRANSITIONAL}">${serialized}</root>`) ??
@@ -145,5 +152,58 @@ for (const kind of ["footnote", "endnote"] as const) {
           ),
       ).toMatchObject({ customMarkFollows: true });
     });
+  }
+}
+
+// Exercise marker placement and every run owner, since the marker must not
+// move into a separate run or escape a hyperlink/revision on a JSON round trip.
+for (const kind of ["footnote", "endnote"] as const) {
+  for (const position of ["alone", "leading", "middle", "trailing"] as const) {
+    for (const owner of [
+      "paragraph",
+      "hyperlink",
+      "insertion",
+      "deletion",
+      "moveFrom",
+      "moveTo",
+    ] as const) {
+      test(`note marker preserves ${kind} ${position} run owned by ${owner}`, () => {
+        const contentXml = {
+          alone: `<w:${kind}Ref/>`,
+          leading: `<w:${kind}Ref/><w:t>after</w:t>`,
+          middle: `<w:t>before</w:t><w:${kind}Ref/><w:t>after</w:t>`,
+          trailing: `<w:t>before</w:t><w:${kind}Ref/>`,
+        };
+        const root =
+          parseXmlDocument(
+            `<w:r xmlns:w="${TRANSITIONAL}" xmlns:producer="urn:producer" producer:source="authored"><w:rPr><w:rStyle w:val="${kind === "footnote" ? "FootnoteReference" : "EndnoteReference"}"/><w:b/><w:sz w:val="20"/><producer:property/></w:rPr>${contentXml[position]}</w:r>`,
+          ) ?? panic("Expected authored note run");
+        const run = parseRun(root, null, null);
+        const source = createEmptyDocument();
+        const revision = { id: 91, author: "Reviewer", date: "2026-09-09T00:00:00.000Z" };
+        let content;
+        if (owner === "paragraph") content = [run];
+        else if (owner === "hyperlink")
+          content = [
+            {
+              type: "hyperlink",
+              href: "https://example.test/note",
+              children: [run],
+            } satisfies Hyperlink,
+          ];
+        else content = [{ type: owner, info: revision, content: [run] }];
+        source.package.document.content = [{ type: "paragraph", content }];
+        const prose = toProseDoc(source);
+        const transported = prose.type.schema.nodeFromJSON(prose.toJSON());
+        const restored = fromProseDoc(transported, source, { reuse: "none" });
+        const paragraph = restored.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph") panic("Expected restored note paragraph");
+        expect(paragraph.content).toEqual(content);
+        const expectedText = run.content
+          .map((child) => (child.type === "text" ? child.text : ""))
+          .join("");
+        expect(prose.textContent).toBe(expectedText);
+      });
+    }
   }
 }

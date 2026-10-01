@@ -69,6 +69,7 @@ import type {
   TabAttrs,
   SymbolAttrs,
   PreservedXmlAttrs,
+  NoteMarkerAttrs,
   PreservedBlockAttrs,
   ImageAttrs,
   MathAttrs,
@@ -295,6 +296,7 @@ const hardBreakAttrsCache = new WeakMap<PMNode, HardBreakAttrs>();
 const pageBreakRunAttrsCache = new WeakMap<PMNode, PageBreakRunAttrs>();
 const tabAttrsCache = new WeakMap<PMNode, TabAttrs>();
 const symbolAttrsCache = new WeakMap<PMNode, SymbolAttrs>();
+const noteMarkerAttrsCache = new WeakMap<PMNode, NoteMarkerAttrs>();
 const preservedXmlAttrsCache = new WeakMap<PMNode, PreservedXmlAttrs>();
 const preservedBlockAttrsCache = new WeakMap<PMNode, PreservedBlockAttrs>();
 const tableCellAttrsCache = new WeakMap<PMNode, TableCellAttrs>();
@@ -653,6 +655,19 @@ export const readSymbolAttrs = (node: PMNode): ReadProseMirrorAttrsResult<Symbol
 
 export const expectSymbolAttrs = (node: PMNode): SymbolAttrs =>
   expectCachedNodeAttrs(node, symbolAttrsCache, readSymbolAttrs, "symbol attrs");
+
+export const readNoteMarkerAttrs = (node: PMNode): ReadProseMirrorAttrsResult<NoteMarkerAttrs> => {
+  const attrs = attrsRecord(node.attrs);
+  const issues: ProseMirrorAttrIssue[] = [];
+  expectNodeType(node, "noteMarker", issues);
+  if (attrs["kind"] !== "footnote" && attrs["kind"] !== "endnote") {
+    issues.push({ path: "noteMarker.attrs.kind", message: "Expected footnote or endnote." });
+  }
+  return attrsResult(attrs, issues);
+};
+
+export const expectNoteMarkerAttrs = (node: PMNode): NoteMarkerAttrs =>
+  expectCachedNodeAttrs(node, noteMarkerAttrsCache, readNoteMarkerAttrs, "noteMarker attrs");
 
 export const readPreservedXmlAttrs = (
   node: PMNode,

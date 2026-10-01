@@ -161,6 +161,7 @@ import {
   expectShapeAttrs,
   expectPreservedBlockAttrs,
   expectPreservedXmlAttrs,
+  expectNoteMarkerAttrs,
   expectSymbolAttrs,
   expectTabAttrs,
   expectTableAttrs,
@@ -3185,6 +3186,9 @@ function extractParagraphContent(
           marks: node.marks,
         }),
       );
+    } else if (node.type.name === "noteMarker") {
+      flushCurrentInline();
+      appendDirectRun(node, createNoteMarkerRun({ node, marks: node.marks, formattingContext }));
     } else if (node.type.name === "symbol") {
       flushCurrentInline();
       content.push(createSymbolRun(node, node.marks, formattingContext));
@@ -3321,6 +3325,8 @@ function createTrackedChangeRun({
     restoreRunRecord(run, marks);
   } else if (node.type.name === "symbol") {
     run = createSymbolRun(node, marks, formattingContext);
+  } else if (node.type.name === "noteMarker") {
+    run = createNoteMarkerRun({ node, marks, formattingContext });
   } else if (node.type.name === "preservedXml") {
     run = createPreservedXmlRun(node, marks, formattingContext);
   } else if (node.type.name === "hardBreak") {
@@ -3559,6 +3565,11 @@ function addNodeToHyperlink({
     return;
   }
 
+  if (node.type.name === "noteMarker") {
+    hyperlink.children.push(createNoteMarkerRun({ node, marks: nonLinkMarks, formattingContext }));
+    return;
+  }
+
   if (node.type.name === "symbol") {
     hyperlink.children.push(
       createSymbolRun(node, nonLinkMarks, {
@@ -3756,6 +3767,26 @@ const isInlineLevelPreservedXml = (node: PMNode): boolean =>
 const createPreservedInline = (node: PMNode): PreservedInline => {
   const { xml, text } = expectPreservedXmlAttrs(node);
   return { type: "preservedInline", xml, text };
+};
+
+type CreateNoteMarkerRunOptions = {
+  node: PMNode;
+  marks: readonly Mark[];
+  formattingContext?: MarksToTextFormattingOptions | undefined;
+};
+
+/** Rebuild the authored automatic mark and its run properties from the atom. */
+const createNoteMarkerRun = ({
+  node,
+  marks,
+  formattingContext,
+}: CreateNoteMarkerRunOptions): Run => {
+  const { kind } = expectNoteMarkerAttrs(node);
+  const run: Run = { type: "run", content: [{ type: "noteMarker", kind }] };
+  const formatting = getAtomRunFormattingFromMarks(marks, formattingContext);
+  if (formatting) run.formatting = formatting;
+  restoreRunRecord(run, marks);
+  return run;
 };
 
 /**

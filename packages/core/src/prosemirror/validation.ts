@@ -37,6 +37,7 @@ import {
   readStrikeMarkAttrs,
   readPreservedBlockAttrs,
   readPreservedXmlAttrs,
+  readNoteMarkerAttrs,
   readSymbolAttrs,
   readTabAttrs,
   readTableAttrs,
@@ -397,6 +398,10 @@ const validateNodeAttrs = (
 
     case "symbol":
       appendAttrIssues(path, readSymbolAttrs(node), issues);
+      return;
+
+    case "noteMarker":
+      appendAttrIssues(path, readNoteMarkerAttrs(node), issues);
       return;
 
     case "preservedXml":
