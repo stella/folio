@@ -50,6 +50,10 @@
         :view="activeEditorView"
         :get-commands="getCommands"
         :state-tick="stateTick"
+        :can-undo="activeHistoryAvailability.canUndo"
+        :can-redo="activeHistoryAvailability.canRedo"
+        :on-undo="undoActiveStory"
+        :on-redo="redoActiveStory"
         :zoom-percent="zoomPercent"
         :is-min-zoom="isMinZoom"
         :is-max-zoom="isMaxZoom"
@@ -489,6 +493,7 @@ import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
@@ -793,6 +798,7 @@ const {
   noteEditorContainer: notePmRef,
   pagesContainer: pagesRef,
   readOnly,
+  experimentalSession: () => props.experimentalSession,
   editorMode,
   author: () => props.author,
   password: () => props.password,
@@ -1402,6 +1408,15 @@ const paragraphIndent = computed(() => {
 });
 
 function setEditorMode(mode: EditorMode): void {
+  if (props.experimentalSession === "canonical" && mode === "suggesting") {
+    const error = new CanonicalSessionRefusalError({
+      message: "Canonical sessions do not support suggesting mode.",
+    });
+    parseError.value = error.message;
+    props.onError?.(error);
+    emit("error", error);
+    return;
+  }
   if (editorMode.value === mode) {
     return;
   }
@@ -1679,6 +1694,22 @@ const { exposed } = useDocxEditorRefApi({
   onPrint: props.onPrint,
   onSave: props.onSave,
 });
+const activeHistoryAvailability = computed(() => {
+  void stateTick.value;
+  const paged = exposed.getEditorRef();
+  return { canUndo: paged?.canUndo() ?? false, canRedo: paged?.canRedo() ?? false };
+});
+
+function undoActiveStory(): void {
+  exposed.undo();
+  activeEditorView.value?.focus();
+}
+
+function redoActiveStory(): void {
+  exposed.redo();
+  activeEditorView.value?.focus();
+}
+
 defineExpose(exposed);
 </script>
 

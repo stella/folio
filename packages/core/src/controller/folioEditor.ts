@@ -83,6 +83,8 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
 
     getDocument: () => deps.getEditorApi()?.getDocument() ?? null,
 
+    getCanonicalDocument: () => deps.getEditorApi()?.getCanonicalDocument() ?? null,
+
     focus: () => deps.getEditorApi()?.focus(),
 
     blur: () => deps.getEditorApi()?.blur(),

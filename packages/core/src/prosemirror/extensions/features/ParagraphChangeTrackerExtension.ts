@@ -397,7 +397,7 @@ const mapStepTouches = (
   return { touches, mapped: sweepPositions([tr.mapping], queries) };
 };
 
-function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTrackerState> {
+export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphChangeTrackerState> {
   return new Plugin<InternalParagraphChangeTrackerState>({
     key: paragraphChangeTrackerKey,
     state: {

@@ -14,6 +14,7 @@
         :document="documentBuffer ? null : currentDocument"
         :document-buffer="documentBuffer"
         author="Folio User"
+        :experimental-session="experimentalSession"
         :show-toolbar="true"
         :show-ruler="true"
         :show-margin-guides="showMarginGuides"
@@ -23,6 +24,7 @@
         :on-copy="() => clipboardCallbackCounts.copy++"
         :on-cut="() => clipboardCallbackCounts.cut++"
         :on-paste="() => clipboardCallbackCounts.paste++"
+        :on-error="(error) => (status = error.message)"
       />
     </main>
     <p v-if="status" class="pg-vue-status">{{ status }}</p>
@@ -44,6 +46,7 @@ import type {
 
 import type { FolioParityBridge } from "./parityBridge";
 import { buildParityBridge } from "./parityBridge";
+import { buildCanonicalBridge } from "../../playground/src/canonicalBridge";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -67,6 +70,7 @@ const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const query = new URLSearchParams(window.location.search);
+const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
@@ -100,6 +104,7 @@ collaborationAwareness?.setLocalStateField("user", {
 
 onMounted(() => {
   void loadFromQuery();
+  globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.value);
   globalThis.__folioParity = buildParityBridge(
     () => editorRef.value,
     (kind) => clipboardCallbackCounts[kind],
@@ -143,6 +148,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  globalThis.__folioCanonical = undefined;
   globalThis.__folioParity = undefined;
   globalThis.__folioVueCollaboration = undefined;
   collaborationAwareness?.destroy();

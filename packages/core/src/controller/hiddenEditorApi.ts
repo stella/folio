@@ -27,6 +27,8 @@ export type HiddenEditorApi = {
   getView: () => EditorView | null;
   /** Get the current Document from PM state */
   getDocument: () => Document | null;
+  /** Canonical snapshot, or null in the default session. */
+  getCanonicalDocument: () => Document | null;
   /** Focus the hidden editor */
   focus: () => void;
   /** Blur the hidden editor */
@@ -58,6 +60,8 @@ export type HiddenEditorApi = {
 export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
   getDocumentContext: () => Document | null;
+  getCanonicalDocument?: () => Document | null;
+  getCanonicalHistory?: () => Pick<HiddenEditorApi, "undo" | "redo" | "canUndo" | "canRedo"> | null;
   isDestroying: () => boolean;
   ensureView: () => void;
   isViewRequested: () => boolean;
@@ -110,7 +114,11 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
 
     getView: () => deps.getView() ?? null,
 
+    getCanonicalDocument: () => deps.getCanonicalDocument?.() ?? null,
+
     getDocument: () => {
+      const canonical = deps.getCanonicalDocument?.();
+      if (canonical) return canonical;
       const view = deps.getView();
       if (!view) {
         return null;
@@ -152,6 +160,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     },
 
     undo: () => {
+      const canonical = deps.getCanonicalHistory?.();
+      if (canonical) return canonical.undo();
       const view = deps.getView();
       if (!view) {
         return false;
@@ -160,6 +170,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     },
 
     redo: () => {
+      const canonical = deps.getCanonicalHistory?.();
+      if (canonical) return canonical.redo();
       const view = deps.getView();
       if (!view) {
         return false;
@@ -168,6 +180,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     },
 
     canUndo: () => {
+      const canonical = deps.getCanonicalHistory?.();
+      if (canonical) return canonical.canUndo();
       const view = deps.getView();
       if (!view) {
         return false;
@@ -176,6 +190,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     },
 
     canRedo: () => {
+      const canonical = deps.getCanonicalHistory?.();
+      if (canonical) return canonical.canRedo();
       const view = deps.getView();
       if (!view) {
         return false;

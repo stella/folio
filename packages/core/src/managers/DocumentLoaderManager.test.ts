@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { validateOpsDocument, normalizeForOps } from "@stll/docx-core/ops";
+import { createDocx } from "../docx/rezip";
 
 import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -46,6 +48,21 @@ const makeCallbacks = (): { callbacks: DocumentLoaderCallbacks; recorded: Record
 };
 
 describe("DocumentLoaderManager", () => {
+  test("canonical byte loads establish unique paragraph IDs before parsing", async () => {
+    const { callbacks, recorded } = makeCallbacks();
+    callbacks.getExperimentalSession = () => "canonical";
+    const document = createEmptyDocument({ initialText: "Plain text" });
+    const bytes = await createDocx(document);
+    const manager = new DocumentLoaderManager(callbacks);
+    await manager.loadBuffer(bytes);
+    expect(recorded.errors).toEqual([]);
+    const loaded = recorded.history.state;
+    expect(loaded).not.toBeNull();
+    if (!loaded) return;
+    expect(validateOpsDocument(normalizeForOps(loaded)).isOk()).toBe(true);
+    expect(loaded.package.document.content.at(0)?.type).toBe("paragraph");
+  });
+
   test("every parsed-document load lands with a fresh identity in the same commit as history", () => {
     const { callbacks, recorded } = makeCallbacks();
     const manager = new DocumentLoaderManager(callbacks);

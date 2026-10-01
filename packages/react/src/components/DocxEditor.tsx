@@ -230,6 +230,7 @@ import { getFolioParaIdFromBlockId } from "@stll/folio-core/types/block-id";
 import { resolveCommentCreationRange } from "./commentAnchors";
 import { getPageTextFromLayout } from "@stll/folio-core/paged-layout/pageText";
 import { toast } from "./toast";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import {
   EMPTY_ANCHOR_POSITIONS,
   PENDING_COMMENT_ID,
@@ -538,6 +539,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     collaboration,
     plugins,
     featureFlags,
+    experimentalSession,
     onSelectiveSaveTripwire,
   }: DocxEditorProps,
   ref,
@@ -617,12 +619,30 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   const [anchorPositions, setAnchorPositions] =
     useState<Map<string, number>>(EMPTY_ANCHOR_POSITIONS);
 
-  const { editingMode, readOnly, trackChangesOn, toggleTrackChanges, displayMode, setDisplayMode } =
-    useEditorMode({
-      modeProp,
-      onModeChange,
-      readOnlyProp,
-    });
+  const {
+    editingMode,
+    readOnly,
+    trackChangesOn,
+    toggleTrackChanges: toggleTrackChangesUnrestricted,
+    displayMode,
+    setDisplayMode,
+  } = useEditorMode({
+    modeProp,
+    onModeChange,
+    readOnlyProp,
+  });
+
+  const toggleTrackChanges = useCallback(() => {
+    if (experimentalSession === "canonical" && !trackChangesOn) {
+      const error = new CanonicalSessionRefusalError({
+        message: "Canonical sessions do not support suggesting mode.",
+      });
+      toast(error.message);
+      onError?.(error);
+      return;
+    }
+    toggleTrackChangesUnrestricted();
+  }, [experimentalSession, trackChangesOn, onError, toggleTrackChangesUnrestricted]);
 
   // Debounce timer for extractTrackedChanges (avoid full doc walk on every keystroke)
   const extractTrackedChangesTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1235,6 +1255,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     documentBuffer: documentBuffer ?? null,
     initialDocument: initialDocument ?? null,
     password,
+    experimentalSession,
     history,
     onError,
     onCompatibilityChange,
@@ -1386,6 +1407,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       return null;
     }
 
+    const canonical = pagedEditorRef.current?.getEditor().getCanonicalDocument();
+    if (canonical) return cloneDocumentWithParagraphPropertySources(canonical);
+    if (experimentalSession === "canonical") return null;
+
     let doc = cloneDocumentWithParagraphPropertySources(history.state);
     const pmDoc = pagedEditorRef.current?.getDocument();
     if (pmDoc) {
@@ -1457,7 +1482,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       referencedCommentIds,
     );
     return doc;
-  }, [history.state, commentsRef]);
+  }, [history.state, commentsRef, experimentalSession]);
 
   const replaceComments = useCallback(
     (nextComments: Comment[]) => {
@@ -2857,7 +2882,10 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       let savedBuffer: ArrayBuffer | null = null;
 
       try {
-        // Build current document from PM editor state. A note goes with its
+        const view = pagedEditorRef.current?.getView();
+        const editorState = view?.state;
+        const baselineBuffer = originalBufferRef.current;
+        // Build the current document from the selected session. A note goes with its
         // reference: one nothing refers to any more is not saved.
         const current = buildCurrentDocument();
         const doc = current ? withoutUnreferencedNotes(current) : null;
@@ -2875,12 +2903,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const useSelectiveForSave =
           flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
         const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
-        const view = pagedEditorRef.current?.getView();
-        const baselineBuffer = originalBufferRef.current;
         let selectiveBuffer: ArrayBuffer | null = null;
 
-        if (shouldAttemptSelective && view && baselineBuffer) {
-          const editorState = view.state;
+        if (shouldAttemptSelective && editorState && baselineBuffer) {
           const attemptSelectiveSave = await loadAttemptSelectiveSave();
           selectiveBuffer = await attemptSelectiveSave(doc, baselineBuffer, {
             changedParaIds: getChangedParagraphIds(editorState),
@@ -2899,9 +2924,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
           const repack = () => repackDocx(repackSourceDoc);
-          return view
+          return editorState
             ? repackWithEditorSectionRemovals({
-                state: view.state,
+                state: editorState,
                 document: repackSourceDoc,
                 repack,
               })
@@ -2934,7 +2959,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         }
 
         // Clear change tracker after successful save
-        if (view) {
+        if (
+          view &&
+          pagedEditorRef.current?.getView() === view &&
+          view.state.doc === editorState?.doc
+        ) {
           originalBufferRef.current = buffer;
           view.dispatch(clearTrackedChanges(view.state));
         }
@@ -2988,6 +3017,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle error from editor
   const handleEditorError = useCallback(
     (error: Error) => {
+      if (CanonicalSessionRefusalError.is(error)) toast(error.message);
       onError?.(error);
     },
     [onError],
@@ -4735,6 +4765,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
                           showMarginGuides={showMarginGuides}
                           {...(marginGuideColor !== undefined ? { marginGuideColor } : {})}
                           readOnly={readOnly}
+                          {...(experimentalSession === undefined ? {} : { experimentalSession })}
                           onDocumentChange={handleDocumentChange}
                           extensionManager={extensionManager}
                           suggestionModeActive={editingMode === "suggesting"}

@@ -38,6 +38,30 @@ const makeDeps = (view: StubView | null, isDestroying = false): HiddenEditorApiD
 });
 
 describe("createHiddenEditorApi", () => {
+  test("canonical history is used for mutations and availability without PM history", () => {
+    const calls: string[] = [];
+    const api = createHiddenEditorApi({
+      ...makeDeps(makeStubView()),
+      getCanonicalHistory: () => ({
+        undo: () => {
+          calls.push("undo");
+          return true;
+        },
+        redo: () => {
+          calls.push("redo");
+          return true;
+        },
+        canUndo: () => true,
+        canRedo: () => true,
+      }),
+    });
+    expect(api.canUndo()).toBe(true);
+    expect(api.canRedo()).toBe(true);
+    expect(api.undo()).toBe(true);
+    expect(api.redo()).toBe(true);
+    expect(calls).toEqual(["undo", "redo"]);
+  });
+
   test("getState returns the view's state", () => {
     const view = makeStubView();
     const api = createHiddenEditorApi(makeDeps(view));

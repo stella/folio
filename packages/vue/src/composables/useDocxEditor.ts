@@ -53,6 +53,7 @@ import {
 } from "@stll/folio-core/controller/noteEditorManager";
 import {
   collectRemoteSelections,
+  CanonicalSessionRefusalError,
   createHiddenEditorManager,
   createHiddenEditorState,
 } from "@stll/folio-core/controller/hiddenEditorManager";
@@ -78,6 +79,7 @@ import {
   TRANSACTION_LAYOUT_TIMING,
 } from "@stll/folio-core/controller/layoutScheduler";
 import { createLayoutSession } from "@stll/folio-core/controller/layoutSession";
+import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { getFootnoteText } from "@stll/folio-core/docx/footnoteParser";
 import type { FolioSelectiveSaveFlags } from "@stll/folio-core/docx/selectiveSaveFlags";
@@ -141,7 +143,7 @@ import type {
 import { templateSlashMenuPlugin } from "@stll/folio-core/prosemirror/plugins/templateSlashMenu";
 import type { Footnote } from "@stll/folio-core/types/content";
 import type { Document, HeaderFooter, SectionProperties } from "@stll/folio-core/types/document";
-import type { DocxInput } from "@stll/folio-core/utils/docxInput";
+import { toArrayBuffer, type DocxInput } from "@stll/folio-core/utils/docxInput";
 import { resolveHeaderFooterContent } from "@stll/folio-core/utils/headerFooter";
 
 // ============================================================================
@@ -331,6 +333,8 @@ export type UseDocxEditorOptions = {
   pagesContainer: Ref<HTMLElement | null>;
   /** Whether the editor is read-only. Reactive. */
   readOnly?: MaybeRefOrGetter<boolean>;
+  /** Experimental plain-text canonical session; unsupported edits are refused. */
+  experimentalSession?: MaybeRefOrGetter<"canonical" | undefined>;
   /** Gap between pages in pixels. */
   pageGap?: number;
   /** Whether to paint each page's effective body-content boundary. Reactive. */
@@ -489,6 +493,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     noteEditorContainer,
     pagesContainer,
     readOnly = false,
+    experimentalSession,
     pageGap = DEFAULT_PAGE_GAP,
     pageRenderer,
     markupView = "all-markup",
@@ -820,7 +825,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       return;
     }
     try {
-      const updated = noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
+      const updated =
+        manager.api.getCanonicalDocument() ??
+        noteFollower.reconcile(fromProseDoc(view.state.doc, base), view.state.doc);
       docModel.value = updated;
       headerFooterManager.sync();
       noteEditorManager.sync();
@@ -857,6 +864,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getCollaborationModules: () => collaborationModules.value,
     getPrecomputedInitialState: () => null,
     getReadOnly: () => toValue(readOnly),
+    getExperimentalSession: () => toValue(experimentalSession),
+    getEditingMode: () => toValue(editorMode) ?? "editing",
+    onSessionRefusal: (message) => {
+      parseError.value = message;
+      onError?.(new CanonicalSessionRefusalError({ message }));
+    },
     getDocumentIdentity: () => String(loadSequence),
     getDocumentContext: () => docModel.value,
     onTransaction: handleTransaction,
@@ -1192,7 +1205,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     parseError.value = null;
     isReady.value = false;
     try {
-      const doc = await parseDocx(buffer, { password: toValue(password) });
+      const source =
+        toValue(experimentalSession) === "canonical"
+          ? (await ensureParaIds(await toArrayBuffer(buffer))).docx
+          : buffer;
+      const doc = await parseDocx(source, { password: toValue(password) });
       docModel.value = doc;
       remountForNewDocument();
     } catch (err) {
@@ -1237,12 +1254,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // read from the same snapshot. A later `view.state` read could pick up an
     // edit that landed mid-save and diff against the wrong baseline.
     const state = view.state;
+    const canonical = manager.api.getCanonicalDocument();
+    const updatedDoc = withoutUnreferencedNotes(canonical ?? fromProseDoc(state.doc, base));
 
     const { resolveSelectiveSaveFlags } = await import("@stll/folio-core/docx/selectiveSaveFlags");
     const flags = resolveSelectiveSaveFlags(toValue(featureFlags));
 
     // A note goes with its reference: one nothing refers to any more is not saved.
-    const updatedDoc = withoutUnreferencedNotes(fromProseDoc(state.doc, base));
     const baselineBuffer = updatedDoc.originalBuffer ?? null;
 
     // The tripwire observes the selective path independently of the user-visible
@@ -1305,6 +1323,8 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   async function save(saveOptions?: { selective?: boolean }): Promise<Blob | null> {
+    const savedView = editorView.value;
+    const savedState = savedView?.state;
     const result = await serializeCurrentDocx({
       mode:
         saveOptions?.selective === false
@@ -1320,10 +1340,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // refresh the story managers, and clear the document dirty signal only
     // after serialization succeeds. The ref API owns comment-dirty reset and
     // the host's onSave callback.
-    docModel.value = result.document;
-    headerFooterManager.sync();
-    noteEditorManager.sync();
-    isDirty.value = false;
+    if (editorView.value === savedView && savedView?.state.doc === savedState?.doc) {
+      docModel.value = result.document;
+      headerFooterManager.sync();
+      noteEditorManager.sync();
+      isDirty.value = false;
+    }
 
     return new Blob([result.buffer], {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -1331,6 +1353,9 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function getDocument(): Document | null {
+    const canonical = manager.api.getCanonicalDocument();
+    if (canonical) return canonical;
+    if (toValue(experimentalSession) === "canonical") return null;
     const document = docModel.value;
     return document
       ? noteEditorManager.snapshotDocument(headerFooterManager.snapshotDocument(document))

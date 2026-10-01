@@ -237,6 +237,7 @@ import type { AutocompleteCaretRect } from "./AutocompleteCaretOverlay";
 import { PassageHighlightOverlay } from "./PassageHighlightOverlay";
 import { loadEmbeddedFontFaces, removeFontFaces } from "./embeddedFonts";
 import { loadHostFontFaces, type FontDefinition } from "./hostFonts";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { createHiddenEditorState, HiddenProseMirror } from "./HiddenProseMirror";
 import type {
   HiddenProseMirrorCollaboration,
@@ -259,6 +260,7 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 export type PagedEditorProps = {
   /** The document to edit. */
   document: Document | null;
+  experimentalSession?: "canonical";
   /** Adapter-owned document I/O exposed through the shared controller. */
   documentIO: FolioEditorDocumentIO;
   /**
@@ -1309,6 +1311,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       document,
       documentIO,
       documentIdentity,
+      experimentalSession,
       fonts: hostFonts,
       styles,
       theme: _theme,
@@ -1438,6 +1441,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     onDocumentChangeRef.current = onDocumentChange;
     onTotalPagesChangeRef.current = onTotalPagesChange;
     onErrorRef.current = onError;
+    const handleSessionRefusal = useCallback((message: string) => {
+      onErrorRef.current?.(new CanonicalSessionRefusalError({ message }));
+    }, []);
 
     // State
     const [layout, setLayout] = useState<Layout | null>(null);
@@ -5654,20 +5660,30 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return historyUndo(target.view.state, target.view.dispatch);
+          return target.type === "body"
+            ? (hiddenPMRef.current?.undo() ?? false)
+            : historyUndo(target.view.state, target.view.dispatch);
         },
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return historyRedo(target.view.state, target.view.dispatch);
+          return target.type === "body"
+            ? (hiddenPMRef.current?.redo() ?? false)
+            : historyRedo(target.view.state, target.view.dispatch);
         },
         canUndo() {
           const target = getActiveEditorStory();
-          return target.type === "none" ? false : historyUndo(target.view.state);
+          if (target.type === "none") return false;
+          return target.type === "body"
+            ? (hiddenPMRef.current?.canUndo() ?? false)
+            : historyUndo(target.view.state);
         },
         canRedo() {
           const target = getActiveEditorStory();
-          return target.type === "none" ? false : historyRedo(target.view.state);
+          if (target.type === "none") return false;
+          return target.type === "body"
+            ? (hiddenPMRef.current?.canRedo() ?? false)
+            : historyRedo(target.view.state);
         },
         setSelection(anchor: number, head?: number) {
           folioEditor.setSelection(anchor, head);
@@ -5907,6 +5923,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ref={hiddenPMRef}
           document={document}
           documentIdentity={documentIdentity}
+          {...(experimentalSession === undefined ? {} : { experimentalSession })}
+          onSessionRefusal={handleSessionRefusal}
+          suggestionModeActive={suggestionModeActive}
           widthPx={contentWidth}
           precomputedInitialState={validPrecomputedInitialState}
           readOnly={readOnly}

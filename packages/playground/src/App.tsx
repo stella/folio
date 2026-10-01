@@ -31,6 +31,7 @@ import type {
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
 import { CollaborationApp } from "./CollaborationApp";
+import { buildCanonicalBridge } from "./canonicalBridge";
 import {
   IDLE_PLAYGROUND_STATUS,
   PLAYGROUND_STATUS_CLASS_NAME,
@@ -664,6 +665,7 @@ export function App() {
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
   const parityFonts = globalThis.__folioParityFonts;
+  const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
   // The editor paints from the display list. `?pageRenderer=legacy` selects the
@@ -862,12 +864,14 @@ export function App() {
     globalThis.__folioPlayground = {
       getEditorRef: () => editorRef.current,
     };
+    globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.current);
     globalThis.__folioParity = buildParityBridge(
       () => editorRef.current,
       (kind) => clipboardCallbackCountsRef.current[kind],
     );
     return () => {
       globalThis.__folioPlayground = undefined;
+      globalThis.__folioCanonical = undefined;
       globalThis.__folioParity = undefined;
     };
   }, []);
@@ -885,6 +889,7 @@ export function App() {
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"
+            {...(experimentalSession === undefined ? {} : { experimentalSession })}
             {...(parityFonts !== undefined ? { fonts: parityFonts } : {})}
             onError={handleError}
             showToolbar={true}
