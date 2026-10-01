@@ -15,6 +15,10 @@ on:
         description: Run the CI-only 100-page long-flow lane
         type: boolean
         default: false
+      swarm:
+        description: Enable seeded operation subsets
+        type: boolean
+        default: false
       minutes:
         description: "Consumer-scenario fuzz budget in minutes"
         required: false
@@ -79,6 +83,7 @@ jobs:
         env:
           MINUTES: ${{ github.event.inputs.minutes || '25' }}
           FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          FOLIO_SCENARIO_SWARM: ${{ inputs.swarm && '1' || '0' }}
           FOLIO_SCENARIO_SHRINK_SECONDS: "240"
           FOLIO_SCENARIO_CORPUS_DIR: .fuzz/corpus
           FOLIO_SCENARIO_FAILURES_DIR: test-results/fuzz-failures
