@@ -41,7 +41,7 @@ type ReadInputOptions = {
   value: unknown;
   access: ToolAccess;
   /** Properties passed through exactly as sent. */
-  exactProperties?: readonly string[];
+  exactProperties?: readonly string[] | undefined;
 };
 
 const refusal = (message: string, issues: ToolInputIssue[], hint: string): ReadInput => ({

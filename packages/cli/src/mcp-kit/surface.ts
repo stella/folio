@@ -91,7 +91,8 @@ export type ToolSurface<Context> = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const destructiveOf = (tool: ToolDefinition<unknown>): boolean =>
+/** Takes only the fields it reads, so a tool of any context type fits. */
+const destructiveOf = (tool: Pick<ToolDefinition<never>, "destructive" | "access">): boolean =>
   tool.destructive ?? tool.access === "write";
 
 const listedSchema = (schema: JsonSchema): ListedTool["inputSchema"] => ({
