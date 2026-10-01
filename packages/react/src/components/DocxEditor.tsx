@@ -1255,7 +1255,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     documentBuffer: documentBuffer ?? null,
     initialDocument: initialDocument ?? null,
     password,
-    experimentalSession,
+    ...(experimentalSession === undefined ? {} : { experimentalSession }),
     history,
     onError,
     onCompatibilityChange,

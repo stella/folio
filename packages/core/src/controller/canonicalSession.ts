@@ -41,10 +41,13 @@ type ParagraphAddress = {
 
 /** Only plain paragraphs have a one-to-one UTF-16 address map. */
 class CanonicalProjection {
-  constructor(
-    readonly doc: PMNode,
-    private readonly paragraphs: readonly ParagraphAddress[],
-  ) {}
+  readonly doc: PMNode;
+  private readonly paragraphs: readonly ParagraphAddress[];
+
+  constructor(doc: PMNode, paragraphs: readonly ParagraphAddress[]) {
+    this.doc = doc;
+    this.paragraphs = paragraphs;
+  }
 
   addressAt(position: number): Result<TextPosition, CanonicalSessionError> {
     if (!Number.isInteger(position)) return refuse("The input position is not an integer.");
@@ -198,7 +201,7 @@ const project = (
       .join("");
     if (
       node.type.name !== "paragraph" ||
-      node.attrs.paraId !== source.paraId ||
+      node.attrs["paraId"] !== source.paraId ||
       node.textContent !== text ||
       node.content.size !== text.length
     ) {

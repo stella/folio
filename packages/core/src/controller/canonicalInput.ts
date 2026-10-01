@@ -169,7 +169,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       const step = transaction.steps.at(0);
       if (
         !(step instanceof ReplaceStep) ||
-        step.structure ||
+        ("structure" in step && step.structure === true) ||
         step.from !== pending.input.from ||
         step.to !== pending.input.to
       )

@@ -14,7 +14,7 @@
         :document="documentBuffer ? null : currentDocument"
         :document-buffer="documentBuffer"
         author="Folio User"
-        :experimental-session="experimentalSession"
+        v-bind="experimentalSessionProps"
         :show-toolbar="true"
         :show-ruler="true"
         :show-margin-guides="showMarginGuides"
@@ -71,6 +71,8 @@ const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const query = new URLSearchParams(window.location.search);
 const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
+const experimentalSessionProps =
+  experimentalSession === undefined ? {} : ({ experimentalSession } as const);
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;

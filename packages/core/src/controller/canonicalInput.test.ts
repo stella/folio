@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { Schema } from "prosemirror-model";
+import { Fragment, Schema, Slice } from "prosemirror-model";
+import { ReplaceStep } from "prosemirror-transform";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 
@@ -131,10 +132,10 @@ describe("canonical input boundary", () => {
     expect(boundary.takeNativeProposal(view.state, previous.tr.insertText("x", 2, 4))).toBeNull();
   });
 
-  test.each(["text", "range", "mark", "extraStep", "structure"])(
+  test.each(["text", "range", "mark", "extraStep", "structure", "structureFlag"])(
     "a classified native insertion rejects a forged %s proposal",
     (change) => {
-      const { boundary, view } = createRig(2, 4);
+      const { boundary, view } = createRig(2, change === "structureFlag" ? 2 : 4);
       boundary.handleDOMEvents.beforeinput(
         view,
         new InputEvent("beforeinput", {
@@ -159,6 +160,11 @@ describe("canonical input boundary", () => {
           break;
         case "structure":
           transaction.replaceWith(2, 4, schema.node("paragraph"));
+          break;
+        case "structureFlag":
+          transaction.step(
+            new ReplaceStep(2, 2, new Slice(Fragment.from(schema.text("x")), 0, 0), true),
+          );
           break;
       }
       expect(boundary.takeNativeProposal(view.state, transaction)).toBeNull();
