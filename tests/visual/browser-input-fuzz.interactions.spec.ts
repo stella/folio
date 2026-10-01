@@ -1,6 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
-import { validateDocxPackage } from "@stll/docx-core";
+import {
+  failureMarker,
+  logFailureMarker,
+} from "../../test/consumer-scenarios/support/failure-fingerprints";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
@@ -466,6 +470,7 @@ const config = parseBrowserInputTraceConfig(
   process.env,
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
 );
+const replayPath = process.env["PROPERTY_TEST_PATH"];
 test.setTimeout(600_000);
 
 test("browser generator covers every declared suggestion input kind", () => {
@@ -536,7 +541,12 @@ for (const seed of config.seeds) {
           expect(suggested.changes.length).toBeGreaterThan(0);
         }
       }),
-      { seed, numRuns: config.runs, endOnFailure: false },
+      {
+        seed,
+        numRuns: config.runs,
+        endOnFailure: false,
+        ...(replayPath ? { path: replayPath } : {}),
+      },
     );
     if (verdict.failed) {
       const failure = verdict.errorInstance;
@@ -558,6 +568,16 @@ for (const seed of config.seeds) {
       }
       const detail =
         failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
+      logFailureMarker(
+        failureMarker({
+          test: "browser input preserves readers, fresh render, and suggesting equivalence",
+          seed,
+          path: verdict.counterexamplePath,
+          repro: `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=browser-fuzzer --workers=1`,
+          failure,
+          flow: fc.stringify(verdict.counterexample?.at(0)),
+        }),
+      );
       throw new Error(
         `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
         { cause: failure },
