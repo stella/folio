@@ -19,6 +19,12 @@ import {
   type BrowserInputTrace,
   type BrowserDragTarget,
 } from "./browserInputTrace";
+import {
+  failureMarker,
+  failureRecord,
+  logFailureMarker,
+  writeFailureRecord,
+} from "../../test/consumer-scenarios/support/failure-fingerprints";
 import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
 
 declare global {
@@ -438,6 +444,22 @@ for (const seed of config.seeds) {
     );
     if (verdict.failed) {
       const failure = verdict.errorInstance;
+      const trace = verdict.counterexample?.at(0);
+      if (trace !== undefined && failure !== undefined && failure !== null) {
+        const marker = failureMarker({
+          test: "browser input preserves readers, fresh render, and suggesting equivalence",
+          seed,
+          path: verdict.counterexamplePath,
+          repro: `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=${config.runs} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
+          failure,
+          flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
+        });
+        logFailureMarker(marker);
+        writeFailureRecord(
+          "test-results/browser-fuzz-failures",
+          failureRecord(marker, failure, { flow: trace }),
+        );
+      }
       const detail =
         failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
       throw new Error(

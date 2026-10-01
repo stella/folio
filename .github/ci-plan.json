@@ -72,13 +72,6 @@
         "playwright.config.ts"
       ]
     },
-    "browser_fuzzer": {
-      "paths": [
-        "packages/{docx-core,core,react,vue,playground,playground-vue}/src/**",
-        "tests/visual/**",
-        "playwright.config.ts"
-      ]
-    },
     "differential": {
       "paths": [
         "packages/core/src/**",
