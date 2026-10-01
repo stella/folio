@@ -1,4 +1,12 @@
 {
+  "packages/core/src/__tests__/documentOpsDifferential.property.test.ts::PM and Document ops agree after every generated text and formatting step": [
+    {
+      "seed": -974191014,
+      "path": "0:0:0:0:0:0:0:0:0",
+      "note": "Rendered differential comparison must ignore authored empty-run capture and text-leaf boundaries while preserving formatting and XML remainders",
+      "date": "2026-10-01"
+    }
+  ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::L2: rejecting a tracked operation's revisions gives the document back": [
     {
       "seed": -1426848857,

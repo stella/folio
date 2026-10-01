@@ -9,11 +9,13 @@ import {
   INHERIT_RUN_PROPS,
   normalizeForOps,
   OP_STORIES,
-} from "../../../docx-core/src/ops/documentOps";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+} from "@stll/docx-core/ops";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromMarkdown } from "../markdown/fromMarkdown";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { expectRunIdentityMarkAttrs } from "../prosemirror/attrs";
+import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../prosemirror/runIdentity";
 import { createHarnessState, textblocks } from "./editorHarness";
 
 setDefaultTimeout(propertyTestTimeout(60_000));
@@ -35,24 +37,76 @@ const flowArbitrary = fc.record({
   steps: fc.array(stepArbitrary, { minLength: 1, maxLength: 30 }),
 });
 
-/** Ignore allocator/capture metadata; retain every text unit, mark, and block container. */
+/**
+ * RunIdentityExtension strips authored-run identity from typed text. The portable
+ * model inserts into its existing run instead, so identity and empty w:rPr
+ * provenance may split PM text leaves without changing rendered content.
+ * Preserve authored attribute/XML remainders; only the allocator id and empty
+ * property-set capture are excluded from this rendered-content comparison.
+ */
+const renderedMarks = (node: PMNode): unknown[] =>
+  node.marks.flatMap((mark) => {
+    if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return [mark.toJSON()];
+    const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(mark);
+    if (!preservedAttributes?.length && !preserved?.children?.length) return [];
+    return [{ type: RUN_IDENTITY_MARK_NAME, attrs: { preservedAttributes, preserved } }];
+  });
+
+/** Compare every character and mark independently of internal text-leaf partitioning. */
 const contentView = (node: PMNode): unknown => {
   const children: unknown[] = [];
-  node.forEach((child) => children.push(contentView(child)));
-  return {
-    type: node.type.name,
-    text: node.text,
-    marks: node.marks.map((mark) => mark.toJSON()),
-    children,
-  };
+  node.forEach((child) => {
+    if (!child.isText) {
+      children.push(contentView(child));
+      return;
+    }
+    const marks = renderedMarks(child);
+    for (const character of child.text ?? "") {
+      children.push({ type: child.type.name, text: character, marks });
+    }
+  });
+  return { type: node.type.name, text: node.text, marks: renderedMarks(node), children };
 };
 
+test("rendered differential oracle detects text, formatting and preserved metadata changes", () => {
+  const state = createHarnessState(fromMarkdown("Alpha beta."), "editing");
+  const target = textblocks(state.doc).at(0);
+  if (!target) throw new Error("oracle fixture has no textblock");
+  const from = target.pos + 1;
+  const to = from + 1;
+  const before = contentView(state.doc);
+  const identity = state.schema.marks[RUN_IDENTITY_MARK_NAME];
+  if (!identity) throw new Error("oracle fixture has no run identity mark");
+  const captureOnly = identity.create(runIdentityAttrs(42, { emptyFormatting: true }));
+  expect(contentView(state.tr.addMark(from, to, captureOnly).doc)).toEqual(before);
+  expect(contentView(state.tr.insertText("x", from).doc)).not.toEqual(before);
+  expect(contentView(state.tr.delete(from, to).doc)).not.toEqual(before);
+  for (const kind of ["bold", "italic"] as const) {
+    const mark = state.schema.marks[kind];
+    if (!mark) throw new Error(`oracle fixture has no ${kind} mark`);
+    expect(contentView(state.tr.addMark(from, to, mark.create()).doc)).not.toEqual(before);
+  }
+  const attributeRemainder = identity.create(
+    runIdentityAttrs(42, {
+      preservedAttributes: [{ namespace: "urn:folio:test", name: "retained", value: "value" }],
+    }),
+  );
+  expect(contentView(state.tr.addMark(from, to, attributeRemainder).doc)).not.toEqual(before);
+  const xmlRemainder = identity.create(
+    runIdentityAttrs(42, {
+      preserved: { children: [{ index: 0, xml: '<custom xmlns="urn:folio:test"/>' }] },
+    }),
+  );
+  expect(contentView(state.tr.addMark(from, to, xmlRemainder).doc)).not.toEqual(before);
+});
+
 test("PM and Document ops agree after every generated text and formatting step", () => {
-  fc.assert(
+  assertProperty(
     fc.property(flowArbitrary, ({ source, steps }) => {
       const original = fromMarkdown(source);
       let state = createHarnessState(original, "editing");
       let model = normalizeForOps(fromProseDoc(state.doc, original));
+      expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
       for (const step of steps) {
         const blocks = textblocks(state.doc);
         const target = blocks.at(step.block % blocks.length);
@@ -110,6 +164,6 @@ test("PM and Document ops agree after every generated text and formatting step",
         expect(contentView(toProseDoc(model))).toEqual(contentView(state.doc));
       }
     }),
-    propertyConfig({ numRuns: 100 }),
+    { numRuns: 100 },
   );
 });
