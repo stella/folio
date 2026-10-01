@@ -46,6 +46,7 @@ import {
   TARGETED_ACTIONS,
 } from "./flow-file.ts";
 import { assertReadersAgree, saveAndReopen, visibleState } from "./invariants.ts";
+import { LARGE_DOCUMENT_FIXTURE, largeDocument } from "./large-document.ts";
 import { startRelations } from "./metamorphic.ts";
 import { assertRequestedOutcome, assertResolvedTo, capture, captureResolution } from "./oracle.ts";
 import {
@@ -546,7 +547,11 @@ const flowFixtures = (
   return { ...FIXTURES, emoji: COLLISION_FIXTURES.emoji, ...STORY_FIXTURES };
 };
 
-export type FlowOptions = { generation?: Generation };
+export type FlowOptions = {
+  generation?: Generation;
+  /** Explicit fixtures are never added to the ordinary seeded fixture selection. */
+  fixture?: typeof LARGE_DOCUMENT_FIXTURE;
+};
 
 /** The fixture and mode a seed's flow runs on. */
 export const describeFlow = (
@@ -630,7 +635,8 @@ type Plan = {
 const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   registerFeatureOperations(Object.keys(GENERATORS));
   const { seed, kind, generation, fixture, mode } = plan;
-  const load = flowFixtures(kind, generation)[fixture];
+  const load =
+    fixture === LARGE_DOCUMENT_FIXTURE ? largeDocument : flowFixtures(kind, generation)[fixture];
   if (load === undefined) {
     throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
   }
@@ -723,10 +729,11 @@ export const runFlow = (
   seed: number,
   steps: number,
   kind: FlowKind = "random",
-  { generation = "targeted", ...options }: FlowOptions & RunOptions = {},
+  { generation = "targeted", fixture: explicitFixture, ...options }: FlowOptions & RunOptions = {},
 ): Promise<FlowRun> => {
   const random = createRandom(seed);
-  const fixture = random.pick(Object.keys(flowFixtures(kind, generation)));
+  const drawnFixture = random.pick(Object.keys(flowFixtures(kind, generation)));
+  const fixture = explicitFixture ?? drawnFixture;
   const mode = random.pick(MODES);
   return execute(
     { seed, kind, generation, fixture, mode, random, steps, origin: `${kind} flow seed ${seed}` },
