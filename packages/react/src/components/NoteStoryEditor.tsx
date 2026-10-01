@@ -98,10 +98,7 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
     const documentRef = useRef(document);
     const canonicalApiRef = useRef(getCanonicalApi);
     const sessionRef = useRef(experimentalSession);
-    canonicalApiRef.current = getCanonicalApi;
-    sessionRef.current = experimentalSession;
     const refusalRef = useRef(onSessionRefusal);
-    refusalRef.current = onSessionRefusal;
     const stylesRef = useRef(styles);
     const themeRef = useRef(theme);
     const pluginsRef = useRef(resolvedPlugins);
@@ -115,6 +112,9 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
     const endnotes = document?.package.endnotes;
     useEffect(() => {
       documentRef.current = document;
+      canonicalApiRef.current = getCanonicalApi;
+      sessionRef.current = experimentalSession;
+      refusalRef.current = onSessionRefusal;
       stylesRef.current = styles;
       themeRef.current = theme;
       pluginsRef.current = resolvedPlugins;
@@ -159,9 +159,12 @@ export const NoteStoryEditor = forwardRef<NoteStoryEditorRef, NoteStoryEditorPro
       active,
       document,
       endnotes,
+      experimentalSession,
       footnotes,
+      getCanonicalApi,
       onActiveChange,
       onDocumentChange,
+      onSessionRefusal,
       onStoryChange,
       resolvedPlugins,
       styles,
