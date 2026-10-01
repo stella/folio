@@ -39,6 +39,7 @@ import { convertParagraphAttrs } from "./paragraphAttrs";
 import { convertParagraph } from "./paragraphConversion";
 import { countPageBreakRuns, hasSingleLeadingProjectedPageBreak } from "./pageBreakSplitting";
 import { inlineEffectExtentPx, resolveLinearGradientFill } from "./textBoxFill";
+import { fixedTableColumnWidths } from "./fixedTableColumnWidths";
 
 const TEXT_BOX_ANCHOR_BLOCK_ID = Symbol.for("stll.textBoxAnchorBlockId");
 const DEFAULT_TABLE_CELL_MARGIN_TWIPS = {
@@ -367,7 +368,13 @@ export function convertTable(
 
   // Extract columnWidths from node attributes and convert from twips to pixels
   const columnWidthsTwips = attrs.columnWidths;
-  let columnWidths = columnWidthsTwips?.map(twipsToPixels);
+  const hasTableWidth =
+    (attrs.widthType === "dxa" || attrs.widthType === "pct") && (attrs.width ?? 0) > 0;
+  const effectiveColumns =
+    columnWidthsTwips && attrs._originalFormatting?.layout === "fixed" && !hasTableWidth
+      ? fixedTableColumnWidths(node, columnWidthsTwips)
+      : columnWidthsTwips;
+  let columnWidths = effectiveColumns?.map(twipsToPixels);
 
   const width = attrs.width;
   const widthType = attrs.widthType;
