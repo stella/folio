@@ -47,8 +47,8 @@ import type {
 
 import type { FolioParityBridge } from "./parityBridge";
 import { buildParityBridge } from "./parityBridge";
-import { buildScrollParityBridge } from "../../../tests/parity/scrollParityBridge";
-import type { ScrollParityBridge } from "../../../tests/parity/scrollParityBridge";
+import { buildScrollParityBridge } from "./scrollParityBridge";
+import type { ScrollParityBridge } from "./scrollParityBridge";
 
 declare global {
   // eslint-disable-next-line no-var

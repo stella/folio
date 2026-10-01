@@ -30,8 +30,8 @@ import type {
 } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
-import { buildScrollParityBridge } from "../../../tests/parity/scrollParityBridge";
-import type { ScrollParityBridge } from "../../../tests/parity/scrollParityBridge";
+import { buildScrollParityBridge } from "./scrollParityBridge";
+import type { ScrollParityBridge } from "./scrollParityBridge";
 
 import { CollaborationApp } from "./CollaborationApp";
 import {

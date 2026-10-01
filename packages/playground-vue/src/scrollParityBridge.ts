@@ -1,11 +1,12 @@
-import type { EditorView } from "prosemirror-view";
 import type {
   DocxEditorRef,
+  DocxEditorProps,
   FolioSuggestion,
   FolioAIEditOperation,
   FolioAIEditSnapshot,
-} from "@stll/folio-react";
+} from "@stll/folio-vue";
 
+type EditorView = Parameters<NonNullable<DocxEditorProps["onEditorViewReady"]>>[0];
 type PagedRef = NonNullable<ReturnType<DocxEditorRef["getEditorRef"]>>;
 type ScrollMethod =
   | Extract<keyof DocxEditorRef, `scrollTo${string}`>
@@ -173,7 +174,7 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
         viewportBottom: rootRect.bottom,
       };
     },
-    onViewReady: (view: EditorView | null) => {
+    onViewReady: (view: EditorView) => {
       if (!view) return;
       const requestedTop = Number(new URLSearchParams(location.search).get("readyScroll"));
       if (!(requestedTop > 0)) return;

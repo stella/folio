@@ -20,7 +20,7 @@ import {
   SCROLL_TARGET_TEXT,
   SCROLL_TARGET_SUGGESTION,
   findScrollSuggestionTarget,
-} from "../tests/parity/scrollParityBridge";
+} from "../packages/playground/src/scrollParityBridge";
 import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
 
 let ownsDomGlobals = false;
@@ -109,4 +109,15 @@ test("suggestion scroll oracle measures the inserted block instead of its source
   );
   target?.remove();
   expect(findScrollSuggestionTarget({ root, snapshot: liveSnapshot, suggestion })).toBeNull();
+});
+
+// Each host owns its public-package imports; their browser operations must stay identical.
+test("scroll bridges stay identical across adapters", async () => {
+  const react = await Bun.file(
+    new URL("../packages/playground/src/scrollParityBridge.ts", import.meta.url),
+  ).text();
+  const vue = await Bun.file(
+    new URL("../packages/playground-vue/src/scrollParityBridge.ts", import.meta.url),
+  ).text();
+  expect(vue.replaceAll("@stll/folio-vue", "@stll/folio-react")).toBe(react);
 });

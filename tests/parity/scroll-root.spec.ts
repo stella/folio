@@ -1,6 +1,9 @@
 import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { PAGED_SCROLL_NAVIGATION_CASES, SCROLL_NAVIGATION_CASES } from "./scrollParityBridge";
+import {
+  PAGED_SCROLL_NAVIGATION_CASES,
+  SCROLL_NAVIGATION_CASES,
+} from "../../packages/playground/src/scrollParityBridge";
 import { buildScrollRootDocument } from "../support/scrollRootDocument";
 import { ensureLiveView, expect, forEachAdapter, openEditor } from "./parity-fixture";
 import type { AdapterFixture } from "./parity-fixture";
