@@ -11,6 +11,7 @@ import {
 import { Result } from "better-result";
 import { EditorState } from "prosemirror-state";
 
+import type { PackageDifferences } from "../../../../../scripts/lib/corpus-invariants/model-equality";
 import { reviewDifferences } from "../../../../../test/reviewDifferences";
 import { storyRevisionIds } from "../../../../../test/reviewProjection";
 import { repackDocx } from "../../docx/rezip";

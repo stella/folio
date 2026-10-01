@@ -1,4 +1,4 @@
-import type { Document } from "@stll/docx-core/model";
+import type { Document } from "../packages/docx-core/src/model/document";
 
 import {
   describePackageDifferences,
