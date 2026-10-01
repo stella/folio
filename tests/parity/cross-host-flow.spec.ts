@@ -6,7 +6,7 @@ import {
   logFailureMarker,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
-import { validateDocxPackage } from "@stll/docx-core";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 

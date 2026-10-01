@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { validateDocxPackage } from "../packages/docx-core/src/validate/docx";
 import config from "../playwright.config";
 
 const requireRecord = (value: unknown): Record<string, unknown> => {
@@ -10,6 +12,23 @@ const requireRecord = (value: unknown): Record<string, unknown> => {
 };
 
 const file = "cross-host-flow.spec.ts";
+
+test("cross-host validator resolves from its owning source without a root package dependency", async () => {
+  const specPath = resolve("tests/parity", file);
+  const source = readFileSync(specPath, "utf8");
+  const validatorImport = source
+    .match(/import\s*\{\s*validateDocxPackage\s*\}\s*from\s*["']([^"']+)["']/)
+    ?.at(1);
+  if (!validatorImport) throw new Error("Cross-host validator import unavailable");
+  expect(validatorImport.startsWith(".")).toBe(true);
+  expect(Bun.resolveSync(validatorImport, dirname(specPath))).toBe(
+    resolve("packages/docx-core/src/validate/docx.ts"),
+  );
+  expect(await validateDocxPackage(new Uint8Array())).toMatchObject({
+    valid: false,
+    code: "invalid_archive",
+  });
+});
 
 test("random cross-host flow is isolated from deterministic parity and Vue projects", () => {
   const projects = config.projects;
