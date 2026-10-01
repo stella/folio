@@ -234,7 +234,7 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
     });
     logFailureMarker(marker);
     writeFailureRecord(
-      "test-results/cross-host-findings",
+      "fuzz-artifacts/cross-host/findings",
       failureRecord(marker, verdict.errorInstance, {
         flow: verdict.counterexample?.at(0),
       }),

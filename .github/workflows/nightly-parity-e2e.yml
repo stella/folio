@@ -59,7 +59,7 @@ jobs:
       # and the static React<->Vue parity gates (check:parity-contract,
       # check:export-parity) already guard the API surface on every PR.
       - name: Parity e2e specs
-        run: bun run test:e2e:parity --workers=1
+        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
 
       - name: Generated four-host differential
         if: always()
@@ -73,15 +73,17 @@ jobs:
           PROPERTY_TEST_PATH: ${{ inputs.path }}
         run: |
           set -o pipefail
-          mkdir -p test-results
-          bunx playwright test --project=parity-fuzzer tests/parity/cross-host-flow.spec.ts --workers=1 2>&1 | tee test-results/cross-host.log
+          mkdir -p fuzz-artifacts/cross-host
+          bunx playwright test --project=parity-fuzzer tests/parity/cross-host-flow.spec.ts --workers=1 --output=fuzz-playwright/cross-host 2>&1 | tee fuzz-artifacts/cross-host/cross-host.log
 
       - name: Upload differential repro artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: cross-host-differential-repro
-          path: test-results/
+          path: |
+            fuzz-artifacts/
+            fuzz-playwright/
           retention-days: 14
 
   cross-host-report:
@@ -90,7 +92,7 @@ jobs:
       cancel-in-progress: false
     name: File four-host differential findings
     needs: parity-e2e
-    if: always() && needs.parity-e2e.outputs.cross_host_findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && needs.parity-e2e.outputs.cross_host_findings == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -114,5 +116,5 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
           bun scripts/fuzz-failure-issues.ts
-          --log fuzz-results/cross-host.log --records fuzz-results/cross-host-findings
+          --log fuzz-results/fuzz-artifacts/cross-host/cross-host.log --records fuzz-results/fuzz-artifacts/cross-host/findings
           --source "four-host differential" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"

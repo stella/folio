@@ -61,16 +61,27 @@ test("cross-host random lane uses a bounded scheduled workflow with issue filing
   expect(random["continue-on-error"]).toBe(true);
   expect(random["timeout-minutes"]).toBeLessThanOrEqual(12);
   expect(random["run"]).toContain("--project=parity-fuzzer");
+  expect(random["run"]).toContain("--output=fuzz-playwright/cross-host");
+  expect(random["run"]).toContain("tee fuzz-artifacts/cross-host/cross-host.log");
+  const deterministic = steps.find((step) => step["name"] === "Parity e2e specs");
+  expect(deterministic?.["run"]).toContain("--output=fuzz-playwright/parity");
+  const spec = readFileSync(resolve("tests/parity", file), "utf8");
+  const recordsPath = spec.match(/writeFailureRecord\(\s*"([^"]+)"/)?.at(1);
+  expect(recordsPath).toBe("fuzz-artifacts/cross-host/findings");
+  const upload = steps.find((step) => step["name"] === "Upload differential repro artifacts");
+  if (!upload) throw new Error("Repro artifact upload unavailable");
+  expect(requireRecord(upload["with"])["path"]).toBe("fuzz-artifacts/\nfuzz-playwright/\n");
   const reporter = requireRecord(requireRecord(workflow["jobs"])["cross-host-report"]);
   expect(reporter["timeout-minutes"]).toBeLessThanOrEqual(5);
+  expect(reporter["if"]).toContain("github.ref == 'refs/heads/main'");
   const reportSteps = reporter["steps"];
   if (!Array.isArray(reportSteps)) throw new Error("Report steps unavailable");
-  expect(
-    reportSteps
-      .map(requireRecord)
-      .some(
-        (step) =>
-          typeof step["run"] === "string" && step["run"].includes("scripts/fuzz-failure-issues.ts"),
-      ),
-  ).toBe(true);
+  const report = reportSteps
+    .map(requireRecord)
+    .find(
+      (step) =>
+        typeof step["run"] === "string" && step["run"].includes("scripts/fuzz-failure-issues.ts"),
+    );
+  expect(report?.["run"]).toContain("--log fuzz-results/fuzz-artifacts/cross-host/cross-host.log");
+  expect(report?.["run"]).toContain(`--records fuzz-results/${recordsPath}`);
 });
