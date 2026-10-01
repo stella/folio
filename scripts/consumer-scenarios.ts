@@ -395,6 +395,8 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     "FOLIO_SCENARIO_CORPUS_DIR",
     "FOLIO_SCENARIO_FAILURES_DIR",
     "FOLIO_SCENARIO_MINIMIZED_DIR",
+    "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
+    "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT",
   ]) {
     const value = process.env[name];
     if (value !== undefined && value !== "") environment[name] = path.resolve(value);
