@@ -521,10 +521,16 @@ const runConfiguredProperty = <Ts>(
 ): Promise<void> | void => {
   if (property.isAsync()) {
     return (async () => {
-      for (const config of configs) await fc.assert(property, config);
+      for (const config of configs) {
+        reportFuzzHealth({ status: "started", completed: 0 });
+        await fc.assert(property, config);
+      }
     })();
   }
-  for (const config of configs) fc.assert(property, config);
+  for (const config of configs) {
+    reportFuzzHealth({ status: "started", completed: 0 });
+    fc.assert(property, config);
+  }
 };
 
 /**

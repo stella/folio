@@ -75,7 +75,7 @@ if (BUDGET === 0) {
       console.log([`known failures, not failing the run:`, ...known.map(summary)].join("\n"));
     }
     const fresh = result.failures.filter((failure) => !isKnown(failure));
-    const completed = result.flows + result.mutants;
+    const completed = result.completedCases;
     if (completed === 0) {
       reportFuzzHealth({ status: "infrastructure", completed, detail: "No fuzz cases completed" });
       throw new Error("Fuzz infrastructure: no cases completed");

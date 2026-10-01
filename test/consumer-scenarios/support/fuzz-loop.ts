@@ -179,6 +179,7 @@ export type LoopOptions = {
 };
 
 export type LoopResult = {
+  completedCases: number;
   flows: number;
   mutants: number;
   admitted: number;
@@ -203,6 +204,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
   const control = createRandom(options.seed ^ 0x6c6f_6f70);
   const failures = new Map<string, { record: FailureRecord; count: number }>();
   const result: LoopResult = {
+    completedCases: 0,
     flows: 0,
     mutants: 0,
     admitted: 0,
@@ -270,6 +272,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
         // The same failure again: its line carries the shrunk one's fingerprint.
         seen.count += 1;
         logFailureMarker({ ...seen.record.marker, seed, repro });
+        result.completedCases += 1;
         continue;
       }
       const record = await recordFailure(error, { seed, repro }, shrinkLimits());
@@ -281,6 +284,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
           : `  shrunk from ${record.shrink.from} to ${record.shrink.steps} steps; replay: ${record.replays[0]}`,
       );
     }
+    result.completedCases += 1;
   }
   prune(corpus, options.corpusSize);
   result.corpus = corpus.entries.length;
