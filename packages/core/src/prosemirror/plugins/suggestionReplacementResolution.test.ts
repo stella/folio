@@ -13,6 +13,7 @@ import {
 } from "../../__tests__/editorHarness";
 import { FolioDocxReviewer } from "../../ai-edits/headless";
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
+import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { schema } from "../schema";
 import { createSuggestionModePlugin, suggestionModeKey } from "./suggestionMode";
 
@@ -21,7 +22,12 @@ const paragraph = (text: string) => schema.node("paragraph", null, schema.text(t
 // Exercise the real composition lifecycle, including the browser-owned native
 // replacement between its start and deferred end handlers.
 test("IME replacement preserves open paragraph edges across every text range", async () => {
-  const baseline = schema.node("doc", null, [paragraph("First"), paragraph("Second")]);
+  const baseline = schema.node("doc", null, [
+    schema.node("paragraph", { alignment: "center", indentLeft: 240 }, schema.text("First")),
+    schema.node("paragraph", { alignment: "right", indentLeft: 480 }, schema.text("Second")),
+  ]);
+  const properties = (doc: typeof baseline) =>
+    textblocks(doc).map(({ node }) => paragraphPropertiesSnapshot(node));
   const ranges = [];
   for (let from = 1; from <= 6; from++) {
     for (let to = 8; to <= 14; to++) ranges.push({ from, to });
@@ -49,12 +55,14 @@ test("IME replacement preserves open paragraph edges across every text range", a
     });
     expect(accepted.doc.textContent).toBe(direct.textContent);
     expect(accepted.doc.childCount).toBe(direct.childCount);
+    expect(properties(accepted.doc)).toEqual(properties(direct));
     let rejected = view.state;
     rejectAllChanges()(rejected, (tr) => {
       rejected = rejected.apply(tr);
     });
     expect(rejected.doc.textContent).toBe(baseline.textContent);
     expect(rejected.doc.childCount).toBe(baseline.childCount);
+    expect(properties(rejected.doc)).toEqual(properties(baseline));
   }
 });
 
@@ -176,5 +184,41 @@ test.each([1, 2, 3, 4, 5])(
       rejected = rejected.apply(tr);
     });
     expect(blocks(rejected)).toEqual(blocks(EditorState.create({ doc: baseline })));
+  },
+);
+
+// Paste must not take ownership of a revision already attached to the paragraph.
+test.each(["del", "ins", "moveFrom", "moveTo"])(
+  "table paste preserves an existing %s paragraph revision",
+  (kind) => {
+    const info = { id: 987, author: "Previous reviewer", date: "2026-01-01T00:00:00Z" };
+    const pPrMark = { kind, info };
+    const baseline = schema.node("doc", null, [
+      schema.node(
+        "paragraph",
+        { pPrMark },
+        schema.text("Intro", [
+          schema.mark("deletion", {
+            revisionId: info.id,
+            author: info.author,
+            date: info.date,
+          }),
+        ]),
+      ),
+      paragraph("Tail"),
+    ]);
+    const view = new HeadlessEditorView(
+      EditorState.create({
+        doc: baseline,
+        plugins: [createSuggestionModePlugin(true, "Reviewer")],
+      }),
+    );
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Pasted")])]),
+    ]);
+    view.paste(new Slice(Fragment.from(table), 0, 0));
+    const restored = textblocks(view.state.doc).find(({ node }) => node.textContent === "Intro");
+    expect(restored?.node.attrs["pPrMark"]).toEqual(pPrMark);
   },
 );

@@ -432,6 +432,7 @@ export function handleSuggestionPaste(
     markRangeAsInserted(tr, tr.doc, at, end, insertionType, deletionType, revision);
     if (
       $from.parentOffset === $from.parent.content.size &&
+      $from.parent.attrs["pPrMark"] == null &&
       !paragraphEndsItsContainer($from.doc.resolve($from.before()), "paragraph")
     ) {
       tr.setNodeAttribute(tr.mapping.map($from.before()), "pPrMark", {
@@ -1284,6 +1285,27 @@ function markComposedAsInsertion(
       deletionType,
       pluginState,
     );
+    // Native composition keeps the starting paragraph's properties even when
+    // the selection starts at its first character. Carry that committed
+    // formatting to the restored end paragraph; rejection restores its own.
+    const restoredEnd = tr.doc.resolve(tr.mapping.map(from, 1));
+    const restoredStart = tr.doc.resolve(from);
+    if (
+      restoredStart.parent.type.name === "paragraph" &&
+      restoredEnd.parent.type.name === "paragraph" &&
+      restoredStart.parent !== restoredEnd.parent
+    ) {
+      const mark = expectParagraphAttrs(restoredStart.parent).pPrMark;
+      if (mark?.kind === "del") {
+        carryIntoParagraphLeft(
+          view.state,
+          tr,
+          view.state.doc.resolve(from).parent,
+          restoredEnd.before(),
+          mark.info,
+        );
+      }
+    }
   }
   const insertionFrom = tr.mapping.map(from, 1);
   const insertionTo = tr.mapping.map(to, 1);
