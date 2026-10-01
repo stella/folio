@@ -71,16 +71,16 @@ describe("familyOf", () => {
 describe("FamilyCensusBuilder", () => {
   test("counts a signature once per file and names its producers", () => {
     const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    builder.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
+    builder.add(observed("one", "p1/16", [RESERIALIZE_FAILURE]));
     builder.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE]));
-    builder.add(observed("three", "word/16", []));
+    builder.add(observed("three", "p1/16", []));
     const census = builder.build();
 
     expect(census.files).toBe(3);
     expect(census.signatures).toHaveLength(1);
     expect(census.signatures.at(0)?.files).toBe(2);
-    expect(census.signatures.at(0)?.producers).toEqual({ "word/16": 1, "libreoffice/7": 1 });
-    expect(census.producers).toEqual({ "word/16": 2, "libreoffice/7": 1 });
+    expect(census.signatures.at(0)?.producers).toEqual({ "p1/16": 1, "libreoffice/7": 1 });
+    expect(census.producers).toEqual({ "p1/16": 2, "libreoffice/7": 1 });
   });
 
   test("a file failing twice in one family counts as one failed file there", () => {
@@ -89,7 +89,7 @@ describe("FamilyCensusBuilder", () => {
       EXTENDED_CORPUS_INVARIANTS.reserialize,
       "a full repack already loses package.b",
     );
-    builder.add(observed("one", "word/16", [RESERIALIZE_FAILURE, second]));
+    builder.add(observed("one", "p1/16", [RESERIALIZE_FAILURE, second]));
     const census = builder.build();
     expect(census.totals[CORPUS_INVARIANT_FAMILIES.reserialize]).toEqual({
       files: 1,
@@ -103,8 +103,8 @@ describe("FamilyCensusBuilder", () => {
 
   test("keeps the slowest files per stage", () => {
     const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    builder.add(observed("slow", "word/16", [], { "reserialize.forced-save": 900 }));
-    builder.add(observed("fast", "word/16", [], { "reserialize.forced-save": 3 }));
+    builder.add(observed("slow", "p1/16", [], { "reserialize.forced-save": 900 }));
+    builder.add(observed("fast", "p1/16", [], { "reserialize.forced-save": 3 }));
     const slowest = builder.build().slowest["reserialize.forced-save"] ?? [];
     expect(slowest.map((timing) => timing.file.sha256)).toEqual(["slow", "fast"]);
   });
@@ -117,11 +117,11 @@ describe("mergeFamilyCensuses", () => {
    */
   test("a merge of two shards equals one run over both files", () => {
     const whole = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    whole.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
+    whole.add(observed("one", "p1/16", [RESERIALIZE_FAILURE]));
     whole.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]));
 
     const left = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    left.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
+    left.add(observed("one", "p1/16", [RESERIALIZE_FAILURE]));
     const right = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
     right.add(observed("two", "libreoffice/7", [RESERIALIZE_FAILURE, SCHEMA_FAILURE]));
 
@@ -151,27 +151,27 @@ describe("mergeFamilyCensuses", () => {
 describe("censusWithLateFailures", () => {
   test("folds a verdict taken after the run into the signatures and totals", () => {
     const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    builder.add(observed("one", "word/16", []));
-    builder.add(observed("two", "word/12", []));
+    builder.add(observed("one", "p1/16", []));
+    builder.add(observed("two", "p1/12", []));
     const late = failureFromAssertion(
       EXTENDED_CORPUS_INVARIANTS.performance,
       "parse cost exceeds ten times the corpus median per megabyte",
     );
 
     const census = censusWithLateFailures(builder.build(), [
-      { file: file("one"), producer: "word/16", failures: [late] },
-      { file: file("two"), producer: "word/12", failures: [] },
+      { file: file("one"), producer: "p1/16", failures: [late] },
+      { file: file("two"), producer: "p1/12", failures: [] },
     ]);
     const signature = census.signatures.at(0);
     expect(signature?.family).toBe(CORPUS_INVARIANT_FAMILIES.performance);
     expect(signature?.files).toBe(1);
-    expect(signature?.producers).toEqual({ "word/16": 1 });
+    expect(signature?.producers).toEqual({ "p1/16": 1 });
     expect(census.totals[CORPUS_INVARIANT_FAMILIES.performance]?.failedFiles).toBe(1);
   });
 
   test("leaves a census with nothing late exactly as it was", () => {
     const builder = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
-    builder.add(observed("one", "word/16", [RESERIALIZE_FAILURE]));
+    builder.add(observed("one", "p1/16", [RESERIALIZE_FAILURE]));
     const before = builder.build();
     expect(censusWithLateFailures(before, [])).toEqual(before);
   });
@@ -179,8 +179,8 @@ describe("censusWithLateFailures", () => {
 
 describe("describeProducers", () => {
   test("busiest first, then alphabetical, capped", () => {
-    expect(describeProducers({ "word/16": 2, "word/12": 5, "libreoffice/7": 2 }, 2)).toBe(
-      "word/12 5, libreoffice/7 2",
+    expect(describeProducers({ "p1/16": 2, "p1/12": 5, "libreoffice/7": 2 }, 2)).toBe(
+      "p1/12 5, libreoffice/7 2",
     );
   });
 });

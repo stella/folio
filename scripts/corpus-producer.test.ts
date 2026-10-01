@@ -52,7 +52,7 @@ describe("producerFamilyOf", () => {
 
 describe("producerLabel", () => {
   test("carries the major version and nothing finer", () => {
-    expect(producerLabel(PRODUCER_FAMILIES.word, "16.0000")).toBe("word/16");
+    expect(producerLabel(PRODUCER_FAMILIES.word, "16.0000")).toBe("p1/16");
     expect(producerLabel(PRODUCER_FAMILIES.libreoffice, "7.0.6.2$Linux")).toBe("libreoffice/7");
   });
 
@@ -71,7 +71,13 @@ describe("producerLabel", () => {
   });
 
   test("falls back to the family alone when no version is stated", () => {
-    expect(producerLabel(PRODUCER_FAMILIES.word, "")).toBe("word");
+    expect(producerLabel(PRODUCER_FAMILIES.word, "")).toBe("p1");
+  });
+
+  test("keys the coded families by a code that does not depend on the version", () => {
+    expect(producerLabel(PRODUCER_FAMILIES.wordMac, "14.0000")).toBe("p2/14");
+    expect(producerLabel(PRODUCER_FAMILIES.wordOnline, "0.0000")).toBe("p3/0");
+    expect(producerLabel(PRODUCER_FAMILIES.outlook, "12.0000")).toBe("p4/12");
   });
 });
 
@@ -84,7 +90,7 @@ describe("readCorpusProducer", () => {
     });
     expect(await readCorpusProducer({ bytes, documentPart: "word/document.xml" })).toEqual({
       family: PRODUCER_FAMILIES.word,
-      label: "word/16",
+      label: "p1/16",
     });
   });
 
@@ -105,7 +111,7 @@ describe("readCorpusProducer", () => {
     const bytes = await packageWith(parts);
     expect(await readCorpusProducer({ bytes, documentPart: "word/document2.xml" })).toEqual({
       family: PRODUCER_FAMILIES.wordOnline,
-      label: "word-online/16",
+      label: "p3/16",
     });
   });
 
