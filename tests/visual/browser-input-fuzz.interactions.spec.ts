@@ -86,7 +86,70 @@ const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggestin
   );
 };
 
+const selectTableTarget = async (page: Page) => {
+  const cells = await page.evaluate(() => {
+    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    if (!view) throw new Error("browser editor unavailable");
+    const positions: { pos: number; paragraphPos: number }[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (positions.length >= 2) return false;
+      if (node.type.name !== "tableCell") return true;
+      let paragraphPos: number | null = null;
+      node.descendants((child, offset) => {
+        if (paragraphPos !== null) return false;
+        if (child.isTextblock) paragraphPos = pos + 1 + offset;
+        return !child.isTextblock;
+      });
+      if (paragraphPos !== null) positions.push({ pos, paragraphPos });
+      return false;
+    });
+    return positions;
+  });
+  const [anchor, head] = cells;
+  if (!anchor || !head) return false;
+
+  // The PM view is off-screen. Pointer actions must use the painted body cells,
+  // whose paragraph positions also let us wait for layout after preceding edits.
+  const paintedCell = (paragraphPos: number) =>
+    page
+      .locator(`.layout-page-content .layout-table-cell[data-pm-start="${paragraphPos}"]`)
+      .first();
+  const anchorCell = paintedCell(anchor.paragraphPos);
+  const headCell = paintedCell(head.paragraphPos);
+  await anchorCell.scrollIntoViewIfNeeded();
+  await headCell.scrollIntoViewIfNeeded();
+  const [from, to] = await Promise.all([anchorCell.boundingBox(), headCell.boundingBox()]);
+  if (!from || !to) throw new Error("table drag targets are not painted");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 4 });
+  await page.mouse.up();
+
+  // A missed drag must fail at the input boundary, before paste/delete can edit
+  // whichever caret the previous action happened to leave in each mode.
+  const selected = await page.evaluate(() => {
+    const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+      ?.state.selection;
+    if (!selection || !("$anchorCell" in selection) || !("$headCell" in selection)) return null;
+    const selectedAnchor = selection.$anchorCell;
+    const selectedHead = selection.$headCell;
+    if (
+      !selectedAnchor ||
+      typeof selectedAnchor !== "object" ||
+      !("pos" in selectedAnchor) ||
+      !selectedHead ||
+      typeof selectedHead !== "object" ||
+      !("pos" in selectedHead)
+    )
+      return null;
+    return { anchor: selectedAnchor.pos, head: selectedHead.pos };
+  });
+  expect(selected).toEqual({ anchor: anchor.pos, head: head.pos });
+  return true;
+};
+
 const selectTarget = async (page: Page, target: BrowserDragTarget) => {
+  if (target === "table") return selectTableTarget(page);
   const coords = await page.evaluate((wanted) => {
     const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
     if (!view) throw new Error("browser editor unavailable");
