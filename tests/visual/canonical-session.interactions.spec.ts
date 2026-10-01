@@ -2,7 +2,6 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
-import { toProseDoc } from "../../packages/core/src/prosemirror/conversion/toProseDoc";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 
@@ -23,7 +22,10 @@ const expectProjection = async (page: Page, expected: ExpectedProjection) => {
   expect(current?.text).toBe(expected.text);
   expect(current?.selection).toEqual(expected.selection);
   if (!current?.document) throw new Error("Canonical document unavailable.");
-  expect(current.projectionJSON).toEqual(toProseDoc(current.document).toJSON());
+  expect(current.projectionMatchesCanonical).toBe(true);
+  expect(current.projectionJSON).toEqual(current.canonicalProjectionJSON);
+  expect(current.provenance.valid).toBe(true);
+  expect(current.provenance.capturedParagraphCount).toBeGreaterThan(0);
   return { ...current, document: current.document };
 };
 
@@ -38,7 +40,12 @@ const select = async (page: Page, anchor: number, head = anchor) => {
 
 test("canonical input, history and saved document agree across both adapters", async ({ page }) => {
   test.setTimeout(60_000);
-  const source = await createDocx(createEmptyDocument({ initialText: "A😀B" }));
+  const sourceDocument = createEmptyDocument({ initialText: "A😀B" });
+  const paragraph = sourceDocument.package.document.content.at(0);
+  if (!paragraph || paragraph.type !== "paragraph")
+    throw new TypeError("Expected source paragraph.");
+  paragraph.formatting = { ...paragraph.formatting, keepNext: true, contextualSpacing: true };
+  const source = await createDocx(sourceDocument);
   let firstSaved: Awaited<ReturnType<typeof parseDocx>> | undefined;
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);

@@ -50,7 +50,6 @@
         :view="activeEditorView"
         :get-commands="getCommands"
         :state-tick="stateTick"
-        v-bind="canonicalHistoryProps"
         :zoom-percent="zoomPercent"
         :is-min-zoom="isMinZoom"
         :is-max-zoom="isMaxZoom"
@@ -1213,6 +1212,14 @@ const toolbarDynamicProps = computed(() => {
   if (styles !== undefined) {
     dynamic.documentStyles = styles;
   }
+  if (props.experimentalSession === "canonical") {
+    return {
+      ...dynamic,
+      ...activeHistoryAvailability.value,
+      onUndo: undoActiveStory,
+      onRedo: redoActiveStory,
+    };
+  }
   return dynamic;
 });
 
@@ -1799,16 +1806,6 @@ const activeHistoryAvailability = computed(() => {
   const paged = exposed.getEditorRef();
   return { canUndo: paged?.canUndo() ?? false, canRedo: paged?.canRedo() ?? false };
 });
-
-const canonicalHistoryProps = computed(() =>
-  props.experimentalSession === "canonical"
-    ? {
-        ...activeHistoryAvailability.value,
-        onUndo: undoActiveStory,
-        onRedo: redoActiveStory,
-      }
-    : {},
-);
 
 function undoActiveStory(): void {
   exposed.undo();

@@ -1,11 +1,6 @@
 import { test } from "@playwright/test";
 
-import { ensureLiveView, expect, openEditor, type AdapterFixture } from "../parity/parity-fixture";
-
-const VUE_ADAPTER = {
-  name: "vue",
-  baseUrl: "http://localhost:4201",
-} as const satisfies AdapterFixture;
+import { ensureLiveView, expect, openEditor, VUE_ADAPTER } from "../parity/parity-fixture";
 
 test("Vue applies and clears a watermark from the Insert menu", async ({ page }) => {
   await openEditor(page, VUE_ADAPTER);

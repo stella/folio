@@ -9,7 +9,7 @@
   },
   "react": {
     "types": 198533,
-    "instantiations": 366919
+    "instantiations": 391782
   },
   "agents": {
     "types": 131161,
@@ -28,15 +28,15 @@
     "instantiations": 920985
   },
   "nuxt": {
-    "types": 145543,
-    "instantiations": 174564
+    "types": 154210,
+    "instantiations": 192767
   },
   "playground": {
-    "types": 198525,
-    "instantiations": 280391
+    "types": 210586,
+    "instantiations": 295675
   },
   "playground-vue": {
-    "types": 216352,
+    "types": 233857,
     "instantiations": 910970
   },
   "parity": {

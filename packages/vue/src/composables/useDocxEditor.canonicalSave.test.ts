@@ -26,6 +26,7 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
   document.body.append(container, hidden, pages);
   const errors: Error[] = [];
   let hostChanges = 0;
+  let hostInputs = 0;
   const holder: { editor: ReturnType<typeof import("./useDocxEditor").useDocxEditor> | null } = {
     editor: null,
   };
@@ -42,12 +43,22 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
             document.package.document.content = [];
           },
         });
-        return () => h("div");
+        return () =>
+          h("div", {
+            onInput: () => {
+              hostInputs++;
+            },
+          });
       },
     }),
   );
   app.mount(container);
   try {
+    const rendered = container.firstElementChild ?? panic("Expected mounted Vue DOM");
+    expect(rendered.ownerDocument).toBe(document);
+    expect(rendered instanceof HTMLElement).toBe(true);
+    rendered.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    expect(hostInputs).toBe(1);
     const editor = holder.editor ?? panic("Expected mounted Vue editor");
     const bytes = await createDocx(createEmptyDocument({ initialText: "Start" }));
     await editor.loadBuffer(bytes);

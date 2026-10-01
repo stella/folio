@@ -14,11 +14,10 @@
         :document="documentBuffer ? null : currentDocument"
         :document-buffer="documentBuffer"
         author="Folio User"
-        v-bind="experimentalSessionProps"
+        v-bind="optionalEditorProps"
         :show-toolbar="true"
         :show-ruler="true"
         :show-margin-guides="showMarginGuides"
-        v-bind="marginGuideProps"
         :initial-zoom="1"
         :collaboration="collaboration"
         :on-copy="() => clipboardCallbackCounts.copy++"
@@ -71,12 +70,13 @@ const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const query = new URLSearchParams(window.location.search);
 const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
-const experimentalSessionProps =
-  experimentalSession === undefined ? {} : ({ experimentalSession } as const);
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
-const marginGuideProps = marginGuideColor === undefined ? {} : { marginGuideColor };
+const optionalEditorProps = {
+  ...(experimentalSession === undefined ? {} : ({ experimentalSession } as const)),
+  ...(marginGuideColor === undefined ? {} : { marginGuideColor }),
+};
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
 const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
 let collaborationWasSeeded = false;
