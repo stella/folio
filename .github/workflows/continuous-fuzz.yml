@@ -229,6 +229,7 @@ jobs:
     if: ${{ inputs.public_corpus_flows }}
     permissions:
       contents: read
+      issues: write
     uses: ./.github/workflows/nightly-public-corpus-flows.yml
 
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
