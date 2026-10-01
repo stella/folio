@@ -93,6 +93,7 @@ import {
 } from "./altChunk";
 import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
 import { getEntryUncompressedSize, unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
+import { detectRasterMimeType } from "./rasterMime";
 import { getAttribute, getChildElements, getLocalName, parseXmlDocument } from "./xmlParser";
 import {
   UNNUMBERED_PARAGRAPH_WARNING,
@@ -945,7 +946,7 @@ async function buildMediaMap(
   // Process each media file
   for (const [path, data] of raw.media.entries()) {
     const filename = path.split("/").pop() || path;
-    const mimeType = getMediaMimeType(path);
+    const mimeType = detectRasterMimeType(data) ?? getMediaMimeType(path);
     const isReferenced = referenced.has(path.toLowerCase());
 
     // TIFF: browsers don't render TIFF in <img>, so decode + re-encode as
