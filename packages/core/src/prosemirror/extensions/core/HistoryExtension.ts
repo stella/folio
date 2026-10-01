@@ -4,6 +4,7 @@
 
 import { closeHistory, history, isHistoryTransaction, undo, redo } from "prosemirror-history";
 import { Plugin } from "prosemirror-state";
+import type { Command } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import { createExtension } from "../create";
@@ -130,6 +131,16 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
   });
 };
 
+// An unavailable editor command must still consume its shortcut. Otherwise a
+// shifted redo chord can reach native DOM history, whose IME edits bypass the
+// editor's transaction and suggestion history.
+const consumeHistoryShortcut =
+  (command: Command): Command =>
+  (state, dispatch, view) => {
+    command(state, dispatch, view);
+    return true;
+  };
+
 const defaultHistoryOptions: HistoryOptions = {
   depth: 100,
   newGroupDelay: 500,
@@ -154,9 +165,9 @@ export const HistoryExtension = createExtension({
       },
       ...(options.shortcuts === "editor" && {
         keyboardShortcuts: {
-          "Mod-z": undo,
-          "Mod-y": redo,
-          "Mod-Shift-z": redo,
+          "Mod-z": consumeHistoryShortcut(undo),
+          "Mod-y": consumeHistoryShortcut(redo),
+          "Mod-Shift-z": consumeHistoryShortcut(redo),
         },
       }),
     };
