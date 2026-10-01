@@ -39,7 +39,7 @@ import {
 import { rebaseParagraphRuns } from "../rebaseParagraphRunFormatting";
 import { paragraphRunStyleContext } from "../runStyleFormatting";
 import { getDocumentNumbering } from "./documentNumbering";
-import { getDocumentStyleResolver } from "./documentStyles";
+import { documentStylesKey, getDocumentStyleResolver } from "./documentStyles";
 import { cellPasteRange, pasteTableCells } from "../tableCellPaste";
 import { mintRevisionId, seedRevisionIdsFromDoc } from "./revisionIds";
 
@@ -902,16 +902,46 @@ export function suggestRangeDeletion(
  * prior author's revision must not be silently overwritten.
  */
 export function handleSuggestionEnter(view: EditorView, pluginState: SuggestionModeState): boolean {
-  const { $from } = view.state.selection;
-  if ($from.parent.type.name !== "paragraph") {
+  const state = view.state;
+  if (state.selection.$from.parent.type.name !== "paragraph") {
     return false;
   }
+  const replacement = { tr: null as Transaction | null };
+  let splitState = state;
+  if (state.selection instanceof TextSelection && !state.selection.empty) {
+    // Enter replaces selected text, but rejecting must retain it. Prepare the
+    // deletion without dispatching so replacement and split form one undo event.
+    const deleted = handleSuggestionDelete(
+      state,
+      (tr) => {
+        replacement.tr = tr;
+        // The split reads only the style resolver from plugin state. Preserve
+        // its explicit key while omitting transaction hooks from the preview.
+        const styles = documentStylesKey.get(state);
+        const preview = state.reconfigure({
+          plugins: styles
+            ? [
+                new Plugin({
+                  ...styles.spec,
+                  appendTransaction: undefined,
+                  filterTransaction: undefined,
+                }),
+              ]
+            : [],
+        });
+        splitState = preview.apply(tr);
+      },
+      "forward",
+    );
+    if (!deleted) return false;
+  }
+  const { $from } = splitState.selection;
   const sourcePos = $from.before();
   const sourceAttrs = $from.parent.attrs;
 
   const captured = { tr: null as Transaction | null };
   const ok = splitBlockClearBorders(
-    view.state,
+    splitState,
     (tr: Transaction) => {
       captured.tr = tr;
     },
@@ -920,7 +950,13 @@ export function handleSuggestionEnter(view: EditorView, pluginState: SuggestionM
   if (!ok || !captured.tr) {
     return false;
   }
-  const tr = captured.tr;
+  const tr = replacement.tr ?? captured.tr;
+  if (replacement.tr) {
+    for (const step of captured.tr.steps) tr.step(step);
+    tr.setSelection(captured.tr.selection.getBookmark().resolve(tr.doc));
+    tr.setStoredMarks(captured.tr.storedMarks);
+  }
+  tr.setMeta(SUGGESTION_META, true);
   if (sourceAttrs["pPrMark"] == null) {
     const sourceParagraph = tr.doc.nodeAt(sourcePos);
     if (sourceParagraph?.type.name === "paragraph") {
