@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 
 import { SUGGESTION_INPUT_KINDS } from "../../packages/core/src/__tests__/suggestionInputKinds";
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
@@ -396,6 +397,8 @@ const runMode = async (
   const live = await liveBlocks(page);
   const painted = await page.locator(".layout-page-content").allTextContents();
   const buffer = await save(page);
+  const validity = await validateDocxPackage(buffer);
+  expect(validity.valid, validity.valid ? "" : validity.error).toBe(true);
   const reopened = await FolioDocxReviewer.fromBuffer(buffer);
   expect(projectLive(project(reopened))).toEqual(live);
   await page.evaluate(
