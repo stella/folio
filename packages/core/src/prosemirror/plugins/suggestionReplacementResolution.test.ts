@@ -222,3 +222,55 @@ test.each(["del", "ins", "moveFrom", "moveTo"])(
     expect(restored?.node.attrs["pPrMark"]).toEqual(pPrMark);
   },
 );
+
+// The physical caret can sit anywhere in struck text at the visible start.
+// Exercise both deleted and live suffixes, including the final-paragraph guard.
+test.each(["followed", "final"])(
+  "table paste projects every caret in a deleted prefix of a %s paragraph",
+  (placement) => {
+    const baseline = schema.node("doc", null, [
+      paragraph("Intro"),
+      ...(placement === "followed" ? [paragraph("Tail")] : []),
+    ]);
+    const table = schema.node("table", null, [
+      schema.node("tableRow", null, [schema.node("tableCell", null, [paragraph("Pasted")])]),
+    ]);
+    for (let count = 1; count <= 5; count++) {
+      for (let caret = 2; caret <= count + 1; caret++) {
+        const views = [false, true].map(
+          (active) =>
+            new HeadlessEditorView(
+              EditorState.create({
+                doc: baseline,
+                plugins: [createSuggestionModePlugin(active, "Reviewer")],
+              }),
+            ),
+        );
+        for (const view of views) {
+          for (let index = 0; index < count; index++) view.pressKey("Delete");
+          if (suggestionModeKey.getState(view.state)?.active) {
+            view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, caret)));
+          }
+          view.paste(new Slice(Fragment.from(table), 0, 0));
+        }
+        const edited = views.at(0) ?? panic("Missing edited state");
+        const suggested = views.at(1) ?? panic("Missing suggested state");
+        let accepted = suggested.state;
+        acceptAllChanges()(accepted, (tr) => {
+          accepted = accepted.apply(tr);
+        });
+        // A container must retain its final paragraph even when it is empty.
+        const expected =
+          placement === "final" && count === 5
+            ? schema.node("doc", null, [table, schema.node("paragraph")])
+            : edited.state.doc;
+        expect(accepted.doc.toJSON()).toEqual(expected.toJSON());
+        let rejected = suggested.state;
+        rejectAllChanges()(rejected, (tr) => {
+          rejected = rejected.apply(tr);
+        });
+        expect(rejected.doc.toJSON()).toEqual(baseline.toJSON());
+      }
+    }
+  },
+);

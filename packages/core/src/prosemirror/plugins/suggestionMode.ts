@@ -420,6 +420,11 @@ export function handleSuggestionPaste(
     if (!closedTable || $from.parent.type.name !== "paragraph" || !deletedPrefix) {
       return false;
     }
+    const suffix = $from.parent.content.cut($from.parentOffset);
+    let deletedSuffix = true;
+    suffix.forEach((node) => {
+      if (!node.marks.some((mark) => mark.type === deletionType)) deletedSuffix = false;
+    });
     // The caret is at the visible start of this paragraph. Fit the table
     // before it, as direct paste does after deleting the prefix; fitting at
     // the physical caret instead splits off a paragraph of only struck runs.
@@ -431,7 +436,7 @@ export function handleSuggestionPaste(
     enclosePastedRunRevisions({ tr, from: at, to: end, revision });
     markRangeAsInserted(tr, tr.doc, at, end, insertionType, deletionType, revision);
     if (
-      $from.parentOffset === $from.parent.content.size &&
+      deletedSuffix &&
       $from.parent.attrs["pPrMark"] == null &&
       !paragraphEndsItsContainer($from.doc.resolve($from.before()), "paragraph")
     ) {
