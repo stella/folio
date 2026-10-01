@@ -5964,6 +5964,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           documentIdentity={documentIdentity}
           {...(experimentalSession === undefined ? {} : { experimentalSession })}
           onSessionRefusal={handleSessionRefusal}
+          {...(suggestionAuthor !== undefined ? { suggestionAuthor } : {})}
           suggestionModeActive={suggestionModeActive}
           widthPx={contentWidth}
           precomputedInitialState={validPrecomputedInitialState}

@@ -43,7 +43,7 @@
  * operation retired.
  */
 
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
 import {
   type Document,
@@ -58,6 +58,8 @@ import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
   endsItsContainer,
+  blockListAt,
+  captureSectionView,
   type ParagraphLocation,
   replaceParagraphs,
   sameBlockList,
@@ -101,6 +103,7 @@ import {
 } from "./inline";
 import {
   childNodes,
+  leafSpans,
   defaultInsertionGap,
   type Gap,
   type InlineNode,
@@ -123,6 +126,7 @@ import { applyTableOp } from "./tables";
 import { stampedTableRowRevisionIds } from "./tableTracking";
 import {
   namesMarkFormatting,
+  isRemovedRevisionNode,
   paragraphPropertiesOf,
   paragraphPropertyChange,
   reviewFieldsOf,
@@ -138,6 +142,8 @@ import {
 } from "./review";
 import {
   DOCUMENT_OP_TYPES,
+  SECTION_BOUNDARY_POLICIES,
+  PROPERTY_REVIEW_POLICIES,
   type DeleteRangeOp,
   type DocumentOp,
   type InsertContentOp,
@@ -491,6 +497,9 @@ const commit = (options: Commit): Result<Committed, DocumentOpRefusal> => {
       at,
       count: before.length,
       replacement: paragraphs.value,
+      ...("sectionView" in options.op && options.op.sectionView !== undefined
+        ? { restoreSections: options.op.sectionView.restore }
+        : {}),
     }),
     paragraphs: paragraphs.value,
     touched: touchedBetween(before, paragraphs.value),
@@ -1143,8 +1152,14 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
   if (revision !== undefined) {
     const next = withParagraphFormatting(paragraph, formatting);
     // A paragraph already carrying a property change keeps it, and the formatting it started from.
-    if ((paragraph.propertyChanges?.length ?? 0) === 0) {
-      next.propertyChanges = [paragraphPropertyChange(stampInfo(revision), paragraph.formatting)];
+    if (
+      (paragraph.propertyChanges?.length ?? 0) === 0 ||
+      op.propertyReview === PROPERTY_REVIEW_POLICIES.APPEND
+    ) {
+      next.propertyChanges = [
+        ...(paragraph.propertyChanges ?? []),
+        paragraphPropertyChange(stampInfo(revision), paragraph.formatting),
+      ];
     }
     return editOne(
       {
@@ -1348,6 +1363,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   if (op.firstMark !== undefined) {
     first.pPrMark = op.firstMark;
   }
+  if (op.firstSectionProperties !== undefined) first.sectionProperties = op.firstSectionProperties;
   if (op.revision !== undefined) {
     const madeHalf = newHalf === SPLIT_HALVES.FIRST ? first : second;
     const tracked = trackSplit({
@@ -1390,6 +1406,9 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
         survivor: newHalf === SPLIT_HALVES.FIRST ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST,
         expectedRetired: splitFieldsOf(madePlaced),
         expectedSurvivor: reviewFieldsOf(kept),
+        ...(first.sectionProperties === undefined
+          ? {}
+          : { sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE }),
       },
       ...reviewSetting(
         op.at.story,
@@ -1438,13 +1457,32 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   }
   const first: Paragraph = { ...leading, pPrMark: { kind: "del", info: stampInfo(stamp) } };
   let second = trailing;
-  const formatting = joinedFormatting(leading, trailing);
+  const list = blockListAt(storyBody(document, op.story).content, at.list);
+  let visible = false;
+  for (let index = at.index; index >= 0; index -= 1) {
+    const paragraph = list.at(index);
+    if (paragraph?.type !== "paragraph") break;
+    visible ||= leafSpans(paragraph.content).some(
+      (span) =>
+        span.after.offset > span.before.offset && !span.ancestors.some(isRemovedRevisionNode),
+    );
+    const preceding = list.at(index - 1);
+    if (
+      preceding?.type !== "paragraph" ||
+      (preceding.pPrMark?.kind !== "del" && preceding.pPrMark?.kind !== "moveFrom")
+    )
+      break;
+  }
+  const formatting = visible
+    ? withMarkFormatting(paragraphPropertiesOf(leading.formatting), trailing.formatting)
+    : trailing.formatting;
   if (!sameParagraphProperties(formatting, trailing.formatting)) {
     second = withParagraphFormatting(trailing, formatting);
-    // A paragraph already carrying a property change keeps it, and the formatting it started from.
-    if ((trailing.propertyChanges?.length ?? 0) === 0) {
-      second.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), trailing.formatting)];
-    }
+    // Each join is independently rejectable, including over an existing property review.
+    second.propertyChanges = [
+      ...(trailing.propertyChanges ?? []),
+      paragraphPropertyChange(stampInfo(stamp), trailing.formatting),
+    ];
   }
   const committed = commit({
     document,
@@ -1492,7 +1530,10 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   }
   const leading = first.value.paragraph;
   const trailing = next.value.paragraph;
-  if (leading.sectionProperties !== undefined) {
+  if (
+    leading.sectionProperties !== undefined &&
+    op.sectionBoundary !== SECTION_BOUNDARY_POLICIES.REMOVE
+  ) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
@@ -1591,6 +1632,8 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   if (leading.pPrMark !== undefined) {
     split.firstMark = leading.pPrMark;
   }
+  if (leading.sectionProperties !== undefined)
+    split.firstSectionProperties = leading.sectionProperties;
   if (namesIds(merged.value.retired)) {
     split.newIds = merged.value.retired;
   }
@@ -1714,7 +1757,10 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       "A paragraph the replacement adds or removes has no usable id.",
     );
   }
-  if (!sameSectionBreaks(before, op.blocks)) {
+  if (
+    op.sectionBoundaries !== SECTION_BOUNDARY_POLICIES.REPLACE &&
+    !sameSectionBreaks(before, op.blocks)
+  ) {
     return refuse(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
@@ -1751,6 +1797,7 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
       at: start,
       count: before.length,
       replacement: op.blocks,
+      ...(op.sectionView === undefined ? {} : { restoreSections: op.sectionView.restore }),
     }),
     inverse: [
       {
@@ -1758,6 +1805,9 @@ const replaceBlocks = (document: Document, op: ReplaceBlocksOp): Applied => {
         story: op.story,
         expected: op.blocks,
         blocks: before,
+        ...(op.sectionBoundaries === SECTION_BOUNDARY_POLICIES.REPLACE
+          ? { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }
+          : {}),
       },
     ],
     touched: touchedBetween(before, op.blocks),
@@ -1998,6 +2048,16 @@ export const applyDocumentOp = (
   if (valid.isErr()) {
     return Result.err(refusal(op, valid.error.reason, valid.error.message));
   }
+  if ("sectionView" in op && op.sectionView !== undefined) {
+    const sections = document.package.document.sections;
+    if (
+      sections === undefined ||
+      !structurallyEqual(captureSectionView(sections), op.sectionView.expected)
+    )
+      return Result.err(
+        refusal(op, DOCUMENT_OP_REFUSAL_REASONS.STALE, "The derived section metadata changed."),
+      );
+  }
   const stamp = stampOf(op);
   const badStamp = stamp === undefined ? undefined : stampRefusal(document, op, stamp);
   if (badStamp !== undefined) {
@@ -2007,10 +2067,37 @@ export const applyDocumentOp = (
   if (applied.isErr()) {
     return Result.err(applied.error);
   }
-  meetsContract(applied.value.document);
+  const edit = applied.value;
+  const beforeSections = document.package.document.sections;
+  const afterSections = edit.document.package.document.sections;
+  const structural =
+    op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ||
+    op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ||
+    op.type === DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
+  if (structural && beforeSections !== undefined && afterSections !== undefined) {
+    const restore = captureSectionView(beforeSections);
+    const expected = captureSectionView(afterSections);
+    if (!structurallyEqual(restore, expected)) {
+      const first = edit.inverse.at(0);
+      if (first === undefined) panic("A section edit produced no inverse.");
+      switch (first.type) {
+        case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+        case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+        case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
+          edit.inverse = [
+            { ...first, sectionView: { expected, restore } },
+            ...edit.inverse.slice(1),
+          ];
+          break;
+        default:
+          panic("A section edit produced a non-structural inverse.");
+      }
+    }
+  }
+  meetsContract(edit.document);
   return Result.ok({
-    ...applied.value,
-    revisions: stamp === undefined ? [] : recordedRevisions(document, applied.value, stamp),
+    ...edit,
+    revisions: stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
   });
 };
 

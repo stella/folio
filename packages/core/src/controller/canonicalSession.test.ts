@@ -3,7 +3,14 @@ import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 
 import { schema } from "../prosemirror/schema";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { normalizeForOps, DOCUMENT_OP_TYPES, OP_STORIES } from "@stll/docx-core/ops";
+import {
+  normalizeForOps,
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  paragraphVisibleText,
+  editorParagraphGroups,
+  physicalOffsetAtVisibleOffset,
+} from "@stll/docx-core/ops";
 import * as documentOps from "@stll/docx-core/ops";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { panic } from "better-result";
@@ -424,7 +431,6 @@ describe("canonical session", () => {
     const projection = session.projection;
     const attempts = [
       { from: 4, to: 4, text: "X" }, // Inside the emoji's UTF-16 pair.
-      { from: 2, to: 9, text: "X" }, // Cross-paragraph selection.
       { from: 2, to: 3, text: "\n" },
       { from: 2, to: 3, text: "\ud800" },
       { from: 2, to: 3, text: "\u0000" },
@@ -581,4 +587,186 @@ describe("canonical session", () => {
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 7)));
     expect(deletionRange(state, "forward").isErr()).toBe(true);
   });
+});
+
+describe("canonical tracked input", () => {
+  test("generated replacements lower tracked batches and resolution shares exact inverse history", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.array(
+          fc.record({
+            index: fc.nat(50),
+            count: fc.nat(4),
+            text: fc.constantFrom("", "x", "😀", "é"),
+          }),
+          { minLength: 8, maxLength: 18 },
+        ),
+        async (trace) => {
+          const direct = createCanonicalSession(seed("A😀B")).unwrap();
+          const tracked = createCanonicalSession(seed("A😀B")).unwrap();
+          tracked.setMode({ type: "suggesting", author: "Author" });
+          let directState = stateFor(direct);
+          let trackedState = stateFor(tracked);
+          const snapshots = [tracked.document];
+          for (const input of trace) {
+            const paragraph = tracked.document.package.document.content.at(0);
+            if (paragraph?.type !== "paragraph") panic("Trace lost its paragraph");
+            const gaps = [0];
+            let offset = 0;
+            for (const character of paragraphVisibleText(paragraph)) {
+              offset += character.length;
+              gaps.push(offset);
+            }
+            const startIndex = input.index % gaps.length;
+            const from = gaps.at(startIndex) ?? panic("Trace lost its gap");
+            const to =
+              gaps.at(Math.min(startIndex + input.count, gaps.length - 1)) ??
+              panic("Trace lost its endpoint");
+            if (from === to && input.text === "") continue;
+            directState = accept(
+              directState,
+              direct
+                .prepareReplace(directState, { from: from + 1, to: to + 1, text: input.text })
+                .unwrap(),
+            );
+            trackedState = accept(
+              trackedState,
+              tracked
+                .prepareReplace(trackedState, {
+                  from: physicalOffsetAtVisibleOffset(paragraph, from) + 1,
+                  to: physicalOffsetAtVisibleOffset(paragraph, to) + 1,
+                  text: input.text,
+                })
+                .unwrap(),
+            );
+            expect(trackedState.doc.eq(toProseDoc(tracked.document))).toBe(true);
+            snapshots.push(tracked.document);
+          }
+          const suggested = tracked.document;
+          const revisions = new Set<number>();
+          const scan = (value: unknown): void => {
+            if (Array.isArray(value)) {
+              for (const item of value) scan(item);
+              return;
+            }
+            if (typeof value !== "object" || value === null) return;
+            if (
+              "info" in value &&
+              typeof value.info === "object" &&
+              value.info !== null &&
+              "id" in value.info &&
+              typeof value.info.id === "number"
+            )
+              revisions.add(value.info.id);
+            for (const child of Object.values(value)) scan(child);
+          };
+          scan(suggested.package.document.content);
+          for (const resolution of ["accept", "reject"] as const) {
+            const resolved = createCanonicalSession(suggested).unwrap();
+            let state = stateFor(resolved);
+            state = accept(
+              state,
+              resolved.prepareResolve(state, { revisionIds: [...revisions], resolution }).unwrap(),
+            );
+            const expected = resolution === "accept" ? direct.document : snapshots.at(0);
+            expect(resolved.document.package.document.content).toEqual(
+              expected?.package.document.content,
+            );
+            state = accept(state, resolved.prepareUndo(state).unwrap());
+            expect(resolved.document).toEqual(suggested);
+            state = accept(state, resolved.prepareRedo(state).unwrap());
+            expect(state.doc.eq(resolved.projection.doc)).toBe(true);
+          }
+          for (let index = snapshots.length - 2; index >= 0; index -= 1) {
+            trackedState = accept(trackedState, tracked.prepareUndo(trackedState).unwrap());
+            expect(tracked.document).toEqual(snapshots.at(index));
+          }
+          for (let index = 1; index < snapshots.length; index += 1) {
+            trackedState = accept(trackedState, tracked.prepareRedo(trackedState).unwrap());
+            expect(tracked.document).toEqual(snapshots.at(index));
+          }
+        },
+      ),
+      { numRuns: 30 },
+    );
+  });
+
+  test("deleted text is skipped by subsequent character input and structural batches undo exactly", () => {
+    const session = createCanonicalSession(seed("abcd")).unwrap();
+    session.setMode({ type: "suggesting", author: "Author" });
+    let state = stateFor(session);
+    const baseline = session.document;
+    state = accept(state, session.prepareReplace(state, { from: 2, to: 3, text: "" }).unwrap());
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+    const next = deletionRange(state, "forward").unwrap();
+    expect(next).toEqual({ from: 2, to: 4 });
+    state = accept(state, session.prepareReplace(state, { ...next, text: "" }).unwrap());
+    const beforeSplit = session.document;
+    state = accept(state, session.prepareSplit(state).unwrap());
+    const split = session.document;
+    state = accept(state, session.prepareJoin(state, "backward").unwrap());
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(split);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(beforeSplit);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(baseline);
+  });
+
+  test.each(["backward", "forward"] as const)(
+    "a tracked join followed by %s deletion consumes the visible character across the removed mark",
+    (direction) => {
+      const document = seed("ab");
+      const second = document.package.document.content.at(1);
+      if (second?.type !== "paragraph") panic("The join fixture lost its second paragraph.");
+      second.content = [{ type: "run", content: [{ type: "text", text: "cd" }] }];
+      const session = createCanonicalSession(document).unwrap();
+      const baseline = session.document;
+      session.setMode({ type: "suggesting", author: "Author" });
+      let state = stateFor(session);
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 5)));
+      state = accept(state, session.prepareJoin(state, "backward").unwrap());
+      const joined = session.document;
+      const caret = direction === "backward" ? 5 : 3;
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, caret)));
+      const range = deletionRange(state, direction).unwrap();
+      expect(range).toEqual(direction === "backward" ? { from: 2, to: 5 } : { from: 3, to: 6 });
+      state = accept(state, session.prepareReplace(state, { ...range, text: "" }).unwrap());
+      expect(
+        editorParagraphGroups(session.document, OP_STORIES.MAIN).map(({ text }) => text),
+      ).toEqual([direction === "backward" ? "acd" : "abd"]);
+      const suggested = session.document;
+      const revisionIds = suggested.package.document.content.flatMap((block) => {
+        if (block.type !== "paragraph") return [];
+        return [
+          ...(block.pPrMark === undefined ? [] : [block.pPrMark.info.id]),
+          ...block.content.flatMap((item) => (item.type === "deletion" ? [item.info.id] : [])),
+        ];
+      });
+      for (const resolution of ["accept", "reject"] as const) {
+        const resolved = createCanonicalSession(suggested).unwrap();
+        let resolvedState = stateFor(resolved);
+        resolvedState = accept(
+          resolvedState,
+          resolved.prepareResolve(resolvedState, { revisionIds, resolution }).unwrap(),
+        );
+        if (resolution === "accept") {
+          expect(
+            editorParagraphGroups(resolved.document, OP_STORIES.MAIN).map(({ text }) => text),
+          ).toEqual([direction === "backward" ? "acd" : "abd"]);
+        } else {
+          expect(resolved.document.package.document.content).toEqual(
+            baseline.package.document.content,
+          );
+        }
+        resolvedState = accept(resolvedState, resolved.prepareUndo(resolvedState).unwrap());
+        expect(resolved.document).toEqual(suggested);
+      }
+      state = accept(state, session.prepareUndo(state).unwrap());
+      expect(session.document).toEqual(joined);
+      state = accept(state, session.prepareUndo(state).unwrap());
+      expect(session.document).toEqual(baseline);
+    },
+  );
 });

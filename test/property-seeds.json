@@ -477,5 +477,12 @@
       "note": "Style numbering provenance across tracked paragraph and list changes, resolution, and save/reopen.",
       "date": "2026-09-30"
     }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
+    {
+      "seed": 1364722648,
+      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists",
+      "date": "2026-10-01"
+    }
   ]
 }

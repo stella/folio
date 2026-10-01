@@ -16,6 +16,7 @@ import type { EditorView } from "prosemirror-view";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
+import type { CanonicalSessionMode } from "./canonicalSession";
 
 export type HiddenEditorApi = {
   /** Request the off-screen EditorView (idempotent; creates it when possible). */
@@ -30,6 +31,13 @@ export type HiddenEditorApi = {
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
   getCanonicalDocument: () => Document | null;
+  /** Set the explicit mode for an active canonical session. */
+  setCanonicalMode: (mode: CanonicalSessionMode) => boolean;
+  /** Resolve canonical revisions as one batch and journal its exact inverse. */
+  resolveCanonicalRevisions: (
+    revisionIds: readonly number[],
+    resolution: "accept" | "reject",
+  ) => boolean;
   /** Focus the hidden editor */
   focus: () => void;
   /** Blur the hidden editor */
@@ -62,6 +70,8 @@ export type HiddenEditorApiDeps = {
   getView: () => EditorView | null;
   getDocumentContext: () => Document | null;
   getCanonicalDocument?: () => Document | null;
+  setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
+  resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
   getCanonicalHistory?: () => Pick<HiddenEditorApi, "undo" | "redo" | "canUndo" | "canRedo"> | null;
   isDestroying: () => boolean;
   ensureView: () => void;
@@ -114,6 +124,11 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
     getState: () => deps.getView()?.state ?? null,
 
     getView: () => deps.getView() ?? null,
+
+    setCanonicalMode: (mode) => !deps.isDestroying() && (deps.setCanonicalMode?.(mode) ?? false),
+
+    resolveCanonicalRevisions: (revisionIds, resolution) =>
+      !deps.isDestroying() && (deps.resolveCanonicalRevisions?.(revisionIds, resolution) ?? false),
 
     getCanonicalDocument: () => {
       const canonical = deps.getCanonicalDocument?.();

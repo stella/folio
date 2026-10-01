@@ -85,6 +85,16 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
       canRedo: editor?.canRedo() ?? false,
     };
   },
+  setMode: (mode: "editing" | "suggesting") =>
+    getRef()
+      ?.getEditor()
+      ?.setCanonicalMode(
+        mode === "suggesting"
+          ? { type: "suggesting", author: "Canonical test author" }
+          : { type: "editing" },
+      ) ?? false,
+  resolveRevisions: (revisionIds: readonly number[], resolution: "accept" | "reject") =>
+    getRef()?.getEditor()?.resolveCanonicalRevisions(revisionIds, resolution) ?? false,
   select: (from: number, to = from) => {
     const editor = getRef()?.getEditor();
     if (!editor?.getView()) return false;

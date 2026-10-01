@@ -39,6 +39,7 @@ import {
   type HiddenProseMirrorCollaboration,
   type HiddenProseMirrorRemoteSelection,
 } from "@stll/folio-core/controller/hiddenEditorManager";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { Document, Theme, StyleDefinitions } from "@stll/folio-core/types/document";
@@ -64,6 +65,7 @@ export type HiddenProseMirrorProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   suggestionModeActive?: boolean;
+  suggestionAuthor?: string;
   onSessionRefusal?: (reason: string) => void;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
@@ -121,6 +123,8 @@ export type HiddenProseMirrorRef = {
   /** Get the current Document from PM state */
   getDocument: () => Document | null;
   getCanonicalDocument: () => Document | null;
+  setCanonicalMode: HiddenEditorApi["setCanonicalMode"];
+  resolveCanonicalRevisions: HiddenEditorApi["resolveCanonicalRevisions"];
   /** Focus the hidden editor */
   focus: () => void;
   /** Blur the hidden editor */
@@ -201,6 +205,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       documentIdentity,
       experimentalSession,
       suggestionModeActive = false,
+      suggestionAuthor = "User",
       onSessionRefusal,
       styles,
       theme: _theme,
@@ -235,6 +240,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     const readOnlyRef = useRef(readOnly);
     const experimentalSessionRef = useRef(experimentalSession);
     const suggestionModeActiveRef = useRef(suggestionModeActive);
+    const suggestionAuthorRef = useRef(suggestionAuthor);
     const onSessionRefusalRef = useRef(onSessionRefusal);
     const documentRef = useRef(document);
     const documentIdentityRef = useRef(documentIdentity);
@@ -262,6 +268,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     readOnlyRef.current = readOnly;
     experimentalSessionRef.current = experimentalSession;
     suggestionModeActiveRef.current = suggestionModeActive;
+    suggestionAuthorRef.current = suggestionAuthor;
     onSessionRefusalRef.current = onSessionRefusal;
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
@@ -303,6 +310,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         getReadOnly: () => readOnlyRef.current,
         getExperimentalSession: () => experimentalSessionRef.current,
         getEditingMode: () => (suggestionModeActiveRef.current ? "suggesting" : "editing"),
+        getSuggestionAuthor: () => suggestionAuthorRef.current,
         onSessionRefusal: (reason) => onSessionRefusalRef.current?.(reason),
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,

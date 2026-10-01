@@ -888,6 +888,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getReadOnly: () => toValue(readOnly),
     getExperimentalSession: () => toValue(experimentalSession),
     getEditingMode: () => toValue(editorMode) ?? "editing",
+    getSuggestionAuthor: () => toValue(author) ?? "User",
     onSessionRefusal: (message) => {
       parseError.value = message;
       onError?.(new CanonicalSessionRefusalError({ message }));

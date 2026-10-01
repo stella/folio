@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 4: text, formatting and review edits on
+ * Document operations, schema version 5: text, formatting and review edits on
  * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -30,15 +30,32 @@ import type {
   ParagraphFormatting,
   ParagraphMarkChange,
   ParagraphPropertyChange,
+  SectionProperties,
   TextFormatting,
   TableRow,
   Table,
   BlockContent,
+  HeaderFooter,
+  HeaderFooterType,
 } from "../model/document";
+
+/** JSON-safe section metadata; content is derived from the body's canonical blocks. */
+export type SectionViewEntry = {
+  properties: SectionProperties;
+  headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+  footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+};
+
+type SectionViewChange = {
+  expected: readonly SectionViewEntry[];
+  restore: readonly SectionViewEntry[];
+};
 
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 5 adds explicit section-boundary removal/restoration and separately rejectable
+ * paragraph-property reviews over an existing revision.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
  * whole-table operations with their exact structural inverse, terminal insertion,
  * and cell-ending paragraph marks on tracked row operations.
@@ -48,7 +65,7 @@ import type {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 4;
+export const DOCUMENT_OP_SCHEMA_VERSION = 5;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
@@ -165,7 +182,14 @@ export type SplitParagraphFields = Omit<
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
 
-/** The operation kinds of schema version 4. */
+/** Explicit structural and review policies for editor intent compilation. */
+export const SECTION_BOUNDARY_POLICIES = Object.freeze({
+  REMOVE: "remove",
+  REPLACE: "replace",
+} as const);
+export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
+
+/** The operation kinds of schema version 5. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
@@ -346,6 +370,8 @@ export type SetParagraphPropsOp = {
   whenEmpty?: EmptyPropertySet;
   expected?: ParagraphPropsPatch;
   revision?: RevisionStamp;
+  /** A new action over an existing review records the current properties separately. */
+  propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 /**
@@ -401,6 +427,9 @@ export type SplitBlockOp = {
   newHalf?: SplitHalf;
   newParagraph?: SplitParagraphFields;
   firstMark?: ParagraphMarkChange;
+  /** Exact inverse restoration of a removed section boundary on the first half. */
+  firstSectionProperties?: SectionProperties;
+  sectionView?: SectionViewChange;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };
@@ -437,6 +466,9 @@ export type JoinBlocksOp = {
   survivor?: SplitHalf;
   expectedRetired?: SplitParagraphFields;
   expectedSurvivor?: ParagraphReviewFields;
+  /** Explicitly remove the first paragraph's section boundary with its mark. */
+  sectionBoundary?: typeof SECTION_BOUNDARY_POLICIES.REMOVE;
+  sectionView?: SectionViewChange;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };
@@ -499,6 +531,9 @@ export type ReplaceBlocksOp = {
   story: OpStory;
   expected: readonly Paragraph[];
   blocks: readonly Paragraph[];
+  /** Exact structural replacement may intentionally change section boundaries. */
+  sectionBoundaries?: typeof SECTION_BOUNDARY_POLICIES.REPLACE;
+  sectionView?: SectionViewChange;
 };
 
 /**
@@ -671,7 +706,7 @@ export type SetContainerBlocksOp = {
   blocks: readonly BlockContent[];
 };
 
-/** A schema-version-4 document operation. */
+/** A schema-version-5 document operation. */
 export type DocumentOp =
   | DeleteBlocksOp
   | InsertTableOp

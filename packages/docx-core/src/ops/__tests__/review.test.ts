@@ -633,20 +633,15 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK);
   });
 
-  test("joining at a section break is refused", () => {
+  test("resolving a deleted section break removes its section and undo restores it", () => {
     const ends = paragraph("00000001", [run("a")], {
       sectionProperties: { pageWidth: 12240 },
       pPrMark: { kind: "del", info: { id: 1, author: "Other" } },
     });
     const document = documentOf(ends, paragraph("00000002", [run("b")]));
-    expect(
-      refusalOf(document, {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds: [1],
-        decision: REVISION_DECISIONS.ACCEPT,
-      }),
-    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    const accepted = resolved(document, [1], REVISION_DECISIONS.ACCEPT);
+    expect(blocks(accepted).length).toBe(1);
+    expect(blocks(accepted).at(0)?.sectionProperties).toBeUndefined();
     // Rejecting keeps the break, which needs no section operation.
     expect(blocks(resolved(document, [1], REVISION_DECISIONS.REJECT))).toEqual([
       paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 12240 } }),
@@ -1065,5 +1060,42 @@ describe("an empty content control is content: resolution never merges it away",
         }
       });
     }
+  });
+});
+
+describe("section-aware tracked editor joins", () => {
+  test("explicit section removal is tracked until resolution and every inverse preserves both sections", () => {
+    const document = documentOf(
+      paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 10000 } }),
+      paragraph("00000002", [run("b")], { sectionProperties: { pageWidth: 12000 } }),
+      paragraph("00000003", [run("c")]),
+    );
+    const content = document.package.document.content;
+    document.package.document.finalSectionProperties = { pageWidth: 14000 };
+    document.package.document.sections = [
+      { properties: { pageWidth: 10000 }, content: content.slice(0, 1), headers: new Map() },
+      { properties: { pageWidth: 12000 }, content: content.slice(1, 2), footers: new Map() },
+      { properties: { pageWidth: 14000 }, content: content.slice(2) },
+    ] satisfies Section[];
+    const join = {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionBoundary: "remove",
+    } as const satisfies DocumentOp;
+    const direct = applied(document, join);
+    const tracked = applied(document, {
+      ...join,
+      revision: stamp(1),
+      newIds: { revision: [2, 3] },
+    });
+    expect(blocks(tracked.document).at(0)?.sectionProperties).toEqual({ pageWidth: 10000 });
+    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT))).toEqual(
+      blocks(direct.document),
+    );
+    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.REJECT))).toEqual(
+      blocks(document),
+    );
   });
 });

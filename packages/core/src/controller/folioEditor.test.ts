@@ -70,6 +70,8 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
       return sentinelDocument;
     },
     getCanonicalDocument: () => null,
+    setCanonicalMode: () => false,
+    resolveCanonicalRevisions: () => false,
     focus: record("focus"),
     blur: record("blur"),
     isFocused: () => {

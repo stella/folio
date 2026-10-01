@@ -39,6 +39,7 @@ import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
 import {
   DOCUMENT_OP_TYPES,
+  SECTION_BOUNDARY_POLICIES,
   type DocumentOp,
   type OpStory,
   type ParagraphReviewFields,
@@ -464,15 +465,6 @@ const joinOps = (
     );
   }
   const { paragraph } = location;
-  if (paragraph.sectionProperties !== undefined) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `The mark of ${paraId} ends a section: joining it is a section operation.`,
-      ),
-    );
-  }
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
@@ -516,6 +508,9 @@ const joinOps = (
         story,
         expected: [paragraph, next],
         blocks: [survivor],
+        ...(paragraph.sectionProperties === undefined
+          ? {}
+          : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
       },
     ]);
   }
