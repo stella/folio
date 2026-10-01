@@ -100,6 +100,8 @@ const LEDGER = new Map<Relation, Tally>(
 );
 
 const tally = (relation: Relation): Tally => LEDGER.get(relation) as Tally;
+/** Snapshot before a probe so earlier flows cannot satisfy its execution assertion. */
+export const relationCheckCount = (relation: Relation): number => tally(relation).checked;
 const checked = (relation: Relation): void => {
   tally(relation).checked += 1;
 };

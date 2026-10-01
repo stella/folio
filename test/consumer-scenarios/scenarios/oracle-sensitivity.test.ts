@@ -10,7 +10,7 @@ import {
 
 import { openReviewer, packDocument, toArrayBuffer } from "../support/documents.ts";
 import { assertReadersAgree, saveAndReopen } from "../support/invariants.ts";
-import { ENABLED_RELATIONS, relationSummary, startRelations } from "../support/metamorphic.ts";
+import { ENABLED_RELATIONS, relationCheckCount, startRelations } from "../support/metamorphic.ts";
 import {
   ORACLE_MUTATIONS,
   relationForOracle,
@@ -196,6 +196,7 @@ for (const oracle of oracles) {
           await saveAndReopen(reviewer, "oracle sensitivity");
           return;
         }
+        const checksBefore = relation === null ? 0 : relationCheckCount(relation);
         const relations = await startRelations({ fixture, reviewer, mode: "direct", seed: 7 });
         const receipt = reviewer.applyDocumentOperations(batch);
         assert.equal(receipt.applied.length, 2, "both relation operations must apply");
@@ -215,10 +216,9 @@ for (const oracle of oracles) {
         await relations.afterStep(reviewer, saved, "oracle sensitivity");
         await relations.finish();
         if (relation !== null && process.env["FOLIO_SCENARIO_RELATIONS_DEPTH"] === "full") {
-          assert.match(
-            relationSummary(),
-            new RegExp(`${relation}: [1-9][0-9]* checked`, "u"),
-            "the selected relation must compare, not skip",
+          assert.ok(
+            relationCheckCount(relation) > checksBefore,
+            "this probe's selected relation must compare, not skip",
           );
         }
       } finally {
