@@ -30,8 +30,8 @@ import type {
 } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
-import { buildScrollParityBridge } from "../../playground-vue/src/scrollParityBridge";
-import type { ScrollParityBridge } from "../../playground-vue/src/scrollParityBridge";
+import { buildScrollParityBridge } from "../../../tests/parity/scrollParityBridge";
+import type { ScrollParityBridge } from "../../../tests/parity/scrollParityBridge";
 
 import { CollaborationApp } from "./CollaborationApp";
 import {

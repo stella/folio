@@ -20,7 +20,7 @@ import {
   SCROLL_TARGET_TEXT,
   SCROLL_TARGET_SUGGESTION,
   findScrollSuggestionTarget,
-} from "../packages/playground-vue/src/scrollParityBridge";
+} from "../tests/parity/scrollParityBridge";
 import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
 
 let ownsDomGlobals = false;

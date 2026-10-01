@@ -1,6 +1,10 @@
 import type { EditorView } from "prosemirror-view";
-import type { DocxEditorRef, FolioSuggestion } from "@stll/folio-vue";
-import type { FolioAIEditOperation, FolioAIEditSnapshot } from "@stll/folio-core/ai-edits";
+import type {
+  DocxEditorRef,
+  FolioSuggestion,
+  FolioAIEditOperation,
+  FolioAIEditSnapshot,
+} from "@stll/folio-react";
 
 type PagedRef = NonNullable<ReturnType<DocxEditorRef["getEditorRef"]>>;
 type ScrollMethod =

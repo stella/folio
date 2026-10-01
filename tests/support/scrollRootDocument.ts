@@ -4,7 +4,7 @@ import {
   SCROLL_REVISION_ID,
   SCROLL_TARGET_PARA_ID,
   SCROLL_TARGET_TEXT,
-} from "../../packages/playground-vue/src/scrollParityBridge";
+} from "../parity/scrollParityBridge";
 
 /** Explicit page boundaries and OOXML paragraph identifiers make navigation targets stable. */
 export const buildScrollRootDocument = () => {
