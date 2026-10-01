@@ -128,6 +128,45 @@ describe("fixed table absolute cell preferences", () => {
     expect(vertical.widths).toEqual([3000]);
   });
 
+  test(
+    "retains the grid for vertical merge declarations regardless of editor row spans",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 60, max: 5000 }),
+          fc.array(fc.integer({ min: 60, max: 5000 }), { minLength: 1, maxLength: 5 }),
+          fc.constantFrom("restart", "continue", "chain"),
+          fc.boolean(),
+          (gridWidth, preferences, merge, companionColumn) => {
+            const grid = companionColumn ? [gridWidth, 3000] : [gridWidth];
+            const rows = preferences.map((width, index) => {
+              const restart = merge === "restart" || (merge === "chain" && index === 0);
+              const mergeXml = restart ? '<w:vMerge w:val="restart"/>' : "<w:vMerge/>";
+              const cell = `${absoluteCell(width)}${mergeXml}`;
+              return companionColumn ? [cell, absoluteCell(900)] : [cell];
+            });
+            const result = project({ grid, rows });
+            expect(result.widths).toHaveLength(grid.length);
+            for (const [column, width] of (result.widths ?? []).entries()) {
+              const authored = grid.at(column);
+              expect(authored).toBeDefined();
+              if (authored !== undefined) {
+                expect(width).toBeCloseTo(authored, 8);
+              }
+            }
+            const repeated = toFlowBlocks(result.pmDoc).at(0);
+            expect(repeated?.kind).toBe("table");
+            if (repeated?.kind === "table") {
+              expect(repeated.columnWidths?.map((width) => width * 15)).toEqual(result.widths);
+            }
+          },
+        ),
+        propertyConfig(),
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
   test("keeps the authored grid under autofit", () => {
     expect(
       project({

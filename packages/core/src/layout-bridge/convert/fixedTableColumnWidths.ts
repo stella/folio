@@ -25,6 +25,8 @@ export const fixedTableColumnWidths = (
       if (
         attrs.colspan !== 1 ||
         attrs.rowspan !== 1 ||
+        attrs._preserveVMergeRestart ||
+        attrs._originalFormatting?.vMerge !== undefined ||
         !width ||
         width.type !== "dxa" ||
         !Number.isFinite(width.value) ||
