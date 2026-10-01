@@ -15,9 +15,7 @@ for (const handle of ["document", "paged"] as const) {
   forEachAdapter(
     `scrollToPage(3) moves the real scroll root through the ${handle} ref`,
     async (adapter, { page }) => {
-      await page.setViewportSize({ width: 1280, height: 600 });
-      await openEditor(page, adapter);
-      await ensureLiveView(page);
+      await openScrollFixture(page, adapter);
       expect(await page.evaluate(() => window.__folioParity?.getTotalPages())).toBeGreaterThan(2);
       const before = await page.evaluate(() => window.__folioParity?.readScrollViewport(3));
       expect(before).not.toBeNull();
@@ -78,7 +76,7 @@ const expectTargetInScrollRoot = async (
 
 for (const { method } of Object.values(SCROLL_NAVIGATION_CASES)) {
   forEachAdapter(
-    `public ${method} reveals page-three target in the scroll root`,
+    `public ${method} reveals its target in the scroll root`,
     async (adapter, { page }) => {
       await openScrollFixture(page, adapter);
       if (method === "scrollToSuggestion") {
@@ -124,15 +122,23 @@ forEachAdapter(
   async (adapter, { page }) => {
     await openScrollFixture(page, adapter, true);
     const before = await page.evaluate(() => window.__folioScrollParity?.readReady());
-    expect(await page.evaluate(() => window.__folioScrollParity?.reloadForReady())).toBe(true);
-    await ensureLiveView(page);
-    await expect(async () => {
-      await page.evaluate(() => window.__folioParity?.ensureView());
-      const state = await page.evaluate(() => window.__folioScrollParity?.readReady());
-      expect(state?.count).toBeGreaterThan(before?.count ?? 0);
-      expect(state?.appliedTop).toBe(500);
-      expect(state?.scrollTop).toBe(500);
-    }).toPass({ timeout: 5_000 });
+    if (adapter.name === "vue") {
+      // Vue creates a new view during a buffer reload. Preserved pages let the
+      // host's real callback set a nonzero scroll position before readiness.
+      expect(await page.evaluate(() => window.__folioScrollParity?.reloadForReady())).toBe(true);
+      await ensureLiveView(page);
+    }
+    // React buffer reload updates the same EditorView and emits no new view
+    // lifecycle signal. openScrollFixture creates its first lazy view only
+    // after pages are painted, which is the real host callback sequence.
+    const ready = await page.evaluate(() => window.__folioScrollParity?.readReady());
+    if (adapter.name === "vue") {
+      expect(ready?.count).toBeGreaterThan(before?.count ?? 0);
+    } else {
+      expect(ready?.count).toBe(1);
+    }
+    expect(ready?.appliedTop).toBe(500);
+    expect(ready?.scrollTop).toBe(500);
     // Wait across the paint that previously reset the callback's scroll request.
     await page.evaluate(
       () =>

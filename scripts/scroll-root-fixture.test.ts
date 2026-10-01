@@ -1,4 +1,9 @@
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, test } from "bun:test";
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { EditorState } from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
+import { applyFolioAIEditOperations } from "../packages/core/src/ai-edits/apply";
+import { getSuggestions } from "../packages/core/src/prosemirror/commands/comments";
 import {
   resolveFolioAIBlockRange,
   resolvePassageRange,
@@ -13,8 +18,20 @@ import {
   SCROLL_REVISION_ID,
   SCROLL_TARGET_PARA_ID,
   SCROLL_TARGET_TEXT,
+  SCROLL_TARGET_SUGGESTION,
+  findScrollSuggestionTarget,
 } from "../packages/playground-vue/src/scrollParityBridge";
 import { buildScrollRootDocument } from "../tests/support/scrollRootDocument";
+
+let ownsDomGlobals = false;
+beforeAll(() => {
+  if (GlobalRegistrator.isRegistered) return;
+  GlobalRegistrator.register();
+  ownsDomGlobals = true;
+});
+afterAll(() => {
+  if (ownsDomGlobals) return GlobalRegistrator.unregister();
+});
 
 test("scroll browser fixture preserves every navigation target through the real DOCX parser", async () => {
   const document = await parseDocx(await buildScrollRootDocument());
@@ -49,4 +66,47 @@ test("scroll browser fixture preserves every navigation target through the real 
     }
   });
   expect(boundaries).toEqual(["13300200", SCROLL_TARGET_PARA_ID, "13300400"]);
+});
+
+test("suggestion scroll oracle measures the inserted block instead of its source", async () => {
+  const parsed = await parseDocx(await buildScrollRootDocument());
+  const doc = toProseDoc(parsed);
+  const snapshot = createFolioAIEditSnapshot(doc);
+  const view = {
+    state: EditorState.create({ schema: doc.type.schema, doc }),
+    dispatch(transaction: Transaction) {
+      view.state = view.state.apply(transaction);
+    },
+  };
+  const result = applyFolioAIEditOperations({
+    view,
+    snapshot,
+    mode: "suggested",
+    operations: [SCROLL_TARGET_SUGGESTION],
+  });
+  const suggestionId = result.applied.at(0)?.suggestionId;
+  expect(suggestionId).toBeDefined();
+  const suggestion = getSuggestions(view.state).find(
+    (candidate) => candidate.suggestionId === suggestionId,
+  );
+  expect(suggestion).toBeDefined();
+  if (!suggestion) return;
+  const liveSnapshot = createFolioAIEditSnapshot(view.state.doc);
+  const root = document.createElement("div");
+  for (const block of liveSnapshot.blocks) {
+    const anchor = liveSnapshot.anchors[block.id];
+    if (!anchor) continue;
+    const paragraph = document.createElement("div");
+    paragraph.className = "layout-paragraph";
+    paragraph.dataset["pmStart"] = String(anchor.from);
+    paragraph.textContent = block.text;
+    root.append(paragraph);
+  }
+  const target = findScrollSuggestionTarget({ root, snapshot: liveSnapshot, suggestion });
+  expect(target?.textContent).toBe(SCROLL_TARGET_SUGGESTION.text);
+  expect(target?.dataset["pmStart"]).not.toBe(
+    String(liveSnapshot.anchors[SCROLL_TARGET_PARA_ID]?.from),
+  );
+  target?.remove();
+  expect(findScrollSuggestionTarget({ root, snapshot: liveSnapshot, suggestion })).toBeNull();
 });

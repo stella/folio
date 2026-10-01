@@ -1,5 +1,6 @@
 import type { EditorView } from "prosemirror-view";
-import type { DocxEditorRef } from "@stll/folio-vue";
+import type { DocxEditorRef, FolioSuggestion } from "@stll/folio-vue";
+import type { FolioAIEditOperation, FolioAIEditSnapshot } from "@stll/folio-core/ai-edits";
 
 type PagedRef = NonNullable<ReturnType<DocxEditorRef["getEditorRef"]>>;
 type ScrollMethod =
@@ -31,6 +32,38 @@ export const SCROLL_TARGET_TEXT = "Scroll destination on page three";
 export const SCROLL_REVISION_ID = 1330;
 export const SCROLL_CONTROL_TAG = "scroll-root-target";
 
+export const SCROLL_TARGET_SUGGESTION = {
+  id: "scroll-target-suggestion",
+  type: "insertAfterBlock",
+  blockId: SCROLL_TARGET_PARA_ID,
+  text: "Suggested destination",
+} as const satisfies FolioAIEditOperation;
+
+type FindScrollSuggestionTargetOptions = {
+  root: ParentNode;
+  snapshot: FolioAIEditSnapshot;
+  suggestion: FolioSuggestion;
+};
+
+// Insertions may inherit pageBreakBefore and appear on a different page from
+// their source block. Resolve the live suggestion range before measuring it.
+export const findScrollSuggestionTarget = ({
+  root,
+  snapshot,
+  suggestion,
+}: FindScrollSuggestionTargetOptions) => {
+  const range = suggestion.ranges.at(0);
+  if (!range) return null;
+  const block = snapshot.blocks.find(({ id }) => {
+    const anchor = snapshot.anchors[id];
+    return anchor !== undefined && anchor.from >= range.from && anchor.from < range.to;
+  });
+  const anchor = block ? snapshot.anchors[block.id] : undefined;
+  return anchor
+    ? root.querySelector<HTMLElement>(`.layout-paragraph[data-pm-start="${anchor.from}"]`)
+    : null;
+};
+
 export type ScrollParityBridge = ReturnType<typeof buildScrollParityBridge>;
 
 export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
@@ -47,14 +80,7 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
       const result = ref.applyAIEditOperations({
         snapshot,
         mode: "suggested",
-        operations: [
-          {
-            id: "scroll-target-suggestion",
-            type: "insertAfterBlock",
-            blockId: SCROLL_TARGET_PARA_ID,
-            text: "Suggested destination",
-          },
-        ],
+        operations: [SCROLL_TARGET_SUGGESTION],
       });
       suggestionId = result.applied.at(0)?.suggestionId ?? null;
       return suggestionId !== null;
@@ -116,10 +142,23 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
       }
     },
     readTarget: (method?: ScrollMethod) => {
-      const root = getRef()?.getScrollRoot();
+      const ref = getRef();
+      const root = ref?.getScrollRoot();
+      if (!ref || !root) return null;
       const paraId = method === "scrollToContentControl" ? "13300301" : SCROLL_TARGET_PARA_ID;
-      const target = root?.querySelector(`.layout-paragraph[data-para-id="${paraId}"]`);
-      if (!root || !target) return null;
+      const resolveTarget = () => {
+        if (method !== "scrollToSuggestion") {
+          return root.querySelector<HTMLElement>(`.layout-paragraph[data-para-id="${paraId}"]`);
+        }
+        const suggestion = ref
+          .getSuggestions()
+          .find((candidate) => candidate.suggestionId === suggestionId);
+        const snapshot = ref.createAIEditSnapshot();
+        if (!suggestion || !snapshot) return null;
+        return findScrollSuggestionTarget({ root, snapshot, suggestion });
+      };
+      const target = resolveTarget();
+      if (!target) return null;
       const targetRect = target.getBoundingClientRect();
       const rootRect = root.getBoundingClientRect();
       return {
