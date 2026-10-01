@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { panic } from "better-result";
 import { Fragment, Slice } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
@@ -44,6 +45,73 @@ const cases = [0, 8, 17].flatMap((offset) =>
 );
 
 describe("table drag input traces", () => {
+  // A single-delete oracle missed the selection state that routes the next
+  // input. Cross both delete keys with replacement and repeated cell deletion.
+  test.each(
+    (["Delete", "Backspace"] as const).flatMap((key) =>
+      (["repeatDelete", "pasteMultiBlock", "pasteTable"] as const).map((next) => ({ key, next })),
+    ),
+  )(
+    "cell $key followed by $next preserves cell routing and review equivalence",
+    async ({ key, next }) => {
+      const source = await shapeArrayBuffer("tables");
+      const base = await parseShapeDocument(new Uint8Array(source));
+      const baseline = await FolioDocxReviewer.fromBuffer(source);
+      const editing = new HeadlessEditorView(createHarnessState(base, "editing"));
+      const suggesting = new HeadlessEditorView(createHarnessState(base, "suggesting"));
+      for (const view of [editing, suggesting]) {
+        const selectCells = () => {
+          const cells: number[] = [];
+          view.state.doc.descendants((node, pos) => {
+            if (node.type.name === "tableCell") cells.push(pos);
+            return node.type.name !== "tableCell";
+          });
+          const [first, second] = cells;
+          if (first === undefined || second === undefined) panic("Missing table cells");
+          view.dispatch(
+            view.state.tr.setSelection(CellSelection.create(view.state.doc, first, second)),
+          );
+        };
+        selectCells();
+        expect(view.pressKey(key)).toBe(true);
+        expect(view.state.selection).toBeInstanceOf(CellSelection);
+        switch (next) {
+          case "repeatDelete":
+            expect(view.pressKey("Backspace")).toBe(true);
+            selectCells();
+            expect(view.pressKey("Delete")).toBe(true);
+            break;
+          case "pasteMultiBlock": {
+            const { schema } = view.state;
+            view.paste(
+              new Slice(
+                Fragment.from([
+                  schema.node("paragraph", null, schema.text("Title")),
+                  schema.node("paragraph", null, schema.text("Body")),
+                ]),
+                1,
+                1,
+              ),
+            );
+            break;
+          }
+          case "pasteTable":
+            view.paste(tableSlice(view));
+            break;
+        }
+      }
+      const { bytes: editedBytes } = await saveHarnessState(editing.state, base);
+      const edited = await FolioDocxReviewer.fromBuffer(editedBytes.slice().buffer);
+      const { bytes: suggestedBytes } = await saveHarnessState(suggesting.state, base);
+      const accepted = await FolioDocxReviewer.fromBuffer(suggestedBytes.slice().buffer);
+      const rejected = await FolioDocxReviewer.fromBuffer(suggestedBytes.slice().buffer);
+      accepted.acceptAll();
+      rejected.rejectAll();
+      expect(project(accepted)).toEqual(project(edited));
+      expect(project(rejected)).toEqual(project(baseline));
+    },
+  );
+
   test.each(cases)(
     "$prefix at offset $offset then dragging cells and $operation preserves surrounding paragraphs",
     async ({ offset, prefix, operation }) => {
