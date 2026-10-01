@@ -47,6 +47,14 @@ describe("fuzz infrastructure health", () => {
     const health = classifyFuzzRun(details);
     expect(health.status === "finding" && health.detail).toContain("sentinel oracle failure");
     expect(checkFuzzHealth({ log: line(health), outcome: "failure" }).status).toBe("finding");
+    if (!details.failed || details.counterexample === null) panic("Expected a real counterexample");
+    // Shrinking may be interrupted after fast-check has already found a failure.
+    const interrupted = { ...details, interrupted: true } satisfies typeof details;
+    expect(classifyFuzzRun(interrupted)).toMatchObject({ status: "finding", completed: 1 });
+    for (const errorInstance of [undefined, null, "undefined", "null", " "]) {
+      const invalid = { ...interrupted, errorInstance } satisfies typeof details;
+      expect(classifyFuzzRun(invalid).status).toBe("infrastructure");
+    }
   });
 
   test("zero runs, exhausted skips and interrupted runs are infrastructure", () => {
@@ -84,6 +92,7 @@ describe("fuzz infrastructure health", () => {
     for (const report of [
       { status: "passed", completed: 0 },
       { status: "finding", completed: 1, detail: "undefined" },
+      { status: "finding", completed: 1, detail: " null " },
       { status: "finding", completed: 1, detail: "" },
       { status: "wat", completed: 1, detail: "wat" },
     ]) {

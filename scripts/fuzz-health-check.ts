@@ -43,7 +43,8 @@ export const checkFuzzHealth = ({ log, outcome }: HealthOptions) => {
       !("detail" in report) ||
       typeof report.detail !== "string" ||
       !report.detail.trim() ||
-      report.detail === "undefined"
+      report.detail.trim() === "undefined" ||
+      report.detail.trim() === "null"
     ) {
       problems.push("Missing failure detail");
       continue;

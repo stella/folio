@@ -7,30 +7,31 @@ export const fuzzErrorText = (error: unknown): string =>
   error instanceof Error ? (error.stack ?? error.message) : String(error);
 
 export const classifyFuzzRun = <Ts>(details: RunDetails<Ts>): FuzzHealth => {
-  if (
-    details.numRuns === 0 ||
-    details.interrupted ||
-    (details.failed && details.counterexample === null)
-  ) {
+  if (details.failed) {
+    const detail = fuzzErrorText(details.errorInstance);
+    if (
+      Array.isArray(details.counterexample) &&
+      details.counterexample.length > 0 &&
+      details.errorInstance !== undefined &&
+      details.errorInstance !== null &&
+      detail.trim() !== "" &&
+      detail.trim() !== "undefined" &&
+      detail.trim() !== "null"
+    ) {
+      return { status: "finding", completed: details.numRuns, detail };
+    }
     return {
       status: "infrastructure",
       completed: details.numRuns,
-      detail: "Fuzz run interrupted, exhausted skips, or executed zero cases",
+      detail: "No valid counterexample or failure report",
     };
   }
-  if (!details.failed) return { status: "passed", completed: details.numRuns };
-  const detail = fuzzErrorText(details.errorInstance);
-  if (
-    !Array.isArray(details.counterexample) ||
-    details.counterexample.length === 0 ||
-    details.errorInstance === undefined ||
-    detail.trim() === ""
-  ) {
+  if (details.numRuns === 0 || details.interrupted) {
     return {
       status: "infrastructure",
       completed: details.numRuns,
-      detail: "Empty counterexample or failure report",
+      detail: "Fuzz run interrupted or executed zero cases",
     };
   }
-  return { status: "finding", completed: details.numRuns, detail };
+  return { status: "passed", completed: details.numRuns };
 };
