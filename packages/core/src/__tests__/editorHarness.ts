@@ -340,6 +340,11 @@ export const SELECTION_PLACEMENTS = [
 ] as const;
 export type SelectionPlacement = (typeof SELECTION_PLACEMENTS)[number];
 
+/** Placements available without an inline atom in the focused textblock. */
+export const TEXTBLOCK_SELECTION_PLACEMENTS = SELECTION_PLACEMENTS.filter(
+  (placement) => placement !== "node",
+);
+
 /**
  * Place the selection relative to the textblock holding `focus`. Returns null
  * when the placement has no meaning here (no following paragraph to cross into).
