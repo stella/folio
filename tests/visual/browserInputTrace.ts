@@ -52,7 +52,7 @@ const plainTextArbitrary = fc
 const textArbitrary = fc
   .array(fc.constantFrom(...WORDS), { minLength: 1, maxLength: 3 })
   .map((words) => words.join(" "));
-const pastePayload = {
+export const BROWSER_PASTE_PAYLOADS = {
   pasteHtml: {
     plain: "First bold\nSecond",
     html: "<p>First <strong>bold</strong></p><p>Second</p>",
@@ -90,15 +90,21 @@ const suggestionActionArbitraries = {
   delete: fc.constant({ kind: "delete" } as const),
   pastePlain: plainTextArbitrary.map((plain) => ({ kind: "pastePlain", plain, html: "" }) as const),
   pasteHtml: fc.constantFrom(
-    { kind: "pasteHtml", ...pastePayload.pasteHtml } as const,
-    { kind: "pasteHtml", ...pastePayload.pasteWebAppHtml } as const,
+    { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml } as const,
+    { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteWebAppHtml } as const,
   ),
-  pasteWordHtml: fc.constant({ kind: "pasteWordHtml", ...pastePayload.pasteWordHtml } as const),
-  pasteListHtml: fc.constant({ kind: "pasteListHtml", ...pastePayload.pasteListHtml } as const),
-  pasteTable: fc.constant({ kind: "pasteTable", ...pastePayload.pasteTable } as const),
+  pasteWordHtml: fc.constant({
+    kind: "pasteWordHtml",
+    ...BROWSER_PASTE_PAYLOADS.pasteWordHtml,
+  } as const),
+  pasteListHtml: fc.constant({
+    kind: "pasteListHtml",
+    ...BROWSER_PASTE_PAYLOADS.pasteListHtml,
+  } as const),
+  pasteTable: fc.constant({ kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable } as const),
   pasteMultiBlock: fc.constant({
     kind: "pasteMultiBlock",
-    ...pastePayload.pasteMultiBlock,
+    ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock,
   } as const),
   imeReplacement: browserImeActionArbitrary,
   cut: fc.constant({ kind: "cut" } as const),
