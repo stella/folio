@@ -389,16 +389,21 @@ const arrayOf = (value: unknown): unknown[] => (Array.isArray(value) ? value : [
 
 const recordOf = (value: unknown): Record<string, unknown> => (isRecord(value) ? value : {});
 
-/** A number or bullet worth showing: not a heading's style id (`Heading1`). */
-const isNumberLabel = (label: unknown): label is string =>
-  typeof label === "string" && !/^\p{L}{3,}/u.test(label);
+/**
+ * A number or bullet worth showing. An unnumbered heading's label is its
+ * style id (`Heading1`, `Title`), which says nothing the `(hN)` mark does
+ * not; every other label (`iii.`, `Article 1`, `•`) is shown.
+ */
+const isNumberLabel = (label: unknown, heading: boolean): label is string =>
+  typeof label === "string" && !(heading && /^\p{L}{3,}\d*$/u.test(label));
 
 /** One block as the line a model reads: `[id] (h2) 2.1 text`. */
 const blockLine = (block: unknown): string => {
   const row = recordOf(block);
   const label = row["displayLabel"];
-  const heading = typeof row["headingLevel"] === "number" ? `(h${row["headingLevel"]}) ` : "";
-  const number = isNumberLabel(label) ? `${label} ` : "";
+  const isHeading = typeof row["headingLevel"] === "number";
+  const heading = isHeading ? `(h${String(row["headingLevel"])}) ` : "";
+  const number = isNumberLabel(label, isHeading) ? `${label} ` : "";
   return `[${String(row["blockId"])}] ${heading}${number}${String(row["text"] ?? "")}`;
 };
 
@@ -406,7 +411,7 @@ const blockLine = (block: unknown): string => {
  * Blocks as lines, a table row on one line: `| [id] cell | [id] cell |`,
  * a cell's paragraphs side by side. Empty cells hold no block and show none.
  */
-const blockLines = (blocks: readonly unknown[]): string => {
+export const blockLines = (blocks: readonly unknown[]): string => {
   const lines: string[] = [];
   let row: { key: string; cells: string[][]; cell: unknown } | undefined;
   const flush = (): void => {

@@ -13,7 +13,7 @@ import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 
 import { makeTempDir, writeDocx, type FixtureBlock } from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
-import { createFolioMcpServer } from "./mcp";
+import { blockLines, createFolioMcpServer } from "./mcp";
 
 let cleanup: () => Promise<void> = () => Promise.resolve();
 let root = "";
@@ -82,6 +82,26 @@ const documentXml = async (file: string): Promise<string> => {
   const zip = await JSZip.loadAsync(await readFile(file));
   return (await zip.file("word/document.xml")?.async("string")) ?? "";
 };
+
+describe("read_document lines", () => {
+  test("show list labels, and hide only an unnumbered heading's style id", () => {
+    const lines = blockLines([
+      { blockId: "1", headingLevel: 1, displayLabel: "Heading1", text: "Terms" },
+      { blockId: "2", headingLevel: 2, displayLabel: "Article 1", text: "Scope" },
+      { blockId: "3", displayLabel: "iii.", text: "third" },
+      { blockId: "4", displayLabel: "vii)", text: "seventh" },
+      { blockId: "5", displayLabel: "Article", text: "plain" },
+    ]);
+
+    expect(lines.split("\n")).toEqual([
+      "[1] (h1) Terms",
+      "[2] (h2) Article 1 Scope",
+      "[3] iii. third",
+      "[4] vii) seventh",
+      "[5] Article plain",
+    ]);
+  });
+});
 
 describe("suggest_changes batch operations", () => {
   test("read_document puts a table row on one line", async () => {
