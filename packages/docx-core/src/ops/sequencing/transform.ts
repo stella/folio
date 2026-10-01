@@ -94,7 +94,7 @@ const refusal = (op: DocumentOp, over: DocumentOp, message: string) =>
 type PairOptions = {
   op: DocumentOp;
   over: DocumentOp;
-  effect?: SequencedOpEffect;
+  effect: SequencedOpEffect | undefined;
   order: "before" | "after";
 };
 const transformOp = ({
@@ -455,6 +455,7 @@ export const transformBatch = (
           const mapped = transformOp({
             op: remoteOp,
             over: op,
+            effect: undefined,
             order: order === "after" ? "before" : "after",
           });
           if (mapped.isErr()) return mapped;
