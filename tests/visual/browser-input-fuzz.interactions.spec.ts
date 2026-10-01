@@ -301,8 +301,12 @@ for (const seed of config.seeds) {
       { seed, numRuns: config.runs, endOnFailure: false },
     );
     if (verdict.failed) {
+      const failure = verdict.errorInstance;
+      const detail =
+        failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
       throw new Error(
-        `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${verdict.error}`,
+        `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
+        { cause: failure },
       );
     }
   });
