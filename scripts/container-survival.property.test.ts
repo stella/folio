@@ -161,20 +161,23 @@ const NOTE_MARKER_REGRESSIONS = [
   `{${WML_NAMESPACE}}r|{${WML_NAMESPACE}}CT_R/{${WML_NAMESPACE}}endnoteRef`,
 ] as const;
 
-test.each(NOTE_MARKER_REGRESSIONS)("automatic note marker survives every law: %s", async (key) => {
-  const subject =
-    spineSubjects.find((candidate) => subjectKey(candidate) === key) ??
-    panic(`Missing pinned survival subject ${key}`);
-  const outcome = await runSurvivalLaws(space, subject);
-  expect(outcome.unrepresentable).toBeNull();
-  expect(outcome.mechanism).toBeNull();
-  expect(outcome.laws).toEqual({
-    "L1-parse": true,
-    "L2-serialize": true,
-    "L3-editor": true,
-    "L4-schema": true,
-  });
-});
+test.each([...NOTE_MARKER_REGRESSIONS])(
+  "automatic note marker survives every law: %s",
+  async (key) => {
+    const subject =
+      spineSubjects.find((candidate) => subjectKey(candidate) === key) ??
+      panic(`Missing pinned survival subject ${key}`);
+    const outcome = await runSurvivalLaws(space, subject);
+    expect(outcome.unrepresentable).toBeNull();
+    expect(outcome.mechanism).toBeNull();
+    expect(outcome.laws).toEqual({
+      "L1-parse": true,
+      "L2-serialize": true,
+      "L3-editor": true,
+      "L4-schema": true,
+    });
+  },
+);
 
 const describeDisagreement = (
   key: string,

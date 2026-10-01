@@ -11,8 +11,10 @@ import {
 import type {
   BlockContent,
   Document,
+  Relationship,
   SectionProperties,
 } from "../../../packages/docx-core/src/model/document";
+import { DEFAULT_TAB_STOP_TWIPS } from "../../../packages/docx-core/src/model/document";
 import { Result } from "better-result";
 import {
   documentStories,
@@ -127,7 +129,8 @@ const lifecycleOwnership = (op: DocumentOp) => {
   }
 };
 
-const withoutOwnedRecords = (document: Document, op: DocumentOp): Document => {
+type WithoutOwnedRecordsOptions = { document: Document; original: Document; op: DocumentOp };
+const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOptions): Document => {
   const ownership = lifecycleOwnership(op);
   if (!ownership) return document;
   const out = structuredClone(document);
@@ -136,7 +139,9 @@ const withoutOwnedRecords = (document: Document, op: DocumentOp): Document => {
   ): SectionProperties | undefined => {
     if (!properties) return undefined;
     const remaining = Object.fromEntries(
-      Object.entries(properties).filter(([key]) => !ownership.sectionKeys.includes(key)),
+      Object.entries(properties).filter(
+        ([key]) => !ownership.sectionKeys.some((ownedKey) => ownedKey === key),
+      ),
     );
     if (
       op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER ||
@@ -179,10 +184,16 @@ const withoutOwnedRecords = (document: Document, op: DocumentOp): Document => {
     out.package.footnotes = (out.package.footnotes ?? []).filter(({ id }) => id !== story.id);
   if (story?.kind === "endnote")
     out.package.endnotes = (out.package.endnotes ?? []).filter(({ id }) => id !== story.id);
-  if (ownership.settingsEven) {
+  if (ownership.settingsEven && out.package.settings !== undefined) {
     const settings = { ...out.package.settings };
     delete settings.evenAndOddHeaders;
-    if (Object.keys(settings).length === 0) delete out.package.settings;
+    // Creating settings owns only the model-required default; authored values remain compared.
+    if (
+      original.package.settings === undefined &&
+      settings.defaultTabStop === DEFAULT_TAB_STOP_TWIPS &&
+      Object.keys(settings).length === 1
+    )
+      delete out.package.settings;
     else out.package.settings = settings;
   }
   // The model's section content/maps mirror owned package stories; body data remains the oracle.
@@ -240,8 +251,8 @@ export const localityStepFailures = ({ before, op, edit }: OpSequenceStep): stri
     if (!beforeParagraphs.has(id) && !inserted.has(id))
       failures.push(`${op.type} inserted an undeclared block`);
   }
-  const scopedBefore = withoutOwnedRecords(before, op);
-  const scopedAfter = withoutOwnedRecords(edit.document, op);
+  const scopedBefore = withoutOwnedRecords({ document: before, original: before, op });
+  const scopedAfter = withoutOwnedRecords({ document: edit.document, original: before, op });
   if (!sameOpModel(unrelatedModel(scopedBefore), unrelatedModel(scopedAfter)))
     failures.push(`${op.type} changed records outside its declared story and section fields`);
   const originalUntouched = projected(scopedBefore, touched);

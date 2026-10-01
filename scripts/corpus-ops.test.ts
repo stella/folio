@@ -2,6 +2,7 @@ import { propertyTestTimeout } from "../test/property-testing";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { describe, expect, test } from "bun:test";
 import type { BlockContent, Document, Paragraph } from "../packages/docx-core/src/model/document";
+import { DEFAULT_TAB_STOP_TWIPS } from "../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
   applyDocumentOps,
@@ -124,6 +125,32 @@ const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => (
 });
 
 describe("corpus operation invariants", () => {
+  test("settings locality covers absent and authored settings without hiding foreign defaults", () => {
+    for (const settings of [undefined, { defaultTabStop: 900, mirrorMargins: true }]) {
+      for (const evenAndOddHeaders of [true, false, null]) {
+        const before = documentFixture();
+        if (settings !== undefined) before.package.settings = settings;
+        const op = {
+          type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+          sectionIndex: 0,
+          patch: { evenAndOddHeaders },
+        } as const;
+        const result = applyDocumentOp(before, op);
+        if (result.isErr()) throw result.error;
+        const step = { before, op, edit: result.value };
+        expect(localityStepFailures(step)).toEqual([]);
+        const changed = structuredClone(result.value.document);
+        changed.package.settings = {
+          ...(changed.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+          defaultTabStop: 123,
+        };
+        expect(
+          localityStepFailures({ ...step, edit: { ...step.edit, document: changed } }).length,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+
   test(
     "seeded sequences cover every declared family and preserve exact inverse/locality",
     () => {

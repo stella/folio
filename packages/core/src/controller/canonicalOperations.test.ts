@@ -1,5 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 import { applyDocumentOps, validateOpsDocument } from "@stll/docx-core/ops";
 import type { Document } from "../types/document";
 import {
@@ -7,6 +8,8 @@ import {
   removeCanonicalHeaderFooterOperations,
   withCanonicalParagraphIds,
 } from "./canonicalOperations";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const documentWithStories = (): Document => ({
   package: {
@@ -67,6 +70,7 @@ test("command allocation repairs collisions across stories and invalid identifie
         if (applied.isOk()) expect(validateOpsDocument(applied.value.document).isOk()).toBe(true);
       },
     ),
+    propertyConfig(),
   );
 });
 

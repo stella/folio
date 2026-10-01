@@ -1,8 +1,8 @@
 /** Story generators extend the operation oracle beyond the main body. */
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Paragraph, HeaderFooter, SectionProperties } from "../../model/document";
 import { DEFAULT_TAB_STOP_TWIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
@@ -17,6 +17,8 @@ import {
 } from "../types";
 
 import { documentArbitrary, opSeedArbitrary, opForStory } from "./documentArbitraries";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const paragraph = (id: string, text: string): Paragraph => ({
   type: "paragraph",

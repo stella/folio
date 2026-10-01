@@ -11,6 +11,7 @@ import {
   REVISION_DECISIONS,
   type DocumentOp,
   type AppliedDocumentOp,
+  type NoteStory,
   sectionPropertiesAt,
 } from "../../../packages/docx-core/src/ops/documentOps";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
@@ -215,9 +216,10 @@ const candidate = ({
       const kind = choose(2) === 0 ? "header" : "footer";
       const references =
         kind === "header" ? properties.headerReferences : properties.footerReferences;
-      const referenceType = (["default", "first", "even"] as const).find(
+      const availableVariants = (["default", "first", "even"] as const).filter(
         (variant) => !references?.some(({ type }) => type === variant),
       );
+      const referenceType = availableVariants.at(choose(availableVariants.length));
       if (!referenceType) return undefined;
       let identity = 1;
       const used = (rId: string) =>
@@ -283,7 +285,7 @@ const candidate = ({
                 blockId: referenceParagraph.paraId,
                 offset: before.offset,
               },
-              story: { kind, id: node.id },
+              story: { kind, id: node.id } satisfies NoteStory,
             },
           ];
         }),
@@ -298,7 +300,10 @@ const candidate = ({
       return {
         type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
         sectionIndex,
-        patch: { marginTop: properties.marginTop === 720 ? 1440 : 720 },
+        patch: {
+          marginTop: properties.marginTop === 720 ? 1440 : 720,
+          evenAndOddHeaders: ([true, false, null] as const).at(choose(3)) ?? null,
+        },
       };
     }
     case "insertText":
