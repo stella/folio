@@ -105,7 +105,7 @@ export const generateFuzzSchema = (graph: OoxmlSchemaGraph): string => {
       const constraint = attribute.enumValues
         ? { type: "enum" as const, values: [...attribute.enumValues].sort() }
         : constraintFor(attribute.type ?? global?.type);
-      // ECMA's xs:integer has no bound. Word's annotation ids use a signed
+      // ECMA's xs:integer has no bound. Annotation interoperability uses a signed
       // 32-bit interoperability policy; this is deliberately not an XSD facet.
       if (name === `{${WML}}id` && constraint.type === "integer") {
         constraint.min = "-2147483648";
