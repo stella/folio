@@ -11,6 +11,7 @@ import {
 } from "../../packages/core/src/controller/__tests__/freshRenderHarness";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
+  BROWSER_SHAPES,
   browserInputTraceArbitrary,
   browserSuggestionActionKinds,
   parseBrowserInputTraceConfig,
@@ -25,6 +26,10 @@ declare global {
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const INPUT_TRACE = browserInputTraceArbitrary();
+const PAINTED_POSITION_MODULE = `/@fs${
+  new URL("../../packages/core/src/layout-bridge/dom/clickToPositionDom.ts", import.meta.url)
+    .pathname
+}`;
 
 type Block = {
   kind: string;
@@ -150,12 +155,11 @@ const selectTableTarget = async (page: Page) => {
 
 const selectTarget = async (page: Page, target: BrowserDragTarget) => {
   if (target === "table") return selectTableTarget(page);
-  const coords = await page.evaluate((wanted) => {
+  const positions = await page.evaluate((wanted) => {
     const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
     if (!view) throw new Error("browser editor unavailable");
-    const positions: number[] = [];
+    const targets: { pos: number; size: number; type: "paragraph" | "inline" }[] = [];
     const targetName = {
-      table: "tableCell",
       list: "paragraph",
       note: "footnoteRef",
       field: "field",
@@ -165,22 +169,85 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
       const matches =
         node.type.name === targetName &&
         (wanted !== "list" || (node.attrs["numPr"] !== null && node.attrs["numPr"] !== undefined));
-      if (matches && positions.length < 2) positions.push(pos);
-      if (wanted === "note" && node.marks.some((mark) => mark.type.name === targetName)) {
-        positions.push(pos);
+      if (targets.length >= 2) return false;
+      if (
+        matches ||
+        (wanted === "note" && node.marks.some((mark) => mark.type.name === targetName))
+      ) {
+        targets.push({
+          pos,
+          size: node.nodeSize,
+          type: node.type.name === "paragraph" ? "paragraph" : "inline",
+        });
       }
       return true;
     });
-    if (positions.length === 0) return null;
-    const from = Math.max(1, positions.at(0) ?? 1);
-    const to = Math.min(view.state.doc.content.size - 1, (positions.at(1) ?? from + 2) + 1);
-    return { from: view.coordsAtPos(from), to: view.coordsAtPos(to) };
+    const first = targets.at(0);
+    if (!first) return null;
+    const last = targets.at(1) ?? first;
+    // Paragraph node boundaries are not caret positions. Start inside the
+    // paragraph, or in text before an atom so image mousedown can drag text.
+    const rawFrom = first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
+    const rawTo =
+      last.type === "paragraph" ? last.pos + Math.min(2, last.size - 1) : last.pos + last.size + 2;
+    const from = Math.max(view.state.doc.resolve(first.pos).start(), rawFrom);
+    const to = Math.min(
+      view.state.doc.content.size - 1,
+      last.type === "paragraph" ? last.pos + last.size - 1 : view.state.doc.resolve(last.pos).end(),
+      rawTo,
+    );
+    return {
+      from,
+      to,
+      targetFrom: first.pos,
+      targetTo: first.pos + first.size,
+      targetType: first.type,
+    };
   }, target);
-  if (!coords) return false;
-  await page.mouse.move(coords.from.left, coords.from.top + 3);
+  if (!positions) return false;
+  expect(positions.to).toBeGreaterThan(positions.from);
+
+  // Every pointer target uses the painted body. The hidden PM view has its
+  // own off-screen geometry, which cannot drive the visible editor's hit test.
+  const args = { moduleUrl: PAINTED_POSITION_MODULE, positions };
+  const readPaintedCoords = async ({ moduleUrl, positions: planned }: typeof args) => {
+    const {
+      getCaretPositionFromDom,
+      clickToPositionDom,
+    }: typeof import("../../packages/core/src/layout-bridge/dom/clickToPositionDom") = await import(
+      moduleUrl
+    );
+    const coordinate = (position: number) => {
+      const caret = getCaretPositionFromDom(document.body, position, new DOMRect());
+      if (!caret) return null;
+      const y = caret.y + caret.height / 2;
+      for (const offset of [0, 0.25, -0.25, 0.5, -0.5]) {
+        const x = caret.x + offset;
+        if (clickToPositionDom(document.body, x, y) === position) return { x, y };
+      }
+      return null;
+    };
+    const from = coordinate(planned.from);
+    const to = coordinate(planned.to);
+    return from && to ? { from, to } : null;
+  };
+  await page.waitForFunction(readPaintedCoords, args);
+  const coords = await page.evaluate(readPaintedCoords, args);
+  if (!coords) throw new Error("drag targets are not painted at their document positions");
+  await page.mouse.move(coords.from.x, coords.from.y);
   await page.mouse.down();
-  await page.mouse.move(coords.to.left, coords.to.top + 3, { steps: 4 });
+  await page.mouse.move(coords.to.x, coords.to.y, { steps: 4 });
   await page.mouse.up();
+  const selected = await page.evaluate(() => {
+    const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+      ?.state.selection;
+    return selection ? { from: selection.from, to: selection.to } : null;
+  });
+  expect(selected).toEqual({ from: positions.from, to: positions.to });
+  if (positions.targetType === "inline") {
+    expect(selected?.from).toBeLessThanOrEqual(positions.targetFrom);
+    expect(selected?.to).toBeGreaterThanOrEqual(positions.targetTo);
+  }
   return true;
 };
 
@@ -327,6 +394,28 @@ const checkFreshRender = (trace: BrowserInputTrace) => {
     expect(rig.committed()).toEqual(rig.fresh());
   });
 };
+
+// Derive fixtures from the generator's target map so a new drag target also
+// requires this deterministic gesture invariant in both editor modes.
+const isDragTarget = (target: string): target is BrowserDragTarget =>
+  Object.hasOwn(BROWSER_SHAPES, target);
+for (const target of Object.keys(BROWSER_SHAPES).filter(isDragTarget)) {
+  for (const suggesting of [false, true]) {
+    test(`painted ${target} drag after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
+      page,
+    }) => {
+      const source = await shapeArrayBuffer(BROWSER_SHAPES[target]);
+      const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+      await load(page, source, baseline, suggesting);
+      await paste(page, {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      });
+      expect(await selectTarget(page, target)).toBe(true);
+    });
+  }
+}
 
 const config = parseBrowserInputTraceConfig(
   process.env,
