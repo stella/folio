@@ -27,7 +27,7 @@ jobs:
       contents: read
 
     outputs:
-      findings: ${{ steps.cross-host.outcome == 'failure' }}
+      cross_host_findings: ${{ steps.cross-host.outcome == 'failure' }}
 
     steps:
       # persist-credentials: false — this job can be manually dispatched on any
@@ -85,9 +85,12 @@ jobs:
           retention-days: 14
 
   cross-host-report:
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
     name: File four-host differential findings
     needs: parity-e2e
-    if: always() && needs.parity-e2e.outputs.findings == 'true'
+    if: always() && needs.parity-e2e.outputs.cross_host_findings == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
