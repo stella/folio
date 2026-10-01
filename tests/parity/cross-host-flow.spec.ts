@@ -1,5 +1,11 @@
 import { test, expect } from "@playwright/test";
 import fc from "fast-check";
+import {
+  failureMarker,
+  failureRecord,
+  logFailureMarker,
+  writeFailureRecord,
+} from "../../test/consumer-scenarios/support/failure-fingerprints";
 import { validateDocxPackage } from "@stll/docx-core";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -218,13 +224,28 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
       trace: verdict.counterexample?.at(0),
       error: String(verdict.errorInstance),
     };
+    const repro = `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity-fuzzer tests/parity/cross-host-flow.spec.ts --workers=1`;
+    const marker = failureMarker({
+      test: "Four-host saved semantics",
+      seed: verdict.seed,
+      path: verdict.counterexamplePath,
+      repro,
+      failure: verdict.errorInstance,
+    });
+    logFailureMarker(marker);
+    writeFailureRecord(
+      "test-results/cross-host-findings",
+      failureRecord(marker, verdict.errorInstance, {
+        flow: verdict.counterexample?.at(0),
+      }),
+    );
     await testInfo.attach("cross-host-repro", {
       body: JSON.stringify(failure),
       contentType: "application/json",
     });
     throw new Error(
       `Cross-host differential failed: ${JSON.stringify(failure)}\n` +
-        `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity tests/parity/cross-host-flow.spec.ts --workers=1`,
+        `PROPERTY_TEST_SEED=${verdict.seed} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=parity-fuzzer tests/parity/cross-host-flow.spec.ts --workers=1`,
     );
   } finally {
     await react.close();
