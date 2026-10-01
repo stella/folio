@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
+import { createHash } from "node:crypto";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
@@ -110,56 +111,98 @@ test.setTimeout(600_000);
 for (const seed of config.seeds) {
   test(`seed ${seed}: AI and human interleaving preserves revisions, readers and fresh rendering`, async ({
     page,
-  }) => {
+  }, testInfo) => {
+    page.setDefaultTimeout(10_000);
+    page.setDefaultNavigationTimeout(30_000);
+    let firstFailureRecorded = false;
     const verdict = await fc.check(
       fc.asyncProperty(interleavingTraceArbitrary, async (trace) => {
-        const source = await shapeArrayBuffer(trace.shape);
-        await page.goto("/");
-        await page.waitForSelector(".layout-page");
-        await page.evaluate(() => globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView());
-        await page.waitForFunction(
-          () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
-        );
-        await page.evaluate(
-          async (bytes) => {
-            const ref = globalThis.__folioPlayground?.getEditorRef();
-            if (!ref) throw new Error("interleaving loader unavailable");
-            await ref.loadDocumentBuffer(new Uint8Array(bytes));
-          },
-          [...new Uint8Array(source)],
-        );
-        await page.addScriptTag({
-          type: "module",
-          content: `import { installInterleavingBridge } from ${JSON.stringify(bridgeUrl)}; installInterleavingBridge();`,
-        });
-        await page.waitForFunction(
-          () => typeof globalThis.__folioInterleavingSuggest === "function",
-        );
-        await checkpoint(page);
-        for (const action of trace.actions) {
-          await drive(page, action);
+        let stage = "load";
+        try {
+          const source = await shapeArrayBuffer(trace.shape);
+          await page.goto("/");
+          await page.waitForSelector(".layout-page");
+          await page.evaluate(() =>
+            globalThis.__folioPlayground?.getEditorRef()?.ensureEditorView(),
+          );
+          await page.waitForFunction(
+            () => !!globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView(),
+          );
+          await page.evaluate(
+            async (bytes) => {
+              const ref = globalThis.__folioPlayground?.getEditorRef();
+              if (!ref) throw new Error("interleaving loader unavailable");
+              await ref.loadDocumentBuffer(new Uint8Array(bytes));
+            },
+            [...new Uint8Array(source)],
+          );
+          stage = "install-tool-bridge";
+          // Await module loading and installation so import errors reach fast-check
+          // instead of leaving an unbounded wait for a missing global function.
+          await page.evaluate(async (url) => {
+            const { installInterleavingBridge } = await import(/* @vite-ignore */ url);
+            installInterleavingBridge();
+          }, bridgeUrl);
+          await page.waitForFunction(
+            () => typeof globalThis.__folioInterleavingSuggest === "function",
+          );
           await checkpoint(page);
+          for (const [index, action] of trace.actions.entries()) {
+            stage = `action-${index}-${action.kind}`;
+            await drive(page, action);
+            await checkpoint(page);
+          }
+          // Compare the incrementally painted document with a freshly loaded saved
+          // package: reload also rebuilds the editor state and page layout from scratch.
+          stage = "fresh-render";
+          await page.waitForTimeout(350);
+          const painted = await page.locator(".layout-page-content").allTextContents();
+          const final = await checkpoint(page);
+          await page.evaluate(
+            async (bytes) => {
+              const ref = globalThis.__folioPlayground?.getEditorRef();
+              if (!ref) throw new Error("interleaving loader unavailable");
+              await ref.loadDocumentBuffer(new Uint8Array(bytes));
+            },
+            [...new Uint8Array(final.bytes)],
+          );
+          await expect
+            .poll(() => page.locator(".layout-page-content").allTextContents())
+            .toEqual(painted);
+          const fresh = await checkpoint(page);
+          expect(fresh.current).toEqual(final.current);
+        } catch (error) {
+          // Preserve the original failure before shrinking can hit teardown or a
+          // different boundary. This is a test-runner boundary, not product flow.
+          if (!firstFailureRecorded) {
+            firstFailureRecorded = true;
+            const message = error instanceof Error ? error.message : String(error);
+            const failure = {
+              seed,
+              stage,
+              trace,
+              error: message,
+              fingerprint: createHash("sha256")
+                .update(`${stage}:${message.split("\n").at(0)}`)
+                .digest("hex")
+                .slice(0, 16),
+            };
+            console.log(`INTERLEAVING_FAILURE ${JSON.stringify(failure)}`);
+            await testInfo.attach("first-interleaving-failure", {
+              body: JSON.stringify(failure, null, 2),
+              contentType: "application/json",
+            });
+          }
+          throw error;
         }
-        // Compare the incrementally painted document with a freshly loaded saved
-        // package: reload also rebuilds the editor state and page layout from scratch.
-        await page.waitForTimeout(350);
-        const painted = await page.locator(".layout-page-content").allTextContents();
-        const final = await checkpoint(page);
-        await page.evaluate(
-          async (bytes) => {
-            const ref = globalThis.__folioPlayground?.getEditorRef();
-            if (!ref) throw new Error("interleaving loader unavailable");
-            await ref.loadDocumentBuffer(new Uint8Array(bytes));
-          },
-          [...new Uint8Array(final.bytes)],
-        );
-        await expect
-          .poll(() => page.locator(".layout-page-content").allTextContents())
-          .toEqual(painted);
-        const fresh = await checkpoint(page);
-        expect(fresh.current).toEqual(final.current);
       }),
-      { seed, numRuns: config.runs, endOnFailure: false },
+      {
+        seed,
+        numRuns: config.runs,
+        endOnFailure: false,
+        interruptAfterTimeLimit: 540_000,
+        markInterruptAsFailure: true,
+      },
     );
     if (verdict.failed) {
       throw new Error(
