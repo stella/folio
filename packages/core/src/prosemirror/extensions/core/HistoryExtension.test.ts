@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -64,6 +64,7 @@ const createEditor = (historyShortcuts: HistoryShortcutOwner) => {
 beforeAll(() => GlobalRegistrator.register());
 
 afterEach(() => {
+  setSystemTime();
   for (const view of views.splice(0)) {
     const mount = view.dom.parentElement;
     view.destroy();
@@ -125,21 +126,72 @@ describe("HistoryExtension input grouping", () => {
       });
     }
 
-    test(`${representation}: consecutive deletion gestures undo independently`, () => {
+    for (const direction of ["Backward", "Forward"] as const) {
+      test(`${representation}: consecutive ${direction} deletions undo together`, () => {
+        const editor = createEditor("editor");
+        input(editor.view, "insertText");
+        editor.type("alpha");
+        const typed = editor.view.state.doc;
+        for (let index = 0; index < 3; index++) {
+          editor.view.dom.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: direction === "Backward" ? "Backspace" : "Delete",
+              bubbles: true,
+            }),
+          );
+          input(editor.view, `deleteContent${direction}`);
+          const tr = editor.view.state.tr;
+          const from = direction === "Backward" ? 5 - index : 1;
+          if (representation === "replacement") tr.delete(from, from + 1);
+          else {
+            const markFrom = direction === "Backward" ? from : 1 + index;
+            tr.addMark(markFrom, markFrom + 1, editor.view.state.schema.mark("bold"));
+          }
+          editor.view.dispatch(tr);
+        }
+        editor.press(UNDO);
+        expect(editor.view.state.doc.eq(typed)).toBe(true);
+        editor.press(UNDO);
+        expect(editor.text()).toBe("");
+      });
+    }
+
+    test(`${representation}: a pause ends the deletion group`, () => {
+      setSystemTime(new Date("2026-01-01T00:00:00Z"));
       const editor = createEditor("editor");
       input(editor.view, "insertText");
       editor.type("alpha");
       input(editor.view, "deleteContentForward");
-      let tr = editor.view.state.tr;
-      if (representation === "replacement") tr.delete(1, 2);
-      else tr.addMark(1, 2, editor.view.state.schema.mark("bold"));
-      editor.view.dispatch(tr);
+      const first = editor.view.state.tr;
+      if (representation === "replacement") first.delete(1, 2);
+      else first.addMark(1, 2, editor.view.state.schema.mark("bold"));
+      editor.view.dispatch(first);
+      const firstDelete = editor.view.state.doc;
+      setSystemTime(new Date("2026-01-01T00:00:01Z"));
+      input(editor.view, "deleteContentForward");
+      const second = editor.view.state.tr;
+      if (representation === "replacement") second.delete(1, 2);
+      else second.addMark(2, 3, editor.view.state.schema.mark("bold"));
+      editor.view.dispatch(second);
+      editor.press(UNDO);
+      expect(editor.view.state.doc.eq(firstDelete)).toBe(true);
+    });
+
+    test(`${representation}: changing deletion direction starts a new event`, () => {
+      const editor = createEditor("editor");
+      input(editor.view, "insertText");
+      editor.type("alpha");
+      input(editor.view, "deleteContentBackward");
+      const backward = editor.view.state.tr;
+      if (representation === "replacement") backward.delete(5, 6);
+      else backward.addMark(5, 6, editor.view.state.schema.mark("bold"));
+      editor.view.dispatch(backward);
       const firstDelete = editor.view.state.doc;
       input(editor.view, "deleteContentForward");
-      tr = editor.view.state.tr;
-      if (representation === "replacement") tr.delete(1, 2);
-      else tr.addMark(2, 3, editor.view.state.schema.mark("bold"));
-      editor.view.dispatch(tr);
+      const forward = editor.view.state.tr;
+      if (representation === "replacement") forward.delete(1, 2);
+      else forward.addMark(1, 2, editor.view.state.schema.mark("bold"));
+      editor.view.dispatch(forward);
       editor.press(UNDO);
       expect(editor.view.state.doc.eq(firstDelete)).toBe(true);
     });

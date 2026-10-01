@@ -2,7 +2,7 @@
  * History Extension — undo/redo via prosemirror-history
  */
 
-import { closeHistory, history, undo, redo } from "prosemirror-history";
+import { closeHistory, history, isHistoryTransaction, undo, redo } from "prosemirror-history";
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
@@ -23,28 +23,64 @@ type HistoryOptions = {
   shortcuts: HistoryShortcutOwner;
 };
 
-type InputKind = "typing" | "deletion" | "structure" | "composition" | "paste" | "drop";
+type InputKind =
+  | "typing"
+  | "deleteBackward"
+  | "deleteForward"
+  | "deletion"
+  | "structure"
+  | "composition"
+  | "paste"
+  | "drop";
 
 /**
  * History adjacency is based on step maps, which differ for physical deletions
- * and suggestion marks. Group continuous typing explicitly; each deletion,
+ * and suggestion marks. Group continuous typing and same-direction deletions explicitly; each
  * structural edit, paste, drop, or composition starts its own undo event.
  * Capture DOM input before the shared input router or a keymap handles it.
  */
-const inputBoundaryPlugin = (): Plugin =>
-  new Plugin({
+const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
+  let previousKind: InputKind | undefined;
+  let deletionGroup = 0;
+  let previousInputTime = 0;
+  return new Plugin({
+    filterTransaction(tr) {
+      if (isHistoryTransaction(tr) || (!tr.docChanged && tr.selectionSet)) {
+        previousKind = undefined;
+        return true;
+      }
+      if (
+        tr.docChanged &&
+        (previousKind === "deleteBackward" ||
+          previousKind === "deleteForward" ||
+          previousKind === "deletion")
+      ) {
+        // History's composition token groups empty-map mark steps too. Negative
+        // tokens keep semantic deletion groups separate from native compositions.
+        tr.setMeta("composition", deletionGroup);
+      }
+      return true;
+    },
     view(view: EditorView) {
-      let previousKind: InputKind | undefined;
       const startInput = (kind: InputKind) => {
-        if (kind !== previousKind || (kind !== "typing" && kind !== "composition")) {
+        const now = Date.now();
+        if (
+          kind !== previousKind ||
+          kind === "structure" ||
+          kind === "paste" ||
+          kind === "drop" ||
+          now - previousInputTime > newGroupDelay
+        ) {
+          deletionGroup--;
           view.dispatch(closeHistory(view.state.tr));
         }
+        previousInputTime = now;
         previousKind = kind;
       };
       const keydown = (event: KeyboardEvent) => {
         if (event.isComposing) return;
         if (event.key === "Backspace" || event.key === "Delete") {
-          startInput("deletion");
+          startInput(event.key === "Backspace" ? "deleteBackward" : "deleteForward");
           return;
         }
         if (event.key === "Enter") {
@@ -62,8 +98,11 @@ const inputBoundaryPlugin = (): Plugin =>
           startInput("typing");
           return;
         }
-        if (event.inputType.startsWith("delete")) startInput("deletion");
-        else if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
+        if (event.inputType.startsWith("delete")) {
+          if (event.inputType.endsWith("Backward")) startInput("deleteBackward");
+          else if (event.inputType.endsWith("Forward")) startInput("deleteForward");
+          else startInput("deletion");
+        } else if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
           startInput("structure");
         }
       };
@@ -89,6 +128,7 @@ const inputBoundaryPlugin = (): Plugin =>
       };
     },
   });
+};
 
 const defaultHistoryOptions: HistoryOptions = {
   depth: 100,
@@ -106,7 +146,7 @@ export const HistoryExtension = createExtension({
           depth: options.depth,
           newGroupDelay: options.newGroupDelay,
         }),
-        inputBoundaryPlugin(),
+        inputBoundaryPlugin(options.newGroupDelay),
       ],
       commands: {
         undo: () => undo,
