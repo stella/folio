@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import fc from "fast-check";
+import { validateDocxPackage } from "@stll/docx-core";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -59,6 +60,7 @@ const assertReceipt = (value: unknown, id: string) => {
 };
 
 const semanticProjection = async (bytes: Uint8Array) => {
+  expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
   const reviewer = await FolioDocxReviewer.fromBuffer(new Uint8Array(bytes).buffer);
   return {
     // Exclude regenerated identity and package metadata, retain semantic structure.
