@@ -53,7 +53,7 @@ const drive = async (page: Page, action: InterleavingAction) => {
     case "suggest": {
       const pending = await page.evaluate((text) => {
         const suggest = globalThis.__folioInterleavingSuggest;
-        if (!suggest) throw new Error("interleaving tool bridge unavailable");
+        if (!suggest) throw new Error("interleaving document-operation bridge unavailable");
         return suggest(text);
       }, action.text);
       expect(pending).toBeGreaterThan(0);
@@ -136,7 +136,7 @@ for (const seed of config.seeds) {
             },
             [...new Uint8Array(source)],
           );
-          stage = "install-tool-bridge";
+          stage = "install-document-operation-bridge";
           // Await module loading and installation so import errors reach fast-check
           // instead of leaving an unbounded wait for a missing global function.
           await page.evaluate(async (url) => {
