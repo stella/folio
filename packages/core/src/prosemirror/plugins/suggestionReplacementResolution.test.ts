@@ -49,6 +49,7 @@ test("IME replacement preserves open paragraph edges across every text range", a
       new Event("compositionend"),
     );
     await Promise.resolve();
+    await Promise.resolve();
     let accepted = view.state;
     acceptAllChanges()(accepted, (tr) => {
       accepted = accepted.apply(tr);
@@ -123,6 +124,7 @@ test.each(["mixed-lists", "image", "notes"])(
           view as never,
           new Event("compositionend"),
         );
+        await Promise.resolve();
         await Promise.resolve();
         if (shapeId === "mixed-lists") view.typeText("alpha");
       }

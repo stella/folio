@@ -24,7 +24,7 @@ import { expectParagraphAttrs, expectTrackedChangeMarkAttrs } from "../attrs";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
-import { handleEditorBeforeInput } from "../textInput";
+import { afterNativeCompositionFlush, handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
@@ -1530,7 +1530,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         // settles. PM commits the composed text in its own compositionend flush
         // (which runs after this handler); `composing` stays true across that
         // flush so the catch-all skips it, then the range is marked and the flag
-        // cleared one microtask later. See `markComposedAsInsertion`.
+        // cleared after the native final flush. See `markComposedAsInsertion`.
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
@@ -1541,7 +1541,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
             composing = false;
             return false;
           }
-          queueMicrotask(() => {
+          afterNativeCompositionFlush(() => {
             try {
               // Re-read state: suggestion mode may have been toggled off (or the
               // author changed) between scheduling and running this callback.
