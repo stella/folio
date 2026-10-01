@@ -21,51 +21,57 @@ const paragraph = (text: string) => schema.node("paragraph", null, schema.text(t
 
 // Exercise the real composition lifecycle, including the browser-owned native
 // replacement between its start and deferred end handlers.
-test("IME replacement preserves open paragraph edges across every text range", async () => {
-  const baseline = schema.node("doc", null, [
-    schema.node("paragraph", { alignment: "center", indentLeft: 240 }, schema.text("First")),
-    schema.node("paragraph", { alignment: "right", indentLeft: 480 }, schema.text("Second")),
-  ]);
-  const properties = (doc: typeof baseline) =>
-    textblocks(doc).map(({ node }) => paragraphPropertiesSnapshot(node));
-  const ranges = [];
-  for (let from = 1; from <= 6; from++) {
-    for (let to = 8; to <= 14; to++) ranges.push({ from, to });
-  }
-  for (const { from, to } of ranges) {
-    const plugin = createSuggestionModePlugin(true, "Reviewer");
-    const view = new HeadlessEditorView(EditorState.create({ doc: baseline, plugins: [plugin] }));
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
-    plugin.props.handleDOMEvents?.["compositionstart"]?.call(
-      plugin,
-      view as never,
-      new Event("compositionstart"),
-    );
-    const direct = view.state.tr.insertText("alpha").doc;
-    view.dispatch(view.state.tr.insertText("alpha"));
-    plugin.props.handleDOMEvents?.["compositionend"]?.call(
-      plugin,
-      view as never,
-      new Event("compositionend"),
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-    let accepted = view.state;
-    acceptAllChanges()(accepted, (tr) => {
-      accepted = accepted.apply(tr);
-    });
-    expect(accepted.doc.textContent).toBe(direct.textContent);
-    expect(accepted.doc.childCount).toBe(direct.childCount);
-    expect(properties(accepted.doc)).toEqual(properties(direct));
-    let rejected = view.state;
-    rejectAllChanges()(rejected, (tr) => {
-      rejected = rejected.apply(tr);
-    });
-    expect(rejected.doc.textContent).toBe(baseline.textContent);
-    expect(rejected.doc.childCount).toBe(baseline.childCount);
-    expect(properties(rejected.doc)).toEqual(properties(baseline));
-  }
-});
+test.each(["beforeEnd", "nativeEndFlush"] as const)(
+  "%s: IME replacement preserves open paragraph edges across every text range",
+  async (commitTiming) => {
+    const baseline = schema.node("doc", null, [
+      schema.node("paragraph", { alignment: "center", indentLeft: 240 }, schema.text("First")),
+      schema.node("paragraph", { alignment: "right", indentLeft: 480 }, schema.text("Second")),
+    ]);
+    const properties = (doc: typeof baseline) =>
+      textblocks(doc).map(({ node }) => paragraphPropertiesSnapshot(node));
+    const ranges = [];
+    for (let from = 1; from <= 6; from++) {
+      for (let to = 8; to <= 14; to++) ranges.push({ from, to });
+    }
+    for (const { from, to } of ranges) {
+      const plugin = createSuggestionModePlugin(true, "Reviewer");
+      const view = new HeadlessEditorView(EditorState.create({ doc: baseline, plugins: [plugin] }));
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+      plugin.props.handleDOMEvents?.["compositionstart"]?.call(
+        plugin,
+        view as never,
+        new Event("compositionstart"),
+      );
+      const direct = view.state.tr.insertText("alpha").doc;
+      if (commitTiming === "beforeEnd") view.dispatch(view.state.tr.insertText("alpha"));
+      plugin.props.handleDOMEvents?.["compositionend"]?.call(
+        plugin,
+        view as never,
+        new Event("compositionend"),
+      );
+      if (commitTiming === "nativeEndFlush") {
+        queueMicrotask(() => view.dispatch(view.state.tr.insertText("alpha")));
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+      let accepted = view.state;
+      acceptAllChanges()(accepted, (tr) => {
+        accepted = accepted.apply(tr);
+      });
+      expect(accepted.doc.textContent).toBe(direct.textContent);
+      expect(accepted.doc.childCount).toBe(direct.childCount);
+      expect(properties(accepted.doc)).toEqual(properties(direct));
+      let rejected = view.state;
+      rejectAllChanges()(rejected, (tr) => {
+        rejected = rejected.apply(tr);
+      });
+      expect(rejected.doc.textContent).toBe(baseline.textContent);
+      expect(rejected.doc.childCount).toBe(baseline.childCount);
+      expect(properties(rejected.doc)).toEqual(properties(baseline));
+    }
+  },
+);
 
 const project = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
