@@ -11,7 +11,12 @@
  *   (retracting your own suggestion)
  */
 
-import { joinBackward, joinForward } from "prosemirror-commands";
+import {
+  joinBackward,
+  joinForward,
+  selectNodeBackward,
+  selectNodeForward,
+} from "prosemirror-commands";
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
 import { Slice, type Node as PMNode, type MarkType } from "prosemirror-model";
@@ -1339,8 +1344,9 @@ function handleSuggestionDelete(
       selection: TextSelection.create(state.doc, edge),
     });
     const join = isBackward ? joinBackward : joinForward;
-    join(virtual, dispatch);
-    return true;
+    if (join(virtual, dispatch)) return true;
+    const selectNode = isBackward ? selectNodeBackward : selectNodeForward;
+    return selectNode(virtual, dispatch);
   }
   const deletePos = target.from;
   const deleteEnd = target.to;

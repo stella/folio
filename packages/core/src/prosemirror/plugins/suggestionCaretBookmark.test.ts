@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 
 import { HeadlessEditorView } from "../../__tests__/editorHarness";
 import { acceptAllChanges } from "../commands/comments";
@@ -91,36 +91,50 @@ for (const direction of ["Backspace", "Delete"] as const) {
     });
   }
 
-  test(`${direction} across a bookmark pair beside a table preserves content`, () => {
-    const plugin = createSuggestionModePlugin(true, "Reviewer");
-    const pair = [bookmark("start", 1), bookmark("end", 1)];
-    const paragraph = schema.node(
-      "paragraph",
-      null,
-      direction === "Backspace" ? [...pair, schema.text("tail")] : [schema.text("head"), ...pair],
-    );
-    const table = schema.node("table", null, [
-      schema.node("tableRow", null, [
-        schema.node("tableCell", null, [schema.node("paragraph", null, schema.text("cell"))]),
-      ]),
-    ]);
-    const doc = schema.node(
-      "doc",
-      null,
-      direction === "Backspace" ? [table, paragraph] : [paragraph, table],
-    );
-    const caret = direction === "Backspace" ? table.nodeSize + 3 : paragraph.nodeSize - 3;
-    const state = EditorState.create({ doc, plugins: [plugin] });
-    const view = new HeadlessEditorView(
-      state.apply(state.tr.setSelection(TextSelection.create(doc, caret))),
-    );
+  test.each([1, 2, 3])(
+    `${direction} crosses %s bookmark pairs to select an adjacent table`,
+    (count) => {
+      const plugin = createSuggestionModePlugin(true, "Reviewer");
+      const pair = Array.from({ length: count }, (_, index) => [
+        bookmark("start", index + 1),
+        bookmark("end", index + 1),
+      ]).flat();
+      const paragraph = schema.node(
+        "paragraph",
+        null,
+        direction === "Backspace" ? [...pair, schema.text("tail")] : [schema.text("head"), ...pair],
+      );
+      const table = schema.node("table", null, [
+        schema.node("tableRow", null, [
+          schema.node("tableCell", null, [schema.node("paragraph", null, schema.text("cell"))]),
+        ]),
+      ]);
+      const doc = schema.node(
+        "doc",
+        null,
+        direction === "Backspace" ? [table, paragraph] : [paragraph, table],
+      );
+      const caret =
+        direction === "Backspace"
+          ? table.nodeSize + 1 + count * 2
+          : paragraph.nodeSize - 1 - count * 2;
+      const state = EditorState.create({ doc, plugins: [plugin] });
+      const view = new HeadlessEditorView(
+        state.apply(state.tr.setSelection(TextSelection.create(doc, caret))),
+      );
 
-    expect(view.pressKey(direction)).toBe(true);
-    expect(view.state.doc.textContent).toBe(direction === "Backspace" ? "celltail" : "headcell");
-    let markerCount = 0;
-    view.state.doc.descendants((node) => {
-      if (node.type.name === "bookmarkBoundary") markerCount += 1;
-    });
-    expect(markerCount).toBe(2);
-  });
+      expect(view.pressKey(direction)).toBe(true);
+      expect(view.state.selection).toBeInstanceOf(NodeSelection);
+      const tablePos = direction === "Backspace" ? 0 : paragraph.nodeSize;
+      expect(view.state.selection.from).toBe(tablePos);
+      expect(view.state.selection.to).toBe(tablePos + table.nodeSize);
+      expect(view.state.doc.eq(doc)).toBe(true);
+      expect(view.state.doc.textContent).toBe(direction === "Backspace" ? "celltail" : "headcell");
+      let markerCount = 0;
+      view.state.doc.descendants((node) => {
+        if (node.type.name === "bookmarkBoundary") markerCount += 1;
+      });
+      expect(markerCount).toBe(count * 2);
+    },
+  );
 }
