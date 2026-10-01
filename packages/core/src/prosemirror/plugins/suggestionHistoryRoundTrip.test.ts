@@ -32,6 +32,7 @@ const mountEditor = (state: EditorState) => {
   document.body.append(mount);
   const view = new EditorView(mount, { state });
   views.push(view);
+  view.focus();
   return view;
 };
 
@@ -68,52 +69,64 @@ for (const mode of ["editing", "suggesting"] as const) {
   });
 }
 
-// The Enter conformance fixture covered inline objects but omitted list
-// selections and redo. Exercise both list edges through the DOM key router.
-for (const startOffset of [1, 2]) {
-  for (const endOffset of [1, 2]) {
-    test(`selected list Enter survives undo/redo (${startOffset}, ${endOffset})`, async () => {
-      const base = await parseShapeDocument(await documentShape("mixed-lists").build());
-      const baseline = summarizeState(createHarnessState(base, "editing"));
-      const outcomes: ReturnType<typeof summarizeState>[] = [];
-      for (const mode of ["editing", "suggesting"] as const) {
-        const view = mountEditor(createHarnessState(base, mode));
-        const positions: number[] = [];
-        view.state.doc.descendants((node, pos) => {
-          if (
-            node.type.name === "paragraph" &&
-            node.attrs["numPr"] != null &&
-            positions.length < 2
-          ) {
-            positions.push(pos);
-          }
-        });
-        const first = positions.at(0);
-        const second = positions.at(1);
-        if (first === undefined || second === undefined) panic("Missing list paragraphs");
-        view.dispatch(
-          view.state.tr.setSelection(
-            TextSelection.create(view.state.doc, first + startOffset, second + endOffset),
-          ),
-        );
-        const initial = view.state.doc;
-        key(view, "enter");
-        const entered = view.state.doc;
-        key(view, "undo");
-        expect(view.state.doc.eq(initial)).toBe(true);
-        key(view, "redo");
-        expect(view.state.doc.eq(entered)).toBe(true);
-        const accepted = resolveAllChanges(view.state, "accept");
-        outcomes.push(summarizeState(accepted));
-        const saved = await saveHarnessState(accepted, base);
-        expect(
-          summarizeState(createHarnessState(await parseShapeDocument(saved.bytes), "editing")),
-        ).toEqual(summarizeState(accepted));
-        if (mode === "suggesting") {
-          expect(summarizeState(resolveAllChanges(view.state, "reject"))).toEqual(baseline);
+// Exercise paragraph-start and interior edges in both selection directions.
+// The previous Enter conformance cases did not cover whole-paragraph removal.
+const selectionCases = ["mixed-lists", "bare-package"].flatMap((shape) =>
+  ["forward", "backward"].flatMap((direction) =>
+    [1, 2].flatMap((startOffset) =>
+      [1, 2].map((endOffset) => ({ shape, direction, startOffset, endOffset })),
+    ),
+  ),
+);
+
+for (const { shape, direction, startOffset, endOffset } of selectionCases) {
+  test(`selected ${shape} Enter survives undo/redo (${direction}, ${startOffset}, ${endOffset})`, async () => {
+    const base = await parseShapeDocument(await documentShape(shape).build());
+    const baseline = summarizeState(createHarnessState(base, "editing"));
+    const outcomes: ReturnType<typeof summarizeState>[] = [];
+    for (const mode of ["editing", "suggesting"] as const) {
+      const view = mountEditor(createHarnessState(base, mode));
+      const positions: number[] = [];
+      view.state.doc.descendants((node, pos) => {
+        if (
+          node.type.name === "paragraph" &&
+          (shape !== "mixed-lists" || node.attrs["numPr"] != null) &&
+          positions.length < 2
+        ) {
+          positions.push(pos);
         }
+      });
+      const first = positions.at(0);
+      const second = positions.at(1);
+      if (first === undefined || second === undefined) panic("Missing selection paragraphs");
+      const from = first + startOffset;
+      const to = second + endOffset;
+      view.dispatch(
+        view.state.tr.setSelection(
+          TextSelection.create(
+            view.state.doc,
+            direction === "forward" ? from : to,
+            direction === "forward" ? to : from,
+          ),
+        ),
+      );
+      const initial = view.state.doc;
+      key(view, "enter");
+      const entered = view.state.doc;
+      key(view, "undo");
+      expect(view.state.doc.eq(initial)).toBe(true);
+      key(view, "redo");
+      expect(view.state.doc.eq(entered)).toBe(true);
+      const accepted = resolveAllChanges(view.state, "accept");
+      outcomes.push(summarizeState(accepted));
+      const saved = await saveHarnessState(accepted, base);
+      expect(
+        summarizeState(createHarnessState(await parseShapeDocument(saved.bytes), "editing")),
+      ).toEqual(summarizeState(accepted));
+      if (mode === "suggesting") {
+        expect(summarizeState(resolveAllChanges(view.state, "reject"))).toEqual(baseline);
       }
-      expect(outcomes.at(1)).toEqual(outcomes.at(0));
-    });
-  }
+    }
+    expect(outcomes.at(1)).toEqual(outcomes.at(0));
+  });
 }
