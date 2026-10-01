@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
+import {
+  failureMarker,
+  failureRecord,
+  logFailureMarker,
+  writeFailureRecord,
+} from "../../test/consumer-scenarios/support/failure-fingerprints";
 
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { FolioDocxReviewer } from "../../packages/core/src/ai-edits/headless";
@@ -8,6 +14,7 @@ import { parseBrowserInputTraceConfig } from "./browserInputTrace";
 import { interleavingTraceArbitrary, type InterleavingAction } from "./interleavingTrace";
 import type {} from "./interleavingBridge";
 
+const replayPath = process.env["PROPERTY_TEST_PATH"];
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const bridgeUrl = `/@fs${new URL("./interleavingBridge.ts", import.meta.url).pathname}`;
 const config = parseBrowserInputTraceConfig(
@@ -115,6 +122,7 @@ for (const seed of config.seeds) {
     page.setDefaultTimeout(10_000);
     page.setDefaultNavigationTimeout(30_000);
     let firstFailureRecorded = false;
+    let firstFingerprint: string | null = null;
     const verdict = await fc.check(
       fc.asyncProperty(interleavingTraceArbitrary, async (trace) => {
         let stage = "load";
@@ -187,6 +195,7 @@ for (const seed of config.seeds) {
                 .digest("hex")
                 .slice(0, 16),
             };
+            firstFingerprint = failure.fingerprint;
             console.log(`INTERLEAVING_FAILURE ${JSON.stringify(failure)}`);
             await testInfo.attach("first-interleaving-failure", {
               body: JSON.stringify(failure, null, 2),
@@ -198,6 +207,7 @@ for (const seed of config.seeds) {
       }),
       {
         seed,
+        ...(replayPath === undefined ? {} : { path: replayPath }),
         numRuns: config.runs,
         endOnFailure: false,
         interruptAfterTimeLimit: 540_000,
@@ -205,6 +215,24 @@ for (const seed of config.seeds) {
       },
     );
     if (verdict.failed) {
+      const repro = `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=1 PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=interleaving-fuzzer --workers=1`;
+      const marker = {
+        ...failureMarker({
+          test: "AI and human revision interleaving",
+          seed,
+          path: verdict.counterexamplePath,
+          repro,
+          failure: verdict.errorInstance,
+        }),
+        ...(firstFingerprint === null ? {} : { fingerprint: firstFingerprint }),
+      };
+      logFailureMarker(marker);
+      writeFailureRecord(
+        "test-results/interleaving-findings",
+        failureRecord(marker, verdict.errorInstance, {
+          flow: verdict.counterexample?.at(0),
+        }),
+      );
       throw new Error(
         `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${String(verdict.errorInstance)}`,
         { cause: verdict.errorInstance },

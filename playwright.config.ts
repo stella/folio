@@ -39,7 +39,11 @@ export default defineConfig({
     },
     {
       name: "browser-fuzzer",
-      testMatch: /(?:browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
+      testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
+    },
+    {
+      name: "interleaving-fuzzer",
+      testMatch: /ai-human-interleaving-fuzz\.interactions\.spec\.ts/u,
     },
     // Measure/paint parity compares two numbers read from the SAME browser in
     // the same layout pass, so unlike the screenshot baselines it cannot go
