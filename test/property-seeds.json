@@ -491,6 +491,34 @@
       "seed": 1641782380,
       "note": "Loaded maximum IDs must wrap without crossing previously reserved comment or revision IDs; replay the whole sequence because realm allocation retains state. Failure path: 3.",
       "date": "2026-10-01"
+    },
+    {
+      "seed": 1447742509,
+      "note": "Shared revision batches need a free contiguous interval after loaded ids shorten the high tail; replay the whole sequence because realm allocation retains state. Failure path: 13:0:0.",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/ai-edits/characterBoundaries.test.ts::changes no text beyond what it names, and cuts no character": [
+    {
+      "seed": 702376610,
+      "note": "A multi-id replacement must not cross ids reserved by earlier batches after rollover; replay the whole sequence because realm allocation retains state. Failure path: 71.",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/docx/savedTextFidelity.property.test.ts::a plain repack preserves the paragraph's text": [
+    {
+      "seed": 118802345,
+      "note": "VML lexical shape ids must not become DrawingML numeric ids",
+      "date": "2026-10-01",
+      "path": "2:1:1:1"
+    }
+  ],
+  "packages/core/src/docx/savedTextFidelity.property.test.ts::the editor round trip preserves the paragraph's text": [
+    {
+      "seed": 958315626,
+      "note": "VML lexical shape ids must not become DrawingML numeric ids",
+      "date": "2026-10-01",
+      "path": "4:1:1:1"
     }
   ]
 }

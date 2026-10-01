@@ -1,0 +1,59 @@
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { resetAutoIdCounter, serializeRun } from "./serializer/runSerializer";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
+
+const drawingModelId = fc.oneof(
+  fc.string(),
+  fc.integer({ min: 0, max: 0xffff_ffff }).map(String),
+  fc.constantFrom("bare", "_x0000_s1025", "4294967296", "-1", "1.5", ""),
+  fc.constant(undefined),
+);
+
+test("every rebuilt drawing uses bounded numeric ids without changing its lexical model id", () => {
+  fc.assert(
+    fc.property(drawingModelId, (id) => {
+      resetAutoIdCounter();
+      const image = {
+        type: "image",
+        id,
+        rId: "rId1",
+        size: { width: 914_400, height: 914_400 },
+      } as const;
+      const shape = {
+        type: "shape",
+        id,
+        shapeType: "rect",
+        shapeNames: { name: "Shape" },
+        size: { width: 914_400, height: 914_400 },
+      } as const;
+      const xml = serializeRun({
+        type: "run",
+        content: [
+          { type: "drawing", image },
+          { type: "shape", shape },
+        ],
+      });
+      const identifiers = [...xml.matchAll(/<(?:wp:docPr|pic:cNvPr|wps:cNvPr) id="([^"]*)"/gu)];
+      expect(identifiers).toHaveLength(4);
+      const numericSource = id === undefined ? NaN : Number(id);
+      const sourceIsNumeric =
+        id !== undefined &&
+        /^[+-]?\d+$/u.test(id.trim()) &&
+        numericSource > 0 &&
+        numericSource <= 0xffff_ffff;
+      for (const [, written] of identifiers) {
+        expect(written?.trim()).toMatch(/^[+-]?\d+$/u);
+        expect(Number(written)).toBeGreaterThan(0);
+        expect(Number(written)).toBeLessThanOrEqual(0xffff_ffff);
+        if (sourceIsNumeric) expect(written).toBe(id);
+      }
+      expect(image.id).toBe(id);
+      expect(shape.id).toBe(id);
+    }),
+    propertyConfig({ numRuns: 150 }),
+  );
+});

@@ -7,20 +7,25 @@
  * Port of eigenpal/docx-editor#1093.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Schema } from "prosemirror-model";
+import fc from "fast-check";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import {
   claimRevisionIds,
   mintRevisionId,
   nextRevisionId,
+  nextRevisionIdRange,
   revisionIdSeedAbove,
   RevisionIdAllocationError,
   seedRevisionIdsAbove,
   seedRevisionIdsFromDoc,
 } from "./revisionIds";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 const schema = new Schema({
   nodes: {
@@ -179,4 +184,42 @@ describe("range top boundary", () => {
     );
     expect(nextRevisionId()).toBe(before);
   });
+});
+
+test("shared contiguous batches avoid every occupied hole and high tail across producer schedules", () => {
+  // The prior allocation oracle checked single ids. Generate multi-id demands
+  // and loaded boundaries between batches, including single-id producers.
+  assertProperty(
+    fc.property(
+      fc.array(
+        fc.record({
+          offset: fc.integer({ min: 0, max: 64 }),
+          demand: fc.integer({ min: 2, max: 16 }),
+        }),
+        { minLength: 2, maxLength: 20 },
+      ),
+      (schedule) => {
+        const loaded = new Set(schedule.map(({ offset }) => MAX_REVISION_ID - offset));
+        for (const id of loaded) seedRevisionIdsAbove(id);
+        const issued = new Set<number>();
+        for (const { offset, demand } of schedule) {
+          seedRevisionIdsAbove(MAX_REVISION_ID - offset);
+          const first = nextRevisionIdRange();
+          claimRevisionIds(first, first + demand);
+          for (let id = first; id < first + demand; id += 1) {
+            expect(id).toBeGreaterThan(0);
+            expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+            expect(loaded.has(id)).toBe(false);
+            expect(issued.has(id)).toBe(false);
+            issued.add(id);
+          }
+          const reentrant = mintRevisionId();
+          expect(loaded.has(reentrant)).toBe(false);
+          expect(issued.has(reentrant)).toBe(false);
+          issued.add(reentrant);
+        }
+      },
+    ),
+    { numRuns: 40 },
+  );
 });

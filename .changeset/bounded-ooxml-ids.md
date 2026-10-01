@@ -4,4 +4,4 @@
 "@stll/folio-react": patch
 ---
 
-Allocate bounded OOXML identifiers across editors and reviewers, and reject out-of-range identifiers when saving DOCX files.
+Allocate bounded OOXML identifiers across editors and reviewers, normalize legacy imported identities consistently, and reject out-of-range identifiers when saving DOCX files.

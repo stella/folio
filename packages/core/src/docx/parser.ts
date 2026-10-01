@@ -55,6 +55,7 @@ import {
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
 import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
+import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
@@ -394,8 +395,6 @@ export async function parseDocxWithPreviewBudget(
 
     const timeStageAsync = async <T>(_name: string, fn: () => Promise<T>): Promise<T> => await fn();
 
-    const paragraphPropertySourceDigest = sha256Hex(buffer);
-
     // ========================================================================
     // STAGE 1: Unzip DOCX package (0-10%)
     // ========================================================================
@@ -403,6 +402,8 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
+    await normalizeRawDocxNumericIds(raw);
+    const paragraphPropertySourceDigest = sha256Hex(raw.originalBuffer);
     if (raw.wasEncrypted) {
       parseContext.warn({ code: PARSE_WARNING_CODES.packageDecrypted });
     }

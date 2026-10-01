@@ -45,6 +45,9 @@ export { serializeDocumentToDocx } from "./serialize/docx";
 export {
   assertValidOoxmlNumericId,
   assertValidOoxmlNumericIds,
+  isValidOoxmlNumericId,
+  mayContainInvalidOoxmlNumericIds,
+  ooxmlNumericIdDomain,
   InvalidOoxmlNumericIdError,
 } from "./serialize/numericIds";
 export { pushOnOffElement, serializeOnOffElement } from "./serialize/xml";

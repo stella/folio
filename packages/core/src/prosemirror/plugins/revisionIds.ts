@@ -86,6 +86,17 @@ export const nextRevisionId = (): number => {
   return counter;
 };
 
+/**
+ * A shared batch increments its seed locally, so a single free id is not
+ * enough: start in the largest free interval. Every contiguous batch that
+ * can fit anywhere fits here, including after loaded ids shorten the tail.
+ * Continue within this interval until another producer changes the cursor.
+ */
+export const nextRevisionIdRange = (): number => {
+  counter = largestFreeIntervalStart(occupiedIds);
+  return counter;
+};
+
 const validateRevisionIdRange = (first: number, next: number): void => {
   if (
     !Number.isInteger(first) ||

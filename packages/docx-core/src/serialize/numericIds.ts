@@ -39,6 +39,19 @@ type NumericIdOptions = {
   domain?: "signed32" | "unsigned32";
 };
 
+export const isValidOoxmlNumericId = (
+  value: string | number,
+  domain: "signed32" | "unsigned32" = "signed32",
+): boolean => {
+  const spelling = String(value).trim();
+  const numeric = Number(spelling);
+  const min = domain === "unsigned32" ? 0 : MIN_SIGNED_ID;
+  const max = domain === "unsigned32" ? MAX_UNSIGNED_ID : MAX_REVISION_ID;
+  return (
+    /^[+-]?\d+$/u.test(spelling) && Number.isInteger(numeric) && numeric >= min && numeric <= max
+  );
+};
+
 export const assertValidOoxmlNumericId = ({
   value,
   partPath,
@@ -46,18 +59,9 @@ export const assertValidOoxmlNumericId = ({
   attributeName,
   domain = "signed32",
 }: NumericIdOptions): void => {
-  const spelling = String(value).trim();
-  const numeric = Number(spelling);
+  if (isValidOoxmlNumericId(value, domain)) return;
   const min = domain === "unsigned32" ? 0 : MIN_SIGNED_ID;
   const max = domain === "unsigned32" ? MAX_UNSIGNED_ID : MAX_REVISION_ID;
-  if (
-    /^[+-]?\d+$/u.test(spelling) &&
-    Number.isInteger(numeric) &&
-    numeric >= min &&
-    numeric <= max
-  ) {
-    return;
-  }
   throw new InvalidOoxmlNumericIdError({
     message: `${partPath}: ${elementName} ${attributeName} must be an integer in [${min}, ${max}], got ${String(value)}`,
     partPath,
@@ -65,6 +69,41 @@ export const assertValidOoxmlNumericId = ({
     attributeName,
     value: String(value),
   });
+};
+
+type NumericIdAttributeOptions = {
+  elementName: string;
+  elementNamespace: string | undefined;
+  attributeName: string;
+  attributeNamespace: string | undefined;
+};
+
+/** Shared schema classification for import normalization and writer validation. */
+export const ooxmlNumericIdDomain = ({
+  elementName,
+  elementNamespace,
+  attributeName,
+  attributeNamespace,
+}: NumericIdAttributeOptions): "signed32" | "unsigned32" | undefined => {
+  const elementLocalName = localName(elementName);
+  const attributeLocalName = localName(attributeName);
+  if (
+    WORD_NAMESPACES.has(attributeNamespace ?? "") &&
+    ((attributeLocalName === "id" &&
+      !(WORD_NAMESPACES.has(elementNamespace ?? "") && STRING_ID_ELEMENTS.has(elementLocalName))) ||
+      NUMBERING_ATTRIBUTES.has(attributeLocalName) ||
+      (attributeLocalName === "val" &&
+        WORD_NAMESPACES.has(elementNamespace ?? "") &&
+        ID_VALUE_ELEMENTS.has(elementLocalName)))
+  )
+    return "signed32";
+  if (
+    attributeName === "id" &&
+    DRAWING_NAMESPACES.has(elementNamespace ?? "") &&
+    (elementLocalName === "docPr" || elementLocalName === "cNvPr")
+  )
+    return "unsigned32";
+  return undefined;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -76,18 +115,35 @@ const namespaceUri = (name: string, bindings: ReadonlyMap<string, string>): stri
   return bindings.get(colon === -1 ? "" : name.slice(0, colon));
 };
 
+const ID_ATTRIBUTE_NAMES = ["id", ...NUMBERING_ATTRIBUTES].join("|");
+const ID_ELEMENT_NAMES = [...ID_VALUE_ELEMENTS].join("|");
+const ID_CANDIDATE = new RegExp(
+  `\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=|<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?:[\\s/>])`,
+  "u",
+);
+const ID_ATTRIBUTE = new RegExp(`\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "gu");
+const ID_VALUE_TAG = new RegExp(
+  `<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?=[\\s/>])(?:[^<>"']|"[^"]*"|'[^']*')*?\\b(?:[^\\s<>/:]+:)?val\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
+  "gu",
+);
+
+/** Conservative lexical preflight; namespace classification remains authoritative. */
+export const mayContainInvalidOoxmlNumericIds = (xml: string): boolean => {
+  for (const pattern of [ID_ATTRIBUTE, ID_VALUE_TAG]) {
+    for (const match of xml.matchAll(pattern)) {
+      if (!isValidOoxmlNumericId(match[2] ?? "")) return true;
+    }
+  }
+  return false;
+};
+
 /**
  * Validate both authored and opaque replayed identifiers by namespace URI.
  * This runs at ZIP exits too, so unchanged parts cannot bypass the writer guard.
  * Permission-range ids are strings in OOXML and intentionally remain unrestricted.
  */
 export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void => {
-  if (
-    !/\b(?:id|numId|abstractNumId|numPicBulletId)\s*=|<(?:[^\s<>/:]+:)?(?:id|numId|abstractNumId|lvlPicBulletId)(?:[\s/>])/u.test(
-      xml,
-    )
-  )
-    return;
+  if (!ID_CANDIDATE.test(xml)) return;
   const parser = new XMLParser({
     preserveOrder: true,
     ignoreAttributes: false,
@@ -117,38 +173,21 @@ export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void 
       for (const [elementName, children] of Object.entries(node)) {
         if (elementName === ":@" || elementName.startsWith("#") || elementName.startsWith("?"))
           continue;
-        const elementLocalName = localName(elementName);
         const elementNamespace = namespaceUri(elementName, bindings);
         if (isRecord(attributes)) {
           for (const [attributeName, value] of Object.entries(attributes)) {
             if (typeof value !== "string" && typeof value !== "number") continue;
-            const attributeLocalName = localName(attributeName);
             const attributeNamespace = attributeName.includes(":")
               ? namespaceUri(attributeName, bindings)
               : undefined;
-            const wordId =
-              WORD_NAMESPACES.has(attributeNamespace ?? "") &&
-              ((attributeLocalName === "id" &&
-                !(
-                  WORD_NAMESPACES.has(elementNamespace ?? "") &&
-                  STRING_ID_ELEMENTS.has(elementLocalName)
-                )) ||
-                NUMBERING_ATTRIBUTES.has(attributeLocalName) ||
-                (attributeLocalName === "val" &&
-                  WORD_NAMESPACES.has(elementNamespace ?? "") &&
-                  ID_VALUE_ELEMENTS.has(elementLocalName)));
-            const drawingId =
-              attributeName === "id" &&
-              DRAWING_NAMESPACES.has(elementNamespace ?? "") &&
-              (elementLocalName === "docPr" || elementLocalName === "cNvPr");
-            if (wordId || drawingId) {
-              assertValidOoxmlNumericId({
-                value,
-                partPath,
-                elementName,
-                attributeName,
-                domain: drawingId ? "unsigned32" : "signed32",
-              });
+            const domain = ooxmlNumericIdDomain({
+              elementName,
+              elementNamespace,
+              attributeName,
+              attributeNamespace,
+            });
+            if (domain !== undefined) {
+              assertValidOoxmlNumericId({ value, partPath, elementName, attributeName, domain });
             }
           }
         }

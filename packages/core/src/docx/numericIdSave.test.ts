@@ -12,14 +12,15 @@ test("the DOCX writer rejects a synthetic timestamp-sized comment id", async () 
   await expect(createDocx(doc)).rejects.toBeInstanceOf(InvalidOoxmlNumericIdError);
 });
 
-test("the DOCX writer rejects out-of-range ids copied from untouched note parts", async () => {
+test("the DOCX writer rejects invalid ids injected into untouched note parts after import", async () => {
+  const doc = await parseDocx(await createEmptyDocx());
   const zip = await JSZip.loadAsync(await createEmptyDocx());
   zip.file(
     "word/footnotes.xml",
     '<x:footnotes xmlns:x="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><x:footnote x:type="separator" x:id="2147483648"><x:p/></x:footnote></x:footnotes>',
   );
   const source = await zip.generateAsync({ type: "arraybuffer" });
-  const doc = await parseDocx(source);
+  doc.originalBuffer = source;
   await expect(repackDocx(doc)).rejects.toBeInstanceOf(InvalidOoxmlNumericIdError);
 });
 

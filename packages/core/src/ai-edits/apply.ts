@@ -13,6 +13,7 @@ import { panic } from "better-result";
 import {
   claimRevisionIds,
   nextRevisionId as peekRevisionId,
+  nextRevisionIdRange,
   reserveRevisionIds,
   seedRevisionIdsFromDoc,
 } from "../prosemirror/plugins/revisionIds";
@@ -3790,7 +3791,7 @@ const applyFolioAIEditOperationsInternal = ({
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
-  let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId();
+  let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionIdRange();
   let claimedThrough = revisionSeed;
   const claimSharedRevisionIds = (next: number): void => {
     // Negative ids are private preview sentinels, never committed.
@@ -3801,8 +3802,8 @@ const applyFolioAIEditOperationsInternal = ({
   };
   /** Continue past ids a reentrant callback allocated in this realm. */
   const continueSharedRevisionIds = (): void => {
-    if (ownsSharedRevisionIdCursor) {
-      revisionSeed = peekRevisionId();
+    if (ownsSharedRevisionIdCursor && peekRevisionId() !== claimedThrough) {
+      revisionSeed = nextRevisionIdRange();
       claimedThrough = revisionSeed;
     }
   };

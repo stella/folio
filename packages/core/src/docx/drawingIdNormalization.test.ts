@@ -1,10 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import JSZip from "jszip";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { createEmptyDocument } from "../utils/createDocument";
 
 import type { Document, DrawingContent } from "../types/document";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -118,4 +123,39 @@ describe("drawing ID normalization", () => {
     expect(importedHeader.rawXml).toContain('wp:docPr id="100000"');
     expect(importedHeader.rawXml).toContain('pic:cNvPr id="100000"');
   });
+});
+
+test("converted lexical drawing ids avoid every authored numeric id and reach a fixed point", () => {
+  assertProperty(
+    fc.property(
+      fc.array(fc.stringMatching(/^[A-Za-z_][A-Za-z_0-9]{0,20}$/u), {
+        minLength: 1,
+        maxLength: 20,
+      }),
+      fc.constantFrom("", "+", "000"),
+      (ids, prefix) => {
+        const document = createEmptyDocument();
+        const authored = [`${prefix}100000`, `${prefix}100001`];
+        const drawings = [...authored, ...ids].map((id) => ({
+          type: "drawing" as const,
+          image: { rId: "rId1", id, size: { width: 914_400, height: 914_400 } },
+        }));
+        document.package.document.content = [
+          { type: "paragraph", content: [{ type: "run", content: drawings }] },
+        ];
+        const surfaces = { documentBody: document.package.document };
+        normalizeDrawingIds(surfaces);
+        const first = drawings.map(({ image }) => image.id);
+        expect(first.slice(0, 2)).toEqual(authored);
+        expect(new Set(first.map(Number)).size).toBe(first.length);
+        for (const id of first) {
+          expect(Number(id)).toBeGreaterThan(0);
+          expect(Number(id)).toBeLessThanOrEqual(0xffff_ffff);
+        }
+        normalizeDrawingIds(surfaces);
+        expect(drawings.map(({ image }) => image.id)).toEqual(first);
+      },
+    ),
+    { numRuns: 40 },
+  );
 });
