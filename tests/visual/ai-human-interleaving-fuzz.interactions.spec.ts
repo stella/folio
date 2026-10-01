@@ -228,7 +228,7 @@ for (const seed of config.seeds) {
       };
       logFailureMarker(marker);
       writeFailureRecord(
-        "test-results/interleaving-findings",
+        "fuzz-artifacts/interleaving/findings",
         failureRecord(marker, verdict.errorInstance, {
           flow: verdict.counterexample?.at(0),
         }),

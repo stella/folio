@@ -44,10 +44,10 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          mkdir -p test-results
+          mkdir -p fuzz-artifacts/browser
           fresh_seed=$(date +%s)
           export FOLIO_FUZZ_SEEDS="${FOLIO_FUZZ_SEEDS},${fresh_seed}"
-          bunx playwright test --project=browser-fuzzer --workers=1 2>&1 | tee test-results/browser-fuzz.log
+          bunx playwright test --project=browser-fuzzer --workers=1 --output=fuzz-playwright/browser 2>&1 | tee fuzz-artifacts/browser/browser-fuzz.log
         env:
           CI: "true"
           FOLIO_FUZZ_LANE: "nightly"
@@ -66,15 +66,17 @@ jobs:
           FOLIO_FUZZ_RUNS: "10"
         run: |
           set -o pipefail
-          mkdir -p test-results
-          bunx playwright test --project=interleaving-fuzzer --workers=1 2>&1 | tee test-results/interleaving.log
+          mkdir -p fuzz-artifacts/interleaving
+          bunx playwright test --project=interleaving-fuzzer --workers=1 --output=fuzz-playwright/interleaving 2>&1 | tee fuzz-artifacts/interleaving/interleaving.log
 
       - name: Keep interleaving repro artifacts
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: interleaving-findings
-          path: test-results/
+          path: |
+            fuzz-artifacts/interleaving
+            fuzz-playwright/interleaving
           retention-days: 14
 
       - name: Keep minimized traces and browser artifacts
@@ -83,8 +85,8 @@ jobs:
         with:
           name: browser-input-fuzzer
           path: |
-            test-results
-            playwright-report
+            fuzz-artifacts/browser
+            fuzz-playwright/browser
           retention-days: 14
 
   report:
@@ -116,8 +118,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
-          bun scripts/fuzz-failure-issues.ts --log fuzz-results/test-results/browser-fuzz.log
-          --records fuzz-results/test-results/browser-fuzz-failures --run-url "$RUN_URL"
+          bun scripts/fuzz-failure-issues.ts --log fuzz-results/fuzz-artifacts/browser/browser-fuzz.log
+          --records fuzz-results/fuzz-artifacts/browser/findings --run-url "$RUN_URL"
           --sha "$GITHUB_SHA" --source nightly-browser-input
 
   interleaving-report:
@@ -150,5 +152,5 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
           bun scripts/fuzz-failure-issues.ts
-          --log fuzz-results/interleaving.log --records fuzz-results/interleaving-findings
+          --log fuzz-results/fuzz-artifacts/interleaving/interleaving.log --records fuzz-results/fuzz-artifacts/interleaving/findings
           --source "AI and human revision interleaving" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"

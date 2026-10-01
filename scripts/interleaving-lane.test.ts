@@ -58,6 +58,32 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
   const rawSteps = job["steps"];
   if (!Array.isArray(rawSteps)) throw new Error("Workflow steps unavailable");
   const steps = rawSteps.map(requireRecord);
+  for (const [id, lane, spec, log] of [
+    ["fuzz", "browser", "browser-input-fuzz.interactions.spec.ts", "browser-fuzz.log"],
+    ["interleaving", "interleaving", file, "interleaving.log"],
+  ]) {
+    const run = steps.find((step) => step["id"] === id)?.["run"];
+    expect(run).toContain(`--output=fuzz-playwright/${lane}`);
+    expect(run).toContain(`tee fuzz-artifacts/${lane}/${log}`);
+    const specSource = readFileSync(`tests/visual/${spec}`, "utf8");
+    expect(specSource).toContain(`"fuzz-artifacts/${lane}/findings"`);
+    const reporterName = id === "fuzz" ? "report" : "interleaving-report";
+    const reporter = requireRecord(requireRecord(workflow["jobs"])[reporterName]);
+    expect(JSON.stringify(reporter)).toContain(
+      `--records fuzz-results/fuzz-artifacts/${lane}/findings`,
+    );
+    expect(JSON.stringify(reporter)).toContain(`fuzz-results/fuzz-artifacts/${lane}/${log}`);
+    const artifactName = id === "fuzz" ? "browser-input-fuzzer" : "interleaving-findings";
+    const upload = steps.find(
+      (step) =>
+        typeof step["uses"] === "string" &&
+        step["uses"].startsWith("actions/upload-artifact@") &&
+        requireRecord(step["with"])["name"] === artifactName,
+    );
+    expect(requireRecord(upload?.["with"])["path"]).toBe(
+      `fuzz-artifacts/${lane}\nfuzz-playwright/${lane}\n`,
+    );
+  }
   const random = steps.find((step) => step["id"] === "interleaving");
   if (!random) throw new Error("Random workflow step unavailable");
   expect(random["continue-on-error"]).toBe(true);
