@@ -90,6 +90,18 @@ declare global {
 export type FolioParityBridge = {
   /** Total laid-out pages (0 before the first layout). */
   getTotalPages: () => number;
+  /** Public page navigation, exercised against the real scrolling viewport. */
+  scrollToPage: (pageNumber: number, handle: "document" | "paged") => boolean;
+  readScrollViewport: (pageNumber: number) => {
+    scrollTop: number;
+    clientHeight: number;
+    scrollHeight: number;
+    rootMatches: boolean;
+    pageTop: number;
+    pageBottom: number;
+    viewportTop: number;
+    viewportBottom: number;
+  } | null;
   /** Force-create the deferred editor view (no focus steal). */
   ensureView: () => void;
   /** Whether the live ProseMirror view exists yet. */
@@ -192,6 +204,34 @@ function buildParityBridge(
   const liveView = () => getRef()?.getEditor()?.getView() ?? null;
   return {
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
+    scrollToPage: (pageNumber, handle) => {
+      const ref = getRef();
+      const api = handle === "document" ? ref : ref?.getEditorRef();
+      if (!api) {
+        return false;
+      }
+      api.scrollToPage(pageNumber);
+      return true;
+    },
+    readScrollViewport: (pageNumber) => {
+      const root = getRef()?.getScrollRoot();
+      const target = document.querySelector(`[data-page-number="${pageNumber}"]`);
+      if (!root || !target) {
+        return null;
+      }
+      const pageRect = target.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      return {
+        scrollTop: root.scrollTop,
+        clientHeight: root.clientHeight,
+        scrollHeight: root.scrollHeight,
+        rootMatches: root.matches("[data-folio-scroll]"),
+        pageTop: pageRect.top,
+        pageBottom: pageRect.bottom,
+        viewportTop: rootRect.top,
+        viewportBottom: rootRect.bottom,
+      };
+    },
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,
     getDocumentText: () => getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
