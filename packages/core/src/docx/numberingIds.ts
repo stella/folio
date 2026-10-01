@@ -1,8 +1,6 @@
 import { createNumericIdAllocator } from "./numericIdAllocator";
 
 type NumberingKind = "num" | "abstract";
-let numIds: ReturnType<typeof createNumericIdAllocator> | undefined;
-let abstractIds: ReturnType<typeof createNumericIdAllocator> | undefined;
 
 type MintNumberingIdOptions = { kind: NumberingKind; existingIds: Iterable<number> };
 
@@ -17,10 +15,5 @@ export const createNumberingIdAllocator = (kind: NumberingKind, existingIds: Ite
 };
 
 export const mintNumberingId = ({ kind, existingIds }: MintNumberingIdOptions): number => {
-  const allocator =
-    kind === "num"
-      ? (numIds ??= createNumericIdAllocator({ space: "numbering instance", firstId: 1 }))
-      : (abstractIds ??= createNumericIdAllocator({ space: "abstract numbering", firstId: 0 }));
-  allocator.reserve(existingIds);
-  return allocator.next();
+  return createNumberingIdAllocator(kind, existingIds).next();
 };

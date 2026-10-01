@@ -19,7 +19,7 @@ import {
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
 import { getCachedNumberingMap, isBulletLevel } from "../docx/numberingParser";
-import { mintNumberingId } from "../docx/numberingIds";
+import { createNumberingIdAllocator } from "../docx/numberingIds";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { completeNumberingForDoc, paragraphListReferences } from "./listInstanceReferences";
@@ -32,7 +32,7 @@ type Remap = {
   /** Abstract definitions the package already had; a moved list keeps those. */
   baseAbstractNumIds: ReadonlySet<number>;
   abstractNumIds: Map<number, number>;
-  existingAbstractNumIds: ReadonlySet<number>;
+  abstractIds: ReturnType<typeof createNumberingIdAllocator>;
 };
 
 const remappedNumPr = (
@@ -63,7 +63,7 @@ const remappedAbstractNumId = (
   }
   let next = remap.abstractNumIds.get(abstractNumId);
   if (next === undefined) {
-    next = mintNumberingId({ kind: "abstract", existingIds: remap.existingAbstractNumIds });
+    next = remap.abstractIds.next();
     remap.abstractNumIds.set(abstractNumId, next);
   }
   return next;
@@ -129,18 +129,14 @@ export const storyListNumbering = (
   }
 
   const existingNumIds = [...defined, ...referenced];
+  const numIds = createNumberingIdAllocator("num", existingNumIds);
   const remap: Remap = {
-    numIds: new Map(
-      [...colliding].map((numId) => [
-        numId,
-        mintNumberingId({ kind: "num", existingIds: existingNumIds }),
-      ]),
-    ),
+    numIds: new Map([...colliding].map((numId) => [numId, numIds.next()])),
     baseAbstractNumIds: new Set(
       (packageDefinitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
     ),
     abstractNumIds: new Map(),
-    existingAbstractNumIds,
+    abstractIds: createNumberingIdAllocator("abstract", existingAbstractNumIds),
   };
   const tr = new Transform(state.doc);
   state.doc.descendants((node, pos) => {

@@ -61,6 +61,16 @@ test("offline numbering allocators preserve deterministic independent package ou
   expect([first.next(), first.next()]).toEqual([second.next(), second.next()]);
 });
 
+test("numbering allocation depends only on the document's reserved ids", () => {
+  for (const kind of ["num", "abstract"] as const) {
+    const existingIds = [0, 1, MAX_REVISION_ID];
+    const first = mintNumberingId({ kind, existingIds });
+    mintNumberingId({ kind, existingIds: [0, 1, 2, 3, 4] });
+    expect(mintNumberingId({ kind, existingIds })).toBe(first);
+    expect(mintNumberingId({ kind, existingIds: [...existingIds, first] })).not.toBe(first);
+  }
+});
+
 test("the endnote builder allocates a free bounded id when loaded notes contain the maximum", () => {
   const doc = createEmptyDocument();
   doc.package.endnotes = [

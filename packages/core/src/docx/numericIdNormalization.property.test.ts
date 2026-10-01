@@ -3,7 +3,11 @@ import fc from "fast-check";
 import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { parseDocx } from "./parser";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -87,6 +91,28 @@ test("normalization follows nested namespace bindings and canonical integer alia
       .replace('x:id="2147483648"', 'x:id="1"')
       .replace('x:id="+02147483648"', 'x:id="1"')
       .replace('id="4294967296"', 'id="1"'),
+  );
+});
+
+test("range repair leaves malformed lexical identities for the parser's existing drop-and-warn path", () => {
+  const malformedId = fc.oneof(
+    fc.constantFrom("", "bare", "1.5", "1e3", "+", "--1"),
+    fc.integer().map((prefix) => `${prefix}invalid`),
+  );
+  assertProperty(
+    fc.property(
+      malformedId,
+      invalidId,
+      fc.constantFrom(...WORD_NAMESPACES),
+      (malformed, id, namespace) => {
+        const xml = `<x:document xmlns:x="${namespace}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><x:comment x:id="${malformed}"/><x:bookmarkStart x:id="${malformed}"/><x:numId x:val="${malformed}"/><wp:docPr id="${malformed}"/><x:comment x:id="${id}"/></x:document>`;
+        const parts = new Map([["word/document.xml", xml]]);
+        const normalized = normalizeImportedNumericIds(parts);
+        expect(normalized.get("word/document.xml")).toBe(xml.replace(`x:id="${id}"`, 'x:id="1"'));
+        expect(normalizeImportedNumericIds(normalized)).toEqual(normalized);
+      },
+    ),
+    { numRuns: 40 },
   );
 });
 

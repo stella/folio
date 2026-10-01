@@ -520,5 +520,21 @@
       "date": "2026-10-01",
       "path": "4:1:1:1"
     }
+  ],
+  "packages/core/src/docx/drawingNumericIds.property.test.ts::every rebuilt drawing uses bounded numeric ids without changing its lexical model id": [
+    {
+      "seed": 1182167535,
+      "path": "0:0",
+      "note": "Drawing fixtures must satisfy the image model including wrap before testing bounded IDs",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/prosemirror/plugins/suggestionNestedListPaste.test.ts::retracting pasted list breaks preserves acceptance and rejection for paragraph properties": [
+    {
+      "seed": 197,
+      "path": "0:0:0:0:0:0:0:0:0",
+      "note": "Independent editing and suggesting documents allocate numbering deterministically from their own reserved IDs",
+      "date": "2026-10-01"
+    }
   ]
 }

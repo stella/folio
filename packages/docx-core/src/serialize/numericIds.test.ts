@@ -1,15 +1,23 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
 
-import { assertValidOoxmlNumericIds, InvalidOoxmlNumericIdError } from "./numericIds";
+import {
+  assertValidOoxmlNumericIds,
+  InvalidOoxmlNumericIdError,
+  mayContainInvalidOoxmlNumericIds,
+} from "./numericIds";
 
 const WORD_NAMESPACES = [
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
   "http://purl.oclc.org/ooxml/wordprocessingml/main",
-];
+] as const;
 const decimalCases = [
   (id: string) => `<x:comment x:id="${id}"/>`,
   (id: string) => `<x:commentRangeStart x:id="${id}"/>`,
@@ -30,6 +38,78 @@ const decimalCases = [
 ];
 
 describe("numeric OOXML identifier writer guard", () => {
+  test("valid numeric ids and lexical relationship ids take the preflight fast path", () => {
+    for (const namespace of WORD_NAMESPACES) {
+      const xml = `<x:document xmlns:x="${namespace}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><x:headerReference r:id="rId1"/><x:hyperlink r:id="rId2"/>${decimalCases.map((body) => body("2147483647")).join("")}</x:document>`;
+      expect(mayContainInvalidOoxmlNumericIds(xml)).toBe(false);
+      expect(mayContainInvalidOoxmlNumericIds(xml, "range")).toBe(false);
+    }
+  });
+
+  test("namespace preflight preserves every numeric failure across shadows and encoded bindings", () => {
+    const namespace = WORD_NAMESPACES[0];
+    for (const declaration of [
+      namespace,
+      namespace.replace("wordprocessingml", "wordprocessing&#109;l"),
+    ]) {
+      for (const body of [
+        '<r:comment r:id="2147483648"/>',
+        '<r:comment r:id="&#50;147483648"/>',
+        '<r:numId other:val="ignored" r:val="2147483648"/>',
+      ]) {
+        const xml = `<root xmlns:r="urn:relationship" xmlns:other="urn:other"><nested xmlns:r="${declaration}">${body}</nested></root>`;
+        expect(mayContainInvalidOoxmlNumericIds(xml)).toBe(true);
+        expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).toThrow(
+          InvalidOoxmlNumericIdError,
+        );
+      }
+    }
+  });
+
+  test("range preflight preserves malformed lexical ids while schema preflight rejects them", () => {
+    const xml = `<x:comment xmlns:x="${WORD_NAMESPACES[0]}" x:id="7invalid"/>`;
+    expect(mayContainInvalidOoxmlNumericIds(xml, "range")).toBe(false);
+    expect(mayContainInvalidOoxmlNumericIds(xml)).toBe(true);
+    expect(() => assertValidOoxmlNumericIds(xml, "word/comments.xml")).toThrow(
+      InvalidOoxmlNumericIdError,
+    );
+  });
+
+  test("preflight and the writer agree over both numeric domains, aliases and encoded values", () => {
+    assertProperty(
+      fc.property(
+        fc.integer({ min: -3_000_000_000, max: 5_000_000_000 }),
+        fc.constantFrom("signed32", "unsigned32"),
+        fc.constantFrom("x", "r", "alternate"),
+        fc.constantFrom("decimal", "entity"),
+        (id, domain, prefix, spelling) => {
+          const value =
+            spelling === "entity"
+              ? String(id).replace(/\d/u, (digit) => `&#${digit.charCodeAt(0)};`)
+              : String(id);
+          const body =
+            domain === "signed32"
+              ? `<${prefix}:comment xmlns:${prefix}="${WORD_NAMESPACES[0]}" ${prefix}:id="${value}"/>`
+              : `<${prefix}:docPr xmlns:${prefix}="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" id="${value}"/>`;
+          const valid =
+            domain === "signed32"
+              ? id >= -2_147_483_648 && id <= 2_147_483_647
+              : id >= 0 && id <= 4_294_967_295;
+          if (valid) {
+            expect(() => assertValidOoxmlNumericIds(body, "word/document.xml")).not.toThrow();
+            return;
+          }
+          expect(mayContainInvalidOoxmlNumericIds(body)).toBe(true);
+          expect(mayContainInvalidOoxmlNumericIds(body, "range")).toBe(true);
+          expect(() => assertValidOoxmlNumericIds(body, "word/document.xml")).toThrow(
+            InvalidOoxmlNumericIdError,
+          );
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test("rejects the complete decimal-id family beyond the signed 32-bit domain", () => {
     fc.assert(
       fc.property(fc.integer({ min: 2_147_483_648, max: Number.MAX_SAFE_INTEGER }), (id) => {

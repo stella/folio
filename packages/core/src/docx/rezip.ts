@@ -996,8 +996,8 @@ const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): P
   }
   const normalizedParts = normalizeParaIdRangeInXmlParts(normalizeRevisionIdsInXmlParts(xmlParts));
   for (const [path, xml] of normalizedParts) {
-    assertValidOoxmlNumericIds(xml, path);
     if (xml !== xmlParts.get(path)) {
+      assertValidOoxmlNumericIds(xml, path);
       zip.file(path, xml, {
         compression: "DEFLATE",
         compressionOptions: { level: compressionLevel },

@@ -11,7 +11,7 @@ type NumericIdAllocatorOptions = { space: string; firstId: 0 | 1 };
 /** Each OOXML id space owns one instance, retaining loaded and minted ids through rollover. */
 export const createNumericIdAllocator = ({ space, firstId }: NumericIdAllocatorOptions) => {
   const reserved = new Set<number>();
-  let nextId = firstId;
+  let nextId: number = firstId;
   return {
     reserve: (ids: Iterable<number>): void => {
       let max = -1;

@@ -121,17 +121,70 @@ const ID_CANDIDATE = new RegExp(
   `\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=|<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?:[\\s/>])`,
   "u",
 );
-const ID_ATTRIBUTE = new RegExp(`\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=\\s*(["'])([\\s\\S]*?)\\1`, "gu");
-const ID_VALUE_TAG = new RegExp(
-  `<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?=[\\s/>])(?:[^<>"']|"[^"]*"|'[^']*')*?\\b(?:[^\\s<>/:]+:)?val\\s*=\\s*(["'])([\\s\\S]*?)\\1`,
+const PREFIX = "[^\\s<>/:=\"']+";
+const ID_ATTRIBUTE = new RegExp(
+  `(?:^|\\s)((?:${PREFIX}:)?(?:${ID_ATTRIBUTE_NAMES}))\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
   "gu",
 );
+const ID_VALUE_TAG = new RegExp(
+  `<((?:${PREFIX}:)?(?:${ID_ELEMENT_NAMES}))(?=[\\s/>])((?:[^<>"']|"[^"]*"|'[^']*')*)>`,
+  "gu",
+);
+const VALUE_ATTRIBUTE = new RegExp(
+  `(?:^|\\s)((?:${PREFIX}:)?val)\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
+  "gu",
+);
+const NAMESPACE_BINDING = new RegExp(
+  `\\bxmlns(?::(${PREFIX}))?\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
+  "gu",
+);
+const prefixOf = (name: string): string => {
+  const colon = name.indexOf(":");
+  return colon === -1 ? "" : name.slice(0, colon);
+};
 
-/** Conservative lexical preflight; namespace classification remains authoritative. */
-export const mayContainInvalidOoxmlNumericIds = (xml: string): boolean => {
-  for (const pattern of [ID_ATTRIBUTE, ID_VALUE_TAG]) {
-    for (const match of xml.matchAll(pattern)) {
-      if (!isValidOoxmlNumericId(match[2] ?? "")) return true;
+/**
+ * Conservative lexical preflight; namespace classification remains authoritative.
+ * A prefix is considered numeric if any scope binds it to WordprocessingML. This can send
+ * a shadowed foreign attribute to the full parser, but cannot hide a numeric one.
+ * Entity-encoded bindings or values always require the authoritative scan.
+ */
+export const mayContainInvalidOoxmlNumericIds = (
+  xml: string,
+  mode: "schema" | "range" = "schema",
+): boolean => {
+  if (!ID_CANDIDATE.test(xml)) return false;
+  const wordPrefixes = new Set<string>();
+  for (const match of xml.matchAll(NAMESPACE_BINDING)) {
+    const namespace = match[3] ?? "";
+    if (namespace.includes("&")) return true;
+    if (WORD_NAMESPACES.has(namespace)) wordPrefixes.add(match[1] ?? "");
+  }
+  const needsScan = (value: string, domain?: "signed32"): boolean => {
+    if (value.includes("&")) return true;
+    if (mode === "range" && !/^[+-]?\d+$/u.test(value.trim())) return false;
+    // Unqualified id may be unsigned DrawingML: the common safe range is
+    // the intersection of both domains, so negative drawing ids still scan.
+    return !isValidOoxmlNumericId(value) || (domain === undefined && Number(value) < 0);
+  };
+  for (const match of xml.matchAll(ID_ATTRIBUTE)) {
+    const name = match[1] ?? "";
+    if (name.includes(":")) {
+      if (wordPrefixes.has(prefixOf(name)) && needsScan(match[3] ?? "", "signed32")) return true;
+      continue;
+    }
+    if (name === "id" && needsScan(match[3] ?? "")) return true;
+  }
+  for (const match of xml.matchAll(ID_VALUE_TAG)) {
+    if (!wordPrefixes.has(prefixOf(match[1] ?? ""))) continue;
+    for (const attribute of (match[2] ?? "").matchAll(VALUE_ATTRIBUTE)) {
+      const name = attribute[1] ?? "";
+      if (
+        name.includes(":") &&
+        wordPrefixes.has(prefixOf(name)) &&
+        needsScan(attribute[3] ?? "", "signed32")
+      )
+        return true;
     }
   }
   return false;
@@ -143,7 +196,7 @@ export const mayContainInvalidOoxmlNumericIds = (xml: string): boolean => {
  * Permission-range ids are strings in OOXML and intentionally remain unrestricted.
  */
 export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void => {
-  if (!ID_CANDIDATE.test(xml)) return;
+  if (!mayContainInvalidOoxmlNumericIds(xml)) return;
   const parser = new XMLParser({
     preserveOrder: true,
     ignoreAttributes: false,

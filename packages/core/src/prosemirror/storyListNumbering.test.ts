@@ -42,7 +42,7 @@ const firstNumId = (state: EditorState | { doc: EditorState["doc"] }): number | 
 
 describe("lists started in two stories", () => {
   test("a story's list moves to its own id when another story defined the same id", () => {
-    // A persisted story from another realm may carry an id this realm already used.
+    // Independent stories allocate against the same package definitions.
     const body = toggled(storyState(undefined), toggleBulletList);
     const originalHeader = toggled(storyState(undefined), toggleNumberedList);
     const bodyNumId = firstNumId(body);
@@ -58,6 +58,9 @@ describe("lists started in two stories", () => {
 
     const withBody = completeNumberingForDoc(undefined, body.doc);
     const story = storyListNumbering(header, withBody);
+    const repeated = storyListNumbering(header, withBody);
+    expect(repeated.doc.toJSON()).toEqual(story.doc.toJSON());
+    expect(repeated.numbering).toEqual(story.numbering);
 
     const headerNumId = firstNumId(story);
     expect(headerNumId).not.toBe(firstNumId(body));
@@ -112,7 +115,7 @@ describe("document numbering state", () => {
     const state = storyState(undefined);
     const withList = toggled(storyState(undefined), toggleNumberedList);
     const listParagraph = withList.doc.firstChild;
-    if (!listParagraph) throw new Error("the toggled story has no paragraph");
+    if (!listParagraph) panic("The toggled story has no paragraph");
 
     const typed = state.apply(state.tr.insertText("x", 1));
     expect(getDocumentNumbering(typed)).toBe(getDocumentNumbering(state));

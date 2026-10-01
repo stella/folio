@@ -1,5 +1,6 @@
 // PARSE-WARNING-EXEMPT: package-local numeric identities carry no authored
-// content; definitions and references are remapped together before parsing.
+// content; integer definitions and references are remapped together before
+// parsing. Malformed lexical identities retain the parser's drop-and-warn path.
 
 import {
   isValidOoxmlNumericId,
@@ -66,7 +67,7 @@ const identitySpace = ({ elementName, attributeName, domain }: IdentitySpaceOpti
 const identifiedAttributes = (element: XmlElement) => {
   const attributes = [];
   for (const [name, value] of Object.entries(element.attributes ?? {})) {
-    if (value === undefined) continue;
+    if (value === undefined || !/^[+-]?\d+$/u.test(String(value).trim())) continue;
     const domain = ooxmlNumericIdDomain({
       elementName: element.name ?? "",
       elementNamespace: getNamespaceUri(element),
@@ -87,7 +88,7 @@ const identifiedAttributes = (element: XmlElement) => {
 type IdentitySpace = { reserved: Set<number>; replacements: Map<string, string>; next: number };
 
 /**
- * Repair invalid imported identities before any model or opaque XML is captured.
+ * Repair out-of-range imported integers before any model or opaque XML is captured.
  * Reserve the complete package first, then remap each old value once per space.
  * Source splices preserve unrelated XML bytes; a valid package takes the fast path.
  */
@@ -95,7 +96,8 @@ export const normalizeImportedNumericIds = (
   parts: ReadonlyMap<string, string>,
 ): Map<string, string> => {
   const normalized = new Map(parts);
-  if (![...parts.values()].some(mayContainInvalidOoxmlNumericIds)) return normalized;
+  if (![...parts.values()].some((xml) => mayContainInvalidOoxmlNumericIds(xml, "range")))
+    return normalized;
   const candidates = [...parts].toSorted(([left], [right]) => left.localeCompare(right));
   const spaces = new Map<string, IdentitySpace>();
   const reservedPools = new Map<string, Set<number>>();

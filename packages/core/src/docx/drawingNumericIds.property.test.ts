@@ -1,7 +1,9 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { relationshipIdOf } from "@stll/docx-core/model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import type { Image, Shape } from "../types/document";
 import { resetAutoIdCounter, serializeRun } from "./serializer/runSerializer";
 
 setDefaultTimeout(propertyTestTimeout(10_000));
@@ -14,22 +16,23 @@ const drawingModelId = fc.oneof(
 );
 
 test("every rebuilt drawing uses bounded numeric ids without changing its lexical model id", () => {
-  fc.assert(
+  assertProperty(
     fc.property(drawingModelId, (id) => {
       resetAutoIdCounter();
       const image = {
         type: "image",
         id,
-        rId: "rId1",
+        rId: relationshipIdOf("rId1"),
         size: { width: 914_400, height: 914_400 },
-      } as const;
+        wrap: { type: "inline" },
+      } as const satisfies Image;
       const shape = {
         type: "shape",
         id,
         shapeType: "rect",
         shapeNames: { name: "Shape" },
         size: { width: 914_400, height: 914_400 },
-      } as const;
+      } as const satisfies Shape;
       const xml = serializeRun({
         type: "run",
         content: [
@@ -54,6 +57,6 @@ test("every rebuilt drawing uses bounded numeric ids without changing its lexica
       expect(image.id).toBe(id);
       expect(shape.id).toBe(id);
     }),
-    propertyConfig({ numRuns: 150 }),
+    { numRuns: 150 },
   );
 });
