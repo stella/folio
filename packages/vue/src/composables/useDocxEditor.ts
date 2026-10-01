@@ -1225,9 +1225,12 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     parseError.value = null;
     isReady.value = false;
     try {
-      const source = isCanonicalSession()
-        ? (await prepareCanonicalDocxInput(buffer)).unwrap()
-        : buffer;
+      let source = buffer;
+      if (isCanonicalSession()) {
+        const prepared = await prepareCanonicalDocxInput(buffer);
+        if (prepared.isErr()) throw prepared.error;
+        source = prepared.value;
+      }
       const doc = await parseDocx(source, { password: toValue(password) });
       docModel.value = doc;
       remountForNewDocument();

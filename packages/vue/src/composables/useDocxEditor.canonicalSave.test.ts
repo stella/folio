@@ -11,6 +11,7 @@ const { createApp, defineComponent, h, shallowRef } = await import("vue");
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
+import { CanonicalDocxInputError } from "@stll/folio-core/docx/canonicalSessionInput";
 import { reviewDifferences } from "../../../../test/reviewDifferences";
 
 const { useDocxEditor } = await import("./useDocxEditor");
@@ -18,6 +19,51 @@ const { useDocxEditor } = await import("./useDocxEditor");
 // The save oracle exercises the composable's real hidden manager and serialization,
 // rather than rebuilding the expected document from its PM projection.
 afterAll(() => GlobalRegistrator.unregister());
+
+test.each([
+  {
+    kind: "encrypted",
+    bytes: new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+    message: "Password-protected documents are unavailable in the experimental canonical session.",
+  },
+  {
+    kind: "malformed",
+    bytes: new Uint8Array([0x50, 0x4b, 0x03, 0x04]),
+    message: "Failed to normalize paragraph IDs: Failed to parse DOCX archive",
+  },
+])("canonical $kind loads preserve the typed input error", async ({ bytes, message }) => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const errors: Error[] = [];
+  const holder: { editor: ReturnType<typeof useDocxEditor> | null } = { editor: null };
+  const app = createApp(
+    defineComponent({
+      setup() {
+        holder.editor = useDocxEditor({
+          hiddenContainer: shallowRef(null),
+          pagesContainer: shallowRef(null),
+          experimentalSession: "canonical",
+          onError: (error) => errors.push(error),
+        });
+        return () => h("div");
+      },
+    }),
+  );
+  app.mount(container);
+  try {
+    const editor = holder.editor ?? panic("Expected mounted Vue editor");
+    await editor.loadBuffer(bytes);
+    expect(errors).toHaveLength(1);
+    expect(errors.at(0)).toBeInstanceOf(CanonicalDocxInputError);
+    expect(errors.at(0)?.message).toBe(message);
+    expect(editor.parseError.value).toBe(message);
+    expect(editor.isReady.value).toBe(false);
+    expect(editor.getDocument()).toBeNull();
+  } finally {
+    app.unmount();
+    container.remove();
+  }
+});
 
 test("canonical edits save and reopen the canonical text and paragraph identity", async () => {
   const container = document.createElement("div");

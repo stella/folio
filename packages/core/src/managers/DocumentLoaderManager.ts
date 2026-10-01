@@ -121,10 +121,12 @@ export class DocumentLoaderManager {
       const parseStartedAt = performance.now();
       let doc: Document;
       try {
-        const input =
-          this.callbacks.getExperimentalSession?.() === "canonical"
-            ? (await prepareCanonicalDocxInput(buffer)).unwrap()
-            : buffer;
+        let input = buffer;
+        if (this.callbacks.getExperimentalSession?.() === "canonical") {
+          const prepared = await prepareCanonicalDocxInput(buffer);
+          if (prepared.isErr()) throw prepared.error;
+          input = prepared.value;
+        }
         doc = await parseDocx(input, {
           detectVariables: false,
           preloadFonts: false,
