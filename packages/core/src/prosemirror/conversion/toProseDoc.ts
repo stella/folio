@@ -605,23 +605,36 @@ function convertBlockBookmarkBoundary(block: BookmarkStart | BookmarkEnd): PMNod
  * `w:r`. It carries whatever marks surround it, so a capture inside a
  * `w:ins` keeps the insertion and is accepted or rejected with it.
  */
+/** Projects one paragraph item to the paragraph node that would hold it alone. */
+type ItemProjection = (item: ParagraphContent) => PMNode | null | undefined;
+
+/** The item as the only content of a paragraph with no style and no context. */
+const projectItemAlone: ItemProjection = (item) =>
+  headerFooterToProseDoc([{ type: "paragraph", content: [item] }]).firstChild;
+
 /**
  * The nodes the editor shows for what a folded list-number capture stands
  * for, as JSON. The capture carries them so that it can be replaced by them,
  * wherever it ends up, without coming back through this conversion.
+ *
+ * `project` is the paragraph's own projection where there is one, so the
+ * nodes carry the formatting the paragraph's style gives a field there, as a
+ * field that was never folded does.
  */
-function unfoldedListNumberNodeJson(folded: FoldedListNumber): unknown[] {
+function unfoldedListNumberNodeJson(folded: FoldedListNumber, project: ItemProjection): unknown[] {
   const item: ParagraphContent = folded.kind === "field" ? folded.field : folded.run;
-  const paragraph = headerFooterToProseDoc([{ type: "paragraph", content: [item] }]).firstChild;
   const nodes: unknown[] = [];
   // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-  paragraph?.forEach((node) => {
+  project(item)?.forEach((node) => {
     nodes.push(node.toJSON());
   });
   return nodes;
 }
 
-function preservedInlineNode(content: PreservedInline): PMNode {
+function preservedInlineNode(
+  content: PreservedInline,
+  project: ItemProjection = projectItemAlone,
+): PMNode {
   return schema.node("preservedXml", {
     xml: content.xml,
     text: content.text,
@@ -629,7 +642,7 @@ function preservedInlineNode(content: PreservedInline): PMNode {
     ...(content.foldedListNumber
       ? {
           foldedListNumber: content.foldedListNumber,
-          foldedListNumberNodes: unfoldedListNumberNodeJson(content.foldedListNumber),
+          foldedListNumberNodes: unfoldedListNumberNodeJson(content.foldedListNumber, project),
         }
       : {}),
   });
@@ -1061,7 +1074,19 @@ function convertParagraph(
         emitInlineNode(schema.node(MOVE_RANGE_BOUNDARY_NODE_NAME, { marker: content }));
         break;
       case "preservedInline":
-        emitInlineNode(preservedInlineNode(content));
+        emitInlineNode(
+          preservedInlineNode(content, (item) =>
+            // The same paragraph holding the item alone: its style, its
+            // formatting and its table overlay decide the item's marks.
+            convertParagraph(
+              { ...paragraph, content: [item] },
+              styleResolver,
+              context,
+              extraRunFormatting,
+              tableParagraphOverlay,
+            ),
+          ),
+        );
         break;
       default: {
         const unsupported: never = content;

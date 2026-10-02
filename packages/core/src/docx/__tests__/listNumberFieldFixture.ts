@@ -177,7 +177,17 @@ const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing:
   return { inline, trailing };
 };
 
-const paragraphXml = (spec: ParagraphSpec, ids: MarkupIds, authored?: string): string => {
+const STYLE_ID = "Clause";
+
+/** A paragraph style whose run properties make every run of the paragraph bold. */
+const STYLES = `${XML_DECLARATION}<w:styles ${W}><w:style w:type="paragraph" w:styleId="${STYLE_ID}"><w:name w:val="Clause"/><w:rPr><w:b/></w:rPr></w:style></w:styles>`;
+
+const paragraphXml = (
+  spec: ParagraphSpec,
+  ids: MarkupIds,
+  authored?: string,
+  styled = false,
+): string => {
   let inline = "";
   let trailing = "";
   for (const field of spec.fields) {
@@ -186,7 +196,7 @@ const paragraphXml = (spec: ParagraphSpec, ids: MarkupIds, authored?: string): s
     trailing += built.trailing;
   }
   return (
-    `<w:p w14:paraId="${spec.paraId}"><w:pPr><w:numPr><w:ilvl w:val="1"/>` +
+    `<w:p w14:paraId="${spec.paraId}"><w:pPr>${styled ? `<w:pStyle w:val="${STYLE_ID}"/>` : ""}<w:numPr><w:ilvl w:val="1"/>` +
     `<w:numId w:val="${numIdOf(spec.marker)}"/></w:numPr></w:pPr>` +
     `${authored ?? `${inline}${textRun(spec.body)}${trailing}`}</w:p>`
   );
@@ -199,16 +209,18 @@ type FixtureOptions = {
   authored?: Readonly<Record<string, string>>;
   /** Put the plain paragraph ahead of the numbered ones rather than after them. */
   plainFirst?: boolean;
+  /** Give every numbered paragraph a style whose run properties are bold. */
+  styled?: boolean;
 };
 
 /** A package of the given numbered paragraphs and one plain paragraph, which closes it. */
 export const listNumberFieldDocx = (
   paragraphs: readonly ParagraphSpec[],
-  { authored = {}, plainFirst = false }: FixtureOptions = {},
+  { authored = {}, plainFirst = false, styled = false }: FixtureOptions = {},
 ): Promise<ArrayBuffer> => {
   const ids: MarkupIds = { next: 1, comments: [] };
   const numbered = paragraphs
-    .map((spec) => paragraphXml(spec, ids, authored[spec.paraId]))
+    .map((spec) => paragraphXml(spec, ids, authored[spec.paraId], styled))
     .join("");
   const plain = `<w:p w14:paraId="${PLAIN_PARAGRAPH_ID}"><w:r><w:t>Plain.</w:t></w:r></w:p>`;
   const documentXml =
@@ -226,9 +238,28 @@ export const listNumberFieldDocx = (
     `</w:comments>`;
 
   const zip = new JSZip();
-  zip.file("[Content_Types].xml", CONTENT_TYPES);
+  zip.file(
+    "[Content_Types].xml",
+    styled
+      ? CONTENT_TYPES.replace(
+          "</Types>",
+          '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+        )
+      : CONTENT_TYPES,
+  );
   zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
+  zip.file(
+    "word/_rels/document.xml.rels",
+    styled
+      ? DOCUMENT_RELS.replace(
+          "</Relationships>",
+          '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+        )
+      : DOCUMENT_RELS,
+  );
+  if (styled) {
+    zip.file("word/styles.xml", STYLES);
+  }
   zip.file("word/document.xml", documentXml);
   zip.file("word/numbering.xml", numberingXml());
   zip.file("word/comments.xml", commentsXml);

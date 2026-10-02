@@ -575,6 +575,61 @@ describe("a field its marker stops showing goes back on the line", () => {
   });
 });
 
+describe("a field its marker shows, under a tracked change or a paragraph style", () => {
+  test("a capture marked as deleted goes on the line and is written as a deleted field", async () => {
+    const { parsed, state } = await fixture([SIMPLE]);
+    const [field] = foldedCaptureNodes(state.doc);
+    const deletion = state.schema.marks["deletion"]?.create({
+      revisionId: 7,
+      author: "Reviewer",
+      date: "2026-01-01T00:00:00Z",
+    });
+    if (!field || !deletion) {
+      throw new Error("The paragraph opens with a field capture, and the schema tracks deletions");
+    }
+
+    const marked = state.apply(state.tr.addMark(field.position, field.position + 1, deletion));
+
+    // Neither the field nor the tab behind it is hidden any more.
+    expect(foldedCaptureNodes(marked.doc)).toHaveLength(0);
+    expect(liveFoldFaults(marked.doc)).toEqual([]);
+    const [paragraph] = bodyParagraphs(fromProseDoc(marked.doc, parsed));
+    if (!paragraph) {
+      throw new Error("The document keeps its first paragraph");
+    }
+    const xml = serializeParagraph(paragraph);
+    expect(xml).toContain("<w:delInstrText");
+    expect(xml).not.toContain("<w:instrText");
+    expect(xml).toMatch(/<w:delText[^>]*>\(a\)<\/w:delText>/u);
+  });
+
+  test("the field put on the line carries what the paragraph's style gives it", async () => {
+    const folded = await fixture([SIMPLE], { styled: true });
+    const shown = await fixture([{ ...SIMPLE, marker: "symbol" }], { styled: true });
+    const withoutRunIdentity = (node: unknown): unknown => {
+      const json = structuredClone(node) as { marks?: { type: string }[] };
+      return { ...json, marks: (json.marks ?? []).filter(({ type }) => type !== "runIdentity") };
+    };
+    // A bullet folds nothing, so its paragraph holds the field and the tab as the editor shows them.
+    const expected: unknown[] = [];
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    paragraphNode(shown.bare.doc, SIMPLE.paraId).node.forEach((node) => {
+      if (node.type.name === "field" || node.type.name === "tab") {
+        expected.push(withoutRunIdentity(node.toJSON()));
+      }
+    });
+    expect(expected).toHaveLength(2);
+    expect(JSON.stringify(expected)).toContain("bold");
+
+    const carried = foldedCaptureNodes(folded.bare.doc).flatMap(({ node }) => {
+      const nodes: unknown = node.attrs["foldedListNumberNodes"];
+      return Array.isArray(nodes) ? nodes.map(withoutRunIdentity) : [];
+    });
+
+    expect(carried).toEqual(expected);
+  });
+});
+
 describe("moving and copying a paragraph whose marker shows a field", () => {
   const paragraphSlice = (state: EditorState) => {
     const { node, position } = paragraphNode(state.doc, SIMPLE.paraId);

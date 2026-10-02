@@ -325,11 +325,48 @@ export const unfoldedListNumberContent = (content: ParagraphContent): ParagraphC
 };
 
 /**
+ * `content` with every capture inside a tracked change replaced by the item
+ * it stands for. A tracked change is written with its own spellings (deleted
+ * text is `w:delText`, a deleted instruction `w:delInstrText`), which markup
+ * replayed as it was read does not have; the field and the run do.
+ */
+const withTrackedCapturesShown = (content: ParagraphContent[]): ParagraphContent[] => {
+  let changed = false;
+  const next = content.map((item): ParagraphContent => {
+    if (
+      item.type !== "insertion" &&
+      item.type !== "deletion" &&
+      item.type !== "moveFrom" &&
+      item.type !== "moveTo"
+    ) {
+      return item;
+    }
+    if (!item.content.some((child) => foldedListNumberOf(child) !== undefined)) {
+      return item;
+    }
+    changed = true;
+    return {
+      ...item,
+      content: item.content.map((child) => {
+        const folded = foldedListNumberOf(child);
+        if (!folded) {
+          return child;
+        }
+        return structuredClone(folded.kind === "field" ? folded.field : folded.run);
+      }),
+    };
+  });
+  return changed ? next : content;
+};
+
+/**
  * Bring `paragraph` to the one form the fold allows: the captures its marker
  * shows stand at its start, every other capture is the field or the tab it
  * stood for, and the marker shows exactly the fields still hidden behind it.
+ * A capture under a tracked change is never hidden.
  */
 export const normalizeFoldedListNumbers = (paragraph: Paragraph): void => {
+  paragraph.content = withTrackedCapturesShown(paragraph.content);
   const rendering = paragraph.listRendering;
   const state = listMarkerFoldState({
     marker: rendering?.marker,

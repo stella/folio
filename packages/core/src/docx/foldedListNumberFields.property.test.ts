@@ -27,6 +27,7 @@ import {
   planListNumberFold,
   unfoldedListNumberContent,
 } from "./foldedListNumberFields";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -389,6 +390,32 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
       typed.content.map((item) => (isFoldedListNumberCapture(item) ? "capture" : item)),
     ).toEqual(["capture", "capture", textRun("X"), textRun("Body")]);
     expect(typed.listRendering?.marker).toBe("7.1\t(a)");
+  });
+
+  test("a capture inside a tracked deletion is written as a deleted field", () => {
+    const deleted = paragraph(
+      [
+        {
+          type: "deletion",
+          info: { id: 1, author: "Reviewer" },
+          content: captures().flatMap((item) => (item.type === "preservedInline" ? [item] : [])),
+        },
+        textRun("Body"),
+      ],
+      "7.1\t(a)",
+    );
+
+    normalizeFoldedListNumbers(deleted);
+
+    const [wrapper] = deleted.content;
+    expect(wrapper?.type === "deletion" ? wrapper.content : []).toEqual([listNumber, tab]);
+    // Nothing is hidden any more, so the marker shows no field.
+    expect(deleted.listRendering?.marker).toBe("7.1");
+    const xml = serializeParagraph(deleted);
+    expect(xml).toContain("<w:delInstrText");
+    expect(xml).toMatch(/<w:delText[^>]*>\(a\)<\/w:delText>/u);
+    expect(xml).not.toContain("<w:instrText");
+    expect(xml).not.toContain("data-type");
   });
 
   test("a bullet hides nothing", () => {

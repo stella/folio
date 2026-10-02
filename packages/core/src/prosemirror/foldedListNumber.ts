@@ -13,7 +13,14 @@
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 import { Fragment, type Mark, type Node as PMNode, Slice } from "prosemirror-model";
 import { type EditorState, Plugin, PluginKey, type Transaction } from "prosemirror-state";
-import { AttrStep, ReplaceAroundStep, ReplaceStep, type Step } from "prosemirror-transform";
+import {
+  AddMarkStep,
+  AttrStep,
+  RemoveMarkStep,
+  ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
+} from "prosemirror-transform";
 
 import {
   cachedListNumberText,
@@ -47,8 +54,19 @@ export const foldedListNumberOfNode = (node: PMNode): FoldedListNumber | undefin
   return isFoldedListNumber(folded) ? folded : undefined;
 };
 
+/** Marks under which content is written as a tracked change. */
+const TRACKED_MARK_NAMES: ReadonlySet<string> = new Set(["insertion", "deletion"]);
+
+const isTracked = (node: PMNode): boolean =>
+  node.marks.some((mark) => TRACKED_MARK_NAMES.has(mark.type.name));
+
 const foldItemOf = (node: PMNode): ListNumberFoldItem => {
   const folded = foldedListNumberOfNode(node);
+  // A capture under a tracked change is never hidden: the change is written
+  // with spellings of its own, which the field has and its markup does not.
+  if (folded && isTracked(node)) {
+    return { kind: "shown" };
+  }
   if (folded) {
     return folded.kind === "field"
       ? { kind: "field", cached: cachedListNumberText(folded.field) }
@@ -298,6 +316,14 @@ const reachOf = (
       if (step instanceof AttrStep) {
         queries.push({ pos: step.pos, assoc: -1, from }, { pos: step.pos + 1, assoc: 1, from });
         inserts.push(concerns);
+        continue;
+      }
+      // A mark moves nothing, but a tracked one decides whether a capture may stay hidden.
+      if (step instanceof AddMarkStep || step instanceof RemoveMarkStep) {
+        if (TRACKED_MARK_NAMES.has(step.mark.type.name)) {
+          queries.push({ pos: step.from, assoc: -1, from }, { pos: step.to, assoc: 1, from });
+          inserts.push(false);
+        }
         continue;
       }
       step.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
