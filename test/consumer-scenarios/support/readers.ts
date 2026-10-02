@@ -310,7 +310,7 @@ export const markdownViews = (
     cursor += 1;
     return expected;
   };
-  // CommonMark combines consecutive Word markers such as `(1)` and `a.`
+  // CommonMark combines consecutive custom markers such as `(1)` and `a.`
   // into one paragraph. Split only where the already-rendered prefix equals
   // the current source text; a source hard break must stay inside that block.
   const appendParagraphs = (
