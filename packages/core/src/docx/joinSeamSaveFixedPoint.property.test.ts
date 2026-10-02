@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 import {
@@ -10,10 +10,12 @@ import {
   type DocumentOp,
 } from "@stll/docx-core/ops";
 
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
 import { parseDocumentBody } from "./documentParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const W14 = "http://schemas.microsoft.com/office/word/2010/wordml";

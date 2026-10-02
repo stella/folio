@@ -38,10 +38,16 @@ import {
   type TextPosition,
 } from "./types";
 
+type SplitParagraphIntent = {
+  type: "splitParagraph";
+  at: TextPosition;
+  to?: TextPosition;
+};
+
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
   | { type: "replaceText"; from: TextPosition; to: TextPosition; text: string }
-  | { type: "splitParagraph"; at: TextPosition; to?: TextPosition; newBlockId: string }
+  | (SplitParagraphIntent & { newBlockId: string })
   | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
@@ -53,9 +59,7 @@ export type CompileEditorIntentOptions = { intent: EditorIntent; mode: EditorInt
 export type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
 
 /** A split's paragraph identity is allocated with its other fresh identities. */
-type EditorIntentAllocation =
-  | Exclude<EditorIntent, { type: "splitParagraph" }>
-  | Omit<Extract<EditorIntent, { type: "splitParagraph" }>, "newBlockId">;
+type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
 
 const intentEndpoints = (intent: EditorIntentAllocation) => {
   switch (intent.type) {

@@ -6,16 +6,9 @@
  */
 
 export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
-export {
-  formattingEquals,
-  isTextOnlyRun,
-  canMergeRun,
-  runsMergeable,
-  mergeRunContent,
-} from "./runMerge";
+export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
 export {
   compileEditorIntent,
-  allocateEditorIntentIds,
   createEditorIntentIdAllocator,
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,

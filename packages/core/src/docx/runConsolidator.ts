@@ -17,7 +17,7 @@ import { mergeRunContent, runsMergeable } from "@stll/docx-core/ops";
 import { cloneParagraphWithPropertySource } from "./paragraphPropertySource";
 import { runHoldsPayload } from "./runPayload";
 
-export { formattingEquals, isTextOnlyRun, canMergeRun, runsMergeable } from "@stll/docx-core/ops";
+export { formattingEquals, isTextOnlyRun, runsMergeable } from "@stll/docx-core/ops";
 
 /**
  * Consolidate an array of runs by merging consecutive runs with identical formatting

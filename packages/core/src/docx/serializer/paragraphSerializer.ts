@@ -10,6 +10,8 @@
  * - Runs, hyperlinks, bookmarks, fields as child elements
  */
 
+import { serializeEmptyMarkProperties } from "../paragraphMarkPropertyPresence";
+
 import type {
   Paragraph,
   PreservedInline,
@@ -1133,6 +1135,8 @@ export function serializeParagraph(paragraph: Paragraph): string {
   if (paragraph.reviewCarrier) {
     attrs.push(`folio:reviewCarrier="${paragraph.reviewCarrier}"`);
   }
+  const emptyMarkProperties = serializeEmptyMarkProperties(paragraph);
+  if (emptyMarkProperties !== undefined) attrs.push(emptyMarkProperties);
   const written = serializePreservedAttributes(attrs, paragraph.preservedAttributes);
   const attrsStr = written.length > 0 ? ` ${written.join(" ")}` : "";
 

@@ -355,7 +355,7 @@ function isMergeableContent(content: RunContent): boolean {
  * Check if a run can be merged with another run
  * Runs with breaks, tabs, images, fields, etc. act as merge boundaries
  */
-export function canMergeRun(run: Run): boolean {
+function canMergeRun(run: Run): boolean {
   // A run-property revision owns an exact text range. Merging either boundary
   // would discard that range because a consolidated run can carry only one
   // property-change collection.

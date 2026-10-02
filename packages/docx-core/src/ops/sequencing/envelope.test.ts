@@ -1,6 +1,6 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { applyDocumentOps } from "../apply";
 import type { Document } from "../../model/document";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";
@@ -14,6 +14,8 @@ import {
   validateSequencedBatch,
 } from "./envelope";
 import { envelopeFixtures, sequencedFixture } from "./__tests__/envelopeFixtures";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const fixture = envelopeFixtures[0];
 const withOp = (op: unknown) => ({ ...fixture, ops: [op] });

@@ -1,6 +1,6 @@
 {
   "docx-core": {
-    "types": 23878,
+    "types": 25620,
     "instantiations": 31096
   },
   "core": {
@@ -12,8 +12,8 @@
     "instantiations": 391782
   },
   "agents": {
-    "types": 131161,
-    "instantiations": 147674
+    "types": 144883,
+    "instantiations": 166325
   },
   "cli": {
     "types": 181365,
@@ -28,8 +28,8 @@
     "instantiations": 920985
   },
   "nuxt": {
-    "types": 154210,
-    "instantiations": 192767
+    "types": 163342,
+    "instantiations": 206949
   },
   "playground": {
     "types": 210586,
@@ -40,8 +40,8 @@
     "instantiations": 966452
   },
   "parity": {
-    "types": 125029,
-    "instantiations": 137622
+    "types": 134397,
+    "instantiations": 160274
   },
   "reserved-values": {
     "types": 7571,

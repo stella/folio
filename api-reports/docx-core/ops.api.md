@@ -8,16 +8,6 @@ import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
-export const allocateEditorIntentIds: (document: Document_2) => {
-    revisionId: number;
-    newBlockId: string;
-    newIds: {
-        revision: number[];
-        control: number[];
-    };
-};
-
-// @public
 export type AppliedDocumentOp = {
     document: Document_2;
     inverse: readonly DocumentOp[];
@@ -91,6 +81,16 @@ export const createClient: (document: Document_2) => {
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
     readonly notices: readonly ClientNotice[];
+};
+
+// @public
+export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+    revisionId: number;
+    newBlockId: string;
+    newIds: {
+        revision: number[];
+        control: number[];
+    };
 };
 
 // @public
@@ -242,12 +242,9 @@ export type EditorIntent = {
     from: TextPosition;
     to: TextPosition;
     text: string;
-} | {
-    type: "splitParagraph";
-    at: TextPosition;
-    to?: TextPosition;
+} | (SplitParagraphIntent & {
     newBlockId: string;
-} | {
+}) | {
     type: "joinParagraphs";
     story: OpStory;
     blockId: string;
@@ -279,6 +276,9 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
+
+// @public
+export function formattingEquals(a: ComparedTextFormatting | undefined, b: ComparedTextFormatting | undefined): boolean;
 
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null; };
@@ -350,6 +350,9 @@ export type InsertTextOp = {
 };
 
 // @public
+export function isTextOnlyRun(run: Run): boolean;
+
+// @public
 export type JoinBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
     story: OpStory;
@@ -374,6 +377,9 @@ export type JoinInlineOp = {
 
 // @public
 export const MAX_BATCH_WIRE_BYTES: number;
+
+// @public
+export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
 
 // @public
 export type NewIds = {
@@ -502,6 +508,9 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public
+export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;
 
 // @public
 export const SECTION_BOUNDARY_POLICIES: Readonly<{

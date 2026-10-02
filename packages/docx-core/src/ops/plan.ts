@@ -106,14 +106,12 @@ export const filterNewIds = (
 ): DocumentOp => {
   if (!("newIds" in op) || op.newIds === undefined) return op;
   const { revision, control } = op.newIds;
-  return withNewIds(op, {
-    ...(revision === undefined
-      ? {}
-      : { revision: revision.filter((id) => keep(IDENTITY_SPACES.REVISION, id)) }),
-    ...(control === undefined
-      ? {}
-      : { control: control.filter((id) => keep(IDENTITY_SPACES.CONTROL, id)) }),
-  });
+  const newIds: NewIds = {};
+  if (revision !== undefined)
+    newIds.revision = revision.filter((id) => keep(IDENTITY_SPACES.REVISION, id));
+  if (control !== undefined)
+    newIds.control = control.filter((id) => keep(IDENTITY_SPACES.CONTROL, id));
+  return withNewIds(op, newIds);
 };
 
 type TrimAppliedNewIdsOptions = {
