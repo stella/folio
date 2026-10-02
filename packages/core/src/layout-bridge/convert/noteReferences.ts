@@ -1,11 +1,9 @@
 /**
  * Footnote and endnote reference detection: collects note references from a
- * document and recognises preserved note reference marks.
+ * document.
  */
 
 import type { FlowBlock } from "../../layout-engine/types";
-
-const NOTE_REFERENCE_MARK_XML = /^<(?:[^\s:/>]+:)?(?:footnoteRef|endnoteRef)[\s/>]/u;
 
 /**
  * Runs with `idKey` set, in document order: the note references a block list
@@ -43,9 +41,4 @@ export function collectNoteRefs(
 
   walk(blocks);
   return refs;
-}
-
-/** Whether captured run-child markup is a note story's `w:footnoteRef`/`w:endnoteRef`. */
-export function isNoteReferenceMarkXml(xml: string): boolean {
-  return NOTE_REFERENCE_MARK_XML.test(xml);
 }

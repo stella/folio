@@ -125,12 +125,12 @@ const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => (
 });
 
 describe("corpus operation invariants", () => {
-  test("undefined section patches do not own fields and hide foreign changes", () => {
+  test("omitted section patches do not own fields or hide foreign changes", () => {
     const before = documentFixture();
     const op = {
       type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
       sectionIndex: 0,
-      patch: { titlePg: undefined, evenAndOddHeaders: true },
+      patch: { evenAndOddHeaders: true },
     } as const;
     const result = applyDocumentOp(before, op).unwrap();
     const step = { before, op, edit: result };

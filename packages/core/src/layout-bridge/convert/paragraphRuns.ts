@@ -31,7 +31,6 @@ import {
   hasRelationshipBackedImageBox,
   hasPaintableImageSource,
 } from "./imageConversion";
-import { isNoteReferenceMarkXml } from "./noteReferences";
 
 /**
  * In TOC paragraphs, strip the resolved Hyperlink character-style colour and
@@ -244,17 +243,13 @@ export function paragraphToRuns(
       });
       return;
     }
-    if (child.type.name === "preservedXml") {
-      // An opaque atom lays out as the text it puts on the line and nothing
-      // else: a `w:ruby` base is a word the reader measures and clicks into,
-      // while markup that paints nothing takes no space.
-      const { xml, text: capturedText } = expectPreservedXmlAttrs(child);
+    if (child.type.name === "preservedXml" || child.type.name === "noteMarker") {
+      // Typed note markers display the story number at their authored position;
+      // opaque atoms display only their captured text.
       const text =
-        capturedText === "" &&
-        _options.noteReferenceMarkText !== undefined &&
-        isNoteReferenceMarkXml(xml)
-          ? _options.noteReferenceMarkText
-          : capturedText;
+        child.type.name === "noteMarker"
+          ? (_options.noteReferenceMarkText ?? "")
+          : expectPreservedXmlAttrs(child).text;
       if (text === "") {
         return;
       }

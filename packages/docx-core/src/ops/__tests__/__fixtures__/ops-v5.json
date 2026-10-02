@@ -5498,23 +5498,6 @@
       "type": "restoreStoryParts",
       "expected": {
         "body": {
-          "content": [
-            {
-              "type": "paragraph",
-              "paraId": "00000002",
-              "content": [
-                {
-                  "type": "run",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Delta"
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
           "finalSectionProperties": {
             "titlePg": true,
             "footerReferences": [
@@ -5544,24 +5527,9 @@
       },
       "parts": {
         "body": {
-          "content": [
-            {
-              "type": "paragraph",
-              "paraId": "00000002",
-              "content": [
-                {
-                  "type": "run",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Delta"
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
+          "finalSectionProperties": null
+        },
+        "footers": null
       }
     }
   },
@@ -5583,23 +5551,6 @@
       "type": "restoreStoryParts",
       "expected": {
         "body": {
-          "content": [
-            {
-              "type": "paragraph",
-              "paraId": "00000002",
-              "content": [
-                {
-                  "type": "run",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Delta"
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
           "finalSectionProperties": {
             "titlePg": true,
             "footerReferences": [
@@ -5612,43 +5563,10 @@
               "numStart": 2
             }
           }
-        },
-        "footers": [
-          [
-            "rIdFooter",
-            {
-              "type": "footer",
-              "hdrFtrType": "first",
-              "content": [
-                {
-                  "type": "paragraph",
-                  "paraId": "000000A1",
-                  "content": []
-                }
-              ]
-            }
-          ]
-        ]
+        }
       },
       "parts": {
         "body": {
-          "content": [
-            {
-              "type": "paragraph",
-              "paraId": "00000002",
-              "content": [
-                {
-                  "type": "run",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Delta"
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
           "finalSectionProperties": {
             "titlePg": true,
             "footerReferences": [
@@ -5658,23 +5576,7 @@
               }
             ]
           }
-        },
-        "footers": [
-          [
-            "rIdFooter",
-            {
-              "type": "footer",
-              "hdrFtrType": "first",
-              "content": [
-                {
-                  "type": "paragraph",
-                  "paraId": "000000A1",
-                  "content": []
-                }
-              ]
-            }
-          ]
-        ]
+        }
       }
     }
   },
@@ -5696,23 +5598,6 @@
       "type": "restoreStoryParts",
       "expected": {
         "body": {
-          "content": [
-            {
-              "type": "paragraph",
-              "paraId": "00000002",
-              "content": [
-                {
-                  "type": "run",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Delta"
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
           "finalSectionProperties": {
             "titlePg": true,
             "footerReferences": [],
@@ -5725,23 +5610,6 @@
       },
       "parts": {
         "body": {
-          "content": [
-            {
-              "type": "paragraph",
-              "paraId": "00000002",
-              "content": [
-                {
-                  "type": "run",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Delta"
-                    }
-                  ]
-                }
-              ]
-            }
-          ],
           "finalSectionProperties": {
             "titlePg": true,
             "footerReferences": [
@@ -5827,16 +5695,8 @@
                 }
               ]
             }
-          ],
-          "finalSectionProperties": {
-            "titlePg": true,
-            "footerReferences": [],
-            "footnotePr": {
-              "numStart": 2
-            }
-          }
+          ]
         },
-        "footers": [],
         "footnotes": [
           {
             "type": "footnote",
@@ -5882,16 +5742,9 @@
                 }
               ]
             }
-          ],
-          "finalSectionProperties": {
-            "titlePg": true,
-            "footerReferences": [],
-            "footnotePr": {
-              "numStart": 2
-            }
-          }
+          ]
         },
-        "footers": []
+        "footnotes": null
       }
     }
   },
@@ -5932,16 +5785,8 @@
                 }
               ]
             }
-          ],
-          "finalSectionProperties": {
-            "titlePg": true,
-            "footerReferences": [],
-            "footnotePr": {
-              "numStart": 2
-            }
-          }
+          ]
         },
-        "footers": [],
         "footnotes": []
       },
       "parts": {
@@ -5971,16 +5816,8 @@
                 }
               ]
             }
-          ],
-          "finalSectionProperties": {
-            "titlePg": true,
-            "footerReferences": [],
-            "footnotePr": {
-              "numStart": 2
-            }
-          }
+          ]
         },
-        "footers": [],
         "footnotes": [
           {
             "type": "footnote",

@@ -30,8 +30,7 @@ import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { Endnote, Footnote, StyleDefinitions, Theme } from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
-import { expectPreservedXmlAttrs } from "../../prosemirror/attrs";
-import { collectNoteRefs, isNoteReferenceMarkXml, toFlowBlocks } from "./toFlowBlocks";
+import { collectNoteRefs, toFlowBlocks } from "./toFlowBlocks";
 import type { ToFlowBlocksOptions } from "./toFlowBlocks";
 
 // Re-exported for back-compat with existing callers that imported the
@@ -400,10 +399,7 @@ function containsNoteReferenceMark(doc: ReturnType<typeof footnoteToProseDoc>): 
     if (found) {
       return false;
     }
-    if (
-      node.type.name === "preservedXml" &&
-      isNoteReferenceMarkXml(expectPreservedXmlAttrs(node).xml)
-    ) {
+    if (node.type.name === "noteMarker") {
       found = true;
     }
     return !found;

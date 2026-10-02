@@ -22,7 +22,7 @@
 
 import type { BlockContent, Document, Endnote, Footnote } from "../../types/document";
 import { noteUsesCustomMark } from "@stll/docx-core/ops";
-import { visitDocxParagraphs, visitParagraphRuns } from "../paragraphTraversal";
+import { hasNoteReferenceMark } from "../noteReferenceMark";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
@@ -139,17 +139,8 @@ function insertNoteReferenceMark({
   customMark,
 }: InsertNoteReferenceMarkOptions): string {
   if (customMark) return xml;
-  let hasMarker = false;
-  visitDocxParagraphs({ documentBody: { content: note.content } }, (paragraph) => {
-    visitParagraphRuns(paragraph, (run) => {
-      if (
-        run.content.some((content) => content.type === "noteMarker" && content.kind === elementName)
-      )
-        hasMarker = true;
-    });
-  });
-  // Canonical note creation owns this marker. Plain default-session documents still receive one.
-  if (hasMarker) return xml;
+  // Both session modes create the same typed marker, including in deletion wrappers.
+  if (hasNoteReferenceMark(elementName, note.content)) return xml;
   const paragraphOpen = /<w:p(?=[\s>])[^>]*>/u.exec(xml);
   if (!paragraphOpen) {
     const referenceParagraph =

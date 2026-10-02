@@ -58,7 +58,7 @@ import { convertTable, convertTextBoxNode } from "./tableConversion";
 export { formatCounter, resolveListTemplate } from "../../prosemirror/listMarker";
 export { resetBlockIdCounter } from "./flowConversionShared";
 export type { ToFlowBlocksOptions } from "./flowConversionShared";
-export { collectNoteRefs, isNoteReferenceMarkXml } from "./noteReferences";
+export { collectNoteRefs } from "./noteReferences";
 export { convertBorderSpecToLayout } from "./flowBorders";
 
 /**

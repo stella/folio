@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { panic } from "better-result";
 
+import { hasNoteReferenceMark, withNoteReferenceMark } from "./noteReferenceMark";
+
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Hyperlink } from "../types/document";
@@ -193,6 +195,11 @@ for (const kind of ["footnote", "endnote"] as const) {
           ];
         else content = [{ type: owner, info: revision, content: [run] }];
         source.package.document.content = [{ type: "paragraph", content }];
+        // Creation must recognize every existing marker owner and never add a second mark.
+        const marked = withNoteReferenceMark(kind, source.package.document.content);
+        expect(hasNoteReferenceMark(kind, marked)).toBe(true);
+        expect(marked).toStrictEqual(source.package.document.content);
+        expect(withNoteReferenceMark(kind, marked)).toStrictEqual(marked);
         const prose = toProseDoc(source);
         const transported = prose.type.schema.nodeFromJSON(prose.toJSON());
         const restored = fromProseDoc(transported, source, { reuse: "none" });
