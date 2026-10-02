@@ -561,7 +561,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const refuseCanonicalModelEdit = (message: string) => {
     if (!isCanonicalSession()) return false;
     const error = new CanonicalSessionRefusalError({ message });
-    parseError.value = error.message;
     onError?.(error);
     return true;
   };
@@ -889,7 +888,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     getExperimentalSession: () => toValue(experimentalSession),
     getEditingMode: () => toValue(editorMode) ?? "editing",
     onSessionRefusal: (message) => {
-      parseError.value = message;
       onError?.(new CanonicalSessionRefusalError({ message }));
     },
     getDocumentIdentity: () => String(loadSequence),
