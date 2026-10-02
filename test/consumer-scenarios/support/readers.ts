@@ -75,11 +75,6 @@ export const contentView = (
     block.listReference === undefined
       ? undefined
       : numberingFormats.get(`${block.listReference.numId}:${block.listReference.level}`);
-  if (block.listReference !== undefined && format === undefined) {
-    throw new Error(
-      `Missing numbering format for ${block.listReference.numId}:${block.listReference.level}`,
-    );
-  }
   const hasNumberLabel = block.displayLabel !== undefined && block.displayLabel !== block.styleId;
   if (hasNumberLabel && format === undefined) {
     throw new Error(`Missing numbering format for displayed label ${block.displayLabel}`);
@@ -315,6 +310,40 @@ export const markdownViews = (
     cursor += 1;
     return expected;
   };
+  // CommonMark combines consecutive Word markers such as `(1)` and `a.`
+  // into one paragraph. Split only where the already-rendered prefix equals
+  // the current source text; a source hard break must stay inside that block.
+  const appendParagraphs = (
+    rendered: string,
+    initial: { kind: "paragraph" | "listItem"; number?: string },
+  ): void => {
+    let remaining = rendered;
+    let kind = initial.kind;
+    let number = initial.number;
+    while (true) {
+      const expected = nextExpected();
+      let boundary: number | undefined;
+      if (expected.kind === "listItem" && expectedViews.at(cursor)?.kind === "listItem") {
+        for (const marker of remaining.matchAll(/\n(?=\S+?[.)][ \t]+)/gu)) {
+          const candidate = suffixView(remaining.slice(0, marker.index), expected, kind);
+          if (candidate.kind === "listItem" && candidate.text === expected.text) {
+            boundary = marker.index;
+            break;
+          }
+        }
+      }
+      const actual = suffixView(
+        boundary === undefined ? remaining : remaining.slice(0, boundary),
+        expected,
+        kind,
+      );
+      views.push(number === undefined ? actual : view(actual.text, "listItem", undefined, number));
+      if (boundary === undefined) return;
+      remaining = remaining.slice(boundary + 1);
+      kind = "paragraph";
+      number = undefined;
+    }
+  };
   const walk = (token: Token): void => {
     switch (token.type) {
       case "space":
@@ -326,8 +355,7 @@ export const markdownViews = (
         return;
       }
       case "paragraph": {
-        const expected = nextExpected();
-        views.push(suffixView(tokenText(token), expected, "paragraph"));
+        appendParagraphs(tokenText(token), { kind: "paragraph" });
         return;
       }
       case "list": {
@@ -340,55 +368,16 @@ export const markdownViews = (
             if (child.type !== "text" && child.type !== "paragraph") {
               throw new Error(`Unsupported list item Markdown token: ${child.type}`);
             }
-            const expected = nextExpected();
             const text = tokenText(child);
             const marker = /^\s*(?<number>\d+[.)])\s+/u.exec(item.raw)?.groups?.["number"];
             if (token.ordered && marker === undefined) {
               throw new Error("Ordered Markdown list item has no rendered number");
             }
             const number = token.ordered ? marker : BULLET;
-            const prefixLength = text.startsWith(expected.text) ? expected.text.length : 0;
-            const firstRemainder = text.slice(prefixLength);
-            const firstCustomMarker = /^\n(?<marker>[^\s]+?[.)])\s+/u.exec(firstRemainder);
-            const firstNextExpected = expectedViews.at(cursor);
-            const customContinuation =
-              firstCustomMarker?.groups?.["marker"] !== undefined &&
-              firstNextExpected?.kind === "listItem" &&
-              (firstRemainder.slice(firstCustomMarker[0].length) === firstNextExpected.text ||
-                firstRemainder
-                  .slice(firstCustomMarker[0].length)
-                  .startsWith(`${firstNextExpected.text}\n`));
-            if (expected.text.length > 0 && text.startsWith(expected.text) && customContinuation) {
-              views.push(view(expected.text, "listItem", undefined, number));
-              let remainder = text.slice(expected.text.length);
-              while (remainder.length > 0) {
-                const customMarker = /^\n(?<marker>[^\s]+?[.)])\s+/u.exec(remainder);
-                const nextSource = expectedViews.at(cursor);
-                if (
-                  customMarker?.groups?.["marker"] === undefined ||
-                  nextSource?.kind !== "listItem"
-                ) {
-                  break;
-                }
-                const tail = remainder.slice(customMarker[0].length);
-                if (tail !== nextSource.text && !tail.startsWith(`${nextSource.text}\n`)) break;
-                cursor += 1;
-                views.push(
-                  suffixView(
-                    `${customMarker.groups["marker"]} ${nextSource.text}`,
-                    nextSource,
-                    "paragraph",
-                  ),
-                );
-                remainder = tail.slice(nextSource.text.length);
-              }
-              if (remainder.length > 0) {
-                throw new Error("Unsupported text after a custom list marker");
-              }
-            } else {
-              const itemView = suffixView(text, expected, "listItem");
-              views.push(view(itemView.text, "listItem", undefined, number));
-            }
+            appendParagraphs(text, {
+              kind: "listItem",
+              ...(number === undefined ? {} : { number }),
+            });
           }
         }
         return;

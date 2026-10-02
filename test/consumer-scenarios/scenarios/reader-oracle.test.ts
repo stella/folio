@@ -3,10 +3,17 @@ import { test } from "node:test";
 
 import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
+import { FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION } from "@stll/folio-core/server";
 
 import { assertReadersAgree } from "../support/invariants.ts";
-import { listDocument, notesDocument, packDocument } from "../support/documents.ts";
-import { markdownViews, readAll } from "../support/readers.ts";
+import {
+  directNumberedDocument,
+  listDocument,
+  notesDocument,
+  openReviewer,
+  packDocument,
+} from "../support/documents.ts";
+import { contentView, markdownViews, readAll } from "../support/readers.ts";
 
 type Document = ReturnType<typeof fromMarkdown>;
 type Numbering = NonNullable<Document["package"]["numbering"]>;
@@ -179,6 +186,74 @@ test("retains every rendered ordered-list label, including restarts", () => {
   ] as const;
   assert.deepEqual(markdownViews("1. First\n1. Restarted", expected), expected);
   assert.notDeepEqual(markdownViews("1. First\n2. Restarted", expected), expected);
+});
+
+test("an undefined numbering level without a displayed marker reads as prose", () => {
+  const formats = new Map([["7:0", "decimal"]]);
+  const block = {
+    id: "4207D525",
+    text: "No marker",
+    kind: "paragraph",
+    listReference: { numId: 7, level: 8 },
+  };
+  assert.deepEqual(contentView(block, formats), { text: "No marker", kind: "paragraph" });
+  assert.throws(
+    () => contentView({ ...block, displayLabel: "1." }, formats),
+    /Missing numbering format for displayed label/,
+  );
+});
+
+test("custom markers retain boundaries, hard breaks and actual rendered labels", () => {
+  const cases = [
+    { markers: ["(1)", "(2)", "(1)"] },
+    { markers: ["a.", "b.", "a."] },
+    { markers: ["i)", "ii)", "i)"] },
+    { markers: ["1.", "(2)", "a."] },
+  ];
+  for (const { markers } of cases) {
+    // The first item contains a marker-shaped hard-break line. It is one
+    // source block; only a matching complete source prefix grants a split.
+    const texts = ["First\n(a) stays inside the first item", "Second", "Restarted"];
+    const expected = texts.map((text, index) => {
+      const number = markers.at(index);
+      if (number === undefined) throw new Error("List-marker fixture is missing a label");
+      return { text, kind: "listItem" as const, number };
+    });
+    const lines = expected.map(({ text, number }) => `${number} ${text}`);
+    const markdown = lines.join("\n");
+    assert.deepEqual(markdownViews(markdown, expected), expected);
+    assert.throws(
+      () => markdownViews(markdown.replace("Second", "Changed"), expected),
+      /fewer text blocks/,
+    );
+    const secondMarker = markers.at(1);
+    if (secondMarker === undefined)
+      throw new Error("List-marker fixture is missing its second label");
+    assert.notDeepEqual(
+      markdownViews(markdown.replace(secondMarker, "wrong)"), expected),
+      expected,
+    );
+    assert.throws(() => markdownViews(lines.slice(0, 2).join("\n"), expected), /fewer text blocks/);
+  }
+});
+
+test("removing the prose between custom-numbered blocks keeps every saved reader block", async () => {
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    const reviewer = await openReviewer(await directNumberedDocument());
+    const separator = reviewer.getContent().find(({ text }) => text === "Unnumbered body text.");
+    assert.ok(separator);
+    const result = reviewer.applyDocumentOperations({
+      version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+      mode,
+      operations: [{ id: "delete-separator", type: "deleteBlock", blockId: separator.id }],
+    });
+    assert.equal(result.applied.length, 1);
+    reviewer.acceptAll();
+    await assertReadersAgree(
+      new Uint8Array(await reviewer.toBuffer()),
+      `adjacent custom labels ${mode}`,
+    );
+  }
 });
 
 // The lexer treats exported footnote definitions as paragraph text; the body
