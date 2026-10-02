@@ -7,6 +7,7 @@
 import assert from "node:assert/strict";
 
 import { openReviewer } from "./documents.ts";
+import { projectContentPair } from "./identity.ts";
 import { labelFields, readAll } from "./readers.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -20,6 +21,7 @@ export const visibleState = (reviewer: Reviewer) => ({
     id: block.id,
     kind: block.kind,
     text: block.text,
+    idStability: block.idStability,
     headingLevel: block.headingLevel,
     displayLabel: block.displayLabel,
     listLevel: block.listLevel,
@@ -79,9 +81,22 @@ export const saveAndReopen = async (
   if (options.compare === false) {
     return { bytes, reopened };
   }
+  const expected = options.persisted ?? visibleState(reviewer);
+  const actual = visibleState(reopened);
+  const liveStableIds = new Set(
+    reviewer
+      .getContent()
+      .filter(({ idStability }) => idStability !== "positional")
+      .map(({ id }) => id),
+  );
+  const blocks = projectContentPair({
+    leftRows: expected.blocks,
+    rightRows: actual.blocks,
+    stableIds: liveStableIds,
+  });
   assert.deepEqual(
-    visibleState(reopened),
-    options.persisted ?? visibleState(reviewer),
+    { ...actual, blocks: blocks.right },
+    { ...expected, blocks: blocks.left },
     `${context}: the reopened package shows something else than the reviewer that saved it`,
   );
   return { bytes, reopened };
