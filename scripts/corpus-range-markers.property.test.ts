@@ -23,7 +23,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { EditorState } from "prosemirror-state";
-import { getSourceReplayToken } from "@stll/docx-core/ops";
+import { getSourceReplayToken } from "../packages/docx-core/src/ops/documentOps";
 
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createEmptyDocx, repackDocx } from "@stll/folio-core/docx/rezip";
