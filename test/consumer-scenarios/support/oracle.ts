@@ -19,12 +19,7 @@
  */
 
 import assert from "node:assert/strict";
-import {
-  paragraphNumberingFromSlots,
-  type ParagraphContent,
-  type TrackedRunContent,
-  type InlineSdt,
-} from "@stll/folio-core/docx";
+import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
@@ -59,6 +54,7 @@ import {
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
 type ParsedDocument = Awaited<ReturnType<typeof parseDocx>>;
 type ParsedBlock = ParsedDocument["package"]["document"]["content"][number];
+type ParsedInline = Extract<ParsedBlock, { type: "paragraph" }>["content"][number];
 type Numbering = NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"];
 type NumberingFacts = {
   styles: Map<string, Numbering>;
@@ -103,9 +99,7 @@ const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts =>
   };
   for (const id of definitions.keys()) resolve(id);
   const direct = new Map<string, Numbering>();
-  const visitInline = (
-    node: ParagraphContent | TrackedRunContent | InlineSdt["content"][number],
-  ): void => {
+  const visitInline = (node: ParsedInline): void => {
     switch (node.type) {
       case "run":
         for (const content of node.content) {
