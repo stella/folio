@@ -560,6 +560,9 @@ export const replaceRawDocxXmlParts = async (
     content.originalBuffer = await content.originalZip.generateAsync({
       type: "arraybuffer",
       compression: "DEFLATE",
+      // Import needs a consistent baseline immediately; use fast compression
+      // for repaired entries while JSZip reuses untouched DEFLATE entries.
+      compressionOptions: { level: 1 },
     });
   }
 };

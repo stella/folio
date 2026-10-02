@@ -148,6 +148,20 @@ const decodeAttributeReferences = (value: string): string =>
 
 const ID_ATTRIBUTE_NAMES = ["id", ...NUMBERING_ATTRIBUTES].join("|");
 const ID_ELEMENT_NAMES = [...ID_VALUE_ELEMENTS].join("|");
+type OoxmlNumericIdAttributeOptions = { elementName: string; attributeName: string };
+
+/** Attributes an identity scan must retain, derived from the domain classifier. */
+export const isOoxmlNumericIdAttributeName = ({
+  elementName,
+  attributeName,
+}: OoxmlNumericIdAttributeOptions): boolean => {
+  const attribute = localName(attributeName);
+  return (
+    attribute === "id" ||
+    NUMBERING_ATTRIBUTES.has(attribute) ||
+    (attribute === "val" && ID_VALUE_ELEMENTS.has(localName(elementName)))
+  );
+};
 const ID_CANDIDATE = new RegExp(
   `\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=|<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?:[\\s/>])`,
   "u",

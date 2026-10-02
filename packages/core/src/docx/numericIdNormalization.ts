@@ -12,7 +12,7 @@ import {
 import { panic } from "better-result";
 
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
-import { rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
+import { scanStreamingXmlNumericIdAttributes } from "./streamingXmlParser";
 import {
   getLocalName,
   getNamespaceUri,
@@ -96,10 +96,10 @@ type ImportedIdentitySpan = { start: number; end: number; space: string; key: st
  */
 export const normalizeImportedNumericIds = (
   parts: ReadonlyMap<string, string>,
-): Map<string, string> => {
-  const normalized = new Map(parts);
+): ReadonlyMap<string, string> => {
   if (![...parts.values()].some((xml) => mayContainInvalidOoxmlNumericIds(xml, "range")))
-    return normalized;
+    return parts;
+  const normalized = new Map(parts);
   const candidates = [...parts]
     .filter(([, xml]) => mayContainOoxmlNumericIds(xml))
     .toSorted(([left], [right]) => left.localeCompare(right));
@@ -109,10 +109,10 @@ export const normalizeImportedNumericIds = (
   type ScanOptions = {
     path: string;
     xml: string;
-    visitor: Parameters<typeof rewriteStreamingXmlDecimalAttributes>[1];
+    visitor: Parameters<typeof scanStreamingXmlNumericIdAttributes>[1];
   };
-  const scan = ({ path, xml, visitor }: ScanOptions): string => {
-    const scanned = rewriteStreamingXmlDecimalAttributes(xml, visitor);
+  const scan = ({ path, xml, visitor }: ScanOptions): void => {
+    const scanned = scanStreamingXmlNumericIdAttributes(xml, visitor);
     if (scanned.status === "unsupported") {
       throw new XmlResourceLimitError({
         message: `Numeric-id normalization could not safely scan ${path}`,
@@ -121,7 +121,6 @@ export const normalizeImportedNumericIds = (
         allowed: 0,
       });
     }
-    return scanned.value;
   };
   for (const [path, xml] of candidates) {
     scan({
@@ -198,5 +197,7 @@ export const normalizeImportedNumericIds = (
 
 /** Parser boundary: all captures and selective-save bytes see the same identities. */
 export const normalizeRawDocxNumericIds = async (raw: RawDocxContent): Promise<void> => {
-  await replaceRawDocxXmlParts(raw, normalizeImportedNumericIds(raw.allXml));
+  const normalized = normalizeImportedNumericIds(raw.allXml);
+  if (normalized === raw.allXml) return;
+  await replaceRawDocxXmlParts(raw, normalized);
 };

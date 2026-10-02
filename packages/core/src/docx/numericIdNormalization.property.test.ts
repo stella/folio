@@ -28,6 +28,29 @@ const invalidId = fc
   )
   .map(String);
 
+test("in-range packages reuse their source map without a reservation or rewrite pass", () => {
+  fc.assert(
+    fc.property(
+      fc.integer({ min: 0, max: 2_147_483_647 }),
+      fc.constantFrom(...WORD_NAMESPACES),
+      (id, namespace) => {
+        const parts = new Map([
+          [
+            "word/document.xml",
+            `<x:document xmlns:x="${namespace}"><x:commentReference x:id="${id}"/><x:numId x:val="${id}"/></x:document>`,
+          ],
+          [
+            "word/comments.xml",
+            `<x:comments xmlns:x="${namespace}"><x:comment x:id="${id}"/></x:comments>`,
+          ],
+        ]);
+        expect(normalizeImportedNumericIds(parts)).toBe(parts);
+      },
+    ),
+    propertyConfig({ numRuns: 100 }),
+  );
+});
+
 test("imported numeric identities stay paired, avoid occupied ids, and reach a fixed point across spaces", () => {
   fc.assert(
     fc.property(invalidId, fc.constantFrom(...WORD_NAMESPACES), (id, namespace) => {

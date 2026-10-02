@@ -48,6 +48,7 @@ export {
   isValidOoxmlNumericId,
   mayContainInvalidOoxmlNumericIds,
   mayContainOoxmlNumericIds,
+  isOoxmlNumericIdAttributeName,
   ooxmlNumericIdDomain,
   InvalidOoxmlNumericIdError,
 } from "./serialize/numericIds";
