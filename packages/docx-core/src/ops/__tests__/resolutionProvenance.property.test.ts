@@ -601,7 +601,8 @@ test("generated nested replacements preserve reviewed source seams in every reso
       fc.nat(30),
       fc.nat(30),
       fc.integer({ min: 1, max: 2 }),
-      (shape, start, end, paragraph) => {
+      fc.boolean(),
+      (shape, start, end, paragraph, retainedPayloadBoundary) => {
         const original = fixture(
           Object.assign({}, shape, {
             wrapper: shape.wrapper === "nested" ? "nested" : "control",
@@ -641,9 +642,44 @@ test("generated nested replacements preserve reviewed source seams in every reso
           allocation,
           refusals,
         });
+        let trackedDocument = tracked.document;
+        if (retainedPayloadBoundary) {
+          // Clipboard planning closes the removed deletion seam when retained
+          // payload separates its fragments. Exercise that same primitive
+          // snapshot postpass without a second compiler in the parent package.
+          const deletionIds = new Set(tracked.revisions);
+          const closeRemovedSeam = (node: InlineNode): InlineNode => {
+            if (
+              node.type === "deletion" &&
+              deletionIds.has(node.info.id) &&
+              node.resolutionJoins !== undefined
+            )
+              return Object.assign({}, node, {
+                resolutionJoins: Object.assign({}, node.resolutionJoins, { remove: 0 }),
+              });
+            const children = childNodes(node);
+            return children === undefined
+              ? node
+              : rebuildNode(node, children.map(closeRemovedSeam));
+          };
+          const selected = trackedDocument.package.document.content.find(
+            (node) => node.type === "paragraph" && node.paraId === blockId,
+          );
+          if (selected?.type !== "paragraph") panic("Tracked replacement retains its paragraph.");
+          const captured = applyDocumentOp(trackedDocument, {
+            type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+            story: OP_STORIES.MAIN,
+            blockId,
+            expected: selected.content,
+            content: asParagraphContent(selected.content.map(closeRemovedSeam)),
+          });
+          if (captured.isErr()) throw captured.error;
+          expectInverse(captured.value, trackedDocument);
+          trackedDocument = captured.value.document;
+        }
         for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
           const together = resolve({
-            document: tracked.document,
+            document: trackedDocument,
             revisionIds: tracked.revisions,
             decision,
           });
@@ -652,7 +688,7 @@ test("generated nested replacements preserve reviewed source seams in every reso
             decision === REVISION_DECISIONS.ACCEPT ? direct.document : original,
           );
           for (const order of [tracked.revisions, tracked.revisions.toReversed()]) {
-            let separately = tracked.document;
+            let separately = trackedDocument;
             for (const id of order)
               separately = resolve({ document: separately, revisionIds: [id], decision });
             assertExactModel(separately, together);
@@ -671,7 +707,7 @@ test("generated nested replacements preserve reviewed source seams in every reso
               : REVISION_DECISIONS.ACCEPT;
           const firstThenSecond = resolve({
             document: resolve({
-              document: tracked.document,
+              document: trackedDocument,
               revisionIds: [firstId],
               decision: firstDecision,
             }),
@@ -680,7 +716,7 @@ test("generated nested replacements preserve reviewed source seams in every reso
           });
           const secondThenFirst = resolve({
             document: resolve({
-              document: tracked.document,
+              document: trackedDocument,
               revisionIds: [secondId],
               decision: secondDecision,
             }),
