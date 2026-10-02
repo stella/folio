@@ -16,7 +16,7 @@ import { appendTrackedDeletion, createTrackedPlan, selectedParagraphRuns } from 
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
-import { isRemovedRevisionNode, paragraphPropertiesOf, reviewFieldsOf } from "./review";
+import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
@@ -445,15 +445,16 @@ export const compileEditorIntent = (
             offset: 0,
           });
           if (!before || !after) panic("An own-mark join lost its trailing paragraph.");
-          const review = reviewFieldsOf(after);
-          delete review.formatting;
-          if (before.formatting !== undefined) review.formatting = before.formatting;
           const restored = plan.append({
-            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
             story: intent.story,
             blockId: intent.nextBlockId,
-            expected: reviewFieldsOf(after),
-            review,
+            patch: Object.fromEntries([
+              ...Object.keys(after.formatting ?? {}).map((key) => [key, null]),
+              ...Object.entries(before.formatting ?? {}),
+            ]),
+            whenEmpty:
+              before.formatting === undefined ? EMPTY_PROPERTY_SETS.OMIT : EMPTY_PROPERTY_SETS.KEEP,
           });
           if (restored.isErr()) return Result.err(restored.error);
         }
