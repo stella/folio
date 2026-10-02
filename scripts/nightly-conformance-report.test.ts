@@ -1,10 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Issue, IssueStore } from "./fuzz-issue-classes";
-import {
-  CONFORMANCE_REPORT_TITLE,
-  conformanceReportBody,
-  fileConformanceReport,
-} from "./nightly-failure-issues";
+import { conformanceReportBody, fileConformanceReport } from "./nightly-failure-issues";
 import { groupConformanceFailures, parseFailures, unparsedFailure } from "./nightly-failure-issues";
 
 const context = {
@@ -51,12 +47,21 @@ const fakeStore = (initial: Issue[] = []) => {
 test("arbitrary group counts and later runs update one standing issue, preserving legacy issues", async () => {
   const legacy = {
     number: 99,
-    title: CONFORMANCE_REPORT_TITLE,
+    title: "Nightly conformance failure: standing report",
     state: "open",
     body: "Legacy evidence",
     closedAt: null,
   } as const satisfies Issue;
-  const { store, issues, writes } = fakeStore([legacy]);
+  const { store, issues, writes } = fakeStore([
+    legacy,
+    {
+      number: 1404,
+      title: "Conformance tracker",
+      body: "Keep owner notes.\n<!-- standing-conformance -->\nKeep footer.",
+      state: "open",
+      closedAt: null,
+    },
+  ]);
   const failures = groupConformanceFailures(
     parseFailures(
       Array.from(
@@ -70,18 +75,21 @@ test("arbitrary group counts and later runs update one standing issue, preservin
   await fileConformanceReport({ failures, context, store });
   expect(issues).toHaveLength(2);
   expect(issues.at(0)).toEqual(legacy);
-  expect(issues.at(1)?.title).toBe(CONFORMANCE_REPORT_TITLE);
+  expect(issues.at(1)?.number).toBe(1404);
+  expect(issues.at(1)?.body).toContain("Keep owner notes.");
+  expect(issues.at(1)?.body).toContain("Keep footer.");
+  expect(issues.at(1)?.body).toContain("<!-- standing-conformance -->");
   expect(issues.at(1)?.body).toContain("Failure groups: 200.");
   expect(issues.at(1)?.body?.length).toBeLessThan(48_000);
   expect(issues.at(1)?.body).toContain("further failure groups omitted");
   await fileConformanceReport({ failures, context, store });
-  expect(writes).toEqual(["create"]);
+  expect(writes).toEqual(["edit"]);
   await fileConformanceReport({
     failures: [unparsedFailure("conformance")],
     context: { ...context, runUrl: "https://github.com/stella/folio/actions/runs/12345678902" },
     store,
   });
-  expect(writes).toEqual(["create", "edit"]);
+  expect(writes).toEqual(["edit", "edit"]);
   expect(issues).toHaveLength(2);
   expect(issues.at(1)?.body).toContain("crash or timeout");
   expect(issues.at(1)?.body).not.toContain("operation199");
@@ -92,9 +100,9 @@ test("a closed standing issue reopens even after fourteen days", async () => {
   const { store, writes, issues } = fakeStore([
     {
       number: 100,
-      title: CONFORMANCE_REPORT_TITLE,
+      title: "Nightly conformance failure: standing report",
       state: "closed",
-      body: conformanceReportBody(failures, context),
+      body: `<!-- standing-conformance -->\n\n${conformanceReportBody(failures, context)}`,
       closedAt: "2026-01-01T00:00:00Z",
     },
   ]);
@@ -105,13 +113,13 @@ test("a closed standing issue reopens even after fourteen days", async () => {
   expect(writes).toEqual(["reopen"]);
 });
 
-test("marker survives a title edit; an open standing issue takes precedence", async () => {
+test("marker matches anywhere in the body independently of the title", async () => {
   const failures = [unparsedFailure("conformance")];
-  const body = conformanceReportBody(failures, context);
+  const body = `Owner notes\n<!-- standing-conformance -->\n\n${conformanceReportBody(failures, context)}`;
   const { store, writes, issues } = fakeStore([
     {
       number: 1,
-      title: CONFORMANCE_REPORT_TITLE,
+      title: "Nightly conformance failure: standing report",
       state: "closed",
       body: "old",
       closedAt: "2026-10-01T00:00:00Z",
@@ -121,4 +129,26 @@ test("marker survives a title edit; an open standing issue takes precedence", as
   await fileConformanceReport({ failures, context, store });
   expect(writes).toEqual([]);
   expect(issues.at(0)?.state).toBe("closed");
+});
+
+test("missing or ambiguous standing markers never create or update an issue", async () => {
+  for (const count of [0, 2]) {
+    const { store, writes } = fakeStore(
+      Array.from(
+        { length: count },
+        (_, index) =>
+          ({
+            number: 1404 + index,
+            title: "Tracker",
+            state: "open",
+            body: "<!-- standing-conformance -->",
+            closedAt: null,
+          }) satisfies Issue,
+      ),
+    );
+    await expect(
+      fileConformanceReport({ failures: [unparsedFailure("conformance")], context, store }),
+    ).rejects.toThrow("Expected one issue marked");
+    expect(writes).toEqual([]);
+  }
 });

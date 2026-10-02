@@ -24,13 +24,14 @@
  */
 
 import { $ } from "bun";
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import type { IssueStore } from "./fuzz-issue-classes";
-import { parseIssuePages, parseIssueResponse } from "./fuzz-failure-issues";
+import { parseIssueResponse } from "./fuzz-failure-issues";
 
 export type Kind = "property" | "conformance";
 
@@ -433,14 +434,18 @@ export const unparsedFailure = (kind: Kind): Failure => ({
   pinned: false,
 });
 
-export const CONFORMANCE_REPORT_TITLE = "Nightly conformance failure: standing report";
-const REPORT_MARKER = "<!-- nightly-conformance-report: v1 -->";
+const REPORT_MARKER = "<!-- standing-conformance -->";
+const REPORT_START = "<!-- conformance-results:start -->";
+const REPORT_END = "<!-- conformance-results:end -->";
+class StandingConformanceIssueError extends TaggedError("StandingConformanceIssueError")<{
+  message: string;
+}> {}
 const MAX_BODY_LENGTH = 48_000;
 
 /** Latest-run evidence stays bounded; the linked run retains the complete log. */
 export const conformanceReportBody = (failures: readonly Failure[], context: Context): string => {
   const sections = [
-    REPORT_MARKER,
+    REPORT_START,
     "This standing issue tracks the latest failed nightly conformance run.",
     `Failure groups: ${failures.length}.`,
     context.runUrl === null ? `Date: ${context.date}.` : `Latest run: ${context.runUrl}`,
@@ -460,13 +465,14 @@ export const conformanceReportBody = (failures: readonly Failure[], context: Con
       `${failures.length - included} further failure groups omitted; see the complete run log.`,
     );
   }
+  sections.push(REPORT_END);
   return sections.join("\n\n");
 };
 
 type FileConformanceReportOptions = {
   failures: readonly Failure[];
   context: Context;
-  store: IssueStore;
+  store: Pick<IssueStore, "list" | "edit" | "reopen">;
 };
 
 /** Legacy per-group issues belong to their fix owners; only the standing report is updated. */
@@ -476,17 +482,28 @@ export const fileConformanceReport = async ({
   store,
 }: FileConformanceReportOptions) => {
   const issues = await store.list();
-  const candidates = issues.filter(({ body }) => body?.startsWith(REPORT_MARKER));
-  const existing = candidates
-    .toSorted(
-      (a, b) => Number(b.state === "open") - Number(a.state === "open") || a.number - b.number,
-    )
-    .at(0);
-  const body = conformanceReportBody(failures, context);
-  if (existing === undefined) {
-    await store.create(CONFORMANCE_REPORT_TITLE, body);
-    return;
+  const candidates = issues.filter(({ body }) => body?.includes(REPORT_MARKER));
+  if (candidates.length !== 1) {
+    throw new StandingConformanceIssueError({
+      message: `Expected one issue marked ${REPORT_MARKER}; found ${candidates.length}. No issue created.`,
+    });
   }
+  const existing = candidates.at(0);
+  if (existing === undefined)
+    throw new StandingConformanceIssueError({ message: "Standing conformance issue missing." });
+  const original = existing.body ?? "";
+  const report = conformanceReportBody(failures, context);
+  const start = original.indexOf(REPORT_START);
+  const end = original.indexOf(REPORT_END, start);
+  if (start < 0 !== end < 0) {
+    throw new StandingConformanceIssueError({
+      message: "Standing conformance result boundaries are incomplete.",
+    });
+  }
+  const body =
+    start < 0
+      ? `${original}\n\n${report}`
+      : `${original.slice(0, start)}${report}${original.slice(end + REPORT_END.length)}`;
   if (existing.body !== body) await store.edit(existing.number, body);
   if (existing.state === "closed") await store.reopen(existing.number);
 };
@@ -568,26 +585,13 @@ const main = async (): Promise<void> => {
     .quiet()
     .nothrow();
   if (options.kind === "conformance") {
-    const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${label.name}&per_page=100`;
+    const endpoint = "repos/{owner}/{repo}/issues/1404";
     const bodyFile = path.join(tmpdir(), `nightly-conformance-${String(process.pid)}.md`);
     await fileConformanceReport({
       failures,
       context,
       store: {
-        list: async () => {
-          return parseIssuePages(JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text()));
-        },
-        create: async (title, body) => {
-          writeFileSync(bodyFile, body);
-          const url = (
-            await $`gh issue create --title ${title} --label ${label.name} --body-file ${bodyFile}`.text()
-          ).trim();
-          return parseIssueResponse(
-            JSON.parse(
-              await $`gh issue view ${url} --json number,title,state,body,closedAt`.text(),
-            ),
-          );
-        },
+        list: async () => [parseIssueResponse(JSON.parse(await $`gh api ${endpoint}`.text()))],
         edit: async (number, body) => {
           writeFileSync(bodyFile, body);
           await $`gh issue edit ${String(number)} --body-file ${bodyFile}`.quiet();
