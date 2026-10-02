@@ -74,6 +74,57 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 describe("canonical session", () => {
+  test("keeps typing groups separate from structural edits and suggesting mode", () => {
+    const session = createCanonicalSession(seed("AB")).unwrap();
+    let state = stateFor(session);
+    const initial = session.document;
+    for (const [time, text] of [
+      [1000, "X"],
+      [1001, "Y"],
+    ] as const) {
+      state = accept(
+        state,
+        session
+          .prepareReplace(state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    }
+    const typed = session.document;
+    state = accept(state, session.prepareSplit(state).unwrap());
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(typed);
+    session.setMode({ type: "suggesting", author: "Reviewer" });
+    for (const [time, text] of [
+      [1002, "Z"],
+      [1003, "W"],
+    ] as const) {
+      session.setMode({ type: "suggesting", author: "Reviewer" });
+      state = accept(
+        state,
+        session
+          .prepareReplace(state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    }
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(typed);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(initial);
+    expect(state.doc.eq(session.projection.doc)).toBe(true);
+  });
+
   test("canonical input sequences keep the projection, inverse history and refusal atomic", async () => {
     await assertProperty(
       fc.asyncProperty(

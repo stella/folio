@@ -217,6 +217,27 @@ const project = (
   return Result.ok(new CanonicalProjection(converted.value, paragraphs));
 };
 
+/** Input intent, never projection-step adjacency, determines the journal partition. */
+export type CanonicalInputSemantic =
+  | "typing"
+  | "deleteBackward"
+  | "deleteForward"
+  | "paste"
+  | "composition"
+  | "replacement"
+  | "structure";
+
+const UNDO_GROUP_WINDOW_MS = 500;
+
+const samePosition = (left: TextPosition, right: TextPosition): boolean =>
+  left.story === right.story &&
+  left.blockId === right.blockId &&
+  left.offset === right.offset &&
+  (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
+
+const sameSelection = (left: CanonicalSelection, right: CanonicalSelection): boolean =>
+  samePosition(left.anchor, right.anchor) && samePosition(left.head, right.head);
+
 type AppliedJournalEntry = {
   type: "applied";
   ops: readonly DocumentOp[];
@@ -225,10 +246,49 @@ type AppliedJournalEntry = {
   postSelection: CanonicalSelection;
   version: number;
   origin: "input";
+  semantic: CanonicalInputSemantic;
+  grouping: "run" | "isolated";
+  time: number;
+  boundary: number;
 };
+
+type AppliedJournalGroup = {
+  entries: AppliedJournalEntry[];
+  undo: { type: "entries" } | { type: "replayed"; inverse: readonly DocumentOp[] };
+  preSelection: CanonicalSelection;
+  postSelection: CanonicalSelection;
+};
+
+const continuesGroup = (previous: AppliedJournalEntry, next: AppliedJournalEntry): boolean => {
+  switch (next.semantic) {
+    case "typing":
+    case "deleteBackward":
+    case "deleteForward":
+      return (
+        previous.grouping === "run" &&
+        next.grouping === "run" &&
+        previous.semantic === next.semantic &&
+        previous.boundary === next.boundary &&
+        next.time >= previous.time &&
+        next.time - previous.time <= UNDO_GROUP_WINDOW_MS &&
+        sameSelection(previous.postSelection, next.preSelection) &&
+        samePosition(next.preSelection.anchor, next.preSelection.head)
+      );
+    case "paste":
+    case "composition":
+    case "replacement":
+    case "structure":
+      return false;
+    default: {
+      const unreachable: never = next.semantic;
+      return panic(`Unknown canonical input semantic ${unreachable}`);
+    }
+  }
+};
+
 type UndoneJournalEntry = {
   type: "undone";
-  entry: AppliedJournalEntry;
+  group: AppliedJournalGroup;
   redoOps: readonly DocumentOp[];
 };
 
@@ -310,11 +370,24 @@ type CanonicalSessionSeedOptions = {
   styles: StyleDefinitions | null | undefined;
 };
 
-type CanonicalReplaceTextInput = { from: number; to: number; text: string };
+type CanonicalReplaceTextInput = {
+  from: number;
+  to: number;
+  text: string;
+  semantic?: CanonicalInputSemantic;
+  time?: number;
+};
 
 type JournalInputOptions = Pick<StageOptions, "state" | "ops"> & {
   preSelection: CanonicalSelection;
   postSelection: CanonicalSelection;
+  semantic?: CanonicalInputSemantic;
+  time?: number;
+  grouping?: "run" | "isolated";
+};
+
+type IntentInputOptions = Pick<JournalInputOptions, "semantic" | "time" | "grouping"> & {
+  intent: EditorIntent;
 };
 
 /** Immutable model authority with a journal staged independently of the PM view. */
@@ -324,7 +397,9 @@ class CanonicalSession {
   private currentVersion = 0;
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly sourceOwners = new Map<string, Paragraph>();
-  private readonly applied: AppliedJournalEntry[] = [];
+  private readonly applied: AppliedJournalGroup[] = [];
+  private groupingBoundary = 0;
+  private lifecycle: { type: "committed" } | { type: "composing" } = { type: "committed" };
   private readonly undone: UndoneJournalEntry[] = [];
   private readonly styles: StyleDefinitions | null | undefined;
 
@@ -336,6 +411,13 @@ class CanonicalSession {
   }
 
   setMode(mode: CanonicalSessionMode): void {
+    if (
+      this.mode.type !== mode.type ||
+      (this.mode.type === "suggesting" &&
+        mode.type === "suggesting" &&
+        this.mode.author !== mode.author)
+    )
+      this.breakUndoGroup();
     this.mode =
       mode.type === "editing" ? { type: "editing" } : { type: "suggesting", author: mode.author };
   }
@@ -348,6 +430,10 @@ class CanonicalSession {
   }
 
   get document(): Document {
+    if (this.isComposing)
+      throw new CanonicalSessionError({
+        message: "Composition must finish before taking a snapshot.",
+      });
     return this.currentDocument;
   }
   get projection(): CanonicalProjection {
@@ -363,7 +449,28 @@ class CanonicalSession {
     return this.undone.length > 0;
   }
 
+  get isComposing(): boolean {
+    return this.lifecycle.type === "composing";
+  }
+
+  breakUndoGroup(): void {
+    this.groupingBoundary += 1;
+  }
+
+  beginComposition(): Result<void, CanonicalSessionError> {
+    if (this.isComposing) return refuse("A canonical composition is already pending.");
+    this.lifecycle = { type: "composing" };
+    this.breakUndoGroup();
+    return Result.ok(undefined);
+  }
+
+  endComposition(): void {
+    this.lifecycle = { type: "committed" };
+    this.breakUndoGroup();
+  }
+
   private checkState(state: EditorState): Result<void, CanonicalSessionError> {
+    if (this.isComposing) return refuse("Composition must finish before committing another edit.");
     if (!state.doc.eq(this.projection.doc)) {
       return refuse("The input uses a stale canonical projection.");
     }
@@ -372,10 +479,11 @@ class CanonicalSession {
 
   prepareReplace(
     state: EditorState,
-    { from, to, text }: CanonicalReplaceTextInput,
+    { from, to, text, semantic = "replacement", time = Date.now() }: CanonicalReplaceTextInput,
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
+    if (!Number.isFinite(time)) return refuse("The input time is invalid.");
     if (state.storedMarks !== null && state.storedMarks.length > 0) {
       return refuse("Stored formatting is not supported in the canonical session.");
     }
@@ -387,25 +495,39 @@ class CanonicalSession {
     if (start.isErr()) return start;
     const end = this.projection.inputAddressAt(to);
     if (end.isErr()) return end;
+    const run =
+      state.selection.empty &&
+      ((semantic === "typing" && from === to && from === state.selection.head) ||
+        (semantic === "deleteBackward" && text.length === 0 && to === state.selection.head) ||
+        (semantic === "deleteForward" && text.length === 0 && from === state.selection.head));
     return this.prepareIntent(state, {
-      type: "replaceText",
-      from: start.value,
-      to: end.value,
-      text,
+      intent: {
+        type: "replaceText",
+        from: start.value,
+        to: end.value,
+        text,
+      },
+      semantic,
+      time,
+      grouping: run ? "run" : "isolated",
     });
   }
 
   prepareSplit(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
+    const checked = this.checkState(state);
+    if (checked.isErr()) return checked;
     const at = this.projection.inputAddressAt(state.selection.from);
     if (at.isErr()) return at;
     const to = this.projection.inputAddressAt(state.selection.to);
     if (to.isErr()) return to;
     const ids = allocateEditorIntentIds(this.document);
     return this.prepareIntent(state, {
-      type: "splitParagraph",
-      at: at.value,
-      to: to.value,
-      newBlockId: ids.newBlockId,
+      intent: {
+        type: "splitParagraph",
+        at: at.value,
+        to: to.value,
+        newBlockId: ids.newBlockId,
+      },
     });
   }
 
@@ -413,6 +535,8 @@ class CanonicalSession {
     state: EditorState,
     direction: "backward" | "forward",
   ): Result<CanonicalCommit, CanonicalSessionError> {
+    const checked = this.checkState(state);
+    if (checked.isErr()) return checked;
     if (!state.selection.empty) return refuse("Join requires a collapsed text selection.");
     const at = this.projection.inputAddressAt(state.selection.from);
     if (at.isErr()) return at;
@@ -430,17 +554,21 @@ class CanonicalSession {
     if (!isCanonicalJoinBoundary(state, direction))
       return refuse("Join requires a caret at a paragraph boundary.");
     return this.prepareIntent(state, {
-      type: "joinParagraphs",
-      story: at.value.story,
-      blockId: first.paraId,
-      nextBlockId: second.paraId,
+      intent: {
+        type: "joinParagraphs",
+        story: at.value.story,
+        blockId: first.paraId,
+        nextBlockId: second.paraId,
+      },
     });
   }
 
   private prepareIntent(
     state: EditorState,
-    intent: EditorIntent,
+    { intent, ...journal }: IntentInputOptions,
   ): Result<CanonicalCommit, CanonicalSessionError> {
+    const checked = this.checkState(state);
+    if (checked.isErr()) return checked;
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     const ids = allocateEditorIntentIds(this.document);
@@ -461,6 +589,7 @@ class CanonicalSession {
     return this.prepareJournalled({
       state,
       ops: compiled.value.ops,
+      ...journal,
       preSelection: preSelection.value,
       postSelection: {
         anchor: compiled.value.selection,
@@ -476,6 +605,8 @@ class CanonicalSession {
       resolution,
     }: { revisionIds: readonly number[]; resolution: "accept" | "reject" },
   ): Result<CanonicalCommit, CanonicalSessionError> {
+    const checked = this.checkState(state);
+    if (checked.isErr()) return checked;
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     const ops = [
@@ -511,6 +642,9 @@ class CanonicalSession {
     ops,
     preSelection,
     postSelection,
+    semantic = "structure",
+    time = Date.now(),
+    grouping = "isolated",
   }: JournalInputOptions): Result<CanonicalCommit, CanonicalSessionError> {
     return this.stage({
       state,
@@ -518,7 +652,7 @@ class CanonicalSession {
       selection: postSelection,
       origin: "input",
       onPublish: (inverse, version) => {
-        this.applied.push({
+        const entry = {
           type: "applied",
           ops,
           inverse,
@@ -526,23 +660,44 @@ class CanonicalSession {
           postSelection,
           version,
           origin: "input",
-        });
+          semantic,
+          grouping,
+          time,
+          boundary: this.groupingBoundary,
+        } as const satisfies AppliedJournalEntry;
+        const group = this.applied.at(-1);
+        const previous = group?.entries.at(-1);
+        if (group !== undefined && previous !== undefined && continuesGroup(previous, entry)) {
+          group.entries.push(entry);
+          group.postSelection = postSelection;
+        } else {
+          this.applied.push({
+            entries: [entry],
+            undo: { type: "entries" },
+            preSelection,
+            postSelection,
+          });
+        }
         this.undone.length = 0;
       },
     });
   }
 
   prepareUndo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
-    const entry = this.applied.at(-1);
-    if (entry === undefined) return refuse("There is no canonical edit to undo.");
+    const group = this.applied.at(-1);
+    if (group === undefined) return refuse("There is no canonical edit to undo.");
     return this.stage({
       state,
-      ops: entry.inverse,
-      selection: entry.preSelection,
+      ops:
+        group.undo.type === "replayed"
+          ? group.undo.inverse
+          : group.entries.toReversed().flatMap((entry) => entry.inverse),
+      selection: group.preSelection,
       origin: "undo",
       onPublish: (redoOps) => {
         this.applied.pop();
-        this.undone.push({ type: "undone", entry, redoOps });
+        this.undone.push({ type: "undone", group, redoOps });
+        this.breakUndoGroup();
       },
     });
   }
@@ -553,11 +708,17 @@ class CanonicalSession {
     return this.stage({
       state,
       ops: undone.redoOps,
-      selection: undone.entry.postSelection,
+      selection: undone.group.postSelection,
       origin: "redo",
-      onPublish: (inverse, version) => {
+      onPublish: (inverse) => {
         this.undone.pop();
-        this.applied.push({ ...undone.entry, ops: undone.redoOps, inverse, version });
+        this.applied.push({
+          entries: undone.group.entries,
+          undo: { type: "replayed", inverse },
+          preSelection: undone.group.preSelection,
+          postSelection: undone.group.postSelection,
+        });
+        this.breakUndoGroup();
       },
     });
   }
@@ -571,7 +732,7 @@ class CanonicalSession {
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
-    const applied = applyDocumentOps(this.document, ops);
+    const applied = applyDocumentOps(this.currentDocument, ops);
     if (applied.isErr()) return refuse(applied.error.message);
     preservePropertySources({ target: applied.value.document, source: this.document });
     const stagedSources = new Map(this.sourceOwners);
@@ -626,6 +787,7 @@ class CanonicalSession {
     });
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;
+    const baseBoundary = this.groupingBoundary;
     authorizedProjections.set(transaction, {
       session: this,
       version: baseVersion,
@@ -639,6 +801,8 @@ class CanonicalSession {
       version: baseVersion + 1,
       origin,
       publish: () => {
+        if (this.isComposing || this.groupingBoundary !== baseBoundary)
+          return refuse("The staged canonical commit crossed a composition or selection boundary.");
         if (this.version !== baseVersion) return refuse("The staged canonical commit is stale.");
         if (!isCanonicalProjectionTransaction(transaction, this)) {
           return refuse("The staged canonical projection was changed after preparation.");
