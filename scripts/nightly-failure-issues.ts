@@ -1,15 +1,14 @@
 #!/usr/bin/env bun
 /**
  * Turn a failed nightly test log into GitHub issues: one per failing property
- * test, one per (operation, placement, violation kind) for the conformance
- * tier, so a class of failure that hits many document shapes files once.
+ * test, and one standing issue for the conformance tier.
  *
  * The nightly property sweep and the full conformance tier run unattended, so
  * a failure nobody reads is a failure nobody fixes. This parses the run's log
  * for each failing test (and, for a property, its seed, counterexample path
- * and counterexample) and opens an issue labelled `nightly-property-failure`
- * (or `nightly-conformance-failure`), or comments on the open one for the same
- * test. A property issue carries the line that replays the failure locally
+ * and counterexample). Property failures open or comment on per-test issues
+ * labelled `nightly-property-failure`; conformance failures replace the latest
+ * evidence in one `nightly-conformance-failure` standing issue. A property issue carries the line that replays the failure locally
  * and the exact test/property-seeds.json entry that pins it once it is fixed;
  * seeds are never committed automatically.
  *
@@ -25,10 +24,14 @@
  */
 
 import { $ } from "bun";
+import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+
+import type { IssueStore } from "./fuzz-issue-classes";
+import { parseIssueResponse } from "./fuzz-failure-issues";
 
 export type Kind = "property" | "conformance";
 
@@ -345,7 +348,7 @@ const fence = (text: string, lang = ""): string => {
   return `${ticks}${lang}\n${truncate(text)}\n${ticks}`;
 };
 
-type Context = {
+export type Context = {
   kind: Kind;
   runUrl: string | null;
   sha: string | null;
@@ -431,6 +434,94 @@ export const unparsedFailure = (kind: Kind): Failure => ({
   pinned: false,
 });
 
+const REPORT_MARKER = "<!-- standing-conformance -->";
+const REPORT_START = "<!-- conformance-results:start -->";
+const REPORT_END = "<!-- conformance-results:end -->";
+class StandingConformanceIssueError extends TaggedError("StandingConformanceIssueError")<{
+  message: string;
+}> {}
+const MAX_BODY_LENGTH = 48_000;
+
+/** Latest-run evidence stays bounded; the linked run retains the complete log. */
+export const conformanceReportBody = (failures: readonly Failure[], context: Context): string => {
+  const sections = [
+    REPORT_START,
+    "This standing issue tracks the latest failed nightly conformance run.",
+    `Failure groups: ${failures.length}.`,
+    context.runUrl === null ? `Date: ${context.date}.` : `Latest run: ${context.runUrl}`,
+    context.sha === null ? "" : `Commit: ${context.sha}`,
+  ];
+  let length = sections.join("\n\n").length;
+  let included = 0;
+  for (const failure of failures) {
+    const section = issueBody(failure, context, false);
+    if (length + section.length + 200 > MAX_BODY_LENGTH) break;
+    sections.push(section);
+    length += section.length + 2;
+    included += 1;
+  }
+  if (included < failures.length) {
+    sections.push(
+      `${failures.length - included} further failure groups omitted; see the complete run log.`,
+    );
+  }
+  sections.push(REPORT_END);
+  return sections.join("\n\n");
+};
+
+type FileConformanceReportOptions = {
+  failures: readonly Failure[];
+  context: Context;
+  store: Pick<IssueStore, "list" | "edit" | "reopen">;
+};
+
+/** Legacy per-group issues belong to their fix owners; only the standing report is updated. */
+export const fileConformanceReport = async ({
+  failures,
+  context,
+  store,
+}: FileConformanceReportOptions) => {
+  const issues = await store.list();
+  const candidates = issues.filter(({ body }) => body?.includes(REPORT_MARKER));
+  if (candidates.length !== 1) {
+    throw new StandingConformanceIssueError({
+      message: `Expected one issue marked ${REPORT_MARKER}; found ${candidates.length}. No issue created.`,
+    });
+  }
+  const existing = candidates.at(0);
+  if (existing === undefined)
+    throw new StandingConformanceIssueError({ message: "Standing conformance issue missing." });
+  const original = existing.body ?? "";
+  const report = conformanceReportBody(failures, context);
+  const start = original.indexOf(REPORT_START);
+  const end = original.indexOf(REPORT_END, start);
+  if (start < 0 !== end < 0) {
+    throw new StandingConformanceIssueError({
+      message: "Standing conformance result boundaries are incomplete.",
+    });
+  }
+  // Compare reporter-owned metadata so owner notes cannot change run ordering.
+  const previousReport = start < 0 ? "" : original.slice(start, end);
+  const previousRun = previousReport
+    .match(/^Latest run: https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/mu)
+    ?.at(1);
+  const incomingRun = context.runUrl
+    ?.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/u)
+    ?.at(1);
+  if (
+    previousRun !== undefined &&
+    incomingRun !== undefined &&
+    BigInt(incomingRun) < BigInt(previousRun)
+  )
+    return;
+  const body =
+    start < 0
+      ? `${original}\n\n${report}`
+      : `${original.slice(0, start)}${report}${original.slice(end + REPORT_END.length)}`;
+  if (existing.body !== body) await store.edit(existing.number, body);
+  if (existing.state === "closed") await store.reopen(existing.number);
+};
+
 const parseArgs = (argv: readonly string[]) => {
   const options = {
     kind: "property" as Kind,
@@ -490,6 +581,11 @@ const main = async (): Promise<void> => {
     shown.push(overflowFailure(options.kind, failures.slice(MAX_ISSUES), options.factor));
   }
 
+  if (options.kind === "conformance" && options.dryRun) {
+    console.log(conformanceReportBody(failures, context));
+    return;
+  }
+
   if (options.dryRun) {
     for (const failure of shown) {
       console.log(
@@ -502,6 +598,25 @@ const main = async (): Promise<void> => {
   await $`gh label create ${label.name} --color ${label.color} --description ${label.description} --force`
     .quiet()
     .nothrow();
+  if (options.kind === "conformance") {
+    const endpoint = "repos/{owner}/{repo}/issues/1404";
+    const bodyFile = path.join(tmpdir(), `nightly-conformance-${String(process.pid)}.md`);
+    await fileConformanceReport({
+      failures,
+      context,
+      store: {
+        list: async () => [parseIssueResponse(JSON.parse(await $`gh api ${endpoint}`.text()))],
+        edit: async (number, body) => {
+          writeFileSync(bodyFile, body);
+          await $`gh issue edit ${String(number)} --body-file ${bodyFile}`.quiet();
+        },
+        reopen: async (number) => {
+          await $`gh issue reopen ${String(number)}`.quiet();
+        },
+      },
+    });
+    return;
+  }
   const issueEndpoint = `repos/{owner}/{repo}/issues?state=open&labels=${label.name}&per_page=100`;
   const openPages = JSON.parse(await $`gh api --paginate --slurp ${issueEndpoint}`.text()) as {
     number: number;

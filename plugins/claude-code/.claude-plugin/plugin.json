@@ -1,7 +1,7 @@
 {
   "name": "folio",
   "displayName": "folio",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Read, comment on, and redline .docx files with tracked changes through the folio MCP server.",
   "author": {
     "name": "STLL",

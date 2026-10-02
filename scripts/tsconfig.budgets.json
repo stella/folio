@@ -5,5 +5,18 @@
     "checkJs": false,
     "types": ["bun-types"]
   },
-  "include": ["api-surface-budget.ts", "typecheck-budget.ts", "lib/exact-object.ts"]
+  "include": [
+    "api-surface-budget.ts",
+    "typecheck-budget.ts",
+    "lib/exact-object.ts",
+    "fuzz-failure-issues.ts",
+    "fuzz-failure-issues.test.ts",
+    "fuzz-failure-class.ts",
+    "fuzz-failure-class.test.ts",
+    "fuzz-issue-classes.ts",
+    "fuzz-issue-classes.test.ts",
+    "nightly-failure-issues.ts",
+    "nightly-failure-issues.test.ts",
+    "nightly-conformance-report.test.ts"
+  ]
 }
