@@ -1,5 +1,6 @@
 import { Result, TaggedError } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
+import { createXmlEntityDecoder } from "./xmlEntityDecoder";
 
 const CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
 const RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -26,8 +27,7 @@ const parser = new XMLParser({
   parseTagValue: false,
   parseAttributeValue: false,
   processEntities: true,
-  // Enable numeric XML references without adding HTML named entities.
-  htmlEntities: {},
+  entityDecoder: createXmlEntityDecoder(),
   ignoreDeclaration: true,
 });
 const isRecord = (value: unknown): value is Record<string, unknown> =>

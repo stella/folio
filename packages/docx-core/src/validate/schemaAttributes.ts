@@ -1,5 +1,6 @@
 import { panic, Result } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
+import { createXmlEntityDecoder } from "./xmlEntityDecoder";
 
 import { SCHEMA_ATTRIBUTE_FACTS } from "./schemaAttributes.gen";
 
@@ -136,8 +137,7 @@ export const validateSchemaAttributes = (xml: string): string | null => {
       parseAttributeValue: false,
       trimValues: false,
       processEntities: true,
-      // Enable numeric XML references without adding HTML named entities.
-      htmlEntities: {},
+      entityDecoder: createXmlEntityDecoder(),
       ignoreDeclaration: true,
     }).parse(xml),
   );
