@@ -1010,7 +1010,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       },
       getCanonicalStoryProjection: (story) => {
         if (deps.getExperimentalSession?.() === "canonical") ensureView();
-        if (editorSession.type !== "canonical") return null;
+        if (editorSession.type !== "canonical" || editorSession.session.isComposing) return null;
         const result = editorSession.session.projectStory(story);
         if (result.isErr()) {
           refuse(result.error.message);

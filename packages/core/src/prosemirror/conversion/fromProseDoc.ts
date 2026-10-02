@@ -1,3 +1,4 @@
+import { expectNoteMarkerAttrs } from "../../internal/noteMarkerAttrs";
 /**
  * ProseMirror to Document Conversion
  *
@@ -162,7 +163,6 @@ import {
   expectShapeAttrs,
   expectPreservedBlockAttrs,
   expectPreservedXmlAttrs,
-  expectNoteMarkerAttrs,
   expectSymbolAttrs,
   expectTabAttrs,
   expectTableAttrs,

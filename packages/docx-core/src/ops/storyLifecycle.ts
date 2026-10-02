@@ -46,114 +46,79 @@ const bodyValues = (body: DocumentBody) =>
     background: body.background ?? null,
     finalSectionProperties: body.finalSectionProperties ?? null,
     comments: body.comments ?? null,
-  }) satisfies {
-    [Key in keyof Omit<DocumentBody, "sections">]-?: Exclude<DocumentBody[Key], undefined> | null;
-  };
+  }) satisfies Required<NonNullable<StoryParts["body"]>>;
 
 /** Capture only fields owned by the lifecycle delta; absent values survive JSON as null. */
 export const captureStoryParts = (document: Document, owned: StoryParts): StoryParts => {
   const body = document.package.document;
   const values = bodyValues(body);
   const pkg = document.package;
-  return {
-    ...(owned.body === undefined
-      ? {}
-      : {
-          body: {
-            ...(owned.body.content === undefined ? {} : { content: values.content }),
-            ...(owned.body.background === undefined ? {} : { background: values.background }),
-            ...(owned.body.finalSectionProperties === undefined
-              ? {}
-              : {
-                  finalSectionProperties: values.finalSectionProperties,
-                }),
-            ...(owned.body.comments === undefined ? {} : { comments: values.comments }),
-          },
-        }),
-    ...(owned.sections === undefined
-      ? {}
-      : {
-          sections: owned.sections.map(({ index, properties, headers, footers }) => {
-            const section = body.sections?.at(index);
-            // Missing owned fields must differ from the expected capture and refuse as stale.
-            if (!section) return { index };
-            return {
-              index,
-              ...(properties === undefined ? {} : { properties: section.properties }),
-              ...(headers === undefined
-                ? {}
-                : { headers: section?.headers ? [...section.headers] : null }),
-              ...(footers === undefined
-                ? {}
-                : { footers: section?.footers ? [...section.footers] : null }),
-            };
-          }),
-        }),
-    ...(owned.headers === undefined ? {} : { headers: pkg.headers ? [...pkg.headers] : null }),
-    ...(owned.footers === undefined ? {} : { footers: pkg.footers ? [...pkg.footers] : null }),
-    ...(owned.footnotes === undefined ? {} : { footnotes: pkg.footnotes ?? null }),
-    ...(owned.endnotes === undefined ? {} : { endnotes: pkg.endnotes ?? null }),
-    ...(owned.settings === undefined ? {} : { settings: pkg.settings ?? null }),
-  };
+  const parts: StoryParts = {};
+  if (owned.body !== undefined) {
+    const fields: NonNullable<StoryParts["body"]> = {};
+    if (owned.body.content !== undefined) fields.content = values.content;
+    if (owned.body.background !== undefined) fields.background = values.background;
+    if (owned.body.finalSectionProperties !== undefined)
+      fields.finalSectionProperties = values.finalSectionProperties;
+    if (owned.body.comments !== undefined) fields.comments = values.comments;
+    parts.body = fields;
+  }
+  if (owned.sections !== undefined)
+    parts.sections = owned.sections.map(({ index, properties, headers, footers }) => {
+      const fields: NonNullable<StoryParts["sections"]>[number] = { index };
+      const section = body.sections?.at(index);
+      // Missing owned fields must differ from the expected capture and refuse as stale.
+      if (!section) return fields;
+      if (properties !== undefined) fields.properties = section.properties;
+      if (headers !== undefined) fields.headers = section.headers ? [...section.headers] : null;
+      if (footers !== undefined) fields.footers = section.footers ? [...section.footers] : null;
+      return fields;
+    });
+  if (owned.headers !== undefined) parts.headers = pkg.headers ? [...pkg.headers] : null;
+  if (owned.footers !== undefined) parts.footers = pkg.footers ? [...pkg.footers] : null;
+  if (owned.footnotes !== undefined) parts.footnotes = pkg.footnotes ?? null;
+  if (owned.endnotes !== undefined) parts.endnotes = pkg.endnotes ?? null;
+  if (owned.settings !== undefined) parts.settings = pkg.settings ?? null;
+  return parts;
 };
 
 /** Immutable operations share unowned fields; section content is a derived mirror. */
 const changedParts = (before: Document, after: Document): StoryParts => {
   const oldBody = before.package.document;
   const newBody = after.package.document;
-  const body = {
-    ...(oldBody.content === newBody.content ? {} : { content: oldBody.content }),
-    ...(oldBody.background === newBody.background
-      ? {}
-      : { background: oldBody.background ?? null }),
-    ...(oldBody.finalSectionProperties === newBody.finalSectionProperties
-      ? {}
-      : {
-          finalSectionProperties: oldBody.finalSectionProperties ?? null,
-        }),
-    ...(oldBody.comments === newBody.comments ? {} : { comments: oldBody.comments ?? null }),
-  };
-  const sections =
-    oldBody.sections === newBody.sections
-      ? []
-      : (oldBody.sections ?? []).flatMap((section, index) => {
-          const next = newBody.sections?.at(index);
-          if (section === next) return [];
-          const changes = {
-            index,
-            ...(section.properties === next?.properties ? {} : { properties: section.properties }),
-            ...(section.headers === next?.headers
-              ? {}
-              : { headers: section.headers ? [...section.headers] : null }),
-            ...(section.footers === next?.footers
-              ? {}
-              : { footers: section.footers ? [...section.footers] : null }),
-          };
-          return Object.keys(changes).length === 1 ? [] : [changes];
-        });
-  return {
-    ...(Object.keys(body).length === 0 ? {} : { body }),
-    ...(sections.length === 0 ? {} : { sections }),
-    ...(before.package.headers === after.package.headers
-      ? {}
-      : {
-          headers: before.package.headers ? [...before.package.headers] : null,
-        }),
-    ...(before.package.footers === after.package.footers
-      ? {}
-      : {
-          footers: before.package.footers ? [...before.package.footers] : null,
-        }),
-    ...(before.package.footnotes === after.package.footnotes
-      ? {}
-      : { footnotes: before.package.footnotes ?? null }),
-    ...(before.package.endnotes === after.package.endnotes
-      ? {}
-      : { endnotes: before.package.endnotes ?? null }),
-    ...(before.package.settings === after.package.settings
-      ? {}
-      : { settings: before.package.settings ?? null }),
-  };
+  const body: NonNullable<StoryParts["body"]> = {};
+  if (oldBody.content !== newBody.content) body.content = oldBody.content;
+  if (oldBody.background !== newBody.background) body.background = oldBody.background ?? null;
+  if (oldBody.finalSectionProperties !== newBody.finalSectionProperties)
+    body.finalSectionProperties = oldBody.finalSectionProperties ?? null;
+  if (oldBody.comments !== newBody.comments) body.comments = oldBody.comments ?? null;
+  const sections: NonNullable<StoryParts["sections"]>[number][] = [];
+  if (oldBody.sections !== newBody.sections)
+    for (const [index, section] of (oldBody.sections ?? []).entries()) {
+      const next = newBody.sections?.at(index);
+      if (section === next) continue;
+      const changes: NonNullable<StoryParts["sections"]>[number] = { index };
+      if (section.properties !== next?.properties) changes.properties = section.properties;
+      if (section.headers !== next?.headers)
+        changes.headers = section.headers ? [...section.headers] : null;
+      if (section.footers !== next?.footers)
+        changes.footers = section.footers ? [...section.footers] : null;
+      if (Object.keys(changes).length > 1) sections.push(changes);
+    }
+  const parts: StoryParts = {};
+  if (Object.keys(body).length > 0) parts.body = body;
+  if (sections.length > 0) parts.sections = sections;
+  if (before.package.headers !== after.package.headers)
+    parts.headers = before.package.headers ? [...before.package.headers] : null;
+  if (before.package.footers !== after.package.footers)
+    parts.footers = before.package.footers ? [...before.package.footers] : null;
+  if (before.package.footnotes !== after.package.footnotes)
+    parts.footnotes = before.package.footnotes ?? null;
+  if (before.package.endnotes !== after.package.endnotes)
+    parts.endnotes = before.package.endnotes ?? null;
+  if (before.package.settings !== after.package.settings)
+    parts.settings = before.package.settings ?? null;
+  return parts;
 };
 
 const restoreParts = (document: Document, parts: StoryParts): Document => {

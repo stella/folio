@@ -1,3 +1,4 @@
+import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { PositionedBookmarkMarker } from "../types/document";
@@ -37,7 +38,6 @@ import {
   readStrikeMarkAttrs,
   readPreservedBlockAttrs,
   readPreservedXmlAttrs,
-  readNoteMarkerAttrs,
   readSymbolAttrs,
   readTabAttrs,
   readTableAttrs,

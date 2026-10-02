@@ -7,6 +7,7 @@
  * manager.
  */
 
+import { OP_STORIES } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
@@ -204,6 +205,13 @@ export const createHeaderFooterEditorManager = (
     if (!host) {
       return;
     }
+
+    // Pending IME input owns its view until the shared session commits.
+    if (
+      deps.getExperimentalSession?.() === "canonical" &&
+      !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
+    )
+      return;
 
     const document =
       deps.getExperimentalSession?.() === "canonical"

@@ -4,6 +4,9 @@ import { panic } from "better-result";
 import { createEmptyDocument } from "../utils/createDocument";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
+import { OP_STORIES } from "@stll/docx-core/ops";
+import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
+import { createNoteEditorManager } from "./noteEditorManager";
 
 import {
   createHiddenEditorManager,
@@ -234,6 +237,71 @@ test("canonical manager refuses transaction bypasses and shares one input journa
     GlobalRegistrator.unregister();
   }
 });
+
+test.each(["body", "story"] as const)(
+  "%s composition defers every story synchronizer while public snapshots remain blocked",
+  async (owner) => {
+    GlobalRegistrator.register();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Start" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+    paragraph.paraId = "12345678";
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+    });
+    const manager = createHiddenEditorManager(deps);
+    const storyDeps = {
+      getHost: () => host,
+      // Synchronization must defer before either snapshot source is read.
+      getDocument: () => manager.api.getDocument(),
+      getCanonicalApi: () => manager.api,
+      getExperimentalSession: () => "canonical" as const,
+      getStyles: () => null,
+      getTheme: () => null,
+    };
+    const synchronizers = [
+      createHeaderFooterEditorManager(storyDeps),
+      createNoteEditorManager(storyDeps),
+    ];
+    try {
+      manager.ensureView();
+      const view = manager.getView();
+      if (!view) panic("Expected canonical view");
+      const initial = manager.api.getCanonicalDocument();
+      for (const synchronizer of synchronizers) synchronizer.sync();
+      if (owner === "body") {
+        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      } else {
+        expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+      }
+      for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
+        expect(read).toThrow("Composition must finish before taking a snapshot.");
+      expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
+      for (const synchronizer of synchronizers) expect(() => synchronizer.sync()).not.toThrow();
+      // Synchronization cannot clear the shared pending boundary.
+      expect(manager.api.getCanonicalDocument).toThrow();
+      if (owner === "body") {
+        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      } else {
+        manager.api.updateCanonicalInputLifecycle("endComposition");
+      }
+      expect(manager.api.getCanonicalDocument()).toEqual(initial);
+      expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).not.toBeNull();
+      for (const synchronizer of synchronizers) synchronizer.sync();
+    } finally {
+      for (const synchronizer of synchronizers) synchronizer.destroy();
+      manager.destroyView();
+      host.remove();
+      GlobalRegistrator.unregister();
+    }
+  },
+);
 
 test("a refused canonical activation reports once per loaded document across retries", () => {
   GlobalRegistrator.register();

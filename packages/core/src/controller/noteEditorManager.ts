@@ -1,5 +1,6 @@
 /** Framework-neutral lifecycle owner for editable footnote and endnote stories. */
 
+import { OP_STORIES } from "@stll/docx-core/ops";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
@@ -199,6 +200,12 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
   const sync = (): void => {
     const host = deps.getHost();
     if (!host) return;
+    // Pending IME input owns its view until the shared session commits.
+    if (
+      deps.getExperimentalSession?.() === "canonical" &&
+      !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
+    )
+      return;
     const document =
       deps.getExperimentalSession?.() === "canonical"
         ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())

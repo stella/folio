@@ -1,5 +1,5 @@
 /** An authored automatic note mark: invisible, but retained through PM JSON and edits. */
-import { expectNoteMarkerAttrs } from "../../attrs";
+import { expectNoteMarkerAttrs } from "../../../internal/noteMarkerAttrs";
 import { createNodeExtension } from "../create";
 
 export const NOTE_MARKER_NODE_NAME = "noteMarker";
