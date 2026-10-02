@@ -94,6 +94,41 @@ test("normalization follows nested namespace bindings and canonical integer alia
   );
 });
 
+test("normalization splices decoded integer aliases without changing surrounding entity spellings", () => {
+  const characterReference = fc.constantFrom("decimal", "hexadecimal");
+  const encode = (value: string, spelling: string) =>
+    [...value]
+      .map((character) => {
+        const codePoint = character.charCodeAt(0);
+        return spelling === "decimal" ? `&#${codePoint};` : `&#x${codePoint.toString(16)};`;
+      })
+      .join("");
+  fc.assert(
+    fc.property(
+      invalidId,
+      fc.constantFrom(...WORD_NAMESPACES),
+      characterReference,
+      (id, namespace, spelling) => {
+        const encodedId = encode(id, spelling);
+        const encodedNamespace = encode(namespace, spelling);
+        const xml = `<root xmlns:x="${encodedNamespace}"><!-- keep --><x:bookmarkStart x:name="A&#38;B" x:id='1'/><x:bookmarkEnd x:id='1'/><x:commentRangeStart x:id='${encodedId}'/><x:commentReference x:id="${id}"/><x:commentRangeEnd x:id='${encodedId}'/><x:num x:numId='${encodedId}' x:abstractNumId="${id}"/></root>`;
+        const parts = new Map([["word/document.xml", xml]]);
+        const normalized = normalizeImportedNumericIds(parts);
+        expect(normalized.get("word/document.xml")).toBe(
+          xml
+            .replaceAll(`x:id='${encodedId}'`, "x:id='2'")
+            .replace(`x:id="${id}"`, 'x:id="2"')
+            .replace(`x:numId='${encodedId}'`, "x:numId='1'")
+            .replace(`x:abstractNumId="${id}"`, 'x:abstractNumId="1"'),
+        );
+        expect(normalizeImportedNumericIds(normalized)).toEqual(normalized);
+        expect(parts.get("word/document.xml")).toBe(xml);
+      },
+    ),
+    propertyConfig({ numRuns: 40 }),
+  );
+});
+
 test("range repair leaves malformed lexical identities for the parser's existing drop-and-warn path", () => {
   const malformedId = fc.oneof(
     fc.constantFrom("", "bare", "1.5", "1e3", "+", "--1"),

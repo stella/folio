@@ -6,6 +6,7 @@ import {
   isValidOoxmlNumericId,
   ooxmlNumericIdDomain,
   assertValidOoxmlNumericId,
+  mayContainOoxmlNumericIds,
   mayContainInvalidOoxmlNumericIds,
 } from "@stll/docx-core";
 import { panic } from "better-result";
@@ -86,6 +87,7 @@ const identifiedAttributes = (element: XmlElement) => {
 };
 
 type IdentitySpace = { reserved: Set<number>; replacements: Map<string, string>; next: number };
+type ImportedIdentitySpan = { start: number; end: number; space: string; key: string };
 
 /**
  * Repair out-of-range imported integers before any model or opaque XML is captured.
@@ -98,10 +100,12 @@ export const normalizeImportedNumericIds = (
   const normalized = new Map(parts);
   if (![...parts.values()].some((xml) => mayContainInvalidOoxmlNumericIds(xml, "range")))
     return normalized;
-  const candidates = [...parts].toSorted(([left], [right]) => left.localeCompare(right));
+  const candidates = [...parts]
+    .filter(([, xml]) => mayContainOoxmlNumericIds(xml))
+    .toSorted(([left], [right]) => left.localeCompare(right));
   const spaces = new Map<string, IdentitySpace>();
   const reservedPools = new Map<string, Set<number>>();
-  const changedPaths = new Set<string>();
+  const changedSpans = new Map<string, ImportedIdentitySpan[]>();
   type ScanOptions = {
     path: string;
     xml: string;
@@ -123,7 +127,7 @@ export const normalizeImportedNumericIds = (
     scan({
       path,
       xml,
-      visitor: (element) => {
+      visitor: (element, attributeValueSpans) => {
         for (const attribute of identifiedAttributes(element)) {
           let space = spaces.get(attribute.space);
           if (space === undefined) {
@@ -142,8 +146,16 @@ export const normalizeImportedNumericIds = (
             space.reserved.add(Number(attribute.value));
             continue;
           }
-          space.replacements.set(identityKey(attribute.value), "");
-          changedPaths.add(path);
+          const key = identityKey(attribute.value);
+          space.replacements.set(key, "");
+          const span = attributeValueSpans.get(attribute.name);
+          if (span === undefined) panic("Missing imported numeric identity source span");
+          let spans = changedSpans.get(path);
+          if (spans === undefined) {
+            spans = [];
+            changedSpans.set(path, spans);
+          }
+          spans.push({ start: span.start, end: span.end, space: attribute.space, key });
         }
         return null;
       },
@@ -164,30 +176,22 @@ export const normalizeImportedNumericIds = (
       space.next += 1;
     }
   }
-  for (const [path, xml] of candidates) {
-    if (!changedPaths.has(path)) continue;
-    normalized.set(
-      path,
-      scan({
-        path,
-        xml,
-        visitor: (element) => {
-          const replacements = new Map<string, string>();
-          for (const attribute of identifiedAttributes(element)) {
-            const space = spaces.get(attribute.space);
-            if (space === undefined) panic(`Missing imported identity space: ${attribute.space}`);
-            const replacement = space.replacements.get(identityKey(attribute.value));
-            if (
-              replacement === undefined &&
-              !isValidOoxmlNumericId(attribute.value, attribute.domain)
-            )
-              panic("Missing imported numeric identity replacement");
-            if (replacement !== undefined) replacements.set(attribute.name, replacement);
-          }
-          return replacements;
-        },
-      }),
-    );
+  for (const [path, spans] of changedSpans) {
+    const xml = parts.get(path);
+    if (xml === undefined) panic(`Missing imported numeric identity part: ${path}`);
+    const chunks: string[] = [];
+    let cursor = 0;
+    // The reservation walk already resolved namespaces and decoded integer aliases.
+    // Reuse its source spans rather than parsing changed parts a second time.
+    for (const span of spans.toSorted((left, right) => left.start - right.start)) {
+      const replacement = spaces.get(span.space)?.replacements.get(span.key);
+      if (replacement === undefined || replacement === "")
+        panic("Missing imported numeric identity replacement");
+      chunks.push(xml.slice(cursor, span.start), replacement);
+      cursor = span.end;
+    }
+    chunks.push(xml.slice(cursor));
+    normalized.set(path, chunks.join(""));
   }
   return normalized;
 };
