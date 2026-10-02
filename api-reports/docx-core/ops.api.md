@@ -8,6 +8,16 @@ import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
 // @public
+export const allocateEditorIntentIds: (document: Document_2) => {
+    revisionId: number;
+    newBlockId: string;
+    newIds: {
+        revision: number[];
+        control: number[];
+    };
+};
+
+// @public
 export type AppliedDocumentOp = {
     document: Document_2;
     inverse: readonly DocumentOp[];
@@ -53,6 +63,21 @@ export type BlockInsertionPoint = {
 } | {
     type: "after";
     blockId: string;
+};
+
+// @public (undocumented)
+export type CompiledEditorIntent = {
+    ops: DocumentOp[];
+    selection: TextPosition;
+};
+
+// @public
+export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
+
+// @public (undocumented)
+export type CompileEditorIntentOptions = {
+    intent: EditorIntent;
+    mode: EditorIntentMode;
 };
 
 // @public
@@ -146,7 +171,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 4;
+export const DOCUMENT_OP_SCHEMA_VERSION = 5;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -210,6 +235,41 @@ export class DocumentOpsContractError extends DocumentOpsContractError_base<{
 
 // @public
 export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
+
+// @public
+export type EditorIntent = {
+    type: "replaceText";
+    from: TextPosition;
+    to: TextPosition;
+    text: string;
+} | {
+    type: "splitParagraph";
+    at: TextPosition;
+    to?: TextPosition;
+    newBlockId: string;
+} | {
+    type: "joinParagraphs";
+    story: OpStory;
+    blockId: string;
+    nextBlockId: string;
+};
+
+// @public
+export type EditorIntentMode = {
+    type: "editing";
+    newIds?: NewIds;
+} | {
+    type: "suggesting";
+    revision: RevisionStamp;
+    newIds: NewIds;
+};
+
+// @public
+export const editorParagraphGroups: (document: Document_2, story: OpStory) => {
+    blockId: string;
+    paragraphs: Paragraph[];
+    text: string;
+}[];
 
 // @public
 export const EMPTY_PROPERTY_SETS: Readonly<{
@@ -299,6 +359,8 @@ export type JoinBlocksOp = {
     survivor?: SplitHalf;
     expectedRetired?: SplitParagraphFields;
     expectedSurvivor?: ParagraphReviewFields;
+    sectionBoundary?: typeof SECTION_BOUNDARY_POLICIES.REMOVE;
+    sectionView?: SectionViewChange;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
@@ -353,7 +415,16 @@ export type ParagraphReviewFields = {
 };
 
 // @public
+export const paragraphVisibleText: (paragraph: Paragraph) => string;
+
+// @public
 export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
+
+// @public
+export const physicalPositionAtEditorOffset: (document: Document_2, at: TextPosition) => TextPosition;
 
 // @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
@@ -377,12 +448,19 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
     };
 };
 
+// @public (undocumented)
+export const PROPERTY_REVIEW_POLICIES: Readonly<{
+    readonly APPEND: "append";
+}>;
+
 // @public
 export type ReplaceBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
     story: OpStory;
     expected: readonly Paragraph[];
     blocks: readonly Paragraph[];
+    sectionBoundaries?: typeof SECTION_BOUNDARY_POLICIES.REPLACE;
+    sectionView?: SectionViewChange;
 };
 
 // @public
@@ -425,6 +503,12 @@ export type RevisionStamp = {
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
 
+// @public
+export const SECTION_BOUNDARY_POLICIES: Readonly<{
+    readonly REMOVE: "remove";
+    readonly REPLACE: "replace";
+}>;
+
 // @public (undocumented)
 export type SequencedBatch = DocumentBatch & {
     revision: number;
@@ -449,6 +533,7 @@ export type SetParagraphPropsOp = {
     whenEmpty?: EmptyPropertySet;
     expected?: ParagraphPropsPatch;
     revision?: RevisionStamp;
+    propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 // @public
@@ -497,6 +582,8 @@ export type SplitBlockOp = {
     newHalf?: SplitHalf;
     newParagraph?: SplitParagraphFields;
     firstMark?: ParagraphMarkChange;
+    firstSectionProperties?: SectionProperties;
+    sectionView?: SectionViewChange;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };

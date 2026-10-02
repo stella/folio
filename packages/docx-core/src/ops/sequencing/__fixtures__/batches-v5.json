@@ -1,6 +1,6 @@
 [
   {
-    "schema": 4,
+    "schema": 5,
     "opId": "01JTESTBATCH000000000000001",
     "actor": "actor-1",
     "baseRev": 0,
@@ -12,7 +12,7 @@
           "blockId": "00000001",
           "offset": 0
         },
-        "text": "A😀",
+        "text": "A\ud83d\ude00",
         "runProps": "inherit"
       },
       {
@@ -149,7 +149,7 @@
     ]
   },
   {
-    "schema": 4,
+    "schema": 5,
     "opId": "01JTESTBATCH000000000000002",
     "actor": "actor-2",
     "baseRev": 1,
@@ -179,7 +179,7 @@
     ]
   },
   {
-    "schema": 4,
+    "schema": 5,
     "opId": "01JTESTBATCH000000000000003",
     "actor": "actor-1",
     "baseRev": 2,

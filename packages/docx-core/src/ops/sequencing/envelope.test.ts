@@ -28,7 +28,7 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    new URL("./__fixtures__/batches-v4.json", import.meta.url),
+    new URL("./__fixtures__/batches-v5.json", import.meta.url),
   ).json();
   expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
   const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
@@ -202,4 +202,43 @@ test("actual text inverses normalize absent optional fields and remain decodable
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toEqual(document);
   }
+});
+
+test("sequencing refuses unsupported paragraph-review and section-boundary payloads", () => {
+  const operations = [
+    {
+      type: "setParagraphProps",
+      story: "main",
+      blockId: "00000001",
+      patch: {},
+      propertyReview: "append",
+    },
+    {
+      type: "splitBlock",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      newBlockId: "00000002",
+      firstSectionProperties: {},
+    },
+    {
+      type: "splitBlock",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      newBlockId: "00000002",
+      sectionView: { expected: [], restore: [] },
+    },
+    {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionBoundary: "remove",
+    },
+    {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionView: { expected: [], restore: [] },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
 });

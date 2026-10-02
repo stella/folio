@@ -1,7 +1,8 @@
+import { DOCUMENT_OP_SCHEMA_VERSION } from "../../src/ops/types";
 import type { DocumentBatch, SequencedBatch } from "../../src/ops/documentOps";
 
 const SUBMISSION = {
-  schema: 4,
+  schema: DOCUMENT_OP_SCHEMA_VERSION,
   opId: "batch-1",
   actor: "actor-1",
   baseRev: 0,
