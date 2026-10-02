@@ -1,0 +1,210 @@
+{
+  "lint": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun run check:lockfile-versions",
+      "if": null
+    },
+    {
+      "run": "bun run check:dedupe",
+      "if": null
+    },
+    {
+      "run": "bun run check:quarantine-excludes",
+      "if": null
+    },
+    {
+      "run": "bun run check:normalization-warnings",
+      "if": null
+    },
+    {
+      "run": "bun run audit",
+      "if": null
+    },
+    {
+      "run": "bun run lint",
+      "if": null
+    },
+    {
+      "run": "bun run check:dependencies",
+      "if": null
+    },
+    {
+      "run": "bun run format:check",
+      "if": null
+    },
+    {
+      "run": "bun run check:i18n",
+      "if": null
+    },
+    {
+      "run": "bun run specifications:fetch --profile shaping",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:joining-types:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:strict-value-encodings:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:strict-names:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:strict-name-tolerance",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:theme-colors:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:ooxml-enumerations:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:container-children:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:border-styles:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run generate:preset-line-dash:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:reserved-value-coverage",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:reserved-values",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:corpus-baselines",
+      "if": null
+    },
+    {
+      "run": "bun run generate:identity-attributes:check",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:identity-attributes",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:parity-contract",
+      "if": null
+    },
+    {
+      "run": "bun run check:export-parity",
+      "if": null
+    },
+    {
+      "run": "bun run check:react-compiler",
+      "if": null
+    }
+  ],
+  "typecheck": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun run typecheck",
+      "if": null
+    }
+  ],
+  "build-api": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun run build",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun run check:build-reproducibility",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    },
+    {
+      "run": "bun scripts/api-surface-budget.ts --self-test\nbun run api:check\nbun run api:budget\n",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    }
+  ],
+  "validate-dist": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun run validate-dist",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    }
+  ],
+  "tests-1": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun scripts/ci-test-shards.ts --shard 1 --depth fast",
+      "if": null
+    },
+    {
+      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    }
+  ],
+  "tests-2": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun scripts/ci-test-shards.ts --shard 2 --depth fast",
+      "if": null
+    },
+    {
+      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    }
+  ],
+  "tests-3": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun scripts/ci-test-shards.ts --shard 3 --depth fast",
+      "if": null
+    },
+    {
+      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    }
+  ],
+  "tests-4": [
+    {
+      "run": "bun install --frozen-lockfile",
+      "if": null
+    },
+    {
+      "run": "bun scripts/ci-test-shards.ts --shard 4 --depth fast",
+      "if": null
+    },
+    {
+      "run": "set -o pipefail\nmkdir -p test-results\nbun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log\n",
+      "if": "needs.ci-plan.outputs.suite_depth == 'full'"
+    }
+  ]
+}

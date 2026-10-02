@@ -18,6 +18,7 @@
  * Usage:
  *   bun scripts/property-areas.ts [--base <ref>] [--factor <n>] [--dry-run]
  *   bun scripts/property-areas.ts --all            (every property file)
+ *   bun scripts/property-areas.ts --shard 1/4      (one partition of the selection)
  *
  * `--base` (default `origin/main`) is diffed from its merge base with HEAD.
  * `--factor` defaults to `PROPERTY_TEST_NUM_RUNS_FACTOR`, else 5 for a change
@@ -26,6 +27,7 @@
  */
 
 import { $ } from "bun";
+import { panic } from "better-result";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -169,24 +171,49 @@ const pinnedSeedFiles = (): string[] =>
     .filter((key) => !key.startsWith("$"))
     .map((key) => key.split("::")[0] as string);
 
+type PropertyShard = { index: number; total: number };
+
+/** Partition the complete selection deterministically, without changing property seeds or runs. */
+export const shardPropertyFiles = (
+  files: readonly PropertyFile[],
+  { index, total }: PropertyShard,
+): PropertyFile[] => {
+  if (
+    !Number.isSafeInteger(total) ||
+    total < 1 ||
+    !Number.isSafeInteger(index) ||
+    index < 1 ||
+    index > total
+  )
+    return panic("Property shard must be an integer index/total with 1 ≤ index ≤ total.");
+  return files
+    .toSorted((a, b) => a.file.localeCompare(b.file))
+    .filter((_, position) => position % total === index - 1);
+};
+
 const parseArgs = (argv: readonly string[]) => {
   let base = "origin/main";
   let factor: number | undefined;
   let dryRun = false;
   let all = false;
+  let shard: PropertyShard | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--base") base = argv[++index] ?? base;
     else if (arg === "--factor") factor = Number(argv[++index]);
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--all") all = true;
-    else throw new Error(`Unknown argument ${String(arg)}`);
+    else if (arg === "--shard") {
+      const parts = (argv[++index] ?? "").split("/");
+      if (parts.length !== 2) return panic("Property shard must use index/total.");
+      shard = { index: Number(parts.at(0)), total: Number(parts.at(1)) };
+    } else throw new Error(`Unknown argument ${String(arg)}`);
   }
   const envFactor = process.env["PROPERTY_TEST_NUM_RUNS_FACTOR"];
   const defaultFactor = all ? 1 : 5;
   factor ??= envFactor === undefined || envFactor === "" ? defaultFactor : Number(envFactor);
   if (!Number.isFinite(factor) || factor < 1) throw new Error("the factor must be a number ≥ 1");
-  return { base, factor, dryRun, all };
+  return { base, factor, dryRun, all, shard };
 };
 
 const changedFiles = async (base: string): Promise<string[]> => {
@@ -196,7 +223,7 @@ const changedFiles = async (base: string): Promise<string[]> => {
 };
 
 if (import.meta.main) {
-  const { base, factor, dryRun, all } = parseArgs(process.argv.slice(2));
+  const { base, factor, dryRun, all, shard } = parseArgs(process.argv.slice(2));
   let selected: PropertyFile[];
   if (all) {
     selected = propertyFiles();
@@ -209,27 +236,34 @@ if (import.meta.main) {
       `${String(changed.length)} changed files vs ${base}; ${String(selected.length)} property files in ${String(areas.length)} areas at factor ${String(factor)}${areas.length > 0 ? `: ${areas.join(", ")}` : ""}`,
     );
   }
+  if (shard !== undefined) {
+    selected = shardPropertyFiles(selected, shard);
+    console.log(
+      `Shard ${String(shard.index)}/${String(shard.total)}: ${String(selected.length)} property files`,
+    );
+  }
   if (dryRun || selected.length === 0) {
     for (const { file } of selected) console.log(`  ${file}`);
   } else {
     const byPackage = new Map<string, PropertyFile[]>();
     for (const entry of selected) {
-      byPackage.set(entry.packageDir, [...(byPackage.get(entry.packageDir) ?? []), entry]);
+      const files = byPackage.get(entry.packageDir) ?? [];
+      files.push(entry);
+      byPackage.set(entry.packageDir, files);
     }
-    // Packages run side by side (at factor 10 docx-core's operation properties
-    // alone take as long as all of core's); each one's output is printed whole
-    // when it finishes, so a log still reads one package, one file at a time.
+    // Stream progress and counterexamples so a canceled job retains its diagnostics.
     const exitCodes = await Promise.all(
       [...byPackage].map(async ([packageDir, files]) => {
         const relative = files.map(({ file }) => path.relative(packageDir, file));
         const started = performance.now();
+        console.log(
+          `${packageDir}: starting ${String(files.length)} files: ${relative.join(", ")}`,
+        );
         const run = await $`bun test ${relative} 2>&1`
           .cwd(path.join(REPO_ROOT, packageDir))
           .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })
-          .quiet()
           .nothrow();
         const seconds = ((performance.now() - started) / 1000).toFixed(1);
-        process.stdout.write(run.stdout);
         console.log(
           `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
         );
