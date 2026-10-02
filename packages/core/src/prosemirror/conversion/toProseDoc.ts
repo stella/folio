@@ -104,7 +104,7 @@ import {
 } from "../extensions/marks/markUtils";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
-import { RUN_IDENTITY_MARK_NAME, hasRunIdentityPayload, runIdentityAttrs } from "../runIdentity";
+import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../runIdentity";
 import { directionFromBidi } from "../paragraphDirection";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
@@ -230,18 +230,17 @@ type RunConversionScope = {
 };
 
 /**
- * The identity mark for one authored `w:r`, or `null` when it carries nothing
- * worth a mark.
+ * The identity mark for one authored `w:r` with a projected leaf.
  *
  * The only place the mark is minted. Both run-converting paths call it — the
  * paragraph's and the hyperlink's — so the next payload field is added once
  * rather than to whichever site the author happened to open.
  *
- * Minted when the run holds a page break or multiple content items including
- * an inline atom (the leaves have to be rejoined into one `w:r` on save), an
- * attribute remainder, a `w:rPr` sink, or an authored empty `w:rPr`.
+ * Ordinary text runs need distinct identities too: equal formatting does not
+ * make adjacent authored runs one record. Empty runs have no leaf to carry it.
  */
 const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
+  if (run.content.every((content) => content.type === "text" && content.text === "")) return null;
   const payload = {
     preservedAttributes: run.preservedAttributes,
     preserved: run.formatting?.preserved,
@@ -254,10 +253,13 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
         ? true
         : undefined,
   };
-  if (!runHasPageBreakContent(run) && !runHasMixedContent(run) && !hasRunIdentityPayload(payload)) {
-    return null;
-  }
   return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(nextRunIdentityId(), payload));
+};
+
+/** Source run identities remain distinct when paragraphs and containers join. */
+const createRunIdentityIdAllocator = (): RunIdentityIdAllocator => {
+  let index = 0;
+  return () => index++;
 };
 
 /** Keep imported hyperlink identity unique across every nested conversion scope. */
@@ -474,6 +476,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
+    nextRunIdentityId: createRunIdentityIdAllocator(),
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
@@ -697,9 +700,8 @@ function convertParagraph(
     storyRangedCommentIds,
     openCommentIds,
   } = context;
-  let runIdentityId = 0;
   const runScope = {
-    nextRunIdentityId: () => runIdentityId++,
+    nextRunIdentityId: context.nextRunIdentityId,
     createMark: context.createMark,
   };
   const { attrs, effectiveFrame } = paragraphFormattingToAttrs(
@@ -1687,6 +1689,7 @@ type TableConversionContext = {
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
+  nextRunIdentityId: RunIdentityIdAllocator;
   pairedBookmarkIds: ReadonlySet<number>;
   pageBreakRunSourceDescendants: PageBreakRunSourceDescendantIndex;
   /** Comments the story opens a range for, for the point-comment question. */
@@ -2442,6 +2445,7 @@ export function standaloneTableCellToProseMirror(
       theme: null,
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
+      nextRunIdentityId: createRunIdentityIdAllocator(),
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
       pageBreakRunSourceDescendants,
       storyRangedCommentIds: rangedCommentIds(cell.content),
@@ -2985,9 +2989,6 @@ function convertRun(
 
 const runHasPageBreakContent = (run: Run): boolean =>
   run.content.some((content) => content.type === "break" && content.breakType === "page");
-
-const runHasMixedContent = (run: Run): boolean =>
-  run.content.length > 1 && run.content.some((content) => content.type !== "text");
 
 /**
  * Whether a field's result holds an explicit page break.
@@ -5087,6 +5088,7 @@ export function headerFooterToProseDoc(
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
+    nextRunIdentityId: createRunIdentityIdAllocator(),
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
     storyRangedCommentIds: rangedCommentIds(content),
