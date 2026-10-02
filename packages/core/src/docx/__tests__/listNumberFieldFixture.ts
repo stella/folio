@@ -12,7 +12,7 @@ import { createHarnessState } from "../../__tests__/editorHarness";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { ComplexField, Document, Paragraph } from "../../types/document";
-import { foldedListNumberOf, isFoldedListNumber } from "../foldedListNumberFields";
+import { foldedListNumberOf } from "../foldedListNumberFields";
 import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 import { attemptSelectiveSave } from "../selectiveSave";
@@ -141,8 +141,24 @@ const resultRun = (field: FieldSpec): string => {
 
 type MarkupIds = { next: number; comments: number[] };
 
-const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing: string } => {
+type FieldMarkup = {
+  field: FieldSpec;
+  /**
+   * Write the comment start behind the tab rather than ahead of it. The
+   * editor anchors a comment to what can carry its mark, and a tab on the
+   * line cannot, so a comment that opens right ahead of one opens right
+   * behind it once the paragraph has been through the editor. That is how
+   * any paragraph is projected, with or without a list-number field.
+   */
+  commentBehindTab: boolean;
+};
+
+const fieldXml = (
+  { field, commentBehindTab }: FieldMarkup,
+  ids: MarkupIds,
+): { inline: string; trailing: string } => {
   let gap = "";
+  let comment = "";
   let trailing = "";
   for (const marker of field.gap) {
     const id = ids.next++;
@@ -156,7 +172,7 @@ const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing:
         break;
       case "comment":
         ids.comments.push(id);
-        gap += `<w:commentRangeStart w:id="${id}"/>`;
+        comment += `<w:commentRangeStart w:id="${id}"/>`;
         trailing += `<w:commentRangeEnd w:id="${id}"/><w:r><w:commentReference w:id="${id}"/></w:r>`;
         break;
       default: {
@@ -165,6 +181,7 @@ const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing:
       }
     }
   }
+  const tab = field.tab ? "<w:r><w:tab/></w:r>" : "";
   const inline =
     textRun(field.before) +
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
@@ -173,30 +190,52 @@ const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing:
     resultRun(field) +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>` +
     gap +
-    (field.tab ? "<w:r><w:tab/></w:r>" : "");
+    (commentBehindTab && field.tab ? tab + comment : comment + tab);
   return { inline, trailing };
 };
 
-const STYLE_ID = "Clause";
+/**
+ * The fields of `spec` the reader folds into the marker: the ones that open
+ * the paragraph, when its marker has text to show them after and at least one
+ * of them cached a display.
+ */
+export const foldedFieldsOf = (spec: ParagraphSpec): FieldSpec[] => {
+  if (spec.marker === "symbol") {
+    return [];
+  }
+  const opening: FieldSpec[] = [];
+  for (const field of spec.fields) {
+    if (field.before !== "") {
+      break;
+    }
+    opening.push(field);
+  }
+  return opening.some((field) => field.result.replaceAll("\t", "") !== "") ? opening : [];
+};
 
-/** A paragraph style whose run properties make every run of the paragraph bold. */
-const STYLES = `${XML_DECLARATION}<w:styles ${W}><w:style w:type="paragraph" w:styleId="${STYLE_ID}"><w:name w:val="Clause"/><w:rPr><w:b/></w:rPr></w:style></w:styles>`;
+type ParagraphMarkupOptions = {
+  /** Inline markup to use in place of what the spec would write. */
+  authored?: string | undefined;
+  /** The paragraph as it stands once it has been through the editor and written again. */
+  throughEditor?: boolean;
+};
 
 const paragraphXml = (
   spec: ParagraphSpec,
   ids: MarkupIds,
-  authored?: string,
-  styled = false,
+  { authored, throughEditor = false }: ParagraphMarkupOptions = {},
 ): string => {
+  const folded = foldedFieldsOf(spec).length;
   let inline = "";
   let trailing = "";
-  for (const field of spec.fields) {
-    const built = fieldXml(field, ids);
+  for (const [index, field] of spec.fields.entries()) {
+    // A folded tab is a capture, which carries the comment's mark as text does.
+    const built = fieldXml({ field, commentBehindTab: throughEditor && index >= folded }, ids);
     inline += built.inline;
     trailing += built.trailing;
   }
   return (
-    `<w:p w14:paraId="${spec.paraId}"><w:pPr>${styled ? `<w:pStyle w:val="${STYLE_ID}"/>` : ""}<w:numPr><w:ilvl w:val="1"/>` +
+    `<w:p w14:paraId="${spec.paraId}"><w:pPr><w:numPr><w:ilvl w:val="1"/>` +
     `<w:numId w:val="${numIdOf(spec.marker)}"/></w:numPr></w:pPr>` +
     `${authored ?? `${inline}${textRun(spec.body)}${trailing}`}</w:p>`
   );
@@ -209,18 +248,16 @@ type FixtureOptions = {
   authored?: Readonly<Record<string, string>>;
   /** Put the plain paragraph ahead of the numbered ones rather than after them. */
   plainFirst?: boolean;
-  /** Give every numbered paragraph a style whose run properties are bold. */
-  styled?: boolean;
 };
 
 /** A package of the given numbered paragraphs and one plain paragraph, which closes it. */
 export const listNumberFieldDocx = (
   paragraphs: readonly ParagraphSpec[],
-  { authored = {}, plainFirst = false, styled = false }: FixtureOptions = {},
+  { authored = {}, plainFirst = false }: FixtureOptions = {},
 ): Promise<ArrayBuffer> => {
   const ids: MarkupIds = { next: 1, comments: [] };
   const numbered = paragraphs
-    .map((spec) => paragraphXml(spec, ids, authored[spec.paraId], styled))
+    .map((spec) => paragraphXml(spec, ids, { authored: authored[spec.paraId] }))
     .join("");
   const plain = `<w:p w14:paraId="${PLAIN_PARAGRAPH_ID}"><w:r><w:t>Plain.</w:t></w:r></w:p>`;
   const documentXml =
@@ -238,28 +275,9 @@ export const listNumberFieldDocx = (
     `</w:comments>`;
 
   const zip = new JSZip();
-  zip.file(
-    "[Content_Types].xml",
-    styled
-      ? CONTENT_TYPES.replace(
-          "</Types>",
-          '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
-        )
-      : CONTENT_TYPES,
-  );
+  zip.file("[Content_Types].xml", CONTENT_TYPES);
   zip.file("_rels/.rels", PACKAGE_RELS);
-  zip.file(
-    "word/_rels/document.xml.rels",
-    styled
-      ? DOCUMENT_RELS.replace(
-          "</Relationships>",
-          '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
-        )
-      : DOCUMENT_RELS,
-  );
-  if (styled) {
-    zip.file("word/styles.xml", STYLES);
-  }
+  zip.file("word/_rels/document.xml.rels", DOCUMENT_RELS);
   zip.file("word/document.xml", documentXml);
   zip.file("word/numbering.xml", numberingXml());
   zip.file("word/comments.xml", commentsXml);
@@ -320,49 +338,13 @@ export const paragraphMarkupOf = (documentXml: string, paraId: string): string =
   return paragraph;
 };
 
-/** What {@link inlineTokens} reads off a paragraph authored from `spec`. */
-export const expectedTokens = (spec: ParagraphSpec): string[] =>
-  inlineTokens(paragraphXml(spec, { next: 1, comments: [] }));
-
 /**
- * `tokens` with the two orders a save does not owe the file put one way.
- *
- * The range markers that close at the paragraph's end have no order among
- * them, so everything after the last text is sorted. And a comment range that
- * opens right ahead of a tab opens right behind it once the paragraph has been
- * through the editor, which anchors a comment to the text it covers; the
- * comment start is put behind the tab on both sides of a comparison.
+ * What {@link inlineTokens} reads off a paragraph authored from `spec`: as it
+ * was authored, or, with `throughEditor`, as a save writes it once the
+ * paragraph has been through the editor.
  */
-export const withSettledTail = (tokens: readonly string[]): string[] => {
-  const lastText = tokens.findLastIndex((token) => token.startsWith("text:"));
-  const head = tokens.slice(0, lastText + 1);
-  for (let index = 0; index < head.length - 1; index += 1) {
-    if (head[index] === "commentRangeStart" && head[index + 1] === "tab") {
-      head[index] = "tab";
-      head[index + 1] = "commentRangeStart";
-    }
-  }
-  return [...head, ...tokens.slice(lastText + 1).toSorted()];
-};
-
-/**
- * The fields of `spec` the reader folds into the marker: the ones that open
- * the paragraph, when its marker has text to show them after and at least one
- * of them cached a display.
- */
-export const foldedFieldsOf = (spec: ParagraphSpec): FieldSpec[] => {
-  if (spec.marker === "symbol") {
-    return [];
-  }
-  const opening: FieldSpec[] = [];
-  for (const field of spec.fields) {
-    if (field.before !== "") {
-      break;
-    }
-    opening.push(field);
-  }
-  return opening.some((field) => field.result.replaceAll("\t", "") !== "") ? opening : [];
-};
+export const expectedTokens = (spec: ParagraphSpec, throughEditor = false): string[] =>
+  inlineTokens(paragraphXml(spec, { next: 1, comments: [] }, { throughEditor }));
 
 /** The cached display the marker shows for `fields`, joined as the marker joins it. */
 export const cachedDisplay = (fields: readonly FieldSpec[]): string =>
@@ -393,6 +375,12 @@ const resultOf = (field: ComplexField): string =>
     .flatMap((run) => run.content.flatMap((piece) => (piece.type === "text" ? [piece.text] : [])))
     .join("");
 
+const markerSuffixOf = (paragraph: Paragraph): string => {
+  const marker = paragraph.listRendering?.marker ?? "";
+  const tab = marker.indexOf("\t");
+  return tab === -1 || paragraph.listRendering?.isBullet ? "" : marker.slice(tab + 1);
+};
+
 /**
  * The field results a paragraph shows, as one line: what its marker shows
  * after its own text, then each field that stands on the line. A capture
@@ -400,9 +388,7 @@ const resultOf = (field: ComplexField): string =>
  * missing here and present in the file.
  */
 export const fieldResultsShown = (paragraph: Paragraph): string => {
-  const marker = paragraph.listRendering?.marker ?? "";
-  const tab = marker.indexOf("\t");
-  const shown = tab === -1 || paragraph.listRendering?.isBullet ? [] : [marker.slice(tab + 1)];
+  const shown = [markerSuffixOf(paragraph)];
   for (const item of paragraph.content) {
     if (item.type === "complexField") {
       shown.push(resultOf(item));
@@ -411,53 +397,60 @@ export const fieldResultsShown = (paragraph: Paragraph): string => {
   return shown.filter((text) => text !== "").join(" ");
 };
 
+const SHOWS_NOTHING: ReadonlySet<string> = new Set([
+  "bookmarkStart",
+  "bookmarkEnd",
+  "commentRangeStart",
+  "commentRangeEnd",
+  "commentReference",
+]);
+
 /**
- * Every paragraph of a live document is in the form the fold allows: its
- * captures open it, and its marker shows exactly their fields.
+ * What is wrong with a paragraph's fold, as a save leaves it: a capture that
+ * stands behind something the line shows, or under a tracked change, or a
+ * marker that shows other fields than the captures hide. Nothing, for a
+ * paragraph in the form the fold allows.
  */
-export const liveFoldFaults = (doc: PMNode): string[] => {
+export const foldFaults = (paragraph: Paragraph): string[] => {
   const faults: string[] = [];
-  doc.descendants((node) => {
-    if (node.type.name !== "paragraph") {
-      return true;
-    }
-    const marker: unknown = node.attrs["listMarker"];
-    const tab = typeof marker === "string" ? marker.indexOf("\t") : -1;
-    const suffix = typeof marker === "string" && tab !== -1 ? marker.slice(tab + 1) : "";
-    const hidden: string[] = [];
-    let opening = true;
-    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
-    node.forEach((child) => {
-      const folded: unknown =
-        child.type.name === "preservedXml" ? child.attrs["foldedListNumber"] : null;
-      if (isFoldedListNumber(folded)) {
-        if (!opening) {
-          faults.push(`a capture stands behind shown content in ${String(node.attrs["paraId"])}`);
-        }
-        if (folded.kind === "field") {
-          hidden.push(resultOf(folded.field));
-        }
-        return;
+  const hidden: string[] = [];
+  let opening = true;
+  for (const item of paragraph.content) {
+    const folded = foldedListNumberOf(item);
+    if (folded) {
+      if (!opening) {
+        faults.push("a capture stands behind content the line shows");
       }
-      if (child.isText || child.type.name === "field" || child.type.name === "tab") {
-        opening = false;
+      if (folded.kind === "field") {
+        hidden.push(resultOf(folded.field));
       }
-    });
-    const cached = hidden.filter((text) => text !== "").join(" ");
-    if (cached !== suffix) {
-      faults.push(
-        `${String(node.attrs["paraId"])} hides "${cached}" and its marker shows "${suffix}"`,
-      );
+      continue;
     }
-    return true;
-  });
+    if (
+      item.type === "insertion" ||
+      item.type === "deletion" ||
+      item.type === "moveFrom" ||
+      item.type === "moveTo"
+    ) {
+      if (item.content.some((child) => foldedListNumberOf(child) !== undefined)) {
+        faults.push("a capture stands under a tracked change");
+      }
+    }
+    if (!SHOWS_NOTHING.has(item.type)) {
+      opening = false;
+    }
+  }
+  const cached = hidden.filter((text) => text !== "").join(" ");
+  if (cached !== markerSuffixOf(paragraph)) {
+    faults.push(`hides "${cached}" and its marker shows "${markerSuffixOf(paragraph)}"`);
+  }
   return faults;
 };
 
 /**
  * The state a mounted editor holds for `document`, every plugin included: the
  * one that gives a split or pasted paragraph an identity of its own, without
- * which a copy cannot be told from its original, and the fold's own pass.
+ * which a copy cannot be told from its original.
  */
 export const editorState = (document: Document): EditorState =>
   createHarnessState(document, "editing", [], "document");
@@ -552,14 +545,28 @@ export const typeInto = (
 export const typedInto = (text: string, inserted: string): string =>
   `${text.slice(0, 1)}${inserted}${text.slice(1)}`;
 
+export type SavedDocx = {
+  bytes: ArrayBuffer;
+  /** By `paraId`, whether the paragraph was written anew rather than left as its source bytes. */
+  rewritten: (paraId: string) => boolean;
+};
+
 /** Save as the editor does: patch the changed paragraphs, or rewrite the part. */
 export const saveDocx = async (
   document: Document,
   original: ArrayBuffer,
   changedParaIds: readonly string[],
-): Promise<ArrayBuffer> =>
-  (await attemptSelectiveSave(document, original, {
+): Promise<SavedDocx> => {
+  const patched = await attemptSelectiveSave(document, original, {
     changedParaIds: new Set(changedParaIds),
     structuralChange: false,
     hasUntrackedChanges: false,
-  })) ?? repackDocx(document, { updateModifiedDate: false });
+  });
+  if (patched) {
+    return { bytes: patched, rewritten: (paraId) => changedParaIds.includes(paraId) };
+  }
+  return {
+    bytes: await repackDocx(document, { updateModifiedDate: false }),
+    rewritten: () => true,
+  };
+};

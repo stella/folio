@@ -47,7 +47,12 @@ import {
 } from "./bookmarkParser";
 import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
-import { foldListNumberFields, isListNumberField, isTabOnlyRun } from "./foldedListNumberFields";
+import {
+  foldListNumberFields,
+  isListNumberField,
+  isListNumberGapMarker,
+  isTabOnlyRun,
+} from "./foldedListNumberFields";
 import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   HYPERLINK_CHILD_HANDLERS,
@@ -1137,6 +1142,21 @@ type ParagraphContentsWalk = {
 const fieldSourceElements = new WeakMap<ComplexField, readonly XmlElement[]>();
 const tabRunSources = new WeakMap<Run, XmlElement>();
 
+/**
+ * Whether the content read so far ends in a list-number field whose markup is
+ * kept, with nothing but range markers after it: the next tab is its tab.
+ */
+const followsListNumberField = (contents: readonly ParagraphContent[]): boolean => {
+  for (let index = contents.length - 1; index >= 0; index -= 1) {
+    const item = contents[index];
+    if (item === undefined || isListNumberGapMarker(item)) {
+      continue;
+    }
+    return item.type === "complexField" && fieldSourceElements.has(item);
+  }
+  return false;
+};
+
 const sourceMarkupOf = (item: ComplexField | Run): string | undefined => {
   if (item.type === "run") {
     const element = tabRunSources.get(item);
@@ -1164,9 +1184,6 @@ type ComplexFieldScan = {
   // The `w:r` elements read since the `begin`, in source order, or null once
   // one of them holds something the model also keeps as an item of its own.
   complexFieldSourceRuns: XmlElement[] | null;
-  // Whether the walk has closed a list-number field: only then can a tab be
-  // the tab that follows one.
-  listNumberFieldRead: boolean;
   afterSeparator: boolean;
   complexFieldState: FieldState;
   complexFieldDataXml: string | undefined;
@@ -1625,7 +1642,6 @@ const PARAGRAPH_CONTENT_HANDLERS = {
         // Only a list-number field is ever folded, so only its markup is kept.
         if (scan.complexFieldSourceRuns !== null && isListNumberField(complexField)) {
           fieldSourceElements.set(complexField, scan.complexFieldSourceRuns);
-          scan.listNumberFieldRead = true;
         }
         contents.push(complexField);
         if (commentReferenceId !== null) {
@@ -1671,7 +1687,11 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // with no field: the same capture keeps it.
       if (hasRunPayload({ run, runElement, rels, media })) {
         const kept = withOrphanFieldCharsPreserved(run, runElement);
-        if (scan.listNumberFieldRead && isTabOnlyRun(kept) && trackedContext !== "deletion") {
+        if (
+          isTabOnlyRun(kept) &&
+          trackedContext !== "deletion" &&
+          followsListNumberField(contents)
+        ) {
           tabRunSources.set(kept, runElement);
         }
         contents.push(kept);
@@ -1926,7 +1946,6 @@ function parseParagraphContents(
     complexFieldResultRuns: [],
     complexFieldOpenRuns: [],
     complexFieldSourceRuns: null,
-    listNumberFieldRead: false,
     afterSeparator: false,
     complexFieldState: {},
     complexFieldDataXml: undefined,

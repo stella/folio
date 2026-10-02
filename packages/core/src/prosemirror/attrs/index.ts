@@ -671,13 +671,6 @@ export const readPreservedXmlAttrs = (
       message: "Expected a folded list-number field or tab.",
     });
   }
-  const foldedNodes = attrs["foldedListNumberNodes"];
-  if (foldedNodes !== undefined && foldedNodes !== null && !Array.isArray(foldedNodes)) {
-    issues.push({
-      path: "preservedXml.attrs.foldedListNumberNodes",
-      message: "Expected an array.",
-    });
-  }
   // The level decides whether the save path writes the markup inside a `w:r`.
   // A value the schema does not name is not a default to fall back on: it
   // would put a paragraph child in a run, which Word reports as unreadable.

@@ -8,40 +8,9 @@
  * the document's markup.
  */
 
-import { isFoldedListNumber } from "../../../docx/foldedListNumberFields";
-import type { FoldedListNumber } from "../../../types/document";
 import { expectPreservedXmlAttrs } from "../../attrs";
-import { foldedListNumberPlugin } from "../../foldedListNumber";
 import { PRESERVED_XML_LEVELS } from "../../schema/nodes";
 import { createNodeExtension } from "../create";
-
-type FoldedListNumberDom = {
-  foldedListNumber: FoldedListNumber;
-  foldedListNumberNodes?: unknown[];
-};
-
-/** What a capture stands for, read back off the DOM attribute it was written to. */
-const parseFoldedListNumber = (value: string | undefined): FoldedListNumberDom | undefined => {
-  if (value === undefined) {
-    return undefined;
-  }
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (typeof parsed !== "object" || parsed === null) {
-      return undefined;
-    }
-    const item: unknown = Reflect.get(parsed, "item");
-    const nodes: unknown = Reflect.get(parsed, "nodes");
-    if (!isFoldedListNumber(item)) {
-      return undefined;
-    }
-    return Array.isArray(nodes)
-      ? { foldedListNumber: item, foldedListNumberNodes: nodes }
-      : { foldedListNumber: item };
-  } catch {
-    return undefined;
-  }
-};
 
 /** The node name, for callers asking what a paragraph holds. */
 export const PRESERVED_XML_NODE_NAME = "preservedXml";
@@ -62,9 +31,10 @@ export const PreservedXmlExtension = createNodeExtension({
       // carry, and the one whose re-wrapping in a `w:r` is always legal.
       level: { default: PRESERVED_XML_LEVELS.run },
       // `undefined`, so a capture that is not a folded list-number field
-      // serializes exactly as it did before the attr existed.
+      // serializes exactly as it did before the attr existed. It is not
+      // written to the DOM: a capture that leaves the document through the
+      // clipboard comes back as the plain markup it holds.
       foldedListNumber: { default: undefined },
-      foldedListNumberNodes: { default: undefined },
     },
     parseDOM: [
       {
@@ -81,38 +51,22 @@ export const PreservedXmlExtension = createNodeExtension({
             node.dataset["docxPreservedLevel"] === PRESERVED_XML_LEVELS.inline
               ? PRESERVED_XML_LEVELS.inline
               : PRESERVED_XML_LEVELS.run;
-          const folded = parseFoldedListNumber(node.dataset["docxFoldedListNumber"]);
-          return {
-            xml,
-            text: node.dataset["docxPreservedText"] ?? "",
-            level,
-            ...folded,
-          };
+          return { xml, text: node.dataset["docxPreservedText"] ?? "", level };
         },
       },
     ],
     toDOM(node) {
-      const { xml, text, level, foldedListNumber, foldedListNumberNodes } =
-        expectPreservedXmlAttrs(node);
+      const { xml, text, level } = expectPreservedXmlAttrs(node);
       return [
         "span",
         {
           "data-docx-preserved-xml": xml,
           "data-docx-preserved-level": level,
           ...(text === "" ? {} : { "data-docx-preserved-text": text }),
-          ...(foldedListNumber
-            ? {
-                "data-docx-folded-list-number": JSON.stringify({
-                  item: foldedListNumber,
-                  nodes: foldedListNumberNodes,
-                }),
-              }
-            : {}),
           contenteditable: "false",
         },
         text,
       ];
     },
   },
-  onSchemaReady: () => ({ plugins: [foldedListNumberPlugin()] }),
 });

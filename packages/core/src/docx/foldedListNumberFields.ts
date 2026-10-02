@@ -39,6 +39,10 @@ const ZERO_WIDTH_TYPES: ReadonlySet<ParagraphContent["type"]> = new Set([
   "moveToRangeEnd",
 ]);
 
+/** Whether `content` is markup that may stand between a field and the tab that follows it. */
+export const isListNumberGapMarker = (content: ParagraphContent): boolean =>
+  RANGE_MARKER_TYPES.has(content.type);
+
 const isZeroWidth = (content: ParagraphContent): boolean =>
   ZERO_WIDTH_TYPES.has(content.type) || (content.type === "preservedInline" && content.text === "");
 
@@ -53,7 +57,7 @@ export const isTabOnlyRun = (content: ParagraphContent): content is Run =>
   content.type === "run" && content.content.length === 1 && content.content[0]?.type === "tab";
 
 /** The text a field's cached result puts in the marker. */
-export const cachedListNumberText = (field: ComplexField): string => {
+const cachedListNumberText = (field: ComplexField): string => {
   let text = "";
   for (const run of field.fieldResult) {
     for (const piece of run.content) {
@@ -268,7 +272,7 @@ export const planListNumberFold = (
   return cached.length === 0 ? none : { order, hidden, suffix: cached.join(" ") };
 };
 
-export type ListMarkerFoldState = {
+type ListMarkerFoldState = {
   /** Whether the marker shows folded fields after its own text. */
   showsFields: boolean;
   /** The marker's own text, without what it shows of folded fields. */
@@ -286,7 +290,7 @@ type ListMarkerFoldInput = {
  * What a paragraph's marker says about folded fields. It shows them after a
  * tab its own level text does not have; a bullet shows only its glyph.
  */
-export const listMarkerFoldState = ({
+const listMarkerFoldState = ({
   marker,
   template,
   isBullet,
@@ -300,10 +304,8 @@ export const listMarkerFoldState = ({
 };
 
 /** The marker text for `state` showing `suffix`. */
-export const listMarkerWithFold = (
-  state: ListMarkerFoldState,
-  suffix: string | undefined,
-): string => (suffix === undefined ? state.base : `${state.base}\t${suffix}`);
+const listMarkerWithFold = (state: ListMarkerFoldState, suffix: string | undefined): string =>
+  suffix === undefined ? state.base : `${state.base}\t${suffix}`;
 
 const foldItemOf = (content: ParagraphContent): ListNumberFoldItem => {
   const folded = foldedListNumberOf(content);
@@ -324,6 +326,21 @@ export const unfoldedListNumberContent = (content: ParagraphContent): ParagraphC
   return folded.kind === "field" ? folded.field : folded.run;
 };
 
+type TrackedChange = Extract<
+  ParagraphContent,
+  { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }
+>;
+
+/**
+ * The one definition of a tracked change for the fold: content inserted,
+ * deleted, or moved from or to a place under revision tracking.
+ */
+const isTrackedChange = (content: ParagraphContent): content is TrackedChange =>
+  content.type === "insertion" ||
+  content.type === "deletion" ||
+  content.type === "moveFrom" ||
+  content.type === "moveTo";
+
 /**
  * `content` with every capture inside a tracked change replaced by the item
  * it stands for. A tracked change is written with its own spellings (deleted
@@ -333,12 +350,7 @@ export const unfoldedListNumberContent = (content: ParagraphContent): ParagraphC
 const withTrackedCapturesShown = (content: ParagraphContent[]): ParagraphContent[] => {
   let changed = false;
   const next = content.map((item): ParagraphContent => {
-    if (
-      item.type !== "insertion" &&
-      item.type !== "deletion" &&
-      item.type !== "moveFrom" &&
-      item.type !== "moveTo"
-    ) {
+    if (!isTrackedChange(item)) {
       return item;
     }
     if (!item.content.some((child) => foldedListNumberOf(child) !== undefined)) {

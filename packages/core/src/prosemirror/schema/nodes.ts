@@ -121,11 +121,6 @@ export type PreservedXmlAttrs = {
   level: PreservedXmlLevel;
   /** `PreservedInline.foldedListNumber`, for a capture the list marker stands in for. */
   foldedListNumber?: FoldedListNumber;
-  /**
-   * The editor's own nodes for what `foldedListNumber` stands for, as JSON:
-   * what the capture is replaced by once no marker shows it.
-   */
-  foldedListNumberNodes?: unknown[];
 };
 
 /** A block child folio does not model, carried through the editor untouched. */
