@@ -6,6 +6,15 @@ on:
     # two jobs don't contend for runners at the same minute.
     - cron: "37 5 * * *"
   workflow_dispatch:
+    inputs:
+      seed:
+        description: Replay a PROPERTY_TEST_SEED (blank searches a fresh seed)
+        required: false
+        type: string
+      path:
+        description: Replay a PROPERTY_TEST_PATH after shrinking
+        required: false
+        type: string
 
 permissions: {}
 
@@ -16,6 +25,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+
+    outputs:
+      cross_host_findings: ${{ steps.cross-host.outcome == 'failure' }}
 
     steps:
       # persist-credentials: false — this job can be manually dispatched on any
@@ -47,4 +59,62 @@ jobs:
       # and the static React<->Vue parity gates (check:parity-contract,
       # check:export-parity) already guard the API surface on every PR.
       - name: Parity e2e specs
-        run: bun run test:e2e:parity
+        run: bun run test:e2e:parity --workers=1 --output=fuzz-playwright/parity
+
+      - name: Generated four-host differential
+        if: always()
+        id: cross-host
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          PROPERTY_TEST_NUM_RUNS_FACTOR: "4"
+          PROPERTY_TEST_SEED_SALT: ${{ github.run_id }}
+          PROPERTY_TEST_SEED: ${{ inputs.seed }}
+          PROPERTY_TEST_PATH: ${{ inputs.path }}
+        run: |
+          set -o pipefail
+          mkdir -p fuzz-artifacts/cross-host
+          bunx playwright test --project=parity-fuzzer tests/parity/cross-host-flow.spec.ts --workers=1 --output=fuzz-playwright/cross-host 2>&1 | tee fuzz-artifacts/cross-host/cross-host.log
+
+      - name: Upload differential repro artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cross-host-differential-repro
+          path: |
+            fuzz-artifacts/
+            fuzz-playwright/
+          retention-days: 14
+
+  cross-host-report:
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    name: File four-host differential findings
+    needs: parity-e2e
+    if: always() && github.ref == 'refs/heads/main' && needs.parity-e2e.outputs.cross_host_findings == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: cross-host-differential-repro
+          path: fuzz-results
+      - name: File findings by fingerprint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          bun scripts/fuzz-failure-issues.ts
+          --log fuzz-results/fuzz-artifacts/cross-host/cross-host.log --records fuzz-results/fuzz-artifacts/cross-host/findings
+          --source "four-host differential" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"

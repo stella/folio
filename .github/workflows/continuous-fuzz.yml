@@ -15,6 +15,10 @@ on:
         description: Run the CI-only 100-page long-flow lane
         type: boolean
         default: false
+      swarm:
+        description: Enable seeded operation subsets
+        type: boolean
+        default: false
       minutes:
         description: "Consumer-scenario fuzz budget in minutes"
         required: false
@@ -65,6 +69,8 @@ jobs:
       # The seed derives from the run id: every run searches afresh, and a
       # rerun of a run replays it.
       - name: Fuzz for the budget
+        id: fuzz
+        timeout-minutes: 40
         run: |
           set -o pipefail
           if [[ ! "$MINUTES" =~ ^[0-9]+$ ]] || (( MINUTES < 1 || MINUTES > 40 )); then
@@ -77,12 +83,26 @@ jobs:
           bun scripts/consumer-scenarios.ts -- continuous-fuzz.test.ts 2>&1 \
             | tee test-results/continuous-fuzz.log
         env:
+          FOLIO_FUZZ_HEALTH: "1"
           MINUTES: ${{ github.event.inputs.minutes || '25' }}
           FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          FOLIO_SCENARIO_SWARM: ${{ inputs.swarm && '1' || '0' }}
           FOLIO_SCENARIO_SHRINK_SECONDS: "240"
           FOLIO_SCENARIO_CORPUS_DIR: .fuzz/corpus
           FOLIO_SCENARIO_FAILURES_DIR: test-results/fuzz-failures
           FOLIO_SCENARIO_MINIMIZED_DIR: test-results/fuzz-minimized
+
+      - name: Check fuzz health
+        if: always()
+        run: |
+          if ! command -v bun >/dev/null || [ ! -f scripts/fuzz-health-check.ts ]; then
+            echo "::error::Fuzz infrastructure unavailable before health reporting"
+            echo "Fuzz health: **infrastructure**; setup failed before health reporting." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          bun scripts/fuzz-health-check.ts test-results/continuous-fuzz.log
+        env:
+          FUZZ_STEP_OUTCOME: ${{ steps.fuzz.outcome }}
 
       - name: Save the flow corpus
         if: always() && !cancelled()
@@ -124,13 +144,28 @@ jobs:
       # Every property, scaled up, under a salt no other run uses; a failure
       # logs its seed, replay line and fingerprint (test/property-testing.ts).
       - name: Property suite
+        id: fuzz
+        timeout-minutes: 35
         run: |
           set -o pipefail
           mkdir -p test-results
           bun run test:property 2>&1 | tee test-results/property-fuzz.log
         env:
+          FOLIO_FUZZ_HEALTH: "1"
           PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '4' }}
           PROPERTY_TEST_SEED_SALT: continuous-${{ github.run_id }}
+
+      - name: Check fuzz health
+        if: always()
+        run: |
+          if ! command -v bun >/dev/null || [ ! -f scripts/fuzz-health-check.ts ]; then
+            echo "::error::Fuzz infrastructure unavailable before health reporting"
+            echo "Fuzz health: **infrastructure**; setup failed before health reporting." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          bun scripts/fuzz-health-check.ts test-results/property-fuzz.log
+        env:
+          FUZZ_STEP_OUTCOME: ${{ steps.fuzz.outcome }}
 
       - name: Keep the log
         if: failure()

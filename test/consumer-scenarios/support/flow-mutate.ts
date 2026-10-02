@@ -92,7 +92,10 @@ const mutateOnce = (
       if (donor === null || donor.steps.length === 0) return null;
       const from = random.int(donor.steps.length);
       // A donor on another fixture pins ids this one does not have: keep its steps, redraw.
-      const sameDocument = donor.fixture === flow.fixture && donor.kind === flow.kind;
+      const sameDocument =
+        donor.fixture === flow.fixture &&
+        donor.kind === flow.kind &&
+        JSON.stringify(donor.swarm) === JSON.stringify(flow.swarm);
       const tail = donor.steps
         .slice(from)
         .filter((candidate) => actionsOf(flow).includes(candidate.action))
@@ -138,6 +141,7 @@ export const mutateFlow = (
       mode: flow.mode,
       seed: flow.seed,
       steps,
+      ...(flow.swarm === undefined ? {} : { swarm: flow.swarm }),
       origin: `${applied.join("+")} of ${flowId(flow)}`,
     },
     mutations: applied,

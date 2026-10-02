@@ -74,6 +74,7 @@
         "@fontsource/source-sans-3": "^5.2.9",
         "@fontsource/tinos": "^5.2.7",
         "@modelcontextprotocol/server": "2.0.0",
+        "@stll/agent-input": "0.1.0",
         "@stll/folio-agents": "workspace:^",
         "@stll/folio-core": "workspace:^",
         "better-result": "3.0.1",
@@ -893,7 +894,11 @@
 
     "@speed-highlight/core": ["@speed-highlight/core@1.2.17", "", {}, "sha512-Z92FwKpCtfaW1V0jTU/fh3QzYEZN8wDwrzRIBoADCJfn4mJCNcJN/XegifX7BDrQ8/h9Xh/JnbyMchL0FqXrkg=="],
 
+    "@stll/agent-input": ["@stll/agent-input@0.1.0", "", { "dependencies": { "@stll/country-codes": "^0.2.0", "@stll/template-conditions": "^0.6.2", "@stll/text-normalize": "^0.1.0", "@stll/time": "^0.1.0", "better-result": "3.0.1" } }, "sha512-wKYXkpLM/YnHSSi+JgNQJsEG4VlOxYkH33+Xiom1zVYWlAoU7Y2ViTmFIkP13IrvWL0JiIxUcIOVt/VssXsM4Q=="],
+
     "@stll/conditions": ["@stll/conditions@0.4.0", "", { "dependencies": { "better-result": "3.0.1", "valibot": "1.4.2" } }, "sha512-p6mqIAdr//HyDQBOB8Z0eAcCfkSqqU4xTMRoE8st0x4I9V8vgkt0XvB34Iclqf3stsMjy7t9D3CoGUwhhXX9zw=="],
+
+    "@stll/country-codes": ["@stll/country-codes@0.2.0", "", {}, "sha512-KepXHGr2KpD2y5CsVobZLAHMK8naZgdTPLddiSSA2gNzZG10pnhqoOs0SART1twyl3jcznd5LQ/5RLX+hMzNiQ=="],
 
     "@stll/docx-core": ["@stll/docx-core@workspace:packages/docx-core"],
 
@@ -920,6 +925,10 @@
     "@stll/playground-vue": ["@stll/playground-vue@workspace:packages/playground-vue"],
 
     "@stll/template-conditions": ["@stll/template-conditions@0.6.2", "", { "dependencies": { "@stll/conditions": "^0.4.0", "better-result": "3.0.1", "temporal-polyfill": "1.0.5" } }, "sha512-6ltw6udwtvB3XnoM956RgniS8s3kkd4HH29VxxCKuxFy7JKa6N4PP9UcIZ2Y1NeJOIWrJUrYJw1Fvw96AHemXQ=="],
+
+    "@stll/text-normalize": ["@stll/text-normalize@0.1.1", "", {}, "sha512-Cc5VF8zwl9InDKv66Fg7lxLhV0shWNbDWrBxep6DWnZmjHBnkSv5AXERtRggQjw0y0oO76eLKUbtZ5idBHZY0w=="],
+
+    "@stll/time": ["@stll/time@0.1.0", "", { "dependencies": { "better-result": "3.0.1", "temporal-polyfill": "1.0.5" } }, "sha512-gwcEMcZTCisgUfrdeIU2e2mKN5nUJrFzXwLKZsYrppOGjH20HSSYesFwv0mSEX3lu8H8D8E5e72Lovu5yG1NUQ=="],
 
     "@tailwindcss/cli": ["@tailwindcss/cli@4.3.3", "", { "dependencies": { "@parcel/watcher": "2.5.1", "@tailwindcss/node": "4.3.3", "@tailwindcss/oxide": "4.3.3", "enhanced-resolve": "^5.24.1", "mri": "^1.2.0", "picocolors": "^1.1.1", "tailwindcss": "4.3.3" }, "bin": { "tailwindcss": "./dist/index.mjs" } }, "sha512-ZvS/n1ZHOBKcVlhkt8l5NNr1EDXk1NboYO5CYDOs6NUmvT9z6bzkwsosaJftY57T/3gWNzWMJzIXLodZC8ssdw=="],
 

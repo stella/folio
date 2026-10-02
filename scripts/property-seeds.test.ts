@@ -4,7 +4,7 @@
  * seeds in test/property-seeds.json replayed first.
  */
 
-import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -32,6 +32,7 @@ const ENV_KEYS = [
   "PROPERTY_TEST_PATH",
   "PROPERTY_TEST_NUM_RUNS_FACTOR",
   "PROPERTY_TEST_SEED_SALT",
+  "FOLIO_FUZZ_HEALTH",
 ] as const;
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
@@ -239,6 +240,36 @@ describe("pinned regression seeds", () => {
     expect(() => assertPinnedProperty(fc.property(fc.nat(), () => true))).toThrow(
       /No fixed regression seeds/,
     );
+  });
+
+  test("fuzz health brackets pinned and generated runs", async () => {
+    withEnv({ FOLIO_FUZZ_HEALTH: "1" });
+    const pinned = [entry(101), entry(202)];
+    overridePinnedSeedsForTesting({
+      [`${FILE}::fuzz health brackets pinned and generated runs`]: pinned,
+    });
+    const logged: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((line: unknown) => {
+      logged.push(String(line));
+    });
+    try {
+      assertProperty(
+        fc.property(fc.constant(1), () => true),
+        { numRuns: 1 },
+      );
+      await assertProperty(
+        fc.asyncProperty(fc.constant(1), async () => true),
+        { numRuns: 1 },
+      );
+    } finally {
+      logger.mockRestore();
+    }
+    const statuses = logged.map(
+      (line) => JSON.parse(line.slice("FOLIO_FUZZ_HEALTH ".length)).status,
+    );
+    const oneRun = ["started", "passed"];
+    const oneAssertion = [...pinned.flatMap(() => oneRun), ...oneRun];
+    expect(statuses).toEqual([...oneAssertion, ...oneAssertion]);
   });
 
   test("explicit examples do not shift a pinned replay path", () => {

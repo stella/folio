@@ -18,6 +18,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { readFlowDir } from "../support/corpus.ts";
+import { reportFuzzHealth } from "../support/fuzz-health.ts";
 import { fuzzFor } from "../support/fuzz-loop.ts";
 
 const number = (name: string, fallback: number): number => {
@@ -44,6 +45,7 @@ if (BUDGET === 0) {
   test("continuous fuzz", { skip: "FOLIO_SCENARIO_BUDGET_SECONDS is not set" }, () => {});
 } else {
   test(`continuous fuzz for ${BUDGET}s from seed ${SEED}`, async () => {
+    reportFuzzHealth({ status: "started", completed: 0 });
     const result = await fuzzFor({
       seed: SEED,
       seconds: BUDGET,
@@ -73,6 +75,16 @@ if (BUDGET === 0) {
       console.log([`known failures, not failing the run:`, ...known.map(summary)].join("\n"));
     }
     const fresh = result.failures.filter((failure) => !isKnown(failure));
+    const completed = result.completedCases;
+    if (completed === 0) {
+      reportFuzzHealth({ status: "infrastructure", completed, detail: "No fuzz cases completed" });
+      throw new Error("Fuzz infrastructure: no cases completed");
+    }
+    reportFuzzHealth(
+      fresh.length > 0
+        ? { status: "finding", completed, detail: `${fresh.length} failing fingerprints` }
+        : { status: "passed", completed },
+    );
     if (fresh.length > 0) {
       throw new Error(
         [`${fresh.length} failing fingerprint(s):`, ...fresh.map(summary)].join("\n"),
