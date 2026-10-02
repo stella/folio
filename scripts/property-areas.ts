@@ -57,6 +57,41 @@ export const COUPLINGS: readonly { prefix: string; areas: readonly string[] }[] 
 
 type PropertyFile = { area: string; packageDir: string; file: string };
 
+const PROPERTY_WORKERS = 2;
+type PropertyBatch = { packageDir: string; files: PropertyFile[] };
+
+/** Split a package's serial test workload without changing its selected files. */
+export const propertyBatches = (selected: readonly PropertyFile[]): PropertyBatch[] => {
+  const byPackage = new Map<string, PropertyFile[]>();
+  for (const entry of selected) {
+    const files = byPackage.get(entry.packageDir);
+    if (files) files.push(entry);
+    else byPackage.set(entry.packageDir, [entry]);
+  }
+  return [...byPackage].flatMap(([packageDir, files]) => {
+    const batchCount = Math.min(PROPERTY_WORKERS, files.length);
+    const batchSize = Math.ceil(files.length / batchCount);
+    return Array.from({ length: batchCount }, (_, batch) => ({
+      packageDir,
+      files: files.slice(batch * batchSize, (batch + 1) * batchSize),
+    }));
+  });
+};
+
+/** Keep process concurrency bounded and retain every batch's failure status. */
+export const runPropertyBatches = async (
+  batches: readonly PropertyBatch[],
+  run: (batch: PropertyBatch) => Promise<number>,
+): Promise<number[]> => {
+  const queue = batches.values();
+  const exitCodes: number[] = [];
+  const worker = async () => {
+    for (const batch of queue) exitCodes.push(await run(batch));
+  };
+  await Promise.all(Array.from({ length: Math.min(PROPERTY_WORKERS, batches.length) }, worker));
+  return exitCodes;
+};
+
 const walk = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     if (entry.name === "node_modules" || entry.name.startsWith(".")) return [];
@@ -212,15 +247,11 @@ if (import.meta.main) {
   if (dryRun || selected.length === 0) {
     for (const { file } of selected) console.log(`  ${file}`);
   } else {
-    const byPackage = new Map<string, PropertyFile[]>();
-    for (const entry of selected) {
-      byPackage.set(entry.packageDir, [...(byPackage.get(entry.packageDir) ?? []), entry]);
-    }
-    // Packages run side by side (at factor 10 docx-core's operation properties
-    // alone take as long as all of core's); each one's output is printed whole
-    // when it finishes, so a log still reads one package, one file at a time.
-    const exitCodes = await Promise.all(
-      [...byPackage].map(async ([packageDir, files]) => {
+    // Two bounded workers can share one large package's property workload.
+    // Keep each batch's output together so failed files remain identifiable.
+    const exitCodes = await runPropertyBatches(
+      propertyBatches(selected),
+      async ({ packageDir, files }) => {
         const relative = files.map(({ file }) => path.relative(packageDir, file));
         const started = performance.now();
         const run = await $`bun test ${relative} 2>&1`
@@ -234,7 +265,7 @@ if (import.meta.main) {
           `${packageDir}: ${String(files.length)} files in ${seconds}s, exit ${String(run.exitCode)}`,
         );
         return run.exitCode;
-      }),
+      },
     );
     // Set the code rather than exiting: output written to a pipe is flushed
     // asynchronously, and exiting here cut a failing run's log short.
