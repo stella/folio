@@ -34,30 +34,33 @@ const slots = (value: unknown): value is readonly IdentitySlot[] =>
     (slot: unknown) =>
       record(slot) &&
       Object.keys(slot).every((key) => Object.hasOwn(SLOT_FIELDS, key)) &&
-      (slot.space === "revision" || slot.space === "control") &&
-      natural(slot.id) &&
-      slot.id <= MAX_REVISION_ID,
+      (slot["space"] === "revision" || slot["space"] === "control") &&
+      natural(slot["id"]) &&
+      slot["id"] <= MAX_REVISION_ID,
   );
 const retained = (value: unknown): value is readonly RetainedIdentity[] =>
   Array.isArray(value) &&
-  value.every(
-    (item: unknown) =>
-      record(item) &&
+  value.every((item: unknown) => {
+    if (!record(item)) return false;
+    const source = item["source"];
+    const target = item["target"];
+    return (
       Object.keys(item).every((key) => Object.hasOwn(RETAINED_FIELDS, key)) &&
-      natural(item.depth) &&
-      slots(item.source) &&
-      slots(item.target) &&
-      item.source.length === item.target.length &&
-      item.source.every((slot, index) => slot.space === item.target.at(index)?.space),
-  );
+      natural(item["depth"]) &&
+      slots(source) &&
+      slots(target) &&
+      source.length === target.length &&
+      source.every((slot, index) => slot.space === target.at(index)?.space)
+    );
+  });
 
 export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   record(value) &&
   Object.keys(value).every((key) => Object.hasOwn(JOIN_FIELDS, key)) &&
-  natural(value.before) &&
-  natural(value.after) &&
-  natural(value.remove) &&
-  (value.retainedAfter === undefined || retained(value.retainedAfter));
+  natural(value["before"]) &&
+  natural(value["after"]) &&
+  natural(value["remove"]) &&
+  (value["retainedAfter"] === undefined || retained(value["retainedAfter"]));
 
 export const isBoundaryJoins = (value: unknown): value is BoundaryJoins =>
   Array.isArray(value) &&
@@ -92,18 +95,18 @@ const parseAttribute = <Value>({
       reason,
     });
   if (encoded.length > MAX_ATTRIBUTE_LENGTH) throw failed();
-  const decoded = Result.try({
+  const parsed = Result.try({
     try: (): unknown => JSON.parse(encoded),
     catch: () => failed(),
-  }).unwrap();
-  if (
-    !record(decoded) ||
-    Object.keys(decoded).some((key) => key !== "version" && key !== "value") ||
-    !valid(decoded.value)
-  )
+  });
+  if (parsed.isErr()) throw parsed.error;
+  const decoded = parsed.value;
+  if (!record(decoded) || Object.keys(decoded).some((key) => key !== "version" && key !== "value"))
     throw failed();
-  if (decoded.version !== VERSION) throw failed("unsupportedVersion");
-  return decoded.value;
+  const value = decoded["value"];
+  if (!valid(value)) throw failed();
+  if (decoded["version"] !== VERSION) throw failed("unsupportedVersion");
+  return value;
 };
 
 type SerializeAttributeOptions = {

@@ -229,6 +229,7 @@ export const replacementDeletionSegments = ({
     if (compareGaps(start, end) >= 0) continue;
     let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
     if (mode.type === "suggesting") plan = leafPlan(span, mode.author);
+    else if (span.ancestors.some(isRemovedRevisionNode)) plan = "untouched";
     if (plan === "anchor") {
       open = undefined;
       continue;

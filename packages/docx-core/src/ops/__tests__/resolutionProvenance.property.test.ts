@@ -11,7 +11,13 @@ import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "..
 import { allocateEditorIntentIds, compileEditorIntent, type EditorIntent } from "../editorIntent";
 import { childrenOf, isInlineContainer, paragraphLogicalText } from "../offsets";
 import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "../refusal";
-import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
+import {
+  DOCUMENT_OP_TYPES,
+  OP_STORIES,
+  REVISION_DECISIONS,
+  SPLIT_HALVES,
+  type DocumentOp,
+} from "../types";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -102,10 +108,10 @@ const lengthOf = (document: Document, blockId = "00000001"): number => {
 const expectInverse = (applied: AppliedDocumentOp, original: Document): void => {
   const undo = applyDocumentOps(applied.document, applied.inverse);
   if (undo.isErr()) throw undo.error;
-  expect(undo.value.document).toStrictEqual(original);
+  assertExactModel(undo.value.document, original);
   const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
   if (redo.isErr()) throw redo.error;
-  expect(redo.value.document).toStrictEqual(applied.document);
+  assertExactModel(redo.value.document, applied.document);
 };
 
 type ResolveOptions = { document: Document; revisionIds: number[]; decision: "accept" | "reject" };
@@ -757,4 +763,220 @@ test("generated replacements preserve input affinity around zero-width leaves", 
     { numRuns: 50 },
   );
   expect([...refusals]).toStrictEqual([]);
+});
+
+// Primitive seam inverses cannot reconstruct repartitioned retained-slot
+// hints. Exercise every cut producer against an existing pending deletion.
+test("generated provenance-bearing cuts capture exact inverse source state", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(
+      shapeArbitrary,
+      fc.constantFrom("insert", "inlineSplit", "delete", "format", "blockSplit"),
+      (shape, kind) => {
+        const original = fixture(Object.assign({}, shape, { priorReview: true }));
+        const unit = shape.token === "😀" ? 2 : 1;
+        const pending = compile({
+          document: original,
+          mode: "suggesting",
+          refusals,
+          intent: {
+            type: "replaceText",
+            from: position({ offset: 0 }),
+            to: position({ offset: 2 * unit }),
+            text: "",
+          },
+        });
+        const at = position({ offset: unit });
+        const allocation = allocateEditorIntentIds(pending.document, {
+          type: "splitParagraph",
+          at,
+          newBlockId: "00000003",
+        });
+        const makeOp = () => {
+          switch (kind) {
+            case "insert":
+              return {
+                type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+                at,
+                slice: {
+                  openStart: 0,
+                  openEnd: 0,
+                  content: [{ type: "run", content: [{ type: "text", text: "x" }] }],
+                },
+                newIds: allocation.newIds,
+              } as const satisfies DocumentOp;
+            case "inlineSplit":
+              return {
+                type: DOCUMENT_OP_TYPES.SPLIT_INLINE,
+                at,
+                depth: 1,
+                newIds: allocation.newIds,
+              } as const satisfies DocumentOp;
+            case "delete":
+              return {
+                type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                from: at,
+                to: position({ offset: 2 * unit }),
+                newIds: allocation.newIds,
+              } as const satisfies DocumentOp;
+            case "format":
+              return {
+                type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+                from: at,
+                to: position({ offset: 2 * unit }),
+                patch: { bold: true },
+                newIds: allocation.newIds,
+              } as const satisfies DocumentOp;
+            case "blockSplit":
+              return {
+                type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+                at,
+                newBlockId: "00000003",
+                newHalf: SPLIT_HALVES.FIRST,
+                newIds: allocation.newIds,
+              } as const satisfies DocumentOp;
+            default: {
+              const unreachable: never = kind;
+              return unreachable;
+            }
+          }
+        };
+        const changed = applyDocumentOp(pending.document, makeOp());
+        if (changed.isErr()) {
+          refusals.set(changed.error.reason, (refusals.get(changed.error.reason) ?? 0) + 1);
+          throw changed.error;
+        }
+        expectInverse(changed.value, pending.document);
+      },
+    ),
+    { numRuns: 50 },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});
+
+test("generated replacement retains prior removed revisions and visible inserted ownership", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 2, max: 6 }),
+      fc.nat(20),
+      fc.nat(20),
+      fc.constantFrom("deletion", "moveFrom"),
+      (width, anchor, head, kind) => {
+        const original = normalizeForOps({
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  content: [
+                    {
+                      type: kind,
+                      info: { id: 10, author: "Earlier" },
+                      content: [
+                        { type: "run", content: [{ type: "text", text: "a".repeat(width) }] },
+                        { type: "bookmarkEnd", id: 7 },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
+        const from = Math.min(anchor % (width + 1), head % (width + 1));
+        const to = Math.max(anchor % (width + 1), head % (width + 1));
+        const intent: EditorIntent = {
+          type: "replaceText",
+          from: position({ offset: from }),
+          to: position({ offset: to }),
+          text: "edited",
+        };
+        const allocation = allocateEditorIntentIds(original, intent);
+        const direct = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "editing",
+          refusals,
+        });
+        const tracked = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "suggesting",
+          refusals,
+        });
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+          direct.document,
+        );
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+          original,
+        );
+        const paragraph = direct.document.package.document.content.at(0);
+        if (paragraph?.type !== "paragraph") panic("Replacement must retain its target paragraph.");
+        const visible = paragraph.content
+          .flatMap((node) =>
+            node.type === "run"
+              ? node.content.flatMap((leaf) => (leaf.type === "text" ? [leaf.text] : []))
+              : [],
+          )
+          .join("");
+        expect(visible).toBe("edited");
+        expect(paragraphLogicalText(paragraph)).toBe(
+          "a".repeat(from) + "edited" + "a".repeat(width - from),
+        );
+      },
+    ),
+    { numRuns: 50 },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});
+
+// Joining independent wrappers can produce a pending record whose inverse
+// split would manufacture source-slot transfers absent from either source.
+test("generated provenance-bearing joins restore independent empty transfer metadata", () => {
+  assertProperty(
+    fc.property(shapeArbitrary, (shape) => {
+      const original = fixture(Object.assign({}, shape, { priorReview: true }));
+      for (const [index, paragraph] of original.package.document.content.entries()) {
+        if (paragraph.type !== "paragraph") panic("The join fixture must contain two paragraphs.");
+        paragraph.content = [
+          {
+            type: "deletion",
+            info: { id: index + 1, author: "Earlier" },
+            resolutionJoins: { before: 0, after: 0, remove: 0, retainedAfter: [] },
+            content: paragraph.content,
+          },
+        ];
+      }
+      let innerDepth = 2;
+      if (shape.wrapper === "link" || shape.wrapper === "control") innerDepth += 1;
+      if (shape.wrapper === "nested") innerDepth += 2;
+      // Tabs are atoms: merge their run, leaving the two tab leaves distinct.
+      if (shape.token === "tab") innerDepth -= 1;
+      const joined = applyDocumentOp(original, {
+        type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        nextBlockId: "00000002",
+        depth: innerDepth + 1,
+      });
+      if (joined.isErr()) throw joined.error;
+      expectInverse(joined.value, original);
+    }),
+    { numRuns: 50 },
+  );
 });

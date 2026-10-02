@@ -246,6 +246,28 @@ const contentRestoring = (
   content: original.content,
 });
 
+type CutHasResolutionProvenanceOptions = {
+  content: readonly ParagraphContent[];
+  gaps: readonly Gap[];
+};
+
+// Repartitioned source-slot references differ between the two cut pieces.
+// A compact seam merge cannot restore the original reference object exactly.
+const cutHasResolutionProvenance = ({
+  content,
+  gaps,
+}: CutHasResolutionProvenanceOptions): boolean =>
+  gaps.some((gap) =>
+    spanningRecords(content, [gap], 0, 1).some(
+      (record) =>
+        (record.type === "insertion" ||
+          record.type === "deletion" ||
+          record.type === "moveFrom" ||
+          record.type === "moveTo") &&
+        record.resolutionJoins !== undefined,
+    ),
+  );
+
 /** The review fields' setting that gives a paragraph back the ones it had. */
 const reviewRestoring = (
   story: OpStory,
@@ -641,6 +663,8 @@ const inserted = (options: InsertedOptions): Applied => {
       inserted: recordsBetween(content, start, end),
     },
     (result) => {
+      if (cutHasResolutionProvenance({ content: location.paragraph.content, gaps: [start] }))
+        return Result.ok([contentRestoring(story, result, location.paragraph)]);
       const inverse = insertionInverse(location.paragraph.content, result.content, start, end);
       if (inverse === undefined) {
         return Result.err(
@@ -881,6 +905,8 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       newIds: undefined,
     },
     (result) => {
+      if (cutHasResolutionProvenance({ content: paragraph.content, gaps: [from, to] }))
+        return Result.ok([contentRestoring(story, result, paragraph)]);
       const insertion: InsertContentOp = {
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         at: positionAt(story, result, from),
@@ -924,14 +950,17 @@ const splitInline = (document: Document, op: SplitInlineOp): Applied => {
       paragraph: withContent(location.paragraph, content),
       newIds: op.newIds,
     },
-    (result) =>
-      Result.ok([
+    (result) => {
+      if (cutHasResolutionProvenance({ content: location.paragraph.content, gaps: [gap] }))
+        return Result.ok([contentRestoring(op.at.story, result, location.paragraph)]);
+      return Result.ok([
         {
           type: DOCUMENT_OP_TYPES.JOIN_INLINE,
           at: positionAt(op.at.story, result, gap),
           depth: op.depth,
         },
-      ]),
+      ]);
+    },
   );
 };
 
@@ -967,6 +996,8 @@ const joinInline = (document: Document, op: JoinInlineOp): Applied => {
       newIds: undefined,
     },
     (result) => {
+      if (cutHasResolutionProvenance({ content: result.content, gaps: [gap] }))
+        return Result.ok([contentRestoring(op.at.story, result, location.paragraph)]);
       const split: SplitInlineOp = {
         type: DOCUMENT_OP_TYPES.SPLIT_INLINE,
         at: positionAt(op.at.story, result, gap),
@@ -1178,7 +1209,9 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     return Result.err(refusal(op, replaced.error.reason, replaced.error.message));
   return Result.ok({
     document: replaced.value,
-    inverse,
+    inverse: cutHasResolutionProvenance({ content: paragraph.content, gaps: [from, to] })
+      ? [contentRestoring(story, result, paragraph)]
+      : inverse,
     touched: touchedBetween([paragraph], [result]),
   });
 };
@@ -1466,6 +1499,16 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   const kept = newHalf === SPLIT_HALVES.FIRST ? placedSecond : placedFirst;
   const madePlaced = newHalf === SPLIT_HALVES.FIRST ? placedFirst : placedSecond;
   const keptId = paragraph.paraId ?? op.at.blockId;
+  const snapshotCut = cutHasResolutionProvenance({ content: paragraph.content, gaps: [gap] });
+  const contentInverse = snapshotCut
+    ? [
+        contentRestoring(
+          op.at.story,
+          withContent(kept, [...placedFirst.content, ...placedSecond.content]),
+          paragraph,
+        ),
+      ]
+    : [];
   return Result.ok({
     document: committed.value.document,
     inverse: [
@@ -1474,7 +1517,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
         story: op.at.story,
         blockId: placedFirst.paraId ?? "",
         nextBlockId: placedSecond.paraId ?? "",
-        depth: cut.through.length,
+        depth: snapshotCut ? 0 : cut.through.length,
         survivor: newHalf === SPLIT_HALVES.FIRST ? SPLIT_HALVES.SECOND : SPLIT_HALVES.FIRST,
         expectedRetired: splitFieldsOf(madePlaced),
         expectedSurvivor: reviewFieldsOf(kept),
@@ -1488,6 +1531,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
         joinedReview(placedFirst, placedSecond),
         reviewFieldsOf(paragraph),
       ),
+      ...contentInverse,
     ],
     touched: committed.value.touched,
   });
@@ -1711,6 +1755,27 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
   });
   if (committed.isErr()) {
     return Result.err(committed.error);
+  }
+  const joinedGap = {
+    offset: length,
+    zeroWidthBefore: zeroWidthLeavesAt(leading.content, length).length,
+  };
+  if (cutHasResolutionProvenance({ content: joined.content, gaps: [joinedGap] })) {
+    return Result.ok({
+      document: committed.value.document,
+      inverse: [
+        {
+          type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+          story: op.story,
+          expected: committed.value.paragraphs,
+          blocks: [leading, trailing],
+          ...(leading.sectionProperties === undefined
+            ? {}
+            : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
+        },
+      ],
+      touched: committed.value.touched,
+    });
   }
   return Result.ok({
     document: committed.value.document,
