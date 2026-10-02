@@ -291,6 +291,20 @@
       "kind": "collisions",
       "generation": "targeted",
       "title": "inserted heading beside a stated outline level"
+    },
+    {
+      "seed": 20260926,
+      "steps": 5,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "note trailers retain body reader agreement with tracked changes"
+    },
+    {
+      "seed": 20260927,
+      "steps": 5,
+      "kind": "random",
+      "generation": "targeted",
+      "title": "note trailers retain body reader agreement with direct edits"
     }
   ]
 }

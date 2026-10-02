@@ -5,7 +5,7 @@ import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 import { fromMarkdown } from "@stll/folio-core/markdown";
 
 import { assertReadersAgree } from "../support/invariants.ts";
-import { listDocument, packDocument } from "../support/documents.ts";
+import { listDocument, notesDocument, packDocument } from "../support/documents.ts";
 import { markdownViews, readAll } from "../support/readers.ts";
 
 type Document = ReturnType<typeof fromMarkdown>;
@@ -179,4 +179,76 @@ test("retains every rendered ordered-list label, including restarts", () => {
   ] as const;
   assert.deepEqual(markdownViews("1. First\n1. Restarted", expected), expected);
   assert.notDeepEqual(markdownViews("1. First\n2. Restarted", expected), expected);
+});
+
+// The lexer treats exported footnote definitions as paragraph text; the body
+// reader excludes note stories. Keep their trailer out of the body comparison.
+test("separates appended exported note definitions from body paragraphs", () => {
+  const expected = paragraphs(["Body1", "Endnote†"]);
+  for (const definitions of [
+    "[^1]: Footnote text\n[^e1]: Endnote text",
+    "[^1]: **Footnote** text\n[^e1]: *Endnote* text",
+    "[^1]: \n[^e1]: Endnote text",
+  ]) {
+    assert.deepEqual(
+      markdownViews(`Body[^1]\n\nEndnote[^e1]\n\n${definitions}`, expected),
+      expected,
+    );
+  }
+});
+
+test("note trailers cannot hide an extra body paragraph", () => {
+  const expected = paragraphs(["Body1"]);
+  for (const markdown of [
+    "Body[^1]\n\nUnexpected body\n\n[^1]: Footnote text",
+    "Body[^1]\n\n[^1]: Footnote text\n\nUnexpected body",
+    "Body[^1]\n\n[^1]: Footnote text\nUnexpected body",
+    "Body[^1]\n\nUnexpected body",
+  ]) {
+    assert.throws(
+      () => markdownViews(markdown, expected),
+      /Markdown contains (?:more text blocks than the source reader|malformed or unreferenced note definitions)/,
+    );
+  }
+});
+
+test("extracts visible nested inline text without losing leaf-token fallback text", () => {
+  const cases = [
+    { markdown: "Plain leaf text", text: "Plain leaf text" },
+    { markdown: "**bold *nested* tail**", text: "bold nested tail" },
+    { markdown: "~~deleted **bold *nested*** tail~~", text: "deleted bold nested tail" },
+    {
+      markdown: "[**linked *nested* text**](https://example.test/target)",
+      text: "linked nested text",
+    },
+    { markdown: "Text `literal *stars*` tail", text: "Text literal *stars* tail" },
+    { markdown: "Text \\*escaped\\* tail", text: "Text *escaped* tail" },
+  ];
+  for (const { markdown, text } of cases) {
+    const expected = paragraphs([text]);
+    assert.deepEqual(markdownViews(markdown, expected), expected);
+  }
+});
+
+test("keeps packed footnote and endnote reader agreement", async () => {
+  const bytes = await notesDocument();
+  const views = await readAll(bytes);
+  assert.deepEqual(views.markdown, views.getContentAsMarkdown);
+  assert.equal(views.markdown.length, views.getContent.length);
+  await assertReadersAgree(bytes, "footnote and endnote definition trailers");
+});
+
+// Definition recognition is narrower than a paragraph starting with [^...].
+test("rejects malformed, duplicate and unreferenced note definitions", () => {
+  const expected = paragraphs(["Body1"]);
+  for (const definitions of [
+    "[^1]: First\n[^1]: Duplicate",
+    "[^2]: Unreferenced",
+    "[^1]: First\nNot a definition",
+  ]) {
+    assert.throws(
+      () => markdownViews(`Body[^1]\n\n${definitions}`, expected),
+      /Markdown contains malformed or unreferenced note definitions/,
+    );
+  }
 });

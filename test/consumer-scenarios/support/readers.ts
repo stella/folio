@@ -130,6 +130,13 @@ const HTML_CELL_INLINE_TAGS = new Set([
   "p",
 ]);
 
+const inlineTokens = (token: Token) => {
+  if (token.tokens === undefined) {
+    throw new Error(`Markdown token ${token.type} is missing inline tokens`);
+  }
+  return token.tokens;
+};
+
 const inlineText = (tokens: readonly Token[]): string =>
   tokens
     .map((token) => {
@@ -143,7 +150,7 @@ const inlineText = (tokens: readonly Token[]): string =>
         case "em":
         case "del":
         case "link":
-          return inlineText(token.tokens);
+          return inlineText(inlineTokens(token));
         case "image":
           return "";
         case "br":
@@ -163,7 +170,7 @@ const tokenText = (token: Token): string => {
   switch (token.type) {
     case "paragraph":
     case "heading":
-      return inlineText(token.tokens);
+      return inlineText(inlineTokens(token));
     case "text":
       return inlineText(token.tokens === undefined ? [token] : token.tokens);
     case "code":
@@ -265,6 +272,31 @@ const suffixView = (
   return view(suffix.trim(), kind, headingLevel, number);
 };
 
+const withoutNoteTrailer = (markdown: string): string => {
+  // The exporter appends one single-line definition per referenced note.
+  // Marked does not recognize footnote definitions, so separate this known
+  // trailer before lexing; ordinary extra body blocks must still be counted.
+  const boundary = markdown.lastIndexOf("\n\n");
+  if (boundary < 0) return markdown;
+  const trailer = markdown.slice(boundary + 2);
+  const definition = /^(?<marker>\[\^e?\d+\]):[^\n]*$/u;
+  if (!definition.test(trailer.split("\n").at(0) ?? "")) return markdown;
+  const body = markdown.slice(0, boundary);
+  const references = new Set(body.match(/(?<!\\)\[\^e?\d+\]/gu) ?? []);
+  const seen = new Set<string>();
+  for (const line of trailer.split("\n")) {
+    const marker = definition.exec(line)?.groups?.["marker"];
+    if (marker === undefined || !references.has(marker) || seen.has(marker)) {
+      throw new Error("Markdown contains malformed or unreferenced note definitions");
+    }
+    seen.add(marker);
+  }
+  if (seen.size !== references.size) {
+    throw new Error("Markdown is missing a referenced note definition");
+  }
+  return body;
+};
+
 /**
  * `docxToMarkdown` → views, matched against the texts the content reader
  * reports (a Markdown line carries no block boundary of its own). Pipe-table
@@ -275,7 +307,7 @@ export const markdownViews = (
   expectedViews: readonly BlockView[],
 ): BlockView[] => {
   const views: BlockView[] = [];
-  const tokens = marked.lexer(markdown);
+  const tokens = marked.lexer(withoutNoteTrailer(markdown));
   let cursor = 0;
   const nextExpected = (): BlockView => {
     const expected = expectedViews.at(cursor);
