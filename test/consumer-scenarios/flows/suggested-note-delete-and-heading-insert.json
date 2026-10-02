@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "suggested",
+  "seed": 1576447823,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 2144342296,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "2F355A9D"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 184894089,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "6C3D4F0C",
+          "text": "Warranty goods schedule.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "title": "PINNED #1413, reported seed 1576447823: consumer flow notes / suggested: rejecting all changes does not restore the original"
+}

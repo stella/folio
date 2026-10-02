@@ -1,0 +1,83 @@
+name: Nightly WebKit Layout Parity
+
+on:
+  schedule:
+    # 06:07 UTC daily, offset from the other nightly jobs.
+    - cron: "7 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  webkit-layout-parity:
+    name: Layout differences under WebKit (report-only)
+    # macOS, not Linux: Playwright's WebKit on Linux is a different port from
+    # the system WebKit, so Linux numbers would not describe the real engine.
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      # persist-credentials: false — this job can be manually dispatched on any
+      # branch ref, so the checkout token must not linger in the git config.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium webkit
+
+      # The Chromium reference is recorded in this job, on this machine, so the
+      # comparison does not mix in machine or font differences. Any failure here
+      # or in the WebKit layout step is a harness error and fails the job.
+      - name: Record Chromium reference
+        env:
+          FOLIO_ENGINE_PARITY_REFERENCE: engine-parity-ref
+        run: bunx playwright test --project=engine-layout-record --workers=1 --output=engine-parity-ref/playwright
+
+      # Differences from the reference are data, not failures: the spec exits
+      # green on them and writes findings JSON.
+      - name: Run WebKit layout comparison
+        env:
+          FOLIO_ENGINE_PARITY_REFERENCE: engine-parity-ref
+          FOLIO_ENGINE_PARITY_OUT: engine-parity-out
+          PLAYWRIGHT_JSON_OUTPUT_NAME: engine-parity-out/results.json
+        run: bunx playwright test --project=webkit-layout-parity --workers=1 --reporter=list,json --output=engine-parity-out/playwright
+
+      # Runs as-is under WebKit with its assertions intact; a failure is a
+      # finding ("assertion failed under second engine"), not a harness error.
+      - name: Run measure-backend spec under WebKit
+        id: backend
+        continue-on-error: true
+        run: bunx playwright test --project=webkit-measure-backend --workers=1 --output=engine-parity-ref/playwright-backend
+
+      - name: Summarize
+        if: always()
+        env:
+          BACKEND_OUTCOME: ${{ steps.backend.outcome }}
+        run: bun scripts/engine-parity-summary.ts engine-parity-out/results.json engine-parity-out
+
+      - name: Publish summary
+        if: always()
+        run: |
+          if [ -f engine-parity-out/summary.md ]; then
+            cat engine-parity-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: webkit-layout-parity
+          path: |
+            engine-parity-out/report.json
+            engine-parity-out/summary.md
+            engine-parity-out/results.json
+          retention-days: 30

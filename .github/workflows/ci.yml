@@ -124,6 +124,10 @@ jobs:
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -139,9 +143,11 @@ jobs:
       # Rerun properties in the areas this PR changes at five times their
       # normal runs, with the same commit-derived seeds.
       - name: Changed areas' properties at 5x numRuns
-        run: bun scripts/property-areas.ts --base "origin/${BASE_REF}" --factor 5
+        run: bun scripts/property-areas.ts --base "origin/${BASE_REF}" --factor 5 --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"
         env:
           BASE_REF: ${{ github.base_ref }}
+          PROPERTY_SHARD: ${{ matrix.shard }}
+          PROPERTY_SHARD_COUNT: ${{ strategy.job-total }}
 
   # oxfmt formats Markdown too, so a documentation-only change still has its
   # formatting checked; any other change runs the full format check in `ci`.

@@ -374,6 +374,1263 @@
       "fingerprint": "b3cc737b6d20bf0c",
       "issueOrPr": "#1361",
       "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "06fbfa3323b87132",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1377,
+        "primary": "03f9404118ecce41",
+        "title": "consumer flow tables / suggested: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "tables",
+          "mode": "suggested",
+          "seed": 694344439,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 3845945687,
+              "operations": [
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "59CE41D1",
+                  "text": "Party party term delivery written schedule.",
+                  "styleId": "Heading2"
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "5CCE468A"
+                }
+              ]
+            }
+          ],
+          "origin": "shrunk from swap+splice+insert of e29ce2acaa6667ee"
+        },
+        "type": "consumer",
+        "reportSeed": 1785651760,
+        "reportSeeds": [1785651760]
+      }
+    },
+    {
+      "fingerprint": "03f9404118ecce41",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "66dd1eb0d7e26bfc",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1380,
+        "primary": "9ee376a632ca2edc",
+        "title": "consumer flow trackedChanges / direct: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "trackedChanges",
+          "mode": "direct",
+          "seed": 1576446606,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 1448564212,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "0A88C0B1",
+                  "separator": " "
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576446606,
+        "reportSeeds": [1576446606, 1785652249, 1785652364]
+      }
+    },
+    {
+      "fingerprint": "9ee376a632ca2edc",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "7ec32eb16efdfc52",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1382,
+        "primary": "ab6344ed76e83492",
+        "title": "consumer flow directNumbered / tracked-changes: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "directNumbered",
+          "mode": "tracked-changes",
+          "seed": 1785653011,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 2985383154,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "4207D525"
+                }
+              ]
+            },
+            {
+              "action": "core batch",
+              "seed": 3857831012,
+              "operations": [
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "3B07CA20",
+                  "properties": {
+                    "numbering": {
+                      "numId": 7,
+                      "level": 0
+                    }
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from random flow seed 1785653011"
+        },
+        "type": "consumer",
+        "reportSeed": 1785653011,
+        "reportSeeds": [1785653011]
+      }
+    },
+    {
+      "fingerprint": "ab6344ed76e83492",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "5a288c5f8a185f53",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1385,
+        "primary": "9021a874e5271575",
+        "title": "consumer flow emoji / suggested: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "suggested",
+          "seed": 1785652356,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 3361453381,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "078C57C5"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 578345913,
+              "operations": [
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "068C5632",
+                  "text": "Warranty delivery written term agreement clause delivery.",
+                  "styleId": "Heading2"
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1785652356"
+        },
+        "type": "consumer",
+        "reportSeed": 1785652356,
+        "reportSeeds": [1785652356]
+      }
+    },
+    {
+      "fingerprint": "9021a874e5271575",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "5ee9d2e74bcf69a8",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1386,
+        "primary": "2d59bafcfc00e802",
+        "title": "consumer flow emoji / direct: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "direct",
+          "seed": 118244236,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 1317974379,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "058C549F",
+                    "startOffset": 37,
+                    "endOffset": 42,
+                    "selectedTextHash": "h4k7sdk"
+                  },
+                  "comment": {
+                    "text": "Check this word."
+                  }
+                },
+                {
+                  "type": "formatRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "058C549F",
+                    "startOffset": 37,
+                    "endOffset": 42,
+                    "selectedTextHash": "h4k7sdk"
+                  },
+                  "formatting": {
+                    "italic": true
+                  }
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 54303039,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "058C549F"
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "078C57C5"
+                },
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "048C530C",
+                  "text": "Party written payment party invoice term party.",
+                  "numbering": {
+                    "start": "new",
+                    "kind": "numbered"
+                  }
+                }
+              ]
+            },
+            {
+              "action": "reject all",
+              "seed": 430373921
+            },
+            {
+              "action": "selective save",
+              "seed": 2261939734
+            },
+            {
+              "action": "selective save",
+              "seed": 4093505547
+            },
+            {
+              "action": "story batch",
+              "seed": 1630104064,
+              "operations": [
+                {
+                  "type": "insertTable",
+                  "blockId": "068C5632",
+                  "rows": [
+                    ["Term", "Value"],
+                    ["Period", "12 months"]
+                  ]
+                },
+                {
+                  "type": "insertTable",
+                  "blockId": "068C5632",
+                  "rows": [
+                    ["Term", "Value"],
+                    ["Period", "12 months"]
+                  ]
+                },
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "068C5632",
+                  "text": "Supplier supplier party delivery buyer.",
+                  "alignment": "right"
+                }
+              ]
+            },
+            {
+              "action": "selective save",
+              "seed": 3837740759
+            },
+            {
+              "action": "reject all",
+              "seed": 1374339276
+            },
+            {
+              "action": "accept all",
+              "seed": 3205905089
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 742503606,
+              "operations": [
+                {
+                  "type": "splitBlock",
+                  "blockId": "@11",
+                  "offset": 24
+                }
+              ]
+            },
+            {
+              "action": "reply and resolve",
+              "seed": 678562409
+            },
+            {
+              "action": "story batch",
+              "seed": 2510128222,
+              "operations": [
+                {
+                  "type": "deleteTableRow",
+                  "blockId": "@3"
+                },
+                {
+                  "type": "replaceBlock",
+                  "blockId": "@11",
+                  "text": "Period schedule goods clause warranty supplier supplier buyer."
+                },
+                {
+                  "type": "replaceBlock",
+                  "blockId": "068C5632",
+                  "text": "Clause invoice written."
+                }
+              ]
+            },
+            {
+              "action": "core batch",
+              "seed": 422797621,
+              "operations": [
+                {
+                  "type": "replaceRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "@4",
+                    "startOffset": 3,
+                    "endOffset": 9,
+                    "selectedTextHash": "h3y1dyc"
+                  },
+                  "replace": "updated"
+                },
+                {
+                  "type": "insertTableColumn",
+                  "blockId": "@8",
+                  "position": "after"
+                }
+              ]
+            },
+            {
+              "action": "mistake",
+              "seed": 926750897
+            },
+            {
+              "action": "save and reopen",
+              "seed": 2062539843
+            },
+            {
+              "action": "selective save",
+              "seed": 3894105656
+            }
+          ],
+          "origin": "collisions flow seed 118244236"
+        },
+        "type": "consumer",
+        "reportSeed": 118244236,
+        "reportSeeds": [118244236, 1785652752]
+      }
+    },
+    {
+      "fingerprint": "4b949a9c3ef37b23",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "2d59bafcfc00e802",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "c87caa8b7fc119c6",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1412,
+        "primary": "1ec16d059dca732d",
+        "title": "consumer flow unusedNumbering / direct: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "unusedNumbering",
+          "mode": "direct",
+          "seed": 1576447518,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 2016459597,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 681270760,
+              "operations": [
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "1608FC87",
+                  "text": "Delivery period schedule warranty schedule buyer invoice.",
+                  "numbering": {
+                    "start": "new",
+                    "kind": "numbered"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576447518,
+        "reportSeeds": [1576447518]
+      }
+    },
+    {
+      "fingerprint": "1ec16d059dca732d",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "21447c4f40a78f5e",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1418,
+        "primary": "9d1a8d843140c354",
+        "title": "consumer flow emoji / tracked-changes: tracked acceptance differs from direct editing",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "tracked-changes",
+          "seed": 1576447506,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 3280130925,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "058C549F"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 3216189728,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "068C5632"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 1064917930,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "078C57C5"
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "048C530C"
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576447506,
+        "reportSeeds": [1576447506]
+      }
+    },
+    {
+      "fingerprint": "9d1a8d843140c354",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "fd07d3cfa06b22ae",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1375,
+        "primary": "fb1502e690cc5fea",
+        "title": "consumer flow styleNumbered / tracked-changes: saved block text differs from the requested result",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "styleNumbered",
+          "mode": "tracked-changes",
+          "seed": 1576447651,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 745212090,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "1D7C8229",
+                  "separator": " "
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "207C86E2"
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576447651,
+        "reportSeeds": [1576447651, 1785652482]
+      }
+    },
+    {
+      "fingerprint": "fb1502e690cc5fea",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "10dd71b2cc19d187",
+      "issueOrPr": "#1360",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1376,
+        "primary": "ad8a804ccdd560a4",
+        "title": "consumer flow emoji / tracked-changes: saved block text differs from the requested result",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "tracked-changes",
+          "seed": 694343127,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 2620907330,
+              "operations": [
+                {
+                  "type": "insertTable",
+                  "blockId": "048C530C",
+                  "rows": [
+                    ["Term", "Value"],
+                    ["Period", "12 months"]
+                  ]
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 1261502035,
+              "operations": [
+                {
+                  "type": "insertTable",
+                  "blockId": "@2",
+                  "rows": [
+                    ["Term", "Value"],
+                    ["Period", "12 months"]
+                  ]
+                }
+              ]
+            }
+          ],
+          "origin": "shrunk from swap+insert of a258cc6935e7de95"
+        },
+        "type": "consumer",
+        "reportSeed": 1785651658,
+        "reportSeeds": [1785651658]
+      }
+    },
+    {
+      "fingerprint": "575ef753b81ee88e",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1378,
+        "primary": "26cfb8946596d710",
+        "title": "consumer flow tables / suggested: saved block text differs from the requested result",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "tables",
+          "mode": "suggested",
+          "seed": 118244264,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 1317974407,
+              "operations": [
+                {
+                  "type": "replaceRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "541D18C6",
+                    "startOffset": 6,
+                    "endOffset": 14,
+                    "selectedTextHash": "hnavq79"
+                  },
+                  "replace": "second"
+                },
+                {
+                  "type": "replaceRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "541D18C6",
+                    "startOffset": 0,
+                    "endOffset": 5,
+                    "selectedTextHash": "h3uv5ju"
+                  },
+                  "replace": "first"
+                }
+              ]
+            },
+            {
+              "action": "accept all",
+              "seed": 2517704550
+            },
+            {
+              "action": "reject one",
+              "seed": 54303067
+            },
+            {
+              "action": "reject all",
+              "seed": 3717434693
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 1254033210,
+              "operations": [
+                {
+                  "type": "replaceRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "5FCE4B43",
+                    "startOffset": 0,
+                    "endOffset": 3,
+                    "selectedTextHash": "h376lws"
+                  },
+                  "replace": "updated"
+                }
+              ]
+            },
+            {
+              "action": "new reviewer",
+              "seed": 3021657826
+            },
+            {
+              "action": "accept one",
+              "seed": 558256343
+            },
+            {
+              "action": "reply and resolve",
+              "seed": 2389822156
+            },
+            {
+              "action": "story batch",
+              "seed": 4221387969,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "5CCE468A"
+                },
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "4F1D10E7",
+                  "find": "Price",
+                  "replace": "the Customer",
+                  "precondition": {
+                    "blockTextHash": "h3uv5ju"
+                  }
+                },
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "541D18C6",
+                  "find": "Schedule",
+                  "replace": "",
+                  "precondition": {
+                    "blockTextHash": "higbosh"
+                  }
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 366432752,
+              "operations": [
+                {
+                  "type": "insertTableColumn",
+                  "blockId": "4F1D10E7",
+                  "position": "after"
+                },
+                {
+                  "type": "insertTableRow",
+                  "blockId": "4E1D0F54",
+                  "position": "after",
+                  "cellTexts": ["Row cell 1", "Row cell 2"]
+                }
+              ]
+            },
+            {
+              "action": "accept one",
+              "seed": 870386028
+            },
+            {
+              "action": "accept one",
+              "seed": 238550358
+            },
+            {
+              "action": "story batch",
+              "seed": 3901681984,
+              "operations": [
+                {
+                  "type": "insertTableColumn",
+                  "blockId": "59CE41D1",
+                  "position": "after",
+                  "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 2638010644,
+              "operations": [
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "521D15A0",
+                  "text": "Invoice goods schedule period."
+                },
+                {
+                  "type": "insertTableRow",
+                  "blockId": "@12",
+                  "position": "after",
+                  "cellTexts": ["Row cell 1", "Row cell 2", "Row cell 3"]
+                },
+                {
+                  "type": "replaceBlock",
+                  "blockId": "541D18C6",
+                  "text": "Clause buyer clause period buyer term period notice."
+                }
+              ]
+            }
+          ],
+          "origin": "collisions flow seed 118244264"
+        },
+        "type": "consumer",
+        "reportSeed": 118244264,
+        "reportSeeds": [118244264, 1785653156]
+      }
+    },
+    {
+      "fingerprint": "d876dace7b458a5e",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "26cfb8946596d710",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "e8b856d27e9e3cbd",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1393,
+        "primary": "e7615859f49be4f2",
+        "title": "consumer flow directNumbered / tracked-changes: saved block text differs from the requested result",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "directNumbered",
+          "mode": "tracked-changes",
+          "seed": 118244301,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 1317974444,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "3C07CBB3"
+                },
+                {
+                  "type": "splitBlock",
+                  "blockId": "3C07CBB3",
+                  "offset": 9
+                },
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "3D07CD46",
+                  "separator": " "
+                }
+              ]
+            }
+          ],
+          "origin": "collisions flow seed 118244301"
+        },
+        "type": "consumer",
+        "reportSeed": 118244301,
+        "reportSeeds": [118244301]
+      }
+    },
+    {
+      "fingerprint": "e7615859f49be4f2",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "72e726ea8358f25a",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1414,
+        "primary": "f8d16a9479422cfa",
+        "title": "consumer flow plain / direct: saved block text differs from the requested result",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "plain",
+          "mode": "direct",
+          "seed": 1576446778,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 2328588542,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1308F7CE"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 113375547,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1608FC87"
+                },
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "1408F961",
+                  "separator": " "
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576446778,
+        "reportSeeds": [1576446778]
+      }
+    },
+    {
+      "fingerprint": "f8d16a9479422cfa",
+      "issueOrPr": "#1353",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "7b34adfac07dce03",
+      "issueOrPr": "#1356",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1388,
+        "primary": "5f8a2521d7ce8922",
+        "title": "consumer flow tables / tracked-changes: a batch differs from applying its operations separately",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "tables",
+          "mode": "tracked-changes",
+          "seed": 605094110,
+          "steps": [
+            {
+              "action": "add_comment",
+              "seed": 29623306
+            },
+            {
+              "action": "story batch",
+              "seed": 213870597,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "5C1D255E",
+                  "text": "Payment notice term."
+                },
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "541D18C6",
+                  "separator": " "
+                },
+                {
+                  "type": "replaceBlock",
+                  "blockId": "541D18C6",
+                  "text": "Schedule agreement notice party delivery party buyer goods."
+                }
+              ]
+            }
+          ],
+          "origin": "shrunk from insert+splice of 2ceb9689a65f8083"
+        },
+        "type": "consumer",
+        "reportSeed": 1785652606,
+        "reportSeeds": [1785652606]
+      }
+    },
+    {
+      "fingerprint": "5f8a2521d7ce8922",
+      "issueOrPr": "#1356",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "c0051790b8b045ff",
+      "issueOrPr": "#1374",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1374,
+        "primary": "b916a2f34189e40c",
+        "title": "consumer flow trackedChanges / direct: the requested comment is missing",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "trackedChanges",
+          "mode": "direct",
+          "seed": 1785652737,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 2353547210,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1088CA23",
+                  "quote": "apply",
+                  "comment": {
+                    "text": "Agreement period buyer supplier clause buyer invoice."
+                  }
+                },
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "1088CA23",
+                  "find": "apply",
+                  "replace": "",
+                  "precondition": {
+                    "blockTextHash": "hnb08se"
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from random flow seed 1785652737"
+        },
+        "type": "consumer",
+        "reportSeed": 1785652737,
+        "reportSeeds": [1785652737]
+      }
+    },
+    {
+      "fingerprint": "b916a2f34189e40c",
+      "issueOrPr": "#1374",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "d80535344e1d00e4",
+      "issueOrPr": "#1374",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1389,
+        "primary": "c2680c2870752543",
+        "title": "consumer flow comments / direct: the requested comment is missing",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "comments",
+          "mode": "direct",
+          "seed": 118244350,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 1317974493,
+              "operations": [
+                {
+                  "type": "replaceRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "1508FAF4",
+                    "startOffset": 0,
+                    "endOffset": 6,
+                    "selectedTextHash": "hmiedpg"
+                  },
+                  "replace": "updated"
+                }
+              ]
+            },
+            {
+              "action": "mistake",
+              "seed": 1254033296
+            },
+            {
+              "action": "story batch",
+              "seed": 2389822242,
+              "operations": [
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "1508FAF4",
+                  "properties": {
+                    "styleId": "Heading2"
+                  }
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1108F4A8"
+                },
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "1408F961",
+                  "separator": " "
+                }
+              ]
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 4093505661,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1508FAF4",
+                  "quote": "copies",
+                  "comment": {
+                    "text": "Buyer agreement goods delivery buyer written goods payment."
+                  }
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                },
+                {
+                  "type": "insertTable",
+                  "blockId": "1608FC87",
+                  "rows": [
+                    ["Term", "Value"],
+                    ["Period", "12 months"]
+                  ]
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 2006175060,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1508FAF4",
+                  "quote": "updated",
+                  "comment": {
+                    "text": "Party delivery schedule agreement warranty period written notice."
+                  }
+                },
+                {
+                  "type": "replaceBlock",
+                  "blockId": "1408F961",
+                  "text": "Invoice term written party."
+                },
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1508FAF4",
+                  "quote": "copies",
+                  "comment": {
+                    "text": "Goods agreement period delivery."
+                  }
+                }
+              ]
+            }
+          ],
+          "origin": "random flow seed 118244350"
+        },
+        "type": "consumer",
+        "reportSeed": 118244350,
+        "reportSeeds": [118244350]
+      }
+    },
+    {
+      "fingerprint": "c2680c2870752543",
+      "issueOrPr": "#1374",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "5a61931f19ac81ab",
+      "issueOrPr": "#1374",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1421,
+        "primary": "b1169d84ffd3b7b6",
+        "title": "consumer flow emoji / direct: the requested comment is missing",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "direct",
+          "seed": 1576447779,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 3280131198,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "078C57C5",
+                    "startOffset": 0,
+                    "endOffset": 2,
+                    "selectedTextHash": "h6jou"
+                  },
+                  "comment": {
+                    "text": "Invoice clause payment."
+                  }
+                },
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "078C57C5",
+                  "find": "🎉",
+                  "replace": "",
+                  "precondition": {
+                    "blockTextHash": "hs2py72"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576447779,
+        "reportSeeds": [1576447779, 1576447908]
+      }
+    },
+    {
+      "fingerprint": "b1169d84ffd3b7b6",
+      "issueOrPr": "#1374",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "35240f905441125f",
+      "issueOrPr": "#1410",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1410,
+        "primary": "608356ec399f6db2",
+        "title": "consumer flow unusedNumbering / tracked-changes: a batch targets a block removed earlier in that batch",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "unusedNumbering",
+          "mode": "tracked-changes",
+          "seed": 1576446700,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 1512505503,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                },
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "1508FAF4",
+                  "properties": {
+                    "styleId": "Heading2"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "type": "consumer",
+        "reportSeed": 1576446700,
+        "reportSeeds": [1576446700]
+      }
+    },
+    {
+      "fingerprint": "608356ec399f6db2",
+      "issueOrPr": "#1410",
+      "firstSeen": "2026-10-02"
     }
   ]
 }

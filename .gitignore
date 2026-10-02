@@ -20,3 +20,5 @@ tests/visual/fixtures/parity-tmp-*
 
 # Locally fetched compare corpora (never committed; see benchmarks/compare/README.md)
 benchmarks/compare/.local/
+engine-parity-out/
+engine-parity-ref/
