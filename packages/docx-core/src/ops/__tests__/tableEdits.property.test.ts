@@ -287,20 +287,58 @@ describe("semantic table edit properties", () => {
           expect(row.cells.at(0)?.formatting?.vMerge).toBe("continue");
           expect(row.cells.length).toBe(f.width - 1);
         }
-        const split = applied(merged.document, {
-          ...target(f.target),
-          type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-          newBlockIds: Array.from({ length: f.height }, (_, offset) => id(0x3000 + offset)),
-        });
-        const splitTable = tableOf(split.document, f.nested);
-        for (const [rowIndex, row] of splitTable.rows.entries()) {
-          expect(row.cells.length).toBe(f.width);
-          for (const cell of row.cells) {
-            expect(cell.formatting?.gridSpan ?? 1).toBe(1);
-            expect(cell.formatting?.vMerge).toBeUndefined();
-          }
-          exact(row.cells.at(0)?.content, table.rows.at(rowIndex)?.cells.at(0)?.content);
+        // The generator previously coupled every split to a vertical merge, despite
+        // that geometry being refused. Cover every group target plus a horizontal success path.
+        const mergedSnapshot = structuredClone(merged.document);
+        for (const row of table.rows) {
+          const mergedParagraph = row.cells.at(0)?.content.at(0);
+          if (mergedParagraph?.type !== "paragraph" || !mergedParagraph.paraId)
+            throw new Error("Merged target paragraph missing.");
+          const refusal = applyDocumentOp(merged.document, {
+            ...target(mergedParagraph.paraId),
+            type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+            newBlockIds: [],
+          });
+          if (refusal.isOk()) throw new Error("Vertical-group split must refuse.");
+          expect(refusal.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+          exact(merged.document, mergedSnapshot);
         }
+        const horizontal = fixture({ ...value, variant: 0 });
+        const horizontalBefore = tableOf(horizontal.document, horizontal.nested);
+        const horizontalMerged = applied(horizontal.document, {
+          ...target(horizontal.target),
+          type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+          top: 0,
+          bottom: 1,
+          left: 0,
+          right: 2,
+          newBlockIds: [],
+        });
+        const horizontalTable = tableOf(horizontalMerged.document, horizontal.nested);
+        const topContent = horizontalBefore.rows
+          .at(0)
+          ?.cells.slice(0, 2)
+          .flatMap((cell) => cell.content);
+        exact(horizontalTable.rows.at(0)?.cells.at(0)?.content, topContent);
+        expect(horizontalTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+        const split = applied(horizontalMerged.document, {
+          ...target(horizontal.target),
+          type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+          newBlockIds: [id(0x3000)],
+        });
+        const splitTable = tableOf(split.document, horizontal.nested);
+        const topRow = splitTable.rows.at(0);
+        expect(topRow?.cells.length).toBe(horizontal.width);
+        exact(topRow?.cells.at(0)?.content, topContent);
+        exact(topRow?.cells.at(1)?.content, [
+          { type: "paragraph", paraId: id(0x3000), content: [] },
+        ]);
+        for (const cell of topRow?.cells ?? []) {
+          expect(cell.formatting?.gridSpan ?? 1).toBe(1);
+          expect(cell.formatting?.vMerge).toBeUndefined();
+        }
+        for (let rowIndex = 1; rowIndex < horizontal.height; rowIndex++)
+          exact(splitTable.rows.at(rowIndex), horizontalBefore.rows.at(rowIndex));
       }),
       { numRuns: NUM_RUNS },
     );

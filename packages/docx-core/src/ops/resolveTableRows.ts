@@ -320,8 +320,9 @@ const resolveCellColumns = ({
   ids,
   reject,
 }: ResolveCellColumnsOptions): Result<Table, "unsupported"> => {
-  const width = table.columnWidths?.length;
-  if (width === undefined || width === 0) return Result.err("unsupported");
+  const columnWidths = table.columnWidths;
+  if (columnWidths === undefined || columnWidths.length === 0) return Result.err("unsupported");
+  const width = columnWidths.length;
   const removeCells = (change: TableStructuralChangeInfo): boolean => {
     if (change.type === "tableCellInsertion") return reject;
     if (change.type === "tableCellDeletion") return !reject;
@@ -380,7 +381,7 @@ const resolveCellColumns = ({
     removedByRow.push(removed);
   }
 
-  const nextWidths = table.columnWidths.filter((_columnWidth, index) => !targetSlots.has(index));
+  const nextWidths = columnWidths.filter((_columnWidth, index) => !targetSlots.has(index));
   if (nextWidths.length === 0) return Result.err("unsupported");
   const rows = table.rows.map((row, rowIndex) => {
     const layout = gridRows[rowIndex];

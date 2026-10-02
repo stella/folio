@@ -28,6 +28,8 @@ import {
   type RevisionStamp,
 } from "./types";
 
+const CELL_VERTICAL_MERGES = { RESTART: "restart", CONTINUE: "continue" } as const;
+
 type Op = TableEditOp | SetTableOp;
 type RefusalOptions = {
   op: Pick<Op, "type">;
@@ -158,8 +160,9 @@ const commitTable = ({
 };
 
 const withSpan = (cell: TableCell, span: number): TableCell => {
-  const formatting = authored({ ...cell.formatting, gridSpan: span });
+  const formatting = authored({ ...cell.formatting });
   if (span === 1) delete formatting.gridSpan;
+  else formatting.gridSpan = span;
   return { ...cell, formatting };
 };
 const dividedWidth = (
@@ -547,7 +550,8 @@ const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, Docum
         ...entry.cell,
         formatting: authored({
           ...entry.cell.formatting,
-          vMerge: rowIndex === op.top ? "restart" : "continue",
+          vMerge:
+            rowIndex === op.top ? CELL_VERTICAL_MERGES.RESTART : CELL_VERTICAL_MERGES.CONTINUE,
         }),
       };
       const stamp = stamps.value[(rowIndex - op.top) * 2];
@@ -744,10 +748,11 @@ export const tableEditParagraphDemand = (
           );
         }).length,
       );
-    case DOCUMENT_OP_TYPES.MERGE_CELLS:
-      return mergeSelection({ table, grid: grid.value, op }).map(({ verticalOnly }) =>
-        verticalOnly ? 0 : op.bottom - op.top - 1,
-      );
+    case DOCUMENT_OP_TYPES.MERGE_CELLS: {
+      const selection = mergeSelection({ table, grid: grid.value, op });
+      if (selection.isErr()) return Result.err(selection.error);
+      return Result.ok(selection.value.verticalOnly ? 0 : op.bottom - op.top - 1);
+    }
     case DOCUMENT_OP_TYPES.SPLIT_CELL: {
       const target = grid.value.rows[location.rowIndex]?.find(
         (entry) => entry.index === location.cellIndex,
