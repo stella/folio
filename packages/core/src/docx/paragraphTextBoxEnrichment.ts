@@ -35,6 +35,7 @@ import {
 import type { TableParserFn } from "./textBoxParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
+  findChild,
   findChildByLocalName,
   findDeep,
   getAttribute,
@@ -633,6 +634,18 @@ const enrichTextBoxRuns = ({
 
     if ((hasNonTextBoxContent || fillsEmptyCarrier) && parsedRun) {
       lastConsumedRun = parsedRun;
+      parsedIndex += 1;
+    }
+    // Parsing lifts a reference out of its source run into paragraph content.
+    // Consume that sibling too, including reference-only runs, before matching
+    // the next drawing carrier; otherwise its shape is inserted before the mark.
+    const reference = findChild(xmlChild, "w", "commentReference");
+    const parsedReference = content.at(parsedIndex);
+    if (
+      reference &&
+      parsedReference?.type === "commentReference" &&
+      parsedReference.id === Number.parseInt(getAttribute(reference, "w", "id") ?? "", 10)
+    ) {
       parsedIndex += 1;
     }
   }

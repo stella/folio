@@ -477,5 +477,12 @@
       "note": "Style numbering provenance across tracked paragraph and list changes, resolution, and save/reopen.",
       "date": "2026-09-30"
     }
+  ],
+  "packages/core/src/docx/textBoxCommentOrder.property.test.ts::comment reference and text box run sequences preserve source order and save fixed point": [
+    {
+      "seed": 774176858,
+      "note": "#1352: comment reference runs must advance textbox source matching",
+      "date": "2026-10-02"
+    }
   ]
 }

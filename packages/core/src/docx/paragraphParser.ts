@@ -1613,8 +1613,9 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // empty run plus the reference node. The empty run is a vestigial
       // artifact — the reference serializer re-emits its own run, so a lone
       // empty run here does not survive re-parsing and breaks round-trip
-      // idempotence. Keep the run only when it also carries real content.
-      if (runHoldsPayload(run)) {
+      // idempotence. Keep payload, including a text box the enrichment pass
+      // has not yet attached to this carrier.
+      if (hasRunPayload({ run, runElement, rels, media })) {
         contents.push(withOrphanFieldCharsPreserved(run, runElement));
       }
       contents.push({
