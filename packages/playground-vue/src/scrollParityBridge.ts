@@ -6,6 +6,7 @@ import type {
   FolioAIEditSnapshot,
 } from "@stll/folio-vue";
 
+type FolioDocumentOperationBatch = Parameters<DocxEditorRef["applyDocumentOperations"]>[0]["batch"];
 type EditorView = Parameters<NonNullable<DocxEditorProps["onEditorViewReady"]>>[0];
 type PagedRef = NonNullable<ReturnType<DocxEditorRef["getEditorRef"]>>;
 type ScrollMethod =
@@ -77,7 +78,62 @@ export const buildScrollParityBridge = (getRef: () => DocxEditorRef | null) => {
   let readyAppliedTop = 0;
   let readyEventCount = 0;
   let readyEventAppliedTop = 0;
+  const requireRef = () => {
+    const ref = getRef();
+    if (!ref) throw new Error("Host flow requires a document ref");
+    return ref;
+  };
   return {
+    loadFlowDocument: async (source: number[]) => {
+      const ref = requireRef();
+      await ref.loadDocumentBuffer(new Uint8Array(source));
+      ref.ensureEditorView({ focus: false });
+      suggestionId = null;
+    },
+    replaceFlowDocument: async (source: number[]) => {
+      const ref = requireRef();
+      // Parse a distinct replacement, then exercise the pre-parsed public API.
+      await ref.loadDocumentBuffer(new Uint8Array(source));
+      const document = ref.getDocument();
+      if (!document) throw new Error("Replacement document unavailable");
+      ref.loadDocument(document);
+      ref.ensureEditorView({ focus: false });
+      suggestionId = null;
+    },
+    applyFlowBatch: (batch: FolioDocumentOperationBatch) => {
+      const ref = requireRef();
+      const snapshot = ref.createAIEditSnapshot();
+      if (!snapshot) throw new Error("Host flow snapshot unavailable");
+      return ref.applyDocumentOperations({ snapshot, batch });
+    },
+    readFlowDocument: () => {
+      const ref = requireRef();
+      const document = ref.getDocument();
+      const pagedDocument = ref.getEditorRef()?.getDocument();
+      if (!document || !pagedDocument) throw new Error("Host document read unavailable");
+      return {
+        documentBody: document.package.document,
+        pagedBody: pagedDocument.package.document,
+        liveText: ref.getEditor()?.getState()?.doc.textContent,
+      };
+    },
+    saveFlowDocument: async () => {
+      const saved = await requireRef().save();
+      if (!saved) throw new Error("Host checkpoint did not save");
+      return [...new Uint8Array(saved)];
+    },
+    resetFlowScroll: () => {
+      const root = requireRef().getScrollRoot();
+      if (!root) throw new Error("Host scroll root unavailable");
+      root.scrollTop = 0;
+    },
+    rejectFlowSuggestion: () => {
+      const ref = requireRef();
+      if (!suggestionId) return false;
+      const rejected = ref.rejectSuggestion(suggestionId);
+      suggestionId = null;
+      return rejected;
+    },
     prepareSuggestion: () => {
       const ref = getRef();
       const snapshot = ref?.createAIEditSnapshot();
