@@ -100,7 +100,9 @@ describe("canonical structural commands", () => {
       fc.asyncProperty(
         fc.array(inputArbitrary, { minLength: 14, maxLength: 28 }),
         async (generated) => {
-          const session = createCanonicalSession(seed()).unwrap();
+          const document = seed();
+          assignDocumentParagraphPropertySourceContract(document, "b".repeat(64));
+          const session = createCanonicalSession(document).unwrap();
           let state = EditorState.create({ schema, doc: session.projection.doc });
           let oracle = ["ab😀cd", "EF"];
           const history: {
@@ -109,6 +111,7 @@ describe("canonical structural commands", () => {
             preSelection: ReturnType<typeof state.selection.toJSON>;
             postSelection: ReturnType<typeof state.selection.toJSON>;
           }[] = [];
+          const outcomes = { applied: 0, noChange: 0 };
           const exercised = new Set<(typeof kinds)[number]>();
           const inputs = [
             ...kinds.map((kind) => ({ kind, offset: 2, reverse: false, bold: true })),
@@ -130,13 +133,16 @@ describe("canonical structural commands", () => {
             const offset =
               gaps.at(input.offset % gaps.length) ?? panic("Sequence lost a code-point gap.");
             state = select(state, address.start + offset);
-            let prepare: CanonicalCommit;
+            let prepare: ReturnType<typeof session.prepareIntent>;
             let expectedCaret: TextPosition | undefined;
             const before = session.document;
+            const previousVersion = session.version;
+            const previousUndo = session.canUndo;
+            const previousRedo = session.canRedo;
             let preSelection = state.selection.toJSON();
             switch (input.kind) {
               case "split": {
-                prepare = session.prepareSplit(state).unwrap();
+                prepare = session.prepareSplit(state);
                 expectedCaret = { story: "main", blockId: source.paraId ?? "", offset: 0 };
                 const original = oracle.at(index) ?? panic("Text oracle lost a paragraph.");
                 oracle.splice(index, 1, original.slice(0, offset), original.slice(offset));
@@ -144,10 +150,8 @@ describe("canonical structural commands", () => {
               }
               case "join": {
                 if (sources.length === 1) {
-                  expect(
-                    session.prepareJoin(select(state, address.start), "backward").isErr(),
-                  ).toBe(true);
-                  continue;
+                  prepare = session.prepareJoin(select(state, address.start), "backward");
+                  break;
                 }
                 const firstIndex = input.offset % (sources.length - 1);
                 const first = sources.at(firstIndex) ?? panic("Missing join paragraph.");
@@ -156,7 +160,7 @@ describe("canonical structural commands", () => {
                   panic("Missing join address.");
                 state = select(state, firstAddress.start + firstAddress.text.length);
                 preSelection = state.selection.toJSON();
-                prepare = session.prepareJoin(state, "forward").unwrap();
+                prepare = session.prepareJoin(state, "forward");
                 expectedCaret = {
                   story: "main",
                   blockId: sources.at(firstIndex + 1)?.paraId ?? "",
@@ -176,7 +180,7 @@ describe("canonical structural commands", () => {
                 preSelection = state.selection.toJSON();
                 prepare = prepareCanonicalCommands(session, state, [
                   { type: "formatRun", from, to, patch: { bold: input.bold } },
-                ]).unwrap();
+                ]);
                 break;
               }
               case "paragraph":
@@ -186,7 +190,7 @@ describe("canonical structural commands", () => {
                     at: state.selection.head,
                     patch: { alignment: input.reverse ? "right" : "center" },
                   },
-                ]).unwrap();
+                ]);
                 break;
               case "atom": {
                 const at = session.projection.addressAt(state.selection.head).unwrap();
@@ -196,14 +200,12 @@ describe("canonical structural commands", () => {
                   if (input.reverse) return { type: "break", breakType: "textWrapping" } as const;
                   return { type: "tab" } as const;
                 })();
-                prepare = session
-                  .prepareIntent(state, {
-                    type: "insertAtom",
-                    from: at,
-                    to: at,
-                    atom,
-                  })
-                  .unwrap();
+                prepare = session.prepareIntent(state, {
+                  type: "insertAtom",
+                  from: at,
+                  to: at,
+                  atom,
+                });
                 const original = oracle.at(index) ?? panic("Text oracle lost an atom paragraph.");
                 oracle[index] = original.slice(0, offset) + "\uFFFC" + original.slice(offset);
                 break;
@@ -211,18 +213,16 @@ describe("canonical structural commands", () => {
               case "list":
                 prepare = prepareCanonicalCommands(session, state, [
                   { type: "toggleList", kind: input.reverse ? "bullet" : "decimal" },
-                ]).unwrap();
+                ]);
                 break;
               case "input": {
                 expectedCaret = { story: "main", blockId: source.paraId ?? "", offset: offset + 1 };
-                prepare = session
-                  .prepareReplace(state, {
-                    from: state.selection.head,
-                    to: state.selection.head,
-                    text: "é",
-                    semantic: "replacement",
-                  })
-                  .unwrap();
+                prepare = session.prepareReplace(state, {
+                  from: state.selection.head,
+                  to: state.selection.head,
+                  text: "é",
+                  semantic: "replacement",
+                });
                 const original = oracle.at(index) ?? panic("Text oracle lost an input paragraph.");
                 oracle[index] = original.slice(0, offset) + "é" + original.slice(offset);
                 break;
@@ -232,7 +232,21 @@ describe("canonical structural commands", () => {
                 return panic(`Unknown sequence kind ${unreachable}`);
               }
             }
-            state = accept(session, state, prepare);
+            if (prepare.isErr()) {
+              expect(prepare.error.reason).toBe("noChange");
+              expect(["run", "paragraph", "join"]).toContain(input.kind);
+              if (input.kind === "join") expect(sources.length).toBe(1);
+              outcomes.noChange += 1;
+              expect(session.document).toStrictEqual(before);
+              expect(session.version).toBe(previousVersion);
+              expect(session.canUndo).toBe(previousUndo);
+              expect(session.canRedo).toBe(previousRedo);
+              expect(state.selection.toJSON()).toEqual(preSelection);
+              expect(texts(session)).toEqual(oracle);
+              continue;
+            }
+            outcomes.applied += 1;
+            state = accept(session, state, prepare.value);
             expect(texts(session)).toEqual(oracle);
             if (expectedCaret !== undefined) {
               const selection = session.projection.selectionAt(state).unwrap();
@@ -262,6 +276,9 @@ describe("canonical structural commands", () => {
               postSelection: state.selection.toJSON(),
             });
           }
+          expect(outcomes.applied + outcomes.noChange).toBe(inputs.length);
+          expect(outcomes.applied).toBe(history.length);
+          expect(outcomes.applied).toBeGreaterThanOrEqual(kinds.length);
           expect([...exercised].sort()).toEqual([...kinds].sort());
           for (const entry of history.toReversed()) {
             state = accept(session, state, session.prepareUndo(state).unwrap());
@@ -553,7 +570,7 @@ describe("canonical structural commands", () => {
     );
   });
 
-  test("retired identities reused by split retain the source lineage of each undo state", () => {
+  test("split identities never reuse retired identities and undo restores each source lineage", () => {
     const document = seed();
     const first = document.package.document.content.at(0);
     const second = document.package.document.content.at(1);
@@ -569,12 +586,14 @@ describe("canonical structural commands", () => {
     let state = EditorState.create({ schema, doc: session.projection.doc });
     state = select(state, 7);
     state = accept(session, state, session.prepareJoin(state, "forward").unwrap());
-    // Joining retires 00000001; the next split allocates that same unused identity.
+    // Joining retires 00000001; subsequent splits must allocate a fresh identity.
     state = select(state, 3);
     state = accept(session, state, session.prepareSplit(state).unwrap());
-    const allocated = paragraphs(session).find(({ paraId }) => paraId === "00000001");
+    const allocated = paragraphs(session).find(({ paraId }) => paraId !== "00000002");
     expect(allocated).toBeDefined();
+    expect(allocated?.paraId).not.toBe("00000001");
     expect(allocated && getParagraphPropertySource(allocated)).toBeUndefined();
+    expect(allocated && getParagraphPropertySourceToken(allocated)).toBeUndefined();
     state = accept(session, state, session.prepareUndo(state).unwrap());
     state = accept(session, state, session.prepareUndo(state).unwrap());
     const restored = paragraphs(session).at(0) ?? panic("Undo did not restore retired paragraph.");

@@ -924,23 +924,6 @@ class CanonicalSession {
     if (applied.isErr()) return refuse(applied.error.message);
     if (applied.value.inverse.length === 0) return noChange("The intent makes no document change.");
     preservePropertySources(applied.value.document, this.currentDocument);
-    const stagedSources = new Map(
-      this.currentDocument.package.document.content.flatMap((block) =>
-        block.type === "paragraph" && block.paraId !== undefined
-          ? [[block.paraId, block] as const]
-          : [],
-      ),
-    );
-    for (const op of ops) {
-      if (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK) continue;
-      const source = stagedSources.get(op.at.blockId);
-      if (source !== undefined) stagedSources.set(op.newBlockId, source);
-    }
-    for (const block of applied.value.document.package.document.content) {
-      if (block.type !== "paragraph" || block.paraId === undefined) continue;
-      const source = stagedSources.get(block.paraId);
-      if (source !== undefined && block !== source) copyParagraphPropertySource(block, source);
-    }
     if (propertySourceDocument !== undefined)
       preservePropertySources(applied.value.document, propertySourceDocument);
     const projected = project(applied.value.document, this.styles);
