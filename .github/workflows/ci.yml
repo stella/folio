@@ -150,7 +150,7 @@ jobs:
           PROPERTY_SHARD_COUNT: ${{ strategy.job-total }}
 
   # oxfmt formats Markdown too, so a documentation-only change still has its
-  # formatting checked; any other change runs the full format check in `ci`.
+  # formatting checked; any other change runs the full format check in `lint`.
   docs-format:
     name: Format check (documentation only)
     needs: ci-plan
@@ -171,11 +171,12 @@ jobs:
       - name: Format check
         run: bun run format:check
 
-  ci:
-    name: Lint, typecheck, focused tests
+  lint:
+    name: Lint and source guards
     needs: ci-plan
     if: needs.ci-plan.outputs.code_required == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -184,6 +185,13 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
 
       - run: bun install --frozen-lockfile
 
@@ -347,31 +355,56 @@ jobs:
         # Guard their manual memoization so a cleanup cannot create render loops.
         run: bun run check:react-compiler
 
+  typecheck:
+    name: Typecheck
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Focused unit tests
-        run: bun test scripts/host-api-flow.test.ts scripts/editor-scroll-root.test.ts scripts/scroll-root-fixture.test.ts packages/core/src/paged-layout/editorScrollRoot.test.ts packages/vue/src/utils/viewportPosition.test.ts scripts/cross-host-lane.test.ts scripts/interleaving-lane.test.ts tests/visual/interleavingBridge.test.ts scripts/ci-plan.test.ts scripts/ci-result.test.mjs packages/docx-core/src/ops/__tests__/contract.test.ts packages/docx-core/src/projection.test.ts
-
-      - name: Full test suite
-        id: full-suite
-        if: needs.ci-plan.outputs.suite_depth == 'full'
-        run: |
-          set -o pipefail
-          mkdir -p test-results
-          bun run test 2>&1 | tee test-results/full-test-suite.log
-
-      # A property failure in a merge group is replayed on the group's base
-      # (fuzz-ejection-replay.yml) to tell a pre-existing failure from one the
-      # group brought in; it reads the failure lines from this log.
-      - name: Keep the test log of a failed merge group
-        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+  build-api:
+    name: Build reproducibility and API reports
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          name: fuzz-log-full-test-suite
-          path: test-results/full-test-suite.log
-          retention-days: 7
-          if-no-files-found: ignore
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
 
       - name: Build
         if: needs.ci-plan.outputs.suite_depth == 'full'
@@ -400,9 +433,213 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  validate-dist:
+    name: Published package validation
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true' && needs.ci-plan.outputs.suite_depth == 'full'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
       - name: Validate dist
         if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run validate-dist
+
+  tests-1:
+    name: Focused and full tests (1/4)
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Focused unit tests
+        run: bun scripts/ci-test-shards.ts --shard 1 --depth fast
+
+      - name: Full test suite
+        id: full-suite
+        if: needs.ci-plan.outputs.suite_depth == 'full'
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun scripts/ci-test-shards.ts --shard 1 --depth full 2>&1 | tee test-results/full-test-suite.log
+
+      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
+      - name: Keep the test log of a failed merge group
+        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-log-full-test-suite-1
+          path: test-results/full-test-suite.log
+          retention-days: 7
+          if-no-files-found: error
+
+  tests-2:
+    name: Focused and full tests (2/4)
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Focused unit tests
+        run: bun scripts/ci-test-shards.ts --shard 2 --depth fast
+
+      - name: Full test suite
+        id: full-suite
+        if: needs.ci-plan.outputs.suite_depth == 'full'
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun scripts/ci-test-shards.ts --shard 2 --depth full 2>&1 | tee test-results/full-test-suite.log
+
+      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
+      - name: Keep the test log of a failed merge group
+        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-log-full-test-suite-2
+          path: test-results/full-test-suite.log
+          retention-days: 7
+          if-no-files-found: error
+
+  tests-3:
+    name: Focused and full tests (3/4)
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Focused unit tests
+        run: bun scripts/ci-test-shards.ts --shard 3 --depth fast
+
+      - name: Full test suite
+        id: full-suite
+        if: needs.ci-plan.outputs.suite_depth == 'full'
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun scripts/ci-test-shards.ts --shard 3 --depth full 2>&1 | tee test-results/full-test-suite.log
+
+      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
+      - name: Keep the test log of a failed merge group
+        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-log-full-test-suite-3
+          path: test-results/full-test-suite.log
+          retention-days: 7
+          if-no-files-found: error
+
+  tests-4:
+    name: Focused and full tests (4/4)
+    needs: ci-plan
+    if: needs.ci-plan.outputs.code_required == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - name: Restore Bun download cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock', 'package.json') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - run: bun install --frozen-lockfile
+
+      - name: Focused unit tests
+        run: bun scripts/ci-test-shards.ts --shard 4 --depth fast
+
+      - name: Full test suite
+        id: full-suite
+        if: needs.ci-plan.outputs.suite_depth == 'full'
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          bun scripts/ci-test-shards.ts --shard 4 --depth full 2>&1 | tee test-results/full-test-suite.log
+
+      # Replay consumes every fuzz-log-* artifact; each shard keeps its own log.
+      - name: Keep the test log of a failed merge group
+        if: failure() && steps.full-suite.outcome == 'failure' && github.event_name == 'merge_group'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fuzz-log-full-test-suite-4
+          path: test-results/full-test-suite.log
+          retention-days: 7
+          if-no-files-found: error
 
   typecheck-budget:
     name: Typecheck cost budget
@@ -447,7 +684,7 @@ jobs:
       # read the committed schema graph and the committed WebAssembly under
       # `packages/*/src/generated`. Neither reads a built `dist`, so this job
       # needs no build step. The declared-child lists and both halves of the
-      # reserved-value contract are checked in `ci` above and are not repeated
+      # reserved-value contract are checked in `lint` above and are not repeated
       # here.
       - name: Contract decisions match what folio does
         # Also recomputes the derived counts in docs/container-contract.md.
@@ -756,7 +993,14 @@ jobs:
       - changeset
       - property-areas
       - docs-format
-      - ci
+      - lint
+      - typecheck
+      - build-api
+      - validate-dist
+      - tests-1
+      - tests-2
+      - tests-3
+      - tests-4
       - typecheck-budget
       - container-contract
       - docx-kernel
@@ -782,7 +1026,14 @@ jobs:
             {"changeset":{"event":"pull_request"},
             "property-areas":{"event":"pull_request","area":"code_required"},
             "docs-format":{"area":"code_required","value":"false"},
-            "ci":{"area":"code_required"},
+            "lint":{"area":"code_required"},
+            "typecheck":{"area":"code_required"},
+            "build-api":{"area":"code_required","depth":"full"},
+            "validate-dist":{"area":"code_required","depth":"full"},
+            "tests-1":{"area":"code_required"},
+            "tests-2":{"area":"code_required"},
+            "tests-3":{"area":"code_required"},
+            "tests-4":{"area":"code_required"},
             "typecheck-budget":{"area":"typecheck_budget_required","depth":"full"},
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
