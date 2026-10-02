@@ -32,9 +32,15 @@ test("swarm workflows stay non-gating and preserve the long-flow dispatcher", ()
     const dispatch = events["workflow_dispatch"];
     if (!isRecord(dispatch) || !isRecord(dispatch["inputs"])) return panic("missing inputs");
     const inputs = dispatch["inputs"];
-    expect(Object.keys(inputs).sort()).toEqual(["factor", "long_flows", "minutes", "swarm"]);
+    const dedicated = Object.entries(jobs)
+      .filter(([, value]) => isRecord(value) && typeof value["uses"] === "string")
+      .map(([jobName]) => jobName.replaceAll("-", "_"))
+      .sort();
+    expect(Object.keys(inputs).sort()).toEqual(["factor", "minutes", "swarm", ...dedicated].sort());
     for (const jobName of ["consumer-fuzz", "property-fuzz"]) {
-      expect(job(jobs, jobName)["if"]).toBe("${{ !inputs.long_flows }}");
+      expect(job(jobs, jobName)["if"]).toBe(
+        `\${{ ${dedicated.map((input) => `!inputs.${input}`).join(" && ")} }}`,
+      );
     }
     expect(job(jobs, "long-flows")["uses"]).toBe("./.github/workflows/nightly-long-fuzz.yml");
     expect(JSON.stringify(job(jobs, "consumer-fuzz"))).toContain("inputs.swarm");
