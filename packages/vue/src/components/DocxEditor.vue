@@ -145,7 +145,9 @@
       </slot>
     </div>
 
-    <div v-if="refusalNotice" class="docx-editor-vue__notice" role="status">{{ refusalNotice }}</div>
+    <div v-if="refusalNotice" class="docx-editor-vue__notice" role="status">
+      {{ refusalNotice }}
+    </div>
 
     <div ref="hiddenPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-pm" />
     <div ref="hiddenHfPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm" />
