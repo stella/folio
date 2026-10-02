@@ -151,6 +151,9 @@ test("canonical input, history and saved document agree across both adapters", a
         data: "契約",
         cancelable: true,
       });
+      // Chromium clears inputType values emitted by other engines in synthetic events.
+      // Preserve the late-final-input fixture instead of testing an unclassified event.
+      Object.defineProperty(final, "inputType", { value: "insertFromComposition" });
       editor.dispatchEvent(final);
       replaceDOMText("契", "契約");
       for (let index = 0; index < 2; index++) {
@@ -172,6 +175,7 @@ test("canonical input, history and saved document agree across both adapters", a
         saveBlocked,
         provisionalPrevented: provisional.defaultPrevented,
         finalPrevented: final.defaultPrevented,
+        finalInputType: final.inputType,
       };
     });
     expect(compositionTrace).toEqual({
@@ -180,6 +184,7 @@ test("canonical input, history and saved document agree across both adapters", a
       saveBlocked: true,
       provisionalPrevented: false,
       finalPrevented: false,
+      finalInputType: "insertFromComposition",
     });
     const composed = await expectProjection(page, {
       text: "契約",
