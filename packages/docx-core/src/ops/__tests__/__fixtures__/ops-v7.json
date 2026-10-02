@@ -2353,7 +2353,19 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "AYl"
+                  "text": "AY"
+                }
+              ]
+            },
+            {
+              "type": "run",
+              "formatting": {
+                "bold": true
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "l"
                 }
               ]
             },
@@ -2422,7 +2434,8 @@
               "author": "Reviewer",
               "date": "2026-02-03T04:05:06Z",
               "initials": "R"
-            }
+            },
+            "resolutionJoin": 0
           }
         },
         {

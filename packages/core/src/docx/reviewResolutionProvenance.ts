@@ -1,7 +1,7 @@
 import { Result, TaggedError } from "better-result";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
-import type { Insertion, RunPropertyChange } from "../types/document";
+import type { Insertion, ParagraphMarkChange, RunPropertyChange } from "../types/document";
 import { getAttributeByNamespaceUri, type XmlElement } from "./xmlParser";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 
@@ -9,6 +9,7 @@ const NAMESPACES: ReadonlySet<string> = new Set([FOLIO_REVIEW_HISTORY_NAMESPACE]
 const VERSION = 1;
 const MAX_ATTRIBUTE_LENGTH = 32_768;
 type ResolutionJoins = NonNullable<Insertion["resolutionJoins"]>;
+type DeferredRemoval = NonNullable<ResolutionJoins["deferredRemove"]>[number];
 type BoundaryJoins = NonNullable<RunPropertyChange["boundaryJoins"]>;
 type RetainedIdentity = NonNullable<ResolutionJoins["retainedAfter"]>[number];
 type IdentitySlot = RetainedIdentity["source"][number];
@@ -22,7 +23,22 @@ const JOIN_FIELDS = {
   after: true,
   remove: true,
   retainedAfter: true,
+  deferredRemove: true,
 } as const satisfies Record<keyof ResolutionJoins, true>;
+
+const PARAGRAPH_MARK_FIELDS = {
+  kind: { type: "ooxml" },
+  info: { type: "ooxml" },
+  resolutionJoin: { type: "private", attribute: "resolutionJoin" },
+} as const satisfies Record<
+  keyof ParagraphMarkChange,
+  { type: "ooxml" } | { type: "private"; attribute: string }
+>;
+
+const DEFERRED_REMOVAL_FIELDS = { depth: true, blockers: true } as const satisfies Record<
+  keyof DeferredRemoval,
+  true
+>;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -54,13 +70,55 @@ const retained = (value: unknown): value is readonly RetainedIdentity[] =>
     );
   });
 
+const deferredRemoval = (value: unknown): value is DeferredRemoval => {
+  if (
+    !record(value) ||
+    Object.keys(value).some((key) => !Object.hasOwn(DEFERRED_REMOVAL_FIELDS, key))
+  )
+    return false;
+  const depth = value["depth"];
+  const blockers = value["blockers"];
+  return (
+    natural(depth) &&
+    depth <= MAX_REVISION_ID &&
+    Array.isArray(blockers) &&
+    blockers.length > 0 &&
+    !blockers.includes(undefined) &&
+    new Set(blockers).size === blockers.length &&
+    blockers.every((blocker: unknown) => natural(blocker) && blocker <= MAX_REVISION_ID)
+  );
+};
+
+const deferredRemovals = (
+  value: unknown,
+): value is NonNullable<ResolutionJoins["deferredRemove"]> => {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.includes(undefined) ||
+    !value.every(deferredRemoval)
+  )
+    return false;
+  const groups = value.map(({ depth, blockers }) => JSON.stringify({ depth, blockers }));
+  return new Set(groups).size === groups.length;
+};
+
 export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   record(value) &&
   Object.keys(value).every((key) => Object.hasOwn(JOIN_FIELDS, key)) &&
   natural(value["before"]) &&
   natural(value["after"]) &&
   natural(value["remove"]) &&
-  (value["retainedAfter"] === undefined || retained(value["retainedAfter"]));
+  (value["retainedAfter"] === undefined || retained(value["retainedAfter"])) &&
+  (!Object.hasOwn(value, "deferredRemove") || deferredRemovals(value["deferredRemove"]));
+
+export const isParagraphMarkResolutionJoin = (
+  value: unknown,
+): value is NonNullable<ParagraphMarkChange["resolutionJoin"]> =>
+  natural(value) && value <= MAX_REVISION_ID;
+
+const isEncodedParagraphMarkResolutionJoin = (value: unknown): value is number | null =>
+  value === null || isParagraphMarkResolutionJoin(value);
 
 export const isBoundaryJoins = (value: unknown): value is BoundaryJoins =>
   Array.isArray(value) &&
@@ -114,8 +172,12 @@ type SerializeAttributeOptions = {
   value: unknown;
   valid: (value: unknown) => boolean;
 };
-const serializeAttribute = ({ attribute, value, valid }: SerializeAttributeOptions): string => {
-  if (value === undefined) return "";
+const encodeAttribute = ({
+  attribute,
+  value,
+  valid,
+}: SerializeAttributeOptions): string | undefined => {
+  if (value === undefined) return undefined;
   if (!valid(value)) {
     throw new ReviewResolutionProvenanceError({
       attribute,
@@ -131,7 +193,14 @@ const serializeAttribute = ({ attribute, value, valid }: SerializeAttributeOptio
       message: `Oversized ${attribute} review provenance.`,
     });
   }
-  return ` folio:${attribute}="${escapeXmlAttribute(encoded)}"`;
+  return encoded;
+};
+
+const serializeAttribute = (options: SerializeAttributeOptions): string => {
+  const encoded = encodeAttribute(options);
+  return encoded === undefined
+    ? ""
+    : ` folio:${options.attribute}="${escapeXmlAttribute(encoded)}"`;
 };
 
 export const parseResolutionJoins = (node: XmlElement): ResolutionJoins | undefined =>
@@ -142,3 +211,35 @@ export const serializeResolutionJoins = (value: Insertion["resolutionJoins"]): s
   serializeAttribute({ attribute: "resolutionJoins", value, valid: isResolutionJoins });
 export const serializeBoundaryJoins = (value: RunPropertyChange["boundaryJoins"]): string =>
   serializeAttribute({ attribute: "boundaryJoins", value, valid: isBoundaryJoins });
+
+/** Null carries an owned undefined depth; a missing attribute carries no field. */
+export const parseParagraphMarkResolutionJoin = (
+  node: XmlElement,
+): Pick<ParagraphMarkChange, "resolutionJoin"> => {
+  const value = parseAttribute({
+    node,
+    attribute: PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute,
+    valid: isEncodedParagraphMarkResolutionJoin,
+  });
+  return value === undefined ? {} : { resolutionJoin: value === null ? undefined : value };
+};
+
+const paragraphMarkResolutionJoinOptions = (
+  mark: ParagraphMarkChange,
+): SerializeAttributeOptions => ({
+  attribute: PARAGRAPH_MARK_FIELDS.resolutionJoin.attribute,
+  value: Object.hasOwn(mark, "resolutionJoin") ? (mark.resolutionJoin ?? null) : undefined,
+  valid: isEncodedParagraphMarkResolutionJoin,
+});
+
+export const serializeParagraphMarkResolutionJoin = (mark: ParagraphMarkChange): string =>
+  serializeAttribute(paragraphMarkResolutionJoinOptions(mark));
+
+/** Captured paragraph properties compose the same envelope into a parsed XML element. */
+export const paragraphMarkResolutionJoinAttributes = (
+  mark: ParagraphMarkChange,
+): Record<string, string> => {
+  const options = paragraphMarkResolutionJoinOptions(mark);
+  const encoded = encodeAttribute(options);
+  return encoded === undefined ? {} : { [`folio:${options.attribute}`]: encoded };
+};

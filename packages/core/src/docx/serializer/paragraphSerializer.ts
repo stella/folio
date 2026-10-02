@@ -12,6 +12,8 @@
 
 import {
   serializeResolutionJoins,
+  serializeParagraphMarkResolutionJoin,
+  paragraphMarkResolutionJoinAttributes,
   ReviewResolutionProvenanceError,
 } from "../reviewResolutionProvenance";
 import type {
@@ -88,7 +90,7 @@ import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
  */
 function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
   const attrs = serializeTrackedChangeAttributes(mark.info);
-  return `<w:${mark.kind} ${attrs}/>`;
+  return `<w:${mark.kind} ${attrs}${serializeParagraphMarkResolutionJoin(mark)}/>`;
 }
 
 type SerializeParagraphFormattingOptions = {
@@ -382,7 +384,10 @@ const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): 
   if (!root || root.type !== "element") {
     panic("A validated paragraph-property capture could not be parsed for composition");
   }
-  const attributes = trackedChangeAttributeRecord(mark.info);
+  const attributes = {
+    ...trackedChangeAttributeRecord(mark.info),
+    ...paragraphMarkResolutionJoinAttributes(mark),
+  };
   const markElement = cloneElement(root, {
     name: `w:${mark.kind}`,
     attributes,

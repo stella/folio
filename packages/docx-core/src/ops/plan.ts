@@ -294,11 +294,12 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     (id) => !used.has(id) && id !== revision.id,
   );
   let taken = 0;
+  let remaining = pool.length;
   let stampUsed = false;
   let current = document;
   const ops: DocumentOp[] = [];
   const take = (count: number) => {
-    if (taken + count > pool.length) return undefined;
+    if (taken + count > remaining) return undefined;
     const ids = pool.slice(taken, taken + count);
     taken += count;
     return ids;
@@ -306,8 +307,14 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
   const append = (input: PlannedReviewOp): Result<void, DocumentOpRefusal> => {
     let op: DocumentOp = input;
     if (input.revision !== undefined) {
-      const stampId = stampUsed ? take(1)?.at(0) : revision.id;
-      if (stampId === undefined) return outOfIds();
+      // Source cuts consume the caller's pool in the same order as editing.
+      // Additional mode-owned stamps use its other end and cannot displace them.
+      let stampId = revision.id;
+      if (stampUsed) {
+        if (remaining <= taken) return outOfIds();
+        remaining -= 1;
+        stampId = pool.at(remaining) ?? panic("A reserved stamp has an allocated pool entry.");
+      }
       op = { ...input, revision: { ...revision, id: stampId } };
     }
     const demand = revisionIdDemand(current, op);

@@ -182,6 +182,15 @@ const CONTENT_CONTROL_STACK = "contentControls";
 export const reservedIdentityKeysIn = (value: unknown): string[] => {
   const out: string[] = [];
   walk(value, (entries, heldBy) => {
+    if (heldBy === "deferredRemove") {
+      const blockers = fieldOf(entries, "blockers");
+      if (Array.isArray(blockers)) {
+        for (const id of blockers) {
+          if (typeof id === "number") out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+        }
+      }
+      return;
+    }
     if (heldBy !== "retainedAfter") return;
     for (const field of ["source", "target"]) {
       const slots = fieldOf(entries, field);

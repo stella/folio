@@ -49,6 +49,7 @@ import {
   type Document,
   MAX_REVISION_ID,
   type Paragraph,
+  type ParagraphContent,
   type ParagraphFormatting,
   type Run,
   type RunPropertyChange,
@@ -1365,6 +1366,7 @@ type TrackSplitOptions = {
   made: Paragraph;
   /** Whether the new half is the second, which ends with the paragraph's own mark. */
   madeSecond: boolean;
+  resolutionJoin: number;
 };
 
 /**
@@ -1381,6 +1383,7 @@ const trackSplit = ({
   first,
   made,
   madeSecond,
+  resolutionJoin,
 }: TrackSplitOptions): DocumentOpRefusal | undefined => {
   if (op.firstMark !== undefined || (op.newParagraph?.propertyChanges?.length ?? 0) > 0) {
     return refusal(
@@ -1397,7 +1400,7 @@ const trackSplit = ({
       "A paragraph property change does not record the paragraph mark's run properties.",
     );
   }
-  first.pPrMark = { kind: "ins", info: stampInfo(stamp) };
+  first.pPrMark = { kind: "ins", info: stampInfo(stamp), resolutionJoin };
   if (
     !sameParagraphProperties(made.formatting, paragraph.formatting) &&
     (made.propertyChanges?.length ?? 0) === 0
@@ -1478,6 +1481,7 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
       first,
       made: madeHalf,
       madeSecond: newHalf === SPLIT_HALVES.SECOND,
+      resolutionJoin: cut.through.length,
     });
     if (tracked !== undefined) {
       return Result.err(tracked);

@@ -123,6 +123,7 @@ import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChange
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
   parseResolutionJoins,
+  parseParagraphMarkResolutionJoin,
   ReviewResolutionProvenanceError,
 } from "./reviewResolutionProvenance";
 
@@ -412,7 +413,11 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   for (const kind of PARAGRAPH_MARK_CHANGE_KINDS) {
     const element = findChildByNamespaceUri(rPr, WORDPROCESSINGML_NAMESPACE_URIS, kind);
     if (element) {
-      return { kind, info: parseTrackedChangeInfo(element) };
+      return {
+        kind,
+        info: parseTrackedChangeInfo(element),
+        ...parseParagraphMarkResolutionJoin(element),
+      };
     }
   }
   return undefined;

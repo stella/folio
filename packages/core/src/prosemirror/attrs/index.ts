@@ -1,5 +1,8 @@
 import { panic } from "better-result";
-import { isResolutionJoins } from "../../docx/reviewResolutionProvenance";
+import {
+  isResolutionJoins,
+  isParagraphMarkResolutionJoin,
+} from "../../docx/reviewResolutionProvenance";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { isSafePreservedChildXml, isWithinPreservedMarkupBudget } from "@stll/docx-core/schema";
 
@@ -363,6 +366,17 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "paragraph", issues);
 
+  const paragraphMark = attrs["pPrMark"];
+  if (
+    isRecord(paragraphMark) &&
+    paragraphMark["resolutionJoin"] !== undefined &&
+    !isParagraphMarkResolutionJoin(paragraphMark["resolutionJoin"])
+  ) {
+    issues.push({
+      path: "paragraph.attrs.pPrMark.resolutionJoin",
+      message: "Expected a non-negative bounded paragraph cut depth.",
+    });
+  }
   optionalString(attrs, "paraId", "paragraph.attrs.paraId", issues);
   optionalString(
     attrs,

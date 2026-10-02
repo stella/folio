@@ -22,6 +22,7 @@
  *    properties exactly as its definition says.
  */
 
+import { assertExactModel } from "../../../../../test/exactModel";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
@@ -1077,7 +1078,7 @@ describe("document operations", () => {
               const baselinePackage = Object.fromEntries(
                 Object.entries(document.package).filter(([key]) => key !== "numbering"),
               );
-              expect(rejectedPackage).toStrictEqual(baselinePackage);
+              assertExactModel(rejectedPackage, baselinePackage);
               expect(rejected.value.document.package.numbering?.nums).toContainEqual(
                 intent.target.num,
               );
@@ -1087,10 +1088,10 @@ describe("document operations", () => {
                 );
               }
             } else {
-              expect(rejected.value.document).toStrictEqual(document);
+              assertExactModel(rejected.value.document, document);
             }
           }
-          expect(acceptedDocument).toStrictEqual(directEdit.value.document);
+          assertExactModel(acceptedDocument, directEdit.value.document);
           const directUndo = applyDocumentOps(directEdit.value.document, directEdit.value.inverse);
           const trackedUndo = applyDocumentOps(
             trackedEdit.value.document,
@@ -1098,8 +1099,17 @@ describe("document operations", () => {
           );
           if (directUndo.isErr()) throw directUndo.error;
           if (trackedUndo.isErr()) throw trackedUndo.error;
-          expect(directUndo.value.document).toStrictEqual(document);
-          expect(trackedUndo.value.document).toStrictEqual(document);
+          assertExactModel(directUndo.value.document, document);
+          assertExactModel(trackedUndo.value.document, document);
+          const directRedo = applyDocumentOps(directUndo.value.document, directUndo.value.inverse);
+          const trackedRedo = applyDocumentOps(
+            trackedUndo.value.document,
+            trackedUndo.value.inverse,
+          );
+          if (directRedo.isErr()) throw directRedo.error;
+          if (trackedRedo.isErr()) throw trackedRedo.error;
+          assertExactModel(directRedo.value.document, directEdit.value.document);
+          assertExactModel(trackedRedo.value.document, trackedEdit.value.document);
           tallies.set(intent.type, (tallies.get(intent.type) ?? 0) + 1);
           if (intent.type === "formatRun" && intent.from.blockId !== intent.to.blockId) {
             appliedMultiParagraphFormatting += 1;

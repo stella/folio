@@ -1641,6 +1641,8 @@ type TrackedResolutionJoins = {
   after: number;
   /** Exact join depth when the wrapper is removed. */
   remove: number;
+  /** A split seam survives only while all intervening insertions await rejection. */
+  deferredRemove?: readonly { depth: number; blockers: readonly number[] }[];
   /** Source identities handed to the retained suffix when a deleted prefix goes. */
   retainedAfter?: readonly {
     depth: number;
@@ -2248,6 +2250,8 @@ export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[numbe
 export type ParagraphMarkChange = {
   kind: ParagraphMarkChangeKind;
   info: TrackedChangeInfo;
+  /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
+  resolutionJoin?: number | undefined;
 };
 
 export const REVIEW_CARRIERS = {

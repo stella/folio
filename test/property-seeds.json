@@ -367,6 +367,12 @@
       "path": "122:2:1:7:7:12:14:14:14:14:20:23:25:26:29:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:31:31:31:31:32:41:38:31:31:39:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:49:59:46:46:46:76:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:48:48:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47",
       "date": "2026-10-02",
       "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": -1513138991,
+      "path": "997:5:7:7:7:7:11:10:13:13:13:13:14:13:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:22:27:30:27:21:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:29:29:29:29:29:4:18:20:19:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:22:22:21:24:24:26:2:29:32:31:26:26:26:26:26:26:26:27:27:27:27:27:27:27:27:27:27:28:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28",
+      "date": "2026-10-02",
+      "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
     }
   ],
   "packages/core/src/prosemirror/commands/comments.bulk.test.ts::matches the legacy small-document semantics across generated nested revisions": [
@@ -835,6 +841,18 @@
       "path": "8:3:2:2:4:1:2:3:4:3:5:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
       "date": "2026-10-02",
       "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": 1756038609,
+      "path": "41:0:0:0:0:0:0:6:5:4:6:6:6:6:6:6:6:6:6:6:6:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
+    },
+    {
+      "seed": 87430792,
+      "path": "49:0:0:0:0:0:0:0:4:2:4:4:4:5:5:5:5:5:5:5:6:5:5:5:5:5:7:5:7:6:5:6:6:5:5:5:5:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain inherited exact structural editor-intent behavior observed in clipboard child CI."
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::the same operation on equal documents gives equal results": [
@@ -957,6 +975,20 @@
       "path": "0:0:0:0:0",
       "date": "2026-10-02",
       "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
+    }
+  ],
+  "packages/core/src/docx/reviewResolutionProvenance.test.ts::generated seam metadata survives ${wordNamespace} with arbitrary bound prefixes": [
+    {
+      "seed": 900663131,
+      "path": "0:0:0:1:0",
+      "date": "2026-10-02",
+      "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
+    },
+    {
+      "seed": 2054899610,
+      "path": "0:0:0:0:0:0:0:0:1:0:0",
+      "date": "2026-10-02",
+      "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
     }
   ]
 }

@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import fc from "fast-check";
 import { escapeXmlAttribute } from "@stll/docx-core";
+import { MAX_REVISION_ID, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
+import { readParagraphAttrs } from "../prosemirror/attrs";
+import { schema } from "../prosemirror/schema";
 import { assertExactModel } from "../../../../test/exactModel";
 import { assertProperty } from "../../../../test/property-testing";
 import { parseParagraph } from "./paragraphParser";
@@ -9,12 +14,14 @@ import { serializePartElement } from "./serializer/partNamespaces";
 import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 import {
   parseResolutionJoins,
+  parseParagraphMarkResolutionJoin,
+  serializeParagraphMarkResolutionJoin,
   ReviewResolutionProvenanceError,
   serializeBoundaryJoins,
   serializeResolutionJoins,
 } from "./reviewResolutionProvenance";
 import { findChild, parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
-import type { Paragraph } from "../types/document";
+import type { Paragraph, ParagraphMarkChange } from "../types/document";
 
 const element = (xml: string) => {
   const parsed = parseXmlDocument(xml);
@@ -33,9 +40,51 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           remove: fc.integer({ min: 0, max: 3 }),
         }),
         fc.subarray(["before", "after"] as const),
-        (prefix, depths, boundaryJoins) => {
+        fc.constantFrom(...PARAGRAPH_MARK_CHANGE_KINDS),
+        fc.oneof(
+          fc.constantFrom("absent", "undefined"),
+          fc.integer({ min: 0, max: 4 }),
+          fc.constant(MAX_REVISION_ID),
+        ),
+        fc.option(
+          fc.uniqueArray(
+            fc.record({
+              depth: fc.integer({ min: 0, max: 4 }),
+              blockers: fc.uniqueArray(
+                fc.oneof(
+                  fc.constant(0),
+                  fc.constant(MAX_REVISION_ID),
+                  fc.integer({ min: 1, max: MAX_REVISION_ID - 1 }),
+                ),
+                { minLength: 1, maxLength: 3 },
+              ),
+            }),
+            { minLength: 1, maxLength: 3, selector: (group) => JSON.stringify(group) },
+          ),
+          { nil: undefined },
+        ),
+        (prefix, depths, boundaryJoins, kind, resolutionJoin, deferredRemove) => {
+          const paragraphMark = {
+            kind,
+            info: { id: 3, author: "Reviewer" },
+            ...(resolutionJoin === "absent"
+              ? {}
+              : { resolutionJoin: resolutionJoin === "undefined" ? undefined : resolutionJoin }),
+          } satisfies ParagraphMarkChange;
+          const paragraphMarkAttrs = serializeParagraphMarkResolutionJoin(paragraphMark).replace(
+            "folio:",
+            `${prefix}:`,
+          );
           const joins = {
             ...depths,
+            ...(deferredRemove === undefined
+              ? {}
+              : {
+                  deferredRemove: deferredRemove.map(({ depth, blockers }) => ({
+                    depth,
+                    blockers,
+                  })),
+                }),
             retainedAfter: [
               {
                 depth: 0,
@@ -51,7 +100,7 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           );
           const paragraph = parseParagraph(
             element(
-              `<q:p xmlns:q="${wordNamespace}" xmlns:${prefix}="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><q:ins q:id="1" q:author="Reviewer"${attrs}><q:r><q:rPr><q:b/><q:rPrChange q:id="2" q:author="Reviewer"${boundaryAttrs}><q:rPr/></q:rPrChange></q:rPr><q:t>text</q:t></q:r></q:ins></q:p>`,
+              `<q:p xmlns:q="${wordNamespace}" xmlns:${prefix}="${FOLIO_REVIEW_HISTORY_NAMESPACE}"><q:pPr><q:rPr><q:${kind} q:id="3" q:author="Reviewer"${paragraphMarkAttrs}/></q:rPr></q:pPr><q:ins q:id="1" q:author="Reviewer"${attrs}><q:r><q:rPr><q:b/><q:rPrChange q:id="2" q:author="Reviewer"${boundaryAttrs}><q:rPr/></q:rPrChange></q:rPr><q:t>text</q:t></q:r></q:ins></q:p>`,
             ),
             null,
             null,
@@ -59,6 +108,12 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
             null,
             null,
           );
+          assertExactModel(paragraph.pPrMark, paragraphMark);
+          const pmDoc = toProseDoc({ package: { document: { content: [paragraph] } } });
+          const projected = proseDocToBlocks(pmDoc, [paragraph]).at(0);
+          if (projected?.type !== "paragraph")
+            throw new TypeError("Projected paragraph disappeared.");
+          assertExactModel(projected.pPrMark, paragraphMark);
           const wrapper = paragraph.content.at(0);
           if (wrapper?.type !== "insertion") throw new TypeError("A tracked wrapper disappeared.");
           assertExactModel(wrapper.resolutionJoins, joins);
@@ -77,6 +132,7 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           const reopenedNode = findChild(element(saved), "w", "p");
           if (reopenedNode === null) throw new TypeError("Saved paragraph disappeared.");
           const reopened = parseParagraph(reopenedNode, null, null, null, null, null);
+          assertExactModel(reopened.pPrMark, paragraphMark);
           const reopenedWrapper = reopened.content.at(0);
           if (reopenedWrapper?.type !== "insertion")
             throw new TypeError("Saved wrapper disappeared.");
@@ -94,6 +150,31 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
 test("malformed and future provenance is refused instead of discarded", () => {
   for (const encoded of [
     "not-json",
+    ...[
+      null,
+      { depth: -1, blockers: [1] },
+      { depth: MAX_REVISION_ID + 1, blockers: [1] },
+      { depth: 0, blockers: [] },
+      { depth: 0, blockers: [1, 1] },
+      { depth: 0, blockers: [-1] },
+      { depth: 0, blockers: [MAX_REVISION_ID + 1] },
+      { depth: 0, blockers: [1], extra: true },
+    ].map((deferredRemove) =>
+      JSON.stringify({ version: 1, value: { before: 0, after: 0, remove: 0, deferredRemove } }),
+    ),
+    ...[
+      [],
+      [
+        { depth: 0, blockers: [1] },
+        { depth: 0, blockers: [1] },
+      ],
+      [
+        { depth: 0, blockers: [1] },
+        { depth: -1, blockers: [2] },
+      ],
+    ].map((deferredRemove) =>
+      JSON.stringify({ version: 1, value: { before: 0, after: 0, remove: 0, deferredRemove } }),
+    ),
     JSON.stringify({ version: 2, value: { before: 0, after: 0, remove: 0 } }),
     JSON.stringify({ version: 1, value: { before: -1, after: 0, remove: 0 } }),
     JSON.stringify({
@@ -117,6 +198,49 @@ test("malformed and future provenance is refused instead of discarded", () => {
       element('<r xmlns:history="urn:unrelated" history:resolutionJoins="invalid"/>'),
     ),
   ).toBeUndefined();
+});
+
+test("paragraph cut provenance validates private envelopes and typed projection attributes", () => {
+  for (const encoded of [
+    "not-json",
+    JSON.stringify({ version: 2, value: 0 }),
+    JSON.stringify({ version: 1, value: -1 }),
+    JSON.stringify({ version: 1, value: 0.5 }),
+    JSON.stringify({ version: 1, value: MAX_REVISION_ID + 1 }),
+    JSON.stringify({ version: 1, value: "undefined" }),
+    JSON.stringify({ version: 1, value: 0, extra: true }),
+  ]) {
+    const node = element(
+      `<r xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}" history:resolutionJoin="${escapeXmlAttribute(encoded)}"/>`,
+    );
+    expect(() => parseParagraphMarkResolutionJoin(node)).toThrow(ReviewResolutionProvenanceError);
+  }
+  assertExactModel(
+    parseParagraphMarkResolutionJoin(
+      element('<r xmlns:history="urn:unrelated" history:resolutionJoin="invalid"/>'),
+    ),
+    {},
+  );
+  for (const resolutionJoin of [
+    -1,
+    0.5,
+    MAX_REVISION_ID + 1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ]) {
+    expect(() =>
+      serializeParagraphMarkResolutionJoin({
+        kind: "ins",
+        info: { id: 3, author: "Reviewer" },
+        resolutionJoin,
+      }),
+    ).toThrow(ReviewResolutionProvenanceError);
+    const node = schema.node("paragraph", {
+      pPrMark: { kind: "ins", info: { id: 3, author: "Reviewer" }, resolutionJoin },
+    });
+    const parsed = readParagraphAttrs(node);
+    expect(parsed.ok).toBe(false);
+  }
 });
 
 test("save refuses provenance requiring unsupported hyperlink repartition", () => {
