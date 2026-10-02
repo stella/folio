@@ -522,37 +522,16 @@
       "date": "2026-09-30"
     }
   ],
-  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
+  "test/canonical-session.fuzz.ts::canonical property flows preserve projection, exact history and saved content": [
     {
-      "seed": 1364722648,
-      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists",
+      "seed": -347416988,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
       "date": "2026-10-01"
     },
     {
-      "seed": 1364722648,
-      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0",
-      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.",
-      "date": "2026-10-02"
-    },
-    {
-      "seed": 1364722648,
-      "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
-      "date": "2026-10-02",
-      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
-    }
-  ],
-  "packages/core/src/controller/canonicalSession.test.ts::generated replacements lower tracked batches and resolution shares exact inverse history": [
-    {
-      "seed": 1520856127,
-      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:4:0:0:0:0:1",
-      "note": "Direct and tracked text input must insert the same authored run without copying source run XML attributes.",
-      "date": "2026-10-02"
-    },
-    {
-      "seed": 1572780071,
-      "path": "2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:2:3:0:0:0:0:0:1:0:0:4:1:1:2",
-      "note": "Review equivalence canonicalizes adjacent equivalent runs while exact undo retains authored structure.",
-      "date": "2026-10-02"
+      "seed": -965049575,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
     }
   ],
   "packages/core/src/utils/mergeDocumentContent.test.ts::repeated merges keep numbering unique and bounded across loaded id ranges": [
@@ -655,6 +634,39 @@
     {
       "seed": 1208866377,
       "note": "A late rejection must not duplicate or overwrite an earlier local refusal notice",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
+    {
+      "seed": 1364722648,
+      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": 1364722648,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0",
+      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1364722648,
+      "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
+    }
+  ],
+  "packages/core/src/controller/canonicalSession.test.ts::generated replacements lower tracked batches and resolution shares exact inverse history": [
+    {
+      "seed": 1520856127,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:4:0:0:0:0:1",
+      "note": "Direct and tracked text input must insert the same authored run without copying source run XML attributes.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1572780071,
+      "path": "2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:2:3:0:0:0:0:0:1:0:0:4:1:1:2",
+      "note": "Review equivalence canonicalizes adjacent equivalent runs while exact undo retains authored structure.",
       "date": "2026-10-02"
     }
   ]

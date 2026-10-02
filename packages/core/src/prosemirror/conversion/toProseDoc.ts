@@ -609,6 +609,10 @@ function preservedInlineNode(content: PreservedInline): PMNode {
     xml: content.xml,
     text: content.text,
     level: PRESERVED_XML_LEVELS.inline,
+    // What a folded list-number capture stands for goes along as it is, so
+    // that the conversion back can put it on the line where the fold's rule
+    // no longer hides it.
+    ...(content.foldedListNumber ? { foldedListNumber: content.foldedListNumber } : {}),
   });
 }
 

@@ -78,14 +78,14 @@ const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
 const acceptanceEntries = readAcceptanceEntries(registry);
 
 assert.equal(
-  new Set(acceptanceEntries.map(({ issue }) => issue)).size,
+  new Set(acceptanceEntries.map(({ fingerprint }) => fingerprint)).size,
   acceptanceEntries.length,
-  "each parked consumer issue must have exactly one acceptance replay",
+  "each parked consumer fingerprint must have exactly one acceptance replay",
 );
 
 for (const { fingerprint, issue, primary, reportSeed, title, flow } of acceptanceEntries) {
   const testName = `consumer flow ${flow.fixture} / ${flow.mode}`;
-  test(`known failure #${issue} (reported seed ${reportSeed}): ${title}`, async () => {
+  test(`known failure #${issue} ${fingerprint} (reported seed ${reportSeed}): ${title}`, async () => {
     let failure: unknown;
     try {
       await runFlowFile(flow);

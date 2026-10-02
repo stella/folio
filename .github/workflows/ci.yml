@@ -470,6 +470,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -487,6 +488,8 @@ jobs:
 
       - name: Focused unit tests
         run: bun scripts/ci-test-shards.ts --shard 1 --depth fast
+        env:
+          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
 
       - name: Full test suite
         id: full-suite
@@ -515,6 +518,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -532,6 +536,8 @@ jobs:
 
       - name: Focused unit tests
         run: bun scripts/ci-test-shards.ts --shard 2 --depth fast
+        env:
+          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
 
       - name: Full test suite
         id: full-suite
@@ -560,6 +566,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -577,6 +584,8 @@ jobs:
 
       - name: Focused unit tests
         run: bun scripts/ci-test-shards.ts --shard 3 --depth fast
+        env:
+          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
 
       - name: Full test suite
         id: full-suite
@@ -605,6 +614,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0 # fast-depth selection diffs the PR merge base
           persist-credentials: false
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -622,6 +632,8 @@ jobs:
 
       - name: Focused unit tests
         run: bun scripts/ci-test-shards.ts --shard 4 --depth fast
+        env:
+          CI_TEST_BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
 
       - name: Full test suite
         id: full-suite

@@ -8,6 +8,7 @@
 
 import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
+  FoldedListNumber,
   OutlineLevel,
   ParagraphAlignment,
   ParagraphFormatting,
@@ -118,6 +119,8 @@ export type PreservedXmlAttrs = {
   /** The visible text the markup puts on the line, empty when it shows none. */
   text: string;
   level: PreservedXmlLevel;
+  /** `PreservedInline.foldedListNumber`, for a capture the list marker stands in for. */
+  foldedListNumber?: FoldedListNumber;
 };
 
 /** A block child folio does not model, carried through the editor untouched. */
