@@ -13,6 +13,7 @@
 import { inspectDocxCompatibility } from "../docx/compatibility";
 import type { DocxCompatibility } from "../docx/compatibility";
 import { parseDocx } from "../docx/parser";
+import { prepareCanonicalDocxInput } from "../docx/canonicalSessionInput";
 import { recordDocumentLoadPhase } from "../layout-engine/layoutInstrumentation";
 import type { Document } from "../types/document";
 import { resetAuthorColors } from "../utils/authorColors";
@@ -38,6 +39,7 @@ export type DocumentLoaderHistory = {
 export type DocumentLoaderCallbacks = {
   /** Editor history to reset/seed with the loaded document. */
   history: DocumentLoaderHistory;
+  getExperimentalSession?: () => "canonical" | undefined;
   /**
    * Receives the identity of the document that just landed in history. Every
    * load allocates a fresh identity, so the adapter can tell an external load
@@ -119,7 +121,13 @@ export class DocumentLoaderManager {
       const parseStartedAt = performance.now();
       let doc: Document;
       try {
-        doc = await parseDocx(buffer, {
+        let input = buffer;
+        if (this.callbacks.getExperimentalSession?.() === "canonical") {
+          const prepared = await prepareCanonicalDocxInput(buffer);
+          if (prepared.isErr()) throw prepared.error;
+          input = prepared.value;
+        }
+        doc = await parseDocx(input, {
           detectVariables: false,
           preloadFonts: false,
           password: options.password,

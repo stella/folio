@@ -32,9 +32,14 @@ export type AdapterFixture = {
 const reactPort = Number(process.env["FOLIO_PLAYGROUND_PORT"]) || 4200;
 const vuePort = Number(process.env["FOLIO_PLAYGROUND_VUE_PORT"]) || 4201;
 
+export const VUE_ADAPTER = {
+  name: "vue",
+  baseUrl: `http://localhost:${vuePort}`,
+} as const satisfies AdapterFixture;
+
 const ADAPTERS: AdapterFixture[] = [
   { name: "react", baseUrl: `http://localhost:${reactPort}` },
-  { name: "vue", baseUrl: `http://localhost:${vuePort}` },
+  VUE_ADAPTER,
 ];
 
 /** The pages container both adapters paint into (React + Vue share the class). */

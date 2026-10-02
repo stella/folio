@@ -37,6 +37,7 @@ import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract"
 export type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 
 import { CollaborationApp } from "./CollaborationApp";
+import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 import {
   IDLE_PLAYGROUND_STATUS,
   PLAYGROUND_STATUS_CLASS_NAME,
@@ -611,6 +612,7 @@ export function App() {
   const [locale, setLocale] = useState<string>(DEFAULT_LOCALE);
   const query = new URLSearchParams(window.location.search);
   const parityFonts = globalThis.__folioParityFonts;
+  const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
   const showMarginGuides = query.has("marginGuides");
   const marginGuideColor = query.get("marginGuideColor") ?? undefined;
   // The editor paints from the display list. `?pageRenderer=legacy` selects the
@@ -809,6 +811,7 @@ export function App() {
     globalThis.__folioPlayground = {
       getEditorRef: () => editorRef.current,
     };
+    globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.current);
     globalThis.__folioScrollParity = scrollParityHost;
     globalThis.__folioParity = buildParityBridge(
       () => editorRef.current,
@@ -816,6 +819,7 @@ export function App() {
     );
     return () => {
       globalThis.__folioPlayground = undefined;
+      globalThis.__folioCanonical = undefined;
       globalThis.__folioParity = undefined;
       globalThis.__folioScrollParity = undefined;
     };
@@ -834,6 +838,7 @@ export function App() {
             document={documentBuffer ? null : currentDocument}
             documentBuffer={documentBuffer}
             author="Folio User"
+            {...(experimentalSession === undefined ? {} : { experimentalSession })}
             {...(parityFonts !== undefined ? { fonts: parityFonts } : {})}
             onEditorViewReady={scrollParityHost.onViewReady}
             preserveDocumentWhileLoading={query.has("readyScroll")}

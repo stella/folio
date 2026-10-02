@@ -14,15 +14,16 @@
         :document="documentBuffer ? null : currentDocument"
         :document-buffer="documentBuffer"
         author="Folio User"
+        v-bind="optionalEditorProps"
         :show-toolbar="true"
         :show-ruler="true"
         :show-margin-guides="showMarginGuides"
-        v-bind="marginGuideProps"
         :initial-zoom="1"
         :collaboration="collaboration"
         :on-copy="() => clipboardCallbackCounts.copy++"
         :on-cut="() => clipboardCallbackCounts.cut++"
         :on-paste="() => clipboardCallbackCounts.paste++"
+        :on-error="(error) => (status = error.message)"
         :on-editor-view-ready="scrollParityHost.onViewReady"
         @ready="scrollParityHost.onReady"
         :preserve-document-while-loading="query.has('readyScroll') || query.has('readyEventScroll')"
@@ -47,6 +48,7 @@ import type {
 
 import type { FolioParityBridge } from "./parityBridge";
 import { buildParityBridge } from "./parityBridge";
+import { buildCanonicalBridge } from "../../../tests/parity/canonicalBridge";
 import { buildScrollParityBridge } from "./scrollParityBridge";
 import type { ScrollParityBridge } from "./scrollParityBridge";
 
@@ -74,10 +76,14 @@ const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
 const clipboardCallbackCounts = { copy: 0, cut: 0, paste: 0 };
 const query = new URLSearchParams(window.location.search);
+const experimentalSession = query.get("session") === "canonical" ? "canonical" : undefined;
 const collaborationEnabled = query.has("collaboration");
 const showMarginGuides = query.has("marginGuides");
 const marginGuideColor = query.get("marginGuideColor") ?? undefined;
-const marginGuideProps = marginGuideColor === undefined ? {} : { marginGuideColor };
+const optionalEditorProps = {
+  ...(experimentalSession === undefined ? {} : ({ experimentalSession } as const)),
+  ...(marginGuideColor === undefined ? {} : { marginGuideColor }),
+};
 const collaborationDocument = collaborationEnabled ? new Y.Doc() : null;
 const collaborationAwareness = collaborationDocument ? new Awareness(collaborationDocument) : null;
 let collaborationWasSeeded = false;
@@ -107,6 +113,7 @@ collaborationAwareness?.setLocalStateField("user", {
 
 onMounted(() => {
   void loadFromQuery();
+  globalThis.__folioCanonical = buildCanonicalBridge(() => editorRef.value);
   globalThis.__folioScrollParity = scrollParityHost;
   globalThis.__folioParity = buildParityBridge(
     () => editorRef.value,
@@ -151,6 +158,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  globalThis.__folioCanonical = undefined;
   globalThis.__folioParity = undefined;
   globalThis.__folioScrollParity = undefined;
   globalThis.__folioVueCollaboration = undefined;

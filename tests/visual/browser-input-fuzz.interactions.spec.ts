@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
+import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
 
 import knownFailures from "../../test/known-failure-fingerprints.json" with { type: "json" };
 
@@ -388,6 +389,12 @@ const save = async (page: Page) => {
   return new Uint8Array(bytes).buffer;
 };
 
+const reopenSaved = async (buffer: ArrayBuffer) => {
+  const validity = await validateDocxPackage(buffer);
+  expect(validity.valid, validity.valid ? "" : validity.error).toBe(true);
+  return FolioDocxReviewer.fromBuffer(buffer);
+};
+
 const runMode = async (
   page: Page,
   source: ArrayBuffer,
@@ -401,7 +408,7 @@ const runMode = async (
   const live = await liveBlocks(page);
   const painted = await page.locator(".layout-page-content").allTextContents();
   const buffer = await save(page);
-  const reopened = await FolioDocxReviewer.fromBuffer(buffer);
+  const reopened = await reopenSaved(buffer);
   expect(projectLive(project(reopened))).toEqual(live);
   await page.evaluate(
     async (saved) => {
@@ -533,6 +540,7 @@ const config = parseBrowserInputTraceConfig(
   process.env,
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
 );
+const replayPath = process.env["PROPERTY_TEST_PATH"];
 test.setTimeout(600_000);
 
 test("browser generator covers every declared suggestion input kind", () => {
@@ -594,17 +602,22 @@ for (const seed of config.seeds) {
         const suggested = await runMode(page, source, baseline, trace, true);
         const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         accepting.acceptAll();
-        const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+        const accepted = await reopenSaved(await accepting.toBuffer());
         expect(project(accepted)).toEqual(edited.blocks);
         const rejecting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
         rejecting.rejectAll();
-        const rejected = await FolioDocxReviewer.fromBuffer(await rejecting.toBuffer());
+        const rejected = await reopenSaved(await rejecting.toBuffer());
         expect(project(rejected)).toEqual(baseline);
         if (JSON.stringify(edited.blocks) !== JSON.stringify(baseline)) {
           expect(suggested.changes.length).toBeGreaterThan(0);
         }
       }),
-      { seed, numRuns: config.runs, endOnFailure: false },
+      {
+        seed,
+        numRuns: config.runs,
+        endOnFailure: false,
+        ...(replayPath ? { path: replayPath } : {}),
+      },
     );
     const health = classifyFuzzRun(verdict);
     reportFuzzHealth(health);
@@ -641,6 +654,16 @@ for (const seed of config.seeds) {
       }
       const detail =
         failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
+      logFailureMarker(
+        failureMarker({
+          test: "browser input preserves readers, fresh render, and suggesting equivalence",
+          seed,
+          path: verdict.counterexamplePath,
+          repro: `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=${config.runs} PROPERTY_TEST_PATH=${verdict.counterexamplePath} bunx playwright test --project=browser-fuzzer --workers=1`,
+          failure,
+          flow: fc.stringify(verdict.counterexample?.at(0)),
+        }),
+      );
       throw new Error(
         `seed=${seed} path=${verdict.counterexamplePath} trace=${JSON.stringify(verdict.counterexample?.at(0))}\n${detail}`,
         { cause: failure },

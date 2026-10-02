@@ -24,12 +24,13 @@
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { panic } from "better-result";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { BlockContent, Document, Paragraph, TextFormatting } from "../../model/document";
+import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { storyParagraphs } from "../blocks";
-import { contractViolation } from "../contract";
+import { contractViolation, normalizeForOps } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { sameRunFormatting } from "../inline";
 import {
@@ -45,6 +46,7 @@ import {
   type DocumentOp,
   type DocumentOpType,
   INHERIT_RUN_PROPS,
+  OP_STORIES,
   SPLIT_HALVES,
 } from "../types";
 import {
@@ -235,7 +237,166 @@ const expectRestores = (applied: AppliedDocumentOp, original: Document): void =>
   expect(applyAll(restored.value.document, restored.value.inverse)).toStrictEqual(applied.document);
 };
 
+const plainInputArbitrary = fc
+  .array(fc.constantFrom("a", " ", "é", "ß", "😀", "𐐀", "e\u0301"), {
+    minLength: 1,
+    maxLength: 8,
+  })
+  .map((parts) => parts.join(""));
+
+const PLAIN_INPUT_KINDS = ["insert", "delete", "replace", "reject"] as const;
+const replaceInputArbitrary = fc.record({
+  kind: fc.constantFrom(...PLAIN_INPUT_KINDS),
+  anchor: fc.nat(),
+  head: fc.nat(),
+  text: plainInputArbitrary,
+});
+
+/** Canonical text input addresses UTF-16 gaps between complete code points. */
+const codePointGaps = (text: string): number[] => {
+  const gaps = [0];
+  let offset = 0;
+  for (const point of text) {
+    offset += point.length;
+    gaps.push(offset);
+  }
+  return gaps;
+};
+
 describe("document operations", () => {
+  test("plain-text input sequences preserve exact inverse, redo and rejection atomicity", () => {
+    const tally = new Map<string, number>();
+    fc.assert(
+      fc.property(
+        documentArbitrary,
+        fc.tuple(plainInputArbitrary, plainInputArbitrary).map((parts) => parts.join("")),
+        fc.array(replaceInputArbitrary, { minLength: 8, maxLength: 24 }),
+        (generated, initialText, inputs) => {
+          const first = storyParagraphs(generated.package.document).at(0);
+          if (!first?.paragraph.paraId) panic("Generated paragraph id unavailable");
+          const blockId = first.paragraph.paraId;
+          // Retain the existing generator's package metadata and secondary-story IDs.
+          const document = normalizeForOps({
+            ...generated,
+            package: {
+              ...generated.package,
+              document: {
+                ...generated.package.document,
+                sections: undefined,
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: blockId,
+                    content: [...initialText].map(
+                      (point, index) =>
+                        ({
+                          type: "run",
+                          formatting: index % 2 === 0 ? { bold: true } : { italic: true },
+                          content: [{ type: "text", text: point }],
+                        }) satisfies Run,
+                    ),
+                  },
+                ],
+              },
+            },
+          });
+          const original = structuredClone(document);
+          let current = document;
+          let text = initialText;
+          const journal: AppliedDocumentOp[] = [];
+          for (const input of inputs) {
+            const gaps = codePointGaps(text);
+            const anchor = gaps.at(input.anchor % gaps.length) ?? 0;
+            const head = gaps.at(input.head % gaps.length) ?? 0;
+            const from = input.kind === "insert" ? anchor : Math.min(anchor, head);
+            const to = input.kind === "insert" ? anchor : Math.max(anchor, head);
+            const replacement = input.kind === "delete" ? "" : input.text;
+            const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+            const source = storyParagraphs(current.package.document).at(0)?.paragraph;
+            if (!source) panic("Generated authored input paragraph disappeared");
+            const authoredUnit = from === to && from > 0 ? from - 1 : from;
+            let runProps: TextFormatting = {};
+            let end = 0;
+            for (const run of source.content) {
+              if (run.type !== "run") panic("Generated authored input encountered a wrapper");
+              end += run.content.reduce((width, child) => width + runContentWidth(child), 0);
+              if (authoredUnit < end) {
+                runProps = run.formatting ?? {};
+                break;
+              }
+            }
+            const ops: DocumentOp[] = [];
+            if (to > from) {
+              ops.push({
+                type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                from: position(from),
+                to: position(to),
+              });
+            }
+            if (replacement !== "") {
+              ops.push({
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: position(from),
+                text: replacement,
+                runProps,
+              });
+            }
+            if (input.kind === "reject") {
+              // Refuse after a valid insertion in the same batch: partial writes are forbidden.
+              ops.push({
+                type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                from: position(text.length + replacement.length + 1),
+                to: position(text.length + replacement.length + 2),
+              });
+            }
+            const before = structuredClone(current);
+            const applied = applyDocumentOps(current, ops);
+            expect(current).toStrictEqual(before);
+            if (input.kind === "reject") {
+              expect(applied.isErr()).toBe(true);
+              tally.set(input.kind, (tally.get(input.kind) ?? 0) + 1);
+              continue;
+            }
+            if (applied.isErr()) throw applied.error;
+            tally.set(input.kind, (tally.get(input.kind) ?? 0) + 1);
+            text = text.slice(0, from) + replacement + text.slice(to);
+            current = applied.value.document;
+            expect(orderedIds(current)).toEqual([blockId]);
+            const paragraph = storyParagraphs(current.package.document).at(0)?.paragraph;
+            if (!paragraph) panic("Generated paragraph disappeared");
+            expect(paragraphLogicalText(paragraph)).toBe(text);
+            // Every inserted UTF-16 unit carries the pre-deletion authored formatting.
+            let runOffset = 0;
+            for (const run of paragraph.content) {
+              if (run.type !== "run") panic("Generated authored input produced a wrapper");
+              const runEnd =
+                runOffset + run.content.reduce((width, child) => width + runContentWidth(child), 0);
+              if (runEnd > from && runOffset < from + replacement.length)
+                expect(run.formatting ?? {}).toStrictEqual(runProps);
+              runOffset = runEnd;
+            }
+            expectRestores(applied.value, before);
+            journal.push(applied.value);
+          }
+          const final = structuredClone(current);
+          const redo: (readonly DocumentOp[])[] = [];
+          for (const entry of journal.toReversed()) {
+            const undone = applyDocumentOps(current, entry.inverse);
+            if (undone.isErr()) throw undone.error;
+            current = undone.value.document;
+            redo.push(undone.value.inverse);
+          }
+          expect(current).toStrictEqual(original);
+          for (const ops of redo.toReversed()) current = applyAll(current, ops);
+          expect(current).toStrictEqual(final);
+        },
+      ),
+      propertyConfig({ numRuns: NUM_RUNS }),
+    );
+    expect([...tally.keys()].sort()).toEqual([...PLAIN_INPUT_KINDS].sort());
+    for (const applied of tally.values()) expect(applied).toBeGreaterThan(NUM_RUNS / 1000);
+  });
+
   test("an operation's inverse restores the document exactly", () => {
     const tally: Tally = new Map();
     fc.assert(

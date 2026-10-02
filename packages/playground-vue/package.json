@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "vue-tsc --noEmit",
+    "test": "bun test test",
     "format": "oxfmt ."
   },
   "dependencies": {

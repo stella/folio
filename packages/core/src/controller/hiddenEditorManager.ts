@@ -10,7 +10,7 @@
  * *when* to act) and drives this manager through the methods below.
  */
 
-import { panic } from "better-result";
+import { panic, TaggedError } from "better-result";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import { EditorState as PMEditorState } from "prosemirror-state";
 import type { DirectEditorProps } from "prosemirror-view";
@@ -47,7 +47,25 @@ import {
 } from "../prosemirror/yjsDocumentMetadata";
 import type { Document, StyleDefinitions } from "../types/document";
 import type { RemoteSelection } from "../types/remote-selection";
+import type { EditorMode } from "../managers/EditorModeManager";
 import { createHiddenEditorApi, type HiddenEditorApi } from "./hiddenEditorApi";
+import { createCanonicalInputBoundary } from "./canonicalInput";
+import {
+  createCanonicalSession,
+  publishCanonicalProjection,
+  type CanonicalSession,
+  type CanonicalCommit,
+} from "./canonicalSession";
+import { createParagraphChangeTrackerPlugin } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+
+export class CanonicalSessionRefusalError extends TaggedError("CanonicalSessionRefusalError")<{
+  message: string;
+}> {}
+
+type EditorSession =
+  | { type: "prosemirror" }
+  | { type: "canonical"; session: CanonicalSession }
+  | { type: "refused"; reason: string; documentIdentity: string | null };
 
 // Initial-load normalization. `appendTransaction` does not fire for the seed
 // document, so the paraId allocator and RTL base-direction detection are
@@ -395,6 +413,9 @@ export type HiddenEditorManagerDeps = {
   getCollaborationModules: () => CollaborationModules | null;
   getPrecomputedInitialState: () => EditorState | null | undefined;
   getReadOnly: () => boolean;
+  getExperimentalSession?: () => "canonical" | undefined;
+  getEditingMode?: () => EditorMode;
+  onSessionRefusal?: (reason: string) => void;
   /**
    * Identity of the loaded document as tracked by the adapter's loader: the
    * same value across internal edits (so typing does not trigger an external
@@ -469,6 +490,97 @@ export type HiddenEditorManager = {
 
 export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): HiddenEditorManager => {
   let view: EditorView | null = null;
+  let editorSession: EditorSession = { type: "prosemirror" };
+  const refuse = (reason: string): void => {
+    if (deps.onSessionRefusal) deps.onSessionRefusal(reason);
+    else throw new CanonicalSessionRefusalError({ message: reason });
+  };
+  const seedSession = (document: Document | null): boolean => {
+    if (deps.getExperimentalSession?.() !== "canonical") {
+      editorSession = { type: "prosemirror" };
+      return true;
+    }
+    const documentIdentity = deps.getDocumentIdentity();
+    if (editorSession.type === "refused" && editorSession.documentIdentity === documentIdentity) {
+      return false;
+    }
+    if (deps.getEditingMode?.() === "suggesting") {
+      const reason = "Suggesting is unavailable in the experimental canonical session.";
+      editorSession = { type: "refused", reason, documentIdentity };
+      refuse(reason);
+      return false;
+    }
+    if (deps.getCollaboration() || !document) {
+      const reason = deps.getCollaboration()
+        ? "Canonical sessions do not support collaboration."
+        : "Canonical sessions require a loaded Document.";
+      editorSession = { type: "refused", reason, documentIdentity };
+      refuse(reason);
+      return false;
+    }
+    const result = createCanonicalSession(document, deps.getStyles());
+    if (result.isErr()) {
+      editorSession = { type: "refused", reason: result.error.message, documentIdentity };
+      refuse(result.error.message);
+      return false;
+    }
+    editorSession = { type: "canonical", session: result.value };
+    return true;
+  };
+  const canonicalState = (session: CanonicalSession) =>
+    PMEditorState.create({
+      doc: session.projection.doc,
+      plugins: [
+        createParagraphChangeTrackerPlugin(),
+        createDocumentStylesPlugin(deps.getStyles() ?? session.document.package.styles),
+        createDocumentNumberingPlugin(session.document.package.numbering),
+      ],
+    });
+  const publishCommit = (commit: CanonicalCommit): boolean => {
+    if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return false;
+    if (deps.getEditingMode?.() === "suggesting") {
+      refuse("Suggesting is unavailable in the experimental canonical session.");
+      return false;
+    }
+    const session = editorSession.session;
+    const result = publishCanonicalProjection({ state: view.state, commit, session });
+    if (result.isErr()) {
+      refuse(result.error.message);
+      return false;
+    }
+    const staged = result.value;
+    view.updateState(staged.state);
+    deps.onTransaction({
+      transactions: staged.transactions,
+      newState: staged.state,
+      docChanged: commit.transaction.docChanged,
+    });
+    deps.onSelectionChange(staged.state);
+    return true;
+  };
+  const history = (direction: "undo" | "redo"): boolean => {
+    if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return false;
+    const session = editorSession.session;
+    if (direction === "undo" ? !session.canUndo : !session.canRedo) return false;
+    const prepared =
+      direction === "undo" ? session.prepareUndo(view.state) : session.prepareRedo(view.state);
+    if (prepared.isErr()) {
+      refuse(prepared.error.message);
+      return false;
+    }
+    return publishCommit(prepared.value);
+  };
+  const input = createCanonicalInputBoundary({
+    replace: (intent) => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
+      const prepared = editorSession.session.prepareReplace(view.state, intent);
+      if (prepared.isErr()) refuse(prepared.error.message);
+      else publishCommit(prepared.value);
+    },
+    undo: () => history("undo"),
+    redo: () => history("redo"),
+    refuse,
+  });
   let isDestroying = false;
   // The React adapter requests the view explicitly (first interaction) or
   // eagerly (collaboration); creation only proceeds once requested.
@@ -490,7 +602,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
-    if (collaboration && !collaborationModules) {
+    if (collaboration && !collaborationModules && deps.getExperimentalSession?.() !== "canonical") {
       return;
     }
 
@@ -500,23 +612,29 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const extensionManager = deps.getExtensionManager();
     const externalPlugins = deps.getExternalPlugins();
 
-    const initialState =
-      precomputedInitialState && !collaboration
-        ? precomputedInitialState
-        : createHiddenEditorState({
-            document,
-            styles,
-            manager: extensionManager,
-            externalPlugins,
-            collaboration,
-            collaborationModules,
-            reason: "mount",
-          });
+    if (!seedSession(document)) return;
+    input.reset();
+    const initialState = (() => {
+      if (editorSession.type === "canonical") return canonicalState(editorSession.session);
+      if (precomputedInitialState && !collaboration) return precomputedInitialState;
+      return createHiddenEditorState({
+        document,
+        styles,
+        manager: extensionManager,
+        externalPlugins,
+        collaboration,
+        collaborationModules,
+        reason: "mount",
+      });
+    })();
 
     const editorProps: DirectEditorProps = {
       state: initialState,
       attributes: HIDDEN_EDITOR_ATTRIBUTES,
-      editable: () => !deps.getReadOnly(),
+      editable: () =>
+        !deps.getReadOnly() &&
+        editorSession.type !== "refused" &&
+        (editorSession.type !== "canonical" || deps.getEditingMode?.() !== "suggesting"),
       dispatchTransaction: (transaction: Transaction) => {
         if (!view || isDestroying) {
           return;
@@ -527,7 +645,21 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           return;
         }
 
+        if (editorSession.type === "refused") return;
+        if (editorSession.type === "canonical" && transaction.docChanged) {
+          if (!input.commitNativeProposal(view, transaction)) {
+            input.refuseNativeMutation(view);
+          }
+          // PM's DOM observer dirties the view before dispatching a native
+          // proposal. Repaint from the committed state even on refusal.
+          view.updateState(view.state);
+          return;
+        }
         const applied = view.state.applyTransaction(transaction);
+        if (editorSession.type === "canonical" && !applied.state.doc.eq(view.state.doc)) {
+          refuse("A plugin attempted an unclassified canonical document mutation.");
+          return;
+        }
         view.updateState(applied.state);
 
         const docChanged = applied.transactions.some(
@@ -569,15 +701,37 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           return true;
         }
 
+        if (editorSession.type === "canonical" && input.handleKeyDown(pmView, event)) return true;
         return deps.onKeyDown(pmView, event);
       },
+      handleTextInput: (pmView, from, to, text) =>
+        editorSession.type === "canonical" ? input.handleTextInput(pmView, from, to, text) : false,
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
         focus: () => false,
-        blur: () => false,
+        blur: (pmView) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.blur(pmView) : false,
         ...createHiddenEditorClipboardHandlers(deps),
+        compositionstart: (pmView, event) =>
+          editorSession.type === "canonical"
+            ? input.handleDOMEvents.compositionstart(pmView, event)
+            : false,
+        compositionend: (pmView) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.compositionend(pmView) : false,
+        input: (pmView) =>
+          editorSession.type === "canonical" ? input.handleDOMEvents.input(pmView) : false,
+        paste: (pmView, event) =>
+          editorSession.type === "canonical"
+            ? input.handleDOMEvents.paste(pmView, event)
+            : createHiddenEditorClipboardHandlers(deps).paste(pmView, event),
+        cut: (pmView, event) =>
+          editorSession.type === "canonical"
+            ? input.handleDOMEvents.cut(pmView, event)
+            : createHiddenEditorClipboardHandlers(deps).cut(pmView, event),
         beforeinput: (_view, event) => {
+          if (editorSession.type === "canonical" && !deps.getReadOnly())
+            return input.handleDOMEvents.beforeinput(_view, event);
           if (!deps.getReadOnly()) {
             return false;
           }
@@ -586,6 +740,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           return true;
         },
         drop: (_view, event) => {
+          if (editorSession.type === "canonical") return input.handleDOMEvents.drop(_view, event);
           if (!deps.getReadOnly()) {
             return false;
           }
@@ -629,6 +784,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
       view.destroy();
       view = null;
+      input.reset();
       isDestroying = false;
     }
   };
@@ -642,7 +798,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     const collaboration = deps.getCollaboration();
     const collaborationModules = deps.getCollaborationModules();
-    if (collaboration && !collaborationModules) {
+    if (collaboration && !collaborationModules && deps.getExperimentalSession?.() !== "canonical") {
       return;
     }
 
@@ -651,7 +807,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const currentCollaborationFragment = collaboration?.yXmlFragment ?? null;
     const collaborationSourceChanged = currentCollaborationFragment !== lastCollaborationFragment;
 
-    if (collaboration && !collaborationSourceChanged) {
+    const sessionChanged =
+      (editorSession.type !== "prosemirror") !== (deps.getExperimentalSession?.() === "canonical");
+    if (collaboration && !collaborationSourceChanged && !sessionChanged) {
       return;
     }
 
@@ -660,9 +818,21 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     // 1. Not yet initialized (first mount)
     // 2. Document identity changed (truly external change like loading a new file)
     // 3. Collaboration starts/stops or switches sessions
-    if (isInitialized && currentDocId === lastDocumentId && !collaborationSourceChanged) {
+    if (
+      isInitialized &&
+      currentDocId === lastDocumentId &&
+      !collaborationSourceChanged &&
+      !sessionChanged
+    ) {
       return;
     }
+
+    if (!seedSession(document)) {
+      destroyView();
+      return;
+    }
+
+    input.reset();
 
     // Update tracking state
     isInitialized = true;
@@ -670,15 +840,18 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     lastCollaborationFragment = currentCollaborationFragment;
 
     // Create new state from document
-    const newState = createHiddenEditorState({
-      document,
-      styles: deps.getStyles(),
-      manager: deps.getExtensionManager(),
-      externalPlugins: deps.getExternalPlugins(),
-      collaboration,
-      collaborationModules,
-      reason: "external-document",
-    });
+    const newState =
+      editorSession.type === "canonical"
+        ? canonicalState(editorSession.session)
+        : createHiddenEditorState({
+            document,
+            styles: deps.getStyles(),
+            manager: deps.getExtensionManager(),
+            externalPlugins: deps.getExternalPlugins(),
+            collaboration,
+            collaborationModules,
+            reason: "external-document",
+          });
     const updateStartedAt = performance.now();
     view.updateState(newState);
     recordHiddenEditorPhase(
@@ -701,7 +874,18 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
   const api = createHiddenEditorApi({
     getView: () => view,
-    getDocumentContext: deps.getDocumentContext,
+    getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
+    getCanonicalDocument: () =>
+      editorSession.type === "canonical" ? editorSession.session.document : null,
+    getCanonicalHistory: () =>
+      editorSession.type === "canonical"
+        ? {
+            undo: () => history("undo"),
+            redo: () => history("redo"),
+            canUndo: () => editorSession.type === "canonical" && editorSession.session.canUndo,
+            canRedo: () => editorSession.type === "canonical" && editorSession.session.canRedo,
+          }
+        : null,
     isDestroying: () => isDestroying,
     ensureView,
     isViewRequested,

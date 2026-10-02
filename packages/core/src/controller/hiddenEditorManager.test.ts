@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { panic } from "better-result";
+import { createEmptyDocument } from "../utils/createDocument";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
@@ -177,4 +180,87 @@ describe("createHiddenEditorClipboardHandlers", () => {
     expect(spies["onReadOnlyEditAttempt"].calls).toBe(2);
     expect(prevented).toBe(2);
   });
+});
+
+test("canonical manager refuses transaction bypasses and shares one input journal", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  const reasons: string[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    expect(view).not.toBeNull();
+    if (!view) return;
+    const initial = manager.api.getCanonicalDocument();
+    manager.api.setSelection(6);
+    view.dom.dispatchEvent(
+      new InputEvent("beforeinput", {
+        inputType: "insertText",
+        data: "!",
+        cancelable: true,
+        bubbles: true,
+      }),
+    );
+    const accepted = manager.api.getCanonicalDocument();
+    expect(view.state.doc.textContent).toBe("Start!");
+    expect(manager.api.canUndo()).toBe(true);
+    const state = view.state;
+    view.dispatch(view.state.tr.insertText("bypass", 1));
+    expect(reasons).toHaveLength(1);
+    expect(view.state).toBe(state);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+    expect(manager.api.undo()).toBe(true);
+    expect(manager.api.getDocument()).toEqual(initial);
+    expect(view.state.doc.textContent).toBe("Start");
+    expect(manager.api.canRedo()).toBe(true);
+    expect(manager.api.redo()).toBe(true);
+    expect(manager.api.getDocument()).toEqual(accepted);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("a refused canonical activation reports once per loaded document across retries", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  const reasons: string[] = [];
+  let identity = "first";
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => createEmptyDocument(),
+    getDocumentIdentity: () => identity,
+    getExperimentalSession: () => "canonical",
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    for (let attempt = 0; attempt < 10; attempt++) {
+      manager.ensureView();
+      manager.retryViewCreation();
+      manager.syncExternalDocument();
+    }
+    expect(manager.getView()).toBeNull();
+    expect(reasons).toHaveLength(1);
+    identity = "second";
+    manager.retryViewCreation();
+    expect(reasons).toHaveLength(2);
+  } finally {
+    manager.destroyView();
+    GlobalRegistrator.unregister();
+  }
 });

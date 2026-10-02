@@ -337,6 +337,9 @@ jobs:
         if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run generate:identity-attributes:check
 
+      - name: Fuzz attribute schema facts up to date
+        run: bun scripts/generate-fuzz-schema.ts check
+
       - name: Prefix-resolved identity reads only shrink
         if: needs.ci-plan.outputs.suite_depth == 'full'
         run: bun run check:identity-attributes

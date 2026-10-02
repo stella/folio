@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { ensureLiveView } from "../parity/parity-fixture";
+import { ensureLiveView, VUE_ADAPTER } from "../parity/parity-fixture";
 
 declare global {
   // eslint-disable-next-line typescript/consistent-type-definitions
@@ -14,7 +14,7 @@ declare global {
 }
 
 test("Vue collaboration seeds and synchronizes the shared document", async ({ page }) => {
-  await page.goto("http://localhost:4201/?collaboration=1");
+  await page.goto(`${VUE_ADAPTER.baseUrl}/?collaboration=1`);
   await ensureLiveView(page);
   await expect
     .poll(() => page.evaluate(() => window.__folioVueCollaboration?.wasSeeded() ?? false))
