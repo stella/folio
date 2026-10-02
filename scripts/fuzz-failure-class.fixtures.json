@@ -1,0 +1,74 @@
+[
+  {
+    "title": "Table input: accepted text differs after cell deletion and typing",
+    "key": "[\"Table input\",\"Table input\",\"all\",\"accepted text differs after cell deletion and typing\"]"
+  },
+  {
+    "title": "Tracked revisions: ids differ after save and reopen",
+    "key": "[\"Tracked revisions\",\"Tracked revisions\",\"all\",\"ids differ after save and reopen\"]"
+  },
+  {
+    "title": "Document operations: formatting differs after empty-paragraph insertion",
+    "key": "[\"Document operations\",\"Document operations\",\"all\",\"formatting differs after empty-paragraph insertion\"]"
+  },
+  {
+    "title": "Fuzz failure [189f0b48b219fd72]: consumer flow emoji / direct: <text>: listLevel is <n>, expected undefined",
+    "key": "[\"consumer-flow\",\"paragraph-numbering\",\"all\",\"listLevel mismatch\"]"
+  },
+  {
+    "title": "Fuzz failure [24e996d99fd086cb]: consumer flow trackedChanges / tracked-changes: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
+    "key": "[\"consumer-flow\",\"document\",\"direct-tracked\",\"accepted tracked batches differ from direct batches\"]"
+  },
+  {
+    "title": "Fuzz failure [4fd39893ffb61a7a]: consumer flow notes / direct: the reopened package shows something else than the reviewer that saved it",
+    "key": "[\"consumer-flow\",\"document\",\"all\",\"reopened package differs from saved reviewer\"]"
+  },
+  {
+    "title": "Fuzz failure [7e4e621c749e0de1]: consumer flow stories / tracked-changes: [saveIdempotent] saving the reopened package changes it: word/document.xml differs at <n>:",
+    "key": "[\"consumer-flow\",\"document\",\"all\",\"saving reopened package changes XML\"]"
+  },
+  {
+    "title": "Fuzz failure [4fd46a030f4d37ba]: consumer flow notes / tracked-changes: block texts differ:",
+    "key": "[\"consumer-flow\",\"document\",\"revisions\",\"block texts differ\"]"
+  },
+  {
+    "title": "Fuzz failure [1a7351697017a0a1]: consumer flow lists / suggested: <text>: listLevel is undefined, expected <n>",
+    "key": "[\"consumer-flow\",\"paragraph-numbering\",\"all\",\"listLevel mismatch\"]"
+  },
+  {
+    "title": "Fuzz failure [0151749367fd20ab]: consumer flow directNumbered / tracked-changes: end of flow: [rejectAll] the flow's batches replayed tracked and rejected do not give the fixture back (fixture → rejected):",
+    "key": "[\"consumer-flow\",\"document\",\"rejection\",\"rejected tracked batches differ from fixture\"]"
+  },
+  {
+    "title": "Fuzz failure [9983fd2a36e8a824]: consumer flow stories / suggested: [batchSequential] the batch (suggested: insertBeforeBlock, insertBeforeBlock, insertTableRow) leaves otherwise than its operations one at a time:",
+    "key": "[\"consumer-flow\",\"document\",\"all\",\"batch differs from sequential operations\"]"
+  },
+  {
+    "title": "Fuzz failure [ed9e3bdc10f418bd]: consumer flow stories / direct: the reopened package shows something else than the reviewer that saved it",
+    "key": "[\"consumer-flow\",\"document\",\"all\",\"reopened package differs from saved reviewer\"]"
+  },
+  {
+    "title": "Fuzz failure [c790eed0622ad5c5]: consumer flow notes / suggested: Cannot serialize changed footnote paragraphs into word/footnotes.xml",
+    "key": "[\"consumer-flow\",\"notes\",\"revisions\",\"Cannot serialize changed note paragraphs\"]"
+  },
+  {
+    "title": "Fuzz failure [735c8578d9ca938a]: consumer flow comments / direct: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
+    "key": "[\"consumer-flow\",\"document\",\"direct-tracked\",\"accepted tracked batches differ from direct batches\"]"
+  },
+  {
+    "title": "Fuzz failure [2e7105353dd49ef4]: consumer flow emoji / tracked-changes: block texts differ:",
+    "key": "[\"consumer-flow\",\"document\",\"revisions\",\"block texts differ\"]"
+  },
+  {
+    "title": "Fuzz failure [3d8b6715ac1390a3]: consumer flow styleNumbered / direct: [readerStability] getContent reads otherwise after the save than before it (before → after):",
+    "key": "[\"consumer-flow\",\"document\",\"all\",\"content reads differ after save\"]"
+  },
+  {
+    "title": "Fuzz failure [c5e5cb14472dc505]: consumer flow notes / suggested: Cannot serialize changed endnote paragraphs into word/endnotes.xml",
+    "key": "[\"consumer-flow\",\"notes\",\"revisions\",\"Cannot serialize changed note paragraphs\"]"
+  },
+  {
+    "title": "Fuzz failure [ef41c8a2af58a97e]: consumer flow directNumbered / direct: <text>: listLevel is undefined, expected <n>",
+    "key": "[\"consumer-flow\",\"paragraph-numbering\",\"all\",\"listLevel mismatch\"]"
+  }
+]

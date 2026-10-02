@@ -52,6 +52,7 @@ import {
 } from "@stll/folio-core/server";
 
 import { openReviewer } from "./documents.ts";
+import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
 import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
@@ -937,15 +938,30 @@ export const startRelations = async ({
   };
 
   const readerStability = (live: Reviewer, reopened: Reviewer, context: string): void => {
-    const views = (target: Reviewer) => ({
-      getContent: target.getContent() as unknown,
-      snapshot: createReviewerBridge(target).snapshot() as unknown,
+    const content = projectContentPair({
+      leftRows: live.getContent(),
+      rightRows: reopened.getContent(),
+    });
+    const views = (target: Reviewer, side: "left" | "right") => ({
+      getContent: content[side],
+      snapshot: projectSnapshotIdentities(
+        createReviewerBridge(target).snapshot(),
+        content[side === "left" ? "leftAliases" : "rightAliases"],
+      ),
       toMarkdown: comparableMarkdown(toMarkdown(target.toDocument())) as unknown,
       // Revision ids and dates can change on save. Keep every entry's kind,
       // author, content and containing block, including duplicate entries.
       getChanges: target
         .getChanges()
-        .map(({ type, author, text, blockId }) => ({ type, author, text, blockId }))
+        .map(({ type, author, text, blockId }) => ({
+          type,
+          author,
+          text,
+          blockId:
+            blockId === null
+              ? null
+              : (content[side === "left" ? "leftAliases" : "rightAliases"].get(blockId) ?? blockId),
+        }))
         .toSorted((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
       getComments: target.getComments() as unknown,
     });
@@ -956,8 +972,8 @@ export const startRelations = async ({
       getChanges: [],
       getComments: [],
     };
-    const a = views(live);
-    const b = views(reopened);
+    const a = views(live, "left");
+    const b = views(reopened, "right");
     for (const reader of Object.keys(a) as (keyof typeof a)[]) {
       const found = tolerantDifferences(a[reader], b[reader], tolerances[reader]);
       if (found.length > 0) {

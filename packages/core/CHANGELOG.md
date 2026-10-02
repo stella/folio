@@ -1,5 +1,65 @@
 # @stll/folio-core
 
+## 0.54.2
+
+### Patch Changes
+
+- [#1333](https://github.com/stella/folio/pull/1333) [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allocate bounded OOXML identifiers across editors and reviewers, normalize legacy imported identities consistently, and reject out-of-range identifiers when saving DOCX files.
+
+- [#1320](https://github.com/stella/folio/pull/1320) [`5c41464`](https://github.com/stella/folio/commit/5c4146499edee70f5c1dbc120942d92dcd636d9a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Honor explicit absolute cell widths in fixed-layout tables without a measured table width.
+
+- [#1309](https://github.com/stella/folio/pull/1309) [`664c02d`](https://github.com/stella/folio/commit/664c02da242e655e170bccbc7dd159bb38e04934) Thanks [@jan-kubica](https://github.com/jan-kubica)! - `ensureParaIds` no longer risks exceeding the engine's argument limit when one part mints a very large number of paragraph ids.
+
+- [#1333](https://github.com/stella/folio/pull/1333) [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Skip namespace collection and reservation for in-range imports; reuse repaired document trees, scan other imported identifiers without retaining XML trees, and compress repaired baselines at the fastest DEFLATE level.
+
+- [#1307](https://github.com/stella/folio/pull/1307) [`06274bd`](https://github.com/stella/folio/commit/06274bd0f78342aad38d414d70b5a86aa30db61b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Group deferred IME suggestion annotations with their native composition for consistent undo and redo.
+
+- [#1307](https://github.com/stella/folio/pull/1307) [`06274bd`](https://github.com/stella/folio/commit/06274bd0f78342aad38d414d70b5a86aa30db61b) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Prevent unavailable editor undo and redo shortcuts from invoking native browser history after IME composition.
+
+- [#1311](https://github.com/stella/folio/pull/1311) [`f8f9e10`](https://github.com/stella/folio/commit/f8f9e101688cf84049e5f5d65c2c3c9bef88aa5f) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve selected cells after tracked deletion and keep open-paste paragraph boundaries separate from deleted cell content.
+
+- [#1317](https://github.com/stella/folio/pull/1317) [`d094301`](https://github.com/stella/folio/commit/d094301245d865248178b36eb1046d27c170325e) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Track committed native compositions after the final DOM flush.
+
+- [#1348](https://github.com/stella/folio/pull/1348) [`41984db`](https://github.com/stella/folio/commit/41984db4acc7a8a322a54102ec1f1955ea5cafe8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Refuse conflicting table merges that collectively empty a row so direct and tracked batches agree.
+
+- [#1371](https://github.com/stella/folio/pull/1371) [`daa059e`](https://github.com/stella/folio/commit/daa059e8da69fb227e66b294b105558ea3291635) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allow successful no-op note patches when dirty paragraph hints remain after suggested edits are excluded from save.
+
+- [#1300](https://github.com/stella/folio/pull/1300) [`56c9a99`](https://github.com/stella/folio/commit/56c9a991bea5b6c04c2a571106287c067ae5e611) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Undo now treats a paste or drop as its own step, so it reverts the same edits in editing and suggesting mode.
+
+- [#1333](https://github.com/stella/folio/pull/1333) [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve valid zero DrawingML identifiers during normalization and drawing serialization.
+
+- [#1308](https://github.com/stella/folio/pull/1308) [`76d7f95`](https://github.com/stella/folio/commit/76d7f95e1d13f6ba2a4fba3c90d37fcb2fe5fedd) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve selected content as a tracked deletion when Enter replaces it, with one undo event.
+
+- [#1332](https://github.com/stella/folio/pull/1332) [`531e08c`](https://github.com/stella/folio/commit/531e08c1f7c45d359363d94ee36a67a2cfa7be9c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep editor navigation inside its scroll root and preserve host scrolling from ready callbacks.
+
+- [#1313](https://github.com/stella/folio/pull/1313) [`6aedc69`](https://github.com/stella/folio/commit/6aedc69547cc6177ed47f65043d26a0615a50c05) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Load raster images with mismatched file extensions using their byte signatures and correct rendering MIME types.
+
+- [#1302](https://github.com/stella/folio/pull/1302) [`0050375`](https://github.com/stella/folio/commit/00503758e2c003df57deefef8b0d77e725c08371) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Retract empty inserted paragraphs when replacing pending table-cell pastes in suggesting mode.
+
+- [#1312](https://github.com/stella/folio/pull/1312) [`0503f19`](https://github.com/stella/folio/commit/0503f1927e09c8b0bc536bb192e2b442500f8ca1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep toolbar commands outside deletion-input undo groups.
+
+- [#1303](https://github.com/stella/folio/pull/1303) [`1f43f54`](https://github.com/stella/folio/commit/1f43f5450ece51e10dbfa4fd0bff9f2fee39dfe9) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Group undo by input gestures consistently for editing and tracked changes.
+
+- [#1312](https://github.com/stella/folio/pull/1312) [`0503f19`](https://github.com/stella/folio/commit/0503f1927e09c8b0bc536bb192e2b442500f8ca1) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Replace whole-paragraph text selections with Enter atomically using the surviving caret, preserving undo and redo in both editing modes.
+
+- [#1309](https://github.com/stella/folio/pull/1309) [`664c02d`](https://github.com/stella/folio/commit/664c02da242e655e170bccbc7dd159bb38e04934) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep block ids stable across changes to a file whose paragraphs carry no `w14:paraId`: `ensureParaIds` reports the ids it minted, and the CLI opens every file with paragraph ids, so the first change stores the ids a read reported.
+
+- [#1305](https://github.com/stella/folio/pull/1305) [`64692e8`](https://github.com/stella/folio/commit/64692e8b6fe506564d136c1cb38cf89ee0b32c33) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph properties and clear indentation consistently when using Backspace after a tracked list paste.
+
+- [#1372](https://github.com/stella/folio/pull/1372) [`8115ca7`](https://github.com/stella/folio/commit/8115ca7b29d0cc16c056c8da5ec6f8a0ef158936) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve comment-reference and text-box drawing order when enriching parsed paragraphs.
+
+- [#1318](https://github.com/stella/folio/pull/1318) [`d5bc0c2`](https://github.com/stella/folio/commit/d5bc0c2d937e603aad07dc7ee74fee3f39cff4a7) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Render straight shapes along their full extent and keep zero-axis lines and centered outlines visible.
+
+- [#1301](https://github.com/stella/folio/pull/1301) [`9b65b05`](https://github.com/stella/folio/commit/9b65b0559c0102a02971a020b7b84c0a66f3d6f8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve paragraph boundaries when composing over selections or pasting tables after tracked deletions.
+
+- [#1301](https://github.com/stella/folio/pull/1301) [`9b65b05`](https://github.com/stella/folio/commit/9b65b0559c0102a02971a020b7b84c0a66f3d6f8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve existing paragraph revisions during table paste and paragraph formatting when resolving composition replacements.
+
+- [#1301](https://github.com/stella/folio/pull/1301) [`9b65b05`](https://github.com/stella/folio/commit/9b65b0559c0102a02971a020b7b84c0a66f3d6f8) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Remove fully deleted non-final paragraphs after table paste regardless of the caret position within deleted text.
+
+- [#1315](https://github.com/stella/folio/pull/1315) [`5c31599`](https://github.com/stella/folio/commit/5c31599f7074ff3e667b249fb30d4cee2bfb2d89) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Skip zero-width bookmark boundaries when deleting a visible character in suggestion mode.
+- Updated dependencies [[`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a), [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a)]:
+  - @stll/docx-core@0.30.1
+
 ## 0.54.1
 
 ### Patch Changes

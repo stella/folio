@@ -6,13 +6,9 @@ import {
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   collectFindings,
-  fingerprintOfTitle,
-  issueBody,
-  issueFingerprint,
-  issueTitle,
-  nextState,
   parseFailureRecord,
-  readState,
+  parseIssuePages,
+  parseIssueResponse,
 } from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
@@ -22,13 +18,6 @@ const marker = (seed: number, message = "step 3: no comment") =>
     repro: `FOLIO_SCENARIO_SEED=${seed} bun scripts/consumer-scenarios.ts --only '^fuzz run 0 \\('`,
     failure: new Error(message),
   });
-
-const context = {
-  runUrl: "https://github.com/stella/folio/actions/runs/1",
-  sha: "0302a42f5661aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  source: "continuous fuzz",
-  date: "2026-09-29",
-};
 
 describe("fuzz failure issues", () => {
   test("one finding per fingerprint; a record beats a bare marker and a shorter flow wins", () => {
@@ -45,6 +34,11 @@ describe("fuzz failure issues", () => {
     expect(findings).toHaveLength(2);
     expect(findings[0]?.record).toBe(short);
     expect(findings[0]?.seeds).toEqual([1, 2, 4]);
+    expect(findings[0]?.records?.map(({ marker: item }) => item.repro)).toEqual([
+      marker(1).repro,
+      marker(2).repro,
+      marker(4).repro,
+    ]);
     expect(findings[1]?.record.marker.fingerprint).toBe(other.fingerprint);
     expect(findings[1]?.record.replays).toEqual([other.repro]);
   });
@@ -64,54 +58,22 @@ describe("fuzz failure issues", () => {
     const findings = collectFindings([shrunk], [marker(5)]);
     expect(findings).toHaveLength(1);
     expect(findings[0]?.seeds).toEqual([1, 5]);
-    expect(nextState(findings[0]!, null, "2026-09-29").primary).toBe(marker(5).fingerprint);
+    expect(findings[0]?.record.marker.primary).toBe(marker(5).fingerprint);
+    expect(findings[0]?.records?.map(({ marker: item }) => item.seed)).toEqual([1, 5]);
   });
 
-  test("the title carries the fingerprint the next run finds it by", () => {
-    const [finding] = collectFindings([], [marker(1)]);
-    const title = issueTitle(finding!);
-    expect(title).toBe(
-      `Fuzz failure [${finding!.record.marker.fingerprint}]: consumer flow comments / suggested: no comment`,
-    );
-    expect(fingerprintOfTitle(title)).toBe(finding!.record.marker.fingerprint);
-    expect(fingerprintOfTitle("Nightly property failure: x")).toBeNull();
-    const [long] = collectFindings([], [marker(1, `step 1: ${"x".repeat(400)}`)]);
-    expect(issueTitle(long!).length).toBeLessThanOrEqual(240);
-  });
-
-  test("terse manually filed titles deduplicate through the existing body state", () => {
-    const [finding] = collectFindings([], [marker(7)]);
-    if (!finding) throw new Error("fixture has no finding");
-    const body = issueBody(finding, nextState(finding, null, context.date), context);
-    expect(
-      issueFingerprint({ title: "Document operations: formatting differs after insertion", body }),
-    ).toBe(finding.record.marker.fingerprint);
-    expect(issueFingerprint({ title: issueTitle(finding), body: null })).toBe(
-      finding.record.marker.fingerprint,
-    );
-    expect(issueFingerprint({ title: "Other issue", body: null })).toBeNull();
-  });
-
-  test("a recurrence updates the count and seeds kept in the body", () => {
-    const [finding] = collectFindings(
-      [
-        failureRecord(marker(7), new Error("step 3: no comment"), {
-          replays: ["FOLIO_SCENARIO_FLOW='{}' bun scripts/consumer-scenarios.ts", marker(7).repro],
-          flow: { version: 1 },
-          shrink: { steps: 2, from: 10, attempts: 31 },
-        }),
-      ],
-      [],
-    );
-    const first = issueBody(finding!, nextState(finding!, null, "2026-09-28"), context);
-    expect(first).toContain("### Replay\n```sh\nFOLIO_SCENARIO_FLOW='{}'");
-    expect(first).toContain("Also replays with:");
-    expect(first).toContain("### Minimized flow (2 steps, shrunk from 10 in 31 replays)");
-    expect(first).toContain("Seen in 1 run since 2026-09-28");
-    const again = nextState({ ...finding!, seeds: [9] }, readState(first), context.date);
-    expect(again).toMatchObject({ count: 2, firstSeen: "2026-09-28", lastSeen: "2026-09-29" });
-    expect(again.seeds).toEqual([9, 7]);
-    expect(issueBody(finding!, again, context)).toContain("Seen in 2 runs since 2026-09-28");
+  test("a shorter record also wins for the same seed's replay row", () => {
+    const failure = new Error("step 3: no comment");
+    const long = failureRecord(marker(1), failure, {
+      replays: ["long replay"],
+      shrink: { steps: 3, from: 10, attempts: 5 },
+    });
+    const short = failureRecord(marker(1), failure, {
+      replays: ["short replay"],
+      shrink: { steps: 1, from: 10, attempts: 6 },
+    });
+    const [finding] = collectFindings([long, short], [marker(1)]);
+    expect(finding?.records).toEqual([short]);
   });
 
   test("records are validated before they reach an issue", () => {
@@ -122,4 +84,33 @@ describe("fuzz failure issues", () => {
     expect(parseFailureRecord({ ...record, marker: { fingerprint: 1 } })).toBeNull();
     expect(parseFailureRecord({ ...record, version: 2 })).toBeNull();
   });
+});
+
+test("GitHub REST and CLI issue identities validate before filing", () => {
+  const fields = { number: 20, title: "List numbering: listLevel mismatch", body: null };
+  expect(parseIssueResponse({ ...fields, state: "open", closed_at: null })).toEqual({
+    ...fields,
+    state: "open",
+    closedAt: null,
+  });
+  expect(parseIssueResponse({ ...fields, state: "CLOSED", closedAt: "2026-10-01" }).state).toBe(
+    "closed",
+  );
+  expect(() => parseIssueResponse({ ...fields, state: "unknown" })).toThrow();
+  expect(() => parseIssueResponse({ ...fields, number: "20", state: "open" })).toThrow();
+});
+
+test("paginated issue responses fail before matching malformed issue data", () => {
+  expect(parseIssuePages([])).toEqual([]);
+  expect(() => parseIssuePages({})).toThrow();
+  expect(() => parseIssuePages([{}])).toThrow();
+  expect(() => parseIssuePages([[{ number: "20" }]])).toThrow();
+  const issue = {
+    number: 20,
+    title: "Standing report",
+    body: "Evidence",
+    state: "open",
+    closed_at: null,
+  };
+  expect(parseIssuePages([[issue], [issue]])).toHaveLength(2);
 });
