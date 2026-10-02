@@ -49,9 +49,9 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   const property = steps.find((step) => step["id"] === "canonical");
   const browser = steps.find((step) => step["id"] === "browser");
   expect(property?.["run"]).toContain(`bun test ./${PROPERTY_FILE}`);
-  expect(property?.["run"]).toContain("tee test-results/canonical-fuzz.log");
+  expect(property?.["run"]).toContain("tee .fuzz/canonical-fuzz.log");
   expect(browser?.["run"]).toContain("--project=browser-fuzzer");
-  expect(browser?.["run"]).toContain("tee test-results/browser-fuzz.log");
+  expect(browser?.["run"]).toContain("tee .fuzz/browser-fuzz.log");
   expect(
     steps.find((step) => step["name"] === "Preserve nightly failure status")?.["if"],
   ).toContain("steps.canonical.outcome == 'failure'");
@@ -66,9 +66,42 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   const filing = stepsOf(report).find((step) =>
     String(step["run"] ?? "").includes("scripts/fuzz-failure-issues.ts"),
   );
-  expect(filing?.["run"]).toContain("fuzz-results/test-results/canonical-fuzz.log");
-  expect(filing?.["run"]).toContain("fuzz-results/test-results/browser-fuzz.log");
-  expect(filing?.["run"]).toContain("--records fuzz-results/test-results/fuzz-failures");
+  expect(filing?.["run"]).toContain("fuzz-results/.fuzz/canonical-fuzz.log");
+  expect(filing?.["run"]).toContain("fuzz-results/.fuzz/browser-fuzz.log");
+  expect(filing?.["run"]).toContain("--records fuzz-results/.fuzz/failures");
+});
+
+test("all nightly evidence survives Playwright output cleanup and is uploaded", () => {
+  const jobs = workflow("nightly-browser-input-fuzzer.yml")["jobs"];
+  if (!record(jobs)) throw new Error("Missing nightly jobs");
+  const steps = stepsOf(jobs["browser-input-fuzzer"]);
+  const output = path.resolve(ROOT, playwright.outputDir ?? "test-results");
+  const lanes = steps.filter((step) => step["id"] === "canonical" || step["id"] === "browser");
+  expect(lanes).toHaveLength(2);
+  for (const lane of lanes) {
+    const env = lane["env"];
+    if (!record(env)) throw new Error("Missing lane environment");
+    for (const [key, value] of Object.entries(env)) {
+      if (!key.endsWith("FAILURES_DIR")) continue;
+      expect(path.resolve(ROOT, String(value)).startsWith(`${output}${path.sep}`)).toBe(false);
+      expect(String(value)).toBe(".fuzz/failures");
+    }
+    expect(lane["continue-on-error"]).toBe(true);
+    expect(lane["run"]).not.toContain("tee test-results/");
+  }
+  expect(steps.find((step) => step["id"] === "findings")?.["run"]).toContain(".fuzz/*.log");
+  const upload = steps.find((step) =>
+    String(step["uses"] ?? "").startsWith("actions/upload-artifact@"),
+  );
+  const options = upload?.["with"];
+  if (!record(options)) throw new Error("Missing upload options");
+  expect(String(options["path"]).split("\n")).toContain(".fuzz");
+  expect(options["include-hidden-files"]).toBe(true);
+  for (const file of [BROWSER_FILE, "browser-input-fuzz.interactions.spec.ts"]) {
+    expect(readFileSync(path.join(ROOT, "tests/visual", file), "utf8")).toContain(
+      'process.env["FOLIO_FUZZ_FAILURES_DIR"]',
+    );
+  }
 });
 
 test("the interactions project excludes the canonical browser fuzzer", () => {
