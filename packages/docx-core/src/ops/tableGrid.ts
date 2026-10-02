@@ -48,7 +48,7 @@ export const tableGrid = (
       let ownerRow = rowIndex;
       let ownerIndex = index;
       if (cell.formatting?.vMerge === "continue") {
-        const above = rows.at(-1)?.find((entry) => entry.start === start && entry.end === end);
+        const above = previous.get(start);
         if (
           !above ||
           above.end !== end ||
