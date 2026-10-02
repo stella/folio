@@ -5,6 +5,7 @@ import {
   type Document,
   type Table,
   type TableCell,
+  type TableMeasurement,
   type TableRow,
 } from "../model/document";
 import { storyBody, storyParagraphs, updateBlockList, withBodyContent } from "./blocks";
@@ -16,16 +17,35 @@ import { applyFormattingPatch } from "./patch";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { stampInfo } from "./review";
 import { applyTableOp } from "./tables";
+import { hasTableCellDependencies } from "./tableEditDependencies";
 import { tableGrid, type TableGrid } from "./tableGrid";
 import { locateTableRow, tableRowAnchor, type TableRowLocation } from "./tableLocation";
-import { DOCUMENT_OP_TYPES, type TableEditOp, type SetTableOp, type RevisionStamp } from "./types";
+import {
+  DOCUMENT_OP_TYPES,
+  type TableEditOp,
+  type TableIntentOperation,
+  type SetTableOp,
+  type RevisionStamp,
+} from "./types";
 
 type Op = TableEditOp | SetTableOp;
-type RefusalOptions = { op: Op; reason: DocumentOpRefusal["reason"]; message: string };
+type RefusalOptions = {
+  op: Pick<Op, "type">;
+  reason: DocumentOpRefusal["reason"];
+  message: string;
+};
 const refuse = ({ op, reason, message }: RefusalOptions) =>
   Result.err(new DocumentOpRefusal({ opType: op.type, reason, message }));
-const mismatch = (op: Op, message: string) =>
+const mismatch = (op: Pick<Op, "type">, message: string) =>
   refuse({ op, reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, message });
+
+const patchChanges = (base: object | undefined, patch: object): boolean =>
+  Object.keys(patch).some((key) => {
+    const value: unknown = Reflect.get(patch, key);
+    if (value === undefined) return false;
+    const previous: unknown = base === undefined ? undefined : Reflect.get(base, key);
+    return value === null ? previous !== undefined : !structurallyEqual(previous, value);
+  });
 
 /** Source tokens describe the old property set and must not survive an authored edit. */
 const authored = <T extends { sourceXml?: string }>(formatting: T): T => {
@@ -142,6 +162,38 @@ const withSpan = (cell: TableCell, span: number): TableCell => {
   if (span === 1) delete formatting.gridSpan;
   return { ...cell, formatting };
 };
+const dividedWidth = (
+  width: TableMeasurement | undefined,
+  parts: number,
+): TableMeasurement[] | undefined => {
+  if (width === undefined) return undefined;
+  if (width.type !== "dxa" && width.type !== "pct")
+    return Array.from({ length: parts }, () => width);
+  const base = Math.floor(width.value / parts);
+  const remainder = width.value - base * parts;
+  return Array.from({ length: parts }, (_, index) => ({
+    type: width.type,
+    value: base + (index < remainder ? 1 : 0),
+  }));
+};
+const mergedWidth = (
+  cells: readonly TableCell[],
+): Result<TableMeasurement | undefined, "invalid"> => {
+  const first = cells.at(0)?.formatting?.width;
+  if (first === undefined || (first.type !== "dxa" && first.type !== "pct"))
+    return Result.ok(first);
+  if (!Number.isSafeInteger(first.value) || first.value < 0) return Result.err("invalid");
+  let value = first.value;
+  for (const cell of cells.slice(1)) {
+    const width = cell.formatting?.width;
+    // Unknown or incompatible widths do not add to a unit-bearing leading width.
+    if (width === undefined || width.type !== first.type) return Result.ok(first);
+    if (!Number.isSafeInteger(width.value) || width.value < 0) return Result.err("invalid");
+    value += width.value;
+    if (!Number.isSafeInteger(value)) return Result.err("invalid");
+  }
+  return Result.ok({ type: first.type, value });
+};
 const withOmission = (row: TableRow, side: "gridBefore" | "gridAfter", value: number): TableRow => {
   const formatting = authored({ ...row.formatting, [side]: value });
   if (value === 0) {
@@ -178,6 +230,12 @@ const stampsFor = (op: TableEditOp, count: number): Result<RevisionStamp[], Docu
   const revision = op.revision;
   if (revision === undefined) return Result.ok([]);
   const ids = [revision.id, ...(op.newIds?.revision ?? [])];
+  if (new Set(ids).size !== ids.length)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION,
+      message: "Revision ids must be distinct within the operation.",
+    });
   if (ids.slice(0, count).some((id) => !Number.isInteger(id) || id < 0 || id > MAX_REVISION_ID))
     return refuse({
       op,
@@ -324,6 +382,12 @@ const columnEdit = ({
         continue;
       }
       if (!insert && hit) {
+        if (entry.end - entry.start === 1 && hasTableCellDependencies(entry.cell))
+          return refuse({
+            op,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+            message: "Resolve dependent anchors and review records before removing this cell.",
+          });
         if (entry.end - entry.start > 1) {
           const next = withSpan(entry.cell, entry.end - entry.start - 1);
           const stamp = stamps.value[rowIndex];
@@ -360,7 +424,12 @@ const columnEdit = ({
           : { ...cell, structuralChange: { type: "tableCellInsertion", info: stampInfo(stamp) } },
       );
     }
-    // When deleting a vertical restart cell, promote the next continuation.
+    if (!cells.some((cell) => cell.structuralChange?.type !== "tableCellDeletion"))
+      return refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
+        message: "Deleting this column would leave a row without an active cell.",
+      });
     rows.push({ ...row, cells });
   }
   const columnWidths = table.columnWidths === undefined ? undefined : [...table.columnWidths];
@@ -388,13 +457,12 @@ const columnEdit = ({
   return Result.ok(next);
 };
 
-type MergeOptions = {
-  document: Document;
-  op: Extract<TableEditOp, { type: "mergeCells" }>;
+type MergeSelectionOptions = {
   table: Table;
   grid: TableGrid;
+  op: Extract<TableIntentOperation, { type: "mergeCells" }>;
 };
-const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, DocumentOpRefusal> => {
+const mergeSelection = ({ table, grid, op }: MergeSelectionOptions) => {
   if (
     ![op.top, op.bottom, op.left, op.right].every(Number.isSafeInteger) ||
     op.top < 0 ||
@@ -405,12 +473,6 @@ const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, Docum
     op.left >= op.right
   )
     return mismatch(op, "The merge rectangle is outside the table.");
-  if (hasStructuralMarkup(table) || hasReview(table))
-    return refuse({
-      op,
-      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-      message: "Resolve indexed markup and table reviews before merging cells.",
-    });
   const selected = grid.rows
     .slice(op.top, op.bottom)
     .map((row) => row.filter((cell) => cell.start < op.right && cell.end > op.left));
@@ -448,6 +510,31 @@ const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, Docum
           cell.content.every((block) => block.type === "paragraph" && block.content.length === 0),
         ),
       );
+  return Result.ok({ selected, verticalOnly });
+};
+
+type MergeOptions = {
+  document: Document;
+  op: Extract<TableEditOp, { type: "mergeCells" }>;
+  table: Table;
+  grid: TableGrid;
+};
+const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, DocumentOpRefusal> => {
+  if (hasStructuralMarkup(table))
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message: "Indexed table markup must be relocated before changing cells.",
+    });
+  if (hasReview(table))
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+      message: "Resolve table reviews before changing cells.",
+    });
+  const selection = mergeSelection({ table, grid, op });
+  if (selection.isErr()) return Result.err(selection.error);
+  const { selected, verticalOnly } = selection.value;
   if (verticalOnly) {
     const fresh = freshCells({ document, op, ids: op.newBlockIds, count: 0 });
     if (fresh.isErr()) return Result.err(fresh.error);
@@ -505,6 +592,10 @@ const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, Docum
   const first = selected.at(0)?.at(0);
   if (first === undefined) return mismatch(op, "No cells are selected.");
   const content = selected.flatMap((row) => row.flatMap(({ cell }) => cell.content));
+  const mergedCellWidth = mergedWidth(selected.at(0)?.map(({ cell }) => cell) ?? []);
+  if (mergedCellWidth.isErr())
+    return mismatch(op, "Selected cell widths must be nonnegative safe integer units.");
+  const width = mergedCellWidth.value;
   const rows = table.rows.map((row, index) => {
     const entries = selected[index - op.top];
     if (entries === undefined) return row;
@@ -514,6 +605,10 @@ const merge = ({ document, op, table, grid }: MergeOptions): Result<Table, Docum
     if (base === undefined) return row;
     const cell = withSpan(base, op.right - op.left);
     const formatting = authored({ ...cell.formatting });
+    if (index === op.top) {
+      if (width === undefined) delete formatting.width;
+      else formatting.width = width;
+    }
     if (op.bottom - op.top > 1) formatting.vMerge = index === op.top ? "restart" : "continue";
     else delete formatting.vMerge;
     const cells = [...row.cells];
@@ -539,18 +634,45 @@ const split = ({
 }: SplitOptions): Result<Table, DocumentOpRefusal> => {
   const target = grid.rows[location.rowIndex]?.find((entry) => entry.index === location.cellIndex);
   if (!target) return mismatch(op, "The addressed cell is absent.");
-  if (hasStructuralMarkup(table) || hasReview(table))
+  if (target.row !== target.ownerRow || target.index !== target.ownerIndex)
+    return mismatch(op, "A vertical merge continuation must be addressed through its owner cell.");
+  if (hasStructuralMarkup(table))
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      message: "Indexed table markup must be relocated before changing cells.",
+    });
+  if (hasReview(table))
     return refuse({
       op,
       reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
-      message: "Resolve indexed markup and reviews before splitting cells.",
+      message: "Resolve table reviews before changing cells.",
     });
   const group = grid.rows.flatMap((row) =>
     row.filter(
       (cell) => cell.ownerRow === target.ownerRow && cell.ownerIndex === target.ownerIndex,
     ),
   );
+  if (group.length > 1)
+    return mismatch(op, "Splitting a cell inside a vertical merge is unsupported.");
   const span = target.end - target.start;
+  if (span === 1)
+    return refuse({
+      op,
+      reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+      message: "A one-cell, one-column split would not change the table.",
+    });
+  if (
+    group.some(({ cell }) => {
+      const width = cell.formatting?.width;
+      return (
+        width !== undefined &&
+        (width.type === "dxa" || width.type === "pct") &&
+        (!Number.isSafeInteger(width.value) || width.value < 0)
+      );
+    })
+  )
+    return mismatch(op, "A split cell width must be a nonnegative safe integer unit.");
   const fresh = freshCells({ document, op, ids: op.newBlockIds, count: group.length * (span - 1) });
   if (fresh.isErr()) return Result.err(fresh.error);
   const stamps = stampsFor(op, group.length * span);
@@ -563,8 +685,16 @@ const split = ({
     const formatting = authored({ ...entry.cell.formatting });
     delete formatting.gridSpan;
     delete formatting.vMerge;
+    const widths = dividedWidth(entry.cell.formatting?.width, span);
+    const formattingForColumn = (column: number) => {
+      const next = { ...formatting };
+      const width = widths?.at(column);
+      if (width === undefined) delete next.width;
+      else next.width = width;
+      return next;
+    };
     const cells = [...row.cells];
-    const original = { ...entry.cell, formatting };
+    const original = { ...entry.cell, formatting: formattingForColumn(0) };
     const stamp = stamps.value[stampIndex++];
     if (stamp !== undefined)
       original.propertyChanges = [
@@ -580,7 +710,7 @@ const split = ({
     for (let column = 1; column < span; column += 1) {
       const cell = fresh.value[freshIndex++];
       if (cell !== undefined) {
-        const next = { ...cell, formatting };
+        const next = { ...cell, formatting: formattingForColumn(column) };
         const cellStamp = stamps.value[stampIndex++];
         if (cellStamp !== undefined)
           next.structuralChange = { type: "tableCellInsertion", info: stampInfo(cellStamp) };
@@ -591,6 +721,63 @@ const split = ({
     return { ...row, cells };
   });
   return Result.ok({ ...table, rows });
+};
+
+/** Count identities from the same topology/selection decisions the operation applies. */
+export const tableEditParagraphDemand = (
+  location: TableRowLocation,
+  op: TableIntentOperation,
+): Result<number, DocumentOpRefusal> => {
+  const table = location.table;
+  const grid = tableGrid(table, op.type);
+  if (grid.isErr()) return Result.err(grid.error);
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+      return Result.ok(
+        grid.value.rows.filter((cells, row) => {
+          const before = table.rows[row]?.formatting?.gridBefore ?? 0;
+          const after = grid.value.width - (table.rows[row]?.formatting?.gridAfter ?? 0);
+          return (
+            op.column >= before &&
+            op.column <= after &&
+            !cells.some((cell) => cell.start < op.column && op.column < cell.end)
+          );
+        }).length,
+      );
+    case DOCUMENT_OP_TYPES.MERGE_CELLS:
+      return mergeSelection({ table, grid: grid.value, op }).map(({ verticalOnly }) =>
+        verticalOnly ? 0 : op.bottom - op.top - 1,
+      );
+    case DOCUMENT_OP_TYPES.SPLIT_CELL: {
+      const target = grid.value.rows[location.rowIndex]?.find(
+        (entry) => entry.index === location.cellIndex,
+      );
+      if (!target) return mismatch(op, "The addressed cell is absent.");
+      if (target.row !== target.ownerRow || target.index !== target.ownerIndex)
+        return mismatch(
+          op,
+          "A vertical merge continuation must be addressed through its owner cell.",
+        );
+      const group = grid.value.rows.flatMap((row) =>
+        row.filter(
+          (cell) => cell.ownerRow === target.ownerRow && cell.ownerIndex === target.ownerIndex,
+        ),
+      );
+      if (group.length > 1)
+        return mismatch(op, "Splitting a cell inside a vertical merge is unsupported.");
+      const span = target.end - target.start;
+      if (span === 1)
+        return refuse({
+          op,
+          reason: DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+          message: "A one-cell, one-column split would not change the table.",
+        });
+      const height = group.length;
+      return Result.ok(height * (span - 1));
+    }
+    default:
+      return Result.ok(0);
+  }
 };
 
 /** Grid topology is validated before and after every semantic table edit. */
@@ -627,6 +814,12 @@ export const applyTableEdit = (
   const grid = tableGrid(table, op.type);
   if (grid.isErr()) return Result.err(grid.error);
   if (op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN && op.column === 0 && grid.value.width === 1) {
+    if (table.rows.some((row) => row.cells.some(hasTableCellDependencies)))
+      return refuse({
+        op,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+        message: "Resolve dependent anchors and review records before removing the table.",
+      });
     return applyTableOp(document, {
       type: DOCUMENT_OP_TYPES.DELETE_TABLE,
       story: op.story,
@@ -710,6 +903,12 @@ export const applyTableEdit = (
         });
       const next = { ...table };
       const formatting = applyFormattingPatch(table.formatting, op.patch);
+      if (!patchChanges(table.formatting, op.patch))
+        return Result.ok({
+          document,
+          inverse: [],
+          touched: { modified: [], inserted: [], removed: [] },
+        });
       if (formatting === undefined) delete next.formatting;
       else next.formatting = authored(formatting);
       if (op.revision !== undefined)
@@ -740,6 +939,12 @@ export const applyTableEdit = (
         });
       const next = { ...row };
       const formatting = applyFormattingPatch(row.formatting, op.patch);
+      if (!patchChanges(row.formatting, op.patch))
+        return Result.ok({
+          document,
+          inverse: [],
+          touched: { modified: [], inserted: [], removed: [] },
+        });
       if (formatting === undefined) delete next.formatting;
       else next.formatting = authored(formatting);
       if (op.revision !== undefined)
@@ -773,6 +978,12 @@ export const applyTableEdit = (
         });
       const next = { ...cell };
       const formatting = applyFormattingPatch(cell.formatting, op.patch);
+      if (!patchChanges(cell.formatting, op.patch))
+        return Result.ok({
+          document,
+          inverse: [],
+          touched: { modified: [], inserted: [], removed: [] },
+        });
       if (formatting === undefined) delete next.formatting;
       else next.formatting = authored(formatting);
       if (op.revision !== undefined)

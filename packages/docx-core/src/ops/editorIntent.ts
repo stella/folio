@@ -18,6 +18,7 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
 import { locateTableRow, tableRowAnchor } from "./tableLocation";
 import { tableGrid } from "./tableGrid";
+import { tableEditParagraphDemand } from "./tableEdits";
 import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
@@ -27,16 +28,14 @@ import {
   SPLIT_HALVES,
   type DocumentOp,
   type TableEditOp,
+  type TableIntentOperation,
   type NewIds,
   type OpStory,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
 
-/** Mode metadata is supplied once, independently of the semantic table intent. */
-export type TableIntentOperation = {
-  [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, { type: Kind }>, "revision" | "newIds">;
-}[TableEditOp["type"]];
+export type { TableIntentOperation } from "./types";
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
@@ -253,9 +252,35 @@ export const compileEditorIntent = (
   let selection: TextPosition;
   switch (intent.type) {
     case "table": {
-      const op = { ...intent.operation, ...tracked };
-      const located = locateTableRow(document, op);
+      const operation = intent.operation;
+      const located = locateTableRow(document, operation);
       if (located.isErr()) return Result.err(located.error);
+      const demand = tableEditParagraphDemand(located.value, operation);
+      if (demand.isErr()) return Result.err(demand.error);
+      const occupied = new Set(packageParagraphIds(document.package).map(idKey));
+      const newBlockIds: string[] = [];
+      for (let nextId = 1; newBlockIds.length < demand.value; nextId += 1) {
+        if (nextId >= 0x8000_0000)
+          return Result.err(
+            new DocumentOpRefusal({
+              opType: operation.type,
+              reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+              message: "The paragraph identity space is exhausted.",
+            }),
+          );
+        const id = nextId.toString(16).padStart(8, "0").toUpperCase();
+        if (!occupied.has(idKey(id))) newBlockIds.push(id);
+      }
+      let op: TableEditOp;
+      switch (operation.type) {
+        case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+        case DOCUMENT_OP_TYPES.MERGE_CELLS:
+        case DOCUMENT_OP_TYPES.SPLIT_CELL:
+          op = { ...operation, newBlockIds, ...tracked };
+          break;
+        default:
+          op = { ...operation, ...tracked };
+      }
       let blockId = op.blockId;
       if (op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN) {
         const grid = tableGrid(located.value.table, op.type);

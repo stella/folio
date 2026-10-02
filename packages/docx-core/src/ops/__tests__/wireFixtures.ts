@@ -490,7 +490,7 @@ export const envelopes = (): DocumentOpEnvelope[] => {
         cells: [
           {
             type: "tableCell",
-            formatting: { gridSpan: 2, vMerge: index === 0 ? "restart" : "continue" },
+            formatting: { gridSpan: 2 },
             content: [{ type: "paragraph", paraId: `0000030${index}`, content: [] }],
           },
         ],
@@ -501,8 +501,8 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     story: OP_STORIES.MAIN,
     blockId: "00000300",
     type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-    newBlockIds: ["00000302", "00000303"],
-    newIds: { revision: [710, 711, 712], control: [713] },
+    newBlockIds: ["00000302"],
+    newIds: { revision: [710, 711] },
   } as const satisfies DocumentOp;
   const splitResult = applyDocumentOp(
     { package: { document: { content: [splitTable, second] } } },
@@ -514,7 +514,7 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   const trackedSplitOp = {
     ...splitOp,
     revision: stamp(570),
-    newIds: { revision: [571, 572, 573, 574, 575, 576, 577, 578] },
+    newIds: { revision: [571] },
   };
   const trackedSplitResult = applyDocumentOp(
     { package: { document: { content: [splitTable, second] } } },

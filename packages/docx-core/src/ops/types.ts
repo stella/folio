@@ -10,8 +10,9 @@
  * give equal outputs wherever the operation runs.
  *
  * Every operation's inverse is an operation of the same schema, addressed the
- * same way, so a step that rebases operations over concurrent edits rebases
- * inverses too. An inverse states what it expects to find (the slice it
+ * same way. Supported text and review operations rebase their inverses over
+ * concurrent edits; table operations require exclusive editing and are refused
+ * by the sequenced batch decoder. An inverse states what it expects to find (the slice it
  * removes, the values a patch replaced, the fields of a paragraph it merges
  * away) and is refused as stale when that has changed.
  *
@@ -786,6 +787,14 @@ export type TableEditOp =
   | SetCellPropsOp
   | SetRowPropsOp
   | SetTablePropsOp;
+
+/** Table intent ids are derived from topology by the shared compiler. */
+export type TableIntentOperation = {
+  [Kind in TableEditOp["type"]]: Omit<
+    Extract<TableEditOp, { type: Kind }>,
+    "revision" | "newIds" | "newBlockIds"
+  >;
+}[TableEditOp["type"]];
 
 /** A schema-version-6 document operation. */
 export type DocumentOp =

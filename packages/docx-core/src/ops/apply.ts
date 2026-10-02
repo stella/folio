@@ -112,6 +112,7 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
+import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { priorValues } from "./patch";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -2059,6 +2060,8 @@ export const applyDocumentOp = (
         refusal(op, DOCUMENT_OP_REFUSAL_REASONS.STALE, "The derived section metadata changed."),
       );
   }
+  const malformedTable = tableEditBoundaryRefusal(op);
+  if (malformedTable !== undefined) return Result.err(malformedTable);
   const stamp = stampOf(op);
   const badStamp = stamp === undefined ? undefined : stampRefusal(document, op, stamp);
   if (badStamp !== undefined) {

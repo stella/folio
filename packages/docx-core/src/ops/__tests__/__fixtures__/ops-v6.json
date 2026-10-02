@@ -8477,10 +8477,9 @@
       "story": "main",
       "blockId": "00000300",
       "type": "splitCell",
-      "newBlockIds": ["00000302", "00000303"],
+      "newBlockIds": ["00000302"],
       "newIds": {
-        "revision": [710, 711, 712],
-        "control": [713]
+        "revision": [710, 711]
       }
     }
   },
@@ -8539,7 +8538,9 @@
             "cells": [
               {
                 "type": "tableCell",
-                "formatting": {},
+                "formatting": {
+                  "gridSpan": 2
+                },
                 "content": [
                   {
                     "type": "paragraph",
@@ -8547,17 +8548,6 @@
                     "content": []
                   }
                 ]
-              },
-              {
-                "type": "tableCell",
-                "content": [
-                  {
-                    "type": "paragraph",
-                    "paraId": "00000303",
-                    "content": []
-                  }
-                ],
-                "formatting": {}
               }
             ]
           }
@@ -8582,8 +8572,7 @@
               {
                 "type": "tableCell",
                 "formatting": {
-                  "gridSpan": 2,
-                  "vMerge": "restart"
+                  "gridSpan": 2
                 },
                 "content": [
                   {
@@ -8605,8 +8594,7 @@
               {
                 "type": "tableCell",
                 "formatting": {
-                  "gridSpan": 2,
-                  "vMerge": "continue"
+                  "gridSpan": 2
                 },
                 "content": [
                   {
@@ -8628,9 +8616,9 @@
       "story": "main",
       "blockId": "00000300",
       "type": "splitCell",
-      "newBlockIds": ["00000302", "00000303"],
+      "newBlockIds": ["00000302"],
       "newIds": {
-        "revision": [571, 572, 573, 574, 575, 576, 577, 578]
+        "revision": [571]
       },
       "revision": {
         "id": 570,
@@ -8682,8 +8670,7 @@
                       "initials": "R"
                     },
                     "previousFormatting": {
-                      "gridSpan": 2,
-                      "vMerge": "restart"
+                      "gridSpan": 2
                     }
                   }
                 ]
@@ -8719,49 +8706,16 @@
             "cells": [
               {
                 "type": "tableCell",
-                "formatting": {},
+                "formatting": {
+                  "gridSpan": 2
+                },
                 "content": [
                   {
                     "type": "paragraph",
                     "paraId": "00000301",
                     "content": []
                   }
-                ],
-                "propertyChanges": [
-                  {
-                    "type": "tableCellPropertyChange",
-                    "info": {
-                      "id": 572,
-                      "author": "Reviewer",
-                      "date": "2026-02-03T04:05:06Z",
-                      "initials": "R"
-                    },
-                    "previousFormatting": {
-                      "gridSpan": 2,
-                      "vMerge": "continue"
-                    }
-                  }
                 ]
-              },
-              {
-                "type": "tableCell",
-                "content": [
-                  {
-                    "type": "paragraph",
-                    "paraId": "00000303",
-                    "content": []
-                  }
-                ],
-                "formatting": {},
-                "structuralChange": {
-                  "type": "tableCellInsertion",
-                  "info": {
-                    "id": 573,
-                    "author": "Reviewer",
-                    "date": "2026-02-03T04:05:06Z",
-                    "initials": "R"
-                  }
-                }
               }
             ]
           }
@@ -8786,8 +8740,7 @@
               {
                 "type": "tableCell",
                 "formatting": {
-                  "gridSpan": 2,
-                  "vMerge": "restart"
+                  "gridSpan": 2
                 },
                 "content": [
                   {
@@ -8809,8 +8762,7 @@
               {
                 "type": "tableCell",
                 "formatting": {
-                  "gridSpan": 2,
-                  "vMerge": "continue"
+                  "gridSpan": 2
                 },
                 "content": [
                   {

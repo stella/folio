@@ -10,11 +10,18 @@ import type {
   InsertRowOp,
   SetTableRowsOp,
   TableEditOp,
+  TableIntentOperation,
   SetTableOp,
 } from "./types";
 
 type TableTarget = Pick<
-  DeleteRowOp | DeleteTableOp | InsertRowOp | SetTableRowsOp | TableEditOp | SetTableOp,
+  | DeleteRowOp
+  | DeleteTableOp
+  | InsertRowOp
+  | SetTableRowsOp
+  | TableEditOp
+  | TableIntentOperation
+  | SetTableOp,
   "type" | "story" | "blockId"
 >;
 

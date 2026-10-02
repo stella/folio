@@ -262,6 +262,12 @@ const propertyCell = ({ cell, ids, reject }: PropertyCellOptions): TableCell => 
     return next;
   }
   const remaining: TableCellPropertyChange[] = [];
+  const mergeChange =
+    cell.structuralChange?.type === "tableCellMerge" ? cell.structuralChange : undefined;
+  const preserveMergeState =
+    mergeChange !== undefined && !ids.has(mergeChange.info.id)
+      ? cell.formatting?.vMerge
+      : undefined;
   let priorFormatting: TableCellPropertyChange["previousFormatting"];
   let priorStructuralChange: TableCellPropertyChange["previousStructuralChange"];
   let removing = false;
@@ -294,8 +300,12 @@ const propertyCell = ({ cell, ids, reject }: PropertyCellOptions): TableCell => 
   if (removing) {
     if (priorFormatting === undefined) delete next.formatting;
     else next.formatting = priorFormatting;
-    if (priorStructuralChange === undefined) delete next.structuralChange;
-    else next.structuralChange = priorStructuralChange;
+    if (preserveMergeState !== undefined) {
+      next.formatting = { ...next.formatting, vMerge: preserveMergeState };
+    }
+    if (priorStructuralChange !== undefined) next.structuralChange = priorStructuralChange;
+    else if (mergeChange !== undefined && ids.has(mergeChange.info.id))
+      delete next.structuralChange;
   }
   return next;
 };

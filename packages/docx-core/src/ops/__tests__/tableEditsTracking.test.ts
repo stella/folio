@@ -4,6 +4,7 @@ import type { Document, Paragraph, Table } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
+import { tableGrid } from "../tableGrid";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS, type DocumentOp } from "../types";
 
 const exact = (actual: unknown, expected: unknown): void => {
@@ -27,7 +28,7 @@ const exact = (actual: unknown, expected: unknown): void => {
 const paragraph = (paraId: string, text = "cell"): Paragraph => ({
   type: "paragraph",
   paraId,
-  content: [{ type: "run", content: [{ type: "text", text }] }],
+  content: text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
 });
 
 const tableOf = (): Table => ({
@@ -353,32 +354,94 @@ describe("tracked table edits", () => {
     );
   });
 
-  test("tracked vertical split restores each continuation cell property snapshot", () => {
-    const table = tableOf();
-    const first = table.rows.at(0)?.cells.at(0);
-    const second = table.rows.at(1)?.cells.at(0);
-    if (first === undefined || second === undefined) throw new Error("The merge cells exist.");
-    first.formatting = { vMerge: "restart" };
-    second.formatting = { vMerge: "continue" };
-    const baseline = documentOf(table);
-    const direct = applied(baseline, {
-      ...tableTarget,
-      type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-      newBlockIds: [],
-    });
-    const tracked = applied(baseline, {
-      ...tableTarget,
-      type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-      newBlockIds: [],
-      revision: revision(660),
-      newIds: { revision: [661] },
-    });
-    exact(resolved(tracked.document, [660, 661], REVISION_DECISIONS.REJECT).document, baseline);
-    exact(
-      resolved(tracked.document, [660, 661], REVISION_DECISIONS.ACCEPT).document,
-      direct.document,
-    );
-  });
+  test.each(["absent", "empty"] as const)(
+    "tracked pure vertical merge resolves paired and partial revisions with %s formatting",
+    (formattingKind) => {
+      const table = tableOf();
+      for (const row of table.rows) {
+        const cell = row.cells.at(0);
+        if (cell === undefined) throw new Error("The merge cells exist.");
+        if (formattingKind === "empty") cell.formatting = {};
+        else delete cell.formatting;
+      }
+      const second = table.rows.at(1)?.cells.at(0);
+      if (second === undefined) throw new Error("The continuation cell exists.");
+      second.content = [paragraph("00000020", "")];
+      const baseline = documentOf(table);
+      const direct = applied(baseline, {
+        ...tableTarget,
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        top: 0,
+        bottom: 2,
+        left: 0,
+        right: 1,
+        newBlockIds: [],
+      });
+      const tracked = applied(baseline, {
+        ...tableTarget,
+        type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+        top: 0,
+        bottom: 2,
+        left: 0,
+        right: 1,
+        newBlockIds: [],
+        revision: revision(660),
+        newIds: { revision: [661, 662, 663] },
+      });
+      const trackedTable = tableIn(tracked.document);
+      const owner = trackedTable.rows.at(0)?.cells.at(0);
+      const continuation = trackedTable.rows.at(1)?.cells.at(0);
+      if (owner?.structuralChange?.type !== "tableCellMerge")
+        throw new Error("The owner cell has a cellMerge record.");
+      if (continuation?.structuralChange?.type !== "tableCellMerge")
+        throw new Error("The continuation cell has a cellMerge record.");
+      const ownerProperty = owner.propertyChanges?.at(0);
+      const continuationProperty = continuation.propertyChanges?.at(0);
+      if (ownerProperty === undefined || continuationProperty === undefined)
+        throw new Error("Both vertical cells have paired revision records.");
+      const ownerMergeId = owner.structuralChange.info.id;
+      const ownerPropertyId = ownerProperty.info.id;
+      const continuationMergeId = continuation.structuralChange.info.id;
+      const continuationPropertyId = continuationProperty.info.id;
+
+      for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+        const propertyResolved = resolved(tracked.document, [ownerPropertyId], decision);
+        const partialTable = tableIn(propertyResolved.document);
+        expect(partialTable.rows.at(0)?.cells.at(0)?.structuralChange?.info.id).toBe(ownerMergeId);
+        expect(partialTable.rows.at(0)?.cells.at(0)?.propertyChanges).toBeUndefined();
+        expect(partialTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBe("restart");
+        expect(tableGrid(partialTable, DOCUMENT_OP_TYPES.MERGE_CELLS).isOk()).toBe(true);
+
+        const remaining = [ownerMergeId, continuationMergeId, continuationPropertyId];
+        const final = resolved(propertyResolved.document, remaining, decision);
+        if (decision === REVISION_DECISIONS.ACCEPT) exact(final.document, direct.document);
+        else if (formattingKind === "absent") exact(final.document, baseline);
+        else {
+          // OOXML has no distinction between absent and empty formatting once its tcPrChange was resolved alone.
+          const rejectedTable = tableIn(final.document);
+          expect(rejectedTable.rows.at(0)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+          expect(rejectedTable.rows.at(1)?.cells.at(0)?.formatting?.vMerge).toBeUndefined();
+          expect(tableGrid(rejectedTable, DOCUMENT_OP_TYPES.MERGE_CELLS).isOk()).toBe(true);
+        }
+      }
+      exact(
+        resolved(
+          tracked.document,
+          [ownerMergeId, ownerPropertyId, continuationMergeId, continuationPropertyId],
+          REVISION_DECISIONS.REJECT,
+        ).document,
+        baseline,
+      );
+      exact(
+        resolved(
+          tracked.document,
+          [ownerMergeId, ownerPropertyId, continuationMergeId, continuationPropertyId],
+          REVISION_DECISIONS.ACCEPT,
+        ).document,
+        direct.document,
+      );
+    },
+  );
 
   test("vertical cellMerge marks resolve their current and original merge states", () => {
     const table = tableOf();

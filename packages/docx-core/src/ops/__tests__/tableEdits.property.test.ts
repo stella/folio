@@ -313,11 +313,20 @@ describe("semantic table edit properties", () => {
         const f = fixture({ ...value, variant: vertical ? 2 : 1 });
         const before = tableOf(f.document, f.nested);
         const splitHeight = vertical ? f.height : 1;
-        const result = applied(f.document, {
+        const op = {
           ...target(f.target),
           type: DOCUMENT_OP_TYPES.SPLIT_CELL,
           newBlockIds: Array.from({ length: splitHeight }, (_, offset) => id(0x7000 + offset)),
-        });
+        } satisfies DocumentOp;
+        if (vertical) {
+          const refused = applyDocumentOp(f.document, op);
+          expect(refused.isErr() && refused.error.reason).toBe(
+            DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          );
+          exact(tableOf(f.document, f.nested), before);
+          return;
+        }
+        const result = applied(f.document, op);
         const after = tableOf(result.document, f.nested);
         for (let rowIndex = 0; rowIndex < splitHeight; rowIndex++) {
           const row = after.rows.at(rowIndex);
@@ -510,7 +519,6 @@ describe("semantic table edit properties", () => {
                 type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
                 column: width,
                 width: 950,
-                newBlockIds: idsForInsert(before, width, 0x40000 + step * 32),
               }) as const satisfies TableIntentOperation;
             let operation: TableIntentOperation;
             switch (kind) {
@@ -564,13 +572,10 @@ describe("semantic table edit properties", () => {
                     : trailingInsert();
                 break;
               case 6:
-                operation = {
-                  ...address,
-                  type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-                  newBlockIds: Array.from({ length: (firstSpan - 1) * groupHeight }, (_, offset) =>
-                    id(0x30000 + step * 32 + offset),
-                  ),
-                };
+                operation =
+                  groupHeight > 1 || (firstSpan === 1 && groupHeight === 1)
+                    ? trailingInsert()
+                    : { ...address, type: DOCUMENT_OP_TYPES.SPLIT_CELL };
                 break;
               default:
                 operation = trailingInsert();
@@ -768,23 +773,7 @@ describe("semantic table edit properties", () => {
               type: DOCUMENT_OP_TYPES.SPLIT_CELL,
               newBlockIds: [],
             } satisfies DocumentOp,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-          },
-          {
-            op: {
-              ...address,
-              type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-              newBlockIds: Array.from({ length: f.height + 1 }, (_, offset) => id(0x8000 + offset)),
-            } satisfies DocumentOp,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
-          },
-          {
-            op: {
-              ...address,
-              type: DOCUMENT_OP_TYPES.SPLIT_CELL,
-              newBlockIds: Array.from({ length: f.height }, () => "00000000"),
-            } satisfies DocumentOp,
-            reason: DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID,
+            reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
           },
           {
             op: {
