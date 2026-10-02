@@ -145,6 +145,10 @@
       </slot>
     </div>
 
+    <div v-if="refusalNotice" class="docx-editor-vue__notice" role="status">
+      {{ refusalNotice }}
+    </div>
+
     <div ref="hiddenPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-pm" />
     <div ref="hiddenHfPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm" />
 
@@ -312,7 +316,7 @@
             </div>
 
             <InlineHeaderFooterEditor
-              v-if="hfEdit"
+              v-if="hfEdit && props.experimentalSession !== 'canonical'"
               :edit="hfEdit"
               :get-view="getActiveHeaderFooterView"
               @close="handleHfSave"
@@ -390,17 +394,17 @@
               @close="dismissComments"
               @dismiss="dismissComments"
               @update:active-item-id="(id: string | null) => (activeSidebarItem = id)"
-              @add-comment="commentLifecycle.handleAddComment"
+              @add-comment="handleCommentAdd"
               @cancel-add-comment="commentLifecycle.handleCancelAddComment"
-              @comment-reply="commentManagement.handleReply"
-              @comment-resolve="commentManagement.handleResolve"
-              @comment-unresolve="commentManagement.handleUnresolve"
-              @comment-delete="commentManagement.handleDelete"
+              @comment-reply="handleCommentReply"
+              @comment-resolve="handleCommentResolve"
+              @comment-unresolve="handleCommentUnresolve"
+              @comment-delete="handleCommentDelete"
               @accept-change="commentManagement.handleAcceptChange"
               @reject-change="commentManagement.handleRejectChange"
               @accept-change-by-id="commentManagement.handleAcceptChangeById"
               @reject-change-by-id="commentManagement.handleRejectChangeById"
-              @tracked-change-reply="commentManagement.handleTrackedChangeReply"
+              @tracked-change-reply="handleTrackedChangeReply"
             />
 
             <button
@@ -413,7 +417,7 @@
               }"
               aria-label="Add comment"
               title="Add comment"
-              @mousedown.prevent.stop="commentLifecycle.startAddComment"
+              @mousedown.prevent.stop="handleStartAddComment"
             >
               <MaterialSymbol name="add_comment" :size="18" />
             </button>
@@ -493,6 +497,9 @@ import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import { useTransientNotice } from "../composables/useTransientNotice";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
@@ -616,9 +623,30 @@ const isDark = useColorMode();
 provideDocxPortalClass(isDark);
 
 function notifyDocumentChange(doc: Document): void {
-  props.onChange?.(doc);
-  emit("change", doc);
-  emit("update:document", doc);
+  if (props.experimentalSession !== "canonical") {
+    props.onChange?.(doc);
+    emit("change", doc);
+    emit("update:document", doc);
+    return;
+  }
+  props.onChange?.(cloneDocumentWithParagraphPropertySources(doc));
+  emit("change", cloneDocumentWithParagraphPropertySources(doc));
+  emit("update:document", cloneDocumentWithParagraphPropertySources(doc));
+}
+
+const { message: refusalNotice, show: showRefusalNotice } = useTransientNotice();
+
+function reportEditorError(error: Error): void {
+  if (CanonicalSessionRefusalError.is(error)) showRefusalNotice(error.message);
+  props.onError?.(error);
+  emit("error", error);
+}
+
+function refuseCanonicalModelEdit(message: string): boolean {
+  if (props.experimentalSession !== "canonical") return false;
+  const error = new CanonicalSessionRefusalError({ message });
+  reportEditorError(error);
+  return true;
 }
 
 const editorMode = ref<EditorMode>(props.mode);
@@ -798,6 +826,7 @@ const {
   noteEditorContainer: notePmRef,
   pagesContainer: pagesRef,
   readOnly,
+  experimentalSession: () => props.experimentalSession,
   editorMode,
   author: () => props.author,
   password: () => props.password,
@@ -815,10 +844,7 @@ const {
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) => props.onSlashMenuKeyAction?.(action) ?? false,
   onChange: notifyDocumentChange,
-  onError: (err) => {
-    props.onError?.(err);
-    emit("error", err);
-  },
+  onError: reportEditorError,
   onSelectionUpdate: (state) => {
     props.onSelectionChange?.(extractSelectionState(state));
     // Selected plain text on every selection-bearing transaction. Atom inline
@@ -973,7 +999,9 @@ const {
   imageInteracting,
   hyperlinkPopupData,
   readOnly,
-  showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
+  showHeaderFooterEditing: computed(
+    () => props.showHeaderFooterEditing && props.experimentalSession !== "canonical",
+  ),
   zoom,
   layout,
   tableResize: {
@@ -993,11 +1021,22 @@ const {
   getActiveNoteView,
   reLayout,
   onDocumentChange: notifyDocumentChange,
+  onHeaderFooterEditAttempt: () =>
+    refuseCanonicalModelEdit("Header and footer editing is unavailable in this session."),
   clearOverlay: selectionSync.clearOverlay,
 });
 
 const getActiveHeaderFooterView = () =>
   hfEdit.value?.rId ? getHeaderFooterView(hfEdit.value.rId) : null;
+
+watch(
+  () => props.experimentalSession,
+  (session) => {
+    if (session !== "canonical") return;
+    hfEdit.value = null;
+    closeNoteStory();
+  },
+);
 
 const activeHeaderFooterSelection = computed(() => {
   const edit = hfEdit.value;
@@ -1097,6 +1136,45 @@ const commentLifecycle = useCommentLifecycle({
     activeSidebarItem.value = id;
   },
 });
+
+function refuseCanonicalCommentEdit(): boolean {
+  return refuseCanonicalModelEdit("Comment changes are unavailable in this session.");
+}
+
+function handleStartAddComment(): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentLifecycle.startAddComment();
+}
+
+function handleCommentAdd(text: string): boolean {
+  if (refuseCanonicalCommentEdit()) return false;
+  return commentLifecycle.handleAddComment(text);
+}
+
+function handleCommentReply(parentId: number, text: string): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleReply(parentId, text);
+}
+
+function handleCommentResolve(commentId: number): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleResolve(commentId);
+}
+
+function handleCommentUnresolve(commentId: number): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleUnresolve(commentId);
+}
+
+function handleCommentDelete(commentId: number): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleDelete(commentId);
+}
+
+function handleTrackedChangeReply(revisionId: number, text: string): void {
+  if (refuseCanonicalCommentEdit()) return;
+  commentManagement.handleTrackedChangeReply(revisionId, text);
+}
 
 function handleHyperlinkPopupCopy(href: string): void {
   void navigator.clipboard?.writeText(href);
@@ -1372,11 +1450,11 @@ function handleInsertTOCAction(): void {
 // indent / tab-stop edits dispatch PM commands and already notify via the
 // transaction pipeline.
 const {
-  handlePageSetupApply,
-  handleLeftMarginChange,
-  handleRightMarginChange,
-  handleTopMarginChange,
-  handleBottomMarginChange,
+  handlePageSetupApply: applyPageSetup,
+  handleLeftMarginChange: applyLeftMarginChange,
+  handleRightMarginChange: applyRightMarginChange,
+  handleTopMarginChange: applyTopMarginChange,
+  handleBottomMarginChange: applyBottomMarginChange,
   handleIndentLeftChange,
   handleIndentRightChange,
   handleFirstLineIndentChange,
@@ -1389,6 +1467,31 @@ const {
   reLayout,
   onChange: notifyDocumentChange,
 });
+
+function handlePageSetupApply(properties: Partial<SectionProperties>): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyPageSetup(properties);
+}
+
+function handleLeftMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyLeftMarginChange(twips);
+}
+
+function handleRightMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyRightMarginChange(twips);
+}
+
+function handleTopMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyTopMarginChange(twips);
+}
+
+function handleBottomMarginChange(twips: number): void {
+  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
+  applyBottomMarginChange(twips);
+}
 
 // Paragraph indent snapshot for the horizontal ruler's indent handles. Derived
 // from core's extractSelectionContext, re-run on every selection/doc tick.
@@ -1407,6 +1510,13 @@ const paragraphIndent = computed(() => {
 });
 
 function setEditorMode(mode: EditorMode): void {
+  if (props.experimentalSession === "canonical" && mode === "suggesting") {
+    const error = new CanonicalSessionRefusalError({
+      message: "Canonical sessions do not support suggesting mode.",
+    });
+    reportEditorError(error);
+    return;
+  }
   if (editorMode.value === mode) {
     return;
   }
@@ -1463,6 +1573,7 @@ function handleMenuAction(action: string): void {
 }
 
 function handleWatermarkApply(watermark: Watermark | undefined): void {
+  if (refuseCanonicalModelEdit("Watermark changes are unavailable in this session.")) return;
   if (readOnly.value) {
     return;
   }
@@ -1671,9 +1782,18 @@ const { exposed } = useDocxEditorRefApi({
   author: () => props.author,
   // Mint during the held operation, then publish applied comments after commit.
   createAIEditComment: (text, author) => commentManagement.createComment(text, undefined, author),
-  publishAIEditComments: commentManagement.appendComments,
-  getComments: () => commentManagement.comments.value,
-  setComments: commentManagement.setComments,
+  publishAIEditComments: (nextComments) => {
+    if (refuseCanonicalCommentEdit()) return;
+    commentManagement.appendComments(nextComments);
+  },
+  getComments: () =>
+    props.experimentalSession === "canonical"
+      ? commentManagement.comments.value.map((comment) => structuredClone(comment))
+      : commentManagement.comments.value,
+  setComments: (nextComments) => {
+    if (refuseCanonicalCommentEdit()) return;
+    commentManagement.setComments(nextComments);
+  },
   focus: () => activeEditorView.value?.focus(),
   getDocument,
   getActiveView: () => activeEditorView.value,
@@ -1865,6 +1985,10 @@ defineExpose(exposed);
 .docx-editor-vue__error {
   padding: 12px;
   color: var(--destructive, #b00020);
+}
+.docx-editor-vue__notice {
+  padding: 12px;
+  color: var(--foreground);
 }
 .docx-editor-vue__loading,
 .docx-editor-vue__placeholder {

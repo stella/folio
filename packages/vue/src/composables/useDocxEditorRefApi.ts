@@ -282,21 +282,25 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function undoActiveView(): boolean {
     const view = opts.getActiveView();
+    if (view === opts.editorView.value) return opts.editor.undo();
     return view ? historyUndo(view.state, view.dispatch) : false;
   }
 
   function redoActiveView(): boolean {
     const view = opts.getActiveView();
+    if (view === opts.editorView.value) return opts.editor.redo();
     return view ? historyRedo(view.state, view.dispatch) : false;
   }
 
   function canUndoActiveView(): boolean {
     const view = opts.getActiveView();
+    if (view === opts.editorView.value) return opts.editor.canUndo();
     return view ? historyUndo(view.state) : false;
   }
 
   function canRedoActiveView(): boolean {
     const view = opts.getActiveView();
+    if (view === opts.editorView.value) return opts.editor.canRedo();
     return view ? historyRedo(view.state) : false;
   }
 

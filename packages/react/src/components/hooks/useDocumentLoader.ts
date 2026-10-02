@@ -30,6 +30,7 @@ type UseDocumentLoaderParams = {
   initialDocument: Document | null | undefined;
   /** Password for Agile-encrypted .docx files (Office 2010+). */
   password?: string | undefined;
+  experimentalSession?: "canonical";
   /** History instance — used to reset/push document state. */
   history: UseHistoryReturn<Document | null>;
   /** Called when an unrecoverable parse error occurs. */
@@ -73,6 +74,7 @@ export const useDocumentLoader = ({
   documentBuffer,
   initialDocument,
   password,
+  experimentalSession,
   history,
   onError,
   onCompatibilityChange,
@@ -89,6 +91,7 @@ export const useDocumentLoader = ({
   const [{ manager, api }] = useState(() => {
     const instance = new DocumentLoaderManager({
       history,
+      getExperimentalSession: () => experimentalSession,
       onError,
       onCompatibilityChange,
       onReset,
@@ -108,6 +111,7 @@ export const useDocumentLoader = ({
   // Re-bind host callbacks so the manager always sees the latest closures.
   manager.setCallbacks({
     history,
+    getExperimentalSession: () => experimentalSession,
     onError,
     onCompatibilityChange,
     onReset,
@@ -128,7 +132,7 @@ export const useDocumentLoader = ({
     }
 
     void api.loadBuffer(source.buffer, { password });
-  }, [documentBuffer, initialDocument, password, api]);
+  }, [documentBuffer, initialDocument, password, experimentalSession, api]);
 
   // A saved baseline belongs to this load; internal edits must not replace it.
   useEffect(() => {

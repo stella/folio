@@ -11,11 +11,9 @@ import {
 import { Result } from "better-result";
 import { EditorState } from "prosemirror-state";
 
-import {
-  describePackageDifferences,
-  type PackageDifferences,
-} from "../../../../../scripts/lib/corpus-invariants/model-equality";
-import { canonicalReviewBlocks, storyRevisionIds } from "../../../../../test/reviewProjection";
+import type { PackageDifferences } from "../../../../../scripts/lib/corpus-invariants/model-equality";
+import { reviewDifferences } from "../../../../../test/reviewDifferences";
+import { storyRevisionIds } from "../../../../../test/reviewProjection";
 import { repackDocx } from "../../docx/rezip";
 import { parseDocx } from "../../docx/parser";
 import { resolveAllChangesInHeadlessState } from "../../prosemirror/commands/comments";
@@ -24,15 +22,7 @@ import { createDocumentStylesPlugin } from "../../prosemirror/plugins/documentSt
 import { createDocumentNumberingPlugin } from "../../prosemirror/plugins/documentNumbering";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 
-export { storyRevisionIds };
-
-/** Compare authored main-story content; ids and paragraph survivor identity stay exact. */
-export const reviewDifferences = (before: Document, after: Document): PackageDifferences => {
-  const contentOnly = (document: Document): Document => ({
-    package: { document: { content: canonicalReviewBlocks(document.package.document.content) } },
-  });
-  return describePackageDifferences(contentOnly(before), contentOnly(after));
-};
+export { storyRevisionIds, reviewDifferences };
 
 export const editorRoundTrip = async (document: Document): Promise<Document> => {
   const projected = toProseDoc(document);

@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { validateOpsDocument, normalizeForOps } from "@stll/docx-core/ops";
+import { createDocx } from "../docx/rezip";
+import { CanonicalDocxInputError } from "../docx/canonicalSessionInput";
 
 import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -46,6 +49,57 @@ const makeCallbacks = (): { callbacks: DocumentLoaderCallbacks; recorded: Record
 };
 
 describe("DocumentLoaderManager", () => {
+  test.each([undefined, "provided-password"])(
+    "canonical byte loads refuse encrypted containers before ZIP normalization (%s)",
+    async (password) => {
+      const { callbacks, recorded } = makeCallbacks();
+      callbacks.getExperimentalSession = () => "canonical";
+      const manager = new DocumentLoaderManager(callbacks);
+      const compoundHeader = new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]);
+      await manager.loadBuffer(compoundHeader, { password });
+      expect(recorded.history.state).toBeNull();
+      expect(recorded.errors).toHaveLength(1);
+      expect(recorded.errors.at(0)).toBeInstanceOf(CanonicalDocxInputError);
+      expect(recorded.errors.at(0)?.message).toBe(
+        "Password-protected documents are unavailable in the experimental canonical session.",
+      );
+      expect(recorded.loadStates.at(-1)).toEqual({
+        status: "error",
+        message: recorded.errors.at(0)?.message,
+      });
+    },
+  );
+
+  test("canonical ZIP normalization failures preserve the typed error and cause", async () => {
+    const { callbacks, recorded } = makeCallbacks();
+    callbacks.getExperimentalSession = () => "canonical";
+    const manager = new DocumentLoaderManager(callbacks);
+    await manager.loadBuffer(new Uint8Array([1, 2, 3, 4]));
+    expect(recorded.history.state).toBeNull();
+    expect(recorded.errors).toHaveLength(1);
+    const error = recorded.errors.at(0);
+    expect(error).toBeInstanceOf(CanonicalDocxInputError);
+    if (!(error instanceof CanonicalDocxInputError)) return;
+    expect(error.cause).toBeInstanceOf(Error);
+    expect(error.message).toBe(error.cause instanceof Error ? error.cause.message : undefined);
+    expect(recorded.loadStates.at(-1)).toEqual({ status: "error", message: error.message });
+  });
+
+  test("canonical byte loads establish unique paragraph IDs before parsing", async () => {
+    const { callbacks, recorded } = makeCallbacks();
+    callbacks.getExperimentalSession = () => "canonical";
+    const document = createEmptyDocument({ initialText: "Plain text" });
+    const bytes = await createDocx(document);
+    const manager = new DocumentLoaderManager(callbacks);
+    await manager.loadBuffer(bytes);
+    expect(recorded.errors).toEqual([]);
+    const loaded = recorded.history.state;
+    expect(loaded).not.toBeNull();
+    if (!loaded) return;
+    expect(validateOpsDocument(normalizeForOps(loaded)).isOk()).toBe(true);
+    expect(loaded.package.document.content.at(0)?.type).toBe("paragraph");
+  });
+
   test("every parsed-document load lands with a fresh identity in the same commit as history", () => {
     const { callbacks, recorded } = makeCallbacks();
     const manager = new DocumentLoaderManager(callbacks);

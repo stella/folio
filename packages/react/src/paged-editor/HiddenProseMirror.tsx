@@ -62,6 +62,9 @@ const EMPTY_EXTERNAL_PLUGINS: Plugin[] = [];
 export type HiddenProseMirrorProps = {
   /** The document to edit */
   document: Document | null;
+  experimentalSession?: "canonical";
+  suggestionModeActive?: boolean;
+  onSessionRefusal?: (reason: string) => void;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
    * load); a change means an external load and resets the editor state.
@@ -117,6 +120,7 @@ export type HiddenProseMirrorRef = {
   getView: () => EditorView | null;
   /** Get the current Document from PM state */
   getDocument: () => Document | null;
+  getCanonicalDocument: () => Document | null;
   /** Focus the hidden editor */
   focus: () => void;
   /** Blur the hidden editor */
@@ -195,6 +199,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     const {
       document,
       documentIdentity,
+      experimentalSession,
+      suggestionModeActive = false,
+      onSessionRefusal,
       styles,
       theme: _theme,
       widthPx = 612, // Default Letter width at 72dpi
@@ -226,6 +233,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     // Manager-input refs: the framework-agnostic view manager reads these via
     // accessor functions, so it always sees the current render's value.
     const readOnlyRef = useRef(readOnly);
+    const experimentalSessionRef = useRef(experimentalSession);
+    const suggestionModeActiveRef = useRef(suggestionModeActive);
+    const onSessionRefusalRef = useRef(onSessionRefusal);
     const documentRef = useRef(document);
     const documentIdentityRef = useRef(documentIdentity);
     const stylesRef = useRef(styles);
@@ -250,6 +260,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
 
     // Keep refs in sync
     readOnlyRef.current = readOnly;
+    experimentalSessionRef.current = experimentalSession;
+    suggestionModeActiveRef.current = suggestionModeActive;
+    onSessionRefusalRef.current = onSessionRefusal;
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
     externalPluginsRef.current = externalPlugins;
@@ -288,6 +301,9 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         getCollaborationModules: () => collaborationModulesRef.current,
         getPrecomputedInitialState: () => precomputedInitialStateRef.current,
         getReadOnly: () => readOnlyRef.current,
+        getExperimentalSession: () => experimentalSessionRef.current,
+        getEditingMode: () => (suggestionModeActiveRef.current ? "suggesting" : "editing"),
+        onSessionRefusal: (reason) => onSessionRefusalRef.current?.(reason),
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,
         onTransaction: (update) => onTransactionRef.current?.(update),
@@ -378,7 +394,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     // passive awareness effect above subscribes to remote selections.
     useLayoutEffect(() => {
       managerRef.current?.retryViewCreation();
-    }, [collaboration, collaborationModules]);
+    }, [collaboration, collaborationModules, experimentalSession]);
 
     useEffect(() => () => destroyView(), [destroyView]);
 
@@ -391,6 +407,8 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     }, [
       document,
       documentIdentity,
+      experimentalSession,
+      suggestionModeActive,
       styles,
       extensionManager,
       externalPlugins,

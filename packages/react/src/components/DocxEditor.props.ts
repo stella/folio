@@ -89,6 +89,8 @@ export type DocxEditorProps = {
   password?: string | undefined;
   /** Pre-parsed document (alternative to documentBuffer) */
   document?: Document | null;
+  /** Experimental plain-text canonical session; unsupported edits are refused. */
+  experimentalSession?: "canonical";
   /** Callback when document is saved */
   onSave?: (buffer: ArrayBuffer) => void;
   /** Author name used for comments and track changes */

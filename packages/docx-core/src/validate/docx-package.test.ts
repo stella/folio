@@ -5,8 +5,14 @@ import { DOCX_PACKAGE_ISSUE_CODES, validateDocxPackage } from "./docx";
 
 const packageWithDocument = async (documentXml: string): Promise<Uint8Array> => {
   const zip = new JSZip();
-  zip.file("[Content_Types].xml", "<Types/>");
-  zip.file("_rels/.rels", "<Relationships/>");
+  zip.file(
+    "[Content_Types].xml",
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+  );
+  zip.file(
+    "_rels/.rels",
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+  );
   zip.file("word/document.xml", documentXml);
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 };
@@ -47,6 +53,41 @@ describe("validateDocxPackage", () => {
     expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
   });
 
+  test("saved-package oracle detects a timestamp-sized comment id mutation", async () => {
+    const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const valid = await packageWithDocument(
+      `<w:document xmlns:w="${namespace}"><w:body><w:p/></w:body></w:document>`,
+    );
+    const zip = await JSZip.loadAsync(valid);
+    const declarations = await zip.file("[Content_Types].xml")?.async("string");
+    if (!declarations) throw new TypeError("Missing mutation fixture declarations");
+    zip.file(
+      "[Content_Types].xml",
+      declarations.replace(
+        "</Types>",
+        '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>',
+      ),
+    );
+    zip.file(
+      "word/comments.xml",
+      `<w:comments xmlns:w="${namespace}"><w:comment w:id="1" w:author="Reviewer"><w:p/></w:comment></w:comments>`,
+    );
+    zip.file(
+      "word/_rels/document.xml.rels",
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="comments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>',
+    );
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
+    zip.file(
+      "word/comments.xml",
+      `<w:comments xmlns:w="${namespace}"><w:comment w:id="1790870400000" w:author="Reviewer"><w:p/></w:comment></w:comments>`,
+    );
+    const mutated = await validateDocxPackage(await zip.generateAsync({ type: "uint8array" }));
+    expect(mutated.valid).toBe(false);
+    if (mutated.valid) throw new TypeError("Comment mutation escaped the validity oracle");
+    expect(mutated.code).toBe(DOCX_PACKAGE_ISSUE_CODES.InvalidSchemaAttribute);
+    expect(mutated.error).toContain("word/comments.xml");
+  });
   test("requires a body in the same WordprocessingML namespace", async () => {
     const bytes = await packageWithDocument(
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>',
@@ -171,6 +212,15 @@ describe("validateDocxPackage archive inflation limits", () => {
 
   test("leaves a highly compressible binary entry to the byte and archive limits", async () => {
     const zip = await JSZip.loadAsync(await packageWithDocument(documentOfSize(16)));
+    const declarations = await zip.file("[Content_Types].xml")?.async("string");
+    if (!declarations) throw new TypeError("Missing binary fixture declarations");
+    zip.file(
+      "[Content_Types].xml",
+      declarations.replace(
+        "</Types>",
+        '<Default Extension="bmp" ContentType="image/bmp"/><Default Extension="bin" ContentType="application/octet-stream"/></Types>',
+      ),
+    );
     zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff));
     // Incompressible padding keeps the archive as a whole under the ratio cap.
     zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)), {

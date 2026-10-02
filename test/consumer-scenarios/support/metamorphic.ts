@@ -41,6 +41,7 @@
  */
 
 import assert from "node:assert/strict";
+import { validateDocxPackage } from "@stll/docx-core";
 import { inflateRawSync } from "node:zlib";
 
 import { createReviewerBridge } from "@stll/folio-agents";
@@ -130,8 +131,16 @@ export const relationSummary = (): string =>
 // Views
 // ---------------------------------------------------------------------------
 
-const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
-  new Uint8Array(await reviewer.toBuffer());
+const save = async (reviewer: Reviewer): Promise<Uint8Array> => {
+  const bytes = new Uint8Array(await reviewer.toBuffer());
+  const validity = await validateDocxPackage(bytes);
+  assert.equal(
+    validity.valid,
+    true,
+    `Metamorphic saved OOXML invalid: ${validity.valid ? "" : validity.error}`,
+  );
+  return bytes;
+};
 
 /** What a reader sees of a block, ids aside: a new block's id is the allocator's choice. */
 const blockView = (row: Row) => ({

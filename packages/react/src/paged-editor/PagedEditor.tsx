@@ -49,6 +49,8 @@ import { createFolioAIEditSnapshot } from "@stll/folio-core/ai-edits/snapshot";
 import { createFolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { FolioEditor, FolioEditorDocumentIO } from "@stll/folio-core/controller/folioEditor";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
+import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { dispatchEditorTextInput } from "@stll/folio-core/prosemirror/textInput";
 import type { HiddenEditorTransactionUpdate } from "@stll/folio-core/controller/hiddenEditorManager";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
@@ -264,6 +266,7 @@ import { useVisualLineNavigation } from "./useVisualLineNavigation";
 export type PagedEditorProps = {
   /** The document to edit. */
   document: Document | null;
+  experimentalSession?: "canonical";
   /** Adapter-owned document I/O exposed through the shared controller. */
   documentIO: FolioEditorDocumentIO;
   /**
@@ -1314,6 +1317,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       document,
       documentIO,
       documentIdentity,
+      experimentalSession,
       fonts: hostFonts,
       styles,
       theme: _theme,
@@ -1413,8 +1417,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
 
     useEffect(() => {
-      if (readOnly) noteEditorRef.current?.close();
-    }, [readOnly]);
+      if (readOnly || experimentalSession === "canonical") noteEditorRef.current?.close();
+    }, [experimentalSession, readOnly]);
 
     // Visual line navigation (ArrowUp/ArrowDown with sticky X)
     const { handlePMKeyDown } = useVisualLineNavigation({ pagesContainerRef });
@@ -1456,6 +1460,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     onDocumentChangeRef.current = onDocumentChange;
     onTotalPagesChangeRef.current = onTotalPagesChange;
     onErrorRef.current = onError;
+    const handleSessionRefusal = useCallback((message: string) => {
+      onErrorRef.current?.(new CanonicalSessionRefusalError({ message }));
+    }, []);
 
     // State
     const [layout, setLayout] = useState<Layout | null>(null);
@@ -1653,53 +1660,69 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       });
     }, []);
 
-    const applyPendingHiddenEditorInput = useCallback((view: EditorView) => {
-      const pendingSelection = pendingHiddenEditorSelectionRef.current;
-      pendingHiddenEditorSelectionRef.current = null;
+    const applyPendingHiddenEditorInput = useCallback(
+      (view: EditorView) => {
+        const pendingSelection = pendingHiddenEditorSelectionRef.current;
+        pendingHiddenEditorSelectionRef.current = null;
 
-      if (pendingSelection?.type === "node") {
-        try {
-          view.dispatch(
-            view.state.tr.setSelection(NodeSelection.create(view.state.doc, pendingSelection.pos)),
-          );
-        } catch {
-          // Fall through to queued text insertion at the current selection.
-        }
-      }
-
-      if (pendingSelection?.type === "text") {
-        const docEnd = view.state.doc.content.size;
-        const anchor = Math.max(0, Math.min(pendingSelection.anchor, docEnd));
-        const head =
-          pendingSelection.head === undefined
-            ? anchor
-            : Math.max(0, Math.min(pendingSelection.head, docEnd));
-        try {
-          const selection = TextSelection.between(
-            view.state.doc.resolve(anchor),
-            view.state.doc.resolve(head),
-          );
-          view.dispatch(view.state.tr.setSelection(selection));
-        } catch {
-          // Keep the default selection if the cached visual position went stale.
-        }
-      }
-
-      const queuedInput = queuedInputBeforeHiddenEditorRef.current;
-      if (queuedInput.length === 0) {
-        return;
-      }
-
-      queuedInputBeforeHiddenEditorRef.current = [];
-      for (const input of queuedInput) {
-        if (input.type === "text") {
-          dispatchEditorTextInput(view, input.text);
-          continue;
+        if (pendingSelection?.type === "node") {
+          try {
+            view.dispatch(
+              view.state.tr.setSelection(
+                NodeSelection.create(view.state.doc, pendingSelection.pos),
+              ),
+            );
+          } catch {
+            // Fall through to queued text insertion at the current selection.
+          }
         }
 
-        replayDeferredKeyDown(view, input.eventInit);
-      }
-    }, []);
+        if (pendingSelection?.type === "text") {
+          const docEnd = view.state.doc.content.size;
+          const anchor = Math.max(0, Math.min(pendingSelection.anchor, docEnd));
+          const head =
+            pendingSelection.head === undefined
+              ? anchor
+              : Math.max(0, Math.min(pendingSelection.head, docEnd));
+          try {
+            const selection = TextSelection.between(
+              view.state.doc.resolve(anchor),
+              view.state.doc.resolve(head),
+            );
+            view.dispatch(view.state.tr.setSelection(selection));
+          } catch {
+            // Keep the default selection if the cached visual position went stale.
+          }
+        }
+
+        const queuedInput = queuedInputBeforeHiddenEditorRef.current;
+        if (queuedInput.length === 0) {
+          return;
+        }
+
+        queuedInputBeforeHiddenEditorRef.current = [];
+        for (const input of queuedInput) {
+          if (input.type === "text") {
+            if (experimentalSession === "canonical") {
+              view.dom.dispatchEvent(
+                new InputEvent("beforeinput", {
+                  inputType: "insertText",
+                  data: input.text,
+                  cancelable: true,
+                  bubbles: true,
+                }),
+              );
+            } else {
+              dispatchEditorTextInput(view, input.text);
+            }
+            continue;
+          }
+
+          replayDeferredKeyDown(view, input.eventInit);
+        }
+      },
+      [experimentalSession],
+    );
 
     useEffect(() => {
       if (collaboration !== undefined) {
@@ -2079,10 +2102,19 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         newDoc = noteFollower.reconcile(newDoc, body);
       }
       if (newDoc) {
-        onDocumentChangeRef.current?.(newDoc);
-        folioEmitterRef.current.emit("docChange", newDoc);
+        onDocumentChangeRef.current?.(
+          experimentalSession === "canonical"
+            ? cloneDocumentWithParagraphPropertySources(newDoc)
+            : newDoc,
+        );
+        folioEmitterRef.current.emit(
+          "docChange",
+          experimentalSession === "canonical"
+            ? cloneDocumentWithParagraphPropertySources(newDoc)
+            : newDoc,
+        );
       }
-    }, [noteFollower]);
+    }, [experimentalSession, noteFollower]);
 
     const scheduleDocumentChangeNotification = useCallback(() => {
       if (documentChangeNotifyTimerRef.current !== null) {
@@ -4471,6 +4503,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (story) {
             e.preventDefault();
             e.stopPropagation();
+            if (experimentalSession === "canonical") {
+              handleSessionRefusal("Footnote and endnote editing is unavailable in this session.");
+              return;
+            }
             noteEditorRef.current?.open(story);
             return;
           }
@@ -4741,7 +4777,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         }
       },
       // oxlint-disable-next-line react-hooks/exhaustive-deps -- hand-curated dep set; ref-held values are intentionally omitted
-      [getPositionFromMouse, onHeaderFooterDoubleClick, onHyperlinkClick, readOnly],
+      [
+        experimentalSession,
+        getPositionFromMouse,
+        handleSessionRefusal,
+        onHeaderFooterDoubleClick,
+        onHyperlinkClick,
+        readOnly,
+      ],
     );
 
     /**
@@ -5633,12 +5676,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor.getView();
         },
         getActiveView() {
+          if (experimentalSession === "canonical") return folioEditor.getView();
           return getActiveEditorStory().view;
         },
         closeNoteStory() {
           noteEditorRef.current?.close();
         },
         getHfView(rId: string) {
+          if (experimentalSession === "canonical") return null;
           return hfPMsRef.current?.getView(rId) ?? null;
         },
         ensureView(options?: { focus?: boolean }) {
@@ -5938,6 +5983,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ref={hiddenPMRef}
           document={document}
           documentIdentity={documentIdentity}
+          {...(experimentalSession === undefined ? {} : { experimentalSession })}
+          onSessionRefusal={handleSessionRefusal}
+          suggestionModeActive={suggestionModeActive}
           widthPx={contentWidth}
           precomputedInitialState={validPrecomputedInitialState}
           readOnly={readOnly}
