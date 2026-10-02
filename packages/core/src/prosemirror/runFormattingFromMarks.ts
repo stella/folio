@@ -371,14 +371,14 @@ export const runFormattingPatchFromMarks = (
   const before = marksToTextFormatting(beforeMarks);
   const after = marksToTextFormatting(afterMarks);
   const changed = changedVisualFormattingGroups(after, before);
-  const patch: RunPropsPatch = {};
+  const patch: RunPropsPatch =
+    before.styleId === after.styleId ? {} : { styleId: after.styleId ?? null };
   const isFormattingKey = (key: string): key is keyof TextFormatting =>
     Object.hasOwn(RUN_FORMATTING_VISUAL_GROUPS, key);
   for (const [key, group] of Object.entries(RUN_FORMATTING_VISUAL_GROUPS)) {
     if (!isFormattingKey(key) || group === null || !changed.has(group)) continue;
     Reflect.set(patch, key, after[key] ?? null);
   }
-  if (before.styleId !== after.styleId) patch.styleId = after.styleId ?? null;
   return patch;
 };
 

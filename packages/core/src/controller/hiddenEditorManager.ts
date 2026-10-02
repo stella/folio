@@ -898,9 +898,9 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         blur: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.blur(pmView) : false,
         ...createHiddenEditorClipboardHandlers(deps),
-        compositionstart: (pmView, event) =>
+        compositionstart: (pmView) =>
           editorSession.type === "canonical"
-            ? input.handleDOMEvents.compositionstart(pmView, event)
+            ? input.handleDOMEvents.compositionstart(pmView)
             : false,
         compositionend: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.compositionend(pmView) : false,

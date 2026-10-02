@@ -6,16 +6,23 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty } from "../../../../../test/property-testing";
 
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { fromMarkdown } from "../../markdown/fromMarkdown";
-import type { Document } from "../../types/document";
+import type { BlockContent, Document, StyleDefinitions } from "../../types/document";
 import { updateDocumentContent } from "./fromProseDoc";
-import { toProseDoc } from "./toProseDoc";
+import { footnoteToProseDoc, headerFooterToProseDoc, toProseDoc } from "./toProseDoc";
 import { paragraphNumberingReference, paragraphNumberingReferenceId } from "@stll/docx-core/model";
-import { applyDocumentOps, DOCUMENT_OP_TYPES, normalizeForOps } from "@stll/docx-core/ops";
+import {
+  applyDocumentOps,
+  DOCUMENT_OP_TYPES,
+  normalizeForOps,
+  paragraphVisibleText,
+} from "@stll/docx-core/ops";
 import { computeListRendering, getCachedNumberingMap } from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
@@ -177,6 +184,137 @@ describe("listRendering.levelStarts round-trip", () => {
       }
       expect(attrs["listMarker"]).toBe(level.lvlText);
     }
+  });
+
+  test("generated secondary-story projections follow changing package definitions rather than cached rendering", async () => {
+    await assertProperty(
+      fc.property(
+        fc.array(
+          fc.record({
+            start: fc.integer({ min: 1, max: 30 }),
+            ownership: fc.constantFrom("direct", "cachedStyle", "resolvedStyle", "none"),
+            template: fc.constantFrom("%1.", "(%1)", "%1)"),
+            format: fc.constantFrom("decimal", "upperRoman", "lowerLetter"),
+            bold: fc.boolean(),
+            tab: fc.integer({ min: 360, max: 1440 }),
+          }),
+          { minLength: 8, maxLength: 16 },
+        ),
+        (trace) => {
+          let current = fromMarkdown("1. Alpha");
+          const paragraph = current.package.document.content.at(0);
+          const originalNumbering = current.package.numbering;
+          if (
+            paragraph?.type !== "paragraph" ||
+            originalNumbering === undefined ||
+            paragraph.formatting?.numPr?.kind !== "reference"
+          )
+            throw new TypeError("Expected numbered paragraph fixture.");
+          const cached = computeListRendering(
+            paragraph.formatting.numPr,
+            getCachedNumberingMap(originalNumbering),
+          );
+          if (cached === null) throw new TypeError("Expected cached list rendering.");
+          paragraph.listRendering = cached;
+          const numPr = paragraph.formatting.numPr;
+          for (const mutation of trace) {
+            current = structuredClone(current);
+            const source = current.package.document.content.at(0);
+            const numbering = current.package.numbering;
+            if (source?.type !== "paragraph" || numbering === undefined)
+              throw new TypeError("Expected authored numbering reference.");
+            const ilvl = numPr.ilvl ?? 0;
+            const instance = numbering.nums.find((num) => num.numId === numPr.numId);
+            const level = numbering.abstractNums
+              .find((definition) => definition.abstractNumId === instance?.abstractNumId)
+              ?.levels.find((candidate) => candidate.ilvl === ilvl);
+            if (instance === undefined || level === undefined)
+              throw new TypeError("Expected owned numbering definition.");
+            instance.levelOverrides = [{ ilvl, startOverride: mutation.start }];
+            level.lvlText = mutation.template;
+            level.numFmt = mutation.format;
+            level.rPr = { bold: mutation.bold };
+            level.pPr = { tabs: [{ alignment: "left", position: mutation.tab }] };
+            const computed = computeListRendering(numPr, getCachedNumberingMap(numbering));
+            if (computed === null)
+              throw new TypeError("Changed numbering definition did not resolve.");
+            const {
+              numPr: _direct,
+              numPrFromStyle: _cachedStyle,
+              styleId: _styleId,
+              ...formatting
+            } = source.formatting ?? {};
+            const styles = {
+              styles: [{ type: "paragraph", styleId: "ListStyle", pPr: { numPr } }],
+            } satisfies StyleDefinitions;
+            current.package.styles = styles;
+            switch (mutation.ownership) {
+              case "direct":
+                source.formatting = { ...formatting, numPr };
+                break;
+              case "cachedStyle":
+                source.formatting = { ...formatting, numPrFromStyle: numPr };
+                break;
+              case "resolvedStyle":
+                source.formatting = { ...formatting, styleId: "ListStyle" };
+                break;
+              case "none":
+                source.formatting = {
+                  ...formatting,
+                  styleId: "ListStyle",
+                  numPr: { kind: "none" },
+                };
+                break;
+              default: {
+                const unreachable: never = mutation.ownership;
+                throw new TypeError(`Unknown numbering owner ${unreachable}`);
+              }
+            }
+            const expected =
+              mutation.ownership === "none"
+                ? CLEARED_LIST_RENDERING_ATTRS
+                : listRenderingAttrPatch(computed);
+            const content: BlockContent[] = [
+              source,
+              {
+                type: "table",
+                rows: [
+                  {
+                    type: "tableRow",
+                    cells: [{ type: "tableCell", content: [structuredClone(source)] }],
+                  },
+                ],
+              },
+            ];
+            const projections = [
+              { document: toProseDoc(current), expectedCount: 1 },
+              {
+                document: headerFooterToProseDoc(content, { numbering, styles }),
+                expectedCount: 2,
+              },
+              { document: footnoteToProseDoc(content, { numbering, styles }), expectedCount: 2 },
+            ];
+            for (const projection of projections) {
+              let count = 0;
+              projection.document.descendants((node) => {
+                if (
+                  node.type.name !== "paragraph" ||
+                  node.textContent !== paragraphVisibleText(source)
+                )
+                  return;
+                count += 1;
+                for (const [key, value] of Object.entries(expected)) {
+                  expect(node.attrs[key]).toEqual(value);
+                }
+              });
+              expect(count).toBe(projection.expectedCount);
+            }
+            expect(source.listRendering).toStrictEqual(cached);
+          }
+        },
+      ),
+      { numRuns: 30 },
+    );
   });
 
   test("changing a LISTNUM alignment definition invalidates its paragraph-local rendering", async () => {

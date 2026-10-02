@@ -14,7 +14,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { mergeParagraphNumbering, PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "../../docx/parseContext";
 import { createStyleEngine } from "../../style-engine";
@@ -43,6 +43,7 @@ import type {
   Shape,
   ShapeFill,
   StyleDefinitions,
+  NumberingDefinitions,
   Table,
   TableRow,
   TableRowFormatting,
@@ -171,6 +172,8 @@ const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 export type ToProseDocOptions = {
   /** Style definitions for resolving paragraph styles */
   styles?: StyleDefinitions;
+  /** Package definitions used to recompute secondary-story list rendering. */
+  numbering?: NumberingDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
   theme?: Theme | null;
   /**
@@ -726,7 +729,10 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
-  const numPr = paragraph.formatting?.numPr;
+  const numPr = mergeParagraphNumbering(
+    attrs.numPrFromStyle ?? undefined,
+    attrs.numPr ?? undefined,
+  );
   if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   else if (context.numbering !== undefined && numPr?.kind === "reference") {
     const rendering = computeListRendering(numPr, context.numbering);
@@ -2491,6 +2497,7 @@ export function standaloneTableCellToProseMirror(
     styleResolver: null,
     context: {
       theme: null,
+      numbering: undefined,
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
@@ -5120,9 +5127,8 @@ function convertTextBox(
  * Convert HeaderFooter content (array of Paragraph/Table blocks) to a ProseMirror document.
  * Used for editing headers/footers in their own ProseMirror editor and for
  * the unified header/footer render pipeline (see
- * `core/layout-bridge/headerFooterLayout.ts`). `theme` lives in
- * `ToProseDocOptions` for future themeColor cell-shading resolution; folio's
- * `convertTable` does not yet thread it (orthogonal upstream divergence).
+ * `core/layout-bridge/headerFooterLayout.ts`). Package numbering definitions
+ * recompute list rendering for direct paragraphs and nested table content.
  */
 export function headerFooterToProseDoc(
   content: BlockContent[],
@@ -5136,6 +5142,8 @@ export function headerFooterToProseDoc(
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const conversionContext = {
     theme,
+    numbering:
+      options?.numbering === undefined ? undefined : getCachedNumberingMap(options.numbering),
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,

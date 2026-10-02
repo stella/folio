@@ -38,9 +38,18 @@ import {
   isFloatingTextBoxBlock,
   isTextWrappingFloatingImageRun,
 } from "../../layout-engine/types";
-import { headerFooterToProseDoc } from "../../prosemirror/conversion/toProseDoc";
+import {
+  headerFooterToProseDoc,
+  type ToProseDocOptions,
+} from "../../prosemirror/conversion/toProseDoc";
 import { cloneParagraphWithPropertySource } from "../../docx/paragraphPropertySource";
-import type { BlockContent, HeaderFooter, StyleDefinitions, Theme } from "../../types/document";
+import type {
+  BlockContent,
+  HeaderFooter,
+  NumberingDefinitions,
+  StyleDefinitions,
+  Theme,
+} from "../../types/document";
 import { emuToPixels } from "../../utils/units";
 import type { MeasureBlocksFn } from "./footnoteLayout";
 import { toFlowBlocks } from "./toFlowBlocks";
@@ -50,7 +59,7 @@ const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
 const headerFooterToProseDocWithDetachedWatermarkHost = (
   headerFooter: HeaderFooter,
-  options: { styles?: StyleDefinitions; theme?: Theme | null },
+  options: ToProseDocOptions,
 ): PMNode => {
   const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
@@ -723,6 +732,7 @@ export function calculateHeaderFooterBodyTopClearance(
 
 export type ConvertHeaderFooterOptions = {
   styles?: StyleDefinitions | null;
+  numbering?: NumberingDefinitions;
   theme?: Theme | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
@@ -765,12 +775,15 @@ export function convertHeaderFooterToContent(
     return undefined;
   }
 
-  const proseDocOptions: { styles?: StyleDefinitions; theme?: Theme | null } = {};
+  const proseDocOptions: ToProseDocOptions = {};
   if (options.styles) {
     proseDocOptions.styles = options.styles;
   }
   if (options.theme !== undefined) {
     proseDocOptions.theme = options.theme;
+  }
+  if (options.numbering !== undefined) {
+    proseDocOptions.numbering = options.numbering;
   }
   const pmDoc =
     headerFooter.watermarkBlockIndex === undefined
