@@ -638,7 +638,7 @@ for (const seed of config.seeds) {
         });
         logFailureMarker(marker);
         writeFailureRecord(
-          "fuzz-artifacts/browser/findings",
+          process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/browser/findings",
           failureRecord(marker, failure, { flow: trace }),
         );
         if (

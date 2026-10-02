@@ -1,3 +1,4 @@
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 import babel from "@rolldown/plugin-babel";
 import { reactCompilerPreset } from "@vitejs/plugin-react";
 import type { Plugin } from "rolldown";
@@ -37,10 +38,14 @@ const entry = {
   index: "src/index.ts",
   "compat/eigenpal": "src/compat/eigenpal.tsx",
   dialogs: "src/dialogs.ts",
-  // Bundled UI translations, exported at `@stll/folio-react/messages`. The 13
-  // locale JSONs are inlined into this chunk; prepare-publish maps it to
-  // `./dist/messages.js`.
+  // Keep the existing full catalog and independent locale entry points.
   messages: "src/i18n/messages.ts",
+  ...Object.fromEntries(
+    [...FOLIO_LOCALES, "locales"].map((locale) => [
+      `i18n/messages/${locale}`,
+      `src/i18n/messages/${locale}.ts`,
+    ]),
+  ),
 };
 
 const shared = {

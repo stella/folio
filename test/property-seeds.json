@@ -693,5 +693,25 @@
       "note": "Untracked clones use canonical model serialization for redundant authored XML-space flags while preserving complete parsed model content",
       "date": "2026-10-02"
     }
+  ],
+  "test/canonical-session.fuzz.ts::canonical property flows preserve projection, exact history and saved content": [
+    {
+      "seed": -347416988,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": -965049575,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/controller/canonicalSession.test.ts::canonical input sequences keep the projection, inverse history and refusal atomic": [
+    {
+      "seed": -1996873487,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
+      "date": "2026-10-02"
+    }
   ]
 }

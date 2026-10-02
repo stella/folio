@@ -438,6 +438,15 @@ export type FloatingTableProperties = {
 };
 
 // @public
+export type FoldedListNumber = {
+    kind: "field";
+    field: ComplexField;
+} | {
+    kind: "tab";
+    run: Run;
+};
+
+// @public
 export type FontCharset = {
     val?: string;
     characterSet?: string;
@@ -1205,6 +1214,7 @@ export type PreservedInline = {
     type: "preservedInline";
     xml: string;
     text: string;
+    foldedListNumber?: FoldedListNumber;
 };
 
 // @public

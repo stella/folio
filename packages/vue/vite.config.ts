@@ -1,3 +1,4 @@
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 import vue from "@vitejs/plugin-vue";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
@@ -36,6 +37,12 @@ export default defineConfig({
         dialogs: resolve(__dirname, "src/components/dialogs/index.ts"),
         styles: resolve(__dirname, "src/styles/index.ts"),
         messages: resolve(__dirname, "src/i18n/messages.ts"),
+        ...Object.fromEntries(
+          [...FOLIO_LOCALES, "locales"].map((locale) => [
+            `messages/${locale}`,
+            resolve(__dirname, `src/i18n/messages/${locale}.ts`),
+          ]),
+        ),
       },
       formats: ["es", "cjs"],
       fileName: (format, entryName) => `${entryName}.${format === "es" ? "js" : "cjs"}`,
