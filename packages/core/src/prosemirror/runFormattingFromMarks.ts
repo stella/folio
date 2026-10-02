@@ -1,4 +1,5 @@
 import type { Mark } from "prosemirror-model";
+import type { RunPropsPatch } from "@stll/docx-core/ops";
 import { normalizeHorizontalScalePercent } from "../utils/horizontalScale";
 import type { TextFormatting, ColorValue } from "../types/document";
 import {
@@ -360,6 +361,25 @@ const changedVisualFormattingGroups = (
     }
   }
   return changed;
+};
+
+/** Overlay only changed visual marks; private authored properties stay with the run. */
+export const runFormattingPatchFromMarks = (
+  beforeMarks: readonly Mark[],
+  afterMarks: readonly Mark[],
+): RunPropsPatch => {
+  const before = marksToTextFormatting(beforeMarks);
+  const after = marksToTextFormatting(afterMarks);
+  const changed = changedVisualFormattingGroups(after, before);
+  const patch: RunPropsPatch = {};
+  const isFormattingKey = (key: string): key is keyof TextFormatting =>
+    Object.hasOwn(RUN_FORMATTING_VISUAL_GROUPS, key);
+  for (const [key, group] of Object.entries(RUN_FORMATTING_VISUAL_GROUPS)) {
+    if (!isFormattingKey(key) || group === null || !changed.has(group)) continue;
+    Reflect.set(patch, key, after[key] ?? null);
+  }
+  if (before.styleId !== after.styleId) patch.styleId = after.styleId ?? null;
+  return patch;
 };
 
 const VISUAL_BOOLEAN_FORMATTING_PROPERTIES = new Set<keyof TextFormatting>([

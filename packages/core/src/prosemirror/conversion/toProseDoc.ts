@@ -1734,7 +1734,7 @@ function resolveTextFormatting(
  * preserve their layout when opened from DOCX files.
  */
 type TableConversionContext = {
-  numbering?: NumberingMap;
+  numbering: NumberingMap | undefined;
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;

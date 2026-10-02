@@ -217,6 +217,24 @@ describe("canonical input boundary", () => {
     expect(groupBoundaries).toHaveLength(6);
   });
 
+  test("every structural or modifier refusal closes its gesture exactly once", () => {
+    const { boundary, view, groupBoundaries, refusals } = createRig();
+    const gestures = [
+      { key: "Enter" },
+      { key: "Enter", ctrlKey: true },
+      { key: "Enter", metaKey: true },
+      { key: "Backspace", ctrlKey: true },
+      { key: "Delete", altKey: true },
+    ];
+    for (const [index, gesture] of gestures.entries()) {
+      const event = new KeyboardEvent("keydown", { ...gesture, cancelable: true });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(groupBoundaries).toHaveLength(index + 1);
+      expect(refusals).toHaveLength(index + 1);
+    }
+  });
+
   test("cancelable beforeinput emits one classified intent without a PM edit", () => {
     const { boundary, view, inputs } = createRig(2, 4);
     const original = view.state;

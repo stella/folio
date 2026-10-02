@@ -514,12 +514,12 @@ describe("canonical session", () => {
     expect(edited.package.document.content.at(1)).toBe(unaffected);
 
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document).toEqual(original);
+    expect(session.document).toStrictEqual(original);
     expect(state.selection.toJSON()).toEqual(selected);
     expect(session.canRedo).toBe(true);
     expect(session.version).toBe(2);
     state = accept(state, session.prepareRedo(state).unwrap());
-    expect(session.document).toEqual(edited);
+    expect(session.document).toStrictEqual(edited);
     expect(state.doc.eq(session.projection.doc)).toBe(true);
     expect(state.selection.from).toBe(4);
     expect(session.version).toBe(3);
@@ -576,8 +576,56 @@ describe("canonical session", () => {
     expect(inserted?.type === "run" ? inserted.formatting?.italic : undefined).toBe(true);
     expect(state.doc.textContent).toBe("Xplain");
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document).toEqual(original);
+    expect(session.document).toStrictEqual(original);
     expect(state.selection.head).toBe(1);
+  });
+
+  test("stored mark changes preserve authored properties and explicitly clear removed marks", () => {
+    const document = seed("plain");
+    const paragraph = document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("The formatting fixture needs a paragraph.");
+    const run = paragraph.content.at(0);
+    if (run?.type !== "run") panic("The formatting fixture needs a run.");
+    run.formatting = {
+      bold: true,
+      boldCs: false,
+      noProof: true,
+      fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+      language: { val: "fr-FR", bidi: "ar-SA" },
+    };
+    for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Author" }] as const) {
+      const session = createCanonicalSession(document).unwrap();
+      session.setMode(mode);
+      let state = stateFor(session);
+      const original = session.document;
+      const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
+      const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
+      state = state.apply(state.tr.addStoredMark(italic).removeStoredMark(bold));
+      state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap());
+      const authored = session.document.package.document.content.at(0);
+      if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
+      const authoredRuns = authored.content.flatMap((item) =>
+        item.type === "insertion" ? item.content : [item],
+      );
+      const inserted = authoredRuns.find(
+        (item) =>
+          item.type === "run" &&
+          item.content.some((leaf) => leaf.type === "text" && leaf.text === "X"),
+      );
+      if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
+      expect(inserted.formatting).toStrictEqual({
+        boldCs: false,
+        noProof: true,
+        italic: true,
+        fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+        language: { val: "fr-FR", bidi: "ar-SA" },
+      });
+      const edited = session.document;
+      state = accept(state, session.prepareUndo(state).unwrap());
+      expect(session.document).toStrictEqual(original);
+      state = accept(state, session.prepareRedo(state).unwrap());
+      expect(session.document).toStrictEqual(edited);
+    }
   });
 
   test("rejection leaves canonical model, projection, version and journal unchanged", () => {
@@ -825,17 +873,17 @@ describe("canonical tracked input", () => {
               canonicalReviewBlocks(expected.package.document.content),
             );
             state = accept(state, resolved.prepareUndo(state).unwrap());
-            expect(resolved.document).toEqual(suggested);
+            expect(resolved.document).toStrictEqual(suggested);
             state = accept(state, resolved.prepareRedo(state).unwrap());
             expect(state.doc.eq(resolved.projection.doc)).toBe(true);
           }
           for (let index = snapshots.length - 2; index >= 0; index -= 1) {
             trackedState = accept(trackedState, tracked.prepareUndo(trackedState).unwrap());
-            expect(tracked.document).toEqual(snapshots.at(index));
+            expect(tracked.document).toStrictEqual(snapshots.at(index));
           }
           for (let index = 1; index < snapshots.length; index += 1) {
             trackedState = accept(trackedState, tracked.prepareRedo(trackedState).unwrap());
-            expect(tracked.document).toEqual(snapshots.at(index));
+            expect(tracked.document).toStrictEqual(snapshots.at(index));
           }
         },
       ),
@@ -858,12 +906,12 @@ describe("canonical tracked input", () => {
     const split = session.document;
     state = accept(state, session.prepareJoin(state, "backward").unwrap());
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document).toEqual(split);
+    expect(session.document).toStrictEqual(split);
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document).toEqual(beforeSplit);
+    expect(session.document).toStrictEqual(beforeSplit);
     state = accept(state, session.prepareUndo(state).unwrap());
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document).toEqual(baseline);
+    expect(session.document).toStrictEqual(baseline);
   });
 
   test.each(["backward", "forward"] as const)(
@@ -913,12 +961,12 @@ describe("canonical tracked input", () => {
           );
         }
         resolvedState = accept(resolvedState, resolved.prepareUndo(resolvedState).unwrap());
-        expect(resolved.document).toEqual(suggested);
+        expect(resolved.document).toStrictEqual(suggested);
       }
       state = accept(state, session.prepareUndo(state).unwrap());
-      expect(session.document).toEqual(joined);
+      expect(session.document).toStrictEqual(joined);
       state = accept(state, session.prepareUndo(state).unwrap());
-      expect(session.document).toEqual(baseline);
+      expect(session.document).toStrictEqual(baseline);
     },
   );
 });

@@ -51,11 +51,17 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   });
   let proposal: NativeProposal = { type: "idle" };
   let authorizedInput: { view: EditorView; state: EditorState } | null = null;
+  let groupClosed = false;
   const beginGesture = () => {
     proposal = { type: "idle" };
     authorizedInput = null;
+    groupClosed = false;
   };
-  const closeGroup = () => options.breakUndoGroup?.();
+  const closeGroup = () => {
+    if (groupClosed) return;
+    groupClosed = true;
+    options.breakUndoGroup?.();
+  };
   const repaint = (view: EditorView) => {
     queueMicrotask(() => {
       if (!view.isDestroyed) view.updateState(view.state);

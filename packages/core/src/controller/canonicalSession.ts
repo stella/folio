@@ -13,6 +13,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   paragraphLogicalText,
+  packageParagraphIds,
   validateOpsDocument,
   type DocumentOp,
   type EditorIntent,
@@ -27,7 +28,7 @@ import {
   copyDocumentParagraphPropertySourceContract,
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
-import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
@@ -427,10 +428,8 @@ class CanonicalSession {
   constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
     this.currentDocument = document;
     this.currentProjection = projection;
-    for (const block of document.package.document.content) {
-      if (block.type === "paragraph" && block.paraId !== undefined)
-        this.allocatedBlockIds.add(block.paraId.toUpperCase());
-    }
+    for (const blockId of packageParagraphIds(document.package))
+      this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
     this.styles = styles == null ? styles : structuredClone(styles);
   }
@@ -461,7 +460,7 @@ class CanonicalSession {
   }
 
   private freshBlockId(): Result<string, CanonicalSessionError> {
-    if (this.nextBlockId > 0xffffffff) return refuse("The paragraph identity space is exhausted.");
+    if (this.nextBlockId > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
     return Result.ok(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase());
   }
 
@@ -599,7 +598,14 @@ class CanonicalSession {
       from: start.value,
       to: end.value,
       text,
-      ...(state.storedMarks === null ? {} : { runProps: marksToTextFormatting(state.storedMarks) }),
+      ...(state.storedMarks === null
+        ? {}
+        : {
+            runPropsPatch: runFormattingPatchFromMarks(
+              state.selection.$from.marks(),
+              state.storedMarks,
+            ),
+          }),
     } as const satisfies EditorIntent;
     const compiled = compileEditorIntent(this.currentDocument, {
       intent,
@@ -859,6 +865,7 @@ class CanonicalSession {
   prepareUndo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
     const group = this.applied.at(-1);
     if (group === undefined) return refuse("There is no canonical edit to undo.");
+    const propertySourceDocument = group.entries.at(0)?.preDocument;
     return this.stage({
       state,
       ops:
@@ -867,7 +874,7 @@ class CanonicalSession {
           : group.entries.toReversed().flatMap((entry) => entry.inverse),
       selection: group.preSelection,
       origin: "undo",
-      propertySourceDocument: group.entries.at(0)?.preDocument,
+      ...(propertySourceDocument === undefined ? {} : { propertySourceDocument }),
       onPublish: (redoOps) => {
         this.applied.pop();
         this.undone.push({ type: "undone", group, redoOps });
@@ -879,12 +886,13 @@ class CanonicalSession {
   prepareRedo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
     const undone = this.undone.at(-1);
     if (undone === undefined) return refuse("There is no canonical edit to redo.");
+    const propertySourceDocument = undone.group.entries.at(-1)?.postDocument;
     return this.stage({
       state,
       ops: undone.redoOps,
       selection: undone.group.postSelection,
       origin: "redo",
-      propertySourceDocument: undone.group.entries.at(-1)?.postDocument,
+      ...(propertySourceDocument === undefined ? {} : { propertySourceDocument }),
       onPublish: (inverse) => {
         this.undone.pop();
         this.applied.push({
@@ -1003,6 +1011,10 @@ class CanonicalSession {
         }
         for (const blockId of applied.value.touched.inserted)
           this.allocatedBlockIds.add(blockId.toUpperCase());
+        for (const op of ops) {
+          if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
+            this.allocatedBlockIds.add(op.newBlockId.toUpperCase());
+        }
         this.advanceBlockId();
         this.currentDocument = applied.value.document;
         this.currentProjection = projected.value;
