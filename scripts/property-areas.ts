@@ -17,8 +17,8 @@
  *
  * Usage:
  *   bun scripts/property-areas.ts [--base <ref>] [--factor <n>] [--dry-run]
- *   bun scripts/property-areas.ts --shard 1/4     (one partition of selected files)
  *   bun scripts/property-areas.ts --all            (every property file)
+ *   bun scripts/property-areas.ts --shard 1/4      (one partition of the selection)
  *
  * `--base` (default `origin/main`) is diffed from its merge base with HEAD.
  * `--factor` defaults to `PROPERTY_TEST_NUM_RUNS_FACTOR`, else 5 for a change
@@ -27,6 +27,7 @@
  */
 
 import { $ } from "bun";
+import { panic } from "better-result";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -170,23 +171,25 @@ const pinnedSeedFiles = (): string[] =>
     .filter((key) => !key.startsWith("$"))
     .map((key) => key.split("::")[0] as string);
 
-type PropertyShard = { index: number; count: number };
+type PropertyShard = { index: number; total: number };
 
-export const parsePropertyShard = (raw: string): PropertyShard => {
-  const match = /^(\d+)\/(\d+)$/.exec(raw);
-  if (match === null) throw new Error("--shard must be an index/count pair");
-  const index = Number(match[1]);
-  const count = Number(match[2]);
-  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(count) || index < 1 || index > count)
-    throw new Error("--shard requires 1 ≤ index ≤ count");
-  return { index, count };
-};
-
-/** Stable file partitions preserve each property's call site and CI seed. */
+/** Partition the complete selection deterministically, without changing property seeds or runs. */
 export const shardPropertyFiles = (
   files: readonly PropertyFile[],
-  shard: PropertyShard,
-): PropertyFile[] => files.filter((_, index) => index % shard.count === shard.index - 1);
+  { index, total }: PropertyShard,
+): PropertyFile[] => {
+  if (
+    !Number.isSafeInteger(total) ||
+    total < 1 ||
+    !Number.isSafeInteger(index) ||
+    index < 1 ||
+    index > total
+  )
+    return panic("Property shard must be an integer index/total with 1 ≤ index ≤ total.");
+  return files
+    .toSorted((a, b) => a.file.localeCompare(b.file))
+    .filter((_, position) => position % total === index - 1);
+};
 
 const parseArgs = (argv: readonly string[]) => {
   let base = "origin/main";
@@ -200,8 +203,11 @@ const parseArgs = (argv: readonly string[]) => {
     else if (arg === "--factor") factor = Number(argv[++index]);
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--all") all = true;
-    else if (arg === "--shard") shard = parsePropertyShard(argv[++index] ?? "");
-    else throw new Error(`Unknown argument ${String(arg)}`);
+    else if (arg === "--shard") {
+      const parts = (argv[++index] ?? "").split("/");
+      if (parts.length !== 2) return panic("Property shard must use index/total.");
+      shard = { index: Number(parts.at(0)), total: Number(parts.at(1)) };
+    } else throw new Error(`Unknown argument ${String(arg)}`);
   }
   const envFactor = process.env["PROPERTY_TEST_NUM_RUNS_FACTOR"];
   const defaultFactor = all ? 1 : 5;
@@ -231,10 +237,9 @@ if (import.meta.main) {
     );
   }
   if (shard !== undefined) {
-    const total = selected.length;
     selected = shardPropertyFiles(selected, shard);
     console.log(
-      `Shard ${String(shard.index)}/${String(shard.count)}: ${String(selected.length)} of ${String(total)} files`,
+      `Shard ${String(shard.index)}/${String(shard.total)}: ${String(selected.length)} property files`,
     );
   }
   if (dryRun || selected.length === 0) {
@@ -242,14 +247,18 @@ if (import.meta.main) {
   } else {
     const byPackage = new Map<string, PropertyFile[]>();
     for (const entry of selected) {
-      byPackage.set(entry.packageDir, [...(byPackage.get(entry.packageDir) ?? []), entry]);
+      const files = byPackage.get(entry.packageDir) ?? [];
+      files.push(entry);
+      byPackage.set(entry.packageDir, files);
     }
-    // Stream package output so cancellation cannot discard counterexamples
-    // from a package that has not finished its complete property sweep.
+    // Stream progress and counterexamples so a canceled job retains its diagnostics.
     const exitCodes = await Promise.all(
       [...byPackage].map(async ([packageDir, files]) => {
         const relative = files.map(({ file }) => path.relative(packageDir, file));
         const started = performance.now();
+        console.log(
+          `${packageDir}: starting ${String(files.length)} files: ${relative.join(", ")}`,
+        );
         const run = await $`bun test ${relative} 2>&1`
           .cwd(path.join(REPO_ROOT, packageDir))
           .env({ ...process.env, PROPERTY_TEST_NUM_RUNS_FACTOR: String(factor) })

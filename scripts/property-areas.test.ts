@@ -5,7 +5,6 @@ import ts from "typescript";
 
 import {
   areaOf,
-  parsePropertyShard,
   propertyFiles,
   selectPropertyFiles,
   shardPropertyFiles,
@@ -61,31 +60,14 @@ const actualPropertyDrivers = (): string[] => {
 };
 
 describe("property areas", () => {
-  test("shards partition the actual selected files exactly once without changing package ownership", () => {
-    const files = propertyFiles();
-    for (const count of [1, 2, 4, files.length + 1]) {
-      const shards = Array.from({ length: count }, (_, index) =>
-        shardPropertyFiles(files, parsePropertyShard(`${String(index + 1)}/${String(count)}`)),
-      );
-      const partitioned = shards.flat();
-      expect(partitioned.length).toBe(files.length);
-      expect(new Set(partitioned).size).toBe(files.length);
-      expect(partitioned.toSorted((a, b) => a.file.localeCompare(b.file))).toEqual(files);
-      expect(
-        Math.max(...shards.map((shard) => shard.length)) -
-          Math.min(...shards.map((shard) => shard.length)),
-      ).toBeLessThanOrEqual(1);
-    }
-  });
-
   test("the workflow matrix exercises every selected file and collects every failure", () => {
     const workflow = Bun.YAML.parse(
       readFileSync(path.resolve(import.meta.dir, "../.github/workflows/ci.yml"), "utf8"),
     );
     const job = workflow.jobs["property-areas"];
     const files = propertyFiles();
-    const exercised = [...job.strategy.matrix.shard].flatMap((raw: string) =>
-      shardPropertyFiles(files, parsePropertyShard(raw)),
+    const exercised = [...job.strategy.matrix.shard].flatMap((index: number) =>
+      shardPropertyFiles(files, { index, total: job.strategy.matrix.shard.length }),
     );
     expect(exercised.length).toBe(files.length);
     expect(new Set(exercised).size).toBe(files.length);
@@ -94,23 +76,35 @@ describe("property areas", () => {
     const step = job.steps.find(
       (entry: { name?: string }) => entry.name === "Changed areas' properties at 5x numRuns",
     );
-    expect(step.run).toContain('--factor 5 --shard "${PROPERTY_SHARD}"');
+    expect(step.run).toContain('--factor 5 --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"');
     expect(step.env.PROPERTY_SHARD).toBe("${{ matrix.shard }}");
   });
 
-  test("invalid shard coordinates fail instead of silently dropping coverage", () => {
-    for (const raw of [
-      "",
-      "0/4",
-      "5/4",
-      "1/0",
-      "1",
-      "1/2/3",
-      "-1/4",
-      "1.5/4",
-      "1/9007199254740992",
+  test("shards cover every selected file exactly once regardless of input order", () => {
+    const inventory = propertyFiles();
+    for (const total of [1, 2, 4, inventory.length + 1]) {
+      const exercised: string[] = [];
+      for (let index = 1; index <= total; index += 1) {
+        const shard = { index, total };
+        const files = shardPropertyFiles(inventory, shard);
+        expect(shardPropertyFiles(inventory.toReversed(), shard)).toEqual(files);
+        for (const { file } of files) exercised.push(file);
+      }
+      expect(exercised.toSorted()).toEqual(inventory.map(({ file }) => file).toSorted());
+      expect(new Set(exercised).size).toBe(exercised.length);
+    }
+    expect(shardPropertyFiles([], { index: 1, total: 4 })).toEqual([]);
+  });
+
+  test("invalid shards fail rather than silently skipping properties", () => {
+    for (const shard of [
+      { index: 0, total: 4 },
+      { index: 5, total: 4 },
+      { index: 1, total: 0 },
+      { index: 1.5, total: 4 },
+      { index: 1, total: Number.NaN },
     ])
-      expect(() => parsePropertyShard(raw)).toThrow();
+      expect(() => shardPropertyFiles(ALL, shard)).toThrow();
   });
 
   test("an area is the package and the first directory under src", () => {

@@ -588,5 +588,29 @@
       "note": "Inline order oracle must compare text independently of valid adjacent-run consolidation",
       "date": "2026-10-02"
     }
+  ],
+  "packages/docx-core/src/ops/sequencing/__tests__/runtime.property.test.ts::reference sequencing convergence": [
+    {
+      "seed": 66996841,
+      "note": "Dropped edits must emit one notice; direct sequencer rejection retains its reason",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1091892451,
+      "note": "A late rejection must not duplicate or overwrite an earlier local refusal notice",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/docx-core/src/ops/sequencing/__tests__/runtime.property.test.ts::mixed operations with causal pending queues": [
+    {
+      "seed": -806692638,
+      "note": "Dropped edits must emit one notice; direct sequencer rejection retains its reason",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1208866377,
+      "note": "A late rejection must not duplicate or overwrite an earlier local refusal notice",
+      "date": "2026-10-02"
+    }
   ]
 }

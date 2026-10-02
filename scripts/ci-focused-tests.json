@@ -1,0 +1,14 @@
+[
+  "scripts/host-api-flow.test.ts",
+  "scripts/editor-scroll-root.test.ts",
+  "scripts/scroll-root-fixture.test.ts",
+  "packages/core/src/paged-layout/editorScrollRoot.test.ts",
+  "packages/vue/src/utils/viewportPosition.test.ts",
+  "scripts/cross-host-lane.test.ts",
+  "scripts/interleaving-lane.test.ts",
+  "tests/visual/interleavingBridge.test.ts",
+  "scripts/ci-plan.test.ts",
+  "scripts/ci-result.test.mjs",
+  "packages/docx-core/src/ops/__tests__/contract.test.ts",
+  "packages/docx-core/src/projection.test.ts"
+]
