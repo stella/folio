@@ -31,13 +31,22 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { assertExactModel } from "../../../../../test/exactModel";
 import { projectReview } from "../../../../../test/reviewProjection";
-import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Run,
+  SectionProperties,
+  TextFormatting,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { sameBlockList, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { sameRunFormatting } from "../inline";
+import { packageResourcesOf } from "../packageResources";
 import {
   allocateEditorIntentIds,
   compileEditorIntent,
@@ -287,6 +296,123 @@ const codePointGaps = (text: string): number[] => {
 };
 
 describe("document operations", () => {
+  test("rejecting generated run formatting restores authored boundaries inside wrappers and pending review", () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.string({ unit: fc.constantFrom("a", "b", "é"), minLength: 2, maxLength: 5 }), {
+          minLength: 2,
+          maxLength: 4,
+        }),
+        fc.boolean(),
+        fc.boolean(),
+        fc.boolean(),
+        (texts, wrapped, pending, partial) => {
+          const runs = texts.map(
+            (text, index) =>
+              ({
+                type: "run",
+                formatting: { italic: true },
+                content: [{ type: "text", text }],
+                ...(pending
+                  ? {
+                      propertyChanges: [
+                        {
+                          type: "runPropertyChange",
+                          info: { id: index + 1, author: "Earlier" },
+                          previousFormatting: { bold: true },
+                        },
+                      ],
+                    }
+                  : {}),
+              }) satisfies Run,
+          );
+          const original = normalizeForOps({
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    content: wrapped
+                      ? [{ type: "hyperlink", anchor: "target", children: runs }]
+                      : runs,
+                  },
+                ],
+              },
+            },
+          } satisfies Document);
+          const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: partial ? 1 : 0 };
+          const intent = {
+            type: "formatRun",
+            from: at,
+            to: { ...at, offset: texts.join("").length - (partial ? 1 : 0) },
+            patch: { bold: true },
+          } as const satisfies EditorIntent;
+          const allocation = allocateEditorIntentIds(original, intent);
+          const plan = compileEditorIntent(original, {
+            intent,
+            mode: {
+              type: "suggesting",
+              revision: { id: allocation.revisionId, author: "New", date: "2026-10-02T00:00:00Z" },
+              newIds: allocation.newIds,
+            },
+          }).unwrap();
+          const edit = applyDocumentOps(original, plan.ops).unwrap();
+          expect(edit.revisions.length).toBeGreaterThan(0);
+          const rejected = applyDocumentOp(edit.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: edit.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }).unwrap();
+          assertExactModel(rejected.document, original);
+          const undone = applyDocumentOps(edit.document, edit.inverse).unwrap();
+          assertExactModel(undone.document, original);
+          const redone = applyDocumentOps(undone.document, undone.inverse).unwrap();
+          assertExactModel(redone.document, edit.document);
+          const firstText = texts.at(0);
+          const secondText = texts.at(1);
+          if (firstText === undefined || secondText === undefined)
+            panic("Boundary sequence lost its middle run.");
+          const laterIntent = {
+            type: "formatRun",
+            from: { ...at, offset: firstText.length },
+            to: {
+              ...at,
+              offset:
+                firstText.length + secondText.length - (texts.length === 2 && partial ? 1 : 0),
+            },
+            patch: { underline: { style: "single" } },
+          } as const satisfies EditorIntent;
+          const laterIds = allocateEditorIntentIds(edit.document, laterIntent);
+          const laterPlan = compileEditorIntent(edit.document, {
+            intent: laterIntent,
+            mode: {
+              type: "suggesting",
+              revision: { id: laterIds.revisionId, author: "Later", date: "2026-10-02T00:00:00Z" },
+              newIds: laterIds.newIds,
+            },
+          }).unwrap();
+          const later = applyDocumentOps(edit.document, laterPlan.ops).unwrap();
+          const rejectEarlier = applyDocumentOp(later.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: edit.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }).unwrap();
+          const rejectLater = applyDocumentOp(rejectEarlier.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: later.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }).unwrap();
+          assertExactModel(rejectLater.document, original);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test("each formatting author gets a separately rejectable record over pending run review", () => {
     assertProperty(
       fc.property(
@@ -733,6 +859,958 @@ describe("document operations", () => {
     expect([...tally].sort()).toEqual([...kinds].sort());
   });
 
+  test("pasted bookmark identities and copied link targets stay together", () => {
+    const content = [
+      { type: "bookmarkStart", id: 4, name: "target" },
+      { type: "run", content: [{ type: "text", text: "source" }] },
+      { type: "bookmarkEnd", id: 4 },
+    ] satisfies Paragraph["content"];
+    const document: Document = {
+      package: { document: { content: [{ type: "paragraph", paraId: "00000001", content }] } },
+      warnings: [],
+    };
+    const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 6 };
+    const compiled = compileEditorIntent(document, {
+      intent: {
+        type: "replaceFragment",
+        from: at,
+        to: at,
+        openStart: 1,
+        openEnd: 1,
+        paragraphs: [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            content: [
+              ...content,
+              {
+                type: "hyperlink",
+                anchor: "target",
+                children: [{ type: "run", content: [{ type: "text", text: "link" }] }],
+              },
+            ],
+          },
+        ],
+      },
+      mode: { type: "editing" },
+    });
+    if (compiled.isErr()) throw compiled.error;
+    const insertion = compiled.value.ops.find((op) => op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT);
+    if (insertion?.type !== DOCUMENT_OP_TYPES.INSERT_CONTENT)
+      panic("A clipboard fragment must insert its content.");
+    expect(insertion.slice.content).toContainEqual({
+      type: "bookmarkStart",
+      id: 1,
+      name: "target_paste1",
+    });
+    expect(insertion.slice.content).toContainEqual({ type: "bookmarkEnd", id: 1 });
+    expect(insertion.slice.content).toContainEqual({
+      type: "hyperlink",
+      anchor: "target_paste1",
+      children: [{ type: "run", content: [{ type: "text", text: "link" }] }],
+    });
+  });
+  test("marker-only cut and move distinguish explicit gaps at equal text offsets", () => {
+    const original = normalizeForOps({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                { type: "run", content: [{ type: "text", text: "a" }] },
+                { type: "bookmarkStart", id: 1, name: "A" },
+                { type: "bookmarkEnd", id: 1 },
+                { type: "bookmarkStart", id: 2, name: "B" },
+                { type: "bookmarkEnd", id: 2 },
+                { type: "run", content: [{ type: "text", text: "b" }] },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document);
+    const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1, zeroWidthBefore: 0 };
+    const to = { ...from, zeroWidthBefore: 2 };
+    const copied = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "bookmarkStart", id: 1, name: "A" },
+          { type: "bookmarkEnd", id: 1 },
+        ],
+      },
+    ] satisfies Paragraph[];
+    for (const intent of [
+      { type: "replaceText", from, to, text: "" },
+      {
+        type: "moveFragment",
+        from,
+        to,
+        target: { ...from, zeroWidthBefore: 4 },
+        paragraphs: copied,
+        openStart: 1,
+        openEnd: 1,
+      },
+    ] as const satisfies readonly EditorIntent[]) {
+      const allocation = allocateEditorIntentIds(original, intent);
+      const plan = compileEditorIntent(original, {
+        intent,
+        mode: { type: "editing", newIds: allocation.newIds },
+      }).unwrap();
+      expect(plan.ops.length).toBeGreaterThan(0);
+      const edit = applyDocumentOps(original, plan.ops).unwrap();
+      const paragraph = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
+      if (!paragraph) panic("Marker operation lost its paragraph.");
+      expect(paragraphLogicalText(paragraph)).toBe("ab");
+      const names = paragraph.content.flatMap((item) =>
+        item.type === "bookmarkStart" ? [item.name] : [],
+      );
+      expect(names).toEqual(intent.type === "replaceText" ? ["B"] : ["B", "A"]);
+      const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
+      assertExactModel(undo.document, original);
+      const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+      assertExactModel(redo.document, edit.document);
+    }
+  });
+  test("clipboard paragraph allocation handles the final available id and exhausted inline paste atomically", () => {
+    for (const scenario of [
+      { existing: "7FFFFFFF", firstBlockId: 0x80000000, count: 1, allowed: true },
+      { existing: "7FFFFFFE", firstBlockId: 0x7fffffff, count: 2, allowed: true },
+      { existing: "7FFFFFFE", firstBlockId: 0x7fffffff, count: 3, allowed: false },
+      { existing: "7FFFFFFF", firstBlockId: 0x80000000, count: 2, allowed: false },
+    ]) {
+      const original = normalizeForOps({
+        package: {
+          document: {
+            content: [
+              {
+                type: "paragraph",
+                paraId: scenario.existing,
+                content: [{ type: "run", content: [{ type: "text", text: "ab" }] }],
+              },
+            ],
+          },
+        },
+      } satisfies Document);
+      const at = { story: OP_STORIES.MAIN, blockId: scenario.existing, offset: 1 };
+      const intent = {
+        type: "replaceFragment",
+        from: at,
+        to: at,
+        openStart: 1,
+        openEnd: 1,
+        paragraphs: Array.from(
+          { length: scenario.count },
+          (_, index) =>
+            ({
+              type: "paragraph",
+              paraId: "00000001",
+              content: [{ type: "run", content: [{ type: "text", text: `paste${index}` }] }],
+            }) satisfies Paragraph,
+        ),
+      } as const satisfies EditorIntent;
+      const snapshot = structuredClone(original);
+      const plan = compileEditorIntent(original, {
+        intent,
+        mode: { type: "editing" },
+        firstBlockId: scenario.firstBlockId,
+      });
+      assertExactModel(original, snapshot);
+      expect(plan.isOk()).toBe(scenario.allowed);
+      if (plan.isErr()) {
+        expect(plan.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.INVALID_BLOCK_ID);
+      } else {
+        const edit = applyDocumentOps(original, plan.value.ops).unwrap();
+        const ids = paragraphIdsIn(edit.document.package.document);
+        expect(ids).toHaveLength(scenario.count);
+        expect(ids).toContain(scenario.existing);
+        expect(ids).not.toContain("00000001");
+        if (scenario.count === 2) expect(ids).toContain("7FFFFFFF");
+        const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
+        assertExactModel(undo.document, original);
+        const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+        assertExactModel(redo.document, edit.document);
+      }
+    }
+  });
+  test("clipboard paragraph review and section geometry survive closed insertion while open edges retain destination facts", () => {
+    const original = normalizeForOps({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              formatting: { alignment: "right" },
+              content: [{ type: "run", content: [{ type: "text", text: "ab" }] }],
+            },
+          ],
+        },
+      },
+    } satisfies Document);
+    const sectionProperties = { pageWidth: 12240, pageHeight: 15840 } satisfies SectionProperties;
+    const paragraphs = [
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        formatting: { alignment: "center" },
+        propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: { id: 12, author: "Source" },
+            previousFormatting: { alignment: "end" },
+          },
+        ],
+        sectionProperties,
+        content: [{ type: "run", content: [{ type: "text", text: "clip" }] }],
+      },
+    ] satisfies Paragraph[];
+    const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 };
+    for (const openStart of [0, 1] as const)
+      for (const openEnd of [0, 1] as const) {
+        const intent = {
+          type: "replaceFragment",
+          from: at,
+          to: at,
+          paragraphs,
+          openStart,
+          openEnd,
+        } as const satisfies EditorIntent;
+        const allocation = allocateEditorIntentIds(original, intent);
+        const plan = compileEditorIntent(original, {
+          intent,
+          mode: { type: "editing", newIds: allocation.newIds },
+        }).unwrap();
+        const edit = applyDocumentOps(original, plan.ops).unwrap();
+        const pasted = storyParagraphs(edit.document.package.document)
+          .map(({ paragraph }) => paragraph)
+          .find((paragraph) => paragraphLogicalText(paragraph).includes("clip"));
+        if (!pasted) panic("Clipboard metadata fixture disappeared.");
+        if (openStart === 0 && openEnd === 0) {
+          expect(pasted.formatting?.alignment).toBe("center");
+          expect(pasted.sectionProperties).toEqual(sectionProperties);
+          expect(pasted.propertyChanges?.at(0)?.info.id).not.toBe(12);
+          expect(pasted.propertyChanges?.at(0)?.info.author).toBe("Source");
+          expect(pasted.propertyChanges?.at(0)?.previousFormatting.alignment).toBe("end");
+        } else {
+          expect(pasted.propertyChanges).toBeUndefined();
+          expect(pasted.sectionProperties).toBeUndefined();
+          expect(pasted.formatting?.alignment).toBe("right");
+        }
+        const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
+        assertExactModel(undo.document, original);
+        const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+        assertExactModel(redo.document, edit.document);
+      }
+  });
+  test("tracked clipboard retained-tail metadata refuses atomically while newly allocated leading metadata is supported", () => {
+    const original = normalizeForOps({
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              formatting: { alignment: "right" },
+              content: [{ type: "run", content: [{ type: "text", text: "a" }] }],
+            },
+          ],
+        },
+      },
+    } satisfies Document);
+    const at = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 };
+    for (const metadata of ["review", "section", "mark"] as const) {
+      const copied = {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text: "metadata" }] }],
+        ...(metadata === "review"
+          ? {
+              propertyChanges: [
+                {
+                  type: "paragraphPropertyChange",
+                  info: { id: 12, author: "Source" },
+                  previousFormatting: { alignment: "center" },
+                },
+              ],
+            }
+          : {}),
+        ...(metadata === "section"
+          ? { sectionProperties: { pageWidth: 12240, pageHeight: 15840 } }
+          : {}),
+        ...(metadata === "mark"
+          ? { pPrMark: { kind: "ins", info: { id: 12, author: "Source" } } }
+          : {}),
+      } satisfies Paragraph;
+      for (const leading of [false, true]) {
+        const intent = {
+          type: "replaceFragment",
+          from: at,
+          to: at,
+          openStart: 0,
+          openEnd: 0,
+          paragraphs: leading
+            ? [
+                copied,
+                {
+                  type: "paragraph",
+                  content: [{ type: "run", content: [{ type: "text", text: "tail" }] }],
+                },
+              ]
+            : [copied],
+        } as const satisfies EditorIntent;
+        const allocation = allocateEditorIntentIds(original, intent);
+        const snapshot = structuredClone(original);
+        const plan = compileEditorIntent(original, {
+          intent,
+          mode: {
+            type: "suggesting",
+            revision: {
+              id: allocation.revisionId,
+              author: "Clipboard",
+              date: "2026-10-02T00:00:00Z",
+            },
+            newIds: allocation.newIds,
+          },
+        });
+        assertExactModel(original, snapshot);
+        expect(plan.isOk()).toBe(leading);
+        if (plan.isErr()) {
+          expect(plan.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+        } else {
+          const edit = applyDocumentOps(original, plan.value.ops).unwrap();
+          const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
+          assertExactModel(undo.document, original);
+          const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+          assertExactModel(redo.document, edit.document);
+        }
+      }
+    }
+  });
+
+  test("generated clipboard fragments preserve history and accepted tracked content", () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.string({ minLength: 1, maxLength: 8 }), { minLength: 1, maxLength: 4 }),
+        fc.constantFrom(0 as const, 1 as const),
+        fc.constantFrom(0 as const, 1 as const),
+        fc.boolean(),
+        (texts, openStart, openEnd, replace) => {
+          const document: Document = {
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    formatting: { alignment: "right" },
+                    content: [
+                      {
+                        type: "run",
+                        formatting: { italic: true },
+                        content: [{ type: "text", text: "prefixsuffix" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+            warnings: [],
+          };
+          const paragraphs = texts.map(
+            (text) =>
+              ({
+                type: "paragraph",
+                paraId: "00000001",
+                formatting: { alignment: "center" },
+                content: [
+                  { type: "run", formatting: { bold: true }, content: [{ type: "text", text }] },
+                ],
+              }) satisfies Paragraph,
+          );
+          const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 6 };
+          const intent = {
+            type: "replaceFragment",
+            from,
+            to: { ...from, offset: replace ? 9 : 6 },
+            paragraphs,
+            openStart,
+            openEnd,
+          } as const satisfies EditorIntent;
+          const allocation = allocateEditorIntentIds(document, intent);
+          const outcomes = [
+            { type: "editing", newIds: allocation.newIds } as const,
+            {
+              type: "suggesting",
+              revision: {
+                id: allocation.revisionId,
+                author: "Property",
+                date: "2026-10-02T00:00:00Z",
+              },
+              newIds: allocation.newIds,
+            } as const,
+          ].map((mode) => {
+            const compiled = compileEditorIntent(document, { intent, mode });
+            if (compiled.isErr()) throw compiled.error;
+            const applied = applyDocumentOps(document, compiled.value.ops);
+            if (applied.isErr()) throw applied.error;
+            const undo = applyDocumentOps(applied.value.document, applied.value.inverse);
+            if (undo.isErr()) throw undo.error;
+            assertExactModel(undo.value.document, document);
+            const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
+            if (redo.isErr()) throw redo.error;
+            assertExactModel(redo.value.document, applied.value.document);
+            const expectedCount =
+              texts.length + (openStart === 0 ? 1 : 0) + (openEnd === 0 ? 1 : 0);
+            expect(paragraphIdsIn(applied.value.document.package.document)).toHaveLength(
+              expectedCount,
+            );
+            expect(new Set(paragraphIdsIn(applied.value.document.package.document)).size).toBe(
+              expectedCount,
+            );
+            const failed = applyDocumentOps(document, [
+              ...compiled.value.ops,
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: { ...from, blockId: "FFFFFFFF" },
+                text: "invalid",
+              },
+            ]);
+            expect(failed.isErr()).toBe(true);
+            expect(
+              storyParagraphs(document.package.document).map(({ paragraph }) =>
+                paragraphLogicalText(paragraph),
+              ),
+            ).toEqual(["prefixsuffix"]);
+            if (mode.type === "editing") return applied.value.document;
+            const reject = applyDocumentOp(applied.value.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: applied.value.revisions,
+              decision: REVISION_DECISIONS.REJECT,
+            });
+            if (reject.isErr()) throw reject.error;
+            expect(reject.value.document).toStrictEqual(document);
+            const accept = applyDocumentOp(applied.value.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: applied.value.revisions,
+              decision: REVISION_DECISIONS.ACCEPT,
+            });
+            if (accept.isErr()) throw accept.error;
+            return accept.value.document;
+          });
+          expect(outcomes[1]).toStrictEqual(outcomes[0]);
+          expect(
+            storyParagraphs(outcomes[0]!.package.document)
+              .map(({ paragraph }) => paragraphLogicalText(paragraph))
+              .join("\n"),
+          ).toBe(
+            "prefix" +
+              (openStart === 0 ? "\n" : "") +
+              texts.join("\n") +
+              (openEnd === 0 ? "\n" : "") +
+              (replace ? "fix" : "suffix"),
+          );
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+  test("id-only copied controls and retained identity provenance remint one consistent imported graph", () => {
+    const destination = {
+      package: {
+        document: {
+          content: [
+            {
+              type: "paragraph",
+              paraId: "00000001",
+              content: [
+                {
+                  type: "inlineSdt",
+                  properties: { id: 7 },
+                  content: [{ type: "run", content: [{ type: "text", text: "owned" }] }],
+                },
+                {
+                  type: "insertion",
+                  info: { id: 10, author: "Owned" },
+                  content: [{ type: "run", content: [{ type: "text", text: "review" }] }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    } satisfies Document;
+    const paragraphs = [
+      {
+        type: "paragraph",
+        paraId: "00000001",
+        content: [
+          {
+            type: "inlineSdt",
+            properties: { id: 7 },
+            content: [
+              {
+                type: "insertion",
+                info: { id: 10, author: "Foreign" },
+                resolutionJoins: {
+                  before: 0,
+                  after: 0,
+                  remove: 0,
+                  retainedAfter: [
+                    {
+                      depth: 1,
+                      source: [
+                        { space: "control", id: 7 },
+                        { space: "revision", id: 10 },
+                      ],
+                      target: [
+                        { space: "control", id: 8 },
+                        { space: "revision", id: 11 },
+                      ],
+                    },
+                  ],
+                },
+                content: [{ type: "run", content: [{ type: "text", text: "first" }] }],
+              },
+            ],
+          },
+          {
+            type: "inlineSdt",
+            properties: { id: 8 },
+            content: [
+              {
+                type: "insertion",
+                info: { id: 11, author: "Foreign" },
+                content: [{ type: "run", content: [{ type: "text", text: "second" }] }],
+              },
+            ],
+          },
+        ],
+      },
+    ] satisfies Paragraph[];
+    const intent = {
+      type: "replaceFragment",
+      from: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      to: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+      paragraphs,
+      openStart: 0,
+      openEnd: 0,
+    } as const satisfies EditorIntent;
+    const original = structuredClone(destination);
+    const incoming = structuredClone(paragraphs);
+    const plan = compileEditorIntent(destination, { intent, mode: { type: "editing" } }).unwrap();
+    const edit = applyDocumentOps(destination, plan.ops).unwrap();
+    const copied = storyParagraphs(edit.document.package.document).find(
+      ({ paragraph }) => paragraphLogicalText(paragraph) === "firstsecond",
+    )?.paragraph;
+    const first = copied?.content.at(0);
+    const second = copied?.content.at(1);
+    if (first?.type !== "inlineSdt" || second?.type !== "inlineSdt")
+      panic("Imported id-only controls disappeared.");
+    const firstReview = first.content.at(0);
+    const secondReview = second.content.at(0);
+    if (firstReview?.type !== "insertion" || secondReview?.type !== "insertion")
+      panic("Imported control reviews disappeared.");
+    expect(first.properties.id).not.toBe(7);
+    expect(second.properties.id).not.toBe(8);
+    expect(first.properties.id).not.toBe(second.properties.id);
+    expect(firstReview.info.id).not.toBe(10);
+    expect(secondReview.info.id).not.toBe(11);
+    assertExactModel(firstReview.resolutionJoins?.retainedAfter, [
+      {
+        depth: 1,
+        source: [
+          { space: "control", id: first.properties.id },
+          { space: "revision", id: firstReview.info.id },
+        ],
+        target: [
+          { space: "control", id: second.properties.id },
+          { space: "revision", id: secondReview.info.id },
+        ],
+      },
+    ]);
+    const undo = applyDocumentOps(edit.document, edit.inverse).unwrap();
+    assertExactModel(undo.document, original);
+    const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+    assertExactModel(redo.document, edit.document);
+    assertExactModel(paragraphs, incoming);
+  });
+
+  test("generated clipboard sequences preserve arbitrary ranges, marked content and every inverse", () => {
+    const applied = new Map<string, number>();
+    const refusals = new Map<DocumentOpRefusalReason, number>();
+    const payloadText = fc.string({
+      unit: fc.constantFrom("x", "é", "😀"),
+      minLength: 1,
+      maxLength: 5,
+    });
+    assertProperty(
+      fc.property(
+        fc.array(
+          fc.record({
+            source: fc.nat(),
+            end: fc.nat(),
+            anchor: fc.nat(),
+            head: fc.nat(),
+            openStart: fc.constantFrom(0 as const, 1 as const),
+            openEnd: fc.constantFrom(0 as const, 1 as const),
+            texts: fc.array(payloadText, { minLength: 1, maxLength: 3 }),
+            bold: fc.boolean(),
+            italic: fc.boolean(),
+            resourceByte: fc.integer({ min: 0, max: 255 }),
+          }),
+          { minLength: 8, maxLength: 16 },
+        ),
+        fc.boolean(),
+        fc.boolean(),
+        (steps, reverseDestinationFormatting, priorReview) => {
+          const original = normalizeForOps({
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    formatting: { alignment: reverseDestinationFormatting ? "right" : "left" },
+                    content: [
+                      {
+                        type: "run",
+                        formatting: { italic: true },
+                        content: [{ type: "text", text: "first😀" }],
+                      },
+                    ],
+                  },
+                  {
+                    type: "paragraph",
+                    paraId: "00000002",
+                    formatting: { alignment: reverseDestinationFormatting ? "left" : "right" },
+                    content: [{ type: "run", content: [{ type: "text", text: "secondé" }] }],
+                  },
+                ],
+              },
+            },
+          } satisfies Document);
+          if (priorReview) {
+            const paragraph = original.package.document.content.at(0);
+            const run = paragraph?.type === "paragraph" ? paragraph.content.at(0) : undefined;
+            if (run?.type !== "run") panic("Prior clipboard review fixture disappeared.");
+            run.propertyChanges = [
+              {
+                type: "runPropertyChange",
+                info: { id: 13, author: "Prior" },
+                previousFormatting: { italic: false },
+                currentFormatting: { italic: true },
+              },
+            ];
+          }
+          let document = original;
+          const journal: {
+            edit: AppliedDocumentOp;
+            before: Document;
+            ops: readonly DocumentOp[];
+          }[] = [];
+          const optionalFixture = storyParagraphs(original.package.document).at(1)?.paragraph;
+          if (optionalFixture?.formatting === undefined)
+            panic("Optional-field fixture disappeared.");
+          Object.defineProperty(optionalFixture.formatting, "keepNext", {
+            value: undefined,
+            enumerable: true,
+            configurable: true,
+            writable: true,
+          });
+          for (const [stepIndex, step] of steps.entries()) {
+            const paragraphs = storyParagraphs(document.package.document).map(
+              ({ paragraph }) => paragraph,
+            );
+            const sourceIndex = Math.min(
+              step.source % paragraphs.length,
+              step.end % paragraphs.length,
+            );
+            const endIndex = Math.max(
+              step.source % paragraphs.length,
+              step.end % paragraphs.length,
+            );
+            const source = paragraphs.at(sourceIndex);
+            const end = paragraphs.at(endIndex);
+            if (!source?.paraId || !end?.paraId) panic("Generated clipboard range disappeared.");
+            const sourceText = paragraphLogicalText(source);
+            const endText = paragraphLogicalText(end);
+            const sourceGaps = codePointGaps(sourceText);
+            const endGaps = codePointGaps(endText);
+            const anchor = sourceGaps.at(step.anchor % sourceGaps.length) ?? 0;
+            const head = endGaps.at(step.head % endGaps.length) ?? 0;
+            const fromOffset = sourceIndex === endIndex ? Math.min(anchor, head) : anchor;
+            const toOffset = sourceIndex === endIndex ? Math.max(anchor, head) : head;
+            const intent = {
+              type: "replaceFragment",
+              from: { story: OP_STORIES.MAIN, blockId: source.paraId, offset: fromOffset },
+              to: { story: OP_STORIES.MAIN, blockId: end.paraId, offset: toOffset },
+              paragraphs: step.texts.map(
+                (text) =>
+                  ({
+                    type: "paragraph",
+                    paraId: source.paraId,
+                    content: [
+                      {
+                        type: "run",
+                        formatting: { bold: step.bold, italic: step.italic },
+                        content: [{ type: "text", text: `paste${text}` }],
+                      },
+                    ],
+                  }) satisfies Paragraph,
+              ),
+              openStart: step.openStart,
+              openEnd: step.openEnd,
+            } as const satisfies EditorIntent;
+            const allocation = allocateEditorIntentIds(document, intent);
+            const before = document;
+            const snapshot = structuredClone(before);
+            const priorResources = packageResourcesOf(before);
+            const media =
+              priorResources.media.type === "present" ? [...priorResources.media.value] : [];
+            const path = `word/media/clipboard-step${stepIndex}.png`;
+            media.push([
+              path,
+              { path, mimeType: "image/png", data: [137, 80, 78, 71, step.resourceByte] },
+            ]);
+            const resourceOp = {
+              type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
+              expected: priorResources,
+              resources: { ...priorResources, media: { type: "present", value: media } },
+            } as const satisfies DocumentOp;
+            const resourceBaseline = applyDocumentOp(before, resourceOp).unwrap().document;
+            const outcomes = [
+              { type: "editing", newIds: allocation.newIds } as const,
+              {
+                type: "suggesting",
+                newIds: allocation.newIds,
+                revision: {
+                  id: allocation.revisionId,
+                  author: "Clipboard sequence",
+                  date: "2026-10-02T00:00:00Z",
+                },
+              } as const,
+            ].map((mode) => {
+              const plan = compileEditorIntent(resourceBaseline, { intent, mode });
+              if (plan.isErr()) {
+                refusals.set(plan.error.reason, (refusals.get(plan.error.reason) ?? 0) + 1);
+                throw plan.error;
+              }
+              const ops = [resourceOp, ...plan.value.ops];
+              const edit = applyDocumentOps(before, ops);
+              if (edit.isErr()) {
+                refusals.set(edit.error.reason, (refusals.get(edit.error.reason) ?? 0) + 1);
+                throw edit.error;
+              }
+              assertExactModel(before, snapshot);
+              const undo = applyDocumentOps(edit.value.document, edit.value.inverse);
+              if (undo.isErr()) throw undo.error;
+              assertExactModel(undo.value.document, before);
+              const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
+              if (redo.isErr()) throw redo.error;
+              assertExactModel(redo.value.document, edit.value.document);
+              if (mode.type === "editing") return Object.assign({}, edit.value, { ops });
+              const rejected = applyDocumentOp(edit.value.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: edit.value.revisions,
+                decision: REVISION_DECISIONS.REJECT,
+              });
+              if (rejected.isErr()) throw rejected.error;
+              assertExactModel(rejected.value.document, resourceBaseline);
+              const accepted = applyDocumentOp(edit.value.document, {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds: edit.value.revisions,
+                decision: REVISION_DECISIONS.ACCEPT,
+              });
+              if (accepted.isErr()) throw accepted.error;
+              return Object.assign({}, edit.value, { ops, document: accepted.value.document });
+            });
+            const direct = outcomes.at(0);
+            const accepted = outcomes.at(1);
+            if (!direct || !accepted) panic("Clipboard sequence lost a compilation mode.");
+            assertExactModel(accepted.document, direct.document);
+            assertExactModel(packageResourcesOf(direct.document), resourceOp.resources);
+            const expected = step.texts.map((text) => `paste${text}`);
+            const expectedAlignments: NonNullable<Paragraph["formatting"]>["alignment"][] =
+              step.texts.map(() => undefined);
+            const prefix = sourceText.slice(0, fromOffset);
+            const suffix = endText.slice(toOffset);
+            if (step.openStart === 1) {
+              expected[0] = prefix + expected[0];
+              expectedAlignments[0] = source.formatting?.alignment;
+            } else if (prefix !== "") {
+              expected.unshift(prefix);
+              expectedAlignments.unshift(source.formatting?.alignment);
+            }
+            if (step.openEnd === 1) {
+              expected[expected.length - 1] += suffix;
+              const leadingWins = step.texts.length === 1 && step.openStart === 1;
+              expectedAlignments[expectedAlignments.length - 1] = leadingWins
+                ? source.formatting?.alignment
+                : end.formatting?.alignment;
+            } else if (suffix !== "") {
+              expected.push(suffix);
+              expectedAlignments.push(end.formatting?.alignment);
+            }
+            const oracle = [
+              ...paragraphs.slice(0, sourceIndex).map(paragraphLogicalText),
+              ...expected,
+              ...paragraphs.slice(endIndex + 1).map(paragraphLogicalText),
+            ];
+            expect(
+              storyParagraphs(direct.document.package.document).map(({ paragraph }) =>
+                paragraphLogicalText(paragraph),
+              ),
+            ).toEqual(oracle);
+            expect(
+              storyParagraphs(direct.document.package.document).map(
+                ({ paragraph }) => paragraph.formatting?.alignment,
+              ),
+            ).toEqual([
+              ...paragraphs
+                .slice(0, sourceIndex)
+                .map((paragraph) => paragraph.formatting?.alignment),
+              ...expectedAlignments,
+              ...paragraphs.slice(endIndex + 1).map((paragraph) => paragraph.formatting?.alignment),
+            ]);
+            const stale = applyDocumentOps(before, [
+              ...direct.ops,
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: { story: OP_STORIES.MAIN, blockId: "7FFFFFFF", offset: 0 },
+                text: "invalid",
+              },
+            ]);
+            if (stale.isOk()) panic("Clipboard sequence accepted a missing target.");
+            refusals.set(stale.error.reason, (refusals.get(stale.error.reason) ?? 0) + 1);
+            expect(stale.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND);
+            assertExactModel(before, snapshot);
+            journal.push({ edit: direct, before, ops: direct.ops });
+            document = direct.document;
+            applied.set(intent.type, (applied.get(intent.type) ?? 0) + 1);
+          }
+          for (const entry of journal.toReversed()) {
+            const undo = applyDocumentOps(document, entry.edit.inverse);
+            if (undo.isErr()) throw undo.error;
+            assertExactModel(undo.value.document, entry.before);
+            document = undo.value.document;
+          }
+          assertExactModel(document, original);
+          for (const entry of journal) {
+            const redo = applyDocumentOps(document, entry.ops);
+            if (redo.isErr()) throw redo.error;
+            assertExactModel(redo.value.document, entry.edit.document);
+            document = redo.value.document;
+          }
+        },
+      ),
+      { numRuns: 50 },
+    );
+    expect(applied.get("replaceFragment") ?? 0).toBeGreaterThan(0);
+    expect([...refusals.keys()]).toEqual([DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND]);
+    expect(refusals.get(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND) ?? 0).toBeGreaterThan(0);
+  });
+
+  test("generated move intents rebase the original target and refuse atomically", () => {
+    assertProperty(
+      fc.property(fc.integer({ min: 0, max: 12 }), fc.boolean(), (targetOffset, tracked) => {
+        const document: Document = {
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  content: [{ type: "run", content: [{ type: "text", text: "prefixsuffix" }] }],
+                },
+              ],
+            },
+          },
+          warnings: [],
+        };
+        const from = { story: OP_STORIES.MAIN, blockId: "00000001", offset: 3 };
+        const target = { ...from, offset: targetOffset };
+        const intent = {
+          type: "moveFragment",
+          from,
+          to: { ...from, offset: 6 },
+          target,
+          openStart: 1,
+          openEnd: 1,
+          paragraphs: [
+            {
+              type: "paragraph",
+              content: [{ type: "run", content: [{ type: "text", text: "fix" }] }],
+            },
+          ],
+        } as const satisfies EditorIntent;
+        const allocation = allocateEditorIntentIds(document, intent);
+        const mode = tracked
+          ? ({
+              type: "suggesting",
+              revision: {
+                id: allocation.revisionId,
+                author: "Property",
+                date: "2026-10-02T00:00:00Z",
+              },
+              newIds: allocation.newIds,
+            } as const)
+          : ({ type: "editing", newIds: allocation.newIds } as const);
+        const compiled = compileEditorIntent(document, { intent, mode });
+        if (compiled.isErr()) throw compiled.error;
+        const edit = applyDocumentOps(document, compiled.value.ops);
+        if (edit.isErr()) throw edit.error;
+        const undo = applyDocumentOps(edit.value.document, edit.value.inverse);
+        if (undo.isErr()) throw undo.error;
+        assertExactModel(undo.value.document, document);
+        const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
+        if (redo.isErr()) throw redo.error;
+        expect(redo.value.document).toStrictEqual(edit.value.document);
+        if (targetOffset >= 3 && targetOffset <= 6) {
+          expect(compiled.value.ops).toEqual([]);
+          expect(edit.value.document).toStrictEqual(document);
+          return;
+        }
+        let accepted = edit.value.document;
+        if (tracked) {
+          const accept = applyDocumentOp(accepted, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: edit.value.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          });
+          if (accept.isErr()) throw accept.error;
+          accepted = accept.value.document;
+          const reject = applyDocumentOp(edit.value.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: edit.value.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          });
+          if (reject.isErr()) throw reject.error;
+          expect(reject.value.document).toStrictEqual(document);
+        }
+        const rebased = targetOffset > 6 ? targetOffset - 3 : targetOffset;
+        const remaining = "presuffix";
+        expect(
+          storyParagraphs(accepted.package.document)
+            .map(({ paragraph }) => paragraphLogicalText(paragraph))
+            .join("\n"),
+        ).toBe(remaining.slice(0, rebased) + "fix" + remaining.slice(rebased));
+        const failed = compileEditorIntent(document, {
+          intent: { ...intent, target: { ...target, blockId: "FFFFFFFF" } },
+          mode,
+        });
+        expect(failed.isErr()).toBe(true);
+      }),
+      { numRuns: 100 },
+    );
+  });
   test("plain-text input sequences preserve exact inverse, redo and rejection atomicity", () => {
     const tally = new Map<string, number>();
     fc.assert(

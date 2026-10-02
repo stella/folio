@@ -333,6 +333,7 @@ const operationFields = {
   createNumberingInstance: undefined,
   deleteNumberingInstance: undefined,
   setSectionEndpoint: undefined,
+  setPackageResources: undefined,
 } satisfies Record<DocumentOpType, Fields | undefined>;
 
 export const BATCH_WIRE_OP_TYPES = Object.freeze(

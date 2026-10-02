@@ -31,6 +31,8 @@ type CanonicalInputOptions = {
   breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
   endComposition?: () => void;
+  pastePlainText?: (view: EditorView) => void;
+  cut?: (view: EditorView, event: ClipboardEvent) => boolean;
   undo: () => boolean;
   redo: () => boolean;
   refuse: (reason: string) => void;
@@ -203,6 +205,12 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             options.command("toggleUnderline");
             break;
         }
+        return true;
+      }
+      if (modifier && event.altKey && event.key.toLowerCase() === "v" && options.pastePlainText) {
+        event.preventDefault();
+        closeGroup();
+        options.pastePlainText(view);
         return true;
       }
       if (event.key === "Enter") {
@@ -403,15 +411,27 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       },
       paste: (_view: EditorView, event: Event) => {
         beginGesture();
-        return refuseEvent(event, "Paste is unavailable in this session.");
+        closeGroup();
+        if (composition.active)
+          return refuseEvent(event, "Composition must finish before pasting.");
+        return false;
       },
-      cut: (_view: EditorView, event: Event) => {
+      cut: (view: EditorView, event: ClipboardEvent) => {
         beginGesture();
-        return refuseEvent(event, "Cut is unavailable in this session.");
+        if (composition.active)
+          return refuseEvent(event, "Composition must finish before cutting.");
+        if (options.cut !== undefined) {
+          closeGroup();
+          return options.cut(view, event);
+        }
+        return refuseEvent(event, "The canonical clipboard owner is unavailable.");
       },
       drop: (_view: EditorView, event: Event) => {
         beginGesture();
-        return refuseEvent(event, "Drop is unavailable in this session.");
+        closeGroup();
+        if (composition.active)
+          return refuseEvent(event, "Composition must finish before dropping.");
+        return false;
       },
     },
     /** Returns a classified intent only; the proposed PM document is never authoritative. */

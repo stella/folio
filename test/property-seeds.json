@@ -809,6 +809,18 @@
       "path": "6:0:0:0:0:0:0:0:0:5:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:5:4:4:3:8:3:3:4:3:5:6:3:3:3:4:7:7:7:7:7:7:7:7:7",
       "date": "2026-10-02",
       "note": "Preserve exact imported review identities and structural editing equivalence through generated direct and tracked resolution."
+    },
+    {
+      "seed": 369550806,
+      "path": "0:0:0:0:0:0:0:0:0:0:1:0:0:1:1:1:3:4:3:3:4:4:5:4:4:7:8:8:8:8:8:8:7:7:7:7:7:7:9:8:7:15:8:7:8:8:8:7:8:7:7:9:9:9:9:9:9:9:9",
+      "note": "Tracked editor intent rejection must retain prior run property-change provenance",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 184846951,
+      "path": "0:0:0:0:0:0:0:0:0:3:1:1:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4",
+      "note": "Rejecting run property changes must preserve pre-existing matching run boundaries",
+      "date": "2026-10-02"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::the same operation on equal documents gives equal results": [
@@ -946,6 +958,28 @@
       "seed": -1798387597,
       "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Count expected noChange without changing document or history; preserve new-half source ownership.",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/controller/canonicalUndoGrouping.test.ts::generated intent sequences restore every group exactly without projection adjacency": [
+    {
+      "seed": -755367587,
+      "path": "272:0:1:1:1:2:1:1:2:1:1:1:2:1:1:1:1:0:8:8:0:0:0:0:0:0:0:0:1:1:1:1:1:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:2:1:1:1:1:1:1:1:2:1:1:1:2:1:1:1:1:0:1",
+      "note": "Semantic grouping traces must handle caret gestures and refused deletions in empty paragraphs",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated clipboard fragments preserve history and accepted tracked content": [
+    {
+      "seed": 54534382,
+      "path": "3:0:0:0:0",
+      "note": "Closed clipboard paragraph formatting must preserve exact tracked rejection",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 728914360,
+      "path": "49:2:3:3:4:4:4",
+      "note": "Revision allocation demand includes clipboard paragraphs and both closed edge boundaries",
       "date": "2026-10-02"
     }
   ]

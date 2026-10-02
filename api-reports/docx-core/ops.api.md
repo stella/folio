@@ -105,6 +105,7 @@ export const compileEditorIntent: (document: Document_2, input: CompileEditorInt
 export type CompileEditorIntentOptions = {
     intent: EditorIntent;
     mode: EditorIntentMode;
+    firstBlockId?: number;
 };
 
 // @public
@@ -136,6 +137,9 @@ export const createSequencer: (document: Document_2) => {
     readonly headRev: number;
     readonly broadcasts: readonly SequencedBatch[];
 };
+
+// @public
+export const defaultInsertionGap: (items: readonly InlineNode[], offset: number) => Gap;
 
 // @public
 export type DeleteBlocksOp = {
@@ -217,7 +221,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 7;
+export const DOCUMENT_OP_SCHEMA_VERSION = 8;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -245,6 +249,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly CREATE_NUMBERING_INSTANCE: "createNumberingInstance";
     readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
     readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
+    readonly SET_PACKAGE_RESOURCES: "setPackageResources";
 }>;
 
 // @public
@@ -258,7 +263,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp) & {
+export type DocumentOp = (DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -289,6 +294,21 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
 
 // @public
 export type EditorIntent = {
+    type: "replaceFragment";
+    from: TextPosition;
+    to: TextPosition;
+    paragraphs: readonly Paragraph[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
+    type: "moveFragment";
+    from: TextPosition;
+    to: TextPosition;
+    target: TextPosition;
+    paragraphs: readonly Paragraph[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
     type: "replaceText";
     from: TextPosition;
     to: TextPosition;
@@ -492,6 +512,32 @@ export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
 // @public
+export type PackageResourceMedia = Omit<MediaFile, "data"> & {
+    data: readonly number[];
+};
+
+// @public
+export type PackageResourcePart<Value> = {
+    type: "omitted";
+} | {
+    type: "undefined";
+} | {
+    type: "present";
+    value: Value;
+};
+
+// @public
+export type PackageResources = {
+    styles: PackageResourcePart<StyleDefinitions>;
+    numbering: PackageResourcePart<NumberingDefinitions>;
+    relationships: PackageResourcePart<readonly (readonly [string, Relationship])[]>;
+    media: PackageResourcePart<readonly (readonly [string, PackageResourceMedia])[]>;
+};
+
+// @public
+export const packageResourcesOf: (input: Document_2) => PackageResources;
+
+// @public
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
@@ -666,6 +712,13 @@ export type SetContainerBlocksOp = {
 };
 
 // @public
+export type SetPackageResourcesOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
+    expected: PackageResources;
+    resources: PackageResources;
+};
+
+// @public
 export type SetParagraphPropsOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS;
     story: OpStory;
@@ -783,6 +836,9 @@ export const validateOpsDocument: (document: Document_2) => Result<Document_2, D
 
 // @public
 export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
+
+// @public
+export const zeroWidthLeavesAt: (items: readonly InlineNode[], offset: number) => InlineNode[];
 
 // (No @packageDocumentation comment for this package)
 

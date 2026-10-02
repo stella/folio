@@ -16,6 +16,7 @@ import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { panic } from "better-result";
 import fc from "fast-check";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
+import { assertExactModel } from "../../../../test/exactModel";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { FIRST_ID, fixture, seedArbitrary } from "../../typecheck/ops/reviewGenerators.typecheck";
 
@@ -80,10 +81,12 @@ describe("canonical session", () => {
     const original = session.document;
     const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 1 };
     const apply = spyOn(documentOps, "applyDocumentOps");
-    const prepared = session.prepareIntents(state, [
-      { type: "replaceText", from: at, to: at, text: "X" },
-      { type: "formatParagraph", at, patch: { alignment: "right" } },
-    ]);
+    const prepared = session.prepareIntents(state, {
+      intents: [
+        { type: "replaceText", from: at, to: at, text: "X" },
+        { type: "formatParagraph", at, patch: { alignment: "right" } },
+      ],
+    });
     const calls = apply.mock.calls.length;
     apply.mockRestore();
     expect(calls).toBe(2);
@@ -93,9 +96,9 @@ describe("canonical session", () => {
     state = accept(state, commit);
     const edited = session.document;
     state = accept(state, session.prepareUndo(state).unwrap());
-    expect(session.document).toStrictEqual(original);
+    assertExactModel(session.document, original);
     state = accept(state, session.prepareRedo(state).unwrap());
-    expect(session.document).toStrictEqual(edited);
+    assertExactModel(session.document, edited);
     expect(state.selection.head).toBe(3);
   });
 
@@ -123,7 +126,7 @@ describe("canonical session", () => {
     const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 };
     for (const result of [
       session.prepareReplace(state, { from: 1, to: 1, text: "" }),
-      session.prepareIntents(state, []),
+      session.prepareIntents(state, { intents: [] }),
       session.prepareIntent(state, { type: "formatParagraph", at, patch: {} }),
       session.prepareJoin(state, "backward"),
     ]) {

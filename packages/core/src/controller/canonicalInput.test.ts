@@ -201,7 +201,7 @@ describe("canonical input boundary", () => {
     expect(groupBoundaries).toHaveLength(3);
   });
 
-  test("typing gestures preserve runs; navigation and refused clipboard gestures close them", () => {
+  test("typing gestures preserve runs; navigation and clipboard gestures close them", () => {
     const { boundary, view, groupBoundaries } = createRig();
     for (const key of ["a", "b", "Backspace", "Delete"]) {
       boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key }));
@@ -212,7 +212,7 @@ describe("canonical input boundary", () => {
     }
     expect(groupBoundaries).toHaveLength(3);
     boundary.handleDOMEvents.paste(view, new Event("paste", { cancelable: true }));
-    boundary.handleDOMEvents.cut(view, new Event("cut", { cancelable: true }));
+    boundary.handleDOMEvents.cut(view, new ClipboardEvent("cut", { cancelable: true }));
     boundary.handleDOMEvents.drop(view, new Event("drop", { cancelable: true }));
     expect(groupBoundaries).toHaveLength(6);
   });

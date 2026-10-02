@@ -13,6 +13,8 @@ import {
   normalizeForOps,
   OP_STORIES,
   paragraphLogicalText,
+  defaultInsertionGap,
+  zeroWidthLeavesAt,
   packageParagraphIds,
   validateOpsDocument,
   type DocumentOp,
@@ -77,7 +79,11 @@ class CanonicalProjection {
     if (splitsSurrogatePair(paragraph.text, offset)) {
       return refuse("The input would split a surrogate pair.");
     }
-    return Result.ok({ story: OP_STORIES.MAIN, blockId: paragraph.blockId, offset });
+    return Result.ok({
+      story: OP_STORIES.MAIN,
+      blockId: paragraph.blockId,
+      ...defaultInsertionGap(paragraph.source.content, offset),
+    });
   }
 
   inputAddressAt(position: number): Result<TextPosition, CanonicalSessionError> {
@@ -94,14 +100,16 @@ class CanonicalProjection {
       )
         offset = start + node.nodeSize;
     });
-    return Result.ok({ ...address.value, offset });
+    return Result.ok({
+      ...address.value,
+      ...defaultInsertionGap(paragraph.source.content, offset),
+    });
   }
 
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
     const paragraph = this.paragraph(address.blockId);
     if (
       address.story !== OP_STORIES.MAIN ||
-      (address.zeroWidthBefore !== undefined && address.zeroWidthBefore !== 0) ||
       paragraph === undefined ||
       !Number.isInteger(address.offset) ||
       address.offset < 0 ||
@@ -109,6 +117,16 @@ class CanonicalProjection {
       splitsSurrogatePair(paragraph.text, address.offset)
     ) {
       return refuse("The canonical selection is outside a plain paragraph.");
+    }
+    const gap =
+      address.zeroWidthBefore ??
+      defaultInsertionGap(paragraph.source.content, address.offset).zeroWidthBefore;
+    if (
+      !Number.isInteger(gap) ||
+      gap < 0 ||
+      gap > zeroWidthLeavesAt(paragraph.source.content, address.offset).length
+    ) {
+      return refuse("The canonical selection has an invalid marker gap.");
     }
     return Result.ok(paragraph.start + address.offset);
   }
@@ -150,37 +168,29 @@ const preservePropertySources = (target: Document, source: Document): void => {
   copyDocumentParagraphPropertySourceContract(target, source);
 };
 
-const supportsTextContent = (content: Paragraph["content"]): boolean =>
-  content.every((item) => {
-    switch (item.type) {
-      case "run":
-        return item.content.every(
-          (child) =>
-            (child.type === "text" &&
-              !hasIllegalXmlCharacters(child.text) &&
-              !/[\t\r\n]/u.test(child.text)) ||
-            child.type === "tab" ||
-            child.type === "break",
-        );
-      case "insertion":
-      case "deletion":
-        return supportsTextContent(item.content);
-      default:
-        return false;
+/** Projection below verifies atom widths; inspect nested authored text here. */
+const supportsTextContent = (content: Paragraph["content"]): boolean => {
+  const valid = (value: unknown): boolean => {
+    if (typeof value !== "object" || value === null) return true;
+    if (Array.isArray(value)) return value.every(valid);
+    if ("type" in value && value.type === "renderedPageBreak") return false;
+    if (
+      "type" in value &&
+      value.type === "text" &&
+      "text" in value &&
+      typeof value.text === "string"
+    ) {
+      return !hasIllegalXmlCharacters(value.text) && !/[\t\r\n]/u.test(value.text);
     }
-  });
+    return Object.values(value).every(valid);
+  };
+  return content.every(valid);
+};
 
 const supportsSeed = (document: Document): boolean => {
   const pkg = document.package;
   const body = pkg.document;
-  if (
-    (pkg.headers?.size ?? 0) > 0 ||
-    (pkg.footers?.size ?? 0) > 0 ||
-    (pkg.footnotes?.length ?? 0) > 0 ||
-    (pkg.endnotes?.length ?? 0) > 0 ||
-    (body.comments?.length ?? 0) > 0 ||
-    body.content.length === 0
-  ) {
+  if ((pkg.headers?.size ?? 0) > 0 || (pkg.footers?.size ?? 0) > 0 || body.content.length === 0) {
     return false;
   }
   return body.content.every(
@@ -196,7 +206,12 @@ const project = (
   styles: StyleDefinitions | null | undefined,
 ): Result<CanonicalProjection, CanonicalSessionError> => {
   const converted = Result.try({
-    try: () => toProseDoc(document, styles == null ? undefined : { styles }),
+    try: () => {
+      const currentStyles = Object.hasOwn(document.package, "styles")
+        ? document.package.styles
+        : styles;
+      return toProseDoc(document, currentStyles == null ? undefined : { styles: currentStyles });
+    },
     catch: (cause) =>
       new CanonicalSessionError({
         reason: "refused",
@@ -395,12 +410,19 @@ type JournalledOpsOptions = {
   ops: readonly DocumentOp[];
   postSelection: CanonicalSelection;
   stagedApplied?: AppliedDocumentOp;
+  semantic?: CanonicalInputSemantic;
 };
 
 type CanonicalSessionSeedOptions = {
   document: Document;
   projection: CanonicalProjection;
   styles: StyleDefinitions | null | undefined;
+};
+
+type CanonicalIntentInput = {
+  intents: readonly EditorIntent[];
+  resourceOps?: readonly DocumentOp[];
+  semantic?: CanonicalInputSemantic;
 };
 
 type CanonicalReplaceTextInput = {
@@ -484,6 +506,9 @@ class CanonicalSession {
   private intentNeedsIdentityIds(document: Document, intent: EditorIntent): boolean {
     let blockIds: readonly string[];
     switch (intent.type) {
+      case "replaceFragment":
+      case "moveFragment":
+        return true;
       case "setList":
       case "formatParagraph":
         return false;
@@ -664,12 +689,12 @@ class CanonicalSession {
     state: EditorState,
     intent: EditorIntent,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    return this.prepareIntents(state, [intent]);
+    return this.prepareIntents(state, { intents: [intent] });
   }
 
   prepareIntents(
     state: EditorState,
-    intents: readonly EditorIntent[],
+    { intents, resourceOps = [], semantic = "structure" }: CanonicalIntentInput,
   ): Result<CanonicalCommit, CanonicalSessionError> {
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
@@ -677,12 +702,22 @@ class CanonicalSession {
     if (preSelection.isErr()) return preSelection;
     let document = this.currentDocument;
     let postSelection = preSelection.value;
-    const ops: DocumentOp[] = [];
+    const ops: DocumentOp[] = [...resourceOps];
     const edits: AppliedDocumentOp[] = [];
+    if (resourceOps.length > 0) {
+      const imported = applyDocumentOps(document, resourceOps);
+      if (imported.isErr()) return refuse(imported.error.message);
+      document = imported.value.document;
+      edits.push(imported.value);
+    }
+    let firstBlockId = this.nextBlockId;
     for (const intent of intents) {
       const compiled = compileEditorIntent(document, {
         intent,
         mode: this.intentMode(document, intent),
+        ...(intent.type === "replaceFragment" || intent.type === "moveFragment"
+          ? { firstBlockId }
+          : {}),
       });
       if (compiled.isErr()) return refuse(compiled.error.message);
       const applied = applyDocumentOps(document, compiled.value.ops);
@@ -690,6 +725,11 @@ class CanonicalSession {
       document = applied.value.document;
       edits.push(applied.value);
       ops.push(...compiled.value.ops);
+      for (const op of compiled.value.ops) {
+        if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
+          firstBlockId = Math.max(firstBlockId, Number.parseInt(op.newBlockId, 16) + 1);
+        }
+      }
       if (
         intent.type !== "formatRun" &&
         intent.type !== "formatParagraph" &&
@@ -702,15 +742,22 @@ class CanonicalSession {
       ...combineEdits(this.currentDocument, edits),
       revisions: edits.flatMap(({ revisions }) => revisions),
     };
-    return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied });
+    return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied, semantic });
   }
 
   prepareOps(
     state: EditorState,
-    ops: readonly DocumentOp[],
-    postSelection: CanonicalSelection,
+    {
+      ops,
+      postSelection,
+      semantic = "structure",
+    }: {
+      ops: readonly DocumentOp[];
+      postSelection: CanonicalSelection;
+      semantic?: CanonicalInputSemantic;
+    },
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    return this.prepareJournalledOps({ state, ops, postSelection });
+    return this.prepareJournalledOps({ state, ops, postSelection, semantic });
   }
 
   private prepareJournalledOps({
@@ -718,6 +765,7 @@ class CanonicalSession {
     ops,
     postSelection,
     stagedApplied,
+    semantic = "structure",
   }: JournalledOpsOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
@@ -741,7 +789,7 @@ class CanonicalSession {
           postDocument: this.currentDocument,
           version,
           origin: "input",
-          semantic: "structure",
+          semantic,
           grouping: "isolated",
           time: Date.now(),
           boundary: this.groupingBoundary,
@@ -789,7 +837,7 @@ class CanonicalSession {
         at: { ...from.value, offset: 0 },
         patch: { styleId: nextStyle },
       });
-    return this.prepareIntents(state, intents);
+    return this.prepareIntents(state, { intents });
   }
 
   prepareJoin(
@@ -1013,7 +1061,7 @@ export const createCanonicalSession = (
 ): Result<CanonicalSession, CanonicalSessionError> => {
   if (!supportsSeed(document)) {
     return refuse(
-      "Canonical sessions currently require main-story text paragraphs and inline atoms without secondary stories.",
+      "Canonical sessions require supported main-story paragraphs without header or footer parts.",
     );
   }
   const owned = cloneDocumentWithParagraphPropertySources(document);

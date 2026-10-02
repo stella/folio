@@ -21,27 +21,31 @@ const isPlainRecord = (value: object): boolean => {
 };
 
 /** A record's fields, and the key of the field (or of the list) that holds it. */
-type Visit = (entries: readonly [string, unknown][], heldBy: string | undefined) => void;
+type VisitContext = { heldBy: string | undefined; ownerType: string | undefined };
+type Visit = (entries: readonly [string, unknown][], context: VisitContext) => void;
+type WalkOptions = { value: unknown; visit: Visit; context?: VisitContext };
 
-const walk = (value: unknown, visit: Visit, heldBy?: string): void => {
-  if (typeof value !== "object" || value === null) {
-    return;
-  }
+const walk = ({
+  value,
+  visit,
+  context = { heldBy: undefined, ownerType: undefined },
+}: WalkOptions): void => {
+  if (typeof value !== "object" || value === null) return;
   if (Array.isArray(value)) {
-    for (const item of value) walk(item, visit, heldBy);
+    for (const item of value) walk({ value: item, visit, context });
     return;
   }
   if (value instanceof Map) {
-    for (const item of value.values()) walk(item, visit, heldBy);
+    for (const item of value.values()) walk({ value: item, visit, context });
     return;
   }
-  // Bytes, dates and other built-ins hold no records.
-  if (!isPlainRecord(value)) {
-    return;
-  }
+  if (!isPlainRecord(value)) return;
   const entries = Object.entries(value);
-  visit(entries, heldBy);
-  for (const [key, field] of entries) walk(field, visit, key);
+  visit(entries, context);
+  const type = fieldOf(entries, "type");
+  const ownerType = typeof type === "string" ? type : undefined;
+  for (const [heldBy, field] of entries)
+    walk({ value: field, visit, context: { heldBy, ownerType } });
 };
 
 /** The package's stories, each once: the body without its derived section view. */
@@ -62,9 +66,12 @@ const paragraphIdOf = (entries: readonly [string, unknown][]): string | undefine
 /** Every `paraId` of every paragraph in a value, nested ones included, in document order. */
 export const paragraphIdsIn = (value: unknown): string[] => {
   const out: string[] = [];
-  walk(value, (entries) => {
-    const id = paragraphIdOf(entries);
-    if (id !== undefined) out.push(id);
+  walk({
+    value,
+    visit: (entries) => {
+      const id = paragraphIdOf(entries);
+      if (id !== undefined) out.push(id);
+    },
   });
   return out;
 };
@@ -140,9 +147,19 @@ const revisionIdOf = (
     : undefined;
 };
 
-const controlIdOf = (entries: readonly [string, unknown][]): number | undefined => {
+const controlIdOf = (
+  entries: readonly [string, unknown][],
+  { heldBy, ownerType }: VisitContext,
+): number | undefined => {
   const id = fieldOf(entries, "id");
-  return typeof fieldOf(entries, "sdtType") === "string" && typeof id === "number" ? id : undefined;
+  if (typeof id !== "number") return undefined;
+  const ownedProperties =
+    heldBy === "properties" && (ownerType === "inlineSdt" || ownerType === "blockSdt");
+  return ownedProperties ||
+    heldBy === CONTENT_CONTROL_STACK ||
+    typeof fieldOf(entries, "sdtType") === "string"
+    ? id
+    : undefined;
 };
 
 /**
@@ -156,21 +173,24 @@ export const identityKeysIn = (value: unknown): string[] => {
   // recorded on each of them (`TableRow.contentControls`): equal records there
   // are one control. A different record with the same id is a second one.
   const stacked = new Map<number, Record<string, unknown>[]>();
-  walk(value, (entries, heldBy) => {
-    const revision = revisionIdOf(entries, heldBy);
-    if (revision !== undefined) {
-      out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
-    }
-    const control = controlIdOf(entries);
-    if (control === undefined) return;
-    if (heldBy === CONTENT_CONTROL_STACK) {
-      const record = Object.fromEntries(entries);
-      const seen = stacked.get(control) ?? [];
-      if (seen.some((other) => structurallyEqual(other, record))) return;
-      seen.push(record);
-      stacked.set(control, seen);
-    }
-    out.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
+  walk({
+    value,
+    visit: (entries, { heldBy, ownerType }) => {
+      const revision = revisionIdOf(entries, heldBy);
+      if (revision !== undefined) {
+        out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id: revision }));
+      }
+      const control = controlIdOf(entries, { heldBy, ownerType });
+      if (control === undefined) return;
+      if (heldBy === CONTENT_CONTROL_STACK) {
+        const record = Object.fromEntries(entries);
+        const seen = stacked.get(control) ?? [];
+        if (seen.some((other) => structurallyEqual(other, record))) return;
+        seen.push(record);
+        stacked.set(control, seen);
+      }
+      out.push(slotKey({ space: IDENTITY_SPACES.CONTROL, id: control }));
+    },
   });
   return out;
 };
@@ -181,22 +201,25 @@ const CONTENT_CONTROL_STACK = "contentControls";
 /** Pending cut references reserve IDs without becoming physical model identities. */
 export const reservedIdentityKeysIn = (value: unknown): string[] => {
   const out: string[] = [];
-  walk(value, (entries, heldBy) => {
-    if (heldBy !== "retainedAfter") return;
-    for (const field of ["source", "target"]) {
-      const slots = fieldOf(entries, field);
-      if (!Array.isArray(slots)) continue;
-      for (const slot of slots) {
-        if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
-          continue;
-        if (
-          (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
-          typeof slot.id === "number"
-        ) {
-          out.push(slotKey({ space: slot.space, id: slot.id }));
+  walk({
+    value,
+    visit: (entries, { heldBy }) => {
+      if (heldBy !== "retainedAfter") return;
+      for (const field of ["source", "target"]) {
+        const slots = fieldOf(entries, field);
+        if (!Array.isArray(slots)) continue;
+        for (const slot of slots) {
+          if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
+            continue;
+          if (
+            (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
+            typeof slot.id === "number"
+          ) {
+            out.push(slotKey({ space: slot.space, id: slot.id }));
+          }
         }
       }
-    }
+    },
   });
   return out;
 };

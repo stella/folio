@@ -11,13 +11,17 @@
  */
 
 import type { Command } from "prosemirror-state";
+import { Plugin as PMPlugin } from "prosemirror-state";
+import { prepareCanonicalPaste } from "./canonicalClipboard";
+import { registerClipboardIntentHandler } from "../prosemirror/clipboardIntent";
+import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import {
   toggleMarkForAllScripts,
   toggleUnderlineMark,
 } from "../prosemirror/extensions/marks/markUtils";
 import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
 import { prepareCanonicalCommands, prepareCanonicalAutoformat } from "./canonicalStructure";
-import { panic, TaggedError } from "better-result";
+import { panic, Result, TaggedError } from "better-result";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import { EditorState as PMEditorState } from "prosemirror-state";
 import type { DirectEditorProps } from "prosemirror-view";
@@ -548,6 +552,22 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         createParagraphChangeTrackerPlugin(),
         createDocumentStylesPlugin(deps.getStyles() ?? session.document.package.styles),
         createDocumentNumberingPlugin(session.document.package.numbering),
+        ...(deps.getExtensionManager()?.getPlugins() ?? []).flatMap(({ props }) =>
+          props.transformPastedHTML === undefined && props.transformPasted === undefined
+            ? []
+            : [
+                new PMPlugin({
+                  props: {
+                    ...(props.transformPastedHTML === undefined
+                      ? {}
+                      : { transformPastedHTML: props.transformPastedHTML }),
+                    ...(props.transformPasted === undefined
+                      ? {}
+                      : { transformPasted: props.transformPasted }),
+                  },
+                }),
+              ],
+        ),
       ],
     });
   const publishCommit = (commit: CanonicalCommit): boolean => {
@@ -583,6 +603,8 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   const executeCanonicalCommand = (command: Command): boolean | undefined => {
     if (!view || editorSession.type !== "canonical") return undefined;
     if (deps.getReadOnly()) return false;
+    if (command === pasteWithoutFormatting)
+      return command(view.state, (transaction) => view?.dispatch(transaction), view);
     if (editorSession.session.isComposing) {
       refuse("Composition must finish before formatting.");
       return false;
@@ -612,8 +634,56 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     return publishCommit(prepared.value);
   };
+  let clipboardDrag:
+    | { type: "idle" }
+    | { type: "dragging"; session: CanonicalSession; version: number; from: number; to: number } = {
+    type: "idle",
+  };
   let lastInputRule: { session: CanonicalSession; version: number; caret: number } | undefined;
   const input = createCanonicalInputBoundary({
+    pastePlainText: (pmView) => {
+      if (deps.getReadOnly()) return;
+      pasteWithoutFormatting(pmView.state, (transaction) => pmView.dispatch(transaction), pmView);
+    },
+    cut: (pmView, event) => {
+      event.preventDefault();
+      if (deps.getReadOnly()) {
+        deps.onReadOnlyEditAttempt();
+        return true;
+      }
+      if (editorSession.type !== "canonical" || pmView.state.selection.empty) return true;
+      if (event.clipboardData === null) {
+        refuse("The clipboard cannot receive the cut content.");
+        return true;
+      }
+      syncCanonicalMode();
+      const session = editorSession.session;
+      const { from, to } = pmView.state.selection;
+      const prepared = session.prepareReplace(pmView.state, {
+        from,
+        to,
+        text: "",
+        semantic: "replacement",
+      });
+      if (prepared.isErr()) {
+        refuse(prepared.error.message);
+        return true;
+      }
+      const copied = Result.try({
+        try: () => {
+          const serialized = pmView.serializeForClipboard(pmView.state.selection.content());
+          event.clipboardData?.setData("text/html", serialized.dom.innerHTML);
+          event.clipboardData?.setData("text/plain", serialized.text);
+        },
+        catch: () =>
+          new CanonicalSessionRefusalError({
+            message: "The clipboard could not receive the cut content.",
+          }),
+      });
+      if (copied.isErr()) refuse(copied.error.message);
+      else publishCommit(prepared.value);
+      return true;
+    },
     command: (name) => {
       if (!view) return;
       let command = deps.getExtensionManager()?.getCommand(name)?.();
@@ -891,6 +961,64 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       },
       handleTextInput: (pmView, from, to, text) =>
         editorSession.type === "canonical" ? input.handleTextInput(pmView, from, to, text) : false,
+      handlePaste: (pmView, _event, slice) => {
+        if (editorSession.type !== "canonical") return false;
+        if (deps.getReadOnly()) {
+          deps.onReadOnlyEditAttempt();
+          return true;
+        }
+        syncCanonicalMode();
+        const prepared = prepareCanonicalPaste({
+          session: editorSession.session,
+          state: pmView.state,
+          slice,
+        });
+        if (prepared.isErr()) {
+          if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        } else publishCommit(prepared.value);
+        return true;
+      },
+      handleDrop: (pmView, event, slice, moved) => {
+        if (editorSession.type !== "canonical") return false;
+        if (deps.getReadOnly()) {
+          deps.onReadOnlyEditAttempt();
+          return true;
+        }
+        const target = pmView.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+        if (target === undefined) {
+          refuse("The drop has no document destination.");
+          return true;
+        }
+        const captured = clipboardDrag;
+        clipboardDrag = { type: "idle" };
+        if (
+          moved &&
+          (captured.type !== "dragging" ||
+            captured.session !== editorSession.session ||
+            captured.version !== editorSession.session.version)
+        ) {
+          refuse("The dragged content changed or has no captured source.");
+          return true;
+        }
+        const source =
+          captured.type === "dragging"
+            ? { from: captured.from, to: captured.to }
+            : pmView.state.selection;
+        if (moved && target >= source.from && target <= source.to) return true;
+        syncCanonicalMode();
+        const prepared = prepareCanonicalPaste({
+          session: editorSession.session,
+          state: pmView.state,
+          slice,
+          ...(moved
+            ? { moveTarget: target, moveSource: { from: source.from, to: source.to } }
+            : { pasteTarget: target }),
+        });
+        if (prepared.isErr()) {
+          if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        } else publishCommit(prepared.value);
+        return true;
+      },
       handleScrollToSelection: suppressHiddenEditorScrollToSelection,
       // Prevent focus handling from interfering with visual layer
       handleDOMEvents: {
@@ -906,10 +1034,11 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           editorSession.type === "canonical" ? input.handleDOMEvents.compositionend(pmView) : false,
         input: (pmView) =>
           editorSession.type === "canonical" ? input.handleDOMEvents.input(pmView) : false,
-        paste: (pmView, event) =>
-          editorSession.type === "canonical"
-            ? input.handleDOMEvents.paste(pmView, event)
-            : createHiddenEditorClipboardHandlers(deps).paste(pmView, event),
+        paste: (pmView, event) => {
+          if (editorSession.type === "canonical" && !deps.getReadOnly())
+            return input.handleDOMEvents.paste(pmView, event);
+          return createHiddenEditorClipboardHandlers(deps).paste(pmView, event);
+        },
         cut: (pmView, event) =>
           editorSession.type === "canonical"
             ? input.handleDOMEvents.cut(pmView, event)
@@ -924,8 +1053,24 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           event.preventDefault();
           return true;
         },
+        dragstart: (pmView) => {
+          if (editorSession.type === "canonical")
+            clipboardDrag = {
+              type: "dragging",
+              session: editorSession.session,
+              version: editorSession.session.version,
+              from: pmView.state.selection.from,
+              to: pmView.state.selection.to,
+            };
+          return false;
+        },
+        dragend: () => {
+          clipboardDrag = { type: "idle" };
+          return false;
+        },
         drop: (_view, event) => {
-          if (editorSession.type === "canonical") return input.handleDOMEvents.drop(_view, event);
+          if (editorSession.type === "canonical" && !deps.getReadOnly())
+            return input.handleDOMEvents.drop(_view, event);
           if (!deps.getReadOnly()) {
             return false;
           }
@@ -938,6 +1083,26 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
 
     const viewStartedAt = performance.now();
     view = new EditorView(host, editorProps);
+    if (editorSession.type === "canonical")
+      registerClipboardIntentHandler(view, (slice, plain) => {
+        if (!view || editorSession.type !== "canonical") return false;
+        if (deps.getReadOnly()) {
+          deps.onReadOnlyEditAttempt();
+          return false;
+        }
+        syncCanonicalMode();
+        const prepared = prepareCanonicalPaste({
+          session: editorSession.session,
+          state: view.state,
+          slice,
+          plain,
+        });
+        if (prepared.isErr()) {
+          if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+          return false;
+        }
+        return publishCommit(prepared.value);
+      });
     recordHiddenEditorPhase("mount", "editor-view", performance.now() - viewStartedAt);
     syncHiddenEditorAccessibility(view, deps.getReadOnly());
     isInitialized = true;

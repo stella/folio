@@ -88,7 +88,9 @@ test("canonical input, history and saved document agree across both adapters", a
 
     // Structural input shares the same journal, including the caret before its split.
     await page.keyboard.press("Enter");
-    expect((await snapshot(page))?.document?.package.document.content).toHaveLength(2);
+    const split = await snapshot(page);
+    expect(split?.document?.package.document.content).toHaveLength(2);
+    expect(split?.version).toBe(redone.version + 1);
     await page.keyboard.press(`${MODIFIER}+z`);
     const splitUndone = await snapshot(page);
     expect(splitUndone?.document).toEqual(redone.document);

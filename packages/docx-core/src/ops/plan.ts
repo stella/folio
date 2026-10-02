@@ -94,6 +94,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
     case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+    case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
       return op;
     default: {
       const unreachable: never = op;

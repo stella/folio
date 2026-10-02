@@ -3,7 +3,7 @@ import { Result, panic } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
-import { identityKeysIn, idKey } from "./ids";
+import { idKey } from "./ids";
 import { defaultInsertionGap } from "./leaves";
 import { gapAfterInserted } from "./inline";
 import { appendTrackedDeletion, createTrackedPlan, type PlanTrackedDeletionOptions } from "./plan";
@@ -62,8 +62,9 @@ export const rangeStartAfterDeletion = ({
  * paragraph, and the inline tail inserted into the retained original paragraph.
  * Each new paragraph's own fields apply to it, including when it takes the
  * source prefix. The last fragment keeps the original survivor's identity.
- * Closed inline slices are required; review and content-control ids in the
- * fragment, and section-bearing paragraphs, are unsupported.
+ * Closed inline slices are required. Imported review and content-control ids
+ * must already be distinct from destination identities; section-bearing
+ * paragraphs require an explicit package import policy.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
   replacement: {
@@ -93,13 +94,8 @@ export const planTrackedReplace = (
   if (replacement.tail.openStart !== 0 || replacement.tail.openEnd !== 0) {
     return refuse("Tracked replacement requires a closed tail slice.");
   }
-  if (
-    identityKeysIn(replacement).length > 0 ||
-    replacement.paragraphs.some(({ sectionProperties }) => sectionProperties !== undefined)
-  ) {
-    return refuse(
-      "Tracked replacement cannot insert identified review, content-control or section records.",
-    );
+  if (replacement.paragraphs.some(({ sectionProperties }) => sectionProperties !== undefined)) {
+    return refuse("Tracked replacement cannot import section-bearing paragraphs.");
   }
   const plan = createTrackedPlan({ document, revision, newIds });
   const deleted = appendTrackedDeletion({ document, options, plan });
