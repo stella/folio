@@ -19,6 +19,7 @@ import { serializeDocument } from "../../docx/serializer/documentSerializer";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import type { Document, Paragraph, Run, StyleDefinitions } from "../../types/document";
 import { schema } from "../schema";
+import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { acceptAllChanges, rejectAllChanges } from "../commands/comments";
 import { applyFormatMarks, captureFormatMarks } from "../commands/formatPainter";
 import { createDocumentStylesPlugin } from "../plugins/documentStyles";
@@ -197,7 +198,9 @@ const markNames = (document: Document, text: string): string[] => {
   let names: string[] | undefined;
   pmDoc.descendants((node) => {
     if (node.isText && node.text === text) {
-      names = node.marks.map((mark) => mark.type.name);
+      names = node.marks
+        .filter((mark) => mark.type.name !== RUN_IDENTITY_MARK_NAME)
+        .map((mark) => mark.type.name);
     }
     return true;
   });

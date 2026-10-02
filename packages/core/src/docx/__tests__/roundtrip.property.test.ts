@@ -23,6 +23,7 @@ import { propertyConfig, propertyTestTimeout } from "../../../../../test/propert
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import { schema } from "../../prosemirror/schema";
+import { RUN_IDENTITY_MARK_NAME } from "../../prosemirror/runIdentity";
 import { parseDocumentBody } from "../documentParser";
 import { serializeDocument } from "../serializer/documentSerializer";
 
@@ -214,10 +215,10 @@ function normalizeNode(node: PMNode): NormalizedNode {
   // Filter out marks where all attributes are null/default (e.g.,
   // characterSpacing with all-null attrs added by the parser).
   const meaningfulMarks = node.marks.filter((m) => {
-    // The importer adds this private carrier beside visible marks to retain
-    // exact authored presence, explicit-off values and complex-script slots.
+    // The importer adds private carriers beside visible marks to retain
+    // authored run boundaries, explicit-off values and complex-script slots.
     // It is editor state, not an additional user-visible formatting mark.
-    if (m.type.name === "runFormattingOverride") {
+    if (m.type.name === "runFormattingOverride" || m.type.name === RUN_IDENTITY_MARK_NAME) {
       return false;
     }
     const spec = m.type.spec.attrs;
@@ -331,7 +332,17 @@ describe("DOCX round-trip property tests", () => {
           const resultNorm = normalizeDoc(result);
           expect(resultNorm).toEqual(originalNorm);
         }),
-        propertyConfig({ numRuns: 200 }),
+        propertyConfig({
+          numRuns: 200,
+          // Merge-group regression: seed 1018009646, path 0:0:1:0:0:1:1:1:1:1:1:1:1:1:1:1.
+          examples: [
+            [
+              schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [schema.text("!")]),
+              ]),
+            ],
+          ],
+        }),
       );
     },
     propertyTestTimeout(10_000),
@@ -608,7 +619,19 @@ describe("DOCX round-trip property tests", () => {
           const resultNorm = normalizeDoc(result);
           expect(resultNorm).toEqual(originalNorm);
         }),
-        propertyConfig({ numRuns: 200 }),
+        propertyConfig({
+          numRuns: 200,
+          // Merge-group regression: seed -714680487, path 0:0:0:0:0:0:0.
+          examples: [
+            [
+              schema.nodes.doc.create(null, [
+                schema.nodes.paragraph.create(null, [
+                  schema.text("!", [schema.mark("bold"), schema.mark("strike")]),
+                ]),
+              ]),
+            ],
+          ],
+        }),
       );
     },
     propertyTestTimeout(10_000),

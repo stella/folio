@@ -48,6 +48,8 @@ export const COUPLINGS: readonly { prefix: string; areas: readonly string[] }[] 
   { prefix: "packages/core/src/internal/", areas: ["core/ai-edits", "core/prosemirror"] },
   // Tracked changes are ProseMirror marks resolved by the same commands.
   { prefix: "packages/core/src/prosemirror/", areas: ["core/ai-edits"] },
+  // Conversion changes must exercise the complete DOCX serialization round trip.
+  { prefix: "packages/core/src/prosemirror/conversion/", areas: ["core/docx"] },
   // Both markdown readers share the docx-core compiler.
   { prefix: "packages/docx-core/src/markdown/", areas: ["core/markdown"] },
   { prefix: "packages/core/src/markdown/", areas: ["docx-core/markdown"] },

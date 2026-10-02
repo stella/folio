@@ -72,6 +72,20 @@ describe("property areas", () => {
     ).toEqual(["packages/docx-core/src/markdown/markdown.test.ts"]);
   });
 
+  test("both projection directions select the full DOCX round-trip properties", () => {
+    const roundtrip = makePropertyFile(
+      "packages/core/src/docx/__tests__/roundtrip.property.test.ts",
+    );
+    for (const direction of ["fromProseDoc", "toProseDoc"]) {
+      expect(
+        selectPropertyFiles(
+          [`packages/core/src/prosemirror/conversion/${direction}.ts`],
+          [...ALL, roundtrip],
+        ).map(({ file }) => file),
+      ).toContain(roundtrip.file);
+    }
+  });
+
   test("a changed test file reruns itself, not its area", () => {
     expect(
       selectPropertyFiles(

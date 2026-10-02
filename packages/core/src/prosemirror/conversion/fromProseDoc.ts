@@ -2759,6 +2759,7 @@ function extractParagraphContent(
     const currentRunIsPlainText = currentRun?.content.every(
       (runContent) => runContent.type === "text",
     );
+    const incomingRunIsPlainText = run.content.every((runContent) => runContent.type === "text");
     const joinsOwnedSourceRun =
       ownerId !== undefined &&
       ownerId === currentOwnerId &&
@@ -2766,6 +2767,7 @@ function extractParagraphContent(
       runsShareProperties(currentRun, run);
     const joinsOrdinaryText =
       coalescePlainText &&
+      incomingRunIsPlainText &&
       (ownerId === undefined || currentOwnerId === undefined) &&
       currentRunIsPlainText === true &&
       currentRun !== null &&
@@ -2775,7 +2777,7 @@ function extractParagraphContent(
       currentMarksKey === marksKey;
 
     if (currentRun && (joinsOwnedSourceRun || joinsOrdinaryText)) {
-      if (coalescePlainText && currentRunIsPlainText) {
+      if (coalescePlainText && currentRunIsPlainText && incomingRunIsPlainText) {
         for (const runContent of run.content) {
           if (runContent.type === "text") {
             appendTextToRun(currentRun, runContent.text);

@@ -59,6 +59,34 @@ describe("authored run boundary ownership", () => {
     );
   });
 
+  test("mixed text and note-reference content survives source-owned run joins", () => {
+    fc.assert(
+      fc.property(
+        text,
+        text,
+        fc.constantFrom("footnoteRef", "endnoteRef"),
+        fc.boolean(),
+        (before, after, type, customMarkFollows) => {
+          const content: Run[] = [
+            {
+              type: "run",
+              content: [
+                { type: "text", text: before },
+                { type, id: 41, customMarkFollows },
+                { type: "text", text: after },
+              ],
+            },
+          ];
+          const source = documentOf([{ type: "paragraph", content }]);
+          const saved = fromProseDoc(toProseDoc(source), source);
+          expect(savedRuns(saved)).toEqual(content);
+          expect(savedRuns(fromProseDoc(toProseDoc(saved), saved))).toEqual(content);
+        },
+      ),
+      propertyConfig(),
+    );
+  });
+
   test("an interior insertion extends one ordinary run and retains its authored neighbors", () => {
     const manager = new ExtensionManager(createStarterKit());
     manager.buildSchema();

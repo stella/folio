@@ -277,7 +277,14 @@ describe("a slot that survives its representative value survives the rest of its
             const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
             expect({ slot, measured }).toEqual({ slot, measured: recorded });
           }),
-          propertyConfig({ numRuns: Math.min(values.length, 8) }),
+          propertyConfig({
+            numRuns: Math.min(values.length, 8),
+            // Merge-group regression: seed 1012818371, path 0:0.
+            ...(container === "endnoteReference" &&
+            subject.slot.attribute.name === "customMarkFollows"
+              ? { examples: [["true"]] }
+              : {}),
+          }),
         );
       }
     }, 120_000);
