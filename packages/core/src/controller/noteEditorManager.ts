@@ -281,6 +281,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         // A list started in this story defined its instance on its paragraphs.
         const lists = storyListNumbering(story.view.state, numbering);
         numbering = lists.numbering;
+        const proseOptions: ToProseDocOptions = {
+          ...(story.appliedStyles ? { styles: story.appliedStyles } : {}),
+          ...(story.appliedTheme !== undefined ? { theme: story.appliedTheme } : {}),
+          ...(numbering !== undefined ? { numbering } : {}),
+        };
         if (story.note.kind === "footnote") {
           const index = footnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
           const current = index === -1 ? null : footnotes?.at(index);
@@ -297,11 +302,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           footnotes[index] = updated;
           story.appliedNote = updated;
           story.appliedContent = updated.content;
-          story.appliedProseDocument = noteToProseDocument(
-            updated,
-            story.appliedStyles,
-            story.appliedTheme,
-          );
+          story.appliedProseDocument = noteToProseDocument(updated, proseOptions);
           continue;
         }
         const index = endnotes?.findIndex(({ id }) => id === story.note.noteId) ?? -1;
@@ -319,11 +320,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         endnotes[index] = updated;
         story.appliedNote = updated;
         story.appliedContent = updated.content;
-        story.appliedProseDocument = noteToProseDocument(
-          updated,
-          story.appliedStyles,
-          story.appliedTheme,
-        );
+        story.appliedProseDocument = noteToProseDocument(updated, proseOptions);
       }
       if (!footnotesChanged && !endnotesChanged) return document;
       return {

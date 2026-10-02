@@ -368,8 +368,12 @@ export const runFormattingPatchFromMarks = (
   beforeMarks: readonly Mark[],
   afterMarks: readonly Mark[],
 ): RunPropsPatch => {
-  const before = marksToTextFormatting(beforeMarks);
-  const after = marksToTextFormatting(afterMarks);
+  // Compare observed marks. Private carriers describe the authored baseline,
+  // which the canonical compiler preserves before applying this visual delta.
+  const observedMarks = (marks: readonly Mark[]) =>
+    marks.filter(({ type }) => type.name !== "runFormattingOverride");
+  const before = marksToTextFormatting(observedMarks(beforeMarks));
+  const after = marksToTextFormatting(observedMarks(afterMarks));
   const changed = changedVisualFormattingGroups(after, before);
   const patch: RunPropsPatch =
     before.styleId === after.styleId ? {} : { styleId: after.styleId ?? null };

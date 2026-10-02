@@ -15,6 +15,8 @@ import * as documentOps from "@stll/docx-core/ops";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { panic } from "better-result";
 import fc from "fast-check";
+import { assertExactModel } from "../../../../test/exactModel";
+import { visitParagraphRuns } from "../docx/paragraphTraversal";
 import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { FIRST_ID, fixture, seedArbitrary } from "../../typecheck/ops/reviewGenerators.typecheck";
@@ -580,61 +582,205 @@ describe("canonical session", () => {
     expect(state.selection.head).toBe(1);
   });
 
-  test("stored mark changes preserve authored properties and explicitly clear removed marks", () => {
-    const document = seed("plain");
-    const paragraph = document.package.document.content.at(0);
-    if (paragraph?.type !== "paragraph") panic("The formatting fixture needs a paragraph.");
-    const run = paragraph.content.at(0);
-    if (run?.type !== "run") panic("The formatting fixture needs a run.");
-    run.formatting = {
-      styleId: "SourceStyle",
-      bold: true,
-      boldCs: false,
-      noProof: true,
-      fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
-      language: { val: "fr-FR", bidi: "ar-SA" },
-    };
-    for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Author" }] as const) {
-      const session = createCanonicalSession(document).unwrap();
-      session.setMode(mode);
-      let state = stateFor(session);
-      const original = session.document;
-      const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
-      const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
-      const characterStyle =
-        schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
-      state = state.apply(
-        state.tr
-          .addStoredMark(italic)
-          .removeStoredMark(bold)
-          .addStoredMark(characterStyle.create({ styleId: "DestinationStyle" })),
-      );
-      state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap());
-      const authored = session.document.package.document.content.at(0);
-      if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
-      const authoredRuns = authored.content.flatMap((item) =>
-        item.type === "insertion" ? item.content : [item],
-      );
-      const inserted = authoredRuns.find(
-        (item) =>
-          item.type === "run" &&
-          item.content.some((leaf) => leaf.type === "text" && leaf.text === "X"),
-      );
-      if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
-      expect(inserted.formatting).toStrictEqual({
-        styleId: "DestinationStyle",
+  test("stored mark changes preserve authored properties and explicitly clear removed marks", async () => {
+    const assertStoredMarkTransition = ({
+      sourceStyle,
+      destinationStyle,
+    }: {
+      sourceStyle: string | undefined;
+      destinationStyle: string | undefined;
+    }) => {
+      const document = seed("plain");
+      const paragraph = document.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("The formatting fixture needs a paragraph.");
+      const run = paragraph.content.at(0);
+      if (run?.type !== "run") panic("The formatting fixture needs a run.");
+      run.formatting = {
+        ...(sourceStyle === undefined ? {} : { styleId: sourceStyle }),
+        bold: true,
         boldCs: false,
         noProof: true,
-        italic: true,
         fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
         language: { val: "fr-FR", bidi: "ar-SA" },
-      });
-      const edited = session.document;
-      state = accept(state, session.prepareUndo(state).unwrap());
-      expect(session.document).toStrictEqual(original);
-      state = accept(state, session.prepareRedo(state).unwrap());
-      expect(session.document).toStrictEqual(edited);
-    }
+      };
+      for (const mode of [{ type: "editing" }, { type: "suggesting", author: "Author" }] as const) {
+        const session = createCanonicalSession(document).unwrap();
+        session.setMode(mode);
+        let state = stateFor(session);
+        const original = session.document;
+        const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
+        const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
+        const characterStyle =
+          schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
+        const transaction = state.tr.addStoredMark(italic).removeStoredMark(bold);
+        if (destinationStyle === undefined) transaction.removeStoredMark(characterStyle);
+        else transaction.addStoredMark(characterStyle.create({ styleId: destinationStyle }));
+        state = state.apply(transaction);
+        state = accept(
+          state,
+          session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap(),
+        );
+        const authored = session.document.package.document.content.at(0);
+        if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
+        const authoredRuns = authored.content.flatMap((item) =>
+          item.type === "insertion" ? item.content : [item],
+        );
+        const inserted = authoredRuns.find(
+          (item) =>
+            item.type === "run" &&
+            item.content.some((leaf) => leaf.type === "text" && leaf.text === "X"),
+        );
+        if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
+        assertExactModel(inserted.formatting, {
+          ...(destinationStyle === undefined ? {} : { styleId: destinationStyle }),
+          boldCs: false,
+          noProof: true,
+          italic: true,
+          fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+          language: { val: "fr-FR", bidi: "ar-SA" },
+        });
+        const edited = session.document;
+        state = accept(state, session.prepareUndo(state).unwrap());
+        assertExactModel(session.document, original);
+        state = accept(state, session.prepareRedo(state).unwrap());
+        assertExactModel(session.document, edited);
+      }
+    };
+    assertStoredMarkTransition({
+      sourceStyle: "SourceStyle",
+      destinationStyle: "DestinationStyle",
+    });
+    await assertProperty(
+      fc.property(
+        fc.constantFrom(undefined, "SourceStyle", "DestinationStyle"),
+        fc.array(
+          fc.record({
+            destinationStyle: fc.constantFrom(undefined, "SourceStyle", "DestinationStyle"),
+            target: fc.constantFrom("offset", "surrogate"),
+            offset: fc.nat(500),
+          }),
+          { minLength: 8, maxLength: 12 },
+        ),
+        (sourceStyle, trace) => {
+          const document = seed("p😀lain");
+          const paragraph = document.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph") panic("Style trace needs a paragraph.");
+          const run = paragraph.content.at(0);
+          if (run?.type !== "run") panic("Style trace needs a run.");
+          run.formatting = {
+            ...(sourceStyle === undefined ? {} : { styleId: sourceStyle }),
+            bold: true,
+            boldCs: false,
+            noProof: true,
+            fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+            language: { val: "fr-FR", bidi: "ar-SA" },
+          };
+          for (const mode of [
+            { type: "editing" },
+            { type: "suggesting", author: "Author" },
+          ] as const) {
+            const session = createCanonicalSession(document).unwrap();
+            session.setMode(mode);
+            let state = stateFor(session);
+            const snapshots = [session.document];
+            let expectedRefusals = 0;
+            const refusals = { refused: 0, noChange: 0 };
+            for (const [index, input] of trace.entries()) {
+              const pmParagraph = state.doc.firstChild;
+              if (pmParagraph === null) panic("Style trace lost its projection paragraph.");
+              const text = pmParagraph.textContent;
+              const offset =
+                input.target === "surrogate"
+                  ? text.indexOf("😀") + 1
+                  : input.offset % (text.length + 1);
+              const legalGaps = new Set([0]);
+              let physicalOffset = 0;
+              for (const character of text) {
+                physicalOffset += character.length;
+                legalGaps.add(physicalOffset);
+              }
+              const position = 1 + offset;
+              state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position)));
+              const italic = schema.marks.italic ?? panic("Italic mark is unavailable.");
+              const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
+              const characterStyle =
+                schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
+              const transaction = state.tr.addStoredMark(italic.create()).removeStoredMark(bold);
+              if (input.destinationStyle === undefined)
+                transaction.removeStoredMark(characterStyle);
+              else
+                transaction.addStoredMark(
+                  characterStyle.create({ styleId: input.destinationStyle }),
+                );
+              state = state.apply(transaction);
+              const before = session.document;
+              const projection = session.projection;
+              const version = session.version;
+              const token = `X${index}X`;
+              const prepared = session.prepareReplace(state, {
+                from: position,
+                to: position,
+                text: token,
+              });
+              if (!legalGaps.has(offset)) {
+                expectedRefusals += 1;
+                if (prepared.isOk()) panic("A style trace accepted an interior surrogate cut.");
+                refusals[prepared.error.reason] += 1;
+                expect(prepared.error.reason).toBe("refused");
+                assertExactModel(session.document, before);
+                expect(session.projection).toBe(projection);
+                expect(session.version).toBe(version);
+                expect(session.canUndo).toBe(snapshots.length > 1);
+              } else {
+                if (prepared.isErr()) refusals[prepared.error.reason] += 1;
+                state = accept(state, prepared.unwrap());
+                const authored = session.document.package.document.content.at(0);
+                if (authored?.type !== "paragraph")
+                  panic("Style trace lost its authored paragraph.");
+                const insertedRuns: Run[] = [];
+                visitParagraphRuns(authored, (candidate) => {
+                  if (
+                    candidate.content.some(
+                      (leaf) => leaf.type === "text" && leaf.text.includes(token),
+                    )
+                  )
+                    insertedRuns.push(candidate);
+                });
+                expect(insertedRuns).toHaveLength(1);
+                const inserted = insertedRuns.at(0);
+                if (inserted === undefined) panic("Style trace lost its inserted text.");
+                assertExactModel(inserted.formatting, {
+                  ...(input.destinationStyle === undefined
+                    ? {}
+                    : { styleId: input.destinationStyle }),
+                  boldCs: false,
+                  noProof: true,
+                  italic: true,
+                  fontFamily: { ascii: "Folio Custom", cs: "Folio Script" },
+                  language: { val: "fr-FR", bidi: "ar-SA" },
+                });
+                const after = session.document;
+                state = accept(state, session.prepareUndo(state).unwrap());
+                assertExactModel(session.document, before);
+                state = accept(state, session.prepareRedo(state).unwrap());
+                assertExactModel(session.document, after);
+                snapshots.push(after);
+              }
+            }
+            assertExactModel(refusals, { refused: expectedRefusals, noChange: 0 });
+            for (let index = snapshots.length - 2; index >= 0; index -= 1) {
+              state = accept(state, session.prepareUndo(state).unwrap());
+              assertExactModel(session.document, snapshots.at(index));
+            }
+            for (const expected of snapshots.slice(1)) {
+              state = accept(state, session.prepareRedo(state).unwrap());
+              assertExactModel(session.document, expected);
+            }
+          }
+        },
+      ),
+      { numRuns: 30 },
+    );
   });
 
   test("rejection leaves canonical model, projection, version and journal unchanged", () => {
