@@ -441,8 +441,9 @@ export type SplitBlockOp = {
  * run properties, section break, tracked change and the pending property
  * changes. It keeps the identity and own fields of the
  * `survivor` half, by default the second, and the other's id is retired.
- * `depth` merges that many levels of the records meeting at the join, as
- * {@link JoinInlineOp} does.
+ * An absent or zero `depth` merges the two plain runs at the seam when the
+ * parser would merge them. A positive `depth` merges that many levels of the
+ * records meeting at the join, as {@link JoinInlineOp} does.
  *
  * `expectedRetired` states the own fields of the paragraph the join retires,
  * and `expectedSurvivor` the review fields of the one it keeps, which the

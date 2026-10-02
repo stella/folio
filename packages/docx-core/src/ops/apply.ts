@@ -22,9 +22,9 @@
  * | `joinInline`        | `splitInline`                                             |
  * | `setRunProps`       | `setRunProps` per stretch of prior values, joining cuts   |
  * | `setParagraphProps` | `setParagraphProps` with the prior values                 |
- * | `splitBlock`        | `joinBlocks`, then the kept half's review fields         |
+ * | `splitBlock`        | `joinBlocks`, then authored content and review fields    |
  * | `joinBlocks`        | `splitBlock` with the retired paragraph's fields, then  |
- * |                     | the survivor's review fields                              |
+ * |                     | authored content and the survivor's review fields         |
  * | `insertBlocks`      | an anchored `replaceBlocks`                              |
  * | `replaceBlocks`     | `replaceBlocks`                                           |
  * | `setParagraphReview`| `setParagraphReview`                                      |
@@ -94,6 +94,7 @@ import {
   type Joined,
   joinAt,
   joinContent,
+  joinParagraphSeam,
   namesIds,
   patchedSet,
   patchRunsBetween,
@@ -1391,6 +1392,10 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   const kept = newHalf === SPLIT_HALVES.FIRST ? placedSecond : placedFirst;
   const madePlaced = newHalf === SPLIT_HALVES.FIRST ? placedFirst : placedSecond;
   const keptId = paragraph.paraId ?? op.at.blockId;
+  const inverseContent =
+    cut.through.length === 0
+      ? joinParagraphSeam(placedFirst.content, placedSecond.content)
+      : paragraph.content;
   return Result.ok({
     document: committed.value.document,
     inverse: [
@@ -1407,6 +1412,9 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
           ? {}
           : { sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE }),
       },
+      ...(structurallyEqual(inverseContent, paragraph.content)
+        ? []
+        : [contentRestoring(op.at.story, { ...kept, content: inverseContent }, paragraph)]),
       ...reviewSetting(
         op.at.story,
         kept.paraId ?? keptId,
@@ -1632,6 +1640,26 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
     delete splitReview.pPrMark;
     if (leading.pPrMark !== undefined) splitReview.pPrMark = leading.pPrMark;
   }
+  const contentInverse = [];
+  if (
+    depth === 0 &&
+    merged.value.content.length < leading.content.length + trailing.content.length
+  ) {
+    const restoredContent = cutAt(merged.value.content, {
+      offset: length,
+      zeroWidthBefore: zeroWidthLeavesAt(leading.content, length).length,
+    });
+    if (!structurallyEqual(restoredContent.before, leading.content)) {
+      contentInverse.push(
+        contentRestoring(op.story, { ...leading, content: restoredContent.before }, leading),
+      );
+    }
+    if (!structurallyEqual(restoredContent.after, trailing.content)) {
+      contentInverse.push(
+        contentRestoring(op.story, { ...trailing, content: restoredContent.after }, trailing),
+      );
+    }
+  }
   const committed = commit({
     document,
     op,
@@ -1648,6 +1676,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
     document: committed.value.document,
     inverse: [
       split,
+      ...contentInverse,
       ...reviewSetting(op.story, survivor.paraId ?? "", splitReview, reviewFieldsOf(survivor)),
     ],
     touched: committed.value.touched,

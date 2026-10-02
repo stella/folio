@@ -12,7 +12,8 @@ import {
 } from "../editorIntent";
 import { IDENTITY_SPACES, idKey, packageIdentityKeys, packageParagraphIds } from "../ids";
 import { paragraphLength } from "../offsets";
-import { OP_STORIES } from "../types";
+import { filterNewIds } from "../plan";
+import { DOCUMENT_OP_TYPES, OP_STORIES } from "../types";
 import { documentArbitrary } from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
@@ -69,6 +70,35 @@ const replaceHeaderIdentities = (
 });
 
 describe("editor intent identity allocation", () => {
+  test("filtering pools preserves supplied spaces and ordered identities", () => {
+    assertProperty(
+      fc.property(
+        fc.option(fc.array(fc.nat(100)), { nil: undefined }),
+        fc.option(fc.array(fc.nat(100)), { nil: undefined }),
+        (revision, control) => {
+          const newIds = {
+            ...(revision === undefined ? {} : { revision }),
+            ...(control === undefined ? {} : { control }),
+          };
+          const filtered = filterNewIds(
+            {
+              type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+              at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+              text: "x",
+              newIds,
+            },
+            (_, id) => id % 2 === 0,
+          );
+          if (!("newIds" in filtered)) panic("Filtering lost the operation's identity pools.");
+          expect(Object.keys(filtered.newIds ?? {})).toEqual(Object.keys(newIds));
+          expect(filtered.newIds?.revision).toEqual(revision?.filter((id) => id % 2 === 0));
+          expect(filtered.newIds?.control).toEqual(control?.filter((id) => id % 2 === 0));
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test("single-character input requests bounded ids and reuses the package census", () => {
     let unrelatedContentReads = 0;
     const paragraphs = Array.from({ length: 2_000 }, (_, index) => {

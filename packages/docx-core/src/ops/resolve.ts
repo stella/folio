@@ -34,6 +34,7 @@ import {
   sameOwnFields,
 } from "./leaves";
 import { paragraphLength } from "./offsets";
+import { joinParagraphSeam } from "./inline";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
@@ -497,11 +498,11 @@ const joinOps = (
       const record = edgeRecord(content, edge);
       if (isEmptied && record !== undefined) emptied.add(record);
     }
-    // Rejecting an inserted boundary heals the split records. Accepting a deleted
-    // boundary concatenates authored records, exactly as a depth-zero direct join.
+    // Inserted-mark rejection heals split records; deleted-mark acceptance uses
+    // the same plain-run seam rule as a direct paragraph join.
     const merged = added
       ? mergedAtSeam(paragraph.content, next.content, emptied)
-      : [...paragraph.content, ...next.content];
+      : joinParagraphSeam(paragraph.content, next.content);
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));

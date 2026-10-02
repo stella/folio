@@ -99,6 +99,23 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
   }
 };
 
+/** Filter operation pools while retaining absent identity spaces. */
+export const filterNewIds = (
+  op: DocumentOp,
+  keep: (space: IdentitySpace, id: number) => boolean,
+): DocumentOp => {
+  if (!("newIds" in op) || op.newIds === undefined) return op;
+  const { revision, control } = op.newIds;
+  return withNewIds(op, {
+    ...(revision === undefined
+      ? {}
+      : { revision: revision.filter((id) => keep(IDENTITY_SPACES.REVISION, id)) }),
+    ...(control === undefined
+      ? {}
+      : { control: control.filter((id) => keep(IDENTITY_SPACES.CONTROL, id)) }),
+  });
+};
+
 type TrimAppliedNewIdsOptions = {
   op: DocumentOp;
   applied: AppliedDocumentOp;
@@ -113,12 +130,7 @@ export const trimAppliedNewIds = ({ op, applied, story }: TrimAppliedNewIdsOptio
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const identities = new Set(identityKeysIn(paragraphs));
-  return withNewIds(op, {
-    revision: op.newIds.revision?.filter((id) =>
-      identities.has(`${IDENTITY_SPACES.REVISION}:${id}`),
-    ),
-    control: op.newIds.control?.filter((id) => identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)),
-  });
+  return filterNewIds(op, (space, id) => identities.has(`${space}:${id}`));
 };
 
 /** The largest id count {@link revisionIdDemand} searches before giving up. */

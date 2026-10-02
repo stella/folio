@@ -1,4 +1,12 @@
 {
+  "packages/core/src/docx/joinSeamSaveFixedPoint.property.test.ts::equivalent nested formatting spellings merge and undo restores their exact records": [
+    {
+      "seed": -348453513,
+      "path": "0:0:0:0",
+      "note": "Build run-format fixtures through operations to retain consistent body section projections",
+      "date": "2026-10-03"
+    }
+  ],
   "packages/core/src/controller/canonicalUndoGrouping.test.ts::generated intent sequences restore every group exactly without projection adjacency": [
     {
       "seed": -755367587,
@@ -676,6 +684,14 @@
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
       "date": "2026-10-02"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::an operation's inverse restores the document exactly": [
+    {
+      "seed": 684444476,
+      "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
+      "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
+      "date": "2026-10-03"
     }
   ]
 }

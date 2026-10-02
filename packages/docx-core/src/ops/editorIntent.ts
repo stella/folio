@@ -9,13 +9,14 @@ import {
   type TextFormatting,
 } from "../model/document";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
-import { idKey } from "./ids";
+import { IDENTITY_SPACES, idKey } from "./ids";
 import { createCensusReader } from "./editorIntentCensus";
 import { leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import {
   appendTrackedDeletion,
   createTrackedPlan,
+  filterNewIds,
   selectedParagraphRuns,
   trimAppliedNewIds,
 } from "./plan";
@@ -32,6 +33,7 @@ import {
   SPLIT_HALVES,
   type DocumentOp,
   type NewIds,
+  type OpStory,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
@@ -579,16 +581,10 @@ export const compileEditorIntent = (
     const takenControl = new Set<number>();
     const { story } = intentEndpoints(intent);
     for (const input of ops) {
-      const op =
-        "newIds" in input && input.newIds !== undefined
-          ? {
-              ...input,
-              newIds: {
-                revision: input.newIds.revision?.filter((id) => !takenRevision.has(id)),
-                control: input.newIds.control?.filter((id) => !takenControl.has(id)),
-              },
-            }
-          : input;
+      const op = filterNewIds(
+        input,
+        (space, id) => !(space === IDENTITY_SPACES.REVISION ? takenRevision : takenControl).has(id),
+      );
       const applied = applyDocumentOp(current, op);
       if (applied.isErr()) return Result.err(applied.error);
       const trimmed = trimAppliedNewIds({ op, applied: applied.value, story });

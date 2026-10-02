@@ -506,7 +506,7 @@ describe("tracked operations and their resolution", () => {
         );
         const expected = resolved(direct.value.document, extra.direct, REVISION_DECISIONS.ACCEPT);
         expectEquivalent(accepted, expected);
-        // A deleted paragraph boundary preserves exact authored inline segmentation.
+        // Direct and accepted joins share the same conservative seam merge.
         if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
           expect(accepted).toStrictEqual(expected);
         }
