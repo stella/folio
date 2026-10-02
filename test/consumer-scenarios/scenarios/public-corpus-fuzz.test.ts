@@ -12,9 +12,14 @@ import {
 } from "../support/failure-fingerprints.ts";
 import { recordFailure, relationEnv } from "../support/fuzz-loop.ts";
 import { FlowError, runFlow } from "../support/fuzz.ts";
+import type { FlowFile } from "../support/flow-file.ts";
+import { openReviewer } from "../support/documents.ts";
+import { saveAndReopen } from "../support/invariants.ts";
+import { startRelations } from "../support/metamorphic.ts";
 import {
   PUBLIC_CORPUS_PREFIX,
   PUBLIC_CORPUS_DIRECTORY_ENV,
+  loadPublicCorpusFixture,
   publicCorpusFixtures,
 } from "../support/public-corpus.ts";
 
@@ -26,6 +31,53 @@ if (!ENABLED) {
     () => {},
   );
 } else {
+  const PACKAGE_IDENTITY_CASES = [
+    {
+      name: "#1368: rejecting all on a positional-ID document",
+      flow: {
+        version: 1,
+        kind: "random",
+        generation: "targeted",
+        fixture: "public-corpus:0046e12f3a66e48dc3d27a2a534ae5cce848aa4497eaa076ebfb5c6fa807774d",
+        mode: "suggested",
+        seed: 1772869001,
+        steps: [{ action: "reject all", seed: 2972599144 }] satisfies FlowFile["steps"],
+        origin: "random flow seed 1772869001",
+        title: "package identity #1368",
+      } as const satisfies FlowFile,
+    },
+    {
+      name: "#1370: rejecting all on a tracked positional-ID document",
+      flow: {
+        version: 1,
+        kind: "random",
+        generation: "targeted",
+        fixture: "public-corpus:0058e2003402882807e50c1e66ac7e49eda88305c1aafd077d2efa9ae7d001fe",
+        mode: "suggested",
+        seed: 1772869001,
+        steps: [{ action: "reject all", seed: 2972599144 }] satisfies FlowFile["steps"],
+        origin: "random flow seed 1772869001",
+        title: "package identity #1370",
+      } as const satisfies FlowFile,
+    },
+  ] as const;
+
+  for (const { name, flow } of PACKAGE_IDENTITY_CASES) {
+    test(`pinned package identity ${name}`, async () => {
+      const fixture = await loadPublicCorpusFixture(flow.fixture);
+      const reviewer = await openReviewer(fixture);
+      const relations = await startRelations({
+        fixture,
+        reviewer,
+        mode: flow.mode,
+        seed: flow.seed,
+      });
+      reviewer.rejectAll();
+      const saved = await saveAndReopen(reviewer, name);
+      await relations.afterStep(reviewer, saved, name);
+    });
+  }
+
   const seed = Number(process.env["FOLIO_SCENARIO_SEED"]);
   const steps = Number(process.env["FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS"] ?? "12");
   const output = process.env["FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT"];
