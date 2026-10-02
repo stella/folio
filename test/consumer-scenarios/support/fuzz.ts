@@ -29,6 +29,8 @@ import { readFileSync } from "node:fs";
 import { observeHits, registerFeatureOperations, type StepKind } from "./coverage.ts";
 import {
   featureCellKey,
+  featureOperationHits,
+  parseFeatureCoverage,
   gapWeight,
   generatedSelection,
   targetFeatureSignature,
@@ -62,6 +64,11 @@ import {
   supports,
 } from "./operations.ts";
 import { createRandom, type Random, sentence } from "./random.ts";
+import {
+  isPublicCorpusFixture,
+  loadPublicCorpusFixture,
+  type PublicCorpusFixture,
+} from "./public-corpus.ts";
 import { drawSwarm, swarmIncludesBatch } from "./swarm.ts";
 import { biasedPicker, blocksOfStory, featureIndex, storyKindOf, type Picker } from "./targets.ts";
 
@@ -90,21 +97,19 @@ export type Flow = {
   /** Ids of the fixture's blocks, which every run of the flow opens with. */
   fixtureIds: ReadonlySet<string>;
   swarm: string[] | undefined;
+  weights: FeatureCoverage | undefined;
+  operationHits: Record<string, number> | undefined;
 };
 
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
 
-const weightsPath = process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"];
-const coverageWeights = weightsPath
-  ? (JSON.parse(readFileSync(weightsPath, "utf8")) as FeatureCoverage)
-  : null;
-const operationHits: Record<string, number> | undefined = coverageWeights ? {} : undefined;
-if (coverageWeights && operationHits) {
-  for (const [key, count] of Object.entries(coverageWeights.cells)) {
-    const operation = key.split(" | ").at(0);
-    if (operation) operationHits[operation] = (operationHits[operation] ?? 0) + count;
-  }
-}
+/** Read weights only for fresh seeded flows, never while replaying a recorded flow. */
+const processFeatureWeights = (): FeatureCoverage | undefined => {
+  const weightsPath = process.env["FOLIO_SCENARIO_FEATURE_WEIGHTS"];
+  return weightsPath
+    ? parseFeatureCoverage(JSON.parse(readFileSync(weightsPath, "utf8")))
+    : undefined;
+};
 
 const blocksOf = (flow: Flow): Block[] => flow.reviewer.getContent() as Block[];
 
@@ -116,6 +121,7 @@ const pickerFor = (
   if (flow.generation === "legacy") return undefined;
   const index = featureIndex(flow.reviewer, story);
   const options = { index, recent: flow.recent };
+  const coverageWeights = flow.weights;
   if (!coverageWeights) return biasedPicker(flow.random, options);
   return (operation) =>
     biasedPicker(flow.random, {
@@ -234,7 +240,11 @@ const drawOperations = (
       flow.generation === "legacy" ? blocksOf(flow) : blocks,
       flow.mode,
       flow.random,
-      { pick, operationHits, ...(flow.swarm === undefined ? {} : { types: flow.swarm }) },
+      {
+        pick,
+        operationHits: flow.operationHits,
+        ...(flow.swarm === undefined ? {} : { types: flow.swarm }),
+      },
     );
     if (operation) operations.push(operation);
   }
@@ -556,7 +566,7 @@ const flowFixtures = (
 export type FlowOptions = {
   generation?: Generation;
   /** Explicit fixtures are never added to the ordinary seeded fixture selection. */
-  fixture?: typeof LARGE_DOCUMENT_FIXTURE;
+  fixture?: PublicCorpusFixture | typeof LARGE_DOCUMENT_FIXTURE;
   swarm?: "enabled" | "disabled";
 };
 
@@ -636,6 +646,7 @@ type Plan = {
   steps: number;
   planned?: readonly FlowStep[];
   swarm?: string[];
+  weights?: FeatureCoverage;
   /** Where the flow came from, for its flow file. */
   origin?: string;
 };
@@ -651,12 +662,16 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   ) {
     throw new TypeError("flow file: swarm contains an unknown or unsupported operation kind");
   }
-  const load =
-    fixture === LARGE_DOCUMENT_FIXTURE ? largeDocument : flowFixtures(kind, generation)[fixture];
+  const load = (() => {
+    if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument;
+    if (isPublicCorpusFixture(fixture)) return () => loadPublicCorpusFixture(fixture);
+    return flowFixtures(kind, generation)[fixture];
+  })();
   if (load === undefined) {
     throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
   }
   const bytes = await load();
+  const weights = plan.weights === undefined ? undefined : parseFeatureCoverage(plan.weights);
   const flow: Flow = {
     reviewer: await openReviewer(bytes),
     mode,
@@ -672,6 +687,8 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     // Read from a reviewer of its own, so the flow's never serves an extra read.
     fixtureIds: blockIdsOf(await openReviewer(bytes)),
     swarm: plan.swarm,
+    weights,
+    operationHits: weights === undefined ? undefined : featureOperationHits(weights),
   };
   const { log } = flow;
   const file = (): FlowFile => ({
@@ -683,6 +700,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     seed,
     steps: flow.trace,
     ...(plan.swarm === undefined ? {} : { swarm: plan.swarm }),
+    ...(weights === undefined ? {} : { weights }),
     ...(plan.origin === undefined ? {} : { origin: plan.origin }),
   });
   const signature = new Set<string>();
@@ -765,6 +783,7 @@ export const runFlow = (
           Object.keys(GENERATORS).filter((type) => supports(type, mode)),
         )
       : undefined;
+  const weights = processFeatureWeights();
   return execute(
     {
       seed,
@@ -775,6 +794,7 @@ export const runFlow = (
       random,
       steps,
       ...(enabled === undefined ? {} : { swarm: enabled }),
+      ...(weights === undefined ? {} : { weights }),
       origin: `${kind} flow seed ${seed}`,
     },
     options,
@@ -798,6 +818,7 @@ export const runFlowFile = (file: FlowFile, options: RunOptions = {}): Promise<F
       steps: file.steps.length,
       planned: file.steps,
       ...(file.swarm === undefined ? {} : { swarm: file.swarm }),
+      ...(file.weights === undefined ? {} : { weights: file.weights }),
       ...(file.origin === undefined ? {} : { origin: file.origin }),
     },
     options,

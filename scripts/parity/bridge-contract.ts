@@ -15,6 +15,18 @@ export type FolioParityBridge = {
   }>;
   /** Total laid-out pages (0 before the first layout). */
   getTotalPages: () => number;
+  /** Public page navigation, exercised against the real scrolling viewport. */
+  scrollToPage: (pageNumber: number, handle: "document" | "paged") => boolean;
+  readScrollViewport: (pageNumber: number) => {
+    scrollTop: number;
+    clientHeight: number;
+    scrollHeight: number;
+    rootMatches: boolean;
+    pageTop: number;
+    pageBottom: number;
+    viewportTop: number;
+    viewportBottom: number;
+  } | null;
   /** Force-create the deferred editor view (no focus steal). */
   ensureView: () => void;
   /** Whether the live ProseMirror view exists yet. */

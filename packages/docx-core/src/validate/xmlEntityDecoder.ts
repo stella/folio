@@ -1,8 +1,4 @@
-import {
-  EntityDecoder as XmlEntityDecoder,
-  ENTITY_ACTION,
-  type EntityDecoderOptions,
-} from "@nodable/entities";
+import { EntityDecoder as XmlEntityDecoder, ENTITY_ACTION } from "@nodable/entities";
 
 // @nodable/entities 3.0 exports a named decoder at runtime, while its declarations
 // expose only a default export and omit setXmlVersion, used by fast-xml-parser.

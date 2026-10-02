@@ -39,7 +39,12 @@ import type {
   RunPropertyChange,
   WrapDistances,
 } from "../../types/document";
-import { escapeXmlAttribute, escapeXmlText, requiresXmlSpacePreserve } from "@stll/docx-core";
+import {
+  escapeXmlAttribute,
+  escapeXmlText,
+  isValidOoxmlNumericId,
+  requiresXmlSpacePreserve,
+} from "@stll/docx-core";
 import {
   knownThemeColor,
   presetLineDashToken,
@@ -81,7 +86,7 @@ import { intAttr } from "./xmlUtils";
 
 /**
  * Auto-incrementing counter for generating unique image/shape IDs.
- * Used as a fallback when `image.id` or `shape.id` is undefined (e.g., pasted images).
+ * Used when a model id cannot identify a DrawingML object (e.g., a VML lexical id).
  * Starts high (100000) to avoid collisions with IDs parsed from existing DOCX content.
  */
 let nextAutoId = 100_000;
@@ -94,10 +99,15 @@ export function resetAutoIdCounter(): void {
   nextAutoId = 100_000;
 }
 
-/** Get a unique positive integer ID, using the provided value or generating one */
+/** Get an unsigned integer ID, using the provided value or generating one */
 function getUniqueId(id: string | number | undefined): string {
-  if (id !== undefined && id !== "" && id !== 0) {
+  // VML shape ids are strings; rebuilding as DrawingML must not copy that
+  // lexical identity into unsigned numeric docPr/cNvPr attributes.
+  if (id !== undefined && isValidOoxmlNumericId(id, "unsigned32")) {
     return String(id);
+  }
+  if (!isValidOoxmlNumericId(nextAutoId, "unsigned32")) {
+    panic("DrawingML generated id space is exhausted.");
   }
   return String(nextAutoId++);
 }

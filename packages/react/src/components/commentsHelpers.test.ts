@@ -9,6 +9,9 @@ import {
   seedCommentIdAbove,
 } from "./commentsHelpers";
 
+// OOXML decimal IDs must fit the signed 32-bit range consumers read.
+const MAX_COMMENT_ID = 2 ** 31 - 1;
+
 function makeComment(id: number, parentId?: number): Comment {
   return {
     id,
@@ -254,6 +257,16 @@ describe("pruneOrphanedComments", () => {
  * it so a later mint can never re-issue it.
  */
 describe("createComment: external comment id adoption", () => {
+  test("creates bounded IDs outside adopted IDs at the upper boundary", () => {
+    createComment("Existing maximum", "Reviewer", undefined, MAX_COMMENT_ID);
+    const ids = Array.from({ length: 12 }, () => createComment("Note", "Reviewer").id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      expect(Number.isInteger(id)).toBe(true);
+      expect(id).toBeGreaterThan(0);
+      expect(id).toBeLessThan(MAX_COMMENT_ID);
+    }
+  });
   test("adopts a supplied commentId instead of minting one", () => {
     const comment = createComment("Please confirm the carve-out.", "CLM", undefined, 9999);
     expect(comment.id).toBe(9999);

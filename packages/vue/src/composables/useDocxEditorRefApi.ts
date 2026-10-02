@@ -47,6 +47,11 @@ import {
 } from "@stll/folio-core/ai-edits";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import type { Layout } from "@stll/folio-core/layout-engine";
+import { getPageScrollTarget } from "@stll/folio-core/paged-layout/scrollNavigation";
+import {
+  getEditorScrollRoot,
+  scrollEditorElementIntoView,
+} from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { findPageIndexContainingPmPos } from "@stll/folio-core/layout-engine";
 import {
   findParagraphFragmentsByParaId,
@@ -154,8 +159,6 @@ export type UseDocxEditorRefApiOptions = {
   layout: Ref<Layout | null>;
   /** Painted pages container (the `HTMLDivElement` the painter writes into). */
   pagesRef: Ref<HTMLElement | null>;
-  /** Scrolling viewport wrapping the pages container. */
-  pagesViewportRef: Ref<HTMLElement | null>;
   /** Scroll root wrapping the full painted editor area. */
   scrollRootRef: Ref<HTMLElement | null>;
   /** Current zoom factor (1 = 100%). */
@@ -257,7 +260,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     if (!first) {
       return false;
     }
-    first.scrollIntoView({ block: "center", behavior: "smooth" });
+    scrollEditorElementIntoView(first);
     if (options?.highlight) {
       flashParagraphElements(fragments, options.highlight);
     }
@@ -366,7 +369,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       },
       getBlockRect,
       getBlockRects,
-      getScrollRoot: () => opts.scrollRootRef.value,
+      getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),
       onLayoutChange,
     };
     return pagedEditorRef;
@@ -387,22 +390,16 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
   }
 
   function scrollToPage(pageNumber: number): void {
-    if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+    const target = getPageScrollTarget(opts.layout.value, pageNumber);
+    if (!target) return;
+    if (target.type === "position") {
+      opts.scrollVisiblePositionIntoView(target.pmPos);
       return;
     }
-    const viewport = opts.pagesViewportRef.value;
     const pageEl = opts.pagesRef.value?.querySelector<HTMLElement>(
-      `[data-page-number="${pageNumber}"]`,
+      `[data-page-number="${target.pageIndex + 1}"]`,
     );
-    if (!viewport || !pageEl) {
-      return;
-    }
-    const viewportRect = viewport.getBoundingClientRect();
-    const pageRect = pageEl.getBoundingClientRect();
-    viewport.scrollTo({
-      top: pageRect.top - viewportRect.top + viewport.scrollTop - 24,
-      behavior: "smooth",
-    });
+    scrollEditorElementIntoView(pageEl ?? null);
   }
 
   const applyAIEditOperations = ({
@@ -847,7 +844,7 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
     },
     getBlockRect,
     getBlockRects,
-    getScrollRoot: () => opts.scrollRootRef.value,
+    getScrollRoot: () => getEditorScrollRoot(opts.scrollRootRef.value),
     onLayoutChange,
     getContentControls: (filter = {}) => {
       const view = opts.editorView.value;

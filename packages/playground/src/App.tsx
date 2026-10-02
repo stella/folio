@@ -30,6 +30,8 @@ import type {
 } from "@stll/folio-react";
 import { FOLIO_LOCALES, getFolioMessages } from "@stll/folio-react/messages";
 
+import { buildScrollParityBridge } from "./scrollParityBridge";
+import type { ScrollParityBridge } from "./scrollParityBridge";
 import type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
 
 export type { FolioParityBridge } from "../../../scripts/parity/bridge-contract";
@@ -83,6 +85,7 @@ declare global {
   // Cross-adapter E2E bridge: identical surface in the React and Vue
   // playgrounds so the `tests/parity` specs drive both editors through one API.
   var __folioParity: FolioParityBridge | undefined;
+  var __folioScrollParity: ScrollParityBridge | undefined;
 }
 
 function buildParityBridge(
@@ -107,6 +110,34 @@ function buildParityBridge(
       return { bytes: [...new Uint8Array(saved)], results };
     },
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
+    scrollToPage: (pageNumber, handle) => {
+      const ref = getRef();
+      const api = handle === "document" ? ref : ref?.getEditorRef();
+      if (!api) {
+        return false;
+      }
+      api.scrollToPage(pageNumber);
+      return true;
+    },
+    readScrollViewport: (pageNumber) => {
+      const root = getRef()?.getScrollRoot();
+      const target = document.querySelector(`[data-page-number="${pageNumber}"]`);
+      if (!root || !target) {
+        return null;
+      }
+      const pageRect = target.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      return {
+        scrollTop: root.scrollTop,
+        clientHeight: root.clientHeight,
+        scrollHeight: root.scrollHeight,
+        rootMatches: root.matches("[data-folio-scroll]"),
+        pageTop: pageRect.top,
+        pageBottom: pageRect.bottom,
+        viewportTop: rootRect.top,
+        viewportBottom: rootRect.bottom,
+      };
+    },
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,
     getDocumentText: () => getRef()?.getEditor()?.getState()?.doc.textContent ?? "",
@@ -569,6 +600,7 @@ export function App() {
   }
 
   const editorRef = useRef<DocxEditorRef>(null);
+  const scrollParityHost = useRef(buildScrollParityBridge(() => editorRef.current)).current;
   const clipboardCallbackCountsRef = useRef({ copy: 0, cut: 0, paste: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [currentDocument, setCurrentDocument] = useState<FolioDocument | null>(null);
@@ -777,6 +809,7 @@ export function App() {
     globalThis.__folioPlayground = {
       getEditorRef: () => editorRef.current,
     };
+    globalThis.__folioScrollParity = scrollParityHost;
     globalThis.__folioParity = buildParityBridge(
       () => editorRef.current,
       (kind) => clipboardCallbackCountsRef.current[kind],
@@ -784,6 +817,7 @@ export function App() {
     return () => {
       globalThis.__folioPlayground = undefined;
       globalThis.__folioParity = undefined;
+      globalThis.__folioScrollParity = undefined;
     };
   }, []);
 
@@ -801,6 +835,8 @@ export function App() {
             documentBuffer={documentBuffer}
             author="Folio User"
             {...(parityFonts !== undefined ? { fonts: parityFonts } : {})}
+            onEditorViewReady={scrollParityHost.onViewReady}
+            preserveDocumentWhileLoading={query.has("readyScroll")}
             onError={handleError}
             showToolbar={true}
             showRuler={true}

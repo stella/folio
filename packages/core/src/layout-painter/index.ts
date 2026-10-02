@@ -8,7 +8,7 @@
 import { panic } from "better-result";
 
 import type { Layout, Page, Fragment, FlowBlock, Measure } from "../layout-engine/types";
-import { prefersReducedMotionBehavior } from "../paged-layout/scrollNavigation";
+import { scrollEditorElementIntoView } from "../paged-layout/editorScrollRoot";
 import type { NoteStoryKey } from "../types/editor-story";
 import { createDefaultRegistry } from "./registry/modules";
 import type { FeatureRegistry } from "./registry/registry";
@@ -290,10 +290,7 @@ export class LayoutPainter {
   scrollToPage(pageNumber: number): void {
     const state = this.pageStates.find((s) => s.pageNumber === pageNumber);
     if (state?.element) {
-      state.element.scrollIntoView({
-        behavior: prefersReducedMotionBehavior(),
-        block: "start",
-      });
+      scrollEditorElementIntoView(state.element, { block: "start" });
     }
   }
 }

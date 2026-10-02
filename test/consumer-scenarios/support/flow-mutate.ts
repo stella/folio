@@ -142,6 +142,7 @@ export const mutateFlow = (
       seed: flow.seed,
       steps,
       ...(flow.swarm === undefined ? {} : { swarm: flow.swarm }),
+      ...(flow.weights === undefined ? {} : { weights: flow.weights }),
       origin: `${applied.join("+")} of ${flowId(flow)}`,
     },
     mutations: applied,

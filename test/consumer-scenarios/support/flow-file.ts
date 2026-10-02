@@ -14,6 +14,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { parseFeatureCoverage, type FeatureCoverage } from "./feature-coverage.ts";
 
 export const FLOW_KINDS = ["random", "collisions"] as const;
 export type FlowKind = (typeof FLOW_KINDS)[number];
@@ -79,6 +80,8 @@ export type FlowFile = {
   steps: FlowStep[];
   /** Generated operation kinds enabled for this swarm; absent means all kinds. */
   swarm?: string[];
+  /** Exact generation input, so replay never depends on a later coverage cache. */
+  weights?: FeatureCoverage;
   /** What the flow is: the seed it was drawn from, a corpus mutation, a shrink. */
   origin?: string;
   /** For a checked-in flow: what it guards. */
@@ -117,7 +120,7 @@ export const parseFlowFile = (value: unknown): FlowFile => {
   if (!isRecord(value) || value["version"] !== 1) {
     throw new TypeError("flow file: expected version 1");
   }
-  const { kind, generation, fixture, mode, seed, steps, origin, title, swarm } = value;
+  const { kind, generation, fixture, mode, seed, steps, origin, title, swarm, weights } = value;
   if (!(FLOW_KINDS as readonly unknown[]).includes(kind)) {
     throw new TypeError(`flow file: unknown kind ${JSON.stringify(kind)}`);
   }
@@ -151,6 +154,7 @@ export const parseFlowFile = (value: unknown): FlowFile => {
     seed,
     steps: steps.map(parseStep),
     ...(swarm === undefined ? {} : { swarm }),
+    ...(weights === undefined ? {} : { weights: parseFeatureCoverage(weights) }),
     ...(typeof origin === "string" ? { origin } : {}),
     ...(typeof title === "string" ? { title } : {}),
   };
@@ -168,6 +172,7 @@ export const flowId = (flow: FlowFile): string =>
         flow.seed,
         flow.steps,
         ...(flow.swarm === undefined ? [] : [flow.swarm]),
+        ...(flow.weights === undefined ? [] : [flow.weights]),
       ]),
     )
     .digest("hex")

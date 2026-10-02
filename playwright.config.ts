@@ -51,13 +51,21 @@ export default defineConfig({
     { name: "measure-parity", testMatch: /measure(?:-backend)?-parity\.spec\.ts/u },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
-    { name: "parity", testDir: "./tests/parity", testIgnore: /cross-host-flow\.spec\.ts/u },
-    { name: "parity-fuzzer", testDir: "./tests/parity", testMatch: /cross-host-flow\.spec\.ts/u },
+    {
+      name: "parity",
+      testDir: "./tests/parity",
+      testIgnore: /(?:cross-host|host-api)-flow\.spec\.ts/u,
+    },
+    {
+      name: "parity-fuzzer",
+      testDir: "./tests/parity",
+      testMatch: /(?:cross-host|host-api)-flow\.spec\.ts/u,
+    },
     {
       name: "vue",
       testDir: "./tests/parity",
       grep: /\[vue\]/u,
-      testIgnore: /cross-host-flow\.spec\.ts/u,
+      testIgnore: /(?:cross-host|host-api)-flow\.spec\.ts/u,
     },
   ],
   // Start both playground dev servers automatically (reused if already running).
