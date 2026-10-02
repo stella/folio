@@ -198,6 +198,7 @@ export type {
   BreakContent,
   SymbolContent,
   NoteReferenceContent,
+  NoteMarkerContent,
   FieldCharContent,
   InstrTextContent,
   SoftHyphenContent,
@@ -345,6 +346,9 @@ export type {
 // ============================================================================
 // DOCX PACKAGE & TOP-LEVEL DOCUMENT
 // ============================================================================
+
+/** OOXML default per §17.6.13 when `w:defaultTabStop` is absent. */
+export const DEFAULT_TAB_STOP_TWIPS = 720;
 
 /**
  * Document-wide settings parsed from `word/settings.xml`.

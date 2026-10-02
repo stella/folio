@@ -177,6 +177,7 @@ const render = async (): Promise<GeneratedFile[]> => {
   const space = await loadContainerSpace();
   const setRows: string[] = [];
   const sequenceRows: string[] = [];
+  const settingsChildren = sequencedChildren(space, "settings", "CT_Settings");
 
   for (const { key, members, sequence } of DISPATCHED_CONTAINERS) {
     const read = sequence ? sequencedChildren : declaredChildren;
@@ -197,6 +198,8 @@ const render = async (): Promise<GeneratedFile[]> => {
     "export const SEQUENCE_CHILDREN = {",
     ...sequenceRows,
     "} as const;",
+    "",
+    `export const SETTINGS_CHILDREN = [${settingsChildren.map((name) => JSON.stringify(name)).join(", ")}] as const;`,
     "",
     "/** A container whose declared children have an order. */",
     "export type SequenceContainer = keyof typeof SEQUENCE_CHILDREN;",

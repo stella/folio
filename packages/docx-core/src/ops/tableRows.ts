@@ -1,4 +1,6 @@
 /** Row edits and their exact inverse, addressed through a paragraph in the row. */
+import { replaceStoryBody } from "./stories";
+
 import { Result, panic } from "better-result";
 import { applyTableOp } from "./tables";
 import { locateTableRow, tableRowAnchor, type TableRowLocation } from "./tableLocation";
@@ -32,7 +34,6 @@ import { WRAP_KINDS } from "./review";
 import { permitsCellFinalMark, trackTableRows } from "./tableTracking";
 import {
   DOCUMENT_OP_TYPES,
-  OP_STORIES,
   type DeleteRowOp,
   type InsertRowOp,
   type OpStory,
@@ -76,20 +77,7 @@ const withRows = ({ document, story, location, rows }: WithRowsOptions): Documen
     };
     return out;
   });
-  switch (story) {
-    case OP_STORIES.MAIN:
-      return {
-        ...document,
-        package: {
-          ...document.package,
-          document: withBodyContent(body, content),
-        },
-      };
-    default: {
-      const unreachable: never = story;
-      return unreachable;
-    }
-  }
+  return replaceStoryBody({ document, story, body: withBodyContent(body, content) });
 };
 
 /** Commit a row list after checking the resulting package, before it is trusted. */

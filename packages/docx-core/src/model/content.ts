@@ -103,6 +103,9 @@ export type NoteReferenceContent = {
   customMarkFollows?: boolean;
 };
 
+/** The authored automatic reference mark inside a note body (w:footnoteRef/w:endnoteRef). */
+export type NoteMarkerContent = { type: "noteMarker"; kind: "footnote" | "endnote" };
+
 /** IDs reserved for the separator records in footnotes.xml and endnotes.xml. */
 export const RESERVED_NOTE_REFERENCE_IDS = [-1, 0] as const;
 
@@ -260,6 +263,7 @@ export type RunContent =
   | BreakContent
   | SymbolContent
   | NoteReferenceContent
+  | NoteMarkerContent
   | FieldCharContent
   | InstrTextContent
   | SoftHyphenContent

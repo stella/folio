@@ -350,7 +350,13 @@ export const compileEditorIntent = (
           )
             selection = { ...selection, blockId: op.nextBlockId };
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
-            selection = { ...op.at, offset: op.at.offset + text.length };
+            selection = {
+              ...op.at,
+              offset: op.at.offset + text.length,
+              ...(text.length > 0 && op.at.zeroWidthBefore !== undefined
+                ? { zeroWidthBefore: 0 }
+                : {}),
+            };
         }
         break;
       }
@@ -403,7 +409,11 @@ export const compileEditorIntent = (
           slice: { openStart: 0, openEnd: 0, content },
           ...allocationFields,
         });
-      selection = { ...at, offset: from.offset + text.length };
+      selection = {
+        ...at,
+        offset: from.offset + text.length,
+        ...(text.length > 0 && at.zeroWidthBefore !== undefined ? { zeroWidthBefore: 0 } : {}),
+      };
       break;
     }
     case "splitParagraph": {

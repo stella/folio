@@ -7,8 +7,9 @@
  * manager.
  */
 
+import { OP_STORIES } from "@stll/docx-core/ops";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
@@ -33,6 +34,9 @@ import type {
   Theme,
 } from "../types/document";
 
+import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
+import type { HiddenEditorApi } from "./hiddenEditorApi";
+
 export type HeaderFooterPartKind = "header" | "footer";
 
 export type HeaderFooterPartKey = {
@@ -51,6 +55,9 @@ export type HeaderFooterEditorTransaction = {
 export type HeaderFooterEditorManagerDeps = {
   createView?: ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView) | undefined;
   getDocument: () => Document | null;
+  getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
+  getExperimentalSession?: (() => "canonical" | undefined) | undefined;
+  onSessionRefusal?: ((reason: string) => void) | undefined;
   getHost: () => HTMLElement | null;
   getStyles: () => StyleDefinitions | null | undefined;
   getTheme: () => Theme | null | undefined;
@@ -199,7 +206,17 @@ export const createHeaderFooterEditorManager = (
       return;
     }
 
-    const document = deps.getDocument();
+    // Pending IME input owns its view until the shared session commits.
+    if (
+      deps.getExperimentalSession?.() === "canonical" &&
+      !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
+    )
+      return;
+
+    const document =
+      deps.getExperimentalSession?.() === "canonical"
+        ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
+        : deps.getDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -225,6 +242,36 @@ export const createHeaderFooterEditorManager = (
       if (existing) {
         if (existing.mountNode.parentElement !== host) {
           host.append(existing.mountNode);
+        }
+        if (deps.getExperimentalSession?.() === "canonical") {
+          const projected = deps
+            .getCanonicalApi?.()
+            ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId });
+          if (projected && !existing.view.state.doc.eq(projected)) {
+            const transaction = existing.view.state.tr.replaceWith(
+              0,
+              existing.view.state.doc.content.size,
+              projected.content,
+            );
+            const restored = deps
+              .getCanonicalApi?.()
+              ?.getCanonicalStorySelection({ kind: part.kind, rId: part.rId });
+            const anchor = Math.min(existing.view.state.selection.anchor, projected.content.size);
+            transaction.setSelection(
+              restored
+                ? TextSelection.create(transaction.doc, restored.anchor, restored.head)
+                : TextSelection.near(transaction.doc.resolve(anchor)),
+            );
+            transaction.setMeta("addToHistory", false);
+            existing.view.updateState(existing.view.state.apply(transaction));
+          }
+          existing.appliedHeaderFooter = headerFooter;
+          existing.appliedContent = headerFooter.content;
+          existing.appliedStyles = styles;
+          existing.appliedTheme = theme;
+          existing.appliedNumbering = numbering;
+          existing.dirty = false;
+          continue;
         }
         const contentIsCurrent =
           existing.appliedHeaderFooter === headerFooter &&
@@ -258,9 +305,45 @@ export const createHeaderFooterEditorManager = (
       mountNode.dataset["hfKind"] = part.kind;
       host.append(mountNode);
 
+      const canonical = createCanonicalStoryEditor({
+        story: { kind: part.kind, rId: part.rId },
+        getView: () => view,
+        getApi: () => deps.getCanonicalApi?.() ?? null,
+        enabled: () => deps.getExperimentalSession?.() === "canonical",
+        onRefusal: deps.onSessionRefusal,
+        onSelectionChange: () =>
+          deps.onTransaction?.({
+            kind: part.kind,
+            rId: part.rId,
+            view,
+            docChanged: false,
+            selectionChanged: true,
+          }),
+      });
+      const canonicalProjection =
+        deps.getExperimentalSession?.() === "canonical"
+          ? deps
+              .getCanonicalApi?.()
+              ?.getCanonicalStoryProjection({ kind: part.kind, rId: part.rId })
+          : null;
+      if (deps.getExperimentalSession?.() === "canonical" && !canonicalProjection) {
+        manager.destroy();
+        mountNode.remove();
+        continue;
+      }
       const view = (deps.createView ?? createEditorView)(mountNode, {
-        state: buildInitialState(headerFooter, styles, theme, numbering, manager),
+        ...canonical.props,
+        state: canonicalProjection
+          ? EditorState.create({
+              doc: canonicalProjection,
+              plugins: [
+                createDocumentStylesPlugin(styles),
+                createDocumentNumberingPlugin(numbering),
+              ],
+            })
+          : buildInitialState(headerFooter, styles, theme, numbering, manager),
         dispatchTransaction(transaction) {
+          if (canonical.dispatch(transaction)) return;
           const nextState = view.state.apply(transaction);
           view.updateState(nextState);
           const mountedPart = mounted.get(part.rId);
@@ -302,6 +385,8 @@ export const createHeaderFooterEditorManager = (
         rId,
       })),
     snapshotDocument: (document) => {
+      if (deps.getExperimentalSession?.() === "canonical")
+        return deps.getCanonicalApi?.()?.getCanonicalDocument() ?? document;
       let headers = document.package.headers;
       let footers = document.package.footers;
       let headersChanged = false;

@@ -2406,6 +2406,7 @@ const getRunContentText = (content: RunContent): string => {
     case "fieldChar":
     case "footnoteRef":
     case "instrText":
+    case "noteMarker":
     case "renderedPageBreak":
     case "shape":
     case "symbol":

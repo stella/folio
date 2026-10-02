@@ -9,10 +9,13 @@ import {
   validateOpsDocument,
   compileEditorIntent,
   createEditorIntentIdAllocator,
-  paragraphLogicalText,
   editorParagraphGroups,
   type EditorIntent,
   type EditorIntentMode,
+  findStoryBody,
+  documentStories,
+  sameStory,
+  type OpStory,
   type DocumentOp,
   type TextPosition,
   type TouchedBlocks,
@@ -25,7 +28,12 @@ import {
   copyDocumentParagraphPropertySourceContract,
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { markPackageChange } from "../prosemirror/extensions/features/ParagraphChangeTrackerExtension";
+import {
+  toProseDoc,
+  headerFooterToProseDoc,
+  footnoteToProseDoc,
+} from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
 export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<{
@@ -33,6 +41,44 @@ export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<
 }> {}
 
 const refuse = (message: string) => Result.err(new CanonicalSessionError({ message }));
+
+const operationChangesPackage = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return true;
+    default: {
+      if ("story" in op) return !sameStory(op.story, OP_STORIES.MAIN);
+      if ("at" in op) return !sameStory(op.at.story, OP_STORIES.MAIN);
+      if ("from" in op) return !sameStory(op.from.story, OP_STORIES.MAIN);
+      const unreachable: never = op;
+      return unreachable;
+    }
+  }
+};
+
+const operationChangesBodyProjection = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return true;
+    default: {
+      if ("story" in op) return sameStory(op.story, OP_STORIES.MAIN);
+      if ("at" in op) return sameStory(op.at.story, OP_STORIES.MAIN);
+      if ("from" in op) return sameStory(op.from.story, OP_STORIES.MAIN);
+      const unreachable: never = op;
+      return unreachable;
+    }
+  }
+};
 
 export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
 export type CanonicalOrigin = "input" | "undo" | "redo";
@@ -43,16 +89,25 @@ type ParagraphAddress = {
   blockId: string;
   start: number;
   text: string;
+  boundaries: readonly (readonly number[])[];
   node: PMNode;
   source: Paragraph;
 };
 
-/** Only plain paragraphs have a one-to-one UTF-16 address map. */
+type CanonicalProjectionOptions = {
+  doc: PMNode;
+  paragraphs: readonly ParagraphAddress[];
+  story: OpStory;
+};
+
+/** Paragraph gaps map logical UTF-16 units and zero-width note marks to PM positions. */
 class CanonicalProjection {
   readonly doc: PMNode;
+  readonly story: OpStory;
   private readonly paragraphs: readonly ParagraphAddress[];
 
-  constructor(doc: PMNode, paragraphs: readonly ParagraphAddress[]) {
+  constructor({ doc, paragraphs, story }: CanonicalProjectionOptions) {
+    this.story = story;
     this.doc = doc;
     this.paragraphs = paragraphs;
   }
@@ -60,14 +115,22 @@ class CanonicalProjection {
   addressAt(position: number): Result<TextPosition, CanonicalSessionError> {
     if (!Number.isInteger(position)) return refuse("The input position is not an integer.");
     const paragraph = this.paragraphs.find(
-      ({ start, text }) => position >= start && position <= start + text.length,
+      ({ start, node }) => position >= start && position <= start + node.content.size,
     );
     if (paragraph === undefined) return refuse("The input is outside a plain paragraph.");
-    const offset = position - paragraph.start;
+    const relative = position - paragraph.start;
+    const offset = paragraph.boundaries.findIndex((gaps) => gaps.includes(relative));
+    if (offset < 0) return refuse("The input splits a note reference.");
     if (splitsSurrogatePair(paragraph.text, offset)) {
       return refuse("The input would split a surrogate pair.");
     }
-    return Result.ok({ story: OP_STORIES.MAIN, blockId: paragraph.blockId, offset });
+    const gaps = paragraph.boundaries.at(offset) ?? panic("Missing canonical boundary");
+    return Result.ok({
+      story: this.story,
+      blockId: paragraph.blockId,
+      offset,
+      ...(gaps.length > 1 ? { zeroWidthBefore: gaps.indexOf(relative) } : {}),
+    });
   }
 
   inputAddressAt(position: number): Result<TextPosition, CanonicalSessionError> {
@@ -90,8 +153,7 @@ class CanonicalProjection {
   positionAt(address: TextPosition): Result<number, CanonicalSessionError> {
     const paragraph = this.paragraphs.find(({ blockId }) => blockId === address.blockId);
     if (
-      address.story !== OP_STORIES.MAIN ||
-      (address.zeroWidthBefore !== undefined && address.zeroWidthBefore !== 0) ||
+      !sameStory(address.story, this.story) ||
       paragraph === undefined ||
       !Number.isInteger(address.offset) ||
       address.offset < 0 ||
@@ -100,7 +162,11 @@ class CanonicalProjection {
     ) {
       return refuse("The canonical selection is outside a plain paragraph.");
     }
-    return Result.ok(paragraph.start + address.offset);
+    const gaps = paragraph.boundaries.at(address.offset) ?? panic("Missing canonical boundary");
+    const gapIndex = address.zeroWidthBefore ?? gaps.length - 1;
+    if (!Number.isInteger(gapIndex) || gapIndex < 0 || gapIndex >= gaps.length)
+      return refuse("The canonical selection is outside a paragraph gap.");
+    return Result.ok(paragraph.start + (gaps.at(gapIndex) ?? panic("Missing canonical gap")));
   }
 
   selectionAt(state: EditorState): Result<CanonicalSelection, CanonicalSessionError> {
@@ -119,18 +185,59 @@ class CanonicalProjection {
   }
 }
 
-/** Source captures follow paragraph identities through structural edits and history. */
-type PreservePropertySourcesOptions = { target: Document; source: Document };
-const preservePropertySources = ({ target, source }: PreservePropertySourcesOptions): void => {
-  const sources = new Map(
-    source.package.document.content.flatMap((block) =>
-      block.type === "paragraph" ? [[block.paraId, block] as const] : [],
-    ),
-  );
-  for (const derived of target.package.document.content) {
-    if (derived.type !== "paragraph") continue;
-    const original = sources.get(derived.paraId);
-    if (original && derived !== original) copyParagraphPropertySource(derived, original);
+type ChangedStoriesOptions = { document: Document; previous: Document };
+/** Immutable operations retain content identities for every untouched story. */
+const changedStories = ({ document, previous }: ChangedStoriesOptions): OpStory[] => {
+  const stories: OpStory[] = [];
+  if (document.package.document.content !== previous.package.document.content)
+    stories.push(OP_STORIES.MAIN);
+  for (const kind of ["header", "footer"] as const) {
+    const parts = kind === "header" ? document.package.headers : document.package.footers;
+    const prior = kind === "header" ? previous.package.headers : previous.package.footers;
+    if (parts === prior) continue;
+    for (const [rId, body] of parts ?? []) {
+      if (body.content !== prior?.get(rId)?.content) stories.push({ kind, rId });
+    }
+  }
+  for (const kind of ["footnote", "endnote"] as const) {
+    const notes = kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+    const prior = kind === "footnote" ? previous.package.footnotes : previous.package.endnotes;
+    if (notes === prior) continue;
+    const priorById = new Map(prior?.map((note) => [note.id, note]));
+    for (const note of notes ?? []) {
+      const original = priorById.get(note.id);
+      if (note.content !== original?.content || note.noteType !== original?.noteType)
+        stories.push({ kind, id: note.id });
+    }
+  }
+  return stories;
+};
+
+/** Carry private paragraph source captures across immutable story operations. */
+type PreservePropertySourcesOptions = {
+  target: Document;
+  source: Document;
+  stories?: readonly OpStory[];
+};
+const preservePropertySources = ({
+  target,
+  source,
+  stories = documentStories(source),
+}: PreservePropertySourcesOptions): void => {
+  for (const story of stories) {
+    const originals = findStoryBody(source, story)?.content ?? [];
+    const derived = findStoryBody(target, story)?.content ?? [];
+    if (originals === derived) continue;
+    const paragraphs = new Map(
+      derived.flatMap((block) =>
+        block.type === "paragraph" ? [[block.paraId, block] as const] : [],
+      ),
+    );
+    for (const original of originals) {
+      if (original.type !== "paragraph") continue;
+      const next = paragraphs.get(original.paraId);
+      if (next && next !== original) copyParagraphPropertySource(next, original);
+    }
   }
   copyDocumentParagraphPropertySourceContract(target, source);
 };
@@ -141,9 +248,12 @@ const supportsTextContent = (content: Paragraph["content"]): boolean =>
       case "run":
         return item.content.every(
           (child) =>
-            child.type === "text" &&
-            !hasIllegalXmlCharacters(child.text) &&
-            !/[\t\r\n]/u.test(child.text),
+            child.type === "noteMarker" ||
+            child.type === "footnoteRef" ||
+            child.type === "endnoteRef" ||
+            (child.type === "text" &&
+              !hasIllegalXmlCharacters(child.text) &&
+              !/[\t\r\n]/u.test(child.text)),
         );
       case "insertion":
       case "deletion":
@@ -153,33 +263,54 @@ const supportsTextContent = (content: Paragraph["content"]): boolean =>
     }
   });
 
-const supportsSeed = (document: Document): boolean => {
-  const pkg = document.package;
-  const body = pkg.document;
-  if (
-    (pkg.headers?.size ?? 0) > 0 ||
-    (pkg.footers?.size ?? 0) > 0 ||
-    (pkg.footnotes?.length ?? 0) > 0 ||
-    (pkg.endnotes?.length ?? 0) > 0 ||
-    (body.comments?.length ?? 0) > 0 ||
-    body.content.length === 0
-  ) {
-    return false;
-  }
-  return body.content.every(
-    (paragraph) =>
-      paragraph.type === "paragraph" &&
-      paragraph.reviewCarrier === undefined &&
-      supportsTextContent(paragraph.content),
-  );
+const supportsSeed = (document: Document, stories = documentStories(document)): boolean => {
+  if ((document.package.document.comments?.length ?? 0) > 0) return false;
+  return stories.every((story) => {
+    const body = findStoryBody(document, story);
+    if (story !== OP_STORIES.MAIN && (story.kind === "footnote" || story.kind === "endnote")) {
+      const notes =
+        story.kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+      const note = notes?.find(({ id }) => id === story.id);
+      if (note?.noteType !== undefined && note.noteType !== "normal") return true;
+    }
+    const content = body?.content;
+    return (
+      content !== undefined &&
+      content.length > 0 &&
+      content.every(
+        (paragraph) =>
+          paragraph.type === "paragraph" &&
+          paragraph.reviewCarrier === undefined &&
+          supportsTextContent(paragraph.content),
+      )
+    );
+  });
 };
 
-const project = (
-  document: Document,
-  styles: StyleDefinitions | null | undefined,
-): Result<CanonicalProjection, CanonicalSessionError> => {
+type ProjectStoryOptions = {
+  document: Document;
+  styles: StyleDefinitions | null | undefined;
+  story?: OpStory;
+};
+
+const project = ({
+  document,
+  styles,
+  story = OP_STORIES.MAIN,
+}: ProjectStoryOptions): Result<CanonicalProjection, CanonicalSessionError> => {
+  const body = findStoryBody(document, story);
+  if (!body) return refuse("The canonical story no longer exists.");
+  const options = {
+    ...(styles == null ? {} : { styles }),
+    ...(document.package.theme === undefined ? {} : { theme: document.package.theme }),
+  };
   const converted = Result.try({
-    try: () => toProseDoc(document, styles == null ? undefined : { styles }),
+    try: () => {
+      if (story === OP_STORIES.MAIN) return toProseDoc(document, options);
+      if (story.kind === "header" || story.kind === "footer")
+        return headerFooterToProseDoc(body.content, options);
+      return footnoteToProseDoc(body.content, options);
+    },
     catch: (cause) =>
       new CanonicalSessionError({
         message: `Canonical projection failed: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -189,32 +320,64 @@ const project = (
   const paragraphs: ParagraphAddress[] = [];
   let failure: CanonicalSessionError | undefined;
   converted.value.forEach((node, offset, index) => {
-    const source = document.package.document.content.at(index);
+    const source = body.content.at(index);
     if (source?.type !== "paragraph" || source.paraId === undefined) {
       failure = new CanonicalSessionError({
         message: "The projection changed paragraph structure.",
       });
       return;
     }
-    const text = paragraphLogicalText(source);
+    let text = "";
+    let renderedText = "";
+    let renderedSize = 0;
+    const boundaries: number[][] = [[0]];
+    const appendContent = (content: Paragraph["content"]): void => {
+      for (const run of content) {
+        if (run.type === "insertion" || run.type === "deletion") {
+          appendContent(run.content);
+          continue;
+        }
+        if (run.type !== "run") panic("Canonical projection encountered unsupported content");
+        for (const child of run.content) {
+          if (child.type === "text") {
+            for (const unit of child.text.split("")) {
+              text += unit;
+              renderedText += unit;
+              renderedSize += 1;
+              boundaries.push([renderedSize]);
+            }
+          } else if (child.type === "footnoteRef" || child.type === "endnoteRef") {
+            text += "\uFFFC";
+            renderedText += String(child.id);
+            renderedSize += String(child.id).length;
+            boundaries.push([renderedSize]);
+          } else if (child.type === "noteMarker") {
+            renderedSize += 1;
+            const gaps = boundaries.at(-1) ?? panic("Missing canonical note gap");
+            gaps.push(renderedSize);
+          }
+        }
+      }
+    };
+    appendContent(source.content);
     if (
       node.type.name !== "paragraph" ||
       node.attrs["paraId"] !== source.paraId ||
-      node.textContent !== text ||
-      node.content.size !== text.length
+      node.textContent !== renderedText ||
+      node.content.size !== renderedSize
     ) {
       failure = new CanonicalSessionError({
         message: "The paragraph cannot be projected as plain text.",
       });
       return;
     }
-    paragraphs.push({ blockId: source.paraId, start: offset + 1, text, node, source });
+    paragraphs.push({ blockId: source.paraId, start: offset + 1, text, boundaries, node, source });
   });
   if (failure !== undefined) return Result.err(failure);
-  if (paragraphs.length !== document.package.document.content.length) {
+  if (paragraphs.length !== body.content.length) {
     return refuse("The projection changed paragraph structure.");
   }
-  return Result.ok(new CanonicalProjection(converted.value, paragraphs));
+  return Result.ok(new CanonicalProjection({ doc: converted.value, paragraphs, story }));
 };
 
 /** Input intent, never projection-step adjacency, determines the journal partition. */
@@ -230,7 +393,7 @@ export type CanonicalInputSemantic =
 const UNDO_GROUP_WINDOW_MS = 500;
 
 const samePosition = (left: TextPosition, right: TextPosition): boolean =>
-  left.story === right.story &&
+  sameStory(left.story, right.story) &&
   left.blockId === right.blockId &&
   left.offset === right.offset &&
   (left.zeroWidthBefore ?? 0) === (right.zeroWidthBefore ?? 0);
@@ -296,6 +459,7 @@ export type CanonicalCommit = {
   transaction: Transaction;
   document: Document;
   projection: CanonicalProjection;
+  bodyProjection: CanonicalProjection;
   touched: TouchedBlocks;
   version: number;
   origin: CanonicalOrigin;
@@ -361,6 +525,8 @@ type StageOptions = {
   ops: readonly DocumentOp[];
   selection: CanonicalSelection;
   origin: CanonicalOrigin;
+  story?: OpStory;
+  previousProjection?: CanonicalProjection;
   onPublish: (inverse: readonly DocumentOp[], version: number) => void;
 };
 
@@ -374,11 +540,12 @@ type CanonicalReplaceTextInput = {
   from: number;
   to: number;
   text: string;
+  story?: OpStory;
   semantic?: CanonicalInputSemantic;
   time?: number;
 };
 
-type JournalInputOptions = Pick<StageOptions, "state" | "ops"> & {
+type JournalInputOptions = Pick<StageOptions, "state" | "ops" | "story"> & {
   preSelection: CanonicalSelection;
   postSelection: CanonicalSelection;
   semantic?: CanonicalInputSemantic;
@@ -391,6 +558,26 @@ type IntentInputOptions = Pick<JournalInputOptions, "semantic" | "time" | "group
     | Exclude<EditorIntent, { type: "splitParagraph" }>
     | Omit<Extract<EditorIntent, { type: "splitParagraph" }>, "newBlockId">;
 };
+type CachedStoryProjection = {
+  content: NonNullable<ReturnType<typeof findStoryBody>>["content"];
+  theme: Document["package"]["theme"];
+  projection: CanonicalProjection;
+};
+
+const storyProjectionKey = (story: Exclude<OpStory, typeof OP_STORIES.MAIN>): string => {
+  switch (story.kind) {
+    case "header":
+    case "footer":
+      return `${story.kind}:${story.rId}`;
+    case "footnote":
+    case "endnote":
+      return `${story.kind}:${story.id}`;
+    default: {
+      const unreachable: never = story;
+      return panic(`Unknown canonical story ${unreachable}`);
+    }
+  }
+};
 
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
@@ -400,6 +587,8 @@ class CanonicalSession {
   private readonly allocateIntentIds = createEditorIntentIdAllocator();
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly sourceOwners = new Map<string, Paragraph>();
+  private readonly storyProjections = new Map<string, CachedStoryProjection>();
+  private currentSelection: CanonicalSelection | null = null;
   private readonly applied: AppliedJournalGroup[] = [];
   private groupingBoundary = 0;
   private lifecycle: { type: "committed" } | { type: "composing" } = { type: "committed" };
@@ -442,6 +631,9 @@ class CanonicalSession {
   get projection(): CanonicalProjection {
     return this.currentProjection;
   }
+  get selection(): CanonicalSelection | null {
+    return this.currentSelection;
+  }
   get version(): number {
     return this.currentVersion;
   }
@@ -472,9 +664,12 @@ class CanonicalSession {
     this.breakUndoGroup();
   }
 
-  private checkState(state: EditorState): Result<void, CanonicalSessionError> {
+  private checkState(
+    state: EditorState,
+    projection = this.projection,
+  ): Result<void, CanonicalSessionError> {
     if (this.isComposing) return refuse("Composition must finish before committing another edit.");
-    if (!state.doc.eq(this.projection.doc)) {
+    if (!state.doc.eq(projection.doc)) {
       return refuse("The input uses a stale canonical projection.");
     }
     return Result.ok(undefined);
@@ -482,9 +677,19 @@ class CanonicalSession {
 
   prepareReplace(
     state: EditorState,
-    { from, to, text, semantic = "replacement", time = Date.now() }: CanonicalReplaceTextInput,
+    {
+      from,
+      to,
+      text,
+      story = OP_STORIES.MAIN,
+      semantic = "replacement",
+      time = Date.now(),
+    }: CanonicalReplaceTextInput,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const checked = this.checkState(state);
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const projection = projected.value;
+    const checked = this.checkState(state, projection);
     if (checked.isErr()) return checked;
     if (!Number.isFinite(time)) return refuse("The input time is invalid.");
     if (state.storedMarks !== null && state.storedMarks.length > 0) {
@@ -494,9 +699,9 @@ class CanonicalSession {
       return refuse("Canonical input accepts a well-formed text replacement.");
     }
     if (from === to && text.length === 0) return refuse("The input makes no text change.");
-    const start = this.projection.inputAddressAt(from);
+    const start = projection.inputAddressAt(from);
     if (start.isErr()) return start;
-    const end = this.projection.inputAddressAt(to);
+    const end = projection.inputAddressAt(to);
     if (end.isErr()) return end;
     const run =
       state.selection.empty &&
@@ -568,9 +773,25 @@ class CanonicalSession {
     state: EditorState,
     { intent, ...journal }: IntentInputOptions,
   ): Result<CanonicalCommit, CanonicalSessionError> {
-    const checked = this.checkState(state);
+    const story = (() => {
+      switch (intent.type) {
+        case "replaceText":
+          return intent.from.story;
+        case "splitParagraph":
+          return intent.at.story;
+        case "joinParagraphs":
+          return intent.story;
+        default: {
+          const unreachable: never = intent;
+          return panic(`Unknown canonical intent ${unreachable}`);
+        }
+      }
+    })();
+    const projected = this.projectStory(story);
+    if (projected.isErr()) return projected;
+    const checked = this.checkState(state, projected.value);
     if (checked.isErr()) return checked;
-    const preSelection = this.projection.selectionAt(state);
+    const preSelection = projected.value.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     const ids = this.allocateIntentIds(this.document, intent);
     const mode =
@@ -593,6 +814,7 @@ class CanonicalSession {
     return this.prepareJournalled({
       state,
       ops: compiled.value.ops,
+      story,
       ...journal,
       preSelection: preSelection.value,
       postSelection: {
@@ -624,7 +846,7 @@ class CanonicalSession {
     // Resolution can retire the selected paragraph; choose a valid result anchor before staging.
     const applied = applyDocumentOps(this.document, ops);
     if (applied.isErr()) return refuse(applied.error.message);
-    const projected = project(applied.value.document, this.styles);
+    const projected = project({ document: applied.value.document, styles: this.styles });
     if (projected.isErr()) return projected;
     const surviving = projected.value.paragraph(preSelection.value.head.blockId);
     const first = applied.value.document.package.document.content.at(0);
@@ -649,9 +871,11 @@ class CanonicalSession {
     semantic = "structure",
     time = Date.now(),
     grouping = "isolated",
+    story = preSelection.anchor.story,
   }: JournalInputOptions): Result<CanonicalCommit, CanonicalSessionError> {
     return this.stage({
       state,
+      story,
       ops,
       selection: postSelection,
       origin: "input",
@@ -687,11 +911,71 @@ class CanonicalSession {
     });
   }
 
-  prepareUndo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
+  projectStory(story: OpStory): Result<CanonicalProjection, CanonicalSessionError> {
+    if (story === OP_STORIES.MAIN) return Result.ok(this.projection);
+    const key = storyProjectionKey(story);
+    const body = findStoryBody(this.currentDocument, story);
+    if (body === undefined) {
+      this.storyProjections.delete(key);
+      return refuse("The canonical story no longer exists.");
+    }
+    const cached = this.storyProjections.get(key);
+    const theme = this.currentDocument.package.theme;
+    if (cached?.content === body.content && cached.theme === theme)
+      return Result.ok(cached.projection);
+    const projected = project({ document: this.currentDocument, styles: this.styles, story });
+    if (projected.isOk())
+      this.storyProjections.set(key, { content: body.content, theme, projection: projected.value });
+    return projected;
+  }
+
+  prepareOperations(
+    state: EditorState,
+    ops: readonly DocumentOp[],
+  ): Result<CanonicalCommit, CanonicalSessionError> {
+    if (ops.length === 0) return refuse("The operation batch is empty.");
+    const selected = this.projection.selectionAt(state);
+    if (selected.isErr()) return selected;
+    return this.stage({
+      state,
+      ops,
+      selection: selected.value,
+      origin: "input",
+      onPublish: (inverse, version) => {
+        this.applied.push({
+          entries: [
+            {
+              type: "applied",
+              ops,
+              inverse,
+              preSelection: selected.value,
+              postSelection: selected.value,
+              version,
+              origin: "input",
+              semantic: "structure",
+              grouping: "isolated",
+              time: Date.now(),
+              boundary: this.groupingBoundary,
+            },
+          ],
+          undo: { type: "entries" },
+          preSelection: selected.value,
+          postSelection: selected.value,
+        });
+        this.undone.length = 0;
+      },
+    });
+  }
+
+  prepareUndo(
+    state: EditorState,
+    story: OpStory = OP_STORIES.MAIN,
+  ): Result<CanonicalCommit, CanonicalSessionError> {
     const group = this.applied.at(-1);
     if (group === undefined) return refuse("There is no canonical edit to undo.");
     return this.stage({
       state,
+      story,
       ops:
         group.undo.type === "replayed"
           ? group.undo.inverse
@@ -706,11 +990,15 @@ class CanonicalSession {
     });
   }
 
-  prepareRedo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
+  prepareRedo(
+    state: EditorState,
+    story: OpStory = OP_STORIES.MAIN,
+  ): Result<CanonicalCommit, CanonicalSessionError> {
     const undone = this.undone.at(-1);
     if (undone === undefined) return refuse("There is no canonical edit to redo.");
     return this.stage({
       state,
+      story,
       ops: undone.redoOps,
       selection: undone.group.postSelection,
       origin: "redo",
@@ -733,12 +1021,27 @@ class CanonicalSession {
     selection,
     origin,
     onPublish,
+    story = OP_STORIES.MAIN,
+    previousProjection,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
-    const checked = this.checkState(state);
+    const previous =
+      previousProjection === undefined ? this.projectStory(story) : Result.ok(previousProjection);
+    if (previous.isErr()) return previous;
+    const checked = this.checkState(state, previous.value);
     if (checked.isErr()) return checked;
     const applied = applyDocumentOps(this.currentDocument, ops);
     if (applied.isErr()) return refuse(applied.error.message);
-    preservePropertySources({ target: applied.value.document, source: this.document });
+    const changed = changedStories({
+      document: applied.value.document,
+      previous: this.currentDocument,
+    });
+    if (!supportsSeed(applied.value.document, changed))
+      return refuse("The operations produce unsupported canonical story content.");
+    preservePropertySources({
+      target: applied.value.document,
+      source: this.currentDocument,
+      stories: changed,
+    });
     const stagedSources = new Map(this.sourceOwners);
     for (const op of ops) {
       if (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK) continue;
@@ -750,27 +1053,34 @@ class CanonicalSession {
       const source = stagedSources.get(block.paraId);
       if (source && block !== source) copyParagraphPropertySource(block, source);
     }
-    const projected = project(applied.value.document, this.styles);
+    const projectedStory = findStoryBody(applied.value.document, story) ? story : OP_STORIES.MAIN;
+    const projected = project({
+      document: applied.value.document,
+      styles: this.styles,
+      story: projectedStory,
+    });
     if (projected.isErr()) return projected;
-    const anchor = projected.value.positionAt(selection.anchor);
-    if (anchor.isErr()) return anchor;
-    const head = projected.value.positionAt(selection.head);
-    if (head.isErr()) return head;
+    const bodyProjection = (() => {
+      if (sameStory(projectedStory, OP_STORIES.MAIN)) return projected;
+      if (ops.some(operationChangesBodyProjection))
+        return project({ document: applied.value.document, styles: this.styles });
+      return Result.ok(this.currentProjection);
+    })();
+    if (bodyProjection.isErr()) return bodyProjection;
     const transaction = state.tr;
     const structureChanged =
       applied.value.touched.inserted.length > 0 || applied.value.touched.removed.length > 0;
     if (structureChanged) {
       transaction.replaceWith(0, transaction.doc.content.size, projected.value.doc.content);
     } else {
-      const changed = applied.value.touched.modified
-        .map((blockId) => {
-          const paragraph = this.projection.paragraph(blockId);
-          if (paragraph === undefined)
-            panic("Canonical input reported an unknown touched paragraph.");
-          return paragraph;
+      const modifiedParagraphs = applied.value.touched.modified
+        .flatMap((blockId) => {
+          const paragraph = previous.value.paragraph(blockId);
+          // A journal entry can modify another story while this view stays active.
+          return paragraph === undefined ? [] : [paragraph];
         })
         .sort((left, right) => right.start - left.start);
-      for (const oldParagraph of changed) {
+      for (const oldParagraph of modifiedParagraphs) {
         const nextParagraph = projected.value.paragraph(oldParagraph.blockId);
         if (nextParagraph === undefined)
           return refuse("The operation changed paragraph structure.");
@@ -782,13 +1092,25 @@ class CanonicalSession {
       }
     }
     if (!transaction.doc.eq(projected.value.doc))
-      return refuse("The operation changed unsupported projection content.");
-    transaction.setSelection(TextSelection.create(transaction.doc, anchor.value, head.value));
+      transaction.replaceWith(0, transaction.doc.content.size, projected.value.doc.content);
+    if (sameStory(selection.anchor.story, story) && sameStory(selection.head.story, story)) {
+      const anchor = projected.value.positionAt(selection.anchor);
+      const head = projected.value.positionAt(selection.head);
+      if (anchor.isOk() && head.isOk())
+        transaction.setSelection(TextSelection.create(transaction.doc, anchor.value, head.value));
+      else
+        transaction.setSelection(
+          TextSelection.near(
+            transaction.doc.resolve(Math.min(state.selection.anchor, transaction.doc.content.size)),
+          ),
+        );
+    }
     transaction.setMeta(CANONICAL_PROJECTION_META, {
       type: "canonical",
       origin,
       version: this.version + 1,
     });
+    if (ops.some(operationChangesPackage)) markPackageChange(transaction);
     transaction.setMeta("addToHistory", false);
     const baseVersion = this.version;
     const baseBoundary = this.groupingBoundary;
@@ -801,6 +1123,7 @@ class CanonicalSession {
       transaction,
       document: applied.value.document,
       projection: projected.value,
+      bodyProjection: bodyProjection.value,
       touched: applied.value.touched,
       version: baseVersion + 1,
       origin,
@@ -812,8 +1135,18 @@ class CanonicalSession {
           return refuse("The staged canonical projection was changed after preparation.");
         }
         this.rememberSources(applied.value.document);
+        if (projectedStory !== OP_STORIES.MAIN) {
+          const body = findStoryBody(applied.value.document, projectedStory);
+          if (body === undefined) panic("A staged story projection lost its source.");
+          this.storyProjections.set(storyProjectionKey(projectedStory), {
+            content: body.content,
+            theme: applied.value.document.package.theme,
+            projection: projected.value,
+          });
+        }
+        this.currentSelection = selection;
         this.currentDocument = applied.value.document;
-        this.currentProjection = projected.value;
+        this.currentProjection = bodyProjection.value;
         this.currentVersion = baseVersion + 1;
         onPublish(applied.value.inverse, this.currentVersion);
         return Result.ok(undefined);
@@ -830,7 +1163,7 @@ export const createCanonicalSession = (
 ): Result<CanonicalSession, CanonicalSessionError> => {
   if (!supportsSeed(document)) {
     return refuse(
-      "Canonical sessions currently require main-story text paragraphs without secondary stories or inline atoms.",
+      "Canonical sessions currently require plain paragraphs and note references without revisions.",
     );
   }
   const owned = cloneDocumentWithParagraphPropertySources(document);
@@ -838,7 +1171,7 @@ export const createCanonicalSession = (
   preservePropertySources({ target: normalized, source: owned });
   const validated = validateOpsDocument(normalized);
   if (validated.isErr()) return refuse(validated.error.message);
-  const projected = project(normalized, styles);
+  const projected = project({ document: normalized, styles });
   if (projected.isErr()) return projected;
   return Result.ok(
     new CanonicalSession({ document: normalized, projection: projected.value, styles }),
@@ -871,13 +1204,12 @@ const visibleDeletionContext = (state: EditorState) => {
     if (paragraphIndex < first || paragraphIndex > last) return;
     paragraph.forEach((node, offset) => {
       if (node.marks.some((mark) => mark.type.name === "deletion")) return;
-      if (!node.isText) panic("Canonical deletion encountered an inline atom.");
-      const value = node.text ?? "";
+      const value = node.isText ? (node.text ?? "") : "\uFFFC";
       for (let unit = 0; unit < value.length; unit += 1) {
         const position = paragraphOffset + 1 + offset + unit;
         physicalGaps[text.length] = position;
         text += value.charAt(unit);
-        physicalGaps.push(position + 1);
+        physicalGaps.push(position + (node.isText ? 1 : node.nodeSize));
         if (position < selection.from) visibleOffset += 1;
       }
     });
@@ -903,6 +1235,12 @@ export const deletionRange = (
   if (!(selection instanceof TextSelection))
     return refuse("Canonical deletion requires a text selection.");
   if (!selection.empty) return Result.ok({ from: selection.from, to: selection.to });
+  const parent = selection.$from.parent;
+  const offset = selection.$from.parentOffset;
+  const adjacent =
+    direction === "backward" ? parent.childBefore(offset).node : parent.childAfter(offset).node;
+  if (adjacent?.type.name === "noteMarker")
+    return refuse("Automatic note marks cannot be deleted as characters.");
   const { text, physicalGaps, visibleOffset } = visibleDeletionContext(state);
   if (splitsSurrogatePair(text, visibleOffset))
     return refuse("The deletion would split a surrogate pair.");

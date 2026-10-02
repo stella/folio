@@ -359,6 +359,48 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   if (terminalResult.isErr()) throw terminalResult.error;
   out.push(toOpEnvelope(terminalOp));
   for (const inverse of terminalResult.value.inverse) out.push(toOpEnvelope(inverse));
+  const lifecycleOps = [
+    {
+      type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "footer", rId: "rIdFooter" },
+      referenceType: "first",
+      content: [{ type: "paragraph", paraId: "000000A1", content: [] }],
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: { footnotePr: { numStart: 2 } },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "footer", rId: "rIdFooter" },
+      referenceType: "first",
+    },
+    {
+      type: DOCUMENT_OP_TYPES.ADD_NOTE,
+      at: at("00000002", 0),
+      note: {
+        type: "footnote",
+        id: 1,
+        content: [{ type: "paragraph", paraId: "000000A2", content: [] }],
+      },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+      at: at("00000002", 0),
+      story: { kind: "footnote", id: 1 },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  let lifecycleDocument: Document = { package: { document: { content: [second] } } };
+  for (const op of lifecycleOps) {
+    const applied = applyDocumentOp(lifecycleDocument, op);
+    if (applied.isErr()) throw applied.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
+    lifecycleDocument = applied.value.document;
+  }
   return out;
 };
 

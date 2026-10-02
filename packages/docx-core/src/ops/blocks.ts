@@ -20,7 +20,10 @@ import type {
   Section,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
-import { OP_STORIES, type OpStory, type SectionViewEntry } from "./types";
+import type { OpStory, SectionViewEntry } from "./types";
+import { storyBody, replaceStoryBody } from "./stories";
+
+export { storyBody } from "./stories";
 
 /** One step from a block list down to a block list nested in one of its blocks. */
 type BlockListStep =
@@ -70,18 +73,6 @@ const collectParagraphs = (
         const unreachable: never = block;
         return unreachable;
       }
-    }
-  }
-};
-
-/** The block-level content of a story. */
-export const storyBody = (document: Document, story: OpStory): DocumentBody => {
-  switch (story) {
-    case OP_STORIES.MAIN:
-      return document.package.document;
-    default: {
-      const unreachable: never = story;
-      return unreachable;
     }
   }
 };
@@ -466,12 +457,5 @@ export const replaceParagraphs = ({
         ? deriveSections(content, body.sections)
         : rebuildSections({ document, content, previous: body.sections });
   }
-  switch (story) {
-    case OP_STORIES.MAIN:
-      return { ...document, package: { ...document.package, document: nextBody } };
-    default: {
-      const unreachable: never = story;
-      return unreachable;
-    }
-  }
+  return replaceStoryBody({ document, story, body: nextBody });
 };

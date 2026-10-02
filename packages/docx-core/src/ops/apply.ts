@@ -1,3 +1,6 @@
+import { noteContentWithAutomaticMark } from "./noteMarks";
+import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
+import { documentStories, findStoryBody, sameStory } from "./stories";
 /**
  * Apply a document operation and record its exact inverse.
  *
@@ -102,6 +105,7 @@ import {
   splitAt,
 } from "./inline";
 import {
+  leafSpans,
   childNodes,
   defaultInsertionGap,
   type Gap,
@@ -142,6 +146,8 @@ import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
   PROPERTY_REVIEW_POLICIES,
+  type AddNoteOp,
+  type RemoveNoteOp,
   type DeleteRangeOp,
   type DocumentOp,
   type InsertContentOp,
@@ -345,7 +351,7 @@ const locateRange = (
   from: TextPosition,
   to: TextPosition,
 ): Result<LocatedRange, DocumentOpRefusal> => {
-  if (from.story !== to.story || idKey(from.blockId) !== idKey(to.blockId)) {
+  if (!sameStory(from.story, to.story) || idKey(from.blockId) !== idKey(to.blockId)) {
     return Result.err(
       refusal(
         op,
@@ -1957,8 +1963,158 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
   });
 };
 
+const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => {
+  const kind = op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.type : op.story.kind;
+  const id = op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.id : op.story.id;
+  if (!Number.isInteger(id) || id <= 0)
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+      "A normal note needs a positive integer id.",
+    );
+  const collection = kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+  if (op.type === DOCUMENT_OP_TYPES.ADD_NOTE) {
+    if (collection?.some((note) => note.id === id))
+      return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION, "The note id is already used.");
+    if (op.note.noteType !== undefined && op.note.noteType !== "normal")
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A reference can only create a normal note.",
+      );
+    if (op.note.content.length === 0)
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+        "A note needs an addressable paragraph.",
+      );
+    const note = structuredClone(op.note);
+    const paragraphs = storyParagraphs({ content: note.content });
+    const markers = paragraphs
+      .flatMap(({ paragraph }) => leafSpans(paragraph.content))
+      .filter(({ node }) => node.type === "noteMarker");
+    if (
+      markers.length > 1 ||
+      markers.some(({ node }) => node.type === "noteMarker" && node.kind !== kind)
+    )
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A note needs one matching automatic reference mark.",
+      );
+    note.content = noteContentWithAutomaticMark({ note, customMark: false });
+    const withNote: Document =
+      note.type === "footnote"
+        ? {
+            ...document,
+            package: {
+              ...document.package,
+              footnotes: [...(document.package.footnotes ?? []), note],
+            },
+          }
+        : {
+            ...document,
+            package: {
+              ...document.package,
+              endnotes: [...(document.package.endnotes ?? []), note],
+            },
+          };
+    const valid = validateOpsDocument(withNote);
+    if (valid.isErr()) return refuse(op, valid.error.reason, valid.error.message);
+    const reference = insertContent(withNote, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: op.at,
+      slice: {
+        content: [
+          {
+            type: "run",
+            content: [{ type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id }],
+          },
+        ],
+        openStart: 0,
+        openEnd: 0,
+      },
+    });
+    if (reference.isErr()) return reference;
+    return storyLifecycleEdit(document, reference.value.document, op);
+  }
+  const note = collection?.find((candidate) => candidate.id === id);
+  if (!note)
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "The note does not exist.");
+  const located = locateRange(document, op, op.at, { ...op.at, offset: op.at.offset + 1 });
+  if (located.isErr()) return Result.err(located.error);
+  const matching = leafSpans(located.value.location.paragraph.content).some(
+    ({ node, before, after }) =>
+      before.offset === op.at.offset &&
+      after.offset === op.at.offset + 1 &&
+      ((kind === "footnote" && node.type === "footnoteRef") ||
+        (kind === "endnote" && node.type === "endnoteRef")) &&
+      node.id === id,
+  );
+  if (!matching)
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The position does not name the note reference.",
+    );
+  const removed = deleteRange(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+    from: op.at,
+    to: { ...op.at, offset: op.at.offset + 1 },
+  });
+  if (removed.isErr()) return removed;
+  const stillReferenced = documentStories(removed.value.document).some((story) => {
+    if (typeof story !== "string" && story.kind === kind && "id" in story && story.id === id)
+      return false;
+    return storyParagraphs(storyBody(removed.value.document, story)).some(({ paragraph }) =>
+      leafSpans(paragraph.content).some(
+        ({ node }) =>
+          ((kind === "footnote" && node.type === "footnoteRef") ||
+            (kind === "endnote" && node.type === "endnoteRef")) &&
+          node.id === id,
+      ),
+    );
+  });
+  if (stillReferenced)
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "Another reference still owns this note.",
+    );
+  const next =
+    kind === "footnote"
+      ? {
+          ...removed.value.document,
+          package: {
+            ...removed.value.document.package,
+            footnotes:
+              removed.value.document.package.footnotes?.filter(
+                (candidate) => candidate.id !== id,
+              ) ?? [],
+          },
+        }
+      : {
+          ...removed.value.document,
+          package: {
+            ...removed.value.document.package,
+            endnotes:
+              removed.value.document.package.endnotes?.filter((candidate) => candidate.id !== id) ??
+              [],
+          },
+        };
+  return storyLifecycleEdit(document, next, op);
+};
+
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return applyStoryLifecycle(document, op);
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+      return editNote(document, op);
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
       return deleteBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
@@ -2021,6 +2177,12 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
       return op.revision;
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
@@ -2044,14 +2206,19 @@ const recordedRevisions = (
   stamp: RevisionStamp,
 ): number[] => {
   const touched = new Set([...edit.touched.modified, ...edit.touched.inserted].map(idKey));
-  const paragraphs = storyParagraphs(edit.document.package.document)
+  const paragraphs = documentStories(edit.document)
+    .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = new Set(packageIdentityKeys(before.package));
   const revisions = stampedRevisionIds(paragraphs, stamp, known);
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
-    ...stampedTableRowRevisionIds(edit.document.package.document.content, stamp, known),
+    ...documentStories(edit.document)
+      .map((story) =>
+        stampedTableRowRevisionIds(storyBody(edit.document, story).content, stamp, known),
+      )
+      .flat(),
   );
   return revisions;
 };
@@ -2074,6 +2241,25 @@ export const applyDocumentOp = (
       return Result.err(
         refusal(op, DOCUMENT_OP_REFUSAL_REASONS.STALE, "The derived section metadata changed."),
       );
+  }
+  const addressed = (() => {
+    if ("at" in op && typeof op.at === "object" && "story" in op.at) return op.at.story;
+    if ("from" in op) return op.from.story;
+    if ("story" in op) return op.story;
+    return undefined;
+  })();
+  if (
+    addressed !== undefined &&
+    op.type !== DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER &&
+    !findStoryBody(document, addressed)
+  ) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        "The addressed story does not exist.",
+      ),
+    );
   }
   const stamp = stampOf(op);
   const badStamp = stamp === undefined ? undefined : stampRefusal(document, op, stamp);

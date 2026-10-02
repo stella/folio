@@ -45,6 +45,11 @@ import {
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
 import { useDragAutoScroll } from "./useDragAutoScroll";
+import {
+  createCanonicalHeaderFooterOperation,
+  removeCanonicalHeaderFooterOperations,
+  type DocumentOp,
+} from "@stll/folio-core/controller/canonicalOperations";
 import { viewportPosition } from "../utils/viewportPosition";
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
@@ -86,7 +91,8 @@ export type UsePagesPointerOptions = {
   hyperlinkPopupData: Ref<HyperlinkPopupData | null>;
   readOnly: Ref<boolean>;
   showHeaderFooterEditing: Ref<boolean>;
-  onHeaderFooterEditAttempt?: (() => boolean) | undefined;
+  getExperimentalSession?: () => "canonical" | undefined;
+  applyCanonicalOperations?: (operations: readonly DocumentOp[]) => boolean;
   zoom: Ref<number>;
   layout: Ref<Layout | null>;
   tableResize: TableResizeApi;
@@ -445,10 +451,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     const footerEl = target.closest<HTMLElement>(".layout-page-footer");
     const hfEl = headerEl ?? footerEl;
     if (!hfEl) return;
-    if (!opts.showHeaderFooterEditing.value) {
-      opts.onHeaderFooterEditAttempt?.();
-      return;
-    }
+    if (!opts.showHeaderFooterEditing.value) return;
 
     const position: "header" | "footer" = headerEl ? "header" : "footer";
 
@@ -464,14 +467,30 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     let rId = pickActiveHeaderFooterRId(resolution, position, isFirstPage);
 
     if (!rId) {
-      const materialized = createEmptyHeaderFooter(doc, position, isFirstPage);
+      let materialized: Document | null;
+      if (opts.getExperimentalSession?.() === "canonical") {
+        const sectionIndex = opts.layout.value?.pages.at(pageNumber - 1)?.sectionIndex;
+        const operation = createCanonicalHeaderFooterOperation({
+          document: doc,
+          position,
+          referenceType: isFirstPage ? "first" : "default",
+          ...(sectionIndex === undefined ? {} : { sectionIndex }),
+        });
+        if (!opts.applyCanonicalOperations?.([operation])) return;
+        materialized = opts.getDocument();
+        rId = operation.story.rId;
+      } else {
+        materialized = createEmptyHeaderFooter(doc, position, isFirstPage);
+        if (materialized) {
+          opts.setDocument(materialized);
+        }
+      }
       if (!materialized) return;
-      opts.setDocument(materialized);
       opts.syncHfPMs();
       opts.reLayout();
-      opts.onDocumentChange(materialized);
+      if (opts.getExperimentalSession?.() !== "canonical") opts.onDocumentChange(materialized);
       resolution = resolveHeaderFooterContent(materialized.package);
-      rId = pickActiveHeaderFooterRId(resolution, position, isFirstPage);
+      rId ??= pickActiveHeaderFooterRId(resolution, position, isFirstPage);
     }
     if (!rId) return;
     const activeRId = rId;
@@ -512,8 +531,9 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleHfSave() {
-    if (opts.onHeaderFooterEditAttempt?.()) {
+    if (opts.getExperimentalSession?.() === "canonical") {
       hfEdit.value = null;
+      opts.syncHfPMs();
       return;
     }
     saveAndCloseHeaderFooterEdit({
@@ -528,14 +548,22 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function handleHfRemove() {
-    if (opts.onHeaderFooterEditAttempt?.()) {
-      hfEdit.value = null;
-      return;
-    }
     const doc = opts.getDocument();
     const edit = hfEdit.value;
     if (!doc?.package || !edit || !edit.rId) {
       hfEdit.value = null;
+      return;
+    }
+    if (opts.getExperimentalSession?.() === "canonical") {
+      const operations = removeCanonicalHeaderFooterOperations({
+        document: doc,
+        position: edit.position,
+        rId: edit.rId,
+      });
+      if (!opts.applyCanonicalOperations?.(operations)) return;
+      hfEdit.value = null;
+      opts.syncHfPMs();
+      opts.reLayout();
       return;
     }
     // Actually remove the header/footer: drop the part from the headers/footers

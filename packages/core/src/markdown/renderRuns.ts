@@ -340,6 +340,8 @@ function renderRunContent(
         ).marker;
         break;
       }
+      case "noteMarker":
+        break;
       case "drawing": {
         // Preferred path: resolve via the package's rels → media chain. That
         // returns raw bytes, so we register a stable virtual path and expose

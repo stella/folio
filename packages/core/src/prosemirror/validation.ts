@@ -1,3 +1,4 @@
+import { readNoteMarkerAttrs } from "../internal/noteMarkerAttrs";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 
 import type { PositionedBookmarkMarker } from "../types/document";
@@ -397,6 +398,10 @@ const validateNodeAttrs = (
 
     case "symbol":
       appendAttrIssues(path, readSymbolAttrs(node), issues);
+      return;
+
+    case "noteMarker":
+      appendAttrIssues(path, readNoteMarkerAttrs(node), issues);
       return;
 
     case "preservedXml":
