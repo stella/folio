@@ -12,6 +12,8 @@ export const normalizeFailureMessage = (message: string): string =>
     .replace(/[:\s]+$/u, "")
     .trim();
 
+// `shape` and `mode` describe each family; only the message identifies it.
+
 const semanticClasses = [
   {
     pattern: /listLevel is .*expected/u,
@@ -78,32 +80,75 @@ const semanticClasses = [
   },
 ] as const;
 
-export const failureClass = (test: string, assertion: string) => {
-  const consumer = /^consumer flow (.+) \/ (.+)$/u.exec(test);
-  const flow = consumer?.[1] ?? test;
-  const mode = consumer?.[2] ?? "all";
-  const semantic =
-    consumer === null ? undefined : semanticClasses.find(({ pattern }) => pattern.test(assertion));
+const MANUAL_AREAS = new Set(["Table input", "Tracked revisions", "Document operations"]);
+const TEST_NAME_LIMIT = 80;
+
+/** The test's own name, without the file it lives in. */
+const shortTestName = (test: string): string => {
+  const name = (test.split("::").at(-1) ?? test).replace(/\s+/gu, " ").trim();
+  return name.length > TEST_NAME_LIMIT ? `${name.slice(0, TEST_NAME_LIMIT - 1)}…` : name;
+};
+
+type Semantic = { area: string; message: string };
+const semanticOf = (assertion: string): Semantic | undefined =>
+  semanticClasses.find(({ pattern }) => pattern.test(assertion));
+
+const consumerClass = (
+  semantic: Semantic | undefined,
+  assertion: string,
+  fixture: string,
+  mode: string,
+) => {
   const message = semantic?.message ?? normalizeFailureMessage(assertion);
-  const manualAreas = ["Table input", "Tracked revisions", "Document operations"];
-  let area = "Fuzz checks";
-  if (consumer !== null) area = "Consumer flow";
-  if (manualAreas.includes(test)) area = test;
-  if (semantic !== undefined) area = semantic.area;
-  const kind = consumer === null ? normalizeFailureMessage(test) : "consumer-flow";
-  // Known cross-mode oracles name their own family; unknown failures keep the
-  // fixture and mode so unrelated assertions are never collapsed accidentally.
-  const key = JSON.stringify([kind, semantic?.shape ?? flow, semantic?.mode ?? mode, message]);
-  return { key, area, message, flow, mode };
+  const area = semantic?.area ?? "Consumer flow";
+  // One failure is one class wherever it shows: the fixture and the mode are
+  // rows of the report, not part of its identity.
+  const key = JSON.stringify(["consumer-flow", message]);
+  return { key, area, message, flow: "", fixture, mode, title: `${area}: ${message}` };
+};
+
+export type FailureClass = ReturnType<typeof consumerClass>;
+
+export const failureClass = (test: string, assertion: string): FailureClass => {
+  const consumer = /^consumer flow (.+) \/ (.+)$/u.exec(test);
+  if (consumer !== null) {
+    return consumerClass(semanticOf(assertion), assertion, consumer[1] ?? "", consumer[2] ?? "all");
+  }
+  const message = normalizeFailureMessage(assertion);
+  const manual = MANUAL_AREAS.has(test);
+  const area = manual ? test : "Fuzz checks";
+  // Other checks are told apart by the test that failed (file and name), and
+  // the title names the test so two tests never share one.
+  const key = JSON.stringify(["fuzz-check", test, message]);
+  const title = manual ? `${test}: ${message}` : `${area}: ${shortTestName(test)}: ${message}`;
+  return { key, area, message, flow: test, fixture: "", mode: "all", title };
+};
+
+/**
+ * The current key of a class marker. Markers written while fixtures and modes
+ * were part of the key carried four parts: kind, fixture or test, mode, message.
+ */
+export const upgradeClassKey = (parts: readonly string[]): string => {
+  if (parts.length !== 4) return JSON.stringify(parts);
+  return parts[0] === "consumer-flow"
+    ? JSON.stringify(["consumer-flow", parts[3]])
+    : JSON.stringify(["fuzz-check", parts[1], parts[3]]);
 };
 
 /** Legacy automated and human titles remain discoverable until they close. */
-export const classOfTitle = (title: string) => {
+export const classOfTitle = (title: string): FailureClass | null => {
   const automated = /^Fuzz failure \[[0-9a-f]{16}\]: (consumer flow .+? \/ [^:]+): (.*)$/u.exec(
     title,
   );
   if (automated !== null) return failureClass(automated[1] ?? "", automated[2] ?? "");
   const colon = title.indexOf(": ");
   if (colon < 0) return null;
-  return failureClass(title.slice(0, colon), title.slice(colon + 2));
+  const area = title.slice(0, colon);
+  const rest = title.slice(colon + 2);
+  if (area === "Consumer flow") return consumerClass(semanticOf(rest), rest, "", "all");
+  const named = semanticClasses.find(
+    (semantic) => semantic.area === area && semantic.message === rest,
+  );
+  if (named !== undefined) return consumerClass(named, rest, "", "all");
+  return failureClass(area, rest);
 };
