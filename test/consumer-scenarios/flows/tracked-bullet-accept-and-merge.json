@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "trackedChanges",
+  "mode": "tracked-changes",
+  "seed": 1026397197,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1338526882,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "0A88C0B1",
+          "text": "Agreement party supplier invoice term.",
+          "numbering": {
+            "start": "new",
+            "kind": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "accept all",
+      "seed": 1714597764
+    },
+    {
+      "action": "story batch",
+      "seed": 4114059415,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "1188CBB6",
+          "separator": " "
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from unpin+splice+reseed of 716b1e669abc7a9b",
+  "title": "PINNED #1466, reported seed 1026398924: inserted bullet accepted before a tracked merge must remain saveable"
+}

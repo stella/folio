@@ -1631,6 +1631,116 @@
       "fingerprint": "608356ec399f6db2",
       "issueOrPr": "#1410",
       "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "8c86306234fb8e29",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "82bb4a9c6ba2beb9",
+        "title": "consumer flow comments / tracked-changes: changes re-segment after save",
+        "reportSeed": 1785651632,
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "comments",
+          "mode": "tracked-changes",
+          "seed": 1785651632,
+          "steps": [
+            {
+              "action": "mistake",
+              "seed": 2921440578
+            },
+            {
+              "action": "save and reopen",
+              "seed": 1465945647
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 3297511460,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1308F7CE"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 1402004450,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1608FC87",
+                  "quote": "invoice",
+                  "comment": {
+                    "text": "Warranty delivery period invoice schedule agreement."
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1785651632"
+        }
+      }
+    },
+    {
+      "fingerprint": "82bb4a9c6ba2beb9",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "73c7b924a911a13a",
+      "issueOrPr": "#1384",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1384,
+        "primary": "3fd5801d7296db3e",
+        "title": "consumer flow unusedNumbering / tracked-changes: heading properties are lost",
+        "reportSeed": 1785651826,
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "unusedNumbering",
+          "mode": "tracked-changes",
+          "seed": 694344246,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 2766522247,
+              "operations": [
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "1608FC87",
+                  "properties": {
+                    "styleId": "Heading2"
+                  }
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                }
+              ]
+            }
+          ],
+          "origin": "shrunk from reseed+dropOperation of b4d3b9d93f02c1f2"
+        }
+      }
+    },
+    {
+      "fingerprint": "3fd5801d7296db3e",
+      "issueOrPr": "#1384",
+      "firstSeen": "2026-10-02"
     }
   ]
 }
