@@ -1420,8 +1420,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
 
     useEffect(() => {
-      if (readOnly) noteEditorRef.current?.close();
-    }, [readOnly]);
+      if (readOnly || experimentalSession === "canonical") noteEditorRef.current?.close();
+    }, [experimentalSession, readOnly]);
 
     const getCanonicalApi = useCallback(() => hiddenPMRef.current, []);
 
@@ -4534,6 +4534,10 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           if (story) {
             e.preventDefault();
             e.stopPropagation();
+            if (experimentalSession === "canonical") {
+              handleSessionRefusal("Footnote and endnote editing is unavailable in this session.");
+              return;
+            }
             noteEditorRef.current?.open(story);
             return;
           }
@@ -5704,12 +5708,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           return folioEditor.getView();
         },
         getActiveView() {
+          if (experimentalSession === "canonical") return folioEditor.getView();
           return getActiveEditorStory().view;
         },
         closeNoteStory() {
           noteEditorRef.current?.close();
         },
         getHfView(rId: string) {
+          if (experimentalSession === "canonical") return null;
           return hfPMsRef.current?.getView(rId) ?? null;
         },
         ensureView(options?: { focus?: boolean }) {

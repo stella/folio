@@ -97,6 +97,10 @@
       "if": "needs.ci-plan.outputs.suite_depth == 'full'"
     },
     {
+      "run": "bun scripts/generate-fuzz-schema.ts check",
+      "if": null
+    },
+    {
       "run": "bun run check:identity-attributes",
       "if": "needs.ci-plan.outputs.suite_depth == 'full'"
     },

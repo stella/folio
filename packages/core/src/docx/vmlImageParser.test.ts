@@ -41,6 +41,7 @@ type PictDocxOptions = {
 async function pictDocx(options: PictDocxOptions): Promise<ArrayBuffer> {
   const imageRel = options.imageRel ?? true;
   const withMedia = options.media ?? true;
+  const withControl = options.runXml.includes('r:id="rIdControl"');
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -50,6 +51,7 @@ async function pictDocx(options: PictDocxOptions): Promise<ArrayBuffer> {
   <Default Extension="xml" ContentType="application/xml"/>
   <Default Extension="png" ContentType="image/png"/>
   <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+${withControl ? '  <Override PartName="/word/activeX/activeX1.xml" ContentType="application/vnd.ms-office.activeX+xml"/>' : ""}
 </Types>`,
   );
   zip.file(
@@ -64,6 +66,7 @@ async function pictDocx(options: PictDocxOptions): Promise<ArrayBuffer> {
     `${XML}
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 ${imageRel ? `  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Target="media/image1.png"/>` : ""}
+${withControl ? '  <Relationship Id="rIdControl" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/control" Target="activeX/activeX1.xml"/>' : ""}
 </Relationships>`,
   );
   zip.file(
@@ -78,6 +81,12 @@ ${imageRel ? `  <Relationship Id="rIdImg" Type="${RELATIONSHIP_TYPES.image}" Tar
   );
   if (withMedia) {
     zip.file("word/media/image1.png", ONE_PIXEL_PNG_BASE64, { base64: true });
+  }
+  if (withControl) {
+    zip.file(
+      "word/activeX/activeX1.xml",
+      `${XML}<ax:ocx xmlns:ax="http://schemas.microsoft.com/office/2006/activeX" ax:classid="{D7053240-CE69-11CD-A777-00DD01143C57}" ax:persistence="persistPropertyBag"/>`,
+    );
   }
   zip.file(
     "word/styles.xml",
@@ -360,10 +369,13 @@ describe("VML w:pict inline images", () => {
 
   test("preserves an embedded object wrapper when saving its preview", async () => {
     const original = await pictDocx({ runXml: OBJECT_WITH_PREVIEW });
+    expect(await validateDocx(original)).toEqual({ valid: true, errors: [], warnings: [] });
     const doc = await parseDocx(original, { preloadFonts: false });
     const out = await repackDocx(doc, { updateModifiedDate: false });
 
-    expect((await validateDocx(out)).valid).toBe(true);
+    const validation = await validateDocx(out);
+    expect(validation.errors).toEqual([]);
+    expect(validation.valid).toBe(true);
     const zip = await JSZip.loadAsync(out);
     const docXml = await zip.file("word/document.xml")!.async("text");
     expect(docXml).toContain("<w:object");

@@ -131,6 +131,7 @@
       "name": "@stll/docx-core",
       "version": "0.30.1",
       "dependencies": {
+        "@nodable/entities": "^3.0.0",
         "@stll/docx-utils": "^0.1.0",
         "better-result": "3.0.1",
         "fast-xml-parser": "^5.10.1",

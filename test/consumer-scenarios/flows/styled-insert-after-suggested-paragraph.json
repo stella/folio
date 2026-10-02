@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "suggested",
+  "seed": 1026398694,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3361917783,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "217C8875",
+          "text": "Payment payment party goods agreement written notice clause."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3482223877,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@4",
+          "text": "Schedule period warranty payment warranty notice agreement.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from random flow seed 1026398694",
+  "title": "PINNED #1453, reported seed 1026398694: styled insert after a suggested paragraph"
+}

@@ -1,6 +1,8 @@
 import { panic } from "better-result";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import JSZip from "jszip";
+import { validatePackageGraph } from "./packageGraph";
+import { validateSchemaAttributes } from "./schemaAttributes";
 
 import {
   isOoxmlSymbolCharacter,
@@ -41,6 +43,8 @@ declare module "jszip" {
 export const DOCX_PACKAGE_ISSUE_CODES = {
   ArchiveBoundsExceeded: "archive_bounds_exceeded",
   InvalidArchive: "invalid_archive",
+  InvalidPackageGraph: "invalid_package_graph",
+  InvalidSchemaAttribute: "invalid_schema_attribute",
   InvalidDocumentRoot: "invalid_document_root",
   MissingNumberingPart: "missing_numbering_part",
   MissingPackagePart: "missing_package_part",
@@ -431,6 +435,41 @@ export const validateDocxPackage = async (
       };
     }
 
+    const parts = new Map<string, string>();
+    if (documentXml) parts.set("word/document.xml", documentXml);
+    if (documentRelsXml) parts.set("word/_rels/document.xml.rels", documentRelsXml);
+    const paths = new Set<string>();
+    for (const entry of Object.values(zip.files)) {
+      if (entry.dir) continue;
+      paths.add(entry.name);
+      if (!entry.name.endsWith(".xml") && !entry.name.endsWith(".rels")) continue;
+      let xml = parts.get(entry.name);
+      if (xml === undefined) {
+        const read = await readEntryWithinBounds(entry, VALIDATE_DOCX_MAX_DOCUMENT_XML_BYTES);
+        if (!read.ok)
+          return {
+            valid: false,
+            code: DOCX_PACKAGE_ISSUE_CODES.ArchiveBoundsExceeded,
+            error: read.error,
+          };
+        xml = new TextDecoder().decode(read.bytes);
+      }
+      const issue = validateSchemaAttributes(xml);
+      if (issue)
+        return {
+          valid: false,
+          code: DOCX_PACKAGE_ISSUE_CODES.InvalidSchemaAttribute,
+          error: `${entry.name}: ${issue}`,
+        };
+      parts.set(entry.name, xml);
+    }
+    const graphIssue = validatePackageGraph(parts, paths);
+    if (graphIssue)
+      return {
+        valid: false,
+        code: DOCX_PACKAGE_ISSUE_CODES.InvalidPackageGraph,
+        error: graphIssue,
+      };
     return { valid: true };
   } catch (error) {
     return {

@@ -101,6 +101,8 @@ export const DOCX_CONFORMANCE_CLASSES: Readonly<{
 export const DOCX_PACKAGE_ISSUE_CODES: {
     readonly ArchiveBoundsExceeded: "archive_bounds_exceeded";
     readonly InvalidArchive: "invalid_archive";
+    readonly InvalidPackageGraph: "invalid_package_graph";
+    readonly InvalidSchemaAttribute: "invalid_schema_attribute";
     readonly InvalidDocumentRoot: "invalid_document_root";
     readonly MissingNumberingPart: "missing_numbering_part";
     readonly MissingPackagePart: "missing_package_part";
