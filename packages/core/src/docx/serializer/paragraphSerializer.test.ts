@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { InvalidOoxmlNumericIdError } from "@stll/docx-core";
 
 import { parseParagraph } from "../paragraphParser";
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
@@ -465,7 +466,7 @@ describe("serializeParagraph tracked-change hardening", () => {
     expect(xml).not.toContain("w:date=");
   });
 
-  test("folds an out-of-range revision id into the signed 32-bit range (eigenpal #1093)", () => {
+  test("rejects an out-of-range revision id before modulo normalization can alias another change", () => {
     // A `Date.now()`-derived id (~1.8e12) is a well-formed positive integer, so
     // the invalid/negative guard used to pass it straight through to `w:id`.
     const paragraph: Paragraph = {
@@ -479,28 +480,7 @@ describe("serializeParagraph tracked-change hardening", () => {
       ],
     };
 
-    const xml = serializeParagraph(paragraph);
-    const id = Number(/<w:ins w:id="(\d+)"/u.exec(xml)?.[1]);
-    expect(id).toBeLessThanOrEqual(2_147_483_647);
-    expect(id).toBeGreaterThanOrEqual(0);
-  });
-
-  test("keeps distinct out-of-range ids distinct so revisions do not merge", () => {
-    const idFor = (id: number): string => {
-      const paragraph: Paragraph = {
-        type: "paragraph",
-        content: [
-          {
-            type: "insertion",
-            info: { id, author: "Reviewer" },
-            content: [{ type: "run", content: [{ type: "text", text: "Added" }] }],
-          },
-        ],
-      };
-      return /<w:ins w:id="(\d+)"/u.exec(serializeParagraph(paragraph))?.[1] ?? "";
-    };
-
-    expect(idFor(1_784_212_345_678)).not.toBe(idFor(1_784_212_345_679));
+    expect(() => serializeParagraph(paragraph)).toThrow(InvalidOoxmlNumericIdError);
   });
 });
 

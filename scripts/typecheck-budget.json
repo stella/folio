@@ -9,15 +9,15 @@
   },
   "react": {
     "types": 198533,
-    "instantiations": 366919
+    "instantiations": 385491
   },
   "agents": {
     "types": 131161,
     "instantiations": 147674
   },
   "cli": {
-    "types": 172716,
-    "instantiations": 238404
+    "types": 181365,
+    "instantiations": 247046
   },
   "editor-web": {
     "types": 196858,
@@ -36,12 +36,12 @@
     "instantiations": 280391
   },
   "playground-vue": {
-    "types": 216352,
+    "types": 230416,
     "instantiations": 910970
   },
   "parity": {
     "types": 118724,
-    "instantiations": 130829
+    "instantiations": 137622
   },
   "reserved-values": {
     "types": 7571,

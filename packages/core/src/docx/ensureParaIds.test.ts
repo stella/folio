@@ -186,9 +186,11 @@ describe("ensureParaIds", () => {
     const first = await ensureParaIds(input);
     const second = await ensureParaIds(first.docx);
 
+    expect(first.mintedParaIds).toEqual(collectIds(await getPart(first.docx, "word/document.xml")));
     expect(second.alreadyComplete).toBe(true);
     expect(second.assigned).toBe(0);
     expect(second.deduplicated).toBe(0);
+    expect(second.mintedParaIds).toEqual([]);
     // Byte-identical by construction: the very same buffer comes back.
     expect(second.docx).toBe(first.docx);
   });
@@ -209,6 +211,7 @@ describe("ensureParaIds", () => {
     expect(ids[0]).toBe("1A2B3C4D");
     expect(ids[1]).toMatch(/^[0-9A-F]{8}$/u);
     expect(ids[1]).not.toBe("1A2B3C4D");
+    expect(result.mintedParaIds).toEqual([ids[1]!]);
   });
 
   test("treats the reserved all-zero paraId as unassigned", async () => {
@@ -243,6 +246,7 @@ describe("ensureParaIds", () => {
     expect(ids[1]).not.toBe("ABCD1234");
     expect(ids[1]).toMatch(/^[0-9A-F]{8}$/u);
     expect(collectTextIds(xml)[0]).toBe(ids[1]);
+    expect(result.mintedParaIds).toEqual([ids[1]!]);
   });
 
   test("ignores comments, CDATA, and processing instructions during the XML scan", async () => {

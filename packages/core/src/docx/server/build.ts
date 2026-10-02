@@ -7,6 +7,10 @@
  * serializer owns the OOXML.
  */
 
+import { assertValidOoxmlNumericId } from "@stll/docx-core";
+import { mintBookmarkId, reserveBookmarkIds } from "../bookmarkIds";
+import { mintEndnoteId } from "../noteIds";
+
 import { TaggedError } from "better-result";
 
 import type { ShadingProperties } from "../../types/colors";
@@ -160,11 +164,18 @@ type BookmarkOptions = {
   id?: number;
 };
 
-let nextBookmarkId = 0;
-
 /** `content` wrapped in a named bookmark, the target of `hyperlink({ anchor })`. */
 export const bookmark = ({ name, content, id }: BookmarkOptions): ParagraphContent[] => {
-  const bookmarkId = id ?? nextBookmarkId++;
+  if (id !== undefined) {
+    assertValidOoxmlNumericId({
+      value: id,
+      partPath: "word/document.xml",
+      elementName: "w:bookmarkStart",
+      attributeName: "w:id",
+    });
+    reserveBookmarkIds([id]);
+  }
+  const bookmarkId = id ?? mintBookmarkId();
   const start: BookmarkStart = { type: "bookmarkStart", id: bookmarkId, name };
   const end: BookmarkEnd = { type: "bookmarkEnd", id: bookmarkId };
   return [start, ...content, end];
@@ -331,7 +342,7 @@ export const table = ({
 export const endnote = (doc: Document, content: string | Paragraph[]): Run => {
   const endnotes = doc.package.endnotes ?? [];
   doc.package.endnotes = endnotes;
-  const id = Math.max(0, ...endnotes.map((note) => note.id)) + 1;
+  const id = mintEndnoteId(endnotes.map((note) => note.id));
   const body =
     typeof content === "string"
       ? [paragraph(content, { styleId: ENDNOTE_TEXT_STYLE_ID })]

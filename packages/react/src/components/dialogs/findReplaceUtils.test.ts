@@ -1,8 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { GlobalRegistrator } from "@happy-dom/global-registrator";
+
+GlobalRegistrator.register();
+
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 
 import type { Document } from "@stll/folio-core/types/document";
 import { replaceTextInDocument } from "@stll/folio-core/utils/replaceText";
 import { createDefaultFindOptions, findInDocument, scrollToMatch } from "./findReplaceUtils";
+
+afterAll(() => GlobalRegistrator.unregister());
 
 const createTableDocument = (): Document => ({
   package: {
@@ -190,64 +196,45 @@ describe("Folio find and replace", () => {
     expect(matches[0]?.endOffset).toBe(9);
   });
 
-  test("scrolls to rendered layout paragraphs when legacy paragraph indexes are absent", () => {
-    let scrolled = false;
-    const second = {
-      scrollIntoView: () => {
-        scrolled = true;
-      },
-    };
-    const paragraphs = {
-      item: (index: number) => (index === 1 ? second : null),
-    };
-    const container = {
-      querySelector: (selector: string) => {
-        if (selector.includes('data-block-id="block-2"')) {
-          return second;
-        }
-        return null;
-      },
-      querySelectorAll: () => paragraphs,
-    };
+  for (const lookup of ["generated-block-id", "paragraph-order"] as const) {
+    test(`find scrolling resolves the editor root through ${lookup}`, () => {
+      const host = document.createElement("div");
+      const container = document.createElement("div");
+      container.setAttribute("data-folio-scroll", "");
+      Object.defineProperty(container, "clientHeight", { value: 300 });
+      container.getBoundingClientRect = () => new DOMRect(0, 100, 800, 300);
+      const paragraphs = [document.createElement("p"), document.createElement("p")];
+      for (const paragraph of paragraphs) paragraph.className = "layout-paragraph";
+      const second = paragraphs[1];
+      if (lookup === "generated-block-id") second.dataset["blockId"] = "block-2";
+      second.getBoundingClientRect = () => new DOMRect(0, 700, 400, 40);
+      container.append(...paragraphs);
+      host.append(container);
+      host.scrollTop = 77;
+      const scroll = spyOn(container, "scrollTo").mockImplementation(() => {});
+      scrollToMatch(container, {
+        paragraphIndex: 1,
+        contentIndex: 0,
+        startOffset: 0,
+        endOffset: 6,
+        text: "Inside",
+      });
+      expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ top: 470 }));
+      scroll.mockRestore();
+      expect(host.scrollTop).toBe(77);
+    });
+  }
 
-    // SAFETY: scrollToMatch only uses querySelector/querySelectorAll and
-    // scrollIntoView; this fake keeps the browser-dependent test deterministic.
-    scrollToMatch(container as unknown as HTMLElement, {
+  test("missing rendered find matches do not throw or move the root", () => {
+    const container = document.createElement("div");
+    container.setAttribute("data-folio-scroll", "");
+    scrollToMatch(container, {
       paragraphIndex: 1,
       contentIndex: 0,
       startOffset: 0,
       endOffset: 6,
       text: "Inside",
     });
-
-    expect(scrolled).toBe(true);
-  });
-
-  test("falls back to rendered paragraph order if generated block ids drift", () => {
-    let scrolled = false;
-    const second = {
-      scrollIntoView: () => {
-        scrolled = true;
-      },
-    };
-    const paragraphs = {
-      item: (index: number) => (index === 1 ? second : null),
-    };
-    const container = {
-      querySelector: () => null,
-      querySelectorAll: () => paragraphs,
-    };
-
-    // SAFETY: scrollToMatch only uses querySelector/querySelectorAll and
-    // scrollIntoView; this fake keeps the browser-dependent test deterministic.
-    scrollToMatch(container as unknown as HTMLElement, {
-      paragraphIndex: 1,
-      contentIndex: 0,
-      startOffset: 0,
-      endOffset: 6,
-      text: "Inside",
-    });
-
-    expect(scrolled).toBe(true);
+    expect(container.scrollTop).toBe(0);
   });
 });

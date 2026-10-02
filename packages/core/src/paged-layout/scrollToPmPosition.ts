@@ -18,7 +18,8 @@ import type { EditorView } from "prosemirror-view";
 
 import { findBodyPmAnchor, findBodyPmAnchors } from "../layout-bridge/dom/findBodyPmSpans";
 import { findPageShellForPmPos } from "../layout-painter/renderPage";
-import { isValidPmScrollPosition, prefersReducedMotionBehavior } from "./scrollNavigation";
+import { getEditorScrollRoot, scrollEditorElementIntoView } from "./editorScrollRoot";
+import { isValidPmScrollPosition } from "./scrollNavigation";
 
 /** Class on the pages container `PagedEditor` paints into. */
 export const PAGES_CONTAINER_CLASS = "paged-editor__pages";
@@ -38,10 +39,7 @@ export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: numbe
   // instead of jumping straight to the target.
   const exact = findBodyPmAnchor(pageContainer, pmPos);
   if (exact) {
-    exact.scrollIntoView({
-      behavior: prefersReducedMotionBehavior(),
-      block: "center",
-    });
+    scrollEditorElementIntoView(exact);
     return;
   }
 
@@ -62,10 +60,7 @@ export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: numbe
     }
   }
   if (runMatch) {
-    runMatch.scrollIntoView({
-      behavior: prefersReducedMotionBehavior(),
-      block: "center",
-    });
+    scrollEditorElementIntoView(runMatch);
     return;
   }
 
@@ -84,20 +79,14 @@ export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: numbe
     return;
   }
   const { element: shell } = shellHit;
-  shell.scrollIntoView({
-    behavior: prefersReducedMotionBehavior(),
-    block: "center",
-  });
+  scrollEditorElementIntoView(shell);
 
   let attempts = 0;
   const refine = () => {
     attempts++;
     const exactInShell = findBodyPmAnchor(shell, pmPos);
     if (exactInShell) {
-      exactInShell.scrollIntoView({
-        behavior: prefersReducedMotionBehavior(),
-        block: "center",
-      });
+      scrollEditorElementIntoView(exactInShell);
       return;
     }
     let bestEl: HTMLElement | null = null;
@@ -119,10 +108,7 @@ export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: numbe
       }
     }
     if (bestEl) {
-      bestEl.scrollIntoView({
-        behavior: prefersReducedMotionBehavior(),
-        block: "center",
-      });
+      scrollEditorElementIntoView(bestEl);
       return;
     }
     // IntersectionObserver populates on the next tick; give it
@@ -144,7 +130,7 @@ export const scrollPagesToPmPosition = (pageContainer: HTMLElement, pmPos: numbe
  * callers can fall back to coordinate-based scrolling.
  */
 export const scrollFolioPositionIntoView = (view: EditorView, pmPos: number): boolean => {
-  const scrollContainer = view.dom.closest("[data-folio-scroll]");
+  const scrollContainer = getEditorScrollRoot(view.dom);
   const pageContainer =
     scrollContainer?.querySelector<HTMLElement>(`.${PAGES_CONTAINER_CLASS}`) ?? null;
   if (!pageContainer) {

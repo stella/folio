@@ -35,17 +35,38 @@ export default defineConfig({
     {
       name: "interactions",
       testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
-      testIgnore: /browser-input-fuzz\.interactions\.spec\.ts/u,
+      testIgnore: /(?:browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
     },
-    { name: "browser-fuzzer", testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u },
+    {
+      name: "browser-fuzzer",
+      testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
+    },
+    {
+      name: "interleaving-fuzzer",
+      testMatch: /ai-human-interleaving-fuzz\.interactions\.spec\.ts/u,
+    },
     // Measure/paint parity compares two numbers read from the SAME browser in
     // the same layout pass, so unlike the screenshot baselines it cannot go
     // flaky on cross-machine font rendering, and it is safe to gate CI on.
     { name: "measure-parity", testMatch: /measure(?:-backend)?-parity\.spec\.ts/u },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
-    { name: "parity", testDir: "./tests/parity" },
-    { name: "vue", testDir: "./tests/parity", grep: /\[vue\]/u },
+    {
+      name: "parity",
+      testDir: "./tests/parity",
+      testIgnore: /(?:cross-host|host-api)-flow\.spec\.ts/u,
+    },
+    {
+      name: "parity-fuzzer",
+      testDir: "./tests/parity",
+      testMatch: /(?:cross-host|host-api)-flow\.spec\.ts/u,
+    },
+    {
+      name: "vue",
+      testDir: "./tests/parity",
+      grep: /\[vue\]/u,
+      testIgnore: /(?:cross-host|host-api)-flow\.spec\.ts/u,
+    },
   ],
   // Start both playground dev servers automatically (reused if already running).
   // The React server backs the visual/interaction suites; the Vue server backs

@@ -92,6 +92,11 @@ export type EnsureParaIdsResult = {
   deduplicated: number;
   /** True when the input already had full, unique coverage. */
   alreadyComplete: boolean;
+  /**
+   * Every id this pass wrote (assigned or deduplicated), in scan order. An id
+   * absent from this list was already the package's own.
+   */
+  mintedParaIds: readonly string[];
 };
 
 /** Controls mutation of package metadata that has security implications. */
@@ -340,6 +345,7 @@ const mintParaId = (context: MintContext, partPath: string, ordinal: number): st
 
 type PartScanResult = {
   edits: SpliceEdit[];
+  minted: string[];
   assigned: number;
   deduplicated: number;
   /** Paragraphs outside `mc:Fallback` the scan saw, with or without an id. */
@@ -360,6 +366,7 @@ const scanPart = (
   seen: Set<string>,
 ): PartScanResult => {
   const edits: SpliceEdit[] = [];
+  const minted: string[] = [];
   const w14 = spelling.w14Prefix;
   let assigned = 0;
   let deduplicated = 0;
@@ -391,6 +398,7 @@ const scanPart = (
         });
       }
       assigned += 1;
+      minted.push(id);
       seen.add(id);
       continue;
     }
@@ -416,10 +424,11 @@ const scanPart = (
     } else {
       deduplicated += 1;
     }
+    minted.push(id);
     seen.add(id);
   }
 
-  return { edits, assigned, deduplicated, paragraphs: ordinal };
+  return { edits, minted, assigned, deduplicated, paragraphs: ordinal };
 };
 
 /**
@@ -613,6 +622,7 @@ const ensureParaIdsInternal = async (
   }
 
   const updates = new Map<string, string>();
+  const mintedParaIds: string[] = [];
   let assigned = 0;
   let deduplicated = 0;
 
@@ -630,6 +640,11 @@ const ensureParaIdsInternal = async (
     }
     assigned += scan.assigned;
     deduplicated += scan.deduplicated;
+    // One push per id: spreading a large part's ids as arguments can exceed
+    // the engine's argument limit.
+    for (const id of scan.minted) {
+      mintedParaIds.push(id);
+    }
     updates.set(
       partPath,
       applySplices(
@@ -641,7 +656,13 @@ const ensureParaIdsInternal = async (
   }
 
   if (updates.size === 0) {
-    return { docx: toUint8Array(docx), assigned: 0, deduplicated: 0, alreadyComplete: true };
+    return {
+      docx: toUint8Array(docx),
+      assigned: 0,
+      deduplicated: 0,
+      alreadyComplete: true,
+      mintedParaIds: [],
+    };
   }
 
   // Only the write-back path needs a raw JSZip (signature detection, writing
@@ -673,7 +694,7 @@ const ensureParaIdsInternal = async (
     compressionOptions: { level: 6 },
   });
 
-  return { docx: output, assigned, deduplicated, alreadyComplete: false };
+  return { docx: output, assigned, deduplicated, alreadyComplete: false, mintedParaIds };
 };
 
 /**

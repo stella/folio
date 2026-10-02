@@ -42,6 +42,16 @@ export { compileMarkdownToContent } from "./markdown/content";
 export type { MarkdownContent } from "./markdown/content";
 export { sanitizeExternalUrl } from "./markdown/href";
 export { serializeDocumentToDocx } from "./serialize/docx";
+export {
+  assertValidOoxmlNumericId,
+  assertValidOoxmlNumericIds,
+  isValidOoxmlNumericId,
+  mayContainInvalidOoxmlNumericIds,
+  mayContainOoxmlNumericIds,
+  isOoxmlNumericIdAttributeName,
+  ooxmlNumericIdDomain,
+  InvalidOoxmlNumericIdError,
+} from "./serialize/numericIds";
 export { pushOnOffElement, serializeOnOffElement } from "./serialize/xml";
 export {
   escapeXmlAttribute,

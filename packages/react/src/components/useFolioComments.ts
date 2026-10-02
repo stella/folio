@@ -26,8 +26,10 @@ import { isValidHexId } from "@stll/folio-core/utils/hexId";
 import {
   PENDING_COMMENT_ID,
   countOpenCommentThreads,
+  createComment as buildComment,
   getCommentAuthorKey,
   getCommentParentId,
+  seedCommentIdAbove,
 } from "./commentsHelpers";
 
 /**
@@ -111,6 +113,16 @@ export function useFolioComments({
   const isControlledComments = sanitizedCommentsProp !== undefined;
   const comments = isControlledComments ? sanitizedCommentsProp : internalComments;
 
+  // Reserve before browser events can mint comments, including controlled replies.
+  useLayoutEffect(() => {
+    for (const { id } of doc?.package.document.comments ?? []) {
+      seedCommentIdAbove(id);
+    }
+    for (const { id } of comments) {
+      seedCommentIdAbove(id);
+    }
+  }, [comments, doc]);
+
   const commentsDirtyRef = useRef(false);
   // Render-level mirror of `comments`: reassigned from state on every render,
   // so an imperative write anywhere else is overwritten by the next render and
@@ -123,6 +135,19 @@ export function useFolioComments({
   const onCommentsChangeRef = useRef(onCommentsChange);
   onCommentsChangeRef.current = onCommentsChange;
 
+  const createComment = useCallback(
+    (text: string, author: string, parentId?: number) => {
+      for (const { id } of doc?.package.document.comments ?? []) {
+        seedCommentIdAbove(id);
+      }
+      for (const { id } of commentsRef.current) {
+        seedCommentIdAbove(id);
+      }
+      return buildComment(text, author, parentId);
+    },
+    [doc],
+  );
+
   const setComments = useCallback(
     (next: Comment[] | ((prev: Comment[]) => Comment[])) => {
       const resolved =
@@ -131,6 +156,9 @@ export function useFolioComments({
           : next;
       if (resolved === commentsRef.current) {
         return;
+      }
+      for (const { id } of resolved) {
+        seedCommentIdAbove(id);
       }
       // The owning setter: the ref write is paired with the state update below
       // (or, when controlled, with the host applying `onCommentsChange`), so
@@ -299,6 +327,7 @@ export function useFolioComments({
   return {
     comments,
     setComments,
+    createComment,
     isControlledComments,
     commentsRef: readonlyCommentsRef,
     commentsDirtyRef,
