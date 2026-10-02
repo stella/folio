@@ -21,6 +21,31 @@ export const applyDocumentOp: (document: Document_2, op: DocumentOp) => Result<A
 // @public
 export const applyDocumentOps: (document: Document_2, ops: readonly DocumentOp[]) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
+// @public (undocumented)
+export const BATCH_REJECTION_REASONS: {
+    readonly INVALID_BATCH: "invalidBatch";
+    readonly UNSUPPORTED_SCHEMA: "unsupportedSchema";
+    readonly UNSUPPORTED_PAIR: "unsupportedPair";
+    readonly CONFLICT: "conflict";
+    readonly STALE_BASE: "staleBase";
+    readonly INVALID_OPERATION: "invalidOperation";
+};
+
+// @public (undocumented)
+export const BATCH_WIRE_OP_TYPES: readonly string[];
+
+// @public (undocumented)
+export class BatchRejection extends BatchRejection_base<{
+    message: string;
+    reason: BatchRejectionReason;
+    opId?: string;
+    opType?: DocumentOpType;
+    overType?: DocumentOpType;
+}> {}
+
+// @public (undocumented)
+export type BatchRejectionReason = (typeof BATCH_REJECTION_REASONS)[keyof typeof BATCH_REJECTION_REASONS];
+
 // @public
 export type BlockInsertionPoint = {
     type: "before";
@@ -28,6 +53,27 @@ export type BlockInsertionPoint = {
 } | {
     type: "after";
     blockId: string;
+};
+
+// @public
+export const createClient: (document: Document_2) => {
+    enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
+    nextSubmission: () => DocumentBatch | undefined;
+    receiveAck: (ack: BatchAck) => void;
+    receiveReject: (rejection: BatchReject) => void;
+    receiveBroadcast: (batch: SequencedBatch) => Result<void, BatchRejection>;
+    readonly document: Document_2;
+    readonly headRev: number;
+    readonly pending: readonly DocumentBatch[];
+    readonly notices: readonly ClientNotice[];
+};
+
+// @public
+export const createSequencer: (document: Document_2) => {
+    submit: (batch: DocumentBatch) => BatchSubmission;
+    readonly document: Document_2;
+    readonly headRev: number;
+    readonly broadcasts: readonly SequencedBatch[];
 };
 
 // @public
@@ -126,6 +172,16 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly DELETE_ROW: "deleteRow";
     readonly SET_TABLE_ROWS: "setTableRows";
 }>;
+
+// @public
+export type DocumentBatch = {
+    schema: typeof DOCUMENT_OP_SCHEMA_VERSION;
+    opId: string;
+    actor: string;
+    baseRev: number;
+    ops: readonly DocumentOp[];
+    revision?: number;
+};
 
 // @public
 export type DocumentOp = DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
@@ -255,6 +311,9 @@ export type JoinInlineOp = {
 };
 
 // @public
+export const MAX_BATCH_WIRE_BYTES: number;
+
+// @public
 export type NewIds = {
     revision?: readonly number[];
     control?: readonly number[];
@@ -292,6 +351,9 @@ export type ParagraphReviewFields = {
     propertyChanges?: ParagraphPropertyChange[];
     pPrMark?: ParagraphMarkChange;
 };
+
+// @public
+export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
 
 // @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
@@ -362,6 +424,12 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public (undocumented)
+export type SequencedBatch = DocumentBatch & {
+    revision: number;
+    effects?: readonly SequencedOpEffect[];
+};
 
 // @public
 export type SetContainerBlocksOp = {
@@ -466,7 +534,16 @@ export type TouchedBlocks = {
 };
 
 // @public
+export const transformBatch: (batch: DocumentBatch, over: readonly SequencedBatch[], options?: TransformOptions) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export const validateDocumentBatch: (value: unknown) => Result<DocumentBatch, BatchRejection>;
+
+// @public
 export const validateOpsDocument: (document: Document_2) => Result<Document_2, DocumentOpsContractError>;
+
+// @public
+export const validateSequencedBatch: (value: unknown) => Result<SequencedBatch, BatchRejection>;
 
 // (No @packageDocumentation comment for this package)
 
