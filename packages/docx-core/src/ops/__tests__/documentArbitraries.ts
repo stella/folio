@@ -507,8 +507,8 @@ const documentArbitraryIn = (mode: DocumentMode): fc.Arbitrary<Document> =>
 /**
  * A synthetic document around blocks. Half share their records between the
  * body and its section view, as the parser builds them; half hold an
- * independently built copy in the view, as a document read back from JSON
- * does. Paragraphs in a comment and a note share the id space.
+ * independently built, structurally equal copy in the view. Paragraphs in a
+ * comment and a note share the id space.
  */
 const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document => {
   const content = normalizeForOps({ package: { document: { content: blocks } } }).package.document
@@ -566,8 +566,12 @@ export const reviewDocumentArbitrary: fc.Arbitrary<Document> = documentArbitrary
 
 /** A structurally equal copy that shares no record with its source. */
 export const independentCopy = <Value>(value: Value): Value => {
-  // SAFETY: JSON round-trips the plain data these fixtures are made of.
-  const copy = JSON.parse(JSON.stringify(value)) as Value;
+  // JSON omits own undefined properties, making the section view disagree
+  // with its canonical content. Rebuild each occurrence independently while
+  // retaining every property, including explicit undefined.
+  const copy = structuredClone(value);
+  if (typeof copy !== "object" || copy === null) return copy;
+  for (const [key, item] of Object.entries(copy)) Reflect.set(copy, key, independentCopy(item));
   return copy;
 };
 

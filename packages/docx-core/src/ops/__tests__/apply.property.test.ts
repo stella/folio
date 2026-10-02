@@ -868,7 +868,7 @@ describe("document operations", () => {
 
   test("an operation's inverse restores the document exactly", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const original = structuredClone(document);
@@ -894,14 +894,14 @@ describe("document operations", () => {
         }
         expectRestores(applied.value, original);
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
 
   test("a sequence's inverses in reverse, and a batch's, restore the document exactly", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(
         documentArbitrary,
         fc.array(opSeedArbitrary, { minLength: 2, maxLength: 8 }),
@@ -942,7 +942,7 @@ describe("document operations", () => {
           expect(wireUndo.value.document).toStrictEqual(original);
         },
       ),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -952,7 +952,7 @@ describe("document operations", () => {
     const refusals = new Map<DocumentOpRefusalReason, number>();
     let attemptedPlans = 0;
     let appliedMultiParagraphFormatting = 0;
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, (document) => {
         const paragraphs = storyParagraphs(document.package.document);
         const first = paragraphs.at(0);
@@ -1106,7 +1106,7 @@ describe("document operations", () => {
           }
         }
       }),
-      propertyConfig({ numRuns: 100 }),
+      { numRuns: 100 },
     );
     for (const kind of [
       "formatParagraph",
@@ -1137,7 +1137,7 @@ describe("document operations", () => {
   test("the same operation on equal documents gives equal results", () => {
     const outcome = (result: ReturnType<typeof applyDocumentOp>) =>
       result.isOk() ? result.value : { refused: result.error.reason };
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         // SAFETY: the operation is plain data; this is the journal's round-trip.
@@ -1148,15 +1148,22 @@ describe("document operations", () => {
         // Rebuilt record by record, sharing nothing: the result must not depend on sharing.
         expect(outcome(applyDocumentOp(independentCopy(document), replayed))).toStrictEqual(first);
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
   });
 
   test("every generated document meets the seed contract", () => {
     fc.assert(
       fc.property(documentArbitrary, (document) => {
+        const copy = independentCopy(document);
+        expect(copy).toStrictEqual(document);
+        expect(copy).not.toBe(document);
+        expect(copy.package.document.content).not.toBe(document.package.document.content);
+        expect(document.package.document.sections?.flatMap(({ content }) => content)).toStrictEqual(
+          document.package.document.content,
+        );
         expect(contractViolation(document)).toBeUndefined();
-        expect(contractViolation(independentCopy(document))).toBeUndefined();
+        expect(contractViolation(copy)).toBeUndefined();
       }),
       propertyConfig({ numRuns: NUM_RUNS }),
     );
@@ -1164,7 +1171,7 @@ describe("document operations", () => {
 
   test("blocks an operation does not touch are the same objects", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const applied = applyDocumentOp(document, op);
@@ -1246,7 +1253,7 @@ describe("document operations", () => {
         expect(body.comments).toBe(document.package.document.comments!);
         expect(next.warnings).toBe(document.warnings!);
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
