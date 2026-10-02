@@ -145,6 +145,8 @@
       </slot>
     </div>
 
+    <div v-if="refusalNotice" class="docx-editor-vue__notice" role="status">{{ refusalNotice }}</div>
+
     <div ref="hiddenPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-pm" />
     <div ref="hiddenHfPmRef" class="docx-editor-vue__hidden-pm paged-editor__hidden-hf-pm" />
 
@@ -493,6 +495,7 @@ import { expectTableAttrs } from "@stll/folio-core/prosemirror/attrs";
 import { getTableContext } from "@stll/folio-core/prosemirror/extensions/nodes/TableExtension";
 import { extractSelectionContext } from "@stll/folio-core/prosemirror/plugins/selectionTracker";
 import { inspectDocxCompatibility } from "@stll/folio-core/docx/compatibility";
+import { useTransientNotice } from "../composables/useTransientNotice";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
@@ -630,12 +633,18 @@ function notifyDocumentChange(doc: Document): void {
   emit("update:document", cloneDocumentWithParagraphPropertySources(doc));
 }
 
+const { message: refusalNotice, show: showRefusalNotice } = useTransientNotice();
+
+function reportEditorError(error: Error): void {
+  if (CanonicalSessionRefusalError.is(error)) showRefusalNotice(error.message);
+  props.onError?.(error);
+  emit("error", error);
+}
+
 function refuseCanonicalModelEdit(message: string): boolean {
   if (props.experimentalSession !== "canonical") return false;
   const error = new CanonicalSessionRefusalError({ message });
-  parseError.value = error.message;
-  props.onError?.(error);
-  emit("error", error);
+  reportEditorError(error);
   return true;
 }
 
@@ -834,10 +843,7 @@ const {
   onSlashMenuChange: (state) => props.onSlashMenuChange?.(state),
   onSlashMenuKeyAction: (action) => props.onSlashMenuKeyAction?.(action) ?? false,
   onChange: notifyDocumentChange,
-  onError: (err) => {
-    props.onError?.(err);
-    emit("error", err);
-  },
+  onError: reportEditorError,
   onSelectionUpdate: (state) => {
     props.onSelectionChange?.(extractSelectionState(state));
     // Selected plain text on every selection-bearing transaction. Atom inline
@@ -1482,9 +1488,7 @@ function setEditorMode(mode: EditorMode): void {
     const error = new CanonicalSessionRefusalError({
       message: "Canonical sessions do not support suggesting mode.",
     });
-    parseError.value = error.message;
-    props.onError?.(error);
-    emit("error", error);
+    reportEditorError(error);
     return;
   }
   if (editorMode.value === mode) {
@@ -1963,6 +1967,10 @@ defineExpose(exposed);
 .docx-editor-vue__error {
   padding: 12px;
   color: var(--destructive, #b00020);
+}
+.docx-editor-vue__notice {
+  padding: 12px;
+  color: var(--foreground);
 }
 .docx-editor-vue__loading,
 .docx-editor-vue__placeholder {
