@@ -1,4 +1,12 @@
 {
+  "packages/core/src/controller/canonicalSession.test.ts::canonical input sequences keep the projection, inverse history and refusal atomic": [
+    {
+      "seed": 1446885207,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Conversion-wide authored run ordinals must refresh shared untouched paragraphs without changing canonical content or inverse history.",
+      "date": "2026-10-02"
+    }
+  ],
   "packages/core/src/controller/canonicalUndoGrouping.test.ts::generated intent sequences restore every group exactly without projection adjacency": [
     {
       "seed": -755367587,

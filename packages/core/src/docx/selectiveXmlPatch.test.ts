@@ -15,6 +15,7 @@ import {
   scanParagraphs,
   type NotePartPatch,
 } from "./selectiveXmlPatch";
+import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 
 const patchedXmlOf = (patch: NotePartPatch): string => {
   if (patch.type !== "patched") {
@@ -775,6 +776,96 @@ test("a selective splice retains locally bound and ignorable replacement extensi
   expect(buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]))).not.toBeNull();
   const rootBound = serialized.replace("<w:document ", '<w:document xmlns:x="urn:wrong" ');
   expect(buildPatchedDocumentXml(SIMPLE_DOC, rootBound, new Set(["AAA111"]))).not.toBeNull();
+});
+
+test("a selective splice scopes Folio run ownership locally and preserves the authored root", () => {
+  const serialized = SIMPLE_DOC.replace(
+    "<w:document ",
+    `<w:document xmlns:mc="${OOXML_NAMESPACES.mc.uri}" xmlns:folio="${OOXML_NAMESPACES.folio.uri}" mc:Ignorable="folio" `,
+  ).replace(
+    "<w:r><w:t>First paragraph",
+    '<w:r folio:splitRunOwner="1:main:1:0"><w:t>First paragraph',
+  );
+  const sourceRootEnd = SIMPLE_DOC.indexOf(">", SIMPLE_DOC.indexOf("<w:document")) + 1;
+  const sourceRoot = SIMPLE_DOC.slice(SIMPLE_DOC.indexOf("<w:document"), sourceRootEnd);
+  expect(validatePatchSafety(SIMPLE_DOC, serialized, new Set(["AAA111"]))).toEqual({ safe: true });
+  const patched = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]));
+
+  expect(patched).not.toBeNull();
+  if (patched === null) throw new Error("expected Folio run ownership namespace transfer");
+  expect(
+    patched.slice(
+      patched.indexOf("<w:document"),
+      patched.indexOf(">", patched.indexOf("<w:document")) + 1,
+    ),
+  ).toBe(sourceRoot);
+  expect(patched).toContain(
+    `<w:p w14:paraId="AAA111" w14:textId="T1" xmlns:folio="${OOXML_NAMESPACES.folio.uri}" xmlns:mc="${OOXML_NAMESPACES.mc.uri}" mc:Ignorable="folio">`,
+  );
+  expect(patched).toContain('folio:splitRunOwner="1:main:1:0"');
+});
+
+test("local Folio scope keeps existing paragraph compatibility declarations", () => {
+  const serialized = SIMPLE_DOC.replace(
+    "<w:document ",
+    `<w:document xmlns:mc="${OOXML_NAMESPACES.mc.uri}" xmlns:folio="${OOXML_NAMESPACES.folio.uri}" mc:Ignorable="folio" `,
+  )
+    .replace(
+      '<w:p w14:paraId="AAA111" w14:textId="T1">',
+      `<w:p xmlns:mc="${OOXML_NAMESPACES.mc.uri}" mc:Ignorable="w14" w14:paraId="AAA111" w14:textId="T1">`,
+    )
+    .replace(
+      "<w:r><w:t>First paragraph",
+      '<w:r folio:splitRunOwner="1:main:1:0"><w:t>First paragraph',
+    );
+
+  const patched = buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]));
+  expect(patched).not.toBeNull();
+  expect(patched).toContain('mc:Ignorable="w14 folio"');
+  expect(patched).toContain(`xmlns:folio="${OOXML_NAMESPACES.folio.uri}"`);
+});
+
+test("a later splice retains a source paragraph's local Folio compatibility scope", () => {
+  const original = SIMPLE_DOC.replace(
+    '<w:p w14:paraId="AAA111" w14:textId="T1">',
+    `<w:p xmlns:mc="${OOXML_NAMESPACES.mc.uri}" xmlns:folio="${OOXML_NAMESPACES.folio.uri}" mc:Ignorable="folio" w14:paraId="AAA111" w14:textId="T1">`,
+  ).replace(
+    "<w:r><w:t>First paragraph",
+    '<w:r folio:splitRunOwner="1:main:1:0"><w:t>First paragraph',
+  );
+  const serialized = SIMPLE_DOC.replace(
+    "<w:document ",
+    `<w:document xmlns:mc="${OOXML_NAMESPACES.mc.uri}" xmlns:folio="${OOXML_NAMESPACES.folio.uri}" mc:Ignorable="folio" `,
+  )
+    .replace(
+      '<w:p w14:paraId="AAA111" w14:textId="T1">',
+      '<w:p mc:Ignorable="folio" w14:paraId="AAA111" w14:textId="T1">',
+    )
+    .replace("First paragraph", "First changed paragraph")
+    .replace(/ folio:splitRunOwner="[^"]*"/gu, "");
+
+  const patched = buildPatchedDocumentXml(original, serialized, new Set(["AAA111"]));
+  expect(patched).not.toBeNull();
+  expect(patched).toContain('<w:p mc:Ignorable="folio" w14:paraId="AAA111" w14:textId="T1"');
+  expect(patched).toContain(`xmlns:folio="${OOXML_NAMESPACES.folio.uri}"`);
+  expect(patched).toContain(`xmlns:mc="${OOXML_NAMESPACES.mc.uri}"`);
+  expect(patched).toContain("First changed paragraph");
+});
+
+test("Folio run ownership scope refuses a rebound authored prefix", () => {
+  const original = SIMPLE_DOC.replace(
+    "<w:document ",
+    `<w:document xmlns:mc="${OOXML_NAMESPACES.mc.uri}" xmlns:folio="urn:authored:foreign" mc:Ignorable="folio" `,
+  );
+  const serialized = SIMPLE_DOC.replace(
+    "<w:document ",
+    `<w:document xmlns:mc="${OOXML_NAMESPACES.mc.uri}" xmlns:folio="${OOXML_NAMESPACES.folio.uri}" mc:Ignorable="folio" `,
+  ).replace(
+    "<w:r><w:t>First paragraph",
+    '<w:r folio:splitRunOwner="1:main:1:0"><w:t>First paragraph',
+  );
+
+  expect(buildPatchedDocumentXml(original, serialized, new Set(["AAA111"]))).toBeNull();
 });
 
 test("a selective splice rejects an unbound replacement prefix", () => {

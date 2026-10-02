@@ -1,5 +1,6 @@
 import { panic, Result, TaggedError } from "better-result";
 import type { Node as PMNode } from "prosemirror-model";
+import { Fragment } from "prosemirror-model";
 import { TextSelection, type EditorState, type Transaction } from "prosemirror-state";
 import {
   applyDocumentOps,
@@ -20,6 +21,9 @@ import {
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
+import { expectRunIdentityMarkAttrs } from "../prosemirror/attrs";
+import { readRunSplitOwner, withRunSplitOwner } from "../docx/runSplitProvenance";
 import type { Document, Paragraph, StyleDefinitions, TextFormatting } from "../types/document";
 
 export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<{
@@ -44,10 +48,12 @@ type ParagraphAddress = {
 class CanonicalProjection {
   readonly doc: PMNode;
   private readonly paragraphs: readonly ParagraphAddress[];
+  private readonly byBlockId: ReadonlyMap<string, ParagraphAddress>;
 
   constructor(doc: PMNode, paragraphs: readonly ParagraphAddress[]) {
     this.doc = doc;
     this.paragraphs = paragraphs;
+    this.byBlockId = new Map(paragraphs.map((paragraph) => [paragraph.blockId, paragraph]));
   }
 
   addressAt(position: number): Result<TextPosition, CanonicalSessionError> {
@@ -91,7 +97,7 @@ class CanonicalProjection {
   }
 
   paragraph(blockId: string): ParagraphAddress | undefined {
-    return this.paragraphs.find((paragraph) => paragraph.blockId === blockId);
+    return this.byBlockId.get(blockId);
   }
 }
 
@@ -218,6 +224,52 @@ const project = (
     return refuse("The projection changed paragraph structure.");
   }
   return Result.ok(new CanonicalProjection(converted.value, paragraphs));
+};
+
+/** Conversion-wide run ordinals can change even when a paragraph's model is shared. */
+const normalizeRunOrdinals = (paragraph: PMNode, source: Paragraph): PMNode => {
+  const ordinals = new Map<number, number>();
+  const authoredProofScopes = new Set(
+    source.content.flatMap((run) => {
+      if (run.type !== "run") return [];
+      const proof = readRunSplitOwner(run.preservedAttributes);
+      return proof === undefined ? [] : [proof.slice(0, proof.lastIndexOf(":"))];
+    }),
+  );
+  const visit = (node: PMNode): PMNode => {
+    if (node.isText) {
+      return node.mark(
+        node.marks.map((mark) => {
+          if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return mark;
+          const attrs = expectRunIdentityMarkAttrs(mark);
+          let ordinal = ordinals.get(attrs.id);
+          if (ordinal === undefined) {
+            ordinal = ordinals.size;
+            ordinals.set(attrs.id, ordinal);
+          }
+          const proof = readRunSplitOwner(attrs.preservedAttributes);
+          const transientProof =
+            proof !== undefined && !authoredProofScopes.has(proof.slice(0, proof.lastIndexOf(":")));
+          return mark.type.create({
+            ...attrs,
+            id: ordinal,
+            ...(!transientProof
+              ? {}
+              : {
+                  preservedAttributes: withRunSplitOwner(
+                    attrs.preservedAttributes,
+                    proof.replace(/:\d+$/u, `:${ordinal}`),
+                  ),
+                }),
+          });
+        }),
+      );
+    }
+    const children: PMNode[] = [];
+    node.forEach((child) => children.push(visit(child)));
+    return node.copy(Fragment.fromArray(children));
+  };
+  return visit(paragraph);
 };
 
 /** Input intent, never projection-step adjacency, determines the journal partition. */
@@ -587,7 +639,28 @@ class CanonicalSession {
     const head = projected.value.positionAt(selection.head);
     if (head.isErr()) return head;
     const transaction = state.tr;
-    const changed = applied.value.touched.modified
+    const modified = new Set(applied.value.touched.modified);
+    // Refresh private ordinals only for identical canonical paragraph objects.
+    // Unreported model edits, formatting and all other projection changes still refuse.
+    for (const block of this.currentDocument.package.document.content) {
+      if (block.type !== "paragraph" || block.paraId === undefined || modified.has(block.paraId))
+        continue;
+      const previous = this.projection.paragraph(block.paraId);
+      const next = projected.value.paragraph(block.paraId);
+      if (
+        previous === undefined ||
+        next === undefined ||
+        next.source !== previous.source ||
+        previous.node.eq(next.node) ||
+        !normalizeRunOrdinals(previous.node, previous.source).eq(
+          normalizeRunOrdinals(next.node, next.source),
+        )
+      ) {
+        continue;
+      }
+      modified.add(block.paraId);
+    }
+    const changed = [...modified]
       .map((blockId) => {
         const paragraph = this.projection.paragraph(blockId);
         if (paragraph === undefined)

@@ -16,6 +16,7 @@ import type {
   TrackedRunChange,
 } from "../../types/document";
 import { createEmptyDocument } from "../../utils/createDocument";
+import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { fromProseDoc } from "./fromProseDoc";
 import { type ToProseDocOptions, toProseDoc } from "./toProseDoc";
 
@@ -544,7 +545,7 @@ describe("page-break run ownership", () => {
     ]);
   });
 
-  test("keeps ordinary equal-format text run coalescing unchanged", () => {
+  test("preserves authored equal-format runs while coalescing unowned editor text", () => {
     const source = createEmptyDocument();
     source.package.document.content = [
       {
@@ -556,17 +557,39 @@ describe("page-break run ownership", () => {
       },
     ];
 
-    const restored = fromProseDoc(toProseDoc(source), source);
+    const prose = toProseDoc(source);
+    const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), source);
     const paragraph = restored.package.document.content.at(0);
     if (paragraph?.type !== "paragraph") {
       throw new Error("Expected paragraph");
     }
 
-    expect(paragraph.content).toHaveLength(1);
-    expect(paragraph.content.at(0)?.type).toBe("run");
-    if (paragraph.content.at(0)?.type === "run") {
-      expect(paragraph.content.at(0)?.content).toEqual([{ type: "text", text: "AB" }]);
-    }
+    expect(paragraph.content).toHaveLength(2);
+    expect(
+      paragraph.content.map((item) =>
+        item.type === "run"
+          ? {
+              content: item.content,
+              formatting: item.formatting,
+            }
+          : item,
+      ),
+    ).toEqual([
+      { content: [{ type: "text", text: "A" }], formatting: { bold: true } },
+      { content: [{ type: "text", text: "B" }], formatting: { bold: true } },
+    ]);
+
+    const identity = prose.type.schema.marks[RUN_IDENTITY_MARK_NAME];
+    if (!identity) throw new Error("Expected run identity mark");
+    const unowned = new Transform(prose).removeMark(0, prose.content.size, identity).doc;
+    const coalesced = fromProseDoc(unowned, source).package.document.content.at(0);
+    if (coalesced?.type !== "paragraph") throw new Error("Expected paragraph");
+    expect(coalesced.content).toHaveLength(1);
+    expect(coalesced.content.at(0)).toEqual({
+      type: "run",
+      formatting: { bold: true },
+      content: [{ type: "text", text: "AB" }],
+    });
   });
 
   for (const type of WRAPPERS) {

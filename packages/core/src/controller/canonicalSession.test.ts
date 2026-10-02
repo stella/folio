@@ -3,6 +3,9 @@ import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 
 import { schema } from "../prosemirror/schema";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
+import { expectRunIdentityMarkAttrs } from "../prosemirror/attrs";
+import { withRunSplitOwner } from "../docx/runSplitProvenance";
 import { normalizeForOps, DOCUMENT_OP_TYPES, OP_STORIES } from "@stll/docx-core/ops";
 import * as documentOps from "@stll/docx-core/ops";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
@@ -345,6 +348,75 @@ describe("canonical session", () => {
     expect(session.document).toStrictEqual(initial);
     expect(state.doc.eq(initialProjection)).toBe(true);
   });
+
+  test.each(["formatting", "authored run payload", "saved run owner"] as const)(
+    "refreshing run ordinals refuses unreported %s in an untouched paragraph",
+    (mutation) => {
+      const document = seed("ab");
+      const untouched = document.package.document.content.at(1);
+      if (untouched?.type !== "paragraph") panic("Seed paragraph unavailable");
+      untouched.content = [
+        {
+          type: "run",
+          content: [{ type: "text", text: "kept" }],
+          ...(mutation === "saved run owner"
+            ? {
+                preservedAttributes: withRunSplitOwner(undefined, "1:main:1:3"),
+              }
+            : {}),
+        },
+      ];
+      const session = createCanonicalSession(document).unwrap();
+      const state = stateFor(session);
+      const originalDocument = session.document;
+      const convert = conversion.toProseDoc;
+      const injected = spyOn(conversion, "toProseDoc").mockImplementation((model, options) => {
+        const projected = convert(model, options);
+        const paragraphs: (typeof projected)[] = [];
+        projected.forEach((paragraph, _offset, index) => {
+          paragraphs.push(
+            index === 1
+              ? paragraph.type.create(
+                  paragraph.attrs,
+                  schema.text(
+                    paragraph.textContent,
+                    mutation === "formatting"
+                      ? [schema.mark("bold")]
+                      : (paragraph.firstChild?.marks.map((mark) =>
+                          mark.type.name === RUN_IDENTITY_MARK_NAME
+                            ? mark.type.create(
+                                mutation === "saved run owner"
+                                  ? {
+                                      ...mark.attrs,
+                                      preservedAttributes: withRunSplitOwner(
+                                        expectRunIdentityMarkAttrs(mark).preservedAttributes,
+                                        "1:main:1:4",
+                                      ),
+                                    }
+                                  : { ...mark.attrs, emptyFormatting: true },
+                              )
+                            : mark,
+                        ) ?? panic("Missing projected text")),
+                  ),
+                  paragraph.marks,
+                )
+              : paragraph,
+          );
+        });
+        return schema.node("doc", projected.attrs, paragraphs);
+      });
+      try {
+        const prepared = session.prepareReplace(state, { from: 1, to: 1, text: "X" });
+        expect(prepared.isErr() && prepared.error.message).toBe(
+          "The operation changed unsupported projection content.",
+        );
+        expect(session.document).toBe(originalDocument);
+        expect(session.canUndo).toBe(false);
+      } finally {
+        injected.mockRestore();
+      }
+    },
+  );
 
   test("replacement stages immutable model/history and exact inverse restores IDs and selection", () => {
     const session = createCanonicalSession(seed()).unwrap();

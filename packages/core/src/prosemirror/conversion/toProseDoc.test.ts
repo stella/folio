@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { parseSettings } from "../../docx/settingsParser";
 import type { Document, ShadingProperties, TableCell, Theme } from "../../types/document";
+import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 
@@ -2042,17 +2043,50 @@ describe("toProseDoc", () => {
       },
     };
 
-    const sdt = toProseDoc(document).firstChild?.firstChild;
+    const prose = toProseDoc(document);
+    const sdt = prose.firstChild?.firstChild;
     expect(sdt?.type.name).toBe("sdt");
     expect(sdt?.textContent).toBe("addedremoved");
     expect(
       Array.from({ length: sdt?.childCount ?? 0 }, (_, index) =>
-        sdt?.child(index).marks.map((mark) => ({
-          type: mark.type.name,
-          moveKind: mark.attrs.moveKind,
-        })),
+        sdt
+          ?.child(index)
+          .marks.filter((mark) => mark.type.name !== RUN_IDENTITY_MARK_NAME)
+          .map((mark) => ({
+            type: mark.type.name,
+            moveKind: mark.attrs.moveKind,
+          })),
       ),
     ).toEqual([[{ type: "insertion", moveKind: null }], [{ type: "deletion", moveKind: null }]]);
+    expect(sdt?.childCount).toBe(2);
+    const identities = Array.from(
+      { length: sdt?.childCount ?? 0 },
+      (_, index) =>
+        sdt?.child(index).marks.find((mark) => mark.type.name === RUN_IDENTITY_MARK_NAME)?.attrs.id,
+    );
+    expect(identities.every((id) => typeof id === "number")).toBe(true);
+    expect(new Set(identities).size).toBe(2);
+    const restored = fromProseDoc(prose.type.schema.nodeFromJSON(prose.toJSON()), document);
+    const paragraph = restored.package.document.content.at(0);
+    expect(paragraph?.type).toBe("paragraph");
+    if (paragraph?.type !== "paragraph") throw new Error("Expected paragraph");
+    expect(paragraph.content).toHaveLength(1);
+    expect(paragraph.content.at(0)).toMatchObject({
+      type: "inlineSdt",
+      properties: { sdtType: "richText" },
+      content: [
+        {
+          type: "insertion",
+          info: { id: 1, author: "Reviewer" },
+          content: [{ type: "run", content: [{ type: "text", text: "added" }] }],
+        },
+        {
+          type: "deletion",
+          info: { id: 2, author: "Reviewer" },
+          content: [{ type: "run", content: [{ type: "text", text: "removed" }] }],
+        },
+      ],
+    });
   });
 
   test("does not apply paragraph-mark size to an unformatted deleted run", () => {

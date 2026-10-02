@@ -25,6 +25,7 @@ import { applyStyle, setAlignment } from "../prosemirror/commands/paragraph";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { createDocumentStylesPlugin } from "../prosemirror/plugins/documentStyles";
+import { RUN_IDENTITY_MARK_NAME } from "../prosemirror/runIdentity";
 import type { Paragraph, ParagraphAlignment, Table, TableCell } from "../types/document";
 import { PARAGRAPH_ALIGNMENT_VALUES } from "../types/documentEnumValues";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -45,7 +46,8 @@ const ORDINARY_PARAGRAPH_STATE_SIZE_BUDGET = 1_851_095;
 const STYLED_PARAGRAPH_STATE_SIZE_BUDGET = 1_638_095;
 const STYLED_ALIGNMENT_PROVENANCE_SIZE_BUDGET = 29_000;
 
-const serializeWithoutParagraphSource = (json: unknown, omitAlignment = false): string =>
+// Measure paragraph alignment state independently of private paragraph and run provenance.
+const serializeWithoutUnrelatedProvenance = (json: unknown, omitAlignment = false): string =>
   JSON.stringify(json, (key, value) => {
     if (
       key === PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR ||
@@ -53,6 +55,18 @@ const serializeWithoutParagraphSource = (json: unknown, omitAlignment = false): 
       (omitAlignment && key === "alignmentFromStyle")
     ) {
       return undefined;
+    }
+    if (key === "marks" && Array.isArray(value)) {
+      const visibleMarks = value.filter(
+        (mark: unknown) =>
+          !(
+            typeof mark === "object" &&
+            mark !== null &&
+            "type" in mark &&
+            mark.type === RUN_IDENTITY_MARK_NAME
+          ),
+      );
+      return visibleMarks.length > 0 ? visibleMarks : undefined;
     }
     return value;
   });
@@ -3030,7 +3044,7 @@ describe("paragraph alignment provenance in editor state", () => {
     });
   });
 
-  test("adds no serialized state to one thousand ordinary paragraphs", () => {
+  test("adds no alignment provenance to one thousand ordinary paragraphs", () => {
     const source = createEmptyDocument();
     source.package.document.content = Array.from({ length: 1_000 }, (_, index) => ({
       type: "paragraph" as const,
@@ -3038,8 +3052,8 @@ describe("paragraph alignment provenance in editor state", () => {
       content: [{ type: "run" as const, content: [{ type: "text" as const, text: TEXT }] }],
     }));
     const json = toProseDoc(source).toJSON();
-    const serialized = serializeWithoutParagraphSource(json);
-    const withoutAlignmentProvenance = serializeWithoutParagraphSource(json, true);
+    const serialized = serializeWithoutUnrelatedProvenance(json);
+    const withoutAlignmentProvenance = serializeWithoutUnrelatedProvenance(json, true);
 
     expect(json.content).toHaveLength(1_000);
     expect(serialized.length).toBeLessThanOrEqual(ORDINARY_PARAGRAPH_STATE_SIZE_BUDGET);
@@ -3057,8 +3071,8 @@ describe("paragraph alignment provenance in editor state", () => {
       paraId: index.toString(16).padStart(8, "0"),
     }));
     const json = toProseDoc(source).toJSON();
-    const serialized = serializeWithoutParagraphSource(json);
-    const withoutAlignmentProvenance = serializeWithoutParagraphSource(json, true);
+    const serialized = serializeWithoutUnrelatedProvenance(json);
+    const withoutAlignmentProvenance = serializeWithoutUnrelatedProvenance(json, true);
 
     expect(json.content).toHaveLength(1_000);
     expect(serialized.length).toBeLessThanOrEqual(STYLED_PARAGRAPH_STATE_SIZE_BUDGET);

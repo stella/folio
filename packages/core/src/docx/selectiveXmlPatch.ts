@@ -25,7 +25,6 @@ import { captureVerbatimXml } from "./verbatimCapture";
 import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
 import { resolveNamespaceUri } from "./xmlNamespaceContext";
 
-const MARKUP_COMPATIBILITY_NAMESPACES: ReadonlySet<string> = new Set([OOXML_NAMESPACES.mc.uri]);
 import {
   hasCanonicalWordprocessingPrefixes,
   matchCloseTag,
@@ -34,6 +33,10 @@ import {
   resolveSelectiveScanPrefixes,
   splicesAsCanonical,
 } from "./wordprocessingPrefixes";
+
+const MARKUP_COMPATIBILITY_NAMESPACES: ReadonlySet<string> = new Set([OOXML_NAMESPACES.mc.uri]);
+const FOLIO_SPLIT_RUN_OWNER_NAME = "splitRunOwner";
+const FOLIO_SPLIT_RUN_OWNER_NAMESPACE = OOXML_NAMESPACES.folio.uri;
 
 /**
  * Whether `char` ends an element's tag name in XML — a whitespace separator
@@ -491,11 +494,28 @@ const preservesPartRootNamespaces = ({
   originalXml,
   serializedXml,
   splices,
-}: PreservePartRootNamespacesOptions): boolean => {
+}: PreservePartRootNamespacesOptions): XmlSplice[] | null => {
   const originalBindings = collectXmlnsFromOpeningTag(originalXml);
   const serializedBindings = collectXmlnsFromOpeningTag(serializedXml);
   const originalIgnorable = partIgnorablePrefixes(originalXml, originalBindings);
   const serializedIgnorable = partIgnorablePrefixes(serializedXml, serializedBindings);
+  const safeSplices = splices.map((splice) => {
+    const newXml = transferFolioSplitRunNamespaceLocally({
+      serializedXml,
+      originalXml,
+      originalBindings,
+      serializedBindings,
+      originalIgnorable,
+      serializedIgnorable,
+      sourceXml: originalXml.slice(splice.start, splice.end),
+      newXml: splice.newXml,
+    });
+    return newXml === null ? null : { ...splice, newXml };
+  });
+  if (safeSplices.some((splice) => splice === null)) {
+    return null;
+  }
+  const localizedSplices = safeSplices.filter((splice): splice is XmlSplice => splice !== null);
   const changedPrefixes = Object.entries(serializedBindings).flatMap(([declaration, namespace]) => {
     const prefix = declaration.startsWith("xmlns:") ? declaration.slice(6) : undefined;
     return prefix !== undefined &&
@@ -504,7 +524,7 @@ const preservesPartRootNamespaces = ({
       ? [prefix]
       : [];
   });
-  for (const { start, end, newXml } of splices) {
+  for (const { start, end, newXml } of localizedSplices) {
     if (
       !/\b[A-Za-z_][\w.-]*:(?:Ignorable|ProcessContent|MustUnderstand)\s*=/u.test(newXml) &&
       ![
@@ -529,7 +549,9 @@ const preservesPartRootNamespaces = ({
     const actual = parseXmlDocument(wrap(originalXml));
     const expected = parseXmlDocument(wrap(serializedXml));
     const source = parseXmlDocument(wrap(originalXml, originalXml.slice(start, end)));
-    if (actual === null || expected === null || source === null) return false;
+    if (actual === null || expected === null || source === null) {
+      return null;
+    }
     const sourceNames = new Set<string>();
     const collectSourceNames = (element: XmlElement): void => {
       const local = (element.name ?? "").split(":").at(-1);
@@ -543,9 +565,186 @@ const preservesPartRootNamespaces = ({
       for (const child of getChildElements(element)) collectSourceNames(child);
     };
     collectSourceNames(source);
-    if (!sameReplacementNamespaces({ actual, expected, sourceNames })) return false;
+    if (!sameReplacementNamespaces({ actual, expected, sourceNames })) {
+      return null;
+    }
   }
-  return true;
+  return localizedSplices;
+};
+
+type TransferFolioSplitRunNamespaceOptions = {
+  originalXml: string;
+  serializedXml: string;
+  originalBindings: Record<string, string>;
+  serializedBindings: Record<string, string>;
+  originalIgnorable: ReadonlySet<string>;
+  serializedIgnorable: ReadonlySet<string>;
+  sourceXml: string;
+  newXml: string;
+};
+
+/** Keep authored root bytes intact while scoping Folio's own run proof locally. */
+const transferFolioSplitRunNamespaceLocally = ({
+  originalXml,
+  serializedXml,
+  originalBindings,
+  serializedBindings,
+  originalIgnorable,
+  serializedIgnorable,
+  sourceXml,
+  newXml,
+}: TransferFolioSplitRunNamespaceOptions): string | null => {
+  const serializedRoot = openingTagFromXml(serializedXml).replace(/^<[^\s/>]+/u, "<patch");
+  const wrapped = parseXmlDocument(`${serializedRoot}>${newXml}</patch>`);
+  if (wrapped === null) return null;
+  const replacementParagraph = getChildElements(wrapped).find(
+    (element) =>
+      WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
+      getLocalName(element.name) === "p",
+  );
+  if (replacementParagraph === undefined) return null;
+  const ownerPrefixes = new Set<string>();
+  const replacementIgnorable = new Set(
+    (
+      getAttributeByNamespaceUri(
+        replacementParagraph,
+        MARKUP_COMPATIBILITY_NAMESPACES,
+        "Ignorable",
+      ) ?? ""
+    )
+      .split(/\s+/u)
+      .filter(Boolean),
+  );
+  const pending = [replacementParagraph];
+  while (pending.length > 0) {
+    const element = pending.pop();
+    if (element === undefined) continue;
+    for (const name of Object.keys(element.attributes ?? {})) {
+      if (
+        name.split(":").at(-1) !== FOLIO_SPLIT_RUN_OWNER_NAME ||
+        resolveAttributeNamespaceUri(element, name) !== FOLIO_SPLIT_RUN_OWNER_NAMESPACE
+      )
+        continue;
+      const prefix = getNamespacePrefix(name);
+      if (
+        prefix === null ||
+        (!serializedIgnorable.has(prefix) && !replacementIgnorable.has(prefix))
+      )
+        return null;
+      ownerPrefixes.add(prefix);
+    }
+    pending.push(...getChildElements(element));
+  }
+
+  const originalRoot = openingTagFromXml(originalXml).replace(/^<[^\s/>]+/u, "<patch");
+  const sourceWrapper = parseXmlDocument(`${originalRoot}>${sourceXml}</patch>`);
+  const sourceParagraph =
+    sourceWrapper === null
+      ? undefined
+      : getChildElements(sourceWrapper).find(
+          (element) =>
+            WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
+            getLocalName(element.name) === "p",
+        );
+  if (sourceParagraph === undefined) return null;
+  const sourceLocalBindings = collectXmlnsFromOpeningTag(sourceXml);
+  const sourceIgnorable = new Set(
+    (
+      getAttributeByNamespaceUri(sourceParagraph, MARKUP_COMPATIBILITY_NAMESPACES, "Ignorable") ??
+      ""
+    )
+      .split(/\s+/u)
+      .filter(Boolean),
+  );
+  const sourceLocalFolioPrefixes = new Set(
+    [...sourceIgnorable].filter(
+      (prefix) =>
+        replacementIgnorable.has(prefix) &&
+        sourceLocalBindings[`xmlns:${prefix}`] === FOLIO_SPLIT_RUN_OWNER_NAMESPACE,
+    ),
+  );
+  const folioPrefixesToPreserve = new Set([...ownerPrefixes, ...sourceLocalFolioPrefixes]);
+  if (folioPrefixesToPreserve.size === 0) return newXml;
+
+  const markupCompatibilityDeclaration = Object.entries(serializedBindings).find(
+    ([declaration, namespace]) =>
+      declaration.startsWith("xmlns:") && namespace === OOXML_NAMESPACES.mc.uri,
+  );
+  if (markupCompatibilityDeclaration === undefined) return null;
+  const markupCompatibilityPrefix = markupCompatibilityDeclaration[0].slice(6);
+  const openingTag = openingTagFromXml(newXml);
+  const localBindings = collectXmlnsFromOpeningTag(openingTag);
+  const transferPrefixes = [...folioPrefixesToPreserve].filter(
+    (prefix) =>
+      originalBindings[`xmlns:${prefix}`] !== FOLIO_SPLIT_RUN_OWNER_NAMESPACE ||
+      !originalIgnorable.has(prefix),
+  );
+  for (const prefix of transferPrefixes) {
+    if (
+      originalIgnorable.has(prefix) &&
+      originalBindings[`xmlns:${prefix}`] !== FOLIO_SPLIT_RUN_OWNER_NAMESPACE &&
+      !sourceLocalFolioPrefixes.has(prefix)
+    )
+      return null;
+    const local = localBindings[`xmlns:${prefix}`];
+    if (local !== undefined && local !== FOLIO_SPLIT_RUN_OWNER_NAMESPACE) return null;
+  }
+
+  const localMarkupCompatibility = localBindings[`xmlns:${markupCompatibilityPrefix}`];
+  if (
+    localMarkupCompatibility !== undefined &&
+    localMarkupCompatibility !== OOXML_NAMESPACES.mc.uri
+  )
+    return null;
+
+  if (transferPrefixes.length === 0) return newXml;
+
+  const attributes = new Map<string, string>();
+  for (const prefix of transferPrefixes) {
+    if (localBindings[`xmlns:${prefix}`] === undefined) {
+      attributes.set(`xmlns:${prefix}`, FOLIO_SPLIT_RUN_OWNER_NAMESPACE);
+    }
+  }
+  if (
+    localBindings[`xmlns:${markupCompatibilityPrefix}`] === undefined &&
+    originalBindings[`xmlns:${markupCompatibilityPrefix}`] !== OOXML_NAMESPACES.mc.uri
+  ) {
+    attributes.set(`xmlns:${markupCompatibilityPrefix}`, OOXML_NAMESPACES.mc.uri);
+  }
+
+  const ignorableName = `${markupCompatibilityPrefix}:Ignorable`;
+  const escapedIgnorableName = ignorableName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const ignorablePattern = new RegExp(
+    `\\s${escapedIgnorableName}\\s*=\\s*(?<quote>["'])(?<value>[^"']*)\\k<quote>`,
+    "u",
+  );
+  const ignorableMatch = ignorablePattern.exec(openingTag);
+  const ignorablePrefixes = new Set([
+    ...originalIgnorable,
+    ...(ignorableMatch?.groups?.["value"]?.split(/\s+/u).filter(Boolean) ?? []),
+    ...transferPrefixes,
+  ]);
+  attributes.set(ignorableName, [...ignorablePrefixes].join(" "));
+
+  const additions = [...attributes].map(([name, value]) => ` ${name}="${value}"`).join("");
+  const appendAttributes = (tag: string, value: string): string => {
+    const selfClosing = tag.endsWith("/");
+    const base = selfClosing ? tag.slice(0, -1) : tag;
+    return `${base}${value}${selfClosing ? "/" : ""}`;
+  };
+  const nextOpeningTag = ignorableMatch
+    ? appendAttributes(
+        openingTag.replace(
+          ignorablePattern,
+          ` ${ignorableName}="${[...ignorablePrefixes].join(" ")}"`,
+        ),
+        [...attributes]
+          .filter(([name]) => name.startsWith("xmlns:"))
+          .map(([name, value]) => ` ${name}="${value}"`)
+          .join(""),
+      )
+    : appendAttributes(openingTag, additions);
+  return newXml.replace(openingTag, nextOpeningTag);
 };
 
 const ignorableNamespacesAt = (
@@ -783,11 +982,16 @@ const routeChangedParagraphs = (
     });
   }
 
-  if (!preservesPartRootNamespaces({ originalXml, serializedXml, splices })) {
+  const namespaceSafeSplices = preservesPartRootNamespaces({
+    originalXml,
+    serializedXml,
+    splices,
+  });
+  if (namespaceSafeSplices === null) {
     return { type: "refused", reason: "replacement-namespace-conflict" };
   }
 
-  const candidate = spliceXml(originalXml, splices);
+  const candidate = spliceXml(originalXml, namespaceSafeSplices);
   if (candidate === null) {
     return { type: "refused", reason: "unsafe-paragraph-splices" };
   }

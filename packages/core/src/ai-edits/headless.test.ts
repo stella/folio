@@ -17,6 +17,13 @@ import path from "node:path";
 
 import { buildTextBoxTableDocument, findTextBoxShape } from "../__tests__/textBoxTableDocument";
 import { parseDocx } from "../docx/parser";
+import {
+  getChildElements,
+  getLocalName,
+  parseXmlDocument,
+  type XmlElement,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+} from "../docx/xmlParser";
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx, createEmptyDocx, repackDocx } from "../docx/rezip";
 import { updateDocumentContent } from "../prosemirror/conversion/fromProseDoc";
@@ -234,6 +241,27 @@ const partText = async (buffer: ArrayBuffer, part: string): Promise<string> => {
     throw new Error(`missing part: ${part}`);
   }
   return file.async("text");
+};
+
+const wordTextInXml = (xml: string): string => {
+  const root = parseXmlDocument(xml);
+  if (!root) throw new Error("could not parse saved WordprocessingML");
+  const text: string[] = [];
+  const visit = (element: XmlElement): void => {
+    if (
+      element.namespaceUri !== undefined &&
+      WORDPROCESSINGML_NAMESPACE_URIS.has(element.namespaceUri) &&
+      getLocalName(element.name) === "t"
+    ) {
+      for (const child of element.elements ?? []) {
+        if (child.type === "text" && typeof child.text === "string") text.push(child.text);
+      }
+      return;
+    }
+    for (const child of getChildElements(element)) visit(child);
+  };
+  visit(root);
+  return text.join("");
 };
 
 const paragraphXmlContaining = (xml: string, text: string): string => {
@@ -1907,7 +1935,7 @@ describe("headless docx review round-trip", () => {
 
       const saved = await reviewer.toBuffer();
       const xml = await partText(saved, part);
-      expect(xml).toContain("Kept INSERTED MOVED TO");
+      expect(wordTextInXml(xml)).toBe("Kept INSERTED MOVED TO");
       expect(xml).not.toContain("DELETED");
       expect(xml).not.toContain("MOVED FROM");
       expect(xml).not.toMatch(/<w:(?:ins|del|moveFrom|moveTo)\b/u);
