@@ -591,6 +591,111 @@ test("generated pending deletion splits preserve resolution order and exact hist
   expect([...refusals]).toStrictEqual([]);
 });
 
+// A replacement can strand a deletion's inner source seam at a control edge.
+// Resolving the deletion first must retain that fact for the payload blocker.
+test("generated nested replacements preserve reviewed source seams in every resolution order", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(
+      shapeArbitrary,
+      fc.nat(30),
+      fc.nat(30),
+      fc.integer({ min: 1, max: 2 }),
+      (shape, start, end, paragraph) => {
+        const original = fixture(
+          Object.assign({}, shape, {
+            wrapper: shape.wrapper === "nested" ? "nested" : "control",
+          }),
+        );
+        const blockId = paragraph === 1 ? "00000001" : "00000002";
+        const source = original.package.document.content.find(
+          (node) => node.type === "paragraph" && node.paraId === blockId,
+        );
+        if (source?.type !== "paragraph") panic("The generated source paragraph exists.");
+        const gaps = [0];
+        for (const character of paragraphLogicalText(source))
+          gaps.push((gaps.at(-1) ?? 0) + character.length);
+        const lower = start % (gaps.length - 1);
+        const upper = lower + 1 + (end % (gaps.length - lower - 1));
+        const from = position({
+          blockId,
+          offset: gaps.at(lower) ?? panic("The source start is a generated gap."),
+        });
+        const to = position({
+          blockId,
+          offset: gaps.at(upper) ?? panic("The source end is a generated gap."),
+        });
+        const intent = { type: "replaceText", from, to, text: "paste" } as const;
+        const allocation = allocateEditorIntentIds(original, intent);
+        const direct = compile({
+          document: original,
+          intent,
+          mode: "editing",
+          allocation,
+          refusals,
+        });
+        const tracked = compile({
+          document: original,
+          intent,
+          mode: "suggesting",
+          allocation,
+          refusals,
+        });
+        for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+          const together = resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision,
+          });
+          assertExactModel(
+            together,
+            decision === REVISION_DECISIONS.ACCEPT ? direct.document : original,
+          );
+          for (const order of [tracked.revisions, tracked.revisions.toReversed()]) {
+            let separately = tracked.document;
+            for (const id of order)
+              separately = resolve({ document: separately, revisionIds: [id], decision });
+            assertExactModel(separately, together);
+          }
+        }
+        // Mixed decisions also commute: an accepted deletion cannot donate
+        // its rejected-source seam to a subsequently rejected payload.
+        const firstId = tracked.revisions.at(0);
+        const secondId = tracked.revisions.at(1);
+        if (firstId === undefined || secondId === undefined)
+          panic("A nonempty tracked replacement stamps deletion and insertion.");
+        for (const firstDecision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+          const secondDecision =
+            firstDecision === REVISION_DECISIONS.ACCEPT
+              ? REVISION_DECISIONS.REJECT
+              : REVISION_DECISIONS.ACCEPT;
+          const firstThenSecond = resolve({
+            document: resolve({
+              document: tracked.document,
+              revisionIds: [firstId],
+              decision: firstDecision,
+            }),
+            revisionIds: [secondId],
+            decision: secondDecision,
+          });
+          const secondThenFirst = resolve({
+            document: resolve({
+              document: tracked.document,
+              revisionIds: [secondId],
+              decision: secondDecision,
+            }),
+            revisionIds: [firstId],
+            decision: firstDecision,
+          });
+          assertExactModel(firstThenSecond, secondThenFirst);
+        }
+      },
+    ),
+    { numRuns: 100 },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});
+
 // Comment anchors are deliberately retained by replacement in either mode.
 // Atom width remains physical, including references between selected text.
 test("generated comment-bearing replacements share the planned anchor policy", () => {

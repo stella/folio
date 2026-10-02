@@ -153,6 +153,8 @@ type Resolution = {
   emptied: WeakSet<InlineNode>;
   /** Actual payload edges accepted after source identities were restored. */
   acceptedClosed: Record<"first" | "last", WeakSet<InlineNode>>;
+  /** Unconsumed source-cut edges on the actual rebuilt container. */
+  cutEdges: WeakMap<InlineNode, CutEdges>;
 };
 
 const resolveRun = (run: Run, { ids, decision }: Resolution): Run => {
@@ -518,7 +520,8 @@ const prepareDeferredRemovals = (
   return changed ? out : nodes;
 };
 
-type ResolvedList = { nodes: InlineNode[]; changed: boolean };
+type CutEdges = { first?: number; last?: number };
+type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 
 /**
  * A list with its tracked changes resolved. Where a change was resolved,
@@ -528,9 +531,14 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
   const out: InlineNode[] = [];
   const seams: number[] = [];
   const exactSeams = new Map<number, number>();
+  const sourceEdges = new Map<number, number>();
   const pending = [...nodes];
   const recordExactSeam = (index: number, depth: number): void => {
     if (depth > 0) exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
+  };
+  const recordSourceSeam = (index: number, depth: number): void => {
+    recordExactSeam(index, depth);
+    if (depth > 0) sourceEdges.set(index, Math.max(sourceEdges.get(index) ?? 0, depth));
   };
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
@@ -560,8 +568,10 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
         continue;
       }
       if (node.resolutionJoins === undefined) seams.push(out.length);
-      else recordExactSeam(out.length, node.resolutionJoins.before);
-      const content = resolveList(node.content, resolution).nodes;
+      else recordSourceSeam(out.length, node.resolutionJoins.before);
+      const resolved = resolveList(node.content, resolution);
+      const content = resolved.nodes;
+      if (resolved.edges?.first !== undefined) recordSourceSeam(out.length, resolved.edges.first);
       if (
         isAddedRevision(node) &&
         resolution.decision === REVISION_DECISIONS.ACCEPT &&
@@ -575,8 +585,9 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           resolution.acceptedClosed.last.add(last);
       }
       out.push(...content);
+      if (resolved.edges?.last !== undefined) recordSourceSeam(out.length, resolved.edges.last);
       if (node.resolutionJoins === undefined) seams.push(out.length);
-      else recordExactSeam(out.length, node.resolutionJoins.after);
+      else recordSourceSeam(out.length, node.resolutionJoins.after);
       continue;
     }
     if (node.type === "run") {
@@ -655,11 +666,46 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     if (inner.nodes.length === 0) resolution.emptied.add(rebuilt);
     if (ends.first) folds.push(out.length);
     if (ends.last) folds.push(out.length + 1);
+    if (inner.edges !== undefined) {
+      const edges: CutEdges = {};
+      if (inner.edges.first !== undefined) edges.first = inner.edges.first + 1;
+      if (inner.edges.last !== undefined) edges.last = inner.edges.last + 1;
+      resolution.cutEdges.set(rebuilt, edges);
+    }
     out.push(rebuilt);
+  }
+  // An inner cut can meet the edge of a container while its other fragment
+  // remains beyond a pending insertion. Preserve that exact seam on its
+  // actual blocker; accepting the payload cancels it, rejecting restores it.
+  for (const [index, node] of out.entries()) {
+    if (!isAddedRevision(node) || node.resolutionJoins === undefined) continue;
+    if (node.resolutionJoins.remove === 0) continue;
+    const left = out.at(index - 1);
+    const right = out.at(index + 1);
+    const depths = [
+      index > 0 && left !== undefined ? resolution.cutEdges.get(left)?.last : undefined,
+      right === undefined ? undefined : resolution.cutEdges.get(right)?.first,
+    ];
+    const groups = [...(node.resolutionJoins.deferredRemove ?? [])];
+    for (const depth of depths) {
+      if (depth !== undefined) groups.push({ depth, blockers: [node.info.id] });
+    }
+    if (groups.length === (node.resolutionJoins.deferredRemove?.length ?? 0)) continue;
+    out[index] = Object.assign({}, node, {
+      resolutionJoins: Object.assign({}, node.resolutionJoins, {
+        deferredRemove: canonicalDeferredGroups(groups),
+      }),
+    });
+    changed = true;
   }
   if (!changed) {
     return { nodes: out, changed };
   }
+  const edges: CutEdges = {};
+  const firstDepth = sourceEdges.get(0);
+  const lastDepth = sourceEdges.get(out.length);
+  if (firstDepth !== undefined) edges.first = firstDepth;
+  if (lastDepth !== undefined) edges.last = lastDepth;
   const merges = new Set(seams);
   for (const seam of [...new Set([...seams, ...exactSeams.keys(), ...folds])].toSorted(
     (left, right) => right - left,
@@ -667,7 +713,16 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    const exactDepth = exactSeams.get(seam);
+    let exactDepth = exactSeams.get(seam);
+    if (exactDepth !== undefined) {
+      // Extend only an already recorded outer cut with an unconsumed inner
+      // source cut. Equal authored containers alone never establish a seam.
+      exactDepth = Math.max(
+        exactDepth,
+        resolution.cutEdges.get(left)?.last ?? 0,
+        resolution.cutEdges.get(right)?.first ?? 0,
+      );
+    }
     // Later independent edits may make a recorded seam non-alike. Join
     // only the recorded depth and matching fields, preserving those edits.
     let met: InlineNode[];
@@ -685,9 +740,24 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           : (mergeLists([left], [right], exactDepth, { mode: "asFarAsAlike" }) ??
             panic("An as-far-as-alike merge always returns its records."));
     }
+    if (met.length === 1) {
+      const merged = met.at(0) ?? panic("A single merged record exists.");
+      const outerEdges: CutEdges = {};
+      const first = resolution.cutEdges.get(left)?.first;
+      const last = resolution.cutEdges.get(right)?.last;
+      if (first !== undefined) outerEdges.first = first;
+      if (last !== undefined) outerEdges.last = last;
+      resolution.cutEdges.set(merged, outerEdges);
+    }
     out.splice(seam - 1, 2, ...met);
   }
-  return { nodes: out, changed };
+  const first = out.at(0);
+  const last = out.at(-1);
+  const nestedFirst = first === undefined ? undefined : resolution.cutEdges.get(first)?.first;
+  const nestedLast = last === undefined ? undefined : resolution.cutEdges.get(last)?.last;
+  if (nestedFirst !== undefined) edges.first = Math.max(edges.first ?? 0, nestedFirst);
+  if (nestedLast !== undefined) edges.last = Math.max(edges.last ?? 0, nestedLast);
+  return { nodes: out, changed, edges };
 };
 
 /** A paragraph's review fields once its property changes and mark are resolved; `undefined` when unchanged. */
@@ -1063,6 +1133,7 @@ export const resolveRevision = (
     decision: op.decision,
     emptied: new WeakSet(),
     acceptedClosed: { first: new WeakSet(), last: new WeakSet() },
+    cutEdges: new WeakMap(),
   };
   const paragraphs = storyParagraphs(storyBody(document, op.story));
   const reachable = new Set([
