@@ -1,4 +1,4 @@
-import { FOLIO_LOCALES } from "../core/src/i18n/messages/locales";
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 import babel from "@rolldown/plugin-babel";
 import { reactCompilerPreset } from "@vitejs/plugin-react";
 import type { Plugin } from "rolldown";

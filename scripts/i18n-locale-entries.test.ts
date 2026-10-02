@@ -175,6 +175,23 @@ test("public export patterns resolve each generated entry", async () => {
   }
 });
 
+test("locale exports preserve the generated message-key type used by React", () => {
+  const manifest = JSON.parse(readFileSync(path.join(root, "packages/core/package.json"), "utf8"));
+  expect(manifest.exports["./i18n/messages/*.gen"]).toBe("./src/i18n/messages/*.gen.ts");
+  // Node resolves exports without Bun's workspace tsconfig path aliases.
+  const result = Bun.spawnSync(
+    [
+      "node",
+      "--input-type=module",
+      "-e",
+      'import { createRequire } from "node:module"; process.stdout.write(createRequire(`${process.cwd()}/package.json`).resolve("@stll/folio-core/i18n/messages/messages.gen"));',
+    ],
+    { cwd: path.join(root, "packages/react"), stdout: "pipe", stderr: "pipe" },
+  );
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout.toString()).toBe(path.join(messagesDirectory("core"), "messages.gen.ts"));
+});
+
 test("build configurations include locale-derived entries and the discovery module", () => {
   const coreConfig = readFileSync(path.join(root, "packages/core/tsdown.config.ts"), "utf8");
   expect(coreConfig).toContain('"src/**/*.ts"');
@@ -186,6 +203,9 @@ test("build configurations include locale-derived entries and the discovery modu
       packageName,
       packageName === "react" ? "tsdown.config.ts" : "vite.config.ts",
     );
+    const imports = runtimeSpecifiers(configFile);
+    expect(imports).toContain("@stll/folio-core/i18n/messages/locales");
+    expect(imports.some((specifier) => specifier.startsWith("../core/"))).toBe(false);
     const source = ts.createSourceFile(
       configFile,
       readFileSync(configFile, "utf8"),

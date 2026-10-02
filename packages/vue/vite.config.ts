@@ -1,4 +1,4 @@
-import { FOLIO_LOCALES } from "../core/src/i18n/messages/locales";
+import { FOLIO_LOCALES } from "@stll/folio-core/i18n/messages/locales";
 import vue from "@vitejs/plugin-vue";
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
