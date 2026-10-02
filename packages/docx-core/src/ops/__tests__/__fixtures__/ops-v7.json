@@ -3963,6 +3963,26 @@
   {
     "schema": 7,
     "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "00000040",
+      "expected": {},
+      "review": {
+        "pPrMark": {
+          "kind": "ins",
+          "info": {
+            "id": 222,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          }
+        }
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
       "type": "replaceInline",
       "story": "main",
       "blockId": "00000041",
@@ -3999,26 +4019,6 @@
           ]
         }
       ]
-    }
-  },
-  {
-    "schema": 7,
-    "op": {
-      "type": "setParagraphReview",
-      "story": "main",
-      "blockId": "00000040",
-      "expected": {},
-      "review": {
-        "pPrMark": {
-          "kind": "ins",
-          "info": {
-            "id": 222,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          }
-        }
-      }
     }
   },
   {
@@ -4953,6 +4953,26 @@
   {
     "schema": 7,
     "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "00000042",
+      "expected": {},
+      "review": {
+        "pPrMark": {
+          "kind": "del",
+          "info": {
+            "id": 232,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          }
+        }
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
       "type": "replaceInline",
       "story": "main",
       "blockId": "00000043",
@@ -4989,26 +5009,6 @@
           ]
         }
       ]
-    }
-  },
-  {
-    "schema": 7,
-    "op": {
-      "type": "setParagraphReview",
-      "story": "main",
-      "blockId": "00000042",
-      "expected": {},
-      "review": {
-        "pPrMark": {
-          "kind": "del",
-          "info": {
-            "id": 232,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          }
-        }
-      }
     }
   },
   {
@@ -5323,6 +5323,26 @@
   {
     "schema": 7,
     "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "00000045",
+      "expected": {},
+      "review": {
+        "pPrMark": {
+          "kind": "ins",
+          "info": {
+            "id": 243,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          }
+        }
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
       "type": "replaceInline",
       "story": "main",
       "blockId": "00000044",
@@ -5359,26 +5379,6 @@
           ]
         }
       ]
-    }
-  },
-  {
-    "schema": 7,
-    "op": {
-      "type": "setParagraphReview",
-      "story": "main",
-      "blockId": "00000045",
-      "expected": {},
-      "review": {
-        "pPrMark": {
-          "kind": "ins",
-          "info": {
-            "id": 243,
-            "author": "Reviewer",
-            "date": "2026-02-03T04:05:06Z",
-            "initials": "R"
-          }
-        }
-      }
     }
   },
   {
