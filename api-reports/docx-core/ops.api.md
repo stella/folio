@@ -93,15 +93,6 @@ export type CompileEditorIntentOptions = {
 };
 
 // @public
-export type CreateNumberingInstanceOp = {
-    type: typeof DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE;
-    num: NumberingInstance;
-    abstractNum?: AbstractNumbering;
-    expected?: NumberingPartState;
-    restore?: NumberingPartState;
-};
-
-// @public
 export const createClient: (document: Document_2) => {
     enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
     nextSubmission: () => DocumentBatch | undefined;
@@ -112,6 +103,15 @@ export const createClient: (document: Document_2) => {
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
     readonly notices: readonly ClientNotice[];
+};
+
+// @public
+export type CreateNumberingInstanceOp = {
+    type: typeof DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE;
+    num: NumberingInstance;
+    abstractNum?: AbstractNumbering;
+    expected?: NumberingPartState;
+    restore?: NumberingPartState;
 };
 
 // @public
@@ -496,10 +496,10 @@ export type ParagraphReviewFields = {
 };
 
 // @public
-export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
+export const paragraphVisibleText: (paragraph: Paragraph) => string;
 
 // @public
-export const paragraphVisibleText: (paragraph: Paragraph) => string;
+export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
 
 // @public
 export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
@@ -584,12 +584,6 @@ export type RevisionStamp = {
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
 
-// @public (undocumented)
-export type SequencedBatch = DocumentBatch & {
-    revision: number;
-    effects?: readonly SequencedOpEffect[];
-};
-
 // @public
 export const SECTION_BOUNDARY_POLICIES: Readonly<{
     readonly REMOVE: "remove";
@@ -639,6 +633,12 @@ export type SectionViewState = {
 } | {
     type: "sections";
     value: readonly SectionViewEntry[];
+};
+
+// @public (undocumented)
+export type SequencedBatch = DocumentBatch & {
+    revision: number;
+    effects?: readonly SequencedOpEffect[];
 };
 
 // @public
