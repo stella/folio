@@ -10,6 +10,7 @@ import {
 } from "../packages/docx-core/src/ops/documentOps";
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../packages/docx-core/src/ops/refusal";
 
 import type { CorpusInvariantInput } from "./lib/corpus-invariants/contract";
 import { inverseSequenceFailures, runOpInverseInvariant } from "./lib/corpus-invariants/op-inverse";
@@ -39,18 +40,27 @@ const documentFixture = () =>
           makeParagraph("60000002", "Second paragraph é."),
           {
             type: "table",
+            columnWidths: [900, 900, 900],
             rows: [
               {
                 type: "tableRow",
                 cells: [
-                  { type: "tableCell", content: [makeParagraph("60000003", "Left cell")] },
+                  {
+                    type: "tableCell",
+                    formatting: { gridSpan: 2 },
+                    content: [makeParagraph("60000003", "Left cell")],
+                  },
                   { type: "tableCell", content: [makeParagraph("60000004", "Right cell")] },
                 ],
               },
               {
                 type: "tableRow",
                 cells: [
-                  { type: "tableCell", content: [makeParagraph("60000005", "Second row")] },
+                  {
+                    type: "tableCell",
+                    formatting: { gridSpan: 2 },
+                    content: [makeParagraph("60000005", "Second row")],
+                  },
                   { type: "tableCell", content: [makeParagraph("60000006", "")] },
                 ],
               },
@@ -126,6 +136,14 @@ describe("corpus operation invariants", () => {
       DOCUMENT_OP_TYPES.INSERT_TABLE,
       DOCUMENT_OP_TYPES.DELETE_TABLE,
       DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+      DOCUMENT_OP_TYPES.INSERT_COLUMN,
+      DOCUMENT_OP_TYPES.DELETE_COLUMN,
+      DOCUMENT_OP_TYPES.MERGE_CELLS,
+      DOCUMENT_OP_TYPES.SPLIT_CELL,
+      DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+      DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+      DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+      DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
     ];
     const checkedStructuralFamilies = new Set<string>();
     for (let seed = 0; seed < 64; seed += 1) {
@@ -164,6 +182,53 @@ describe("corpus operation invariants", () => {
     ).toEqual([...OP_SEQUENCE_FAMILIES].sort());
     expect(Object.keys(OP_GENERATOR_ROLES).sort()).toEqual(Object.values(DOCUMENT_OP_TYPES).sort());
     expect(sameOpModel(document, snapshot)).toBe(true);
+  });
+
+  test("semantic families record bounded explicit refusals on initially table-free documents", () => {
+    const document: Document = {
+      package: { document: { content: [makeParagraph("60000001", "Plain body")] } },
+    };
+    const semantic = {
+      insertColumn: true,
+      deleteColumn: true,
+      mergeCells: true,
+      splitCell: true,
+      setTableGrid: true,
+      setCellProps: true,
+      setRowProps: true,
+      setTableProps: true,
+    } as const satisfies Record<
+      import("../packages/docx-core/src/ops/types").TableEditOp["type"],
+      true
+    >;
+    const refused = new Set<string>();
+    let attempts = 0;
+    for (let seed = 0; seed < 64; seed++) {
+      const sequence = generateOpSequence(document, seed);
+      expect(sequence.mutations).toEqual([]);
+      for (const entry of sequence.refusals) {
+        const [type, reason] = entry.split(":");
+        const family = OP_SEQUENCE_FAMILIES.find((kind) => kind === type);
+        if (family === undefined)
+          throw new Error("A recorded refusal must name a declared generator family.");
+        if (!Object.hasOwn(semantic, family)) continue;
+        attempts++;
+        expect([
+          DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+          DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+          DOCUMENT_OP_REFUSAL_REASONS.NO_CHANGE,
+          DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+          DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+          DOCUMENT_OP_REFUSAL_REASONS.DEPENDENT_RECORDS,
+          DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS,
+          DOCUMENT_OP_REFUSAL_REASONS.TABLE_ROW_EMPTY,
+        ]).toContain(reason);
+        refused.add(family);
+      }
+    }
+    expect([...refused].sort()).toEqual(Object.keys(semantic).sort());
+    expect(attempts).toBeGreaterThanOrEqual(Object.keys(semantic).length);
+    expect(attempts).toBeLessThanOrEqual(64 * Object.keys(semantic).length);
   });
 
   test("row inverses retain the outer table when nested tables precede its surviving anchor", () => {

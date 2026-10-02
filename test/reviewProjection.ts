@@ -4,6 +4,9 @@ import type {
   Document,
   Paragraph,
   Run,
+  Table,
+  TableCell,
+  TableRow,
 } from "../packages/docx-core/src/model/document";
 import {
   asParagraphContent,
@@ -31,6 +34,83 @@ const canonicalParagraphFormatting = (formatting: Paragraph["formatting"]) => {
   if (runProperties === undefined) delete next.runProperties;
   else next.runProperties = runProperties;
   return authoredFormatting(next);
+};
+
+/** `tblPrChange` snapshots cover `w:tblPr`, not the sibling `w:tblGrid`. */
+const canonicalTablePropertyFormatting = (formatting: Table["formatting"]) => {
+  if (formatting === undefined) return undefined;
+  const { gridChange: _gridChange, ...tableProperties } = formatting;
+  return authoredFormatting(tableProperties);
+};
+
+type PropertyHistory<Formatting extends object> = {
+  previousFormatting?: Formatting;
+  currentFormatting?: Formatting;
+};
+type CanonicalHistoryOptions<
+  Formatting extends object,
+  Change extends PropertyHistory<Formatting>,
+> = {
+  changes: readonly Change[] | undefined;
+  currentFormatting: Formatting | undefined;
+  canonicalFormatting: (formatting: Formatting | undefined) => Formatting | undefined;
+  canonicalCurrentFormatting?: (formatting: Formatting | undefined) => Formatting | undefined;
+};
+const canonicalHistory = <Formatting extends object, Change extends PropertyHistory<Formatting>>({
+  changes,
+  currentFormatting,
+  canonicalFormatting,
+  canonicalCurrentFormatting = canonicalFormatting,
+}: CanonicalHistoryOptions<Formatting, Change>) =>
+  changes?.map((change) => {
+    const normalized = { ...change };
+    const previous = canonicalFormatting(change.previousFormatting);
+    const current = canonicalCurrentFormatting(change.currentFormatting ?? currentFormatting);
+    if (previous === undefined) delete normalized.previousFormatting;
+    else normalized.previousFormatting = previous;
+    if (current === undefined) delete normalized.currentFormatting;
+    else normalized.currentFormatting = current;
+    return normalized;
+  });
+
+const canonicalTableCell = (cell: TableCell): TableCell => {
+  const next = { ...cell, content: canonicalReviewBlocks(cell.content) };
+  const formatting = authoredFormatting(cell.formatting);
+  if (formatting === undefined) delete next.formatting;
+  else next.formatting = formatting;
+  const propertyChanges = canonicalHistory({
+    changes: cell.propertyChanges,
+    currentFormatting: cell.formatting,
+    canonicalFormatting: authoredFormatting,
+  });
+  if (propertyChanges === undefined) delete next.propertyChanges;
+  else next.propertyChanges = propertyChanges;
+  return next;
+};
+
+const canonicalTableRow = (row: TableRow): TableRow => {
+  const next = { ...row, cells: row.cells.map(canonicalTableCell) };
+  const formatting = authoredFormatting(row.formatting);
+  if (formatting === undefined) delete next.formatting;
+  else next.formatting = formatting;
+  const propertyChanges = canonicalHistory({
+    changes: row.propertyChanges,
+    currentFormatting: row.formatting,
+    canonicalFormatting: authoredFormatting,
+  });
+  if (propertyChanges === undefined) delete next.propertyChanges;
+  else next.propertyChanges = propertyChanges;
+  const exceptions = authoredFormatting(row.tablePropertyExceptions);
+  if (exceptions === undefined) delete next.tablePropertyExceptions;
+  else next.tablePropertyExceptions = exceptions;
+  const exceptionChanges = canonicalHistory({
+    changes: row.tablePropertyExceptionChanges,
+    currentFormatting: row.tablePropertyExceptions,
+    canonicalFormatting: authoredFormatting,
+  });
+  if (exceptionChanges === undefined) delete next.tablePropertyExceptionChanges;
+  else next.tablePropertyExceptionChanges = exceptionChanges;
+  return next;
 };
 
 /** currentFormatting is an optional capture of the owning node's current properties. */
@@ -95,21 +175,16 @@ export const canonicalReviewBlocks = (blocks: readonly BlockContent[]): BlockCon
       case "paragraph":
         return canonicalParagraph(block);
       case "table": {
-        const table = {
-          ...block,
-          rows: block.rows.map((row) => {
-            const next = {
-              ...row,
-              cells: row.cells.map((cell) => ({
-                ...cell,
-                content: canonicalReviewBlocks(cell.content),
-              })),
-            };
-            if (next.formatting && !authoredFormatting(next.formatting)) delete next.formatting;
-            return next;
-          }),
-        };
+        const table = { ...block, rows: block.rows.map(canonicalTableRow) };
         if (table.formatting && !authoredFormatting(table.formatting)) delete table.formatting;
+        const propertyChanges = canonicalHistory({
+          changes: table.propertyChanges,
+          currentFormatting: table.formatting,
+          canonicalFormatting: authoredFormatting,
+          canonicalCurrentFormatting: canonicalTablePropertyFormatting,
+        });
+        if (propertyChanges === undefined) delete table.propertyChanges;
+        else table.propertyChanges = propertyChanges;
         return table;
       }
       case "blockSdt":
