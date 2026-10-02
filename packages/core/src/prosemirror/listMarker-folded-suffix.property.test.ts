@@ -18,10 +18,15 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
         }),
         start: fc.integer({ min: 1, max: 9 }),
         kind: fc.constantFrom("decimal", "bullet"),
+        templateKind: fc.constantFrom("dynamic", "literal", "cleared"),
       }),
-      ({ suffix, start, kind }) => {
+      ({ suffix, start, kind, templateKind }) => {
         const bullet = kind === "bullet";
-        const markerTemplate = bullet ? "\uF0B7" : "%1.";
+        const decimalTemplate = templateKind === "literal" ? "Article" : "%1.";
+        const decimalMarker = templateKind === "literal" ? "Article" : `${start}.`;
+        const nextDecimalMarker = templateKind === "literal" ? "Article" : `${start + 1}.`;
+        const markerTemplate = bullet ? "\uF0B7" : decimalTemplate;
+        const baseMarker = bullet ? "•" : decimalMarker;
         const rendering = {
           level: 0,
           numId: 1,
@@ -41,9 +46,11 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
               numPr,
               ...listRenderingAttrPatch({
                 ...rendering,
-                marker: `outdated\t${suffix}`,
+                marker:
+                  templateKind === "cleared" ? `${baseMarker}\t${suffix}` : `outdated\t${suffix}`,
                 foldedMarkerSuffix: suffix,
               }),
+              ...(templateKind === "cleared" ? { listMarkerTemplate: null } : {}),
             },
             schema.text("first"),
           ),
@@ -52,7 +59,10 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
             {
               numPr,
               ...CLEARED_LIST_RENDERING_ATTRS,
-              ...listRenderingAttrPatch({ ...rendering, marker: "outdated" }),
+              ...listRenderingAttrPatch({
+                ...rendering,
+                marker: templateKind === "literal" ? "Article" : "outdated",
+              }),
             },
             schema.text("second"),
           ),
@@ -60,10 +70,7 @@ test("folded LISTNUM display text stays literal while numbered and symbol-font b
         const markers = toFlowBlocks(doc)
           .filter((block) => block.kind === "paragraph")
           .map((block) => block.attrs?.listMarker);
-        expect(markers).toEqual([
-          `${bullet ? "•" : `${start}.`}\t${suffix}`,
-          bullet ? "•" : `${start + 1}.`,
-        ]);
+        expect(markers).toEqual([`${baseMarker}\t${suffix}`, bullet ? "•" : nextDecimalMarker]);
       },
     ),
     { numRuns: 50 },

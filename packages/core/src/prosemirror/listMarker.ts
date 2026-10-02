@@ -331,12 +331,12 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   if (attrs.listIsBullet) {
     state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
     const marker = convertBulletToUnicode(
-      foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate !== undefined
+      foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate != null
         ? attrs.listMarkerTemplate
         : (attrs.listMarker ?? markerTemplate ?? ""),
       bulletMarkerFontName(attrs.listMarkerFormatting),
     );
-    return foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate !== undefined
+    return foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate != null
       ? `${marker}\t${foldedMarkerSuffix}`
       : marker;
   }
@@ -429,7 +429,10 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
 
   const levelFormats =
     attrs.listLevelNumFmts ?? (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
-  if (markerTemplate?.includes("%")) {
+  if (
+    markerTemplate?.includes("%") &&
+    (foldedMarkerSuffix === undefined || attrs.listMarkerTemplate != null)
+  ) {
     const marker = resolveListTemplate({
       template: markerTemplate,
       counters,
@@ -437,6 +440,9 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
       forceDecimal: attrs.listIsLegal,
     });
     return foldedMarkerSuffix === undefined ? marker : `${marker}\t${foldedMarkerSuffix}`;
+  }
+  if (foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate != null) {
+    return `${attrs.listMarkerTemplate}\t${foldedMarkerSuffix}`;
   }
   if (attrs.listMarker) {
     return attrs.listMarker;
