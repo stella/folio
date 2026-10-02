@@ -537,6 +537,40 @@ export type ComplexField = {
 
 export type Field = SimpleField | ComplexField;
 
+/**
+ * One `LISTNUM` field the reader drew into a paragraph's list marker.
+ *
+ * The marker shows the field's cached result, so `Paragraph.content` holds
+ * neither the field nor the tab that followed it. This record is the authored
+ * field, and where it stood, so a save can write it back.
+ */
+export type FoldedListNumberField = {
+  /** The field as authored: instruction, code runs and cached result runs. */
+  field: ComplexField;
+  /** The tab run that followed the field, when the reader took one. */
+  tab?: Run;
+  /**
+   * Inline units of `Paragraph.content` ahead of the field: one per character
+   * of text and one per other inline object. Range markers count for nothing.
+   */
+  offset: number;
+  /** Range markers standing at `offset` that come before the field. */
+  markersBefore: number;
+  /** Range markers between the field and `tab`. */
+  markersBeforeTab?: number;
+};
+
+/**
+ * The `LISTNUM` fields folded into one paragraph's list marker, in source
+ * order, with the numbering level they were folded under. They belong to that
+ * marker: a paragraph that no longer references the level has none.
+ */
+export type FoldedListNumberFields = {
+  numId: number;
+  level: number;
+  fields: FoldedListNumberField[];
+};
+
 // ============================================================================
 // IMAGES
 // ============================================================================
@@ -2251,6 +2285,11 @@ export type Paragraph = {
   content: ParagraphContent[];
   /** Computed list rendering (if this is a list item) */
   listRendering?: ListRendering;
+  /**
+   * The `LISTNUM` fields `listRendering.marker` shows in place of content.
+   * Set by the reader only; nothing is rebuilt from the marker's text.
+   */
+  foldedListNumberFields?: FoldedListNumberFields;
   /** Word's cached layout says this paragraph started on a new rendered page. */
   renderedPageBreakBefore?: boolean;
   /** Section properties (if this paragraph ends a section) */

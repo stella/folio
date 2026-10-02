@@ -526,6 +526,7 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
     "paragraph.attrs._preservedAttributes",
     issues,
   );
+  optionalFoldedListNumberFields(attrs, "paragraph.attrs._foldedListNumberFields", issues);
 
   return attrsResult(attrs, issues);
 };
@@ -3254,6 +3255,71 @@ const optionalPositionedBookmarks = (
       requiredString(marker, "name", `${entryPath}.marker.name`, issues);
     }
     optionalContentControls(entry, `${entryPath}.contentControls`, issues);
+  }
+};
+
+/** A run of the document model, as far as an opaque carrier needs it checked. */
+const requiredModelRun = (value: unknown, path: string, issues: ProseMirrorAttrIssue[]): void => {
+  if (!isRecord(value) || value["type"] !== "run" || !Array.isArray(value["content"])) {
+    issues.push({ path, message: "Expected a run." });
+  }
+};
+
+const optionalFoldedListNumberFields = (
+  attrs: Record<string, unknown>,
+  path: string,
+  issues: ProseMirrorAttrIssue[],
+): void => {
+  const value = attrs["_foldedListNumberFields"];
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (!isRecord(value)) {
+    issues.push({ path, message: "Expected an object." });
+    return;
+  }
+  validateNonNegativeSafeInteger(value["numId"], `${path}.numId`, issues);
+  validateNonNegativeSafeInteger(value["level"], `${path}.level`, issues);
+  const fields = value["fields"];
+  if (!Array.isArray(fields)) {
+    issues.push({ path: `${path}.fields`, message: "Expected an array." });
+    return;
+  }
+  for (const [index, entry] of fields.entries()) {
+    const entryPath = `${path}.fields[${index}]`;
+    if (!isRecord(entry)) {
+      issues.push({ path: entryPath, message: "Expected an object." });
+      continue;
+    }
+    validateNonNegativeSafeInteger(entry["offset"], `${entryPath}.offset`, issues);
+    validateNonNegativeSafeInteger(entry["markersBefore"], `${entryPath}.markersBefore`, issues);
+    if (entry["markersBeforeTab"] !== undefined) {
+      validateNonNegativeSafeInteger(
+        entry["markersBeforeTab"],
+        `${entryPath}.markersBeforeTab`,
+        issues,
+      );
+    }
+    if (entry["tab"] !== undefined) {
+      requiredModelRun(entry["tab"], `${entryPath}.tab`, issues);
+    }
+    const field = entry["field"];
+    if (!isRecord(field) || field["type"] !== "complexField") {
+      issues.push({ path: `${entryPath}.field`, message: "Expected a complex field." });
+      continue;
+    }
+    requiredString(field, "instruction", `${entryPath}.field.instruction`, issues);
+    requiredString(field, "fieldType", `${entryPath}.field.fieldType`, issues);
+    for (const key of ["fieldCode", "fieldResult"]) {
+      const runs = field[key];
+      if (!Array.isArray(runs)) {
+        issues.push({ path: `${entryPath}.field.${key}`, message: "Expected an array." });
+        continue;
+      }
+      for (const [runIndex, run] of runs.entries()) {
+        requiredModelRun(run, `${entryPath}.field.${key}[${runIndex}]`, issues);
+      }
+    }
   }
 };
 

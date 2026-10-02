@@ -45,6 +45,7 @@ import {
   paragraphPropertySourceMatchesEmission,
 } from "../paragraphPropertySource";
 import { fieldStateAttributes } from "../fieldState";
+import { withFoldedListNumberFields } from "../foldedListNumberFields";
 import { DATE_UTC_ATTRIBUTE, DATE_UTC_NAMESPACE_URI } from "../trackedChangeInfo";
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
 import { captureVerbatimXml, createCapturedXmlSanitizer } from "../verbatimCapture";
@@ -1116,9 +1117,13 @@ export function serializeParagraph(paragraph: Paragraph): string {
     }),
   );
 
-  // Add paragraph content
+  // Add paragraph content. The list-number fields the reader folded into the
+  // list marker are not in it, so they are put back first.
+  const authoredContent = withFoldedListNumberFields(paragraph);
+  const authored =
+    authoredContent === paragraph.content ? paragraph : { ...paragraph, content: authoredContent };
   let pendingRenderedPageBreak = paragraph.renderedPageBreakBefore === true;
-  for (const content of writeGroupTextBoxesBack(paragraph, serializeShapeTextBody)) {
+  for (const content of writeGroupTextBoxesBack(authored, serializeShapeTextBody)) {
     let contentXml = serializeParagraphContent(content);
     if (contentXml) {
       if (pendingRenderedPageBreak) {

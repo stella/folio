@@ -684,6 +684,12 @@ const cloneParagraphForTarget = (
     ...(paragraph.listRendering && {
       listRendering: remapListRendering(paragraph.listRendering, cloner),
     }),
+    ...(paragraph.foldedListNumberFields && {
+      foldedListNumberFields: {
+        ...structuredClone(paragraph.foldedListNumberFields),
+        numId: cloner.cloneNumId(paragraph.foldedListNumberFields.numId),
+      },
+    }),
   });
   Reflect.deleteProperty(cloned, "textId");
   Reflect.deleteProperty(cloned, "sectionProperties");

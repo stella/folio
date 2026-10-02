@@ -67,6 +67,7 @@ import type {
 import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
+import { foldedListNumberFieldsOf } from "../../docx/foldedListNumberFields";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
 import { copiedWrapPolygon } from "../../docx/wrapPolygon";
@@ -1397,6 +1398,13 @@ function paragraphFormattingToAttrs(
   // very array and is told apart from a paragraph that authored its own.
   if (paragraph.preservedAttributes && paragraph.preservedAttributes.length > 0) {
     attrs._preservedAttributes = paragraph.preservedAttributes;
+  }
+  // The fields the list marker shows in place of content, by reference for the
+  // same reason: the half of a split that did not author them holds this very
+  // object. A record the paragraph's numbering no longer owns is not carried.
+  const foldedListNumberFields = foldedListNumberFieldsOf(paragraph);
+  if (foldedListNumberFields) {
+    attrs._foldedListNumberFields = foldedListNumberFields;
   }
   if (paragraph.pPrMark) {
     attrs.pPrMark = paragraph.pPrMark;

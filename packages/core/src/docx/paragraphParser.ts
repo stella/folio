@@ -47,6 +47,7 @@ import {
 } from "./bookmarkParser";
 import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
+import { foldListNumberFields } from "./foldedListNumberFields";
 import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   HYPERLINK_CHILD_HANDLERS,
@@ -128,18 +129,6 @@ const FOLIO_REVIEW_HISTORY_NAMESPACES: ReadonlySet<string> = new Set([
 /**
  * Extract plain text from a math element (recursive text content extraction)
  */
-function extractPlainText(runs: Run[]): string {
-  let out = "";
-  for (const run of runs) {
-    for (const c of run.content) {
-      if (c.type === "text") {
-        out += c.text;
-      }
-    }
-  }
-  return out;
-}
-
 function extractMathText(el: XmlElement): string {
   let text = "";
   if (el.type === "text" && typeof el.text === "string") {
@@ -2178,54 +2167,15 @@ export function parseParagraph(
         // the marker zone) from the inline content — that way the host
         // paragraph's marker zone reads "7.1[gap](a)" and the body text on
         // line 1 begins at the same column as the wrapped lines below.
-        let implicitChildLevelAdvances = 0;
-        const foldedMarkerSuffix: string[] = [];
-        const filteredContent: ParagraphContent[] = [];
-        let dropNextTab = false;
-        // Word inserts paragraph-mark / bookmark / comment-range metadata
-        // between a LISTNUM field and its trailing tab. Skip those when
-        // hunting for the tab to drop, otherwise `dropNextTab` clears on
-        // the metadata node and the tab survives, breaking alignment.
-        const isMetadataContent = (content: ParagraphContent): boolean =>
-          content.type === "bookmarkStart" ||
-          content.type === "bookmarkEnd" ||
-          content.type === "commentRangeStart" ||
-          content.type === "commentRangeEnd" ||
-          content.type === "commentReference";
-        for (const content of paragraph.content) {
-          if (dropNextTab && isMetadataContent(content)) {
-            filteredContent.push(content);
-            continue;
-          }
-          if (dropNextTab) {
-            dropNextTab = false;
-            if (
-              content.type === "run" &&
-              content.content.length === 1 &&
-              content.content[0]?.type === "tab"
-            ) {
-              continue;
-            }
-          }
-          if (content.type === "complexField") {
-            const isListNum =
-              content.fieldType === "LISTNUM" ||
-              content.instruction.trim().toUpperCase().startsWith("LISTNUM");
-            if (isListNum) {
-              implicitChildLevelAdvances += 1;
-              const cached = extractPlainText(content.fieldResult);
-              if (cached) {
-                foldedMarkerSuffix.push(cached);
-              }
-              dropNextTab = true;
-              continue;
-            }
-          }
-          filteredContent.push(content);
-        }
-        if (foldedMarkerSuffix.length > 0) {
-          paragraph.content = filteredContent;
-          listRendering.marker = `${listRendering.marker}\t${foldedMarkerSuffix.join(" ")}`;
+        const fold = foldListNumberFields(paragraph.content);
+        if (fold.cached.length > 0) {
+          // Bookmark and comment-range markers can stand between a field and
+          // its trailing tab; the fold steps over them, so the tab still goes
+          // and the markers stay. What was taken out is kept as source: the
+          // marker is display, and a save writes the fields back.
+          paragraph.content = fold.content;
+          paragraph.foldedListNumberFields = { numId, level: ilvl, fields: fold.fields };
+          listRendering.marker = `${listRendering.marker}\t${fold.cached.join(" ")}`;
           const nextLevel = numbering.getLevel(numId, ilvl + 1);
           if (
             nextLevel?.pPr?.hangingIndent === true &&
@@ -2239,8 +2189,8 @@ export function parseParagraph(
             }
           }
         }
-        if (implicitChildLevelAdvances > 0) {
-          listRendering.implicitChildLevelAdvances = implicitChildLevelAdvances;
+        if (fold.fields.length > 0) {
+          listRendering.implicitChildLevelAdvances = fold.fields.length;
         }
         paragraph.listRendering = listRendering;
 

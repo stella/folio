@@ -441,6 +441,8 @@ const paragraphNodeSpec: NodeSpec = {
     _sectionProperties: { default: null },
     _propertyChanges: { default: null },
     _preservedAttributes: { default: null },
+    // `undefined`, as above: only a paragraph that folded a field carries one.
+    _foldedListNumberFields: { default: undefined },
     pPrMark: { default: null },
     _suggestedInsert: { default: null },
   },

@@ -8,6 +8,7 @@
 
 import type { FloatingTableProperties, TableLook } from "../../types";
 import type {
+  FoldedListNumberFields,
   OutlineLevel,
   ParagraphAlignment,
   ParagraphFormatting,
@@ -389,6 +390,17 @@ export type ParagraphAttrs = {
    * those attributes and must not inherit them from a neighbour.
    */
   _preservedAttributes?: PreservedAttribute[];
+
+  /**
+   * The `LISTNUM` fields the reader folded into `listMarker`, carried opaquely
+   * so a save can write them back where they stood.
+   *
+   * They belong to the paragraph that authored them and to the numbering level
+   * they were folded under. ProseMirror copies a node's attrs to both halves of
+   * a split, so `fromProseDoc` gives the record to the first paragraph that
+   * carries it and to no other, and to none whose `numPr` names another level.
+   */
+  _foldedListNumberFields?: FoldedListNumberFields;
 
   /** Paragraph-property-change tracking entries (`w:pPrChange`).
    *  Preserved opaquely through ProseMirror — the editor does not surface
