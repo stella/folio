@@ -58,3 +58,30 @@ test("OPC oracle resolves targets relative to the source part", () => {
     "Missing relationship target",
   );
 });
+
+test("OPC defaults use only final-segment extensions; extensionless parts need overrides", () => {
+  for (const directory of ["", "customXml/", "customXml/item.d/"]) {
+    for (const name of ["data", "data.XML"]) {
+      const path = directory + name;
+      const parts = fixture();
+      parts.set(path, "<data/>");
+      // A Default matching the extensionless filename must never cover that part.
+      const declarations = contentTypes.replace(
+        "</Types>",
+        '<Default Extension="data" ContentType="application/xml"/></Types>',
+      );
+      parts.set("[Content_Types].xml", declarations);
+      expect(validatePackageGraph(parts, new Set(parts.keys()))).toBe(
+        name === "data" ? `Missing content type for ${path}` : null,
+      );
+      parts.set(
+        "[Content_Types].xml",
+        declarations.replace(
+          "</Types>",
+          `<Override PartName="/${path}" ContentType="application/xml"/></Types>`,
+        ),
+      );
+      expect(validatePackageGraph(parts, new Set(parts.keys()))).toBeNull();
+    }
+  }
+});

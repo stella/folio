@@ -146,8 +146,11 @@ export const validatePackageGraph = (
     return "Invalid officeDocument content type";
   for (const path of paths) {
     if (path === "[Content_Types].xml") continue;
-    const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
-    if (!overrides.has(path) && !defaults.has(extension)) return `Missing content type for ${path}`;
+    const segment = path.slice(path.lastIndexOf("/") + 1);
+    const dot = segment.lastIndexOf(".");
+    const extension = dot < 0 ? undefined : segment.slice(dot + 1).toLowerCase();
+    if (!overrides.has(path) && (extension === undefined || !defaults.has(extension)))
+      return `Missing content type for ${path}`;
   }
   let documentRelationship = false;
   const partRelationshipIds = new Map<string, Set<string>>();
