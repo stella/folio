@@ -87,6 +87,83 @@ test("style numbering comes from definitions, preserves direct overrides, and ca
   }
 });
 
+test("a paragraph pending deletion has no numbering provenance and none is expected", async () => {
+  const bytes = await directNumberedDocument();
+  const live = rowsOf(await openReviewer(bytes));
+  const pending = live.find((row) => row.listReference !== undefined);
+  assert.ok(pending);
+  // The accepted pre-state no longer holds the paragraph; the reviewer lists it blank.
+  const accepted = live.filter((row) => row !== pending);
+  const listed = live.map((row) => (row === pending ? { ...row, text: "" } : row));
+  const facts = await numberingFactsOf(bytes);
+  facts.direct.delete(pending.id);
+
+  for (const styleId of [null, "Heading2"]) {
+    const model = modelOf(accepted, listed);
+    model.numberingFacts = facts;
+    expectOperation(model, {
+      type: "setBlockParagraphProperties",
+      blockId: pending.id,
+      properties: { styleId },
+    });
+    assert.deepEqual(model.unmodelled, []);
+    assert.deepEqual(compareWithModel(model, accepted), []);
+  }
+
+  // A paragraph the pre-state holds must still have its provenance.
+  const kept = accepted.find((row) => row.text.length > 0);
+  assert.ok(kept);
+  const lacking = await numberingFactsOf(bytes);
+  lacking.direct.delete(kept.id);
+  const restyleKept = { type: "setBlockParagraphProperties", blockId: kept.id } as const;
+  for (const mode of ["direct", "tracked-changes"] as const) {
+    const model = modelOf(accepted, listed);
+    model.numberingFacts = lacking;
+    model.mode = mode;
+    assert.throws(
+      () => expectOperation(model, { ...restyleKept, properties: { styleId: null } }),
+      /Numbering provenance missing/u,
+    );
+  }
+
+  // Suggested mode reads the document without its suggestions: a paragraph a
+  // pending suggestion added is not in it, and its numbering is left open.
+  const suggested = modelOf(live);
+  suggested.numberingFacts = lacking;
+  suggested.mode = "suggested";
+  expectOperation(suggested, { ...restyleKept, properties: { styleId: "Heading2" } });
+  assert.deepEqual(suggested.unmodelled, []);
+  const restyled = (listLevel: number | undefined, listReference: Row["listReference"]): Row[] =>
+    live.map((row) =>
+      row.id === kept.id
+        ? {
+            ...row,
+            styleId: "Heading2",
+            kind: "heading",
+            headingLevel: 2,
+            listLevel,
+            listReference,
+          }
+        : row,
+    );
+  for (const result of [restyled(undefined, undefined), restyled(1, { numId: 5, level: 1 })]) {
+    assert.deepEqual(
+      compareWithModel(suggested, result).filter((problem) => /listLevel|numbering/u.test(problem)),
+      [],
+    );
+  }
+  // The rest of the request is still held to.
+  assert.match(
+    compareWithModel(
+      suggested,
+      live.map((row) =>
+        row.id === kept.id ? Object.assign({}, row, { styleId: "Heading3" }) : row,
+      ),
+    ).join("\n"),
+    /styleId/u,
+  );
+});
+
 test("style inheritance folds independent numbering slots and cancellation", async () => {
   const document = fromMarkdown("# Title\n\nBody");
   document.package.numbering = {

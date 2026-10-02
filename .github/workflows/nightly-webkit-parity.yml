@@ -45,6 +45,7 @@ jobs:
       # Differences from the reference are data, not failures: the spec exits
       # green on them and writes findings JSON.
       - name: Run WebKit layout comparison
+        if: always()
         env:
           FOLIO_ENGINE_PARITY_REFERENCE: engine-parity-ref
           FOLIO_ENGINE_PARITY_OUT: engine-parity-out
@@ -55,6 +56,7 @@ jobs:
       # finding ("assertion failed under second engine"), not a harness error.
       - name: Run measure-backend spec under WebKit
         id: backend
+        if: always()
         continue-on-error: true
         run: bunx playwright test --project=webkit-measure-backend --workers=1 --output=engine-parity-ref/playwright-backend
 
@@ -62,7 +64,7 @@ jobs:
         if: always()
         env:
           BACKEND_OUTCOME: ${{ steps.backend.outcome }}
-        run: bun scripts/engine-parity-summary.ts engine-parity-out/results.json engine-parity-out
+        run: bun scripts/engine-parity-summary.ts engine-parity-out/results.json engine-parity-out engine-parity-ref
 
       - name: Publish summary
         if: always()
@@ -80,4 +82,5 @@ jobs:
             engine-parity-out/report.json
             engine-parity-out/summary.md
             engine-parity-out/results.json
+            engine-parity-ref/*.json
           retention-days: 30

@@ -7,7 +7,7 @@
 // loaded or read), or a document that wrote no output.
 //
 // Usage: bun scripts/engine-parity-summary.ts <playwright-results.json> <out-dir>
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { summarizeDocument, type Difference } from "../tests/visual/engineLayoutDiff";
@@ -15,6 +15,8 @@ import { summarizeDocument, type Difference } from "../tests/visual/engineLayout
 const LAYOUT_SPEC = "engine-layout-parity.spec.ts";
 
 type DocumentReport = {
+  status?: string;
+  message?: string;
   fixture: string;
   engine: string;
   pageCount: { expected: number | null; actual: number };
@@ -52,7 +54,7 @@ const collectTests = (node: unknown, out: TestRun[] = []): TestRun[] => {
   return out;
 };
 
-const [resultsPath, outDir] = process.argv.slice(2);
+const [resultsPath, outDir, referenceDir] = process.argv.slice(2);
 if (resultsPath === undefined || outDir === undefined) {
   console.error("usage: bun scripts/engine-parity-summary.ts <playwright-results.json> <out-dir>");
   process.exit(2);
@@ -80,10 +82,31 @@ for (const test of tests) {
 const readJson = (file: string): unknown =>
   JSON.parse(readFileSync(path.join(outDir, file), "utf8"));
 const files = existsSync(outDir) ? readdirSync(outDir).toSorted() : [];
-const documents = files
+const allDocuments = files
   .filter((file) => file.endsWith(".docx.json"))
   // SAFETY: written by the spec this script summarises.
   .map((file) => readJson(file) as DocumentReport);
+const referenceFiles =
+  referenceDir !== undefined && existsSync(referenceDir)
+    ? readdirSync(referenceDir).filter((file) => file.endsWith(".docx.json"))
+    : [];
+if (referenceDir !== undefined && referenceFiles.length === 0) {
+  harnessErrors.push("no reference records were written");
+}
+for (const file of referenceFiles) {
+  const record = JSON.parse(
+    readFileSync(path.join(referenceDir ?? "", file), "utf8"),
+  ) as DocumentReport;
+  if (record.status === "harness-error") {
+    harnessErrors.push(`${record.fixture} (reference): ${record.message ?? "unknown"}`);
+  }
+}
+for (const doc of allDocuments) {
+  if (doc.status === "harness-error") {
+    harnessErrors.push(`${doc.fixture}: ${doc.message ?? "unknown"}`);
+  }
+}
+const documents = allDocuments.filter((doc) => doc.status !== "harness-error");
 const kerning = files.includes("_kerning.json") ? (readJson("_kerning.json") as Kerning) : null;
 
 const documentTests = tests.filter(
@@ -92,9 +115,9 @@ const documentTests = tests.filter(
     test.title.startsWith("records ") &&
     test.title.endsWith(".docx"),
 );
-if (documents.length < documentTests.length) {
+if (allDocuments.length < documentTests.length) {
   harnessErrors.push(
-    `${String(documentTests.length - documents.length)} document(s) wrote no output`,
+    `${String(documentTests.length - allDocuments.length)} document(s) wrote no output`,
   );
 }
 if (kerning === null) harnessErrors.push("kerning probe wrote no output");
@@ -104,6 +127,7 @@ if (kerning === null) harnessErrors.push("kerning probe wrote no output");
 const backendOutcome = process.env["BACKEND_OUTCOME"] ?? "unknown";
 const differences = documents.flatMap((doc) => doc.differences);
 
+mkdirSync(outDir, { recursive: true });
 writeFileSync(
   path.join(outDir, "report.json"),
   `${JSON.stringify({ differences, documents, kerning, backendOutcome, harnessErrors }, null, 2)}\n`,
