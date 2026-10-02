@@ -305,6 +305,11 @@ type ModelRow = {
    * into it.
    */
   pendingDeletion?: boolean;
+  /**
+   * A block the reviewer still lists but the resolved pre-state does not
+   * hold: nothing read from that pre-state describes it.
+   */
+  outsidePreState?: boolean;
   before: ModelRow[];
   after: ModelRow[];
   /** Formatting that must hold over `[start, end)` of the result's text. */
@@ -400,6 +405,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     }
     known.add(row.id);
     const ghost = modelRow("", {}, row);
+    ghost.outsidePreState = true;
     if (row.text.length > 0) {
       // Runs on into the block after it once accepted.
       joining = true;
@@ -456,13 +462,38 @@ const hasMergedCells = (model: Model, tableIndex: number): boolean =>
 const paragraphsOf = (text: string): string[] =>
   text.split(/\r\n|\r|\n/u).filter((line) => line.length > 0);
 
-const requestedStyleNumbering = (model: Model, styleId: string | null, row?: Row): Numbering => {
+/** The paragraph's own numbering is not in the numbering source: nothing is expected of it. */
+const UNKNOWN_NUMBERING = Symbol("unknown numbering");
+type RequestedNumbering = Numbering | typeof UNKNOWN_NUMBERING;
+
+/**
+ * Whether the numbering source may lack the paragraph. The saved modes read
+ * the accepted package, which no longer holds a paragraph that accepting
+ * removes; suggested mode reads the document without its suggestions, which
+ * does not hold a paragraph a pending suggestion adds.
+ */
+const outsideNumberingSource = (model: Model, id: string): boolean =>
+  model.mode === "suggested" ||
+  model.rows.some((row) => row.outsidePreState === true && row.pre?.id === id);
+
+const requestedStyleNumbering = (
+  model: Model,
+  styleId: string | null,
+  row?: Row,
+): RequestedNumbering => {
   const facts = model.numberingFacts;
   const style = styleId === null ? undefined : facts?.styles.get(styleId);
   if (!row) return style;
   let direct: Numbering;
   if (facts) {
-    assert.ok(facts.direct.has(row.id), `Numbering provenance missing for ${row.id}`);
+    if (!facts.direct.has(row.id)) {
+      // Any other paragraph must be there.
+      assert.ok(
+        outsideNumberingSource(model, row.id),
+        `Numbering provenance missing for ${row.id}`,
+      );
+      return UNKNOWN_NUMBERING;
+    }
     direct = facts.direct.get(row.id);
   } else if (row.listReference) {
     direct = paragraphNumberingFromSlots({
@@ -475,6 +506,7 @@ const requestedStyleNumbering = (model: Model, styleId: string | null, row?: Row
 
 const numberingFields = (model: Model, styleId: string | null, row?: Row): Fields => {
   const numbering = requestedStyleNumbering(model, styleId, row);
+  if (numbering === UNKNOWN_NUMBERING) return { listLevel: ANY };
   return { listLevel: numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined };
 };
 
@@ -510,9 +542,11 @@ const styleFields = (
   if (exampleKind === "listItem" && numberedFields.listLevel === undefined) {
     exampleKind = "paragraph";
   }
+  // Whether the block is a list item then depends on numbering that is not known.
+  const undecided = exampleKind === "listItem" && numberedFields.listLevel === ANY;
   return {
     styleId: styleId ?? undefined,
-    kind: stated ? ANY : (exampleKind ?? (heading ? "heading" : ANY)),
+    kind: stated || undecided ? ANY : (exampleKind ?? (heading ? "heading" : ANY)),
     headingLevel,
     ...numberedFields,
   };
@@ -536,7 +570,7 @@ const paragraphRequest = (
     const styleId = request["styleId"] as string | null;
     Object.assign(fields, styleFields(model, styleId, pre, inherited));
     const numbering = requestedStyleNumbering(model, styleId, pre ?? inherited);
-    if (!("numbering" in request)) {
+    if (!("numbering" in request) && numbering !== UNKNOWN_NUMBERING) {
       checks.push((row) => {
         if (numbering?.kind === "reference") {
           return row.listReference?.numId === numbering.numId

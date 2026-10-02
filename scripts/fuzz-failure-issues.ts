@@ -3,10 +3,12 @@
  * File fuzz failures as GitHub issues, one per failure class.
  *
  * Reads failure markers and minimized replay records. The class signature
- * groups related failures; fingerprints identify replay cases in its seed
- * table. Repeated runs are idempotent. Recent closed classes reopen; older
- * recurrences link a new issue. Known fingerprints remain tracked in their
- * registry, and new issue creation is capped per run.
+ * groups a failure across fixtures and modes; fingerprints identify replay
+ * cases in its seed table. Repeated runs are idempotent. An open issue of the
+ * class always takes the rows. Recent closed classes reopen; older recurrences
+ * link a new issue; one closed as a duplicate stands for the issue it names.
+ * Known fingerprints remain tracked in their registry. A run that would open
+ * more issues than the per-run cap opens none and exits non-zero.
  *
  * Usage:
  *   bun scripts/fuzz-failure-issues.ts [--log <file>]… [--records <dir>]…
@@ -26,7 +28,7 @@ import type {
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { extractFailureMarkers, parseKnownFailures } from "./failure-fingerprints";
-import { fileClasses, type Issue } from "./fuzz-issue-classes";
+import { closedAsDuplicate, duplicateTarget, fileClasses, type Issue } from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "fuzz-failure",
@@ -190,6 +192,7 @@ export const parseIssueResponse = (value: unknown): Issue => {
   const body = value["body"];
   const state = typeof value["state"] === "string" ? value["state"].toLowerCase() : null;
   const closedAt = value["closed_at"] ?? value["closedAt"] ?? null;
+  const stateReason = value["state_reason"] ?? value["stateReason"] ?? null;
   if (
     typeof number !== "number" ||
     !Number.isSafeInteger(number) ||
@@ -200,7 +203,27 @@ export const parseIssueResponse = (value: unknown): Issue => {
     (closedAt !== null && typeof closedAt !== "string")
   )
     throw new IssueResponseError({ message: "Invalid GitHub issue fields" });
-  return { number, title, body, state, closedAt };
+  return {
+    number,
+    title,
+    body,
+    state,
+    closedAt,
+    ...(typeof stateReason === "string" && stateReason !== "" ? { stateReason } : {}),
+  };
+};
+
+/** The bodies of an issue's comments, from paginated GitHub responses. */
+export const parseCommentPages = (pages: unknown): string[] => {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new IssueResponseError({ message: "Invalid GitHub comment pages" });
+  }
+  return pages.flat().map((comment: unknown) => {
+    if (!isRecord(comment) || typeof comment["body"] !== "string") {
+      throw new IssueResponseError({ message: "Invalid GitHub comment fields" });
+    }
+    return comment["body"];
+  });
 };
 
 /** Validate paginated GitHub responses before selecting an issue to update. */
@@ -236,7 +259,16 @@ export const fileFindings = (
       list: async () => {
         const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}&per_page=100`;
         const pages: unknown = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text());
-        return parseIssuePages(pages);
+        const issues = parseIssuePages(pages);
+        for (const issue of issues) {
+          if (!closedAsDuplicate(issue)) continue;
+          const comments = `repos/{owner}/{repo}/issues/${String(issue.number)}/comments?per_page=100`;
+          const commentPages: unknown = JSON.parse(
+            await $`gh api --paginate --slurp ${comments}`.text(),
+          );
+          issue.duplicateOf = duplicateTarget(parseCommentPages(commentPages));
+        }
+        return issues;
       },
       create: async (title, body) => {
         await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`.quiet();
@@ -285,6 +317,7 @@ const main = async (): Promise<void> => {
       findings,
       context,
       known: new Map(),
+      maxNewIssues: Number.POSITIVE_INFINITY,
       store: {
         list: () => Promise.resolve([]),
         create: (title, body) => {
@@ -305,7 +338,7 @@ const main = async (): Promise<void> => {
   }
   const results = await fileFindings(findings, context, path.resolve(import.meta.dir, ".."));
   for (const { fingerprint, issue } of results)
-    console.log(`${fingerprint}: ${issue ?? "not filed (creation cap)"}`);
+    console.log(`${fingerprint}: ${issue ?? "not filed"}`);
 };
 
 if (import.meta.main) {

@@ -74,15 +74,25 @@ async function recordDocument(page: Page, fixture: string): Promise<DocumentReco
   const fonts = new Map<string, FontResolution>();
   for (let index = 0; index < pageCount; index++) {
     const pageEl = page.locator(".layout-page").nth(index);
-    await pageEl.scrollIntoViewIfNeeded();
-    const painted = await pageEl
-      .locator(".layout-line")
-      .first()
-      .waitFor({ timeout: 5_000 })
-      .then(
-        () => true,
-        () => false,
-      );
+    // Pages of long documents paint when they intersect the viewport; give
+    // each a generous window and one more scroll before calling it unpainted.
+    let painted = false;
+    for (let attempt = 0; attempt < 2 && !painted; attempt++) {
+      await pageEl.scrollIntoViewIfNeeded();
+      painted = await pageEl
+        .locator(".layout-line")
+        .first()
+        .waitFor({ timeout: 15_000 })
+        .then(
+          () => true,
+          () => false,
+        );
+    }
+    if (painted) {
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+      });
+    }
     if (!painted) {
       pages.push({ rendered: false, lines: [] });
       continue;
@@ -129,7 +139,9 @@ const readReference = (fixture: string): DocumentRecord => {
   const file = path.join(REFERENCE_DIR, `${fixture}.json`);
   if (!fs.existsSync(file)) throw new Error(`reference record missing: ${file}`);
   // SAFETY: the file is written only by this spec under the reference engine.
-  return JSON.parse(fs.readFileSync(file, "utf8")) as DocumentRecord;
+  const record = JSON.parse(fs.readFileSync(file, "utf8")) as DocumentRecord & { status: string };
+  if (record.status !== "recorded") throw new Error(`reference record unusable: ${file}`);
+  return record;
 };
 
 const writeJson = (dir: string, name: string, value: unknown): void => {
@@ -141,27 +153,47 @@ test.describe("layout under this engine vs the Chromium record", () => {
   for (const fixture of FIXTURES) {
     test(`records ${fixture}`, async ({ page, browserName }) => {
       test.setTimeout(240_000);
-      await openFixture(page, fixture);
-      const actual = await recordDocument(page, fixture);
-      // Zero pages, a page that never painted, or no lines at all is a broken
-      // harness, never "no differences".
-      expect(actual.pages.length).toBeGreaterThan(0);
-      expect(actual.pages.flatMap((p, i) => (p.rendered ? [] : [i + 1]))).toEqual([]);
-      expect(actual.pages.reduce((sum, p) => sum + p.lines.length, 0)).toBeGreaterThan(0);
+      const reference = browserName === "chromium";
+      const dir = reference ? REFERENCE_DIR : OUT_DIR;
+      // A problem with one document is written down and the run continues, so
+      // the others are still recorded and compared. The summary step fails the
+      // job when any document carries a harness error.
+      try {
+        await openFixture(page, fixture);
+        const actual = await recordDocument(page, fixture);
+        // Zero pages, a page that never painted, or no lines at all is a broken
+        // harness, never "no differences".
+        if (actual.pages.length === 0) throw new Error("document produced no pages");
+        const unpainted = actual.pages.flatMap((p, i) => (p.rendered ? [] : [i + 1]));
+        if (unpainted.length > 0) {
+          throw new Error(`pages never painted: ${unpainted.join(", ")}`);
+        }
+        if (actual.pages.every((p) => p.lines.length === 0)) {
+          throw new Error("document produced no lines");
+        }
 
-      if (browserName === "chromium") {
-        writeJson(REFERENCE_DIR, `${fixture}.json`, actual);
-        return;
+        if (reference) {
+          writeJson(dir, `${fixture}.json`, { status: "recorded", ...actual });
+          return;
+        }
+
+        const expected = readReference(fixture);
+        writeJson(dir, `${fixture}.json`, {
+          status: "compared",
+          fixture,
+          engine: browserName,
+          pageCount: { expected: expected.pages.length, actual: actual.pages.length },
+          differences: diffRecords(expected, actual),
+          fonts: { expected: expected.fonts, actual: actual.fonts },
+        });
+      } catch (error) {
+        writeJson(dir, `${fixture}.json`, {
+          status: "harness-error",
+          fixture,
+          engine: browserName,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
-
-      const expected = readReference(fixture);
-      writeJson(OUT_DIR, `${fixture}.json`, {
-        fixture,
-        engine: browserName,
-        pageCount: { expected: expected.pages.length, actual: actual.pages.length },
-        differences: diffRecords(expected, actual),
-        fonts: { expected: expected.fonts, actual: actual.fonts },
-      });
     });
   }
 
