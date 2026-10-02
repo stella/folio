@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "directNumbered",
+  "mode": "direct",
+  "seed": 774176984,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 3357884561,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "4207D525",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1966330827,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "3B07CA20",
+          "properties": {
+            "styleId": "Heading2"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "formatRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "replaceBlock",
+    "deleteBlock",
+    "splitBlock",
+    "setBlockParagraphProperties",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 774176984",
+  "title": "restyle body after direct numbered heading"
+}
