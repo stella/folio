@@ -89,6 +89,122 @@ test("canonical input, history and saved document agree across both adapters", a
     await page.keyboard.press("Enter");
     expect(await snapshot(page)).toEqual(redone);
 
+    await select(page, 1, 2);
+    const compositionBaseline = await expectProjection(page, {
+      text: "B",
+      selection: { from: 1, to: 2 },
+    });
+    const compositionTrace = await page.evaluate(async () => {
+      const editor = document.querySelector<HTMLElement>(".ProseMirror");
+      const bridge = globalThis.__folioCanonical;
+      if (!editor || !bridge) throw new Error("Canonical editor unavailable.");
+      const replaceDOMText = (before: string, after: string) => {
+        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node && node.textContent !== before) node = walker.nextNode();
+        if (!node) throw new Error("Composition text node unavailable.");
+        node.textContent = after;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      };
+      editor.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      const provisional = new InputEvent("beforeinput", {
+        bubbles: true,
+        inputType: "insertCompositionText",
+        data: "契",
+        isComposing: true,
+        cancelable: true,
+      });
+      editor.dispatchEvent(provisional);
+      replaceDOMText("B", "契");
+      editor.dispatchEvent(
+        new InputEvent("input", {
+          bubbles: true,
+          inputType: "insertCompositionText",
+          data: "契",
+          isComposing: true,
+        }),
+      );
+      // Let the real DOM observer produce the provisional PM composition transaction.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const provisionalText = editor.textContent;
+      let snapshotBlocked = false;
+      try {
+        bridge.snapshot();
+      } catch {
+        snapshotBlocked = true;
+      }
+      const saveBlocked = await bridge.save().then(
+        (saved) => saved === null,
+        () => true,
+      );
+      editor.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "契" }));
+      await Promise.resolve();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const final = new InputEvent("beforeinput", {
+        bubbles: true,
+        inputType: "insertFromComposition",
+        data: "契約",
+        cancelable: true,
+      });
+      // Chromium clears inputType values emitted by other engines in synthetic events.
+      // Preserve the late-final-input fixture instead of testing an unclassified event.
+      Object.defineProperty(final, "inputType", { value: "insertFromComposition" });
+      editor.dispatchEvent(final);
+      replaceDOMText("契", "契約");
+      for (let index = 0; index < 2; index++) {
+        editor.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertFromComposition",
+            data: "契約",
+          }),
+        );
+        editor.dispatchEvent(
+          new CompositionEvent("compositionend", { bubbles: true, data: "契約" }),
+        );
+      }
+      await new Promise<void>((resolve) => setTimeout(resolve, 80));
+      return {
+        provisionalText,
+        snapshotBlocked,
+        saveBlocked,
+        provisionalPrevented: provisional.defaultPrevented,
+        finalPrevented: final.defaultPrevented,
+        finalInputType: final.inputType,
+      };
+    });
+    expect(compositionTrace).toEqual({
+      provisionalText: "契",
+      snapshotBlocked: true,
+      saveBlocked: true,
+      provisionalPrevented: false,
+      finalPrevented: false,
+      finalInputType: "insertFromComposition",
+    });
+    const composed = await expectProjection(page, {
+      text: "契約",
+      selection: { from: 3, to: 3 },
+    });
+    await page.keyboard.press(`${MODIFIER}+z`);
+    const compositionUndone = await expectProjection(page, {
+      text: "B",
+      selection: { from: 1, to: 2 },
+    });
+    expect(compositionUndone.document).toEqual(compositionBaseline.document);
+    await page.keyboard.press(`${MODIFIER}+Shift+z`);
+    const compositionRedone = await expectProjection(page, {
+      text: "契約",
+      selection: { from: 3, to: 3 },
+    });
+    expect(compositionRedone.document).toEqual(composed.document);
+    await page.keyboard.press(`${MODIFIER}+z`);
+    await expectProjection(page, { text: "B", selection: { from: 1, to: 2 } });
+
     const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
     if (!saved) throw new Error("Canonical editor did not save.");
     const reopened = await parseDocx(new Uint8Array(saved), {
