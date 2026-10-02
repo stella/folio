@@ -504,7 +504,7 @@ const preservesPartRootNamespaces = ({
       ? [prefix]
       : [];
   });
-  for (const { newXml } of splices) {
+  for (const { start, end, newXml } of splices) {
     if (
       !/\b[A-Za-z_][\w.-]*:(?:Ignorable|ProcessContent|MustUnderstand)\s*=/u.test(newXml) &&
       ![
@@ -524,12 +524,26 @@ const preservesPartRootNamespaces = ({
       })
     )
       continue;
-    const wrap = (xml: string) =>
-      `${openingTagFromXml(xml).replace(/^<[^\s/>]+/u, "<patch")}>${newXml}</patch>`;
+    const wrap = (xml: string, fragment = newXml) =>
+      `${openingTagFromXml(xml).replace(/^<[^\s/>]+/u, "<patch")}>${fragment}</patch>`;
     const actual = parseXmlDocument(wrap(originalXml));
     const expected = parseXmlDocument(wrap(serializedXml));
-    if (actual === null || expected === null || !sameReplacementNamespaces({ actual, expected }))
-      return false;
+    const source = parseXmlDocument(wrap(originalXml, originalXml.slice(start, end)));
+    if (actual === null || expected === null || source === null) return false;
+    const sourceNames = new Set<string>();
+    const collectSourceNames = (element: XmlElement): void => {
+      const local = (element.name ?? "").split(":").at(-1);
+      sourceNames.add(`element:${getNamespaceUri(element)}:${local}`);
+      for (const name of Object.keys(element.attributes ?? {})) {
+        if (name.startsWith("xmlns")) continue;
+        sourceNames.add(
+          `attribute:${resolveAttributeNamespaceUri(element, name)}:${name.split(":").at(-1)}`,
+        );
+      }
+      for (const child of getChildElements(element)) collectSourceNames(child);
+    };
+    collectSourceNames(source);
+    if (!sameReplacementNamespaces({ actual, expected, sourceNames })) return false;
   }
   return true;
 };
@@ -552,12 +566,14 @@ type ReplacementNamespaceOptions = {
   expected: XmlElement;
   actualInherited?: ReadonlySet<string>;
   expectedInherited?: ReadonlySet<string>;
+  sourceNames: ReadonlySet<string>;
 };
 const sameReplacementNamespaces = ({
   actual,
   expected,
   actualInherited = new Set(),
   expectedInherited = new Set(),
+  sourceNames,
 }: ReplacementNamespaceOptions): boolean => {
   const actualIgnored = ignorableNamespacesAt(actual, actualInherited);
   const expectedIgnored = ignorableNamespacesAt(expected, expectedInherited);
@@ -569,7 +585,10 @@ const sameReplacementNamespaces = ({
       (getNamespacePrefix(expected.name ?? "") !== null && actualElementNamespace === undefined) ||
       (expectedElementNamespace !== undefined &&
         expectedIgnored.has(expectedElementNamespace) &&
-        !actualIgnored.has(expectedElementNamespace)))
+        !actualIgnored.has(expectedElementNamespace) &&
+        !sourceNames.has(
+          `element:${expectedElementNamespace}:${(expected.name ?? "").split(":").at(-1)}`,
+        )))
   )
     return false;
   for (const name of actual.name === "patch" ? [] : Object.keys(expected.attributes ?? {})) {
@@ -581,14 +600,17 @@ const sameReplacementNamespaces = ({
       actualNamespace !== expectedNamespace ||
       (expectedNamespace !== undefined &&
         expectedIgnored.has(expectedNamespace) &&
-        !actualIgnored.has(actualNamespace))
+        !actualIgnored.has(actualNamespace) &&
+        !sourceNames.has(`attribute:${expectedNamespace}:${name.split(":").at(-1)}`))
     )
       return false;
     if (
       expectedNamespace === OOXML_NAMESPACES.mc.uri &&
       ["Ignorable", "ProcessContent", "MustUnderstand"].includes(name.slice(name.indexOf(":") + 1))
     ) {
-      for (const token of expected.attributes?.[name]?.split(/\s+/u) ?? []) {
+      const value = expected.attributes?.[name];
+      if (typeof value !== "string") return false;
+      for (const token of value.split(/\s+/u)) {
         const prefix = token.split(":").at(0);
         if (prefix === undefined || prefix.length === 0) continue;
         const expectedValueNamespace = resolveNamespaceUri(expected.namespaceScope, prefix);
@@ -611,6 +633,7 @@ const sameReplacementNamespaces = ({
           expected: other,
           actualInherited: actualIgnored,
           expectedInherited: expectedIgnored,
+          sourceNames,
         })
       );
     })

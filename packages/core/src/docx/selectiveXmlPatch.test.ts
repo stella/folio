@@ -815,3 +815,16 @@ test("a selective splice resolves compatibility attribute values in their local 
     expect(buildPatchedDocumentXml(original, local, new Set(["AAA111"]))).not.toBeNull();
   }
 });
+
+test("a selective splice preserves authored compatibility disposition for existing expanded names", () => {
+  const bound = SIMPLE_DOC.replace(
+    "<w:document ",
+    '<w:document xmlns:x="urn:test:extension" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ',
+  ).replace("<w:r><w:t>First paragraph", '<w:r x:existing="old"><w:t>First paragraph');
+  const serialized = bound
+    .replace("<w:document ", '<w:document mc:Ignorable="x" ')
+    .replace('x:existing="old"', 'x:existing="new"');
+  expect(buildPatchedDocumentXml(bound, serialized, new Set(["AAA111"]))).not.toBeNull();
+  const newAttribute = serialized.replace('x:existing="new"', 'x:existing="new" x:added="1"');
+  expect(buildPatchedDocumentXml(bound, newAttribute, new Set(["AAA111"]))).toBeNull();
+});

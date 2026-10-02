@@ -267,7 +267,24 @@ describe("authored run boundary ownership", () => {
           styleResolver: null,
         });
         expect(savedRuns(fromProseDoc(resolved, source))).toEqual(sourceRuns);
-        const tracked = fromProseDoc(edited.doc, source);
+        // The importer deliberately consolidates equal unowned XML runs. Edit
+        // that imported model so the reopen oracle compares the same ownership
+        // boundary before and after save, rather than raw unparsed fixtures.
+        const imported: Document = {
+          package: { document: parseDocumentBody(serializeDocument(source)) },
+        };
+        const importedRuns = savedRuns(imported);
+        const importedState = EditorState.create({ doc: toProseDoc(imported) });
+        const importedEdit = importedState.apply(
+          importedState.tr
+            .insertText("!", position)
+            .addMark(
+              position,
+              position + 1,
+              schema.mark("insertion", { revisionId: 4, author: "Reviewer" }),
+            ),
+        );
+        const tracked = fromProseDoc(importedEdit.doc, imported);
         const xml = serializeDocument(tracked);
         const reopened: Document = { package: { document: parseDocumentBody(xml) } };
         const reopenedResolution = resolveWholeStory({
@@ -275,13 +292,8 @@ describe("authored run boundary ownership", () => {
           mode: "reject",
           styleResolver: null,
         });
-        // Compare saved records to the same parser-normalized source shape:
-        // serialization qualifies authored attributes and emits default run properties.
-        const reopenedSource: Document = {
-          package: { document: parseDocumentBody(serializeDocument(source)) },
-        };
         expect(savedRuns(fromProseDoc(reopenedResolution.resolved, reopened))).toEqual(
-          savedRuns(reopenedSource),
+          importedRuns,
         );
       }),
       {},

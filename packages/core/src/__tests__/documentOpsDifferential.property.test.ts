@@ -53,7 +53,8 @@ const flowArbitrary = fc.record({
  * model inserts into its existing run instead, so identity and empty w:rPr
  * provenance may split PM text leaves without changing rendered content.
  * Preserve authored attribute/XML remainders; only the allocator id and empty
- * property-set capture are excluded from this rendered-content comparison.
+ * property-set capture and saved split-owner proof are excluded from this
+ * rendered-content comparison.
  */
 const renderedMarks = (node: PMNode): unknown[] =>
   node.marks.flatMap((mark) => {
@@ -67,8 +68,19 @@ const renderedMarks = (node: PMNode): unknown[] =>
       return [];
     if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return [mark.toJSON()];
     const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(mark);
-    if (!preservedAttributes?.length && !preserved?.children?.length) return [];
-    return [{ type: RUN_IDENTITY_MARK_NAME, attrs: { preservedAttributes, preserved } }];
+    const authoredAttributes = preservedAttributes?.filter(
+      ({ namespace, name }) => namespace !== OOXML_NAMESPACES.folio.uri || name !== "splitRunOwner",
+    );
+    if (!authoredAttributes?.length && !preserved?.children?.length) return [];
+    return [
+      {
+        type: RUN_IDENTITY_MARK_NAME,
+        attrs: {
+          preservedAttributes: authoredAttributes?.length ? authoredAttributes : undefined,
+          preserved,
+        },
+      },
+    ];
   });
 
 /** Compare every character and mark independently of internal text-leaf partitioning. */
@@ -100,6 +112,26 @@ test("rendered differential oracle detects text, formatting and preserved metada
   if (!identity) throw new Error("oracle fixture has no run identity mark");
   const captureOnly = identity.create(runIdentityAttrs(42, { emptyFormatting: true }));
   expect(contentView(state.tr.addMark(from, to, captureOnly).doc)).toEqual(before);
+  const splitProof = {
+    namespace: OOXML_NAMESPACES.folio.uri,
+    name: "splitRunOwner",
+    value: "1:main:1:0",
+  };
+  const splitCapture = identity.create(runIdentityAttrs(42, { preservedAttributes: [splitProof] }));
+  expect(contentView(state.tr.addMark(from, to, splitCapture).doc)).toEqual(before);
+  // Neither a foreign namespace nor a different private-namespace name is proof.
+  for (const authored of [
+    { ...splitProof, namespace: OOXML_NAMESPACES.w.uri },
+    { ...splitProof, name: "authoredOwner" },
+  ]) {
+    const authoredOnly = identity.create(runIdentityAttrs(42, { preservedAttributes: [authored] }));
+    const authoredWithProof = identity.create(
+      runIdentityAttrs(42, { preservedAttributes: [splitProof, authored] }),
+    );
+    const authoredView = contentView(state.tr.addMark(from, to, authoredOnly).doc);
+    expect(authoredView).not.toEqual(before);
+    expect(contentView(state.tr.addMark(from, to, authoredWithProof).doc)).toEqual(authoredView);
+  }
   expect(contentView(state.tr.insertText("x", from).doc)).not.toEqual(before);
   expect(contentView(state.tr.delete(from, to).doc)).not.toEqual(before);
   const fontSize = state.schema.marks["fontSize"];

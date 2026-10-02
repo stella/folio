@@ -1134,7 +1134,14 @@ describe("tracked replacement examples", () => {
         if (mode === "tracked-changes") {
           const reopened = await FolioDocxReviewer.fromBuffer(saved);
           reopened.rejectAll();
-          expect(await savedFirstParagraph(await reopened.toBuffer())).toBe(control);
+          const rejectedXml = await savedFirstParagraph(await reopened.toBuffer());
+          // Reopening an id-less source assigns a paragraph id. Keep the full
+          // run-for-run comparison; only that paragraph-level identity is incidental.
+          expect(
+            rejectedXml.replace(/^<w:p\b[^>]*>/u, (opening) =>
+              opening.replaceAll(/ w14:paraId="[^"]*"/gu, ""),
+            ),
+          ).toBe(control);
         }
       }
     }
