@@ -74,6 +74,88 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 describe("canonical session", () => {
+  test("compound intents reuse their applied batch and restore exact history", () => {
+    const session = createCanonicalSession(seed("plain")).unwrap();
+    let state = stateFor(session);
+    const original = session.document;
+    const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 1 };
+    const apply = spyOn(documentOps, "applyDocumentOps");
+    const prepared = session.prepareIntents(state, [
+      { type: "replaceText", from: at, to: at, text: "X" },
+      { type: "formatParagraph", at, patch: { alignment: "right" } },
+    ]);
+    const calls = apply.mock.calls.length;
+    apply.mockRestore();
+    expect(calls).toBe(2);
+    const commit = prepared.unwrap();
+    expect(session.document).toBe(original);
+    expect(commit.transaction.selection.head).toBe(3);
+    state = accept(state, commit);
+    const edited = session.document;
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(original);
+    state = accept(state, session.prepareRedo(state).unwrap());
+    expect(session.document).toStrictEqual(edited);
+    expect(state.selection.head).toBe(3);
+  });
+
+  test("split identities advance on publication and never reuse retired identities", () => {
+    const session = createCanonicalSession(seed("plain")).unwrap();
+    let state = stateFor(session);
+    const original = session.document;
+    const first = session.prepareSplit(state).unwrap();
+    const abandoned = session.prepareSplit(state).unwrap();
+    expect(first.document).toStrictEqual(abandoned.document);
+    expect(session.document).toBe(original);
+    state = accept(state, first);
+    const allocated = first.touched.inserted.at(0);
+    expect(allocated).toBeDefined();
+    expect(abandoned.publish().isErr()).toBe(true);
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(original);
+    const next = session.prepareSplit(state).unwrap();
+    expect(next.touched.inserted.at(0)).not.toBe(allocated);
+  });
+
+  test("benign inputs return noChange while malformed input remains refused", () => {
+    const session = createCanonicalSession(seed("plain")).unwrap();
+    const state = stateFor(session);
+    const at = { story: OP_STORIES.MAIN, blockId: "12345678", offset: 0 };
+    for (const result of [
+      session.prepareReplace(state, { from: 1, to: 1, text: "" }),
+      session.prepareIntents(state, []),
+      session.prepareIntent(state, { type: "formatParagraph", at, patch: {} }),
+      session.prepareJoin(state, "backward"),
+    ]) {
+      if (result.isOk()) panic("A benign no-op unexpectedly committed.");
+      expect(result.error.reason).toBe("noChange");
+    }
+    const refused = session.prepareReplace(state, { from: 1, to: 1, text: "\u0000" });
+    if (refused.isOk()) panic("Illegal XML input unexpectedly committed.");
+    expect(refused.error.reason).toBe("refused");
+    expect(session.version).toBe(0);
+    expect(session.canUndo).toBe(false);
+  });
+
+  test("repeated mode synchronization retains semantic typing groups", () => {
+    const session = createCanonicalSession(seed("plain")).unwrap();
+    let state = stateFor(session);
+    const original = session.document;
+    for (const [index, text] of ["X", "Y"].entries()) {
+      session.setMode({ type: "editing" });
+      state = accept(state, session.prepareReplace(state, {
+        from: state.selection.head,
+        to: state.selection.head,
+        text,
+        semantic: "typing",
+        time: 100 + index,
+      }).unwrap());
+    }
+    expect(state.doc.textContent).toBe("XYplain");
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toStrictEqual(original);
+    expect(session.canUndo).toBe(false);
+  });
   test("canonical input sequences keep the projection, inverse history and refusal atomic", async () => {
     await assertProperty(
       fc.asyncProperty(
@@ -387,7 +469,7 @@ describe("canonical session", () => {
     expect(session.version).toBe(3);
   });
 
-  test("activation rejects absent/duplicate identities, secondary stories, wrappers and atoms", () => {
+  test("activation rejects absent/duplicate identities, secondary stories and unsupported leaves", () => {
     const unsupported: Document[] = [
       { package: { document: { content: [{ type: "paragraph", content: [] }] } } },
       {
@@ -413,7 +495,7 @@ describe("canonical session", () => {
               {
                 type: "paragraph",
                 paraId: "12345678",
-                content: [{ type: "run", content: [{ type: "tab" }] }],
+                content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
               },
             ],
           },
@@ -423,6 +505,23 @@ describe("canonical session", () => {
       seed("bad\u0000"),
     ];
     for (const document of unsupported) expect(createCanonicalSession(document).isErr()).toBe(true);
+  });
+
+  test("stored formatting authors the next insertion and undo restores the unformatted model", () => {
+    const session = createCanonicalSession(seed("plain")).unwrap();
+    let state = stateFor(session);
+    const original = session.document;
+    const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
+    state = state.apply(state.tr.setStoredMarks([italic]));
+    state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap());
+    const paragraph = session.document.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") return panic("Formatted input lost its paragraph.");
+    const inserted = paragraph.content.at(0);
+    expect(inserted?.type === "run" ? inserted.formatting?.italic : undefined).toBe(true);
+    expect(state.doc.textContent).toBe("Xplain");
+    state = accept(state, session.prepareUndo(state).unwrap());
+    expect(session.document).toEqual(original);
+    expect(state.selection.head).toBe(1);
   });
 
   test("rejection leaves canonical model, projection, version and journal unchanged", () => {
@@ -440,11 +539,6 @@ describe("canonical session", () => {
     for (const input of attempts) expect(session.prepareReplace(state, input).isErr()).toBe(true);
     const stale = state.apply(state.tr.insertText("outside", 1));
     expect(session.prepareReplace(stale, { from: 1, to: 1, text: "X" }).isErr()).toBe(true);
-    const bold = schema.marks.bold?.create();
-    expect(bold).toBeDefined();
-    if (bold === undefined) return;
-    const formatted = state.apply(state.tr.setStoredMarks([bold]));
-    expect(session.prepareReplace(formatted, { from: 1, to: 1, text: "X" }).isErr()).toBe(true);
     expect(session.document).toBe(original);
     expect(session.projection).toBe(projection);
     expect(session.version).toBe(0);

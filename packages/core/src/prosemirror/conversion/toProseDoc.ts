@@ -135,7 +135,13 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import {
+  computeListRendering,
+  getCachedNumberingMap,
+  type NumberingMap,
+} from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { planEmptyRanges } from "../emptyRangeAnchor";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
@@ -471,6 +477,10 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
+    numbering:
+      document.package.numbering === undefined
+        ? undefined
+        : getCachedNumberingMap(document.package.numbering),
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
@@ -707,6 +717,26 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
+  // Numbering is authored package state; cached paragraph rendering may predate an op.
+  const numPr = paragraph.formatting?.numPr;
+  if (context.numbering !== undefined && numPr?.kind === "reference") {
+    const rendering = computeListRendering(numPr, context.numbering);
+    if (rendering !== null) {
+      const cached = paragraph.listRendering;
+      const local =
+        cached?.numId === numPr.numId && cached.level === (numPr.ilvl ?? 0)
+          ? {
+              implicitChildLevelAdvances: cached.implicitChildLevelAdvances,
+              markerSecondSlotOffsetTwips: cached.markerSecondSlotOffsetTwips,
+            }
+          : {};
+      Object.assign(
+        attrs,
+        CLEARED_LIST_RENDERING_ATTRS,
+        listRenderingAttrPatch({ ...rendering, ...local }),
+      );
+    } else Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  }
   reportParagraphPageBreakProjection({
     paragraph,
     attrs,
@@ -1364,7 +1394,7 @@ function paragraphFormattingToAttrs(
     attrs.numPrFromStyle = paragraphNumberingAttr(formatting.numPrFromStyle);
   }
   // List rendering info from parsed numbering definitions
-  if (paragraph.listRendering) {
+  if (paragraph.listRendering && formatting?.numPr?.kind !== "none") {
     Object.assign(attrs, listRenderingAttrPatch(paragraph.listRendering));
   }
   // Store original inline formatting for lossless serialization round-trip
@@ -1686,6 +1716,7 @@ function resolveTextFormatting(
  * preserve their layout when opened from DOCX files.
  */
 type TableConversionContext = {
+  numbering?: NumberingMap;
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;

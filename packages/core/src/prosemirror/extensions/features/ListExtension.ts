@@ -1,3 +1,4 @@
+import { withCanonicalCommand } from "../../canonicalCommands";
 /**
  * List Extension — list commands + keymaps
  *
@@ -183,10 +184,15 @@ function toggleList(intent: ActiveListType): Command {
   };
 }
 
-export const toggleBulletList: Command = (state, dispatch) => toggleList("bullet")(state, dispatch);
+export const toggleBulletList = withCanonicalCommand(
+  (state, dispatch) => toggleList("bullet")(state, dispatch),
+  () => [{ type: "toggleList", kind: "bullet" }],
+);
 
-export const toggleNumberedList: Command = (state, dispatch) =>
-  toggleList("numbered")(state, dispatch);
+export const toggleNumberedList = withCanonicalCommand(
+  (state, dispatch) => toggleList("numbered")(state, dispatch),
+  () => [{ type: "toggleList", kind: "decimal" }],
+);
 
 const attrsForListLevel = (
   state: EditorState,
@@ -666,9 +672,15 @@ export const ListExtension = createExtension({
       commands: {
         toggleBulletList: () => toggleBulletList,
         toggleNumberedList: () => toggleNumberedList,
-        increaseListLevel: () => increaseListLevel,
-        decreaseListLevel: () => decreaseListLevel,
-        removeList: () => removeList,
+        increaseListLevel: () =>
+          withCanonicalCommand(increaseListLevel, () => [
+            { type: "changeListLevel", direction: "increase" },
+          ]),
+        decreaseListLevel: () =>
+          withCanonicalCommand(decreaseListLevel, () => [
+            { type: "changeListLevel", direction: "decrease" },
+          ]),
+        removeList: () => withCanonicalCommand(removeList, () => [{ type: "removeList" }]),
         restartNumbering: () => restartNumbering,
         continueNumbering: () => continueNumbering,
         setNumberingValue: (value: number) => setNumberingValue(value),

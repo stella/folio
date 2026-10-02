@@ -6,6 +6,8 @@
  * - Commands from paragraph.ts (alignment, spacing, indent, style)
  */
 
+import { withCanonicalParagraphFormatting } from "../../canonicalCommands";
+
 import { mintBookmarkId, reserveProseBookmarkIds } from "../../../docx/bookmarkIds";
 
 import { Fragment } from "prosemirror-model";
@@ -1058,47 +1060,114 @@ export const ParagraphExtension = createNodeExtension({
 
     return {
       commands: {
-        setAlignment: (alignment: ParagraphAlignment) => makeSetAlignment(alignment),
-        alignLeft: () => makeSetAlignment("left"),
-        alignCenter: () => makeSetAlignment("center"),
-        alignRight: () => makeSetAlignment("right"),
-        alignJustify: () => makeSetAlignment("both"),
-        setLineSpacing: (value: number, rule?: LineSpacingRule) => makeSetLineSpacing(value, rule),
-        singleSpacing: () => makeSetLineSpacing(240),
-        oneAndHalfSpacing: () => makeSetLineSpacing(360),
-        doubleSpacing: () => makeSetLineSpacing(480),
-        setSpaceBefore: (twips: number) => setParagraphSpacingAttr("before", twips),
-        setSpaceAfter: (twips: number) => setParagraphSpacingAttr("after", twips),
-        increaseIndent: (amount?: number) => makeIncreaseIndent(amount),
-        decreaseIndent: (amount?: number) => makeDecreaseIndent(amount),
-        setIndentLeft: (twips: number) => setParagraphAttr("indentLeft", twips > 0 ? twips : null),
-        setIndentRight: (twips: number) =>
-          setParagraphAttr("indentRight", twips > 0 ? twips : null),
-        setIndentFirstLine: (twips: number, hanging?: boolean) =>
-          setParagraphAttrsCmd({
-            indentFirstLine: twips > 0 ? twips : null,
-            hangingIndent: hanging ?? false,
+        setAlignment: (alignment: ParagraphAlignment) =>
+          withCanonicalParagraphFormatting(makeSetAlignment(alignment), { alignment }),
+        alignLeft: () =>
+          withCanonicalParagraphFormatting(makeSetAlignment("left"), { alignment: "left" }),
+        alignCenter: () =>
+          withCanonicalParagraphFormatting(makeSetAlignment("center"), { alignment: "center" }),
+        alignRight: () =>
+          withCanonicalParagraphFormatting(makeSetAlignment("right"), { alignment: "right" }),
+        alignJustify: () =>
+          withCanonicalParagraphFormatting(makeSetAlignment("both"), { alignment: "both" }),
+        setLineSpacing: (value: number, rule?: LineSpacingRule) =>
+          withCanonicalParagraphFormatting(makeSetLineSpacing(value, rule), {
+            lineSpacing: value,
+            lineSpacingRule: rule ?? "auto",
           }),
-        applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
-          applyStyleFn(styleId, resolvedAttrs),
-        clearStyle: () => (state: EditorState, dispatch?: (tr: Transaction) => void) => {
-          const resolver = getDocumentStyleResolver(state);
-          if (!resolver) {
-            return applyStyleFn(null)(state, dispatch);
-          }
-          // Clearing the style applies the default paragraph style, so the
-          // paragraph reads what a reopen resolves for it.
-          const resolved = resolver.resolveParagraphStyle(null);
-          const styleName = resolver.getDefaultParagraphStyle()?.name;
-          return applyStyleFn(null, {
-            ...(resolved.paragraphFormatting && {
-              paragraphFormatting: resolved.paragraphFormatting,
+        singleSpacing: () =>
+          withCanonicalParagraphFormatting(makeSetLineSpacing(240), {
+            lineSpacing: 240,
+            lineSpacingRule: "auto",
+          }),
+        oneAndHalfSpacing: () =>
+          withCanonicalParagraphFormatting(makeSetLineSpacing(360), {
+            lineSpacing: 360,
+            lineSpacingRule: "auto",
+          }),
+        doubleSpacing: () =>
+          withCanonicalParagraphFormatting(makeSetLineSpacing(480), {
+            lineSpacing: 480,
+            lineSpacingRule: "auto",
+          }),
+        setSpaceBefore: (twips: number) =>
+          withCanonicalParagraphFormatting(setParagraphSpacingAttr("before", twips), {
+            spaceBefore: twips,
+          }),
+        setSpaceAfter: (twips: number) =>
+          withCanonicalParagraphFormatting(setParagraphSpacingAttr("after", twips), {
+            spaceAfter: twips,
+          }),
+        increaseIndent: (amount?: number) =>
+          withCanonicalParagraphFormatting(makeIncreaseIndent(amount), (node) => ({
+            indentLeft: (expectParagraphAttrs(node).indentLeft ?? 0) + (amount ?? 720),
+          })),
+        decreaseIndent: (amount?: number) =>
+          withCanonicalParagraphFormatting(makeDecreaseIndent(amount), (node) => {
+            const attrs = expectParagraphAttrs(node);
+            const indentLeft = Math.max(0, (attrs.indentLeft ?? 0) - (amount ?? 720));
+            return {
+              indentLeft:
+                indentLeft > 0 ||
+                paragraphNumberingReferenceId(attrs.numPr ?? undefined) !== undefined
+                  ? indentLeft
+                  : null,
+            };
+          }),
+        setIndentLeft: (twips: number) =>
+          withCanonicalParagraphFormatting(
+            setParagraphAttr("indentLeft", twips > 0 ? twips : null),
+            { indentLeft: twips > 0 ? twips : null },
+          ),
+        setIndentRight: (twips: number) =>
+          withCanonicalParagraphFormatting(
+            setParagraphAttr("indentRight", twips > 0 ? twips : null),
+            { indentRight: twips > 0 ? twips : null },
+          ),
+        setIndentFirstLine: (twips: number, hanging?: boolean) =>
+          withCanonicalParagraphFormatting(
+            setParagraphAttrsCmd({
+              indentFirstLine: twips > 0 ? twips : null,
+              hangingIndent: hanging ?? false,
             }),
-            ...(resolved.runFormatting && { runFormatting: resolved.runFormatting }),
-            ...(styleName && { styleName }),
-            numbering: getDocumentNumbering(state),
-          })(state, dispatch);
-        },
+            { indentFirstLine: twips > 0 ? twips : null, hangingIndent: hanging ?? false },
+          ),
+        applyStyle: (styleId: string, resolvedAttrs?: ResolvedStyleAttrs) =>
+          withCanonicalParagraphFormatting(applyStyleFn(styleId, resolvedAttrs), {
+            styleId,
+            ...(resolvedAttrs
+              ? {
+                  alignment: null,
+                  outlineLevel: null,
+                  spaceBefore: null,
+                  spaceAfter: null,
+                  lineSpacing: null,
+                  lineSpacingRule: null,
+                }
+              : {}),
+          }),
+        clearStyle: () =>
+          withCanonicalParagraphFormatting(
+            (state: EditorState, dispatch?: (tr: Transaction) => void) => {
+              const resolver = getDocumentStyleResolver(state);
+              if (!resolver) {
+                return applyStyleFn(null)(state, dispatch);
+              }
+              // Clearing the style applies the default paragraph style, so the
+              // paragraph reads what a reopen resolves for it.
+              const resolved = resolver.resolveParagraphStyle(null);
+              const styleName = resolver.getDefaultParagraphStyle()?.name;
+              return applyStyleFn(null, {
+                ...(resolved.paragraphFormatting && {
+                  paragraphFormatting: resolved.paragraphFormatting,
+                }),
+                ...(resolved.runFormatting && { runFormatting: resolved.runFormatting }),
+                ...(styleName && { styleName }),
+                numbering: getDocumentNumbering(state),
+              })(state, dispatch);
+            },
+            { styleId: null },
+          ),
         insertSectionBreak: (breakType: SectionBreakType) => setSectionBreakType(breakType),
         removeSectionBreak: () => removeSectionBreakAtSelection,
         generateTOC:
