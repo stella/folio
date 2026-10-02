@@ -32,20 +32,29 @@ const invalidId = fc
 test("in-range packages reuse their source map without a reservation or rewrite pass", () => {
   fc.assert(
     fc.property(
-      fc.integer({ min: 0, max: 2_147_483_647 }),
+      fc.integer({ min: -2_147_483_648, max: 2_147_483_647 }),
+      fc.integer({ min: 0, max: 4_294_967_295 }),
       fc.constantFrom(...WORD_NAMESPACES),
-      (id, namespace) => {
+      (id, drawingId, namespace) => {
         const parts = new Map([
           [
             "word/document.xml",
-            `<x:document xmlns:x="${namespace}"><x:commentReference x:id="${id}"/><x:numId x:val="${id}"/></x:document>`,
+            `<x:document xmlns:x="${namespace}" xmlns:d="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><x:commentReference x:id="${id}"/><x:numId x:val="${id}"/><d:docPr id="${drawingId}"/></x:document>`,
           ],
           [
             "word/comments.xml",
             `<x:comments xmlns:x="${namespace}"><x:comment x:id="${id}"/></x:comments>`,
           ],
         ]);
-        expect(normalizeImportedNumericIds(parts)).toBe(parts);
+        let visited = false;
+        expect(
+          normalizeImportedNumericIds(parts, {
+            onParsedDocument: () => {
+              visited = true;
+            },
+          }),
+        ).toBe(parts);
+        expect(visited).toBe(false);
       },
     ),
     propertyConfig({ numRuns: 100 }),

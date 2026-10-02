@@ -346,7 +346,7 @@ type ParsedDocumentBodyOptions = {
   numbering: NumberingMap | null;
   rels: RelationshipMap | null;
   media: Map<string, MediaFile> | null;
-  context?: ParseContext;
+  context?: ParseContext | undefined;
   previews: PreviewLedger;
 };
 

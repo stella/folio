@@ -54,7 +54,11 @@ import {
 } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
-import { parseDocumentBodyTree, extractAllTemplateVariables } from "./documentParser";
+import {
+  parseDocumentBody,
+  parseDocumentBodyTree,
+  extractAllTemplateVariables,
+} from "./documentParser";
 import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";

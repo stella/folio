@@ -154,7 +154,7 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
     }
 
     const parent = stack.at(-1)?.element;
-    const scope = parent === undefined ? inheritedNamespaceScope : parent.namespaceScope;
+    const scope = parent?.namespaceScope ?? inheritedNamespaceScope;
     if (
       options.mode === "attributes" &&
       options.retainAttribute !== undefined &&
@@ -276,7 +276,7 @@ type ParseOpenTagOptions = {
   start: number;
   close: number;
   spanMode: "none" | "all" | "identities";
-  retainAttribute?: (options: AttributeNameOptions) => boolean;
+  retainAttribute?: ((options: AttributeNameOptions) => boolean) | undefined;
 };
 
 const parseOpenTag = ({

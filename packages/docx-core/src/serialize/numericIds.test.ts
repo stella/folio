@@ -46,6 +46,24 @@ describe("numeric OOXML identifier writer guard", () => {
     }
   });
 
+  test("range preflight sees identity attributes inside identity-value tags", () => {
+    assertProperty(
+      fc.property(
+        fc.integer({ min: 2_147_483_648, max: 5_000_000_000 }),
+        fc.constantFrom("id", "numId", "abstractNumId", "numPicBulletId"),
+        fc.constantFrom("numId", "abstractNumId", "id"),
+        (id, attribute, element) => {
+          const xml = `<x:${element} xmlns:x="${WORD_NAMESPACES[0]}" x:val="1" x:${attribute}="${id}"/>`;
+          expect(mayContainInvalidOoxmlNumericIds(xml, "range")).toBe(true);
+          expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).toThrow(
+            InvalidOoxmlNumericIdError,
+          );
+        },
+      ),
+      propertyConfig({ numRuns: 100 }),
+    );
+  });
+
   test("namespace preflight preserves every numeric failure across shadows and encoded bindings", () => {
     const namespace = WORD_NAMESPACES[0];
     for (const declaration of [

@@ -181,6 +181,22 @@ const VALUE_ATTRIBUTE = new RegExp(
   `(?:^|\\s)((?:${PREFIX}:)?val)\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
   "gu",
 );
+// Skip short, nonnegative integers lexically. Suspicious val attributes are
+// intentionally not restricted to owner tags here; namespace/owner checks below
+// distinguish identities from formatting values only when a candidate exists.
+const RANGE_ATTRIBUTE = new RegExp(
+  `(?:^|\\s)((?:${PREFIX}:)?(?:${ID_ATTRIBUTE_NAMES}|val))\\s*=\\s*(["'])\\s*([+-]?\\d{10,}|-\\d+|[^"'<>]*&[^"'<>]*)\\s*\\2`,
+  "gu",
+);
+const hasRangeCandidate = (xml: string): boolean => {
+  for (const match of xml.matchAll(RANGE_ATTRIBUTE)) {
+    const value = match[3] ?? "";
+    if (value.includes("&")) return true;
+    const domain = (match[1] ?? "").includes(":") ? "signed32" : "unsigned32";
+    if (!isValidOoxmlNumericId(value.trim(), domain)) return true;
+  }
+  return false;
+};
 const NAMESPACE_BINDING = new RegExp(
   `\\bxmlns(?::(${PREFIX}))?\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
   "gu",
@@ -194,13 +210,15 @@ const prefixOf = (name: string): string => {
  * Conservative lexical preflight; namespace classification remains authoritative.
  * A prefix is considered numeric if any scope binds it to WordprocessingML. This can send
  * a shadowed foreign attribute to the full parser, but cannot hide a numeric one.
- * Entity-encoded bindings or values always require the authoritative scan.
+ * Suspicious values with entity-encoded bindings or values require the authoritative scan.
  */
 export const mayContainInvalidOoxmlNumericIds = (
   xml: string,
   mode: "schema" | "range" = "schema",
 ): boolean => {
-  if (!mayContainOoxmlNumericIds(xml)) return false;
+  if (mode === "range") {
+    if (!hasRangeCandidate(xml)) return false;
+  } else if (!mayContainOoxmlNumericIds(xml)) return false;
   const wordPrefixes = new Set<string>();
   for (const match of xml.matchAll(NAMESPACE_BINDING)) {
     const namespace = match[3] ?? "";
@@ -210,9 +228,8 @@ export const mayContainInvalidOoxmlNumericIds = (
   const needsScan = (value: string, domain?: "signed32"): boolean => {
     if (value.includes("&")) return true;
     if (mode === "range" && !/^[+-]?\d+$/u.test(value.trim())) return false;
-    // Unqualified id may be unsigned DrawingML: the common safe range is
-    // the intersection of both domains, so negative drawing ids still scan.
-    return !isValidOoxmlNumericId(value) || (domain === undefined && Number(value) < 0);
+    // Only DrawingML numeric identities use unqualified id attributes.
+    return !isValidOoxmlNumericId(value, domain ?? "unsigned32");
   };
   for (const match of xml.matchAll(ID_ATTRIBUTE)) {
     const name = match[1] ?? "";
