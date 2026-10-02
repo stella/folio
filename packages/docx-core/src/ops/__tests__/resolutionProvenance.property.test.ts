@@ -647,3 +647,114 @@ test("generated comment-bearing replacements share the planned anchor policy", (
   );
   expect([...refusals]).toStrictEqual([]);
 });
+
+// Earlier replacement generators selected whole text-only paragraphs. A
+// zero-width leaf at the trailing endpoint moves to the leading offset when
+// direct deletion runs; insertion must keep the input gap's affinity.
+test("generated replacements preserve input affinity around zero-width leaves", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 2, max: 6 }),
+      fc.nat(20),
+      fc.nat(20),
+      fc.nat(20),
+      fc.constantFrom("pageBreak", "bookmark"),
+      fc.integer({ min: 1, max: 2 }),
+      (width, anchor, head, target, kind, paragraphNumber) => {
+        const markerAt = target % (width + 1);
+        const content: ParagraphContent[] = [];
+        const addText = (text: string): void => {
+          if (text !== "") content.push({ type: "run", content: [{ type: "text", text }] });
+        };
+        addText("a".repeat(markerAt));
+        if (kind === "pageBreak")
+          content.push({ type: "run", content: [{ type: "renderedPageBreak" }] });
+        else
+          content.push(
+            { type: "bookmarkStart", id: 7, name: "range" },
+            { type: "bookmarkEnd", id: 7 },
+          );
+        addText("a".repeat(width - markerAt));
+        const blockId = paragraphNumber === 1 ? "00000001" : "00000002";
+        const paragraphs = [
+          { type: "paragraph", paraId: "00000001", content: [] },
+          { type: "paragraph", paraId: "00000002", content: [] },
+        ] satisfies Document["package"]["document"]["content"];
+        const chosen = paragraphs.at(paragraphNumber - 1);
+        if (chosen === undefined) panic("The generated replacement target must exist.");
+        const original = normalizeForOps({
+          package: {
+            document: {
+              content: paragraphs.map((paragraph) =>
+                paragraph === chosen ? Object.assign({}, paragraph, { content }) : paragraph,
+              ),
+            },
+          },
+        });
+        const from = Math.min(anchor % (width + 1), head % (width + 1));
+        const to = Math.max(anchor % (width + 1), head % (width + 1));
+        const intent: EditorIntent = {
+          type: "replaceText",
+          from: position({ blockId, offset: from }),
+          to: position({ blockId, offset: to }),
+          text: "edited",
+        };
+        const allocation = allocateEditorIntentIds(original, intent);
+        const direct = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "editing",
+          refusals,
+        });
+        const tracked = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "suggesting",
+          refusals,
+        });
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+          direct.document,
+        );
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+          original,
+        );
+        const paragraph = direct.document.package.document.content.find(
+          (node) => node.type === "paragraph" && node.paraId === blockId,
+        );
+        if (paragraph?.type !== "paragraph") panic("Replacement must retain its target.");
+        const actual: string[] = [];
+        for (const node of paragraph.content) {
+          if (node.type === "bookmarkStart") actual.push("marker");
+          if (node.type !== "run") continue;
+          for (const leaf of node.content) {
+            if (leaf.type === "text") actual.push(...leaf.text);
+            if (leaf.type === "renderedPageBreak") actual.push("marker");
+          }
+        }
+        const expected = [..."a".repeat(from), ..."edited", ..."a".repeat(width - to)];
+        if (markerAt <= from || markerAt >= to) {
+          let markerIndex = markerAt;
+          if (markerAt > from || (markerAt === from && kind === "bookmark"))
+            markerIndex = from + "edited".length + Math.max(0, markerAt - to);
+          expected.splice(markerIndex, 0, "marker");
+        }
+        expect(actual).toStrictEqual(expected);
+      },
+    ),
+    { numRuns: 50 },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});

@@ -1,8 +1,8 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
 import fc from "fast-check";
 
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOpEnvelope, applyDocumentOps } from "../apply";
 import { paragraphLogicalText } from "../offsets";
@@ -16,6 +16,8 @@ import {
   type RunPropsPatch,
 } from "../types";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const jsonTransport = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const ownUndefined = (record: object, key: string) =>

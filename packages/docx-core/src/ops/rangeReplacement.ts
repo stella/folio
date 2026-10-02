@@ -47,7 +47,14 @@ export const rangeStartAfterDeletion = ({
     .find(({ paragraph }) => live.has(idKey(paragraph.paraId ?? "")));
   if (retained === undefined)
     panic("A successful range deletion must retain a selected paragraph.");
-  return { ...from, blockId: retained.paragraph.paraId ?? from.blockId };
+  const source = original.at(first)?.paragraph;
+  if (source === undefined) panic("A successful deletion must have its input paragraph.");
+  return {
+    ...from,
+    blockId: retained.paragraph.paraId ?? from.blockId,
+    zeroWidthBefore:
+      from.zeroWidthBefore ?? defaultInsertionGap(source.content, from.offset).zeroWidthBefore,
+  };
 };
 
 /**

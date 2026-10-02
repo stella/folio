@@ -24,7 +24,7 @@ import {
   reservedIdentityKeysIn,
   packageParagraphIds,
 } from "./ids";
-import { leafSpans, zeroWidthLeavesAt } from "./leaves";
+import { defaultInsertionGap, leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import {
   appendTrackedDeletion,
@@ -576,7 +576,7 @@ export const compileEditorIntent = (
           )
             selection = { ...selection, blockId: op.nextBlockId };
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
-            selection = { ...op.at, offset: op.at.offset + text.length };
+            selection = { ...op.at, offset: op.at.offset + text.length, zeroWidthBefore: 0 };
         }
         break;
       }
@@ -634,7 +634,15 @@ export const compileEditorIntent = (
           }
         }
       }
-      const at = { ...from, blockId: survivorId };
+      // Resolve insertion affinity in the input, before deletion shifts trailing
+      // zero-width leaves onto this offset.
+      const at = {
+        ...from,
+        blockId: survivorId,
+        zeroWidthBefore:
+          from.zeroWidthBefore ??
+          defaultInsertionGap(paragraph.content, from.offset).zeroWidthBefore,
+      };
       if (text !== "")
         ops.push({
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
@@ -642,7 +650,8 @@ export const compileEditorIntent = (
           slice: { openStart: 0, openEnd: 0, content },
           ...allocationFields,
         });
-      selection = { ...at, offset: from.offset + text.length };
+      selection =
+        text === "" ? at : { ...at, offset: from.offset + text.length, zeroWidthBefore: 0 };
       break;
     }
     case "splitParagraph": {

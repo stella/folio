@@ -779,6 +779,12 @@
       "path": "26:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1",
       "date": "2026-10-02",
       "note": "Preserve exact identity provenance through tracked resolution and editor serialization."
+    },
+    {
+      "seed": 1478367656,
+      "path": "0:0:0:0:0:0:0:4:6:4:5:7:7:7:7:7:7:7:7:7:7:7:7:10:6:7:6:7:6:8:7:8:7:6:6:6:6:6:6:6:7:7:7:7:7:7:7:7",
+      "date": "2026-10-02",
+      "note": "Preserve exact prior review identities and marker affinity through generated structural editing and resolution."
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::the same operation on equal documents gives equal results": [
@@ -843,6 +849,18 @@
       "path": "18:0:0:1:4",
       "date": "2026-10-02",
       "note": "Preserve exact identity provenance through tracked resolution and editor serialization."
+    },
+    {
+      "seed": 1010476761,
+      "path": "2:0:1:3:7:0",
+      "date": "2026-10-02",
+      "note": "Preserve exact prior review identities and marker affinity through generated structural editing and resolution."
+    },
+    {
+      "seed": 1308229487,
+      "path": "3:0:1:4:5:3:4:4",
+      "date": "2026-10-02",
+      "note": "Preserve exact prior review identities and marker affinity through generated structural editing and resolution."
     }
   ],
   "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated later property rejection retains earlier cut provenance": [
