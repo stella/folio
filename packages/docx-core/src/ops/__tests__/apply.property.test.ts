@@ -1227,8 +1227,9 @@ describe("document operations", () => {
         const body = next.package.document;
         const beforeBody = document.package.document;
         const beforeSections = beforeBody.sections ?? [];
+        const beforeContent = new Set(beforeBody.content);
         const shared = beforeSections.every((section) =>
-          section.content.every((block) => beforeBody.content.includes(block)),
+          section.content.every((block) => beforeContent.has(block)),
         );
         const derived = body.sections?.flatMap(({ content }) => content) ?? [];
         expect(derived).toStrictEqual(body.content);

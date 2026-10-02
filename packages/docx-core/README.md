@@ -48,6 +48,10 @@ bun add @stll/docx-core
   takes. `normalizeForOps` and `validateOpsDocument` establish and check the
   contract a document meets before operations apply to it; `toOpEnvelope`
   wraps an operation with its schema version for journaling.
+  `validateDocumentBatch`, `parseDocumentBatch` and `validateSequencedBatch`
+  decode bounded batch envelopes. `transformBatch`, `createSequencer` and
+  `createClient` provide conservative rebasing, idempotent in-memory sequencing
+  and optimistic pending queues (see [operation batches](src/ops/sequencing/README.md)).
 
 ## License
 

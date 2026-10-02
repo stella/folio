@@ -986,7 +986,7 @@ export type ParagraphAlignment = "start" | "center" | "end" | "both" | "mediumKa
 export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | InlineWrapper | MathEquation | PreservedInline;
 
 // @public (undocumented)
-export type ParagraphFormatting = {
+export type ParagraphFormatting = OwnFieldPresence<{
     alignment?: ParagraphAlignment;
     bidi?: boolean;
     kinsoku?: boolean;
@@ -1047,7 +1047,7 @@ export type ParagraphFormatting = {
     runProperties?: TextFormatting;
     runInWithNext?: boolean;
     preserved?: PreservedMarkup;
-};
+}>;
 
 // @public
 export type ParagraphMarkChange = {
@@ -2000,7 +2000,7 @@ export type TextDirectionFlow = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV";
 export type TextEffect = "none" | "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";
 
 // @public
-export type TextFormatting = {
+export type TextFormatting = OwnFieldPresence<{
     bold?: boolean;
     boldCs?: boolean;
     italic?: boolean;
@@ -2051,7 +2051,7 @@ export type TextFormatting = {
     cs?: boolean;
     styleId?: string;
     preserved?: PreservedMarkup;
-};
+}>;
 
 // @public (undocumented)
 export type TextWatermark = {

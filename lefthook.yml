@@ -11,11 +11,11 @@ pre-commit:
   parallel: false
   commands:
     lint:
-      glob: "**/*.{ts,tsx,js,jsx}"
+      glob: "**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"
       run: bun --bun oxlint -c oxlint.config.ts --threads=2 --deny-warnings --no-error-on-unmatched-pattern --fix {staged_files}
       stage_fixed: true
     format:
-      glob: "**/*.{ts,tsx,js,jsx,json,css}"
+      glob: "**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs,json,css}"
       run: bun --bun oxfmt -c .oxfmtrc.json --no-error-on-unmatched-pattern {staged_files}
       stage_fixed: true
     i18n:

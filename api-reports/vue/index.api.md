@@ -373,6 +373,7 @@ export type DocxEditorProps = {
     documentBuffer?: DocxInput | null;
     password?: string | undefined;
     document?: Document_2 | null;
+    experimentalSession?: "canonical";
     onSave?: (buffer: ArrayBuffer) => void;
     author?: string;
     plugins?: readonly Plugin_2[] | undefined;

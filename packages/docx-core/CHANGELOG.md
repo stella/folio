@@ -1,5 +1,13 @@
 # @stll/docx-core
 
+## 0.30.1
+
+### Patch Changes
+
+- [#1333](https://github.com/stella/folio/pull/1333) [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Allocate bounded OOXML identifiers across editors and reviewers, normalize legacy imported identities consistently, and reject out-of-range identifiers when saving DOCX files.
+
+- [#1333](https://github.com/stella/folio/pull/1333) [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Skip namespace collection and reservation for in-range imports; reuse repaired document trees, scan other imported identifiers without retaining XML trees, and compress repaired baselines at the fastest DEFLATE level.
+
 ## 0.30.0
 
 ### Minor Changes

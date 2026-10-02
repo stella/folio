@@ -128,6 +128,7 @@ export type UseDocxEditorOptions = {
     noteEditorContainer?: Ref<HTMLElement | null>;
     pagesContainer: Ref<HTMLElement | null>;
     readOnly?: MaybeRefOrGetter<boolean>;
+    experimentalSession?: MaybeRefOrGetter<"canonical" | undefined>;
     pageGap?: number;
     pageRenderer?: MaybeRefOrGetter<PageRendererName | undefined>;
     markupView?: MaybeRefOrGetter<DisplayMode>;
