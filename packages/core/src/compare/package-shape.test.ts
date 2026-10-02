@@ -11,6 +11,8 @@
 
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import { panic } from "better-result";
 
 import { buildBodySequenceDocx, type BodyItem } from "./__fixtures__/body-sequence";
 import { compareDocx } from "./compare";
@@ -272,6 +274,63 @@ describe("hyperlink nesting", () => {
 });
 
 describe("determinism", () => {
+  test.each(["without", "with"] as const)(
+    "loaded maximum revisions use bounded deterministic ids, %s a retained section revision",
+    async (sectionRevision) => {
+      const zip = await JSZip.loadAsync(
+        await buildBodySequenceDocx([{ kind: "paragraph", text: "alpha beta gamma" }]),
+      );
+      const xml = await zip.file("word/document.xml")?.async("text");
+      if (xml === undefined) panic("Fixture has no document part");
+      const sectionChange = `<w:sectPrChange w:id="1" w:author="Author" w:date="${OPTIONS.timestamp}"><w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr></w:sectPrChange>`;
+      let revised = xml.replace(
+        /(<w:r\b[^>]*>[\s\S]*?<\/w:r>)/u,
+        `<w:ins w:id="${String(MAX_REVISION_ID)}" w:author="Author" w:date="${OPTIONS.timestamp}">$1</w:ins>`,
+      );
+      if (sectionRevision === "with")
+        revised = revised.replace("</w:sectPr>", `${sectionChange}</w:sectPr>`);
+      zip.file("word/document.xml", revised);
+      const base = await zip.generateAsync({ type: "arraybuffer" });
+      const target = await buildBodySequenceDocx([{ kind: "paragraph", text: "alpha BETA gamma" }]);
+      // A pending input section change is an established verification gap; inspect
+      // emitted markup while requiring the comparison to report that limitation.
+      const options = {
+        ...OPTIONS,
+        ...(sectionRevision === "with" ? { onUnverified: "emit" as const } : {}),
+      };
+      const [first, second] = await Promise.all([
+        compareDocx(base, target, options),
+        compareDocx(base, target, options),
+      ]);
+      if (first.isErr()) throw first.error;
+      if (second.isErr()) throw second.error;
+      expect(new Uint8Array(second.value.buffer)).toEqual(new Uint8Array(first.value.buffer));
+      const savedZip = await JSZip.loadAsync(first.value.buffer);
+      const savedXml = await savedZip.file("word/document.xml")?.async("text");
+      if (savedXml === undefined) panic("Comparison has no document part");
+      if (sectionRevision === "with") {
+        expect(savedXml).toContain('<w:sectPrChange w:id="1"');
+        expect(first.value.verification.status).toBe("unverified");
+        if (first.value.verification.status === "unverified") {
+          expect(
+            first.value.verification.failures.some(
+              ({ detail }) => detail === "input final section already carries tracked changes",
+            ),
+          ).toBe(true);
+        }
+      } else {
+        expect(first.value.verification.status).toBe("verified");
+      }
+      const emittedIds = revisionIdsOf(savedXml).map(Number);
+      expect(emittedIds.length).toBeGreaterThan(0);
+      for (const id of emittedIds) {
+        expect(Number.isInteger(id)).toBe(true);
+        expect(id).toBeGreaterThan(sectionRevision === "with" ? 1 : 0);
+        expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+      }
+    },
+  );
+
   test("two runs over the same inputs produce byte-identical packages", async () => {
     // `dcterms:modified` is the last clock the package holds: a save stamps it
     // from the wall clock, which makes two otherwise identical runs differ in

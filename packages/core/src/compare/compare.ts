@@ -77,6 +77,7 @@ import { createContentComparisonWorkSession } from "./content";
 import { planStoryCompare, type CompareStoryPlan, type CompareTableTemplateRequest } from "./plan";
 import { withFixedPackageDates } from "./reproducible-package";
 import { canonicalJson } from "../utils/canonicalJson";
+import { revisionIdSeedAbove } from "../prosemirror/plugins/revisionIds";
 import {
   CompareDocxApplyError,
   CompareDocxFinalParagraphMarkError,
@@ -675,7 +676,7 @@ export const parseComparison = async (
     reviewer,
     revisionStamp: {
       date: options.timestamp,
-      idSeed: baseProjection.revisions.highestId + 1,
+      idSeed: revisionIdSeedAbove(baseProjection.revisions.ids),
     },
     packageDate,
     pairs: comparisonPairs,

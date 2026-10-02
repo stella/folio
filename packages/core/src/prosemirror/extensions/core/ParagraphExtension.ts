@@ -6,6 +6,8 @@
  * - Commands from paragraph.ts (alignment, spacing, indent, style)
  */
 
+import { mintBookmarkId, reserveProseBookmarkIds } from "../../../docx/bookmarkIds";
+
 import { Fragment } from "prosemirror-model";
 import type { Node as PMNode, NodeSpec } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
@@ -1115,6 +1117,7 @@ export const ParagraphExtension = createNodeExtension({
             const tr = state.tr;
 
             // Generate unique bookmark names for each heading and set them on heading paragraphs
+            reserveProseBookmarkIds(state.doc);
             const bookmarkEntries: {
               name: string;
               level: number;
@@ -1147,7 +1150,7 @@ export const ParagraphExtension = createNodeExtension({
                 const newBookmarks = [
                   ...filteredBookmarks,
                   {
-                    id: Math.floor(Math.random() * 2_147_483_647),
+                    id: mintBookmarkId(),
                     name: bookmarkName,
                   },
                 ];

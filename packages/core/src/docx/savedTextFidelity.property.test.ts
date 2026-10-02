@@ -18,7 +18,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { BlockContent, Document } from "../types/document";
@@ -263,7 +263,7 @@ const expectSavedPackageSaysIt = async (
 
 describe("a saved package says what the source said", () => {
   test("a plain repack preserves the paragraph's text", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(paragraphArbitrary, async (specs) => {
         const parsed = await parseDocx(await buildPackage(specs.map(childFor)), {
           preloadFonts: false,
@@ -279,12 +279,12 @@ describe("a saved package says what the source said", () => {
         const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
-      propertyConfig({ numRuns: 120 }),
+      { numRuns: 120 },
     );
   });
 
   test("the editor round trip preserves the paragraph's text", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(paragraphArbitrary, async (specs) => {
         const parsed = await parseDocx(await buildPackage(specs.map(childFor)), {
           preloadFonts: false,
@@ -301,7 +301,7 @@ describe("a saved package says what the source said", () => {
         const saved = await parseDocx(savedPackage, { preloadFonts: false });
         expect(bodyText(saved.package.document.content)).toBe(read);
       }),
-      propertyConfig({ numRuns: 120 }),
+      { numRuns: 120 },
     );
   });
 });

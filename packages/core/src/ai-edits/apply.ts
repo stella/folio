@@ -10,6 +10,13 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { canJoin, canSplit } from "prosemirror-transform";
 import { panic } from "better-result";
+import {
+  claimRevisionIds,
+  nextRevisionId as peekRevisionId,
+  nextRevisionIdRange,
+  reserveRevisionIds,
+  seedRevisionIdsFromDoc,
+} from "../prosemirror/plugins/revisionIds";
 
 import type { NumberingMap } from "../docx/numberingParser";
 import { formattingEquals } from "../docx/runConsolidator";
@@ -240,7 +247,7 @@ export type FolioAIEditView = {
 /**
  * Fixed revision provenance, for callers whose output must be reproducible.
  * Both halves of the stamp travel together because either one left to the
- * ambient clock (`new Date()` for the date, a `Date.now()`-seeded cursor for
+ * ambient clock (`new Date()` for the date, the shared bounded allocator for
  * the ids) makes the produced package differ between two runs over the same
  * inputs. `idSeed` starts a contiguous range the batch allocates from, so it
  * must sit above every revision id the target document already carries.
@@ -1669,25 +1676,6 @@ const applyTrackedInlineFormattingToRanges = ({
 };
 
 type LiveBlockEntry = { from: number; to: number; node: PMNode };
-
-/**
- * Module-scoped monotonic counter for tracked-change revision ids.
- * Seeded once from `Date.now()` so ids are roughly time-ordered for
- * humans reading raw DOCX, then incremented per allocation. A bare
- * `Date.now()` seed per applyAIEditOperations call would collide
- * across batches that fire within the same millisecond (the panel's
- * Accept-all loop does exactly that — multiple calls in tight
- * succession).
- *
- * A batch without a revision stamp allocates from it as it writes and claims
- * each operation's ids once they are written, rather than reserving a guess
- * up front: how many revisions an operation records is known only once it has
- * recorded them (clearing a background records one run-property change per
- * carrier). The claim also comes before anything that may start another
- * batch, a comment-id callback or the dispatch, so batches in one realm never
- * share an id and follow one another without a gap.
- */
-let revisionIdCursor = Date.now() * 1000;
 
 /**
  * Walk the live doc once and bucket every textblock by its
@@ -3517,6 +3505,7 @@ const applyFolioAIEditOperationsInternal = ({
   replacementBackground = "clear",
   undefinedStyles = "refuse",
 }: ApplyFolioAIEditOperationsInternalOptions): FolioAIEditApplyOutcome => {
+  seedRevisionIdsFromDoc(view.state.doc);
   const applied: FolioAIEditAppliedOperation[] = [];
   const skipped: FolioAIEditSkippedOperation[] = [];
   const normalizations: FolioAIEditNormalization[] = [];
@@ -3600,7 +3589,7 @@ const applyFolioAIEditOperationsInternal = ({
         id: operation.id,
         reason: "unsupportedBlock",
       })),
-      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId(),
     };
   }
 
@@ -3749,7 +3738,7 @@ const applyFolioAIEditOperationsInternal = ({
       applied,
       skipped,
       ...(normalizations.length > 0 && { normalizations }),
-      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor,
+      nextRevisionId: revisionIdSeed ?? revisionStamp?.idSeed ?? peekRevisionId(),
     };
   }
 
@@ -3803,20 +3792,20 @@ const applyFolioAIEditOperationsInternal = ({
   const mergedPropertyTargets: BatchParagraphPosition[] = [];
   const deferredNoopFinalDeletions = new Set<string>();
   const ownsSharedRevisionIdCursor = revisionIdSeed === undefined && revisionStamp === undefined;
-  let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? revisionIdCursor;
-  /**
-   * Claim the shared ids below `nextRevisionId` for this batch. A seeded or
-   * stamped batch allocates from its own range and claims nothing.
-   */
-  const claimSharedRevisionIds = (nextRevisionId: number): void => {
-    if (ownsSharedRevisionIdCursor) {
-      revisionIdCursor = Math.max(revisionIdCursor, nextRevisionId);
-    }
+  let revisionSeed = revisionIdSeed ?? revisionStamp?.idSeed ?? nextRevisionIdRange();
+  let claimedThrough = revisionSeed;
+  const claimSharedRevisionIds = (next: number): void => {
+    // Negative ids are private preview sentinels, never committed.
+    if (revisionIdSeed !== undefined) return;
+    if (ownsSharedRevisionIdCursor) claimRevisionIds(claimedThrough, next);
+    else reserveRevisionIds(claimedThrough, next);
+    claimedThrough = next;
   };
-  /** Continue past any shared id a batch the host started meanwhile claimed. */
+  /** Continue past ids a reentrant callback allocated in this realm. */
   const continueSharedRevisionIds = (): void => {
-    if (ownsSharedRevisionIdCursor) {
-      revisionSeed = Math.max(revisionSeed, revisionIdCursor);
+    if (ownsSharedRevisionIdCursor && peekRevisionId() !== claimedThrough) {
+      revisionSeed = nextRevisionIdRange();
+      claimedThrough = revisionSeed;
     }
   };
   const date = revisionStamp?.date ?? new Date().toISOString();
@@ -5715,7 +5704,7 @@ export const previewFolioAIEditOperationsWithResult = (
       ...(result.normalizations !== undefined && { normalizations: result.normalizations }),
       // A preview allocates from a sentinel range and commits nothing, so the
       // next id is still the one the batch would have started from.
-      nextRevisionId: options.revisionStamp?.idSeed ?? revisionIdCursor,
+      nextRevisionId: options.revisionStamp?.idSeed ?? peekRevisionId(),
     },
     doc: previewView.state.doc,
     commentIds,

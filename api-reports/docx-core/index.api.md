@@ -5,9 +5,16 @@
 ```ts
 
 import { Buffer as Buffer_2 } from 'node:buffer';
+import { TaggedErrorClass } from 'better-result';
 
 // @public (undocumented)
 export const assertValidDocumentModel: (document: Document_2) => void;
+
+// @public (undocumented)
+export const assertValidOoxmlNumericId: (input: NumericIdOptions) => void;
+
+// @public
+export const assertValidOoxmlNumericIds: (xml: string, partPath: string) => void;
 
 // @public (undocumented)
 export type Autofix = {
@@ -142,6 +149,21 @@ export const escapeXmlText: (value: string) => string;
 // @public
 export const hasIllegalXmlCharacters: (value: string) => boolean;
 
+// @public
+export class InvalidOoxmlNumericIdError extends InvalidOoxmlNumericIdError_base<{
+    message: string;
+    partPath: string;
+    elementName: string;
+    attributeName: string;
+    value: string;
+}> {}
+
+// @public
+export const isOoxmlNumericIdAttributeName: (input: OoxmlNumericIdAttributeOptions) => boolean;
+
+// @public (undocumented)
+export const isValidOoxmlNumericId: (value: string | number, domain?: "signed32" | "unsigned32") => boolean;
+
 // @public (undocumented)
 export type LegalDraft = {
     meta: LegalDraftMeta;
@@ -225,6 +247,15 @@ export type MarkdownContent = {
     numbering?: NumberingDefinitions;
     warnings?: string[];
 };
+
+// @public
+export const mayContainInvalidOoxmlNumericIds: (xml: string, mode?: "schema" | "range") => boolean;
+
+// @public
+export const mayContainOoxmlNumericIds: (xml: string) => boolean;
+
+// @public
+export const ooxmlNumericIdDomain: (input: NumericIdAttributeOptions) => "signed32" | "unsigned32" | undefined;
 
 // @public
 export type Paragraph = {
