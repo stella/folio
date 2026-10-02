@@ -505,7 +505,7 @@ test("every theme modifier byte imports independent grayscale tint and shade val
         const style = imported.styles?.styles.find((entry) => entry.styleId === "Foreign");
         const run = imported.paragraphs.at(0)?.content.at(0);
         if (run?.type !== "run") throw new TypeError("Imported modifier run disappeared.");
-        // Grayscale lightness agrees for RGB and Word HSL; compute without the resolver.
+        // Grayscale lightness agrees in RGB and HSL; compute without the resolver.
         const tinted = hex(
           channels.map((channel) => Math.round((channel * byte + 255 * (255 - byte)) / 255)),
         );
