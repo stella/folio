@@ -69,7 +69,7 @@ const documentXmlFor = (includeReplyMarkers: boolean): string =>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <w:body>
     ${anchorParagraph(includeReplyMarkers)}
-    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>
+    <w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>
   </w:body>
 </w:document>`;
 
@@ -466,6 +466,7 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
     // No reply markers in the body, so removing the reply comments leaves no
     // dangling references (only the parent's anchor, which survives).
     const buffer = await buildThreadedDocx({ includeReplyMarkers: false, parentDone: true });
+    expect(await validateDocx(buffer)).toEqual({ valid: true, errors: [], warnings: [] });
     const doc = await parse(buffer);
 
     // Simulate the whole thread being removed from the model: keep only the
@@ -489,6 +490,7 @@ describe("comment reply threads — package lifecycle + deterministic ids", () =
 
     // The package must still be a valid DOCX after the removal.
     const validation = await validateDocx(saved);
+    expect(validation.errors).toEqual([]);
     expect(validation.valid).toBe(true);
   });
 
