@@ -20,7 +20,8 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
-import type { Node as PMNode } from "prosemirror-model";
+import { Window } from "happy-dom";
+import { DOMParser, DOMSerializer, Fragment, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
@@ -28,6 +29,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import { paragraphNumberingAttr } from "../prosemirror/numberingAttr";
+import { schema } from "../prosemirror/schema";
 import type { Document, Paragraph } from "../types/document";
 import {
   bodyParagraphs,
@@ -316,6 +318,34 @@ describe("the reader's fold of LISTNUM fields", () => {
       ["foldedListNumber", "level", "text", "xml"],
     ]);
     expect(captures.map(({ node }) => node.attrs["text"])).toEqual(["", ""]);
+  });
+});
+
+describe("a capture and the clipboard", () => {
+  test("a copied paragraph carries no capture, and nothing parses back as one", async () => {
+    const { bare } = await fixture([SIMPLE]);
+    const { node } = paragraphNode(bare.doc, SIMPLE.paraId);
+    expect(foldedCaptureNodes(node)).toHaveLength(2);
+    const window = new Window();
+    const document = window.document as unknown as globalThis.Document;
+
+    const host = document.createElement("div");
+    host.append(
+      DOMSerializer.fromSchema(schema).serializeFragment(Fragment.from(node), { document }),
+    );
+
+    expect(host.innerHTML).not.toContain("LISTNUM");
+    expect(host.innerHTML).not.toContain("data-docx-preserved-xml");
+    const parsed = DOMParser.fromSchema(schema).parse(host);
+    const preserved: PMNode[] = [];
+    parsed.descendants((child) => {
+      if (child.type.name === "preservedXml") {
+        preserved.push(child);
+      }
+    });
+    expect(preserved).toEqual([]);
+    // The text came through; only the hidden field and tab stayed behind.
+    expect(parsed.textContent).toContain(SIMPLE.body);
   });
 });
 

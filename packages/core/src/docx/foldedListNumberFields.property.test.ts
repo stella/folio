@@ -16,7 +16,13 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { ComplexField, Paragraph, ParagraphContent, Run } from "../types/document";
+import type {
+  ComplexField,
+  Paragraph,
+  ParagraphContent,
+  PreservedInline,
+  Run,
+} from "../types/document";
 import {
   foldedListNumberOf,
   foldListNumberFields,
@@ -416,6 +422,57 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
     expect(xml).toMatch(/<w:delText[^>]*>\(a\)<\/w:delText>/u);
     expect(xml).not.toContain("<w:instrText");
     expect(xml).not.toContain("data-type");
+  });
+
+  const rawCapture = (xml: string): PreservedInline => ({
+    type: "preservedInline",
+    xml,
+    text: "",
+    foldedListNumber: { kind: "field", field: listNumber },
+  });
+
+  const FIELD_MARKUP =
+    `<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText> LISTNUM </w:instrText></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>(a)</w:t></w:r>` +
+    `<w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+
+  const deleting = (capture: PreservedInline): Paragraph => ({
+    type: "paragraph",
+    content: [{ type: "deletion", info: { id: 1, author: "Reviewer" }, content: [capture] }],
+  });
+
+  test("the writer respells a capture it finds inside a removal, whoever left it there", () => {
+    const xml = serializeParagraph(deleting(rawCapture(FIELD_MARKUP)));
+
+    expect(xml).toContain("<w:delInstrText> LISTNUM </w:delInstrText>");
+    expect(xml).toContain("<w:delText>(a)</w:delText>");
+    expect(xml).not.toContain("<w:instrText");
+    expect(xml).not.toMatch(/<w:t[\s>]/u);
+  });
+
+  test("the writer refuses a capture it cannot respell rather than write live text inside a removal", () => {
+    const withDrawing = rawCapture(
+      `<w:r><w:drawing/></w:r><w:r><w:instrText> LISTNUM </w:instrText></w:r>`,
+    );
+
+    expect(() => serializeParagraph(deleting(withDrawing))).toThrow(
+      /cannot be written as deleted content/u,
+    );
+  });
+
+  test("a capture inside an insertion is written as it is", () => {
+    const inserted: Paragraph = {
+      type: "paragraph",
+      content: [
+        {
+          type: "insertion",
+          info: { id: 1, author: "Reviewer" },
+          content: [rawCapture(FIELD_MARKUP)],
+        },
+      ],
+    };
+
+    expect(serializeParagraph(inserted)).toContain(FIELD_MARKUP);
   });
 
   test("a bullet hides nothing", () => {

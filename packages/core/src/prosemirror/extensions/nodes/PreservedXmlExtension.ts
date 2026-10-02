@@ -31,9 +31,7 @@ export const PreservedXmlExtension = createNodeExtension({
       // carry, and the one whose re-wrapping in a `w:r` is always legal.
       level: { default: PRESERVED_XML_LEVELS.run },
       // `undefined`, so a capture that is not a folded list-number field
-      // serializes exactly as it did before the attr existed. It is not
-      // written to the DOM: a capture that leaves the document through the
-      // clipboard comes back as the plain markup it holds.
+      // serializes exactly as it did before the attr existed.
       foldedListNumber: { default: undefined },
     },
     parseDOM: [
@@ -56,7 +54,13 @@ export const PreservedXmlExtension = createNodeExtension({
       },
     ],
     toDOM(node) {
-      const { xml, text, level } = expectPreservedXmlAttrs(node);
+      const { xml, text, level, foldedListNumber } = expectPreservedXmlAttrs(node);
+      // A folded list-number capture writes none of its markup to the DOM, so
+      // a copy or a cut carries no hidden field: the element holds nothing
+      // the rule above reads, and parses back to nothing.
+      if (foldedListNumber) {
+        return ["span", { contenteditable: "false" }];
+      }
       return [
         "span",
         {
