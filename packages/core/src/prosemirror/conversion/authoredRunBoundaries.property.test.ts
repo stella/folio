@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
-import { propertyConfig } from "../../../../../test/property-testing";
+import { parseDocumentBody } from "../../docx/documentParser";
+import { serializeDocument } from "../../docx/serializer/documentSerializer";
+
+import { assertProperty, propertyConfig } from "../../../../../test/property-testing";
 import { resolveWholeStory } from "../../internal/wholeStoryRevisionResolution";
 import type { Document, Paragraph, Run } from "../../types/document";
 import { createStarterKit } from "../extensions/StarterKit";
@@ -223,7 +227,7 @@ describe("authored run boundary ownership", () => {
   });
 
   test("rejecting a tracked insertion rejoins actual same-source pieces without joining neighbors", () => {
-    fc.assert(
+    assertProperty(
       fc.property(runs, fc.nat(), fc.boolean(), (content, pickedOffset, withSession) => {
         // SAFETY: the generator always produces at least two runs.
         const first = content[0]!;
@@ -263,6 +267,91 @@ describe("authored run boundary ownership", () => {
           styleResolver: null,
         });
         expect(savedRuns(fromProseDoc(resolved, source))).toEqual(sourceRuns);
+        const tracked = fromProseDoc(edited.doc, source);
+        const xml = serializeDocument(tracked);
+        const reopened: Document = { package: { document: parseDocumentBody(xml) } };
+        const reopenedResolution = resolveWholeStory({
+          doc: toProseDoc(reopened),
+          mode: "reject",
+          styleResolver: null,
+        });
+        // Compare saved records to the same parser-normalized source shape:
+        // serialization qualifies authored attributes and emits default run properties.
+        const reopenedSource: Document = {
+          package: { document: parseDocumentBody(serializeDocument(source)) },
+        };
+        expect(savedRuns(fromProseDoc(reopenedResolution.resolved, reopened))).toEqual(
+          savedRuns(reopenedSource),
+        );
+      }),
+      {},
+    );
+  });
+
+  test("joining imported table-cell paragraphs retains distinct equal-payload source runs", () => {
+    fc.assert(
+      fc.property(runs, (content) => {
+        const source: Document = {
+          package: {
+            document: {
+              content: [
+                {
+                  type: "table",
+                  rows: [
+                    {
+                      type: "tableRow",
+                      cells: content.map((run) => ({
+                        type: "tableCell",
+                        content: [
+                          {
+                            type: "paragraph",
+                            content: [
+                              {
+                                ...run,
+                                preservedAttributes: [{ name: "rsidR", value: "00AB12CD" }],
+                              },
+                            ],
+                          },
+                        ],
+                      })),
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        };
+        const projected = toProseDoc(source);
+        const paragraphNodes: PMNode[] = [];
+        projected.descendants((node) => {
+          if (node.type.name === "paragraph") paragraphNodes.push(node);
+        });
+        const joined = schema.node(
+          "doc",
+          null,
+          schema.node(
+            "paragraph",
+            null,
+            paragraphNodes.flatMap((paragraph) => {
+              const nodes: PMNode[] = [];
+              paragraph.forEach((node) => nodes.push(node));
+              return nodes;
+            }),
+          ),
+        );
+        const saved = fromProseDoc(joined);
+        const reopened: Document = {
+          package: { document: parseDocumentBody(serializeDocument(saved)) },
+        };
+        expect(savedRuns(saved)).toEqual(
+          content.map((run) => ({
+            ...run,
+            preservedAttributes: [{ name: "rsidR", value: "00AB12CD" }],
+          })),
+        );
+        expect(savedRuns(fromProseDoc(toProseDoc(reopened), reopened))).toEqual(
+          savedRuns(reopened),
+        );
       }),
       propertyConfig(),
     );

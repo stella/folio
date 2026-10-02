@@ -105,6 +105,11 @@ import {
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import { inlineWrapperLayer } from "../inlineWrapperStack";
 import { RUN_IDENTITY_MARK_NAME, runIdentityAttrs } from "../runIdentity";
+import {
+  runSplitProjectionContext,
+  readRunSplitOwner,
+  withRunSplitOwner,
+} from "../../docx/runSplitProvenance";
 import { directionFromBidi } from "../paragraphDirection";
 import { pageBreakRunParagraphProjectionDispositionForFeatures } from "../pageBreakRunProjection";
 import { lineSpacingProvenanceFromSpacing } from "../paragraphSpacing";
@@ -219,7 +224,7 @@ const createTextBoxGroupIdFactory = (): (() => string) => {
 };
 
 type HyperlinkInstanceIndexAllocator = () => number;
-type RunIdentityIdAllocator = () => number;
+type RunIdentityIdAllocator = (run: Run) => { id: number; proof: string };
 
 /** What converting one paragraph's runs shares across them. */
 type RunConversionScope = {
@@ -240,8 +245,9 @@ type RunConversionScope = {
  */
 const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): Mark | null => {
   if (run.content.every((content) => content.type === "text" && content.text === "")) return null;
+  const { id, proof } = nextRunIdentityId(run);
   const payload = {
-    preservedAttributes: run.preservedAttributes,
+    preservedAttributes: withRunSplitOwner(run.preservedAttributes, proof),
     preserved: run.formatting?.preserved,
     // A `w:rPr` holding only a `w:rPrChange` is not an empty one: the change
     // writes it, and rejecting the change fills it.
@@ -252,13 +258,30 @@ const runIdentityMark = (run: Run, nextRunIdentityId: RunIdentityIdAllocator): M
         ? true
         : undefined,
   };
-  return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(nextRunIdentityId(), payload));
+  return schema.mark(RUN_IDENTITY_MARK_NAME, runIdentityAttrs(id, payload));
 };
 
 /** Source run identities remain distinct when paragraphs and containers join. */
-const createRunIdentityIdAllocator = (): RunIdentityIdAllocator => {
+const createRunIdentityIdAllocator = (
+  blocks: BlockContent[],
+  scope: string,
+): RunIdentityIdAllocator => {
   let index = 0;
-  return () => index++;
+  const { generation, source } = runSplitProjectionContext(blocks);
+  const namespace = encodeURIComponent(source ?? scope);
+  const savedOwners = new Map<string, number>();
+  return (run) => {
+    const savedProof = readRunSplitOwner(run.preservedAttributes);
+    if (savedProof === undefined) {
+      const id = index++;
+      return { id, proof: `1:${namespace}:${generation}:${id}` };
+    }
+    const known = savedOwners.get(savedProof);
+    if (known !== undefined) return { id: known, proof: savedProof };
+    const id = index++;
+    savedOwners.set(savedProof, id);
+    return { id, proof: savedProof };
+  };
 };
 
 /** Keep imported hyperlink identity unique across every nested conversion scope. */
@@ -475,7 +498,10 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
-    nextRunIdentityId: createRunIdentityIdAllocator(),
+    nextRunIdentityId: createRunIdentityIdAllocator(
+      paragraphs,
+      getDocumentParagraphPropertySourceContract(document) ?? "main",
+    ),
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(paragraphs),
     storyRangedCommentIds: rangedCommentIds(paragraphs),
@@ -2444,7 +2470,7 @@ export function standaloneTableCellToProseMirror(
       theme: null,
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
-      nextRunIdentityId: createRunIdentityIdAllocator(),
+      nextRunIdentityId: createRunIdentityIdAllocator(cell.content, "cell"),
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
       pageBreakRunSourceDescendants,
       storyRangedCommentIds: rangedCommentIds(cell.content),
@@ -5087,7 +5113,7 @@ export function headerFooterToProseDoc(
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
-    nextRunIdentityId: createRunIdentityIdAllocator(),
+    nextRunIdentityId: createRunIdentityIdAllocator(content, "secondary"),
     pairedBookmarkIds,
     pageBreakRunSourceDescendants: buildPageBreakRunSourceDescendantIndex(content),
     storyRangedCommentIds: rangedCommentIds(content),

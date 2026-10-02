@@ -741,3 +741,77 @@ describe("buildPatchedNotePartXml", () => {
     ).toEqual({ type: "refused", reason: "comment-range-balance" });
   });
 });
+
+test("a selective splice refuses new or rebound extension namespaces and missing ignorable prefixes", () => {
+  for (const [prefix, uri] of [
+    ["folio", "urn:stella:folio:review-history:1"],
+    ["x", "urn:test:extension"],
+  ]) {
+    const namespace = `xmlns:${prefix}="${uri}"`;
+    const serialized = SIMPLE_DOC.replace(
+      "<w:document ",
+      `<w:document ${namespace} xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="${prefix}" `,
+    ).replace("<w:r><w:t>First paragraph", `<w:r ${prefix}:owner="1"><w:t>First paragraph`);
+    const changed = new Set(["AAA111"]);
+    expect(validatePatchSafety(SIMPLE_DOC, serialized, changed).safe).toBe(false);
+    expect(buildPatchedDocumentXml(SIMPLE_DOC, serialized, changed)).toBeNull();
+    const rebound = SIMPLE_DOC.replace("<w:document ", `<w:document xmlns:${prefix}="urn:wrong" `);
+    expect(buildPatchedDocumentXml(rebound, serialized, changed)).toBeNull();
+    const boundButNotIgnorable = SIMPLE_DOC.replace("<w:document ", `<w:document ${namespace} `);
+    expect(buildPatchedDocumentXml(boundButNotIgnorable, serialized, changed)).toBeNull();
+    const safe = SIMPLE_DOC.replace(
+      "<w:document ",
+      `<w:document ${namespace} xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="${prefix}" `,
+    );
+    expect(buildPatchedDocumentXml(safe, serialized, changed)).not.toBeNull();
+  }
+});
+
+test("a selective splice retains locally bound and ignorable replacement extensions", () => {
+  const serialized = SIMPLE_DOC.replace(
+    "<w:r><w:t>First paragraph",
+    '<w:r xmlns:x="urn:test:extension" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x" x:owner="1"><w:t>First paragraph',
+  );
+  expect(buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]))).not.toBeNull();
+  const rootBound = serialized.replace("<w:document ", '<w:document xmlns:x="urn:wrong" ');
+  expect(buildPatchedDocumentXml(SIMPLE_DOC, rootBound, new Set(["AAA111"]))).not.toBeNull();
+});
+
+test("a selective splice rejects an unbound replacement prefix", () => {
+  const serialized = SIMPLE_DOC.replace(
+    "<w:r><w:t>First paragraph",
+    '<w:r unbound:owner="1"><w:t>First paragraph',
+  );
+  expect(buildPatchedDocumentXml(SIMPLE_DOC, serialized, new Set(["AAA111"]))).toBeNull();
+});
+
+test("a selective splice preserves compatibility for extension elements", () => {
+  const bound = SIMPLE_DOC.replace(
+    "<w:document ",
+    '<w:document xmlns:x="urn:test:extension" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ',
+  );
+  const serialized = bound
+    .replace("<w:document ", '<w:document mc:Ignorable="x" ')
+    .replace("<w:r><w:t>First paragraph", "<x:metadata/><w:r><w:t>First paragraph");
+  expect(buildPatchedDocumentXml(bound, serialized, new Set(["AAA111"]))).toBeNull();
+  const local = serialized.replace("<x:metadata/>", '<x:metadata mc:Ignorable="x"/>');
+  expect(buildPatchedDocumentXml(bound, local, new Set(["AAA111"]))).not.toBeNull();
+});
+
+test("a selective splice resolves compatibility attribute values in their local scope", () => {
+  const original = SIMPLE_DOC.replace(
+    "<w:document ",
+    '<w:document xmlns:x="urn:wrong" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" ',
+  );
+  for (const [attribute, value] of [
+    ["MustUnderstand", "x"],
+    ["ProcessContent", "x:item"],
+  ]) {
+    const serialized = original
+      .replace('xmlns:x="urn:wrong"', 'xmlns:x="urn:test:extension"')
+      .replace("<w:r><w:t>First paragraph", `<w:r mc:${attribute}="${value}"><w:t>First paragraph`);
+    expect(buildPatchedDocumentXml(original, serialized, new Set(["AAA111"]))).toBeNull();
+    const local = serialized.replace("<w:r mc:", '<w:r xmlns:x="urn:test:extension" mc:');
+    expect(buildPatchedDocumentXml(original, local, new Set(["AAA111"]))).not.toBeNull();
+  }
+});

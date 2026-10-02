@@ -895,9 +895,8 @@ describe("a tracked or suggested replacement redlines only the characters it cha
             } else {
               expect(acceptedText).toBe(expectedText);
               expect(rejectedText).toBe(block.text);
-              // Reopened, the package cannot tell the runs a revision cut
-              // from alike runs it merely separates, and joins both once the
-              // revision is gone: the paragraph says the same, in no more runs.
+              // Saved split ownership proves which source run a revision cut;
+              // rejection restores those pieces without merging separate authored runs.
               const reopenedXml = firstParagraphXml(rejectedPackage);
               expect(joinAlikeRuns(reopenedXml)).toBe(joinAlikeRuns(originalXml));
               expect(runCount(reopenedXml)).toBeLessThanOrEqual(runCount(originalXml));

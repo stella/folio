@@ -297,9 +297,12 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             generated.edit.kind === "replaceInBlock" &&
             generated.edit.blockIndex === generated.noteRefParagraph;
           if (offsets && replacedIt) {
-            expect(xml.slice(offsets.start, offsets.end)).toContain(
-              "Superseded wording throughout.",
-            );
+            // Visible prose may span authored run and hyperlink boundaries.
+            const replacedParagraph = xml.slice(offsets.start, offsets.end);
+            const text = [...replacedParagraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
+              .map(([, value]) => value ?? "")
+              .join("");
+            expect(text).toBe("Superseded wording throughout.");
           }
         }
 

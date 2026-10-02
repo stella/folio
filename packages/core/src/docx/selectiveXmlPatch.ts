@@ -15,12 +15,17 @@ import {
   getNamespacePrefix,
   getNamespaceUri,
   parseXmlDocument,
+  resolveAttributeNamespaceUri,
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
+import { OOXML_NAMESPACES } from "./serializer/partNamespaces";
+import { resolveNamespaceUri } from "./xmlNamespaceContext";
+
+const MARKUP_COMPATIBILITY_NAMESPACES: ReadonlySet<string> = new Set([OOXML_NAMESPACES.mc.uri]);
 import {
   hasCanonicalWordprocessingPrefixes,
   matchCloseTag,
@@ -476,6 +481,154 @@ const nearestSharedParaId = (
   return null;
 };
 
+/** A selective splice keeps the root's namespace and compatibility contract. */
+type PreservePartRootNamespacesOptions = {
+  originalXml: string;
+  serializedXml: string;
+  splices: readonly XmlSplice[];
+};
+const preservesPartRootNamespaces = ({
+  originalXml,
+  serializedXml,
+  splices,
+}: PreservePartRootNamespacesOptions): boolean => {
+  const originalBindings = collectXmlnsFromOpeningTag(originalXml);
+  const serializedBindings = collectXmlnsFromOpeningTag(serializedXml);
+  const originalIgnorable = partIgnorablePrefixes(originalXml, originalBindings);
+  const serializedIgnorable = partIgnorablePrefixes(serializedXml, serializedBindings);
+  const changedPrefixes = Object.entries(serializedBindings).flatMap(([declaration, namespace]) => {
+    const prefix = declaration.startsWith("xmlns:") ? declaration.slice(6) : undefined;
+    return prefix !== undefined &&
+      (originalBindings[declaration] !== namespace ||
+        (serializedIgnorable.has(prefix) && !originalIgnorable.has(prefix)))
+      ? [prefix]
+      : [];
+  });
+  for (const { newXml } of splices) {
+    if (
+      !/\b[A-Za-z_][\w.-]*:(?:Ignorable|ProcessContent|MustUnderstand)\s*=/u.test(newXml) &&
+      ![
+        ...changedPrefixes,
+        ...[...newXml.matchAll(/(?:<\/?|\s)(?<prefix>[A-Za-z_][\w.-]*):/gu)]
+          .map((match) => match.groups?.["prefix"])
+          .filter(
+            (prefix): prefix is string =>
+              prefix !== undefined &&
+              prefix !== "xml" &&
+              prefix !== "xmlns" &&
+              originalBindings[`xmlns:${prefix}`] === undefined,
+          ),
+      ].some((prefix) => {
+        const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+        return new RegExp(`(?:<|\\s)${escaped}:`, "u").test(newXml);
+      })
+    )
+      continue;
+    const wrap = (xml: string) =>
+      `${openingTagFromXml(xml).replace(/^<[^\s/>]+/u, "<patch")}>${newXml}</patch>`;
+    const actual = parseXmlDocument(wrap(originalXml));
+    const expected = parseXmlDocument(wrap(serializedXml));
+    if (actual === null || expected === null || !sameReplacementNamespaces({ actual, expected }))
+      return false;
+  }
+  return true;
+};
+
+const ignorableNamespacesAt = (
+  element: XmlElement,
+  inherited: ReadonlySet<string>,
+): Set<string> => {
+  const namespaces = new Set(inherited);
+  const local = getAttributeByNamespaceUri(element, MARKUP_COMPATIBILITY_NAMESPACES, "Ignorable");
+  for (const prefix of local?.split(/\s+/u) ?? []) {
+    const namespace = resolveNamespaceUri(element.namespaceScope, prefix);
+    if (namespace !== undefined) namespaces.add(namespace);
+  }
+  return namespaces;
+};
+
+type ReplacementNamespaceOptions = {
+  actual: XmlElement;
+  expected: XmlElement;
+  actualInherited?: ReadonlySet<string>;
+  expectedInherited?: ReadonlySet<string>;
+};
+const sameReplacementNamespaces = ({
+  actual,
+  expected,
+  actualInherited = new Set(),
+  expectedInherited = new Set(),
+}: ReplacementNamespaceOptions): boolean => {
+  const actualIgnored = ignorableNamespacesAt(actual, actualInherited);
+  const expectedIgnored = ignorableNamespacesAt(expected, expectedInherited);
+  const actualElementNamespace = getNamespaceUri(actual);
+  const expectedElementNamespace = getNamespaceUri(expected);
+  if (
+    actual.name !== "patch" &&
+    (actualElementNamespace !== expectedElementNamespace ||
+      (getNamespacePrefix(expected.name ?? "") !== null && actualElementNamespace === undefined) ||
+      (expectedElementNamespace !== undefined &&
+        expectedIgnored.has(expectedElementNamespace) &&
+        !actualIgnored.has(expectedElementNamespace)))
+  )
+    return false;
+  for (const name of actual.name === "patch" ? [] : Object.keys(expected.attributes ?? {})) {
+    if (!name.includes(":") || name.startsWith("xmlns:")) continue;
+    const actualNamespace = resolveAttributeNamespaceUri(actual, name);
+    const expectedNamespace = resolveAttributeNamespaceUri(expected, name);
+    if (
+      actualNamespace === undefined ||
+      actualNamespace !== expectedNamespace ||
+      (expectedNamespace !== undefined &&
+        expectedIgnored.has(expectedNamespace) &&
+        !actualIgnored.has(actualNamespace))
+    )
+      return false;
+    if (
+      expectedNamespace === OOXML_NAMESPACES.mc.uri &&
+      ["Ignorable", "ProcessContent", "MustUnderstand"].includes(name.slice(name.indexOf(":") + 1))
+    ) {
+      for (const token of expected.attributes?.[name]?.split(/\s+/u) ?? []) {
+        const prefix = token.split(":").at(0);
+        if (prefix === undefined || prefix.length === 0) continue;
+        const expectedValueNamespace = resolveNamespaceUri(expected.namespaceScope, prefix);
+        const actualValueNamespace = resolveNamespaceUri(actual.namespaceScope, prefix);
+        if (expectedValueNamespace === undefined || actualValueNamespace !== expectedValueNamespace)
+          return false;
+      }
+    }
+  }
+  const actualChildren = getChildElements(actual);
+  const expectedChildren = getChildElements(expected);
+  return (
+    actualChildren.length === expectedChildren.length &&
+    actualChildren.every((child, index) => {
+      const other = expectedChildren.at(index);
+      return (
+        other !== undefined &&
+        sameReplacementNamespaces({
+          actual: child,
+          expected: other,
+          actualInherited: actualIgnored,
+          expectedInherited: expectedIgnored,
+        })
+      );
+    })
+  );
+};
+
+const partIgnorablePrefixes = (xml: string, bindings: Record<string, string>): Set<string> => {
+  const declaration = Object.entries(bindings).find(([, uri]) => uri === OOXML_NAMESPACES.mc.uri);
+  if (declaration === undefined) return new Set();
+  const prefix = declaration[0].slice(6).replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const pattern = new RegExp(
+    `\\s${prefix}:Ignorable\\s*=\\s*(?<quote>["'])(?<value>[^"']*)\\k<quote>`,
+    "u",
+  );
+  const value = pattern.exec(openingTagFromXml(xml))?.groups?.["value"];
+  return new Set(value?.split(/\s+/u).filter(Boolean) ?? []);
+};
+
 /**
  * Route every changed paragraph from the model's serialization to its region
  * of the source part.
@@ -605,6 +758,10 @@ const routeChangedParagraphs = (
       end: source.end,
       newXml: authored ? newXml : withoutMintedIds(newXml, sourceXml),
     });
+  }
+
+  if (!preservesPartRootNamespaces({ originalXml, serializedXml, splices })) {
+    return { type: "refused", reason: "replacement-namespace-conflict" };
   }
 
   const candidate = spliceXml(originalXml, splices);
@@ -1493,8 +1650,7 @@ function originalCustomNumFmtFormat(numFmtElement: string): string | null {
  * Collect the `xmlns` / `xmlns:*` declarations from an element's opening tag
  * (the substring up to its first `>`).
  */
-function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> {
-  const out: Record<string, string> = {};
+function openingTagFromXml(elementXml: string): string {
   let tagStart = elementXml.indexOf("<");
   while (
     tagStart !== -1 &&
@@ -1504,12 +1660,12 @@ function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> 
     const endMarker = comment ? "-->" : "?>";
     const end = elementXml.indexOf(endMarker, tagStart);
     if (end === -1) {
-      return out;
+      return "";
     }
     tagStart = elementXml.indexOf("<", end + endMarker.length);
   }
   if (tagStart === -1) {
-    return out;
+    return "";
   }
   let tagEnd = tagStart + 1;
   let quote: '"' | "'" | null = null;
@@ -1524,7 +1680,12 @@ function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> 
     }
     tagEnd += 1;
   }
-  const openTag = elementXml.slice(tagStart, tagEnd);
+  return elementXml.slice(tagStart, tagEnd);
+}
+
+function collectXmlnsFromOpeningTag(elementXml: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const openTag = openingTagFromXml(elementXml);
   const pattern = /\s(?<name>xmlns(?::[\w.-]+)?)="(?<uri>[^"]*)"/gu;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(openTag)) !== null) {

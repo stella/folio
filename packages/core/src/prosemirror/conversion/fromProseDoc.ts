@@ -191,6 +191,12 @@ import {
 import { inlineWrapperMember, inlineWrapperStackKey } from "../inlineWrapperStack";
 import { enclosingRevisionIds } from "../contentControlRevisions";
 import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
+import {
+  InvalidRunSplitProvenanceError,
+  preserveRunSplitOwners,
+  readRunSplitOwner,
+  withoutRunSplitOwner,
+} from "../../docx/runSplitProvenance";
 import { enclosingInsertionAncestors, inlineWrapperStackOf } from "../trackedRevisionPath";
 import { INLINE_WRAPPER_MARK_NAME } from "../extensions/marks/InlineWrapperExtension";
 import type { InlineWrapperLayer, TrackedRevisionAncestor } from "../schema/marks";
@@ -2702,6 +2708,8 @@ function extractParagraphContent(
       }
     | undefined;
   const sourceRunOwners = new WeakMap<Run, number>();
+  const sourceRunProofs = new Map<number, string>();
+
   const sourceHyperlinkIndices = new WeakMap<Hyperlink, number>();
   const revisionOuterWrapperCounts = new WeakMap<TrackedRunWrapper, number>();
   const revisionAncestorsByWrapper = new WeakMap<
@@ -2878,6 +2886,20 @@ function extractParagraphContent(
   };
 
   const processInlineNode = (node: PMNode, offset: number): void => {
+    const identity = node.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
+    if (identity !== undefined) {
+      const { id, preservedAttributes } = expectRunIdentityMarkAttrs(identity);
+      const proof = readRunSplitOwner(preservedAttributes);
+      if (proof !== undefined) {
+        const previous = sourceRunProofs.get(id);
+        if (previous !== undefined && previous !== proof) {
+          throw new InvalidRunSplitProvenanceError({
+            message: "One projected run identity carries conflicting split ownership",
+          });
+        }
+        sourceRunProofs.set(id, proof);
+      }
+    }
     if (node.type.name === "renderedPageBreak" && leadingRenderedPageBreakPending) {
       leadingRenderedPageBreakPending = false;
       return;
@@ -3287,13 +3309,15 @@ function extractParagraphContent(
     content.push({ type: "commentRangeEnd", id: commentId });
   }
 
-  return nestInlineWrapperGroups(
+  const nested = nestInlineWrapperGroups(
     content,
     wrapperGroups,
     sourceHyperlinkIndices,
     revisionOuterWrapperCounts,
     revisionAncestorsByWrapper,
   );
+  preserveRunSplitOwners({ content: nested, owners: sourceRunOwners, proofs: sourceRunProofs });
+  return nested;
 }
 
 type CreateTrackedChangeRunOptions = RunFormattingContext & {
@@ -3810,8 +3834,12 @@ function restoreRunRecord(run: Run, marks: readonly Mark[]): void {
   if (!identityMark) {
     return;
   }
-  const { preservedAttributes, preserved, emptyFormatting } =
-    expectRunIdentityMarkAttrs(identityMark);
+  const {
+    preservedAttributes: identityAttributes,
+    preserved,
+    emptyFormatting,
+  } = expectRunIdentityMarkAttrs(identityMark);
+  const preservedAttributes = withoutRunSplitOwner(identityAttributes);
   if (preservedAttributes && preservedAttributes.length > 0) {
     run.preservedAttributes = preservedAttributes.map(({ namespace, name, value }) =>
       namespace === undefined ? { name, value } : { namespace, name, value },
