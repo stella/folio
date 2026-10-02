@@ -14,7 +14,7 @@ import { panic } from "better-result";
 
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import {
-  parseStreamingXml,
+  parseStreamingXmlWithSourceRanges,
   scanStreamingXmlNumericIdAttributes,
   parseStreamingXmlWithIdentityVisitor,
 } from "./streamingXmlParser";
@@ -99,9 +99,14 @@ type ImportedIdentitySpan = {
   end: number;
   space: string;
   key: string;
+  element: XmlElement;
+  attributeName: string;
 };
 
-type NumericIdNormalizationOptions = { onParsedDocument?: (document: XmlElement) => void };
+type NumericIdNormalizationOptions = {
+  onParsedDocument?: (document: XmlElement) => void;
+  sourceReplay?: "tracked" | "untracked";
+};
 
 /**
  * Repair out-of-range imported integers before any model or opaque XML is captured.
@@ -130,7 +135,11 @@ export const normalizeImportedNumericIds = (
   const scan = ({ path, xml, visitor }: ScanOptions): void => {
     const scanned =
       path.toLowerCase() === "word/document.xml" && options.onParsedDocument !== undefined
-        ? parseStreamingXmlWithIdentityVisitor(xml, visitor)
+        ? parseStreamingXmlWithIdentityVisitor({
+            xml,
+            visitOpenTag: visitor,
+            sourceReplay: options.sourceReplay ?? "untracked",
+          })
         : scanStreamingXmlNumericIdAttributes(xml, visitor);
     if (scanned.status === "unsupported") {
       throw new XmlResourceLimitError({
@@ -179,6 +188,8 @@ export const normalizeImportedNumericIds = (
             end: span.end,
             space: attribute.space,
             key,
+            element,
+            attributeName: attribute.name,
           });
         }
         return null;
@@ -211,15 +222,22 @@ export const normalizeImportedNumericIds = (
       const replacement = spaces.get(span.space)?.replacements.get(span.key);
       if (replacement === undefined || replacement === "")
         panic("Missing imported numeric identity replacement");
+      if (span.element.attributes === undefined)
+        panic("Missing imported numeric identity attributes");
+      span.element.attributes[span.attributeName] = replacement;
       chunks.push(xml.slice(cursor, span.start), replacement);
       cursor = span.end;
     }
     chunks.push(xml.slice(cursor));
     const rewritten = chunks.join("");
     normalized.set(path, rewritten);
-    if (path.toLowerCase() === "word/document.xml" && parsedDocument !== undefined) {
+    if (
+      options.sourceReplay === "tracked" &&
+      path.toLowerCase() === "word/document.xml" &&
+      parsedDocument !== undefined
+    ) {
       // Attribute repair can change offsets used by the retained tree's source ranges.
-      const reparsed = parseStreamingXml(rewritten);
+      const reparsed = parseStreamingXmlWithSourceRanges(rewritten);
       if (reparsed.status === "unsupported")
         panic("Normalized document XML became unsupported after numeric identity repair");
       parsedDocument = reparsed.value;
@@ -229,12 +247,18 @@ export const normalizeImportedNumericIds = (
   return normalized;
 };
 
+type NormalizeRawDocxNumericIdsOptions = {
+  sourceReplay?: "tracked" | "untracked";
+};
+
 /** Parser boundary: all captures and selective-save bytes see the same identities. */
 export const normalizeRawDocxNumericIds = async (
   raw: RawDocxContent,
+  { sourceReplay = "untracked" }: NormalizeRawDocxNumericIdsOptions = {},
 ): Promise<XmlElement | undefined> => {
   let documentTree: XmlElement | undefined;
   const normalized = normalizeImportedNumericIds(raw.allXml, {
+    sourceReplay,
     onParsedDocument: (tree) => {
       documentTree = tree;
     },

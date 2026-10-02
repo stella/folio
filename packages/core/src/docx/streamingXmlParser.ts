@@ -8,7 +8,7 @@ type ParseXmlResult = { status: "parsed"; value: XmlElement } | { status: "unsup
 type ElementFrame = {
   element: XmlElement;
   name: string;
-  start: number;
+  start?: number;
 };
 
 type XmlSourceRange = { start: number; end: number };
@@ -49,6 +49,7 @@ type AttributeNameOptions = { attributeName: string; elementName: string };
 type StreamingXmlOptions = {
   xml: string;
   inheritedNamespaceScope?: XmlNamespaceScope;
+  sourceReplay?: "tracked" | "untracked";
 } & (
   | { mode: "tree"; visitOpenTag?: OpenTagScanVisitor }
   | {
@@ -59,7 +60,11 @@ type StreamingXmlOptions = {
 );
 
 const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseXmlResult => {
-  const { xml, inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE } = options;
+  const {
+    xml,
+    inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+    sourceReplay = "untracked",
+  } = options;
   const visitOpenTag = options.visitOpenTag;
   let spanMode: ParseOpenTagOptions["spanMode"] = "none";
   if (visitOpenTag !== undefined) spanMode = options.mode === "tree" ? "identities" : "all";
@@ -149,7 +154,7 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
       if (!frame || frame.name !== name) {
         return { status: "unsupported" };
       }
-      if (stack.length <= 2) {
+      if (frame.start !== undefined) {
         sourceRanges.set(frame.element, { start: frame.start, end: close + 1 });
       }
       cursor = close + 1;
@@ -196,8 +201,12 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
         return { status: "unsupported" };
       }
-      stack.push({ element: parsedTag.element, name: parsedTag.name, start: open });
-    } else if (stack.length <= 2) {
+      stack.push(
+        sourceReplay === "tracked" && options.mode === "tree" && stack.length <= 2
+          ? { element: parsedTag.element, name: parsedTag.name, start: open }
+          : { element: parsedTag.element, name: parsedTag.name },
+      );
+    } else if (sourceReplay === "tracked" && options.mode === "tree" && stack.length <= 2) {
       sourceRanges.set(parsedTag.element, { start: open, end: close + 1 });
     }
     cursor = close + 1;
@@ -224,12 +233,35 @@ export const parseStreamingXml = (
     : { status: "unsupported" };
 };
 
-/** Retain the body tree while collecting identities for import repair. */
-export const parseStreamingXmlWithIdentityVisitor = (
+/** Capture shallow source slices only for a tracked immutable document import. */
+export const parseStreamingXmlWithSourceRanges = (
   xml: string,
-  visitOpenTag: OpenTagScanVisitor,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): ParseXmlResult => {
-  const parsed = parseStreamingXmlInternal({ xml, mode: "tree", visitOpenTag });
+  const parsed = parseStreamingXmlInternal({
+    xml,
+    mode: "tree",
+    inheritedNamespaceScope,
+    sourceReplay: "tracked",
+  });
+  return parsed.status === "parsed"
+    ? { status: "parsed", value: parsed.value }
+    : { status: "unsupported" };
+};
+
+type ParseStreamingXmlWithIdentityVisitorOptions = {
+  xml: string;
+  visitOpenTag: OpenTagScanVisitor;
+  sourceReplay?: "tracked" | "untracked";
+};
+
+/** Retain the body tree while collecting identities for import repair. */
+export const parseStreamingXmlWithIdentityVisitor = ({
+  xml,
+  visitOpenTag,
+  sourceReplay = "untracked",
+}: ParseStreamingXmlWithIdentityVisitorOptions): ParseXmlResult => {
+  const parsed = parseStreamingXmlInternal({ xml, mode: "tree", visitOpenTag, sourceReplay });
   return parsed.status === "parsed" ? { status: "parsed", value: parsed.value } : parsed;
 };
 

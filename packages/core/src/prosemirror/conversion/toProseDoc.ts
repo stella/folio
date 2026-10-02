@@ -149,6 +149,8 @@ import {
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
 import { createMarkInterner } from "./markInterner";
+import { getSourceReplayToken } from "@stll/docx-core/ops";
+import { rememberPreservedBlockProjection } from "./preservedBlockSource";
 import {
   currentSourceProjection,
   documentProjectionInput,
@@ -486,6 +488,7 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
+    ...(getSourceReplayToken(document) === undefined ? {} : { rememberPreservedBlockProjection }),
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
@@ -519,7 +522,9 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
           out.push(convertBlockCustomXml(block, convertBodyBlocks));
           break;
         case "preservedBlock":
-          out.push(convertPreservedBlock(block));
+          out.push(
+            convertPreservedBlock(block, conversionContext.rememberPreservedBlockProjection),
+          );
           break;
         case "bookmarkStart":
         case "bookmarkEnd":
@@ -576,11 +581,16 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
  * The node's place in the document is the whole of its position, so it needs
  * no index and nothing has to keep one honest as the blocks around it change.
  */
-function convertPreservedBlock(block: PreservedBlock): PMNode {
-  return schema.node("preservedBlock", {
+function convertPreservedBlock(
+  block: PreservedBlock,
+  rememberSource?: typeof rememberPreservedBlockProjection,
+): PMNode {
+  const node = schema.node("preservedBlock", {
     xml: block.xml,
     readerText: block.readerText ?? null,
   });
+  rememberSource?.(node, block);
+  return node;
 }
 
 /**
@@ -1696,6 +1706,7 @@ function resolveTextFormatting(
  * preserve their layout when opened from DOCX files.
  */
 type TableConversionContext = {
+  rememberPreservedBlockProjection?: typeof rememberPreservedBlockProjection;
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
@@ -2406,7 +2417,7 @@ function convertTableCell({
           nodes.push(convertBlockCustomXml(block, convertCellBlocks));
           break;
         case "preservedBlock":
-          nodes.push(convertPreservedBlock(block));
+          nodes.push(convertPreservedBlock(block, context.rememberPreservedBlockProjection));
           break;
         case "bookmarkStart":
         case "bookmarkEnd":

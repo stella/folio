@@ -89,6 +89,7 @@ import {
 import { parseNumbering } from "./numberingParser";
 import { parseFontTable } from "./fontTableParser";
 import { trackDocumentSource, discardDocumentSource } from "./documentSource";
+import { parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
 import { assignDocumentParagraphPropertySourceContract } from "./paragraphPropertySource";
 import type { NumberingMap } from "./numberingParser";
 import { countDanglingRelationshipReferences } from "./danglingRelationshipReferences";
@@ -415,7 +416,9 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
-    const repairedDocumentTree = await normalizeRawDocxNumericIds(raw);
+    const repairedDocumentTree = await normalizeRawDocxNumericIds(raw, {
+      sourceReplay: options.sourceReplay ?? "untracked",
+    });
     const paragraphPropertySourceDigest = sha256Hex(raw.originalBuffer);
     if (raw.wasEncrypted) {
       parseContext.warn({ code: PARSE_WARNING_CODES.packageDecrypted });
@@ -491,10 +494,16 @@ export async function parseDocxWithPreviewBudget(
 
     timeStage("documentBody", () => {
       if (raw.documentXml) {
+        const sourceTree =
+          options.sourceReplay === "tracked" && repairedDocumentTree === undefined
+            ? parseStreamingXmlWithSourceRanges(raw.documentXml)
+            : undefined;
         documentBody = parseDocumentBodyTree({
           sourceReplay: options.sourceReplay ?? "untracked",
           xml: raw.documentXml,
-          doc: repairedDocumentTree ?? parseXml(raw.documentXml),
+          doc:
+            repairedDocumentTree ??
+            (sourceTree?.status === "parsed" ? sourceTree.value : parseXml(raw.documentXml)),
           styles,
           theme,
           numbering,

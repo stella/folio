@@ -33,6 +33,96 @@ const paragraph = (hiddenFormatting: Paragraph["formatting"], text = "same"): Pa
 });
 
 describe("Document authority projection reuse", () => {
+  test.each([0, 2, 4] as const)(
+    "editing neighboring block %s retains distinct identical opaque sources",
+    (editedIndex) => {
+      fc.assert(
+        fc.property(fc.string({ minLength: 1, maxLength: 16 }), (text) => {
+          const first = {
+            type: "preservedBlock",
+            xml: '<e:opaque xmlns:e="urn:extension"/>',
+          } satisfies BlockContent;
+          const second = { ...first };
+          const document = sourceDocument([
+            paragraph(undefined, text),
+            first,
+            paragraph(undefined, text),
+            second,
+            paragraph(undefined, text),
+          ]);
+          const projected = toProseDoc(document);
+          let position = 1;
+          for (let index = 0; index < editedIndex; index += 1)
+            position += projected.child(index).nodeSize;
+          const edited = EditorState.create({ doc: projected }).tr.insertText("!", position).doc;
+          const result = fromProseDoc(edited, document).package.document.content;
+          expect(result.at(1)).toBe(first);
+          expect(result.at(3)).toBe(second);
+          expect(result.at(1)).not.toBe(result.at(3));
+          expect(result.at(editedIndex)).not.toBe(
+            document.package.document.content.at(editedIndex),
+          );
+          const moved = schema.node("doc", projected.attrs, [
+            projected.child(0),
+            projected.child(3),
+            projected.child(2),
+            projected.child(1),
+            projected.child(4),
+          ]);
+          const reordered = fromProseDoc(moved, document).package.document.content;
+          expect(reordered.at(1)).toBe(second);
+          expect(reordered.at(3)).toBe(first);
+          const duplicated = schema.node("doc", projected.attrs, [
+            projected.child(0),
+            projected.child(1),
+            projected.child(2),
+            projected.child(1),
+            projected.child(4),
+          ]);
+          const duplicatedResult = fromProseDoc(duplicated, document).package.document.content;
+          expect(duplicatedResult.at(1)).toBe(first);
+          expect(duplicatedResult.at(3)).not.toBe(first);
+          expect(duplicatedResult.at(3)).not.toBe(second);
+          expect(duplicatedResult.at(3)).toEqual(
+            fromProseDoc(duplicated, document, { reuse: "none" }).package.document.content.at(3),
+          );
+        }),
+        propertyConfig(),
+      );
+    },
+  );
+
+  test.each(["copied", "changed", "foreign"] as const)(
+    "a %s opaque editor node cannot borrow base ownership",
+    (mode) => {
+      const original = {
+        type: "preservedBlock",
+        xml: '<e:opaque xmlns:e="urn:extension"/>',
+      } satisfies BlockContent;
+      const document = sourceDocument([paragraph(undefined), original]);
+      const projected = toProseDoc(document);
+      const sourceNode = projected.child(1);
+      const foreign = sourceDocument([paragraph(undefined), { ...original }]);
+      const replacement =
+        mode === "foreign"
+          ? toProseDoc(foreign).child(1)
+          : sourceNode.type.create(
+              {
+                ...sourceNode.attrs,
+                ...(mode === "changed" ? { xml: '<e:changed xmlns:e="urn:extension"/>' } : {}),
+              },
+              sourceNode.content,
+              sourceNode.marks,
+            );
+      const edited = schema.node("doc", projected.attrs, [projected.child(0), replacement]);
+      const result = fromProseDoc(edited, document).package.document.content.at(1);
+      expect(result).not.toBe(original);
+      expect(result).not.toBe(foreign.package.document.content.at(1));
+      expect(result).toEqual(
+        fromProseDoc(edited, document, { reuse: "none" }).package.document.content.at(1),
+      );
+    },
+  );
   test("unchanged projections retain every authored run, including empty runs", () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1, maxLength: 16 }), (text) => {

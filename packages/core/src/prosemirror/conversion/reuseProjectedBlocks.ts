@@ -11,6 +11,7 @@ import {
 import { visitParagraphRuns } from "../../docx/paragraphTraversal";
 import { visitCommentMarkers } from "../../docx/commentAnchorIndex";
 import { toProseDoc } from "./toProseDoc";
+import { getPreservedBlockProjectionSource } from "./preservedBlockSource";
 
 const projectedIndexes = new WeakMap<PMNode, Map<string, PMNode | null>>();
 
@@ -62,6 +63,7 @@ const hasSiblingProjection = (paragraph: Paragraph): boolean => {
 };
 
 type ModelBlockIndex = {
+  owned: WeakSet<BlockContent>;
   sources: Map<string, BlockContent | null>;
   identities: WeakMap<BlockContent, string>;
 };
@@ -87,14 +89,22 @@ const sameCommentBoundaries = (source: BlockContent, converted: BlockContent): b
 };
 
 const collectModelBlocks = (content: BlockContent[]): ModelBlockIndex => {
+  const owned = new WeakSet<BlockContent>();
   const sources = new Map<string, BlockContent | null>();
   const identities = new WeakMap<BlockContent, string>();
   const collect = (blocks: BlockContent[]): string | undefined => {
     let firstToken: string | undefined;
     for (const block of blocks) {
+      owned.add(block);
       let token: string | undefined;
       switch (block.type) {
         case "paragraph":
+          visitParagraphRuns(block, (run) => {
+            for (const item of run.content) {
+              if (item.type === "shape" && item.shape.textBody)
+                collect(item.shape.textBody.content);
+            }
+          });
           token = getParagraphPropertySourceToken(block);
           // A text box may own the first token when its anchor is unbound.
           if (token === undefined) {
@@ -133,7 +143,7 @@ const collectModelBlocks = (content: BlockContent[]): ModelBlockIndex => {
     return firstToken;
   };
   collect(content);
-  return { sources, identities };
+  return { sources, identities, owned };
 };
 
 type ReuseProjectedBlocksOptions = {
@@ -160,19 +170,34 @@ export const reuseProjectedBlocks = ({
   const stripped =
     strippedProjection === sourceProjection ? expected : uniqueProjectedBlocks(strippedProjection);
   const actual = uniqueProjectedBlocks(projected);
-  // A validated projection also versions its mutable source model and tokens.
-  // Rebuild this index only when that projection changes.
+  // Tracked source blocks are immutable. Rebuild their identity index only
+  // when the source projection changes.
   const cachedSources = sourceIndexes.get(base);
   const sourceIndex =
     cachedSources?.projection === sourceProjection
       ? cachedSources.index
       : collectModelBlocks(base.package.document.content);
   sourceIndexes.set(base, { projection: sourceProjection, index: sourceIndex });
-  const { sources } = sourceIndex;
+  const { sources, owned } = sourceIndex;
   const { identities } = collectModelBlocks(blocks);
+  const retainedOpaqueSources = new WeakSet<BlockContent>();
 
   const reuseBlocks = (content: BlockContent[]): BlockContent[] =>
     content.map((block) => {
+      if (block.type === "preservedBlock") {
+        const source = getPreservedBlockProjectionSource(block);
+        if (
+          source &&
+          owned.has(source) &&
+          !retainedOpaqueSources.has(source) &&
+          source.xml === block.xml &&
+          source.readerText === block.readerText
+        ) {
+          retainedOpaqueSources.add(source);
+          return source;
+        }
+        return block;
+      }
       const identity = identities.get(block);
       const source = identity === undefined ? undefined : sources.get(identity);
       const expectedBlock = identity === undefined ? undefined : expected.get(identity);
@@ -207,7 +232,6 @@ export const reuseProjectedBlocks = ({
         case "blockSdt":
         case "blockCustomXml":
           return { ...block, content: reuseBlocks(block.content) };
-        case "preservedBlock":
         case "bookmarkStart":
         case "bookmarkEnd":
           return block;

@@ -70,6 +70,8 @@ import {
 import { canonicalJson } from "../../utils/canonicalJson";
 import { reuseProjectedBlocks } from "./reuseProjectedBlocks";
 import { currentSourceProjection } from "./sourceProjection";
+import { inheritPreservedBlockProjection } from "./preservedBlockSource";
+import type { PreservedBlock } from "../../types/document";
 import { EDITED_PREVIEW_FINGERPRINT, imageRawXmlFingerprint } from "../../docx/imageRawXml";
 import { refingerprintShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { unchangedAlternateContentXml } from "../alternateContentAttrs";
@@ -1140,6 +1142,17 @@ const preservesUneditedSource = (
   return preserved;
 };
 
+const convertPMPreservedBlock = (node: PMNode): PreservedBlock => {
+  const { xml, readerText } = expectPreservedBlockAttrs(node);
+  const block = {
+    type: "preservedBlock",
+    xml,
+    ...(readerText === undefined ? {} : { readerText }),
+  } satisfies PreservedBlock;
+  inheritPreservedBlockProjection(block, node);
+  return block;
+};
+
 function extractBlocks(
   inputDoc: PMNode,
   refResolution: RefResolutionMode = "resolve",
@@ -1217,12 +1230,7 @@ function extractBlocks(
       blocks.push(convertPMBlockCustomXml(node, styleResolver));
       previousStandaloneTextBox = null;
     } else if (node.type.name === "preservedBlock") {
-      const { xml, readerText } = expectPreservedBlockAttrs(node);
-      blocks.push({
-        type: "preservedBlock",
-        xml,
-        ...(readerText === undefined ? {} : { readerText }),
-      });
+      blocks.push(convertPMPreservedBlock(node));
       previousStandaloneTextBox = null;
     } else if (node.type.name === "blockBookmarkBoundary") {
       blocks.push(blockBookmarkMarker(node));
@@ -5427,7 +5435,7 @@ function convertPMTableCell(
         styleResolver,
       });
     } else if (contentNode.type.name === "preservedBlock") {
-      content.push({ type: "preservedBlock", xml: expectPreservedBlockAttrs(contentNode).xml });
+      content.push(convertPMPreservedBlock(contentNode));
       previousStandaloneTextBox = null;
     } else if (contentNode.type.name === "blockBookmarkBoundary") {
       content.push(blockBookmarkMarker(contentNode));

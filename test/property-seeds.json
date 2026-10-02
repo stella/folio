@@ -686,6 +686,12 @@
       "path": "1:1",
       "note": "Whitespace replay follows the required XML-space preservation boundary across profiles and clones",
       "date": "2026-10-02"
+    },
+    {
+      "seed": 0,
+      "path": "18:0:0",
+      "note": "Untracked clones use canonical model serialization for redundant authored XML-space flags while preserving complete parsed model content",
+      "date": "2026-10-02"
     }
   ]
 }

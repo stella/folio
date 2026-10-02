@@ -4,7 +4,11 @@ import { requiresXmlSpacePreserve } from "@stll/docx-core";
 
 import { assertProperty } from "../../../../test/property-testing";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
-import { getSourceReplayToken, inheritSourceReplayToken } from "@stll/docx-core/ops";
+import {
+  getSourceReplayToken,
+  inheritSourceReplayToken,
+  paragraphLogicalText,
+} from "@stll/docx-core/ops";
 import type { Document } from "../types/document";
 import { parseDocumentBody, parseDocumentBodyTree } from "./documentParser";
 import { standalonePreviewLedger } from "./previewBudget";
@@ -16,6 +20,12 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { EditorState } from "prosemirror-state";
 import * as verbatimCapture from "./verbatimCapture";
 import { getNamespaceUri, parseXml, parseXmlDocument } from "./xmlParser";
+import { parseStreamingXmlWithSourceRanges } from "./streamingXmlParser";
+
+const trackedSourceTree = (xml: string) => {
+  const parsed = parseStreamingXmlWithSourceRanges(xml);
+  return parsed.status === "parsed" ? parsed.value : parseXml(xml);
+};
 
 const PROFILES = [
   {
@@ -37,7 +47,7 @@ const documentFor = (
     package: {
       document: parseDocumentBodyTree({
         xml,
-        doc: parseXml(xml),
+        doc: sourceReplay === "tracked" ? trackedSourceTree(xml) : parseXml(xml),
         styles: null,
         theme: null,
         numbering: null,
@@ -90,7 +100,7 @@ describe("Document source ownership", () => {
               document: parseDocumentBodyTree({
                 sourceReplay: "tracked",
                 xml,
-                doc: parseXml(xml),
+                doc: trackedSourceTree(xml),
                 styles: null,
                 theme: null,
                 numbering: null,
@@ -196,9 +206,13 @@ describe("Document source ownership", () => {
             expect(saved.endsWith(after)).toBe(true);
           } else {
             expect(getSourceReplayToken(document)).toBeUndefined();
+            // Untracked output derives whitespace metadata from the model,
+            // including dropping redundant authored flags around tabs/newlines.
+            expect(saved).toBe(serializeDocument(document));
           }
           expect(saved.includes('xml:space="preserve"')).toBe(
-            space === "preserve" || requiresXmlSpacePreserve(`${whitespace}Text${whitespace}`),
+            (!cloned && space === "preserve") ||
+              requiresXmlSpacePreserve(`${whitespace}Text${whitespace}`),
           );
           if (space === "preserve" && !cloned) expect(saved).toBe(xml);
           const reopened = documentFor(saved, profile.conformance);
@@ -296,22 +310,27 @@ describe("Document source ownership", () => {
     },
   );
 
-  test("editing a Strict table retains percentage widths under aliased prefixes", () => {
+  test("untracked edits retain Strict percentage widths through the model serializer", () => {
     const xml = `<x:document xmlns:x="${PROFILES[1].uri}"><x:body><x:tbl><x:tblPr><x:tblW x:w="50%" x:type="pct"/></x:tblPr><x:tblGrid><x:gridCol x:w="2400"/></x:tblGrid><x:tr><x:tc><x:tcPr><x:tcW x:w="50%" x:type="pct"/></x:tcPr><x:p><x:r><x:t>Cell</x:t></x:r></x:p></x:tc></x:tr></x:tbl></x:body></x:document>`;
     const document = documentFor(xml, DOCX_CONFORMANCE_CLASSES.STRICT, "untracked");
     const table = document.package.document.content.at(0);
     if (table?.type !== "table") throw new TypeError("Expected synthetic table");
     const originalWidth = structuredClone(table.formatting?.width);
     const originalCellWidth = structuredClone(table.rows.at(0)?.cells.at(0)?.formatting?.width);
+    expect(originalWidth).toEqual({ type: "pct", value: 2500 });
+    expect(originalCellWidth).toEqual({ type: "pct", value: 2500 });
     const paragraph = table.rows.at(0)?.cells.at(0)?.content.at(0);
     if (paragraph?.type !== "paragraph") throw new TypeError("Expected synthetic cell paragraph");
     paragraph.content.push({ type: "run", content: [{ type: "text", text: " edited" }] });
     const saved = serializeTracked(document);
-    expect(saved).toContain('w:w="50%"');
     const reopened = parseDocumentBody(saved).content.at(0);
     if (reopened?.type !== "table") throw new TypeError("Expected reopened table");
     expect(reopened.formatting?.width).toEqual(originalWidth);
     expect(reopened.rows.at(0)?.cells.at(0)?.formatting?.width).toEqual(originalCellWidth);
+    const reopenedParagraph = reopened.rows.at(0)?.cells.at(0)?.content.at(0);
+    if (reopenedParagraph?.type !== "paragraph")
+      throw new TypeError("Expected reopened cell paragraph");
+    expect(paragraphLogicalText(reopenedParagraph)).toBe(paragraphLogicalText(paragraph));
   });
 });
 
