@@ -115,12 +115,45 @@ const namespaceUri = (name: string, bindings: ReadonlyMap<string, string>): stri
   return bindings.get(colon === -1 ? "" : name.slice(0, colon));
 };
 
+// Decode raw attribute references once: an escaped ampersand must not turn
+// literal entity text into a second character reference.
+const decodeAttributeReferences = (value: string): string =>
+  value.replace(
+    /&(?:#(x[\da-f]+|\d+)|amp|lt|gt|quot|apos);/giu,
+    (reference, digits: string | undefined) => {
+      if (digits !== undefined) {
+        const codePoint = digits.toLowerCase().startsWith("x")
+          ? Number.parseInt(digits.slice(1), 16)
+          : Number(digits);
+        if (codePoint <= 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff))
+          return reference;
+        return String.fromCodePoint(codePoint);
+      }
+      switch (reference) {
+        case "&amp;":
+          return "&";
+        case "&lt;":
+          return "<";
+        case "&gt;":
+          return ">";
+        case "&quot;":
+          return '"';
+        case "&apos;":
+          return "'";
+        default:
+          return reference;
+      }
+    },
+  );
+
 const ID_ATTRIBUTE_NAMES = ["id", ...NUMBERING_ATTRIBUTES].join("|");
 const ID_ELEMENT_NAMES = [...ID_VALUE_ELEMENTS].join("|");
 const ID_CANDIDATE = new RegExp(
   `\\b(?:${ID_ATTRIBUTE_NAMES})\\s*=|<(?:[^\\s<>/:]+:)?(?:${ID_ELEMENT_NAMES})(?:[\\s/>])`,
   "u",
 );
+/** Conservative presence check; safe IDs must still be reserved during import repair. */
+export const mayContainOoxmlNumericIds = (xml: string): boolean => ID_CANDIDATE.test(xml);
 const PREFIX = "[^\\s<>/:=\"']+";
 const ID_ATTRIBUTE = new RegExp(
   `(?:^|\\s)((?:${PREFIX}:)?(?:${ID_ATTRIBUTE_NAMES}))\\s*=\\s*(["'])([\\s\\S]*?)\\2`,
@@ -153,7 +186,7 @@ export const mayContainInvalidOoxmlNumericIds = (
   xml: string,
   mode: "schema" | "range" = "schema",
 ): boolean => {
-  if (!ID_CANDIDATE.test(xml)) return false;
+  if (!mayContainOoxmlNumericIds(xml)) return false;
   const wordPrefixes = new Set<string>();
   for (const match of xml.matchAll(NAMESPACE_BINDING)) {
     const namespace = match[3] ?? "";
@@ -203,7 +236,8 @@ export const assertValidOoxmlNumericIds = (xml: string, partPath: string): void 
     attributeNamePrefix: "",
     parseTagValue: false,
     parseAttributeValue: false,
-    processEntities: true,
+    processEntities: false,
+    attributeValueProcessor: (_name, value) => decodeAttributeReferences(value),
     htmlEntities: false,
     ignoreDeclaration: true,
   });

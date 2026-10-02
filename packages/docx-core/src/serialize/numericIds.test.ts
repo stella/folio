@@ -95,19 +95,48 @@ describe("numeric OOXML identifier writer guard", () => {
             domain === "signed32"
               ? id >= -2_147_483_648 && id <= 2_147_483_647
               : id >= 0 && id <= 4_294_967_295;
-          if (valid) {
-            expect(() => assertValidOoxmlNumericIds(body, "word/document.xml")).not.toThrow();
-            return;
+          // Exercise encoded namespace bindings and decimal/hex references
+          // without changing the arbitrary that produced the pinned seed.
+          for (const xml of [
+            body,
+            body.replace("wordprocessing", "wordprocess&#105;ng"),
+            body.replace(
+              /&#(\d+);/gu,
+              (_reference, digits) => `&#x${Number(digits).toString(16)};`,
+            ),
+          ]) {
+            if (valid) {
+              expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).not.toThrow();
+              continue;
+            }
+            expect(mayContainInvalidOoxmlNumericIds(xml)).toBe(true);
+            expect(mayContainInvalidOoxmlNumericIds(xml, "range")).toBe(true);
+            expect(() => assertValidOoxmlNumericIds(xml, "word/document.xml")).toThrow(
+              InvalidOoxmlNumericIdError,
+            );
           }
-          expect(mayContainInvalidOoxmlNumericIds(body)).toBe(true);
-          expect(mayContainInvalidOoxmlNumericIds(body, "range")).toBe(true);
-          expect(() => assertValidOoxmlNumericIds(body, "word/document.xml")).toThrow(
-            InvalidOoxmlNumericIdError,
-          );
         },
       ),
       { numRuns: 100 },
     );
+  });
+
+  test("escaped entity text is not decoded twice into a numeric id or namespace", () => {
+    for (const id of ["&amp;#48;", "&#38;#48;", "&#x26;#48;"]) {
+      expect(() =>
+        assertValidOoxmlNumericIds(
+          `<x:comment xmlns:x="${WORD_NAMESPACES[0]}" x:id="${id}"/>`,
+          "word/comments.xml",
+        ),
+      ).toThrow(InvalidOoxmlNumericIdError);
+    }
+    const namespace = WORD_NAMESPACES[0].replace("wordprocessingml", "wordprocessing&amp;#109;l");
+    expect(() =>
+      assertValidOoxmlNumericIds(
+        `<x:comment xmlns:x="${namespace}" x:id="2147483648"/>`,
+        "word/comments.xml",
+      ),
+    ).not.toThrow();
   });
 
   test("rejects the complete decimal-id family beyond the signed 32-bit domain", () => {

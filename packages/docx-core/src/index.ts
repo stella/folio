@@ -47,6 +47,7 @@ export {
   assertValidOoxmlNumericIds,
   isValidOoxmlNumericId,
   mayContainInvalidOoxmlNumericIds,
+  mayContainOoxmlNumericIds,
   ooxmlNumericIdDomain,
   InvalidOoxmlNumericIdError,
 } from "./serialize/numericIds";

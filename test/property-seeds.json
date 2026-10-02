@@ -536,5 +536,13 @@
       "note": "Independent editing and suggesting documents allocate numbering deterministically from their own reserved IDs",
       "date": "2026-10-01"
     }
+  ],
+  "packages/docx-core/src/serialize/numericIds.test.ts::preflight and the writer agree over both numeric domains, aliases and encoded values": [
+    {
+      "seed": 1073962585,
+      "path": "7:0:0",
+      "note": "Decode numeric character references in identifiers and namespace bindings exactly once before schema classification",
+      "date": "2026-10-02"
+    }
   ]
 }
