@@ -246,7 +246,7 @@ const materializeClipboardDefaults = ({
       (destinationDefaults.paragraphFormatting === undefined ? undefined : {});
     if (formatting !== undefined) {
       // Style numbering must remain inherited: writing it directly changes
-      // Word's precedence between level and style indentation.
+      // OOXML precedence between level and style indentation.
       if (authored?.numPr === undefined && sourceDefinitions?.docDefaults?.pPr?.numPr === undefined)
         delete formatting.numPr;
       if (authored?.numPrFromStyle === undefined) delete formatting.numPrFromStyle;
