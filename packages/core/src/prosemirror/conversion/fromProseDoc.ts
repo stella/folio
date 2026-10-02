@@ -1,3 +1,4 @@
+import { getSourceReplayToken, inheritSourceReplayToken } from "@stll/docx-core/ops";
 /**
  * ProseMirror to Document Conversion
  *
@@ -638,8 +639,8 @@ export type FromProseDocOptions = {
 };
 
 // ProseMirror nodes are immutable. Reuse a successful provenance check only
-// while the exact source projection, including mutable model and weak tokens,
-// is still current; edited trees and invalidated sources are checked in full.
+// on a tracked immutable source projection; edited trees and replaced roots
+// are checked in full. Untracked models never take the cached path.
 const validatedSourceProjections = new WeakMap<Document, PMNode>();
 
 /** Convert a ProseMirror document to the document model. */
@@ -698,7 +699,7 @@ export function fromProseDoc(
     validatedSourceProjections.set(baseDocument, pmDoc);
   }
   // An unchanged editor tree is a copy-on-write view of its source. Check the
-  // mutable model and provenance before retaining it; normalization work keeps
+  // tracked immutable provenance before retaining it; normalization work keeps
   // its existing extraction path. This avoids rebuilding every untouched run.
   if (
     reuse === "matched" &&
@@ -718,6 +719,7 @@ export function fromProseDoc(
       },
     };
     copyDocumentParagraphPropertySourceContract(retained, baseDocument);
+    inheritSourceReplayToken(retained, baseDocument);
     return retained;
   }
   const styleResolver = baseDocument?.package.styles
@@ -738,7 +740,7 @@ export function fromProseDoc(
     );
   }
 
-  if (reuse === "matched" && baseDocument) {
+  if (reuse === "matched" && baseDocument && getSourceReplayToken(baseDocument)) {
     blocks = reuseProjectedBlocks({
       blocks,
       projected: materializeNumberedRefValues(stripSuggestedProvenance(pmDoc, styleResolver)),
@@ -781,6 +783,7 @@ export function fromProseDoc(
       },
     };
     copyDocumentParagraphPropertySourceContract(updatedDocument, baseDocument);
+    if (reuse === "matched") inheritSourceReplayToken(updatedDocument, baseDocument);
     return updatedDocument;
   }
 

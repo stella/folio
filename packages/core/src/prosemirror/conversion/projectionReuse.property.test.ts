@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
+import { registerSourceReplayDocument } from "@stll/docx-core/ops";
 
 import { propertyConfig } from "../../../../../test/property-testing";
 import {
@@ -11,10 +12,12 @@ import type { BlockContent, Document, Paragraph, Table } from "../../types/docum
 import { schema } from "../schema";
 import { fromProseDoc } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
+import { currentSourceProjection } from "./sourceProjection";
 
 const sourceDocument = (content: BlockContent[]): Document => {
   const document: Document = { package: { document: { content } } };
   assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
+  registerSourceReplayDocument(document);
   return document;
 };
 
@@ -162,9 +165,9 @@ describe("Document authority projection reuse", () => {
     expect(current).not.toBe(document.package.document.content.at(0));
   });
 
-  test("mutating the base model invalidates its earlier source projection", () => {
-    // The prior generator edited only the editor tree. Mutations of the
-    // authoritative model must also invalidate a cached comparison oracle.
+  test("tracked base models reject mutations after warming source reuse", () => {
+    // Vary model edits as well as editor edits: cached comparisons require
+    // immutable authoritative records, including hidden authored content.
     fc.assert(
       fc.property(fc.string({ minLength: 1, maxLength: 16 }), (text) => {
         const original = paragraph(undefined, "old");
@@ -174,15 +177,42 @@ describe("Document authority projection reuse", () => {
         expect(unchanged).not.toBe(document);
         expect(unchanged.package.document.content).not.toBe(document.package.document.content);
         expect(unchanged.package.document.content.at(0)).toBe(original);
-        original.content.push({ type: "run", content: [{ type: "text", text }] });
+        expect(() =>
+          original.content.push({ type: "run", content: [{ type: "text", text }] }),
+        ).toThrow();
         const result = fromProseDoc(projected, document).package.document.content;
 
-        expect(result.at(0)).not.toBe(original);
-        expect(result).toEqual(
-          fromProseDoc(projected, document, { reuse: "none" }).package.document.content,
-        );
+        expect(result.at(0)).toBe(original);
         expect(fromProseDoc(toProseDoc(document), document).package.document.content.at(0)).toBe(
           original,
+        );
+      }),
+      propertyConfig(),
+    );
+  });
+
+  test("mutable untracked models never cache projections or retain source runs", () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1, maxLength: 16 }), (text) => {
+        const original = paragraph(undefined, "old");
+        const document: Document = { package: { document: { content: [original] } } };
+        assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
+        const projected = toProseDoc(document);
+        expect(currentSourceProjection(document)).toBeUndefined();
+        const unchanged = fromProseDoc(projected, document).package.document.content;
+        expect(unchanged.at(0)).not.toBe(original);
+        expect(unchanged).toEqual(
+          fromProseDoc(projected, document, { reuse: "none" }).package.document.content,
+        );
+        original.content.push({ type: "run", content: [{ type: "text", text }] });
+        expect(currentSourceProjection(document)).toBeUndefined();
+        expect(fromProseDoc(projected, document).package.document.content).toEqual(
+          fromProseDoc(projected, document, { reuse: "none" }).package.document.content,
+        );
+        const updated = toProseDoc(document);
+        expect(currentSourceProjection(document)).toBeUndefined();
+        expect(fromProseDoc(updated, document).package.document.content).toEqual(
+          fromProseDoc(updated, document, { reuse: "none" }).package.document.content,
         );
       }),
       propertyConfig(),

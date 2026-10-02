@@ -229,6 +229,14 @@ export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragrap
 };
 
 export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph): void => {
+  const previousToken = paragraphPropertySourceTokens.get(target);
+  if (
+    Object.isFrozen(target) &&
+    previousToken !== undefined &&
+    previousToken !== paragraphPropertySourceTokens.get(source)
+  ) {
+    panic("Cannot replace the provenance of an immutable source paragraph");
+  }
   copyParagraphPropertyCapture(target, source);
   const transferId = paragraphPropertySourceTransferIds.get(source);
   if (transferId) {

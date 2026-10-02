@@ -43,15 +43,9 @@ const parsedShape = (...content: Paragraph[]): Document => ({
 describe("the id census", () => {
   test("replay captures never contribute live paragraph or revision identities", () => {
     const live = paragraph("00000001", "live");
-    const historical: Paragraph = {
-      ...paragraph("00000002", "historical"),
-      pPrMark: { kind: "ins", info: { id: 41, author: "Reviewer" } },
-    };
     const document = parsedShape(live);
     document.package.document.source = {
-      xml: "<document/>",
-      shellFingerprint: "",
-      blocks: new Map([[live, { start: 0, end: 0, fingerprint: "", content: [live, historical] }]]),
+      xml: '<w:document><w:body><w:p w14:paraId="00000002"><w:pPr><w:pPrChange w:id="41"/></w:pPr></w:p></w:body></w:document>',
     };
     expect(packageParagraphIds(document.package)).toEqual([live.paraId]);
     expect(packageIdentityKeys(document.package)).toEqual([]);

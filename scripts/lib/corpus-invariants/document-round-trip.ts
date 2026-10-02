@@ -1,11 +1,12 @@
 /**
- * Document is the save authority: no conversion, capture stripping, ID seeding,
- * or control-save normalization may conceal changes to the original package.
+ * Tracked editor saves preserve untouched source blocks by immutable identity.
+ * Hand-mutated or cloned models have no source replay guarantee.
  * Compare uncompressed part bytes; ZIP timestamps and compression are transport.
  */
-import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { EditorState } from "prosemirror-state";
+import { fromProseDoc, toProseDoc } from "@stll/folio-core/prosemirror/conversion";
 import { parseDocx } from "@stll/folio-core/docx/parser";
-import { repackDocx } from "@stll/folio-core/docx/rezip";
+import { getSourceReplayToken, repackDocx } from "@stll/folio-core/docx/rezip";
 import type { Document } from "@stll/folio-core/types/document";
 import { Result, TaggedError } from "better-result";
 import JSZip from "jszip";
@@ -142,18 +143,27 @@ export const withoutFirstBodyParagraph = (xml: string): string => {
 
 /** One deterministic text insertion, requiring no package-wide operation seeding. */
 const canonicalEdit = (document: Document): Document | undefined => {
-  const edited = cloneDocumentWithParagraphPropertySources(document);
-  const paragraph = edited.package.document.content.find((block) => block.type === "paragraph");
-  if (!paragraph) return undefined;
-  paragraph.content.push({
-    type: "run",
-    content: [{ type: "text", text: DOCUMENT_ROUND_TRIP_INSERTION }],
+  const projected = toProseDoc(document);
+  let insertion: number | undefined;
+  projected.forEach((node, offset) => {
+    if (insertion === undefined && node.type.name === "paragraph")
+      insertion = offset + node.nodeSize - 1;
   });
-  return edited;
+  if (insertion === undefined) return undefined;
+  const edited = EditorState.create({ doc: projected }).tr.insertText(
+    DOCUMENT_ROUND_TRIP_INSERTION,
+    insertion,
+  ).doc;
+  return fromProseDoc(edited, document);
 };
 
-const save = (document: Document): Promise<ArrayBuffer> =>
-  repackDocx(cloneDocumentWithParagraphPropertySources(document), { updateModifiedDate: false });
+const save = (document: Document): Promise<ArrayBuffer> => {
+  const sourceReplay = getSourceReplayToken(document);
+  return repackDocx(document, {
+    updateModifiedDate: false,
+    ...(sourceReplay === undefined ? {} : { sourceReplay }),
+  });
+};
 
 export const runDocumentRoundTripInvariant = async ({
   parsed,
@@ -164,8 +174,12 @@ export const runDocumentRoundTripInvariant = async ({
   const failures: CorpusInvariantOutcome["failures"] = [];
   const measured = await Result.tryPromise({
     try: async () => {
+      const tracked = await timeStage(timings, "tracked-parse", () =>
+        parseDocx(buffer, { preloadFonts: false, sourceReplay: "tracked" }),
+      );
+      const editorDocument = fromProseDoc(toProseDoc(tracked), tracked);
       const original = await timeStage(timings, "original-parts", () => readParts(buffer));
-      const saved = await timeStage(timings, "no-edit-save", () => save(parsed));
+      const saved = await timeStage(timings, "no-edit-save", () => save(editorDocument));
       const [reparsed, savedParts] = await timeStage(timings, "no-edit-read", () =>
         Promise.all([parseDocx(saved, { preloadFonts: false }), readParts(saved)]),
       );
@@ -179,7 +193,7 @@ export const runDocumentRoundTripInvariant = async ({
           failureFromAssertion(INVARIANT, `no-edit save: ${message}`),
         ),
       );
-      const edited = await timeStage(timings, "canonical-edit", () => canonicalEdit(parsed));
+      const edited = await timeStage(timings, "canonical-edit", () => canonicalEdit(tracked));
       if (!edited) return;
       const editedSave = await timeStage(timings, "edit-save", () => save(edited));
       const [editedParsed, editedParts] = await timeStage(timings, "edit-read", () =>

@@ -123,11 +123,11 @@ describe("revisedFinalParagraphMarks", () => {
       const last = paragraph("last");
       const document = {
         content: [first, last],
-        source: { blocks: new Map([[first, { content: [first] }]]) },
+        source: { xml: "<w:document><w:body><w:p/></w:body></w:document>" },
         sections: [{ content: [first] }, { content: [last] }],
       };
       expect(revisedFinalParagraphMarks({ package: { document } })).toEqual([]);
-      // A live terminal mark must remain visible even when captured aliases
+      // A live terminal mark must remain visible even when retained source
       // and derived sections disagree with the current story's sequence.
       document.content.pop();
       expect(revisedFinalParagraphMarks({ package: { document } })).toEqual([

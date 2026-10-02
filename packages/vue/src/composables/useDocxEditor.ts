@@ -29,6 +29,7 @@ import type { MaybeRefOrGetter, Ref } from "vue";
 
 import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { getSourceReplayToken } from "@stll/folio-core/docx/rezip";
 
 import {
   createFolioEditor,
@@ -1229,7 +1230,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         if (prepared.isErr()) throw prepared.error;
         source = prepared.value;
       }
-      const doc = await parseDocx(source, { password: toValue(password) });
+      const doc = await parseDocx(source, { password: toValue(password), sourceReplay: "tracked" });
       docModel.value = doc;
       remountForNewDocument();
     } catch (err) {
@@ -1312,7 +1313,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       repackWithEditorSectionRemovals({
         state,
         document: updatedDoc,
-        repack: () => repackDocx(updatedDoc),
+        repack: () => {
+          const sourceReplay = getSourceReplayToken(updatedDoc);
+          return repackDocx(updatedDoc, sourceReplay === undefined ? {} : { sourceReplay });
+        },
       });
 
     if (!buffer) {

@@ -5,6 +5,7 @@ import type { EditorState as EditorStateT } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorView, type DirectEditorProps } from "prosemirror-view";
+import { inheritSourceReplayToken } from "@stll/docx-core/ops";
 
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
@@ -329,7 +330,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         );
       }
       if (!footnotesChanged && !endnotesChanged) return document;
-      return {
+      const snapshot = {
         ...document,
         package: {
           ...document.package,
@@ -338,6 +339,8 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           ...(numbering ? { numbering } : {}),
         },
       };
+      inheritSourceReplayToken(snapshot, document);
+      return snapshot;
     },
     sync,
   };

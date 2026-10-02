@@ -8,6 +8,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Transform } from "prosemirror-transform";
+import { inheritSourceReplayToken } from "@stll/docx-core/ops";
 
 import { withoutLostCommentThreads } from "../ai-edits/comment-lifecycle";
 import { visitCommentMarkers } from "../docx/commentAnchorIndex";
@@ -150,7 +151,7 @@ export const restoreNotes = (
   if (footnotes === document.package.footnotes && endnotes === document.package.endnotes) {
     return document;
   }
-  return {
+  const updated = {
     ...document,
     package: {
       ...document.package,
@@ -158,6 +159,8 @@ export const restoreNotes = (
       ...(endnotes !== undefined && { endnotes }),
     },
   };
+  inheritSourceReplayToken(updated, document);
+  return updated;
 };
 
 /** The deletion each pending-deleted note reference carries. */
@@ -245,7 +248,7 @@ const editNotes = (document: Document, edits: ReadonlyMap<NoteKey, NoteEdit>): D
   if (footnotes === document.package.footnotes && endnotes === document.package.endnotes) {
     return document;
   }
-  return {
+  const updated = {
     ...document,
     package: {
       ...document.package,
@@ -253,6 +256,8 @@ const editNotes = (document: Document, edits: ReadonlyMap<NoteKey, NoteEdit>): D
       ...(endnotes !== undefined && { endnotes }),
     },
   };
+  inheritSourceReplayToken(updated, document);
+  return updated;
 };
 
 /**
@@ -439,7 +444,7 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
         ]),
       })
     : undefined;
-  return {
+  const filtered = {
     ...document,
     package: {
       ...document.package,
@@ -451,4 +456,6 @@ export const withoutUnreferencedNotes = (document: Document): Document => {
         }),
     },
   };
+  inheritSourceReplayToken(filtered, document);
+  return filtered;
 };

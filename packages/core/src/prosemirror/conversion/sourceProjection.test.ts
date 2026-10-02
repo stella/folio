@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { registerSourceReplayDocument } from "@stll/docx-core/ops";
 
 import {
   assignDocumentParagraphPropertySourceContract,
@@ -23,12 +24,23 @@ const paragraph = (): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text: "source" }] }],
 });
 
-const sourceDocument = (): Document => {
+type SourceDocumentOptions = {
+  sourceReplay?: "tracked" | "untracked";
+  prepare?: (document: Document) => void;
+};
+
+const sourceDocument = ({
+  sourceReplay = "tracked",
+  prepare,
+}: SourceDocumentOptions = {}): Document => {
   const document: Document = { package: { document: { content: [paragraph()] } } };
   assignDocumentParagraphPropertySourceContract(document, "a".repeat(64));
   // Ordinary immutable derivations carry a replaceable provenance binding.
   // The factory's original binding deliberately cannot be overwritten.
-  return { ...document };
+  const result = { ...document };
+  prepare?.(result);
+  if (sourceReplay === "tracked") registerSourceReplayDocument(result);
+  return result;
 };
 
 const versionMutations = {
@@ -93,7 +105,7 @@ const versionMutations = {
   contract: {
     prepare: () => undefined,
     mutate: (document) => {
-      const other = sourceDocument();
+      const other = sourceDocument({ sourceReplay: "untracked" });
       assignDocumentParagraphPropertySourceContract(other, "b".repeat(64));
       copyDocumentParagraphPropertySourceContract(document, other);
     },
@@ -101,7 +113,7 @@ const versionMutations = {
   tokens: {
     prepare: () => undefined,
     mutate: (document) => {
-      const other = sourceDocument();
+      const other = sourceDocument({ sourceReplay: "untracked" });
       assignDocumentParagraphPropertySourceContract(other, "c".repeat(64));
       const target = document.package.document.content.at(0);
       const source = other.package.document.content.at(0);
@@ -122,12 +134,16 @@ describe("source projection cache versions", () => {
     expect(currentSourceProjection(document)).toBe(firstProjection);
   });
 
-  test.each(Object.entries(versionMutations))("invalidates on %s changes", (_key, change) => {
-    const document = sourceDocument();
-    change.prepare(document);
+  test.each(Object.entries(versionMutations))("guards tracked %s changes", (key, change) => {
+    const document = sourceDocument({ prepare: change.prepare });
     const originalProjection = toProseDoc(document);
 
     expect(currentSourceProjection(document)).toBe(originalProjection);
+    if (key === "content" || key === "styles" || key === "theme" || key === "tokens") {
+      expect(() => change.mutate(document)).toThrow();
+      expect(currentSourceProjection(document)).toBe(originalProjection);
+      return;
+    }
     change.mutate(document);
     expect(currentSourceProjection(document)).toBeUndefined();
 
@@ -137,13 +153,13 @@ describe("source projection cache versions", () => {
   });
 
   test.each(Object.entries(versionMutations))(
-    "a warmed provenance check invalidates on %s changes",
+    "untracked %s changes never authorize projection reuse",
     (key, change) => {
-      const document = sourceDocument();
-      change.prepare(document);
+      const document = sourceDocument({ sourceReplay: "untracked", prepare: change.prepare });
       const projected = toProseDoc(document);
       fromProseDoc(projected, document);
       fromProseDoc(projected, document);
+      expect(currentSourceProjection(document)).toBeUndefined();
 
       change.mutate(document);
       expect(currentSourceProjection(document)).toBeUndefined();

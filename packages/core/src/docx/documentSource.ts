@@ -1,8 +1,13 @@
-import type { BlockContent, DocumentBody } from "../types/document";
+import type { BlockContent, Document, DocumentBody } from "../types/document";
+import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
+import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { requiresXmlSpacePreserve } from "@stll/docx-core";
-import { canonicalJson } from "../utils/canonicalJson";
+import {
+  getSourceReplayToken,
+  registerSourceReplayDocument,
+  type SourceReplayToken,
+} from "@stll/docx-core/ops";
 import { getXmlSourceRange } from "./streamingXmlParser";
-import { getParagraphPropertySourceCandidate } from "./paragraphPropertySource";
 import {
   getAttributeByNamespaceUri,
   getLocalName,
@@ -21,8 +26,26 @@ class DocumentSourceReplayError extends TaggedError("DocumentSourceReplayError")
   message: string;
 }> {}
 
-const validatedSources = new WeakMap<NonNullable<DocumentBody["source"]>, string>();
-const originalSources = new WeakMap<NonNullable<DocumentBody["source"]>, string>();
+type SourceGroup = {
+  source: SourcePart;
+  start: number;
+  end: number;
+  content: readonly BlockContent[];
+  repair: "required" | "none";
+};
+
+type SourcePart = {
+  xml: string;
+  content: readonly BlockContent[];
+  background: DocumentBody["background"];
+  finalSectionProperties: DocumentBody["finalSectionProperties"];
+  repair: "required" | "none";
+};
+
+const blockSources = new WeakMap<BlockContent, SourceGroup>();
+const bodySources = new WeakMap<DocumentBody, SourcePart>();
+const tokenSources = new WeakMap<SourceReplayToken, SourcePart>();
+const validatedSources = new WeakSet<SourcePart>();
 
 const safeSourceXml = (xml: string): string => {
   if (!isSafeCapturedXmlDocument(xml)) {
@@ -31,28 +54,25 @@ const safeSourceXml = (xml: string): string => {
   return xml;
 };
 
-const safeCapturedSource = (source: NonNullable<DocumentBody["source"]>): string | null => {
-  if (validatedSources.get(source) === source.xml) return source.xml;
-  // Retaining a reference grants no replay authority. Validate the actual XML
-  // at first output, so namespace/attribute validation is absent from parsing.
-  // Do not rely on a retained tree: callers can mutate that tree independently.
-  if (!isSafeCapturedXmlDocument(source.xml)) {
-    if (originalSources.get(source) === source.xml) return null;
-    throw new DocumentSourceReplayError({ message: "Document source XML is not safe to replay." });
-  }
-  validatedSources.set(source, source.xml);
-  return source.xml;
+/** Bind replay only after import repairs, before handing an immutable model to an editor. */
+export const trackDocumentSource = (document: Document): void => {
+  const source = bodySources.get(document.package.document);
+  const token = registerSourceReplayDocument(document);
+  if (source) tokenSources.set(token, source);
 };
 
-const shellFingerprint = (body: DocumentBody): string =>
-  canonicalJson({
-    background: body.background,
-    finalSectionProperties: body.finalSectionProperties,
-  });
+/** Import repairs cannot retain authority for the model they changed in place. */
+export const discardDocumentSource = (body: DocumentBody): void => {
+  bodySources.delete(body);
+  delete body.source;
+};
 
-// The compact value snapshot is exact, not a hash. Keeping strings rather than
-// cloned model subgraphs lets graph-preserving document clones share baselines.
-const groupFingerprint = (content: BlockContent[]): string => JSON.stringify(content);
+export const documentSourceXml = (
+  document: Document,
+  token: SourceReplayToken,
+): string | undefined =>
+  getSourceReplayToken(document) === token ? tokenSources.get(token)?.xml : undefined;
+
 const XML_NAMESPACE_URIS = new Set([XML_NAMESPACE_URI]);
 const RELATIONSHIP_REFERENCE_ATTRIBUTES = new Set(["id", "embed", "link"]);
 
@@ -80,96 +100,131 @@ const requiresSourceRepair = (element: XmlElement, excluded?: ReadonlySet<XmlEle
   return element.elements?.some((child) => requiresSourceRepair(child, excluded)) ?? false;
 };
 
-/** Capture before package normalizers; a changed model must invalidate replay. */
+/** Retain structural references only; replay is explicitly enabled by a tracked save. */
 export const captureDocumentSource = (
   body: DocumentBody,
   source: { xml: string; root: XmlElement; groups: ReadonlyMap<XmlElement, BlockContent[]> },
 ): void => {
-  // Reject extra roots immediately. Full replay validation is deferred to
-  // output; tolerant parsing alone never grants raw replay authority.
   const root = getSingleParsedXmlDocumentElement(source.root);
-  // The fallback parser can discard trailing text and has no exact ranges.
-  // Such a tree cannot establish ownership of the complete source part.
   if (!root || !getXmlSourceRange(root)) return;
-  const blocks: NonNullable<DocumentBody["source"]>["blocks"] = new Map();
   const capturedGroups = new Set<XmlElement>();
+  for (const [element, content] of source.groups) {
+    if (getXmlSourceRange(element) && content.length > 0) capturedGroups.add(element);
+  }
+  const part = {
+    xml: source.xml,
+    content: body.content,
+    background: body.background,
+    finalSectionProperties: body.finalSectionProperties,
+    repair: requiresSourceRepair(source.root, capturedGroups) ? "required" : "none",
+  } satisfies SourcePart;
   for (const [element, content] of source.groups) {
     const range = getXmlSourceRange(element);
     if (!range || content.length === 0) continue;
-    capturedGroups.add(element);
-    // Mutable model records cannot serve as their own baseline: callers may
-    // edit before the first save. Capture compact values, never a deep clone.
     const record = {
+      source: part,
       ...range,
       content,
-      fingerprint: requiresSourceRepair(element) ? null : groupFingerprint(content),
-    };
-    for (const block of content) blocks.set(block, record);
+      repair: requiresSourceRepair(element) ? "required" : "none",
+    } as const satisfies SourceGroup;
+    for (const block of content) blockSources.set(block, record);
   }
-  body.source = {
-    xml: source.xml,
-    shellFingerprint: requiresSourceRepair(source.root, capturedGroups)
-      ? null
-      : shellFingerprint(body),
-    blocks,
-  };
-  originalSources.set(body.source, source.xml);
+  body.source = { xml: source.xml };
+  bodySources.set(body, part);
 };
 
 type ReplayDocumentSourceOptions = {
-  body: DocumentBody;
+  document: Document;
+  token: SourceReplayToken | undefined;
   serialize: (blocks: BlockContent[]) => string;
 };
 
-/**
- * Source ownership is by model identity, including through structuredClone.
- * A model edit invalidates only its source group. Structural edits and shell
- * edits take the rebuilding path until their source placement is represented.
- */
+/** New blocks serialize from the model; unchanged immutable identities replay their source slice. */
 export const replayDocumentSource = ({
-  body,
+  document,
+  token,
   serialize,
 }: ReplayDocumentSourceOptions): string | null => {
-  const source = body.source;
-  if (!source) return null;
-  if (source.shellFingerprint !== shellFingerprint(body)) return null;
-  const sourceXml = safeCapturedSource(source);
-  if (sourceXml === null) return null;
-
+  if (token === undefined || getSourceReplayToken(document) !== token) return null;
+  const source = tokenSources.get(token);
+  const body = document.package.document;
+  if (
+    !source ||
+    source.repair === "required" ||
+    source.background !== body.background ||
+    source.finalSectionProperties !== body.finalSectionProperties ||
+    source.content.length !== body.content.length
+  )
+    return null;
+  if (!validatedSources.has(source)) {
+    if (!isSafeCapturedXmlDocument(source.xml)) return null;
+    validatedSources.add(source);
+  }
   const replacements: { start: number; end: number; xml: string }[] = [];
   let index = 0;
   let previousEnd = 0;
-  while (index < body.content.length) {
-    const block = body.content.at(index);
-    const owner =
-      block?.type === "paragraph" ? (getParagraphPropertySourceCandidate(block) ?? block) : block;
-    const record = owner && source.blocks.get(owner);
+  while (index < source.content.length) {
+    const original = source.content.at(index);
+    const record = original && blockSources.get(original);
     if (!record || record.start < previousEnd) return null;
-    const content = body.content.slice(index, index + record.content.length);
-    if (
-      content.length !== record.content.length ||
-      content.some((item, offset) => {
-        const candidate =
-          item.type === "paragraph" ? (getParagraphPropertySourceCandidate(item) ?? item) : item;
-        return candidate !== record.content.at(offset);
-      })
-    )
-      return null;
-    if (groupFingerprint(content) !== record.fingerprint) {
-      replacements.push({ start: record.start, end: record.end, xml: serialize(content) });
+    let changed = record.repair === "required";
+    for (let offset = 0; offset < record.content.length; offset += 1) {
+      const block = body.content.at(index + offset);
+      if (!block) return null;
+      const retained = blockSources.get(block);
+      // Moving an authored identity changes source placement; rebuild rather
+      // than replaying XML from its previous position.
+      if (
+        retained &&
+        (retained.source !== source || retained !== record || block !== record.content.at(offset))
+      )
+        return null;
+      changed ||= retained === undefined;
+    }
+    if (changed) {
+      replacements.push({
+        start: record.start,
+        end: record.end,
+        xml: serialize(body.content.slice(index, index + record.content.length)),
+      });
     }
     previousEnd = record.end;
-    index += content.length;
+    index += record.content.length;
   }
-  // Deleting a tail must not replay the source's deleted blocks.
-  if (source.blocks.size !== body.content.length) return null;
-  if (replacements.length === 0) return sourceXml;
+  if (replacements.length === 0) return source.xml;
   const chunks: string[] = [];
   let cursor = 0;
   for (const replacement of replacements) {
-    chunks.push(sourceXml.slice(cursor, replacement.start), replacement.xml);
+    chunks.push(source.xml.slice(cursor, replacement.start), replacement.xml);
     cursor = replacement.end;
   }
-  chunks.push(sourceXml.slice(cursor));
+  chunks.push(source.xml.slice(cursor));
   return safeSourceXml(chunks.join(""));
+};
+
+/** Export normalizers may write only into model-derived blocks, never retained source identities. */
+export const prepareSourceReplayExport = (document: Document): Document => {
+  const token = getSourceReplayToken(document);
+  if (token === undefined) return document;
+  const source = tokenSources.get(token);
+  const repliesNeedMarkers = hasUnsynthesizedReplyRanges(document);
+  let changed = false;
+  const content = document.package.document.content.map((block) => {
+    const retained = source !== undefined && blockSources.get(block)?.source === source;
+    if (retained && !repliesNeedMarkers) return block;
+    changed = true;
+    const cloned = cloneDocumentWithParagraphPropertySources({
+      package: { document: { content: [block] } },
+    }).package.document.content.at(0);
+    if (!cloned) throw new DocumentSourceReplayError({ message: "Export clone lost its block." });
+    return cloned;
+  });
+  if (!changed) return document;
+  return {
+    ...document,
+    package: {
+      ...document.package,
+      document: { ...document.package.document, content },
+    },
+  };
 };

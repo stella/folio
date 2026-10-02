@@ -1,3 +1,11 @@
+import { prepareSourceReplayExport } from "./documentSource";
+import {
+  getSourceReplayToken,
+  inheritSourceReplayToken,
+  type SourceReplayToken,
+} from "@stll/docx-core/ops";
+
+export { getSourceReplayToken, inheritSourceReplayToken } from "@stll/docx-core/ops";
 import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -962,6 +970,8 @@ async function processNewHyperlinks(
  * Options for repacking DOCX
  */
 export type RepackOptions = {
+  /** Replay only from an explicitly tracked immutable editor or operations result. */
+  sourceReplay?: SourceReplayToken;
   /** Compression level (0-9, default: 6) */
   compressionLevel?: number;
   /** Whether to update modification date in docProps/core.xml */
@@ -1132,6 +1142,8 @@ const cloneDocxZip = (source: JSZip): JSZip => {
 };
 
 type FinishRepackOptions = {
+  sourceReplay?: SourceReplayToken;
+  sourceDocument?: Document;
   document: Document;
   originalZip: JSZip;
   outputZip: JSZip;
@@ -1156,6 +1168,8 @@ const normalizeExportDrawingIds = ({ package: docxPackage }: Document): void => 
 };
 
 const finishRepack = async ({
+  sourceReplay,
+  sourceDocument,
   document,
   originalZip,
   outputZip,
@@ -1179,11 +1193,14 @@ const finishRepack = async ({
   assertValidFolioDocumentModel(document, "Cannot repack invalid DOCX document model");
 
   applyReplyThreadMarkers(document);
+  if (sourceDocument !== undefined) inheritSourceReplayToken(document, sourceDocument);
 
-  const documentXml = serializeDocument(
-    document,
-    originalDocument === undefined ? undefined : readRootNamespaceBindings(originalDocument.xml),
-  );
+  const documentXml = serializeDocument(document, {
+    ...(originalDocument === undefined
+      ? {}
+      : { sourceBindings: readRootNamespaceBindings(originalDocument.xml) }),
+    ...(sourceReplay === undefined ? {} : { sourceReplay }),
+  });
   if (originalDocument?.xml) {
     assertDocumentPackageFidelity({
       originalDocumentFacts: originalDocument.sectionFacts(),
@@ -1275,8 +1292,10 @@ async function repackDocxWithSectionEndpointRemoval({
     updateModifiedDate = true,
     modifiedBy,
     changedNoteParaIds,
+    sourceReplay,
   } = options;
-  const exportDocument = withoutOrphanCommentRanges(doc);
+  const tracked = sourceReplay !== undefined && getSourceReplayToken(doc) === sourceReplay;
+  const exportDocument = withoutOrphanCommentRanges(tracked ? prepareSourceReplayExport(doc) : doc);
 
   // Load the original ZIP
   const originalZip = await JSZip.loadAsync(doc.originalBuffer);
@@ -1289,6 +1308,7 @@ async function repackDocxWithSectionEndpointRemoval({
   const newZip = cloneDocxZip(originalZip);
 
   return finishRepack({
+    ...(tracked ? { sourceReplay, sourceDocument: doc } : {}),
     document: exportDocument,
     originalZip,
     outputZip: newZip,
@@ -1380,7 +1400,9 @@ export async function repackDocxFromRaw(
 
   const documentXml = serializeDocument(
     exportDocument,
-    rawContent.documentXml ? readRootNamespaceBindings(rawContent.documentXml) : undefined,
+    rawContent.documentXml
+      ? { sourceBindings: readRootNamespaceBindings(rawContent.documentXml) }
+      : {},
   );
   if (rawContent.documentXml) {
     assertDocumentPackageFidelity({

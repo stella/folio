@@ -19,7 +19,8 @@ import type {
 } from "../../types/document";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { themeColorToken } from "@stll/docx-core/model";
-import { replayDocumentSource } from "../documentSource";
+import { documentSourceXml, replayDocumentSource } from "../documentSource";
+import type { SourceReplayToken } from "@stll/docx-core/ops";
 import { readRootNamespaceBindings } from "./partNamespaces";
 import { sourceScopedBlocks } from "./sourceBlockNamespace";
 import { serializeBlockSdt } from "./blockSdtSerializer";
@@ -152,28 +153,33 @@ export function serializeDocumentBody(body: DocumentBody): string {
   return parts.join("");
 }
 
+type SerializeDocumentOptions = {
+  sourceBindings?: ReadonlyMap<string, string>;
+  sourceReplay?: SourceReplayToken;
+};
+
 /**
  * Serialize a complete Document to valid document.xml
  *
  * @param doc - The document to serialize
- * @param sourceBindings - Root `xmlns:*` of the part being replaced, so a
- *   prefix only the source document bound keeps its URI
+ * @param options - Source namespace bindings and explicit tracked replay authority
  * @returns Complete XML string for document.xml
  */
 export function serializeDocument(
   doc: Document,
-  sourceBindings?: ReadonlyMap<string, string>,
+  { sourceBindings, sourceReplay }: SerializeDocumentOptions = {},
 ): string {
   // Reset auto-incrementing image/shape ID counter for this serialization pass
   resetAutoIdCounter();
 
-  const source = doc.package.document.source;
+  const sourceXml = sourceReplay === undefined ? undefined : documentSourceXml(doc, sourceReplay);
   const replayed = replayDocumentSource({
-    body: doc.package.document,
+    document: doc,
+    token: sourceReplay,
     serialize: (blocks) =>
       sourceScopedBlocks(serializeBodyContent(blocks), {
         conformance: doc.package.conformanceClass,
-        bindings: sourceBindings ?? readRootNamespaceBindings(source?.xml ?? ""),
+        bindings: sourceBindings ?? readRootNamespaceBindings(sourceXml ?? ""),
       }),
   });
   if (replayed !== null) return replayed;

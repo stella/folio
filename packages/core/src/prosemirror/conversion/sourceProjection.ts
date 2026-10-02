@@ -1,12 +1,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import { createModelVersionTracker } from "../../utils/modelVersion";
-import type { Document, Paragraph } from "../../types/document";
-import {
-  getDocumentParagraphPropertySourceContract,
-  getParagraphPropertySourceToken,
-  visitDocumentStoryParagraphs,
-} from "../../docx/paragraphPropertySource";
+import { getSourceReplayToken, type SourceReplayToken } from "@stll/docx-core/ops";
+import type { Document } from "../../types/document";
+import { getDocumentParagraphPropertySourceContract } from "../../docx/paragraphPropertySource";
 
 /** The model inputs consumed by the main-story projection. */
 export const documentProjectionInput = (document: Document) => ({
@@ -20,33 +16,28 @@ export const documentProjectionInput = (document: Document) => ({
   contract: getDocumentParagraphPropertySourceContract(document) ?? null,
 });
 
-const readVersion = createModelVersionTracker();
-
 type SourceProjection = {
   input: ReturnType<typeof documentProjectionInput>;
-  version: unknown;
-  tokens: Map<Paragraph, string | undefined>;
+  token: SourceReplayToken;
   projection: PMNode;
 };
 
 const projections = new WeakMap<Document, SourceProjection>();
 
 export const rememberSourceProjection = (document: Document, projection: PMNode): void => {
-  const tokens = new Map<Paragraph, string | undefined>();
-  visitDocumentStoryParagraphs(document.package.document.content, (paragraph) => {
-    tokens.set(paragraph, getParagraphPropertySourceToken(paragraph));
-  });
-  const input = documentProjectionInput(document);
-  projections.set(document, { input, version: readVersion(input), tokens, projection });
+  const token = getSourceReplayToken(document);
+  if (token === undefined) return;
+  projections.set(document, { input: documentProjectionInput(document), token, projection });
 };
 
 export const currentSourceProjection = (document: Document): PMNode | undefined => {
   const cached = projections.get(document);
-  if (!cached) return undefined;
-  Object.assign(cached.input, documentProjectionInput(document));
-  if (!Object.is(readVersion(cached.input), cached.version)) return undefined;
-  for (const [paragraph, token] of cached.tokens) {
-    if (getParagraphPropertySourceToken(paragraph) !== token) return undefined;
+  if (!cached || getSourceReplayToken(document) !== cached.token) return undefined;
+  const input = documentProjectionInput(document);
+  // Tracked blocks and projection resources are immutable; only their root
+  // references and the scalar document settings can change between projections.
+  for (const [key, field] of Object.entries(input)) {
+    if (!Object.is(field, Reflect.get(cached.input, key))) return undefined;
   }
   return cached.projection;
 };
