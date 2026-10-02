@@ -21,7 +21,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { createHash } from "node:crypto";
 import { Window } from "happy-dom";
-import { DOMParser, DOMSerializer, Fragment, type Node as PMNode } from "prosemirror-model";
+import { DOMParser, DOMSerializer, type Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
@@ -329,10 +329,9 @@ describe("a capture and the clipboard", () => {
     const window = new Window();
     const document = window.document as unknown as globalThis.Document;
 
+    // The paragraph's content, as the neighbouring DOM round trips serialize it.
     const host = document.createElement("div");
-    host.append(
-      DOMSerializer.fromSchema(schema).serializeFragment(Fragment.from(node), { document }),
-    );
+    host.append(DOMSerializer.fromSchema(schema).serializeFragment(node.content, { document }));
 
     expect(host.innerHTML).not.toContain("LISTNUM");
     expect(host.innerHTML).not.toContain("data-docx-preserved-xml");

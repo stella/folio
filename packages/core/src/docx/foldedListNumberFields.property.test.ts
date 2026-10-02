@@ -33,6 +33,8 @@ import {
   planListNumberFold,
   unfoldedListNumberContent,
 } from "./foldedListNumberFields";
+import { createEmptyDocument } from "../utils/createDocument";
+import { createDocx } from "./rezip";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -458,6 +460,20 @@ describe("a paragraph of the model brought to the form the fold allows", () => {
     expect(() => serializeParagraph(deleting(withDrawing))).toThrow(
       /cannot be written as deleted content/u,
     );
+  });
+
+  test("a save that meets such a capture is refused under the error's own tag", async () => {
+    const document = createEmptyDocument();
+    document.package.document.content = [
+      deleting(
+        rawCapture(`<w:r><w:drawing/></w:r><w:r><w:instrText> LISTNUM </w:instrText></w:r>`),
+      ),
+    ];
+
+    // The same way a save reports other content a revision cannot hold.
+    await expect(createDocx(document)).rejects.toMatchObject({
+      _tag: "UnrepresentableTrackedCaptureError",
+    });
   });
 
   test("a capture inside an insertion is written as it is", () => {
