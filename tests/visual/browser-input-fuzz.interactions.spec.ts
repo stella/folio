@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
 
+import knownFailures from "../../test/known-failure-fingerprints.json" with { type: "json" };
+
 import { classifyFuzzRun } from "../../test/fuzz-health";
 import { reportFuzzHealth } from "../../test/consumer-scenarios/support/fuzz-health";
 
@@ -14,7 +16,7 @@ import {
 } from "../../packages/core/src/controller/__tests__/freshRenderHarness";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
-  BROWSER_SHAPES,
+  BROWSER_SHAPE_TARGETS,
   browserInputTraceArbitrary,
   BROWSER_PASTE_PAYLOADS,
   browserSuggestionActionKinds,
@@ -411,6 +413,71 @@ const runMode = async (
   return { buffer, blocks: project(reopened), changes: reopened.getChanges() };
 };
 
+const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+  Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
+
+const browserAcceptances = knownFailures.known.flatMap(({ fingerprint, acceptance }) => {
+  if (acceptance?.type !== "browser") return [];
+  const trace = acceptance.trace;
+  if (!trace || !isBrowserShape(trace.shape)) throw new Error("Invalid browser acceptance shape");
+  const actions = trace.actions.map((action) => {
+    switch (action.kind) {
+      case "dragCellDelete":
+        return { kind: "dragCellDelete" } as const;
+      case "typing":
+        if (typeof action.text !== "string") throw new Error("Invalid acceptance typing action");
+        return { kind: "typing", text: action.text } as const;
+      default:
+        throw new Error(`Unsupported acceptance action ${action.kind}`);
+    }
+  });
+  return [
+    {
+      ...acceptance,
+      fingerprint,
+      trace: { shape: trace.shape, actions } satisfies BrowserInputTrace,
+    },
+  ];
+});
+
+// A changed symptom or a passing replay requires reviewing and removing its acceptance entry.
+for (const acceptance of browserAcceptances) {
+  test(`known failure #${acceptance.issue} / seed ${acceptance.reportSeed} / ${acceptance.fingerprint}: ${acceptance.title}`, async ({
+    page,
+  }) => {
+    const { trace } = acceptance;
+    const source = await shapeArrayBuffer(trace.shape);
+    const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+    const edited = await runMode(page, source, baseline, trace, false);
+    const suggested = await runMode(page, source, baseline, trace, true);
+    const accepting = await FolioDocxReviewer.fromBuffer(suggested.buffer);
+    accepting.acceptAll();
+    const accepted = await FolioDocxReviewer.fromBuffer(await accepting.toBuffer());
+    const editedCellIndex = edited.blocks.findIndex(
+      ({ text, table }) => text === "alpha" && table !== undefined,
+    );
+    if (editedCellIndex < 0) throw new Error("#1341 trace did not edit a table cell to alpha");
+    const editedCell = edited.blocks[editedCellIndex];
+    const acceptedCell = project(accepted).at(editedCellIndex);
+    if (editedCell === undefined || acceptedCell === undefined) {
+      throw new Error("#1341 trace lost its edited table cell while accepting");
+    }
+    if (JSON.stringify(acceptedCell.table) !== JSON.stringify(editedCell.table)) {
+      throw new Error("#1341 trace accepted a different table cell");
+    }
+    if (editedCell.text !== "alpha" || acceptedCell.text !== "a") {
+      throw new Error(
+        `#1341 expected editing alpha and accepting a; got ${JSON.stringify(editedCell.text)} and ${JSON.stringify(acceptedCell.text)}`,
+      );
+    }
+
+    // Mark the test expected-to-fail only after setup and the exact symptom pass.
+    // A setup regression fails normally; a fix fails at the final equality.
+    test.fail(true, "#1341: accepting tracked table input truncates alpha to a");
+    expect(acceptedCell.text).toBe(editedCell.text);
+  });
+}
+
 /** Replays the same action schedule through #1148's fresh-render scheduler oracle. */
 const checkFreshRender = (trace: BrowserInputTrace) => {
   withFakeTextMeasure(() => {
@@ -436,16 +503,20 @@ const checkFreshRender = (trace: BrowserInputTrace) => {
   });
 };
 
-// Derive fixtures from the generator's target map so a new drag target also
-// requires this deterministic gesture invariant in both editor modes.
-const isDragTarget = (target: string): target is BrowserDragTarget =>
-  Object.hasOwn(BROWSER_SHAPES, target);
-for (const target of Object.keys(BROWSER_SHAPES).filter(isDragTarget)) {
+// Derive deterministic drag fixtures from the generator's shape map, so every
+// shape with a target gets this gesture invariant in both editor modes.
+const browserDragShapes = Object.keys(BROWSER_SHAPE_TARGETS).filter(
+  (shape): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+    isBrowserShape(shape) && BROWSER_SHAPE_TARGETS[shape] !== null,
+);
+for (const shape of browserDragShapes) {
+  const target = BROWSER_SHAPE_TARGETS[shape];
+  if (target === null) throw new Error(`browser drag shape ${shape} has no target`);
   for (const suggesting of [false, true]) {
-    test(`painted ${target} drag after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
+    test(`painted ${target} drag in ${shape} after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
       page,
     }) => {
-      const source = await shapeArrayBuffer(BROWSER_SHAPES[target]);
+      const source = await shapeArrayBuffer(shape);
       const baseline = project(await FolioDocxReviewer.fromBuffer(source));
       await load(page, source, baseline, suggesting);
       await paste(page, {
@@ -557,6 +628,16 @@ for (const seed of config.seeds) {
           "fuzz-artifacts/browser/findings",
           failureRecord(marker, failure, { flow: trace }),
         );
+        if (
+          browserAcceptances.some(
+            (acceptance) =>
+              seed === acceptance.reportSeed &&
+              marker.fingerprint === acceptance.fingerprint &&
+              marker.primary === acceptance.primary,
+          )
+        ) {
+          test.fail(true, "#1341 expected browser-fuzz failure");
+        }
       }
       const detail =
         failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);

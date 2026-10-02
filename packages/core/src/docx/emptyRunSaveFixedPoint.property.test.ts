@@ -19,11 +19,12 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import type { Document, Paragraph, Run } from "../types/document";
 
 import { parseDocx } from "./parser";
-import { createEmptyDocx, repackDocx } from "./rezip";
+import { createDocx, repackDocx } from "./rezip";
+import { createEmptyDocument } from "../utils/createDocument";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -63,6 +64,8 @@ const RUN_BODIES = {
   tab: () => "<w:tab/>",
   break: () => "<w:br/>",
   textBox: (index: number) => textBoxDrawing(index + 1),
+  commentReference: (index: number) => `<w:commentReference w:id="${index}"/>`,
+  textAndCommentReference: (index: number) => `<w:t>x</w:t><w:commentReference w:id="${index}"/>`,
 } as const;
 
 type RunKind = keyof typeof RUN_BODIES;
@@ -108,7 +111,20 @@ const bodyXml = ({
 }): string => `${bookmarked ? BOOKMARK_PAIR : ""}<w:p>${runs.map(runXml).join("")}</w:p>`;
 
 const buildDocx = async (body: string): Promise<ArrayBuffer> => {
-  const zip = await JSZip.loadAsync(await createEmptyDocx());
+  const document = createEmptyDocument();
+  document.package.document.comments = [
+    ...body.matchAll(/<w:commentReference w:id="(?<id>\d+)"/gu),
+  ].map((match) => ({
+    id: Number(match.groups?.["id"]),
+    author: "Reviewer",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "run", content: [{ type: "text", text: "Check." }] }],
+      },
+    ],
+  }));
+  const zip = await JSZip.loadAsync(await createDocx(document));
   zip.file(
     "word/document.xml",
     `${XML_DECLARATION}<w:document xmlns:w="${W_NAMESPACE}" xmlns:wp="${WP_NAMESPACE}" ` +
@@ -194,14 +210,70 @@ const expectFixedPoint = async (source: ArrayBuffer): Promise<TwoSaves> => {
 };
 
 describe("a run that holds no payload is never written", () => {
-  test("any sequence of empty, near-empty and not-yet-filled runs is a fixed point after the first save", async () => {
-    await fc.assert(
-      fc.asyncProperty(generatedCase, async (generated) => {
-        await expectFixedPoint(await buildDocx(bodyXml(generated)));
-      }),
-      propertyConfig({ numRuns: 40 }),
-    );
-  }, 60_000); // Each case zips, parses and repacks a package twice over.
+  test(
+    "any sequence of empty, near-empty and not-yet-filled runs is a fixed point after the first save",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(generatedCase, async (generated) => {
+          const source = await buildDocx(bodyXml(generated));
+          const parsed = await parseDocx(source, { preloadFonts: false });
+          const actual = bodyParagraphs(parsed).flatMap((paragraph) =>
+            paragraph.content.flatMap((item) => {
+              if (item.type === "commentReference") return [`comment:${item.id}`];
+              if (item.type !== "run") return [];
+              return item.content.flatMap((payload) => {
+                if (payload.type === "shape") return ["shape"];
+                // Consolidation may join adjacent text leaves; compare their
+                // characters so the oracle checks order, not run boundaries.
+                if (payload.type === "text")
+                  return [...payload.text].map((character) => `text:${character}`);
+                return [];
+              });
+            }),
+          );
+          const expected = generated.runs.flatMap(({ kind }, index) => {
+            switch (kind) {
+              case "commentReference":
+                return [`comment:${index}`];
+              case "textAndCommentReference":
+                return ["text:x", `comment:${index}`];
+              case "textBox":
+                return ["shape"];
+              case "text":
+                return ["text:x"];
+              case "bare":
+              case "properties":
+              case "emptyText":
+              case "tab":
+              case "break":
+                return [];
+              default: {
+                const unreachable: never = kind;
+                return unreachable;
+              }
+            }
+          });
+          expect(actual).toEqual(expected);
+          await expectFixedPoint(source);
+        }),
+        {
+          numRuns: 40,
+          examples: [
+            [
+              {
+                runs: [
+                  { kind: "commentReference", bold: false },
+                  { kind: "textBox", bold: false },
+                ],
+                bookmarked: false,
+              },
+            ],
+          ],
+        },
+      );
+    },
+    propertyTestTimeout(60_000),
+  ); // Each case zips, parses and repacks twice.
 
   test("a paragraph of nothing but empty runs writes no run at all", async () => {
     const { afterFirst } = await expectFixedPoint(

@@ -2856,7 +2856,9 @@ const notePartXmlFor = ({
 
   switch (patch.type) {
     case "patched":
-      return patch.xml === originalXml ? keepOriginal() : patch.xml;
+      // Dirty ids are routing hints, including suggested edits rejected from
+      // the save snapshot. A successful splice may therefore be a no-op.
+      return patch.xml === originalXml ? null : patch.xml;
     case "refused":
       switch (patch.reason) {
         case "comment-range-balance":
