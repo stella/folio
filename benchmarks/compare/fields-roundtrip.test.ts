@@ -1,15 +1,25 @@
-import { expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 import { compareDocx } from "@stll/folio-core";
 
 import { buildDocumentPackage } from "./documents";
 import { checkInvariants } from "./invariants";
 import { zipPackage } from "./package-xml";
-import { resolvePackageValidator } from "./validator";
+import { resolvePackageValidator, type PackageValidator } from "./validator";
 import { applyVariant } from "./variants";
 
 const OPTIONS = { author: "folio compare benchmark", timestamp: "2000-01-01T00:00:00.000Z" };
 const SIMPLE_FIELD =
   /<w:fldSimple w:instr=" PAGE "><w:r>(<w:t(?:\s[^>]*)?>[\s\S]*?<\/w:t>)<\/w:r><\/w:fldSimple>/gu;
+
+let validate: PackageValidator | null = null;
+beforeAll(async () => {
+  validate = resolvePackageValidator();
+  if (validate === null) return;
+  // Validate the shared input while initializing the external SDK. Individual
+  // cases still validate their own redlines and keep their existing timeout.
+  const input = await zipPackage(buildDocumentPackage({ documentClass: "fields", size: "s" }));
+  expect(validate(input)).toEqual([]);
+});
 
 test.each([
   ["ordinary", ""],
@@ -46,7 +56,7 @@ test.each([
       unsupported: compared.value.unsupported.map(({ reason }) => reason),
       expectation: "different",
       options: OPTIONS,
-      validate: resolvePackageValidator(),
+      validate,
     });
     expect(result.outcomes.filter(({ status }) => status === "failed")).toEqual([]);
   },
@@ -82,7 +92,6 @@ test.each([
   }
   const base = await zipPackage(baseParts);
   const target = await zipPackage(targetParts);
-  const validate = resolvePackageValidator();
   expect(validate?.(base) ?? []).toEqual([]);
   expect(validate?.(target) ?? []).toEqual([]);
   const compared = await compareDocx(base, target, OPTIONS);

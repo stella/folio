@@ -53,6 +53,7 @@ import {
 
 import { openReviewer } from "./documents.ts";
 import { projectContentPair, projectSnapshotIdentities } from "./identity.ts";
+import { comparableMarkdown } from "./markdown-comparison.ts";
 import type { Finding } from "./known-issues.ts";
 import type { Mode } from "./operations.ts";
 import { resolvedState, type Row } from "./oracle.ts";
@@ -290,9 +291,6 @@ type BlocksView = { blocks: readonly { text: string; table?: unknown }[] };
  * two adjacent runs with the same emphasis, which a save joins, read as one
  * run. Neither is a finding: the package says the same either way.
  */
-const comparableMarkdown = (markdown: string): string =>
-  markdown.replace(/(<(?:ins|del)\b[^>]*?) id="[^"]*"/gu, "$1").replaceAll("****", "");
-
 // ---------------------------------------------------------------------------
 // Package parts
 // ---------------------------------------------------------------------------

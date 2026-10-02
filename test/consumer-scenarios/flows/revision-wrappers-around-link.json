@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 1576446594,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1512505397,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "37CF94F5"
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from collision flow seed 1576446594",
+  "title": "PINNED #1394, reported seed 1576446594: adjacent equivalent deletion wrappers preserve reader meaning"
+}
