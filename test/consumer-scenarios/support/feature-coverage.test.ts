@@ -44,6 +44,7 @@ test("feature signature distinguishes structure at the touched target", () => {
 
 test("selection signatures retain whole-document and cell selections", () => {
   assert.equal(placementSelection("document"), "whole-document");
+  assert.equal(placementSelection("node"), "node-selection");
   assert.equal(placementSelection("cross-paragraph", true), "cell-selection");
   assert.equal(operationSelection({ range: { blockId: "A1B2C3D4" } }), "paragraph-range");
   assert.equal(generatedSelection("splitBlock"), "caret");

@@ -31,6 +31,7 @@
 
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
 import { EditorState } from "prosemirror-state";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -316,7 +317,7 @@ describe("headless reviewer invariants (full corpus)", () => {
     "revision ids stay unique across a multi-paragraph tracked insert followed by another apply",
     async () => {
       // An apply call claims the shared revision ids it writes (see
-      // `revisionIdCursor` in apply.ts). A tracked-changes insert whose `text`
+      // the shared revision allocator). A tracked-changes insert whose `text`
       // splits into many paragraphs writes many of them, and the NEXT apply
       // call must start past every one, or two different marks would carry
       // the same revision id.
@@ -361,6 +362,11 @@ describe("headless reviewer invariants (full corpus)", () => {
               return;
             }
             expect(new Set(revisionIds).size).toBe(revisionIds.length);
+            for (const id of revisionIds) {
+              expect(Number.isInteger(id)).toBe(true);
+              expect(id).toBeGreaterThanOrEqual(0);
+              expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+            }
           },
         ),
         propertyConfig({ numRuns: 30 }),

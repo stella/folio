@@ -24,10 +24,14 @@ minimumReleaseAge = 432_000
 # `bun run check:quarantine-excludes` enforces all of the above.
 minimumReleaseAgeExcludes = [
   # Keep Bun's compiler contract aligned with the runtime during this upgrade.
+  "@stll/agent-input",
   "@stll/conditions",
+  "@stll/country-codes",
   "@stll/docx-utils",
   "@stll/oxlint-config",
   "@stll/template-conditions",
+  "@stll/text-normalize",
+  "@stll/time",
   # Security patch for a dependency-audit finding. dompurify 3.4.13 is the only
   # release that fixes GHSA-55q2-fjhq-7xh7; publisher and repository ownership
   # match the preceding releases. Remove after quarantine expiry.

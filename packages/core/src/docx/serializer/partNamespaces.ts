@@ -14,6 +14,7 @@
 
 import { OOXML_NS, type OoxmlPrefix } from "@stll/docx-utils";
 import { TaggedError } from "better-result";
+import { assertValidOoxmlNumericIds } from "@stll/docx-core";
 
 import { toTransitionalNamespaceUri } from "../transitionalSpelling";
 import { escapeXmlAttribute } from "@stll/docx-core";
@@ -393,5 +394,7 @@ export const serializePartElement = ({
     attributes.push(`mc:Ignorable="${ignorable.join(" ")}"`);
   }
 
-  return `${openingTag} ${attributes.join(" ")}>${body}</${rootName}>`;
+  const xml = `${openingTag} ${attributes.join(" ")}>${body}</${rootName}>`;
+  assertValidOoxmlNumericIds(xml, partPath);
+  return xml;
 };

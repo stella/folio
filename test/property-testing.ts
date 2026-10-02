@@ -3,6 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { classifyFuzzRun } from "./fuzz-health";
+import { reportFuzzHealth } from "./consumer-scenarios/support/fuzz-health";
+
 import { commitSeed } from "./commit-seed";
 import { failureMarker, logFailureMarker } from "./consumer-scenarios/support/failure-fingerprints";
 
@@ -328,6 +331,11 @@ const errorText = (error: unknown): string => {
 const replayReporter =
   <Ts>(identity: PropertyIdentity, pinned: PinnedSeed | undefined) =>
   (details: fc.RunDetails<Ts>): void => {
+    const health = classifyFuzzRun(details);
+    reportFuzzHealth(health);
+    if (health.status === "infrastructure") {
+      throw new Error(`Fuzz infrastructure: ${health.detail}`);
+    }
     if (!details.failed) {
       return;
     }
@@ -513,10 +521,16 @@ const runConfiguredProperty = <Ts>(
 ): Promise<void> | void => {
   if (property.isAsync()) {
     return (async () => {
-      for (const config of configs) await fc.assert(property, config);
+      for (const config of configs) {
+        reportFuzzHealth({ status: "started", completed: 0 });
+        await fc.assert(property, config);
+      }
     })();
   }
-  for (const config of configs) fc.assert(property, config);
+  for (const config of configs) {
+    reportFuzzHealth({ status: "started", completed: 0 });
+    fc.assert(property, config);
+  }
 };
 
 /**

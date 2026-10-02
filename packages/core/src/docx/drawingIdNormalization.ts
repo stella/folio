@@ -1,6 +1,8 @@
 // PARSE-WARNING-EXEMPT: renumbers drawing ids to keep them unique; an id is
 // not content, and every reference is remapped with it.
 
+import { assertValidOoxmlNumericId, isValidOoxmlNumericId } from "@stll/docx-core";
+
 import { captureVerbatimXml } from "./verbatimCapture";
 import { toTransitionalNamespaceUri } from "./transitionalSpelling";
 import type { DrawingContent, Image, Shape } from "../types/document";
@@ -65,7 +67,7 @@ export const drawingXmlWithoutIdentity = (xml: string): string =>
   reassignRawDrawingId({ xml, id: "0" }) ?? xml;
 
 const needsGeneratedId = ({ id }: DrawingWithId): boolean =>
-  id === undefined || id === "" || id === "0";
+  id === undefined || !isValidOoxmlNumericId(id, "unsigned32");
 
 export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
   const entries: DrawingIdEntry[] = [];
@@ -90,7 +92,7 @@ export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
 
   const usedIds = new Set(
     entries.flatMap(({ drawing, rawDrawing }) =>
-      needsGeneratedId(drawing) || isDetachedRawDrawing(rawDrawing) ? [] : [drawing.id],
+      needsGeneratedId(drawing) || isDetachedRawDrawing(rawDrawing) ? [] : [Number(drawing.id)],
     ),
   );
   let nextId = GENERATED_DRAWING_ID_START;
@@ -99,11 +101,18 @@ export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
     if (!generateWhenMissing || !needsGeneratedId(drawing)) {
       continue;
     }
-    while (usedIds.has(String(nextId))) {
+    while (usedIds.has(nextId)) {
       nextId += 1;
     }
+    assertValidOoxmlNumericId({
+      value: nextId,
+      domain: "unsigned32",
+      partPath: "drawing normalization",
+      elementName: "docPr",
+      attributeName: "id",
+    });
     drawing.id = String(nextId);
-    usedIds.add(drawing.id);
+    usedIds.add(nextId);
     nextId += 1;
   }
 
@@ -111,13 +120,20 @@ export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
     if (!isDetachedRawDrawing(rawDrawing)) {
       continue;
     }
-    if (!needsGeneratedId(drawing) && !usedIds.has(drawing.id)) {
-      usedIds.add(drawing.id);
+    if (!needsGeneratedId(drawing) && !usedIds.has(Number(drawing.id))) {
+      usedIds.add(Number(drawing.id));
       continue;
     }
-    while (usedIds.has(String(nextId))) {
+    while (usedIds.has(nextId)) {
       nextId += 1;
     }
+    assertValidOoxmlNumericId({
+      value: nextId,
+      domain: "unsigned32",
+      partPath: "drawing normalization",
+      elementName: "docPr",
+      attributeName: "id",
+    });
     const sourceXml = rawDrawing.rawXml;
     if (sourceXml === undefined) {
       panic("Detached raw drawing must retain its XML.");
@@ -128,7 +144,7 @@ export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
     }
     drawing.id = String(nextId);
     rawDrawing.rawXml = rawXml;
-    usedIds.add(drawing.id);
+    usedIds.add(nextId);
     nextId += 1;
   }
 };

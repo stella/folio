@@ -18,6 +18,8 @@
  * definition it rebuilds is the one the command minted.
  */
 
+import { createNumberingIdAllocator, mintNumberingId } from "./numberingIds";
+
 import { NUMBER_FORMATS } from "@stll/docx-core/model";
 
 import type {
@@ -145,27 +147,19 @@ const levelZeroStart = (start: number | undefined): LevelOverride[] | undefined 
 
 const EMPTY_DEFINITIONS: NumberingDefinitions = { abstractNums: [], nums: [] };
 
-const nextId = (ids: Iterable<number>, floor: number): number => {
-  let next = floor;
-  for (const id of ids) {
-    next = Math.max(next, id + 1);
-  }
-  return next;
-};
-
 /** A fresh `w:numId` for `definitions`; zero is reserved for "no numbering". */
 const nextNumId = (definitions: NumberingDefinitions | null | undefined): number =>
-  nextId(
-    (definitions?.nums ?? []).map(({ numId }) => numId),
-    1,
-  );
+  mintNumberingId({
+    kind: "num",
+    existingIds: (definitions?.nums ?? []).map(({ numId }) => numId),
+  });
 
 /** A fresh `w:abstractNumId` for `definitions`. */
 const nextAbstractNumId = (definitions: NumberingDefinitions | null | undefined): number =>
-  nextId(
-    (definitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
-    0,
-  );
+  mintNumberingId({
+    kind: "abstract",
+    existingIds: (definitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+  });
 
 type MintedListInstance = {
   definitions: NumberingDefinitions;
@@ -303,14 +297,17 @@ export const completeListNumbering = (
       rendering.abstractNumId === undefined ? [] : [rendering.abstractNumId],
     ),
   );
-  let freeAbstractId = nextId([...abstractIds, ...statedAbstractIds], 0);
+  const missingAbstractIds = createNumberingIdAllocator("abstract", [
+    ...abstractIds,
+    ...statedAbstractIds,
+  ]);
   const abstractNums: AbstractNumbering[] = [];
   const nums: NumberingInstance[] = [];
 
   for (const [numId, group] of missing) {
     const abstractNumId =
       group.find(({ rendering }) => rendering.abstractNumId !== undefined)?.rendering
-        .abstractNumId ?? freeAbstractId++;
+        .abstractNumId ?? missingAbstractIds.next();
     if (!abstractIds.has(abstractNumId)) {
       abstractIds.add(abstractNumId);
       const kind: ListKind = group.some(({ rendering }) => rendering.isBullet)

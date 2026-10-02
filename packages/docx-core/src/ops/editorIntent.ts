@@ -235,10 +235,11 @@ export const compileEditorIntent = (
   document: Document,
   { intent, mode }: CompileEditorIntentOptions,
 ): Result<CompiledEditorIntent, DocumentOpRefusal> => {
+  const allocationFields = mode.newIds === undefined ? {} : { newIds: mode.newIds };
   const tracked =
     mode.type === "suggesting"
       ? { revision: mode.revision, newIds: mode.newIds }
-      : { newIds: mode.newIds };
+      : allocationFields;
   let ops: DocumentOp[];
   let selection: TextPosition;
   switch (intent.type) {
@@ -305,7 +306,7 @@ export const compileEditorIntent = (
             const blockId = item.paraId ?? "";
             ops.push({
               type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-              newIds: mode.newIds,
+              ...allocationFields,
               from:
                 idKey(blockId) === idKey(from.blockId)
                   ? from
@@ -339,7 +340,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
           slice: { openStart: 0, openEnd: 0, content },
-          newIds: mode.newIds,
+          ...allocationFields,
         });
       selection = { ...at, offset: from.offset + text.length };
       break;
@@ -399,7 +400,7 @@ export const compileEditorIntent = (
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
           newHalf: SPLIT_HALVES.FIRST,
-          newIds: mode.newIds,
+          ...allocationFields,
         },
       ];
       selection = { ...deletion.value.selection, offset: 0, zeroWidthBefore: 0 };

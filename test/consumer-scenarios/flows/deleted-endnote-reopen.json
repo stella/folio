@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "direct",
+  "seed": 774176262,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 1909965208,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "38CF9688"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableRow",
+    "deleteTableRow",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 774176262",
+  "title": "PINNED #1357, reported seed 774176262: Fuzz failure [ed9e3bdc10f418bd]: consumer flow stories / direct: the reopened package shows something else than the reviewer that saved it"
+}

@@ -19,6 +19,7 @@ import {
   paragraphNumberingReferenceId,
 } from "../docx/numberingReference";
 import { getCachedNumberingMap, isBulletLevel } from "../docx/numberingParser";
+import { createNumberingIdAllocator } from "../docx/numberingIds";
 import type { NumberingDefinitions } from "../types/document";
 import { expectParagraphAttrs } from "./attrs";
 import { completeNumberingForDoc, paragraphListReferences } from "./listInstanceReferences";
@@ -31,7 +32,7 @@ type Remap = {
   /** Abstract definitions the package already had; a moved list keeps those. */
   baseAbstractNumIds: ReadonlySet<number>;
   abstractNumIds: Map<number, number>;
-  nextAbstractNumId: number;
+  abstractIds: ReturnType<typeof createNumberingIdAllocator>;
 };
 
 const remappedNumPr = (
@@ -62,18 +63,10 @@ const remappedAbstractNumId = (
   }
   let next = remap.abstractNumIds.get(abstractNumId);
   if (next === undefined) {
-    next = remap.nextAbstractNumId++;
+    next = remap.abstractIds.next();
     remap.abstractNumIds.set(abstractNumId, next);
   }
   return next;
-};
-
-const maxOf = (ids: Iterable<number>, floor: number): number => {
-  let max = floor;
-  for (const id of ids) {
-    max = Math.max(max, id);
-  }
-  return max;
 };
 
 type StoryListNumbering = {
@@ -97,6 +90,10 @@ export const storyListNumbering = (
   const definedMap = numbering ? getCachedNumberingMap(numbering) : null;
   const referenced = new Set<number>();
   const colliding = new Set<number>();
+  const existingAbstractNumIds = new Set([
+    ...(numbering?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+    ...(packageDefinitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+  ]);
   state.doc.descendants((node) => {
     if (node.type.name !== "paragraph") {
       return true;
@@ -107,6 +104,12 @@ export const storyListNumbering = (
     // An id this story defined itself that the package now defines as another
     // list. The story's own earlier save defines it as the same list.
     const attrs = expectParagraphAttrs(node);
+    if (typeof attrs.listAbstractNumId === "number")
+      existingAbstractNumIds.add(attrs.listAbstractNumId);
+    for (const change of attrs._propertyChanges ?? []) {
+      const abstractId = change.previousFormatting?.listAbstractNumId;
+      if (typeof abstractId === "number") existingAbstractNumIds.add(abstractId);
+    }
     const numId = paragraphNumberingReferenceId(attrs.numPr);
     if (numId !== undefined && !storyBase.has(numId) && definedMap?.hasNumbering(numId)) {
       const level = definedMap.getLevel(numId, paragraphNumberingLevel(attrs.numPr) ?? 0);
@@ -125,18 +128,15 @@ export const storyListNumbering = (
     return { doc: state.doc, numbering: completeNumberingForDoc(numbering, state.doc) };
   }
 
-  let nextNumId = maxOf([...defined, ...referenced], 0) + 1;
+  const existingNumIds = [...defined, ...referenced];
+  const numIds = createNumberingIdAllocator("num", existingNumIds);
   const remap: Remap = {
-    numIds: new Map([...colliding].map((numId) => [numId, nextNumId++])),
+    numIds: new Map([...colliding].map((numId) => [numId, numIds.next()])),
     baseAbstractNumIds: new Set(
       (packageDefinitions?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
     ),
     abstractNumIds: new Map(),
-    nextAbstractNumId:
-      maxOf(
-        (numbering?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
-        -1,
-      ) + 1,
+    abstractIds: createNumberingIdAllocator("abstract", existingAbstractNumIds),
   };
   const tr = new Transform(state.doc);
   state.doc.descendants((node, pos) => {

@@ -164,6 +164,11 @@ import {
   projectRangesToRects,
 } from "@stll/folio-core/paged-layout/rangeProjection";
 import { isReadOnlyEditKey } from "@stll/folio-core/paged-layout/readOnlyEditAttempt";
+import {
+  getEditorScrollRoot,
+  scrollEditorTo,
+  scrollEditorElementIntoView,
+} from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { getPageScrollTarget } from "@stll/folio-core/paged-layout/scrollNavigation";
 import {
   PAGES_CONTAINER_CLASS,
@@ -1368,16 +1373,29 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     } = props;
 
     // Resolve the scroll container: prefer parent-provided ref, fallback to own container
-    const getScrollContainer = useCallback((): HTMLDivElement | null => {
+    const getScrollContainer = useCallback((): HTMLElement | null => {
       if (scrollContainerRefProp && typeof scrollContainerRefProp === "object") {
-        return (scrollContainerRefProp as React.RefObject<HTMLDivElement | null>).current;
+        return getEditorScrollRoot(scrollContainerRefProp.current);
       }
-      return containerRef.current;
+      return getEditorScrollRoot(containerRef.current);
     }, [scrollContainerRefProp]);
 
     // Refs
     const containerRef = useRef<HTMLDivElement>(null);
     const pagesContainerRef = useRef<HTMLDivElement>(null);
+    // An explicitly supplied host root keeps its existing public contract: the
+    // host need not know the internal marker used by navigation helpers.
+    useLayoutEffect(() => {
+      if (!scrollContainerRefProp || typeof scrollContainerRefProp !== "object") {
+        return undefined;
+      }
+      const root = scrollContainerRefProp.current;
+      if (!root || root.hasAttribute("data-folio-scroll")) {
+        return undefined;
+      }
+      root.setAttribute("data-folio-scroll", "");
+      return () => root.removeAttribute("data-folio-scroll");
+    }, [scrollContainerRefProp]);
     // FolioEditor event emitter (Seam 6), declared early so the layout/selection/
     // doc emission points below can publish to it.
     const folioEmitterRef = useRef(createFolioEditorEmitter());
@@ -3293,7 +3311,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         const shell = pageContainer?.querySelector<HTMLElement>(
           `[data-page-number="${String(target.pageIndex + 1)}"]`,
         );
-        shell?.scrollIntoView({ block: "center", inline: "nearest" });
+        scrollEditorElementIntoView(shell ?? null);
       },
       [layout, scrollToPositionImpl],
     );
@@ -5092,7 +5110,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (e.key === "Home" && (e.metaKey || e.ctrlKey)) {
           const sc = getScrollContainer();
           if (sc) {
-            sc.scrollTop = 0;
+            scrollEditorTo(sc, { top: 0, behavior: "instant" });
           }
         }
 
@@ -5100,7 +5118,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         if (e.key === "End" && (e.metaKey || e.ctrlKey)) {
           const sc = getScrollContainer();
           if (sc) {
-            sc.scrollTop = sc.scrollHeight;
+            scrollEditorTo(sc, { top: sc.scrollHeight, behavior: "instant" });
           }
         }
       },
@@ -5921,6 +5939,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     return (
       <div
         ref={containerRef}
+        data-folio-scroll={
+          scrollContainerRefProp && typeof scrollContainerRefProp === "object" ? undefined : ""
+        }
         className={`folio-root paged-editor ${className ?? ""}`}
         style={{ ...containerStyles, ...style }}
         tabIndex={0}

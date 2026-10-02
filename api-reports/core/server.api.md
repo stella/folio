@@ -276,6 +276,7 @@ export type EnsureParaIdsResult = {
     assigned: number;
     deduplicated: number;
     alreadyComplete: boolean;
+    mintedParaIds: readonly string[];
 };
 
 // @public (undocumented)
