@@ -81,6 +81,14 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+    case DOCUMENT_OP_TYPES.DELETE_COLUMN:
+    case DOCUMENT_OP_TYPES.MERGE_CELLS:
+    case DOCUMENT_OP_TYPES.SPLIT_CELL:
+    case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return { ...op, newIds };
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
@@ -90,6 +98,7 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+    case DOCUMENT_OP_TYPES.SET_TABLE:
       return op;
     default: {
       const unreachable: never = op;

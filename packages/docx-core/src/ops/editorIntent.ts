@@ -16,6 +16,8 @@ import { appendTrackedDeletion, createTrackedPlan, selectedParagraphRuns } from 
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
+import { locateTableRow, tableRowAnchor } from "./tableLocation";
+import { tableGrid } from "./tableGrid";
 import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
@@ -24,14 +26,21 @@ import {
   EMPTY_PROPERTY_SETS,
   SPLIT_HALVES,
   type DocumentOp,
+  type TableEditOp,
   type NewIds,
   type OpStory,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
 
+/** Mode metadata is supplied once, independently of the semantic table intent. */
+export type TableIntentOperation = {
+  [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, { type: Kind }>, "revision" | "newIds">;
+}[TableEditOp["type"]];
+
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
+  | { type: "table"; operation: TableIntentOperation }
   | { type: "replaceText"; from: TextPosition; to: TextPosition; text: string }
   | { type: "splitParagraph"; at: TextPosition; to?: TextPosition; newBlockId: string }
   | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
@@ -243,6 +252,43 @@ export const compileEditorIntent = (
   let ops: DocumentOp[];
   let selection: TextPosition;
   switch (intent.type) {
+    case "table": {
+      const op = { ...intent.operation, ...tracked };
+      const located = locateTableRow(document, op);
+      if (located.isErr()) return Result.err(located.error);
+      let blockId = op.blockId;
+      if (op.type === DOCUMENT_OP_TYPES.DELETE_COLUMN) {
+        const grid = tableGrid(located.value.table, op.type);
+        if (grid.isErr()) return Result.err(grid.error);
+        const rows = located.value.table.rows.map((row, index) => ({
+          ...row,
+          cells: row.cells.filter((_cell, cellIndex) => {
+            const entry = grid.value.rows[index]?.find((cell) => cell.index === cellIndex);
+            return (
+              entry !== undefined &&
+              (entry.start > op.column || entry.end <= op.column || entry.end - entry.start > 1)
+            );
+          }),
+        }));
+        const survivor =
+          tableRowAnchor(rows) ??
+          storyParagraphs(storyBody(document, op.story)).find((paragraph) =>
+            sameBlockList(paragraph.list, located.value.list),
+          )?.paragraph.paraId;
+        if (survivor === undefined)
+          return Result.err(
+            new DocumentOpRefusal({
+              opType: op.type,
+              reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+              message: "Deleting the final column requires deleting the table.",
+            }),
+          );
+        blockId = survivor;
+      }
+      ops = [op];
+      selection = { story: op.story, blockId, offset: 0 };
+      break;
+    }
     case "replaceText": {
       const { from, to, text } = intent;
       const paragraph = paragraphAt(document, from);

@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
 import { applyDocumentOps } from "../apply";
 import type { Document } from "../../model/document";
-import { OP_STORIES, type DocumentOp } from "../types";
+import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";
 import { envelopes } from "../__tests__/wireFixtures";
 import {
+  BATCH_REJECTION_REASONS,
   BATCH_WIRE_OP_TYPES,
   MAX_BATCH_WIRE_BYTES,
   parseDocumentBatch,
@@ -21,14 +22,16 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
   for (const { op } of envelopes()) {
     if (supported.has(op.type)) continue;
     refused += 1;
-    expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+    const result = validateDocumentBatch(withOp(op));
+    if (result.isOk()) throw new Error(`Unsupported ${op.type} must refuse.`);
+    expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
   }
   expect(refused).toBeGreaterThan(0);
 });
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    new URL("./__fixtures__/batches-v5.json", import.meta.url),
+    new URL(`./__fixtures__/batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`, import.meta.url),
   ).json();
   expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
   const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
@@ -241,4 +244,13 @@ test("sequencing refuses unsupported paragraph-review and section-boundary paylo
     },
   ] as const satisfies readonly DocumentOp[];
   for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
+});
+
+// Historical journals remain intact; this decoder explicitly refuses older schema contracts.
+test("previous schemas refuse with unsupportedSchema", () => {
+  for (const schema of [4, 5]) {
+    const result = validateDocumentBatch({ ...fixture, schema });
+    if (result.isOk()) throw new Error(`Historical schema ${schema} must refuse.`);
+    expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+  }
 });
