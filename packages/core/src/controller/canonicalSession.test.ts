@@ -29,6 +29,7 @@ import {
 import type { Document, Paragraph, Run, StyleDefinitions } from "../types/document";
 import {
   CANONICAL_PROJECTION_META,
+  CanonicalSessionError,
   createCanonicalSession,
   deletionRange,
   isCanonicalProjectionTransaction,
@@ -161,6 +162,59 @@ describe("canonical session", () => {
     accept(inserted, session.prepareUndo(inserted).unwrap());
     expect(session.document).toStrictEqual(original);
   });
+  test("story typing groups and pending composition share the body journal boundary", () => {
+    const session = createCanonicalSession(seed("Body")).unwrap();
+    let bodyState = stateFor(session);
+    const header = { kind: "header", rId: "rIdHeader1" } as const;
+    bodyState = accept(
+      bodyState,
+      session
+        .prepareOperations(bodyState, [
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: header,
+            referenceType: "default",
+            content: [{ type: "paragraph", paraId: "34567890", content: [] }],
+          },
+        ])
+        .unwrap(),
+    );
+    const created = session.document;
+    let state = EditorState.create({ schema, doc: session.projectStory(header).unwrap().doc });
+    for (const [time, text] of [
+      [1000, "X"],
+      [1001, "Y"],
+    ] as const) {
+      state = accept(
+        state,
+        session
+          .prepareReplace(state, {
+            from: state.selection.head,
+            to: state.selection.head,
+            story: header,
+            text,
+            semantic: "typing",
+            time,
+          })
+          .unwrap(),
+      );
+    }
+    const typed = session.document;
+    session.beginComposition().unwrap();
+    expect(() => session.document).toThrow(CanonicalSessionError);
+    expect(
+      session.prepareReplace(state, { from: 1, to: 1, text: "Z", story: header }).isErr(),
+    ).toBe(true);
+    expect(session.prepareUndo(state, header).isErr()).toBe(true);
+    session.endComposition();
+    state = accept(state, session.prepareUndo(state, header).unwrap());
+    expect(session.document).toEqual(created);
+    state = accept(state, session.prepareRedo(state, header).unwrap());
+    expect(session.document).toEqual(typed);
+    expect(state.doc.textContent).toBe("XY");
+  });
+
   test("story creation and edits share exact canonical undo and redo", () => {
     const session = createCanonicalSession(seed("Body")).unwrap();
     const initial = structuredClone(session.document);

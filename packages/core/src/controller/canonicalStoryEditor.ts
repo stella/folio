@@ -34,6 +34,13 @@ export const createCanonicalStoryEditor = ({
     return accepted;
   };
   const boundary = createCanonicalInputBoundary({
+    breakUndoGroup: () => {
+      getApi()?.updateCanonicalInputLifecycle("breakUndoGroup");
+    },
+    beginComposition: () => getApi()?.updateCanonicalInputLifecycle("beginComposition") ?? false,
+    endComposition: () => {
+      getApi()?.updateCanonicalInputLifecycle("endComposition");
+    },
     replace: (intent) => {
       const view = getView();
       if (getApi()?.replaceCanonicalStoryText({ view, story, intent }) && !view.isDestroyed)
@@ -48,10 +55,13 @@ export const createCanonicalStoryEditor = ({
       if (!enabled()) return false;
       const view = getView();
       if (transaction.docChanged) {
+        if (boundary.acceptComposition(view, transaction)) return true;
         if (!boundary.commitNativeProposal(view, transaction)) boundary.refuseNativeMutation(view);
         view.updateState(view.state);
         return true;
       }
+      if (transaction.selectionSet && !boundary.isComposing)
+        getApi()?.updateCanonicalInputLifecycle("breakUndoGroup");
       const applied = view.state.applyTransaction(transaction);
       if (!applied.state.doc.eq(view.state.doc)) {
         refuse("A plugin attempted an unclassified canonical story mutation.");
@@ -70,8 +80,9 @@ export const createCanonicalStoryEditor = ({
       handleDOMEvents: {
         beforeinput: (view: EditorView, event: InputEvent) =>
           enabled() && boundary.handleDOMEvents.beforeinput(view, event),
-        compositionstart: (view: EditorView, event: Event) =>
-          enabled() && boundary.handleDOMEvents.compositionstart(view, event),
+        mousedown: (view: EditorView) => enabled() && boundary.handleDOMEvents.mousedown(view),
+        compositionstart: (view: EditorView) =>
+          enabled() && boundary.handleDOMEvents.compositionstart(view),
         compositionend: (view: EditorView) =>
           enabled() && boundary.handleDOMEvents.compositionend(view),
         input: (view: EditorView) => enabled() && boundary.handleDOMEvents.input(view),

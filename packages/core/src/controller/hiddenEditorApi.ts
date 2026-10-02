@@ -19,6 +19,7 @@ import type { EditorView } from "prosemirror-view";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
+import type { createCanonicalInputBoundary } from "./canonicalInput";
 
 type CanonicalStoryHistoryOptions = {
   view: EditorView;
@@ -28,7 +29,7 @@ type CanonicalStoryHistoryOptions = {
 type CanonicalStoryTextOptions = {
   view: EditorView;
   story: OpStory;
-  intent: { from: number; to: number; text: string };
+  intent: Parameters<Parameters<typeof createCanonicalInputBoundary>[0]["replace"]>[0];
 };
 
 export type HiddenEditorApi = {
@@ -44,6 +45,9 @@ export type HiddenEditorApi = {
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
   getCanonicalDocument: () => Document | null;
+  updateCanonicalInputLifecycle: (
+    action: "beginComposition" | "endComposition" | "breakUndoGroup",
+  ) => boolean;
   applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
   applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
   getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
@@ -84,6 +88,7 @@ export type HiddenEditorApiDeps = {
   getCanonicalHistory?: () => Pick<HiddenEditorApi, "undo" | "redo" | "canUndo" | "canRedo"> | null;
   canonicalOperations?: Pick<
     HiddenEditorApi,
+    | "updateCanonicalInputLifecycle"
     | "applyCanonicalOperations"
     | "getCanonicalStoryProjection"
     | "replaceCanonicalStoryText"
@@ -157,6 +162,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       return stateToDocument(view.state, deps.getDocumentContext());
     },
 
+    updateCanonicalInputLifecycle: (action) =>
+      deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,
     applyCanonicalStoryHistory: (options) =>
       deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
     applyCanonicalOperations: (ops) =>
