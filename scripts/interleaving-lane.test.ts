@@ -79,8 +79,9 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
         step["uses"].startsWith("actions/upload-artifact@") &&
         requireRecord(step["with"])["name"] === artifactName,
     );
+    const canonicalArtifacts = id === "fuzz" ? "fuzz-artifacts/canonical\n" : "";
     expect(requireRecord(upload?.["with"])["path"]).toBe(
-      `fuzz-artifacts/${lane}\nfuzz-playwright/${lane}\n`,
+      `fuzz-artifacts/${lane}\n${canonicalArtifacts}fuzz-playwright/${lane}\n`,
     );
   }
   const random = steps.find((step) => step["id"] === "interleaving");

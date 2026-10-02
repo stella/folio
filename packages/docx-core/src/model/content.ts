@@ -2166,7 +2166,22 @@ export type PreservedInline = {
   xml: string;
   /** The visible text the markup contributes, empty when it shows nothing. */
   text: string;
+  /**
+   * Set on the two captures the reader makes of a `LISTNUM` field it draws in
+   * the paragraph's list marker: the field's own runs, and the tab run after
+   * it. The marker shows the field's cached result, so the captures show
+   * nothing; they stand at the start of the content, where the field and the
+   * tab stood, and are written back there as they were read.
+   */
+  foldedListNumber?: FoldedListNumber;
 };
+
+/**
+ * What a capture of a folded `LISTNUM` field stands for, as the item it would
+ * otherwise be. A capture is hidden only while the paragraph's marker shows
+ * it; anywhere else it is replaced by this item, which shows on the line.
+ */
+export type FoldedListNumber = { kind: "field"; field: ComplexField } | { kind: "tab"; run: Run };
 
 /**
  * Paragraph content types
