@@ -114,6 +114,7 @@ test("the Document path runs no-edit preservation and one declared edit on a tin
   });
   expect(parsed.package.document.content).toEqual(originalContent);
   expect(Object.keys(result.timings)).toEqual([
+    "tracked-parse",
     "original-parts",
     "no-edit-save",
     "no-edit-read",

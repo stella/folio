@@ -2,13 +2,8 @@
  * The forced projection leg, over packages built here rather than over corpus
  * files, for the reason `corpus-editor-round-trip.test.ts` states.
  *
- * Two claims. The first is `fromProseDoc`'s own contract: the leg asks for the
- * reuse it means, and the value it does not ask for refuses rather than quietly
- * behaving like the one it does. The second is what makes this family worth
- * adding before the merge exists: while no reuse is implemented, the forced leg
- * and `editor-round-trip` are the same measurement, so the new baseline opens
- * on the old one's rows. The day reuse lands, that stops being true and this
- * test is the one that says so.
+ * Tracked immutable sources support matched reuse; untracked sources and the
+ * forced leg rebuild. The two census legs agree on these untracked fixtures.
  */
 
 import { describe, expect, test } from "bun:test";
@@ -87,19 +82,25 @@ const withoutLegNames = (failures: readonly CorpusFailure[]) =>
   }));
 
 describe("the forced leg asks for the reuse it means", () => {
-  test("the forced leg rebuilds while matched reuse retains its source", async () => {
-    const { parsed } = await invariantInput(RICH_BODY);
-    const proseDoc = toProseDoc(parsed);
-
-    expect(projectedWithoutReuse(proseDoc, parsed).package.document.content).toHaveLength(
-      parsed.package.document.content.length,
-    );
-    const matched = fromProseDoc(proseDoc, parsed, { reuse: "matched" });
-    expect(matched.package.document.content.at(0)).toBe(parsed.package.document.content.at(0));
-    expect(projectedWithoutReuse(proseDoc, parsed).package.document.content.at(0)).not.toBe(
-      parsed.package.document.content.at(0),
-    );
-  });
+  test.each(["tracked", "untracked"] as const)(
+    "the forced leg rebuilds a %s source while matched reuse respects tracking",
+    async (mode) => {
+      const buffer = await buildPackage(RICH_BODY);
+      const parsed = await parseDocx(buffer, {
+        preloadFonts: false,
+        sourceReplay: mode === "tracked" ? "tracked" : undefined,
+      });
+      const proseDoc = toProseDoc(parsed);
+      const forced = projectedWithoutReuse(proseDoc, parsed).package.document.content;
+      const matched = fromProseDoc(proseDoc, parsed, { reuse: "matched" }).package.document.content;
+      expect(forced).toHaveLength(parsed.package.document.content.length);
+      expect(matched).toHaveLength(parsed.package.document.content.length);
+      for (const [index, source] of parsed.package.document.content.entries()) {
+        expect(forced.at(index)).not.toBe(source);
+        expect(matched.at(index) === source).toBe(mode === "tracked");
+      }
+    },
+  );
 });
 
 describe("the forced projection preserves the package", () => {
@@ -123,10 +124,7 @@ describe("the forced projection preserves the package", () => {
   });
 });
 
-describe("while no reuse is implemented the two legs measure the same thing", () => {
-  // Delete this the day `fromProseDoc` reuses a matched base record: the legs
-  // are meant to diverge then, and `editor-projection` is the one that keeps
-  // measuring the projection.
+describe("the untracked legs measure the same thing", () => {
   test.each([
     ["a minimal package", PLAIN_BODY],
     ["a heading, direct formatting and a table", RICH_BODY],
