@@ -552,17 +552,9 @@ const withinXmlResourceLimits = (xml: string): boolean => {
 
 const EMPTY_NAMESPACE_SCOPE: XmlNamespaceScope = { bindings: new Map() };
 
-/** Validate capture against the tree already parsed from these exact source bytes. */
-export const isSafeParsedXmlDocument = (xml: string, parsed: XmlElement): boolean => {
-  const root = singleDocumentElement(parsed);
-  return (
-    root !== null &&
-    xml.trim() !== "" &&
-    withinXmlResourceLimits(xml) &&
-    getDocxXmlSafetyIssue(xml) === null &&
-    hasBoundNamespaces(root)
-  );
-};
+/** Reject tolerant multi-root parsing before retaining a source-part reference. */
+export const getSingleParsedXmlDocumentElement = (parsed: XmlElement): XmlElement | null =>
+  singleDocumentElement(parsed);
 
 /** Validate a complete XML part immediately before package output. */
 export const isSafeCapturedXmlDocument = (xml: string): boolean => {

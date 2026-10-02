@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import fc from "fast-check";
 import { requiresXmlSpacePreserve } from "@stll/docx-core";
 
@@ -8,6 +8,8 @@ import type { Document } from "../types/document";
 import { parseDocumentBody, parseDocumentBodyTree } from "./documentParser";
 import { standalonePreviewLedger } from "./previewBudget";
 import { serializeDocument } from "./serializer/documentSerializer";
+import { replayDocumentSource } from "./documentSource";
+import * as verbatimCapture from "./verbatimCapture";
 import { getNamespaceUri, parseXml, parseXmlDocument } from "./xmlParser";
 
 const PROFILES = [
@@ -236,4 +238,53 @@ describe("Document source ownership", () => {
     expect(reopened.formatting?.width).toEqual(originalWidth);
     expect(reopened.rows.at(0)?.cells.at(0)?.formatting?.width).toEqual(originalCellWidth);
   });
+});
+
+test.each(["original", "cloned"] as const)(
+  "replacement capture is limited to edited groups in a %s document",
+  (ownership) => {
+    const xml = `<w:document xmlns:w="${PROFILES[0].uri}"><w:body><w:p><w:r><w:t>First</w:t></w:r></w:p><w:p><w:r><w:t>Second</w:t></w:r></w:p></w:body></w:document>`;
+    const original = parseDocumentBody(xml);
+    const body = ownership === "cloned" ? structuredClone(original) : original;
+    const captures: (typeof body.content)[] = [];
+    const serialize = (blocks: typeof body.content) => {
+      captures.push(blocks);
+      return "<w:p><w:r><w:t>Edited</w:t></w:r></w:p>";
+    };
+    expect(replayDocumentSource({ body, serialize })).toBe(xml);
+    expect(replayDocumentSource({ body, serialize })).toBe(xml);
+    expect(captures).toHaveLength(0);
+
+    const changed = body.content.at(1);
+    if (changed?.type !== "paragraph") throw new TypeError("Expected source paragraph");
+    changed.content.push({ type: "run", content: [{ type: "text", text: " edited" }] });
+    expect(replayDocumentSource({ body, serialize })).toContain("Edited");
+    expect(captures).toEqual([[changed]]);
+  },
+);
+
+test("source-part validation is deferred until output and cached for unchanged bytes", () => {
+  const validate = verbatimCapture.isSafeCapturedXmlDocument;
+  let validations = 0;
+  const spy = spyOn(verbatimCapture, "isSafeCapturedXmlDocument").mockImplementation((xml) => {
+    validations += 1;
+    return validate(xml);
+  });
+  try {
+    const xml = `<w:document xmlns:w="${PROFILES[0].uri}"><w:body><w:p><w:r><w:t>Source</w:t></w:r></w:p></w:body></w:document>`;
+    const document = documentFor(xml, DOCX_CONFORMANCE_CLASSES.TRANSITIONAL);
+    expect(validations).toBe(0);
+    expect(serializeDocument(document)).toBe(xml);
+    expect(validations).toBe(1);
+    expect(serializeDocument(document)).toBe(xml);
+    expect(validations).toBe(1);
+
+    const cloned = structuredClone(document);
+    expect(serializeDocument(cloned)).toBe(xml);
+    expect(validations).toBe(2);
+    expect(serializeDocument(cloned)).toBe(xml);
+    expect(validations).toBe(2);
+  } finally {
+    spy.mockRestore();
+  }
 });

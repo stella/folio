@@ -310,11 +310,13 @@ type BlockContentWalk = {
   resources: BlockContentResources;
   state: ParseBlockContentState;
   modelled: BlockContent[];
-  observation: {
-    previousCount: number;
-    capturedSources: Map<PreservedChild, XmlElement>;
-    observe: ParseBlockContentOptions["onSourceBlocks"];
-  };
+  observation:
+    | {
+        previousCount: number;
+        capturedSources: Map<PreservedChild, XmlElement>;
+        observe: NonNullable<ParseBlockContentOptions["onSourceBlocks"]>;
+      }
+    | undefined;
 };
 
 const observeSourceBlocks = (
@@ -322,7 +324,7 @@ const observeSourceBlocks = (
   capture: PreservedChild | undefined,
   { modelled, observation }: BlockContentWalk,
 ): void => {
-  if (!observation.observe) return;
+  if (!observation) return;
   if (capture) observation.capturedSources.set(capture, child);
   else observation.observe(child, modelled.slice(observation.previousCount));
   observation.previousCount = modelled.length;
@@ -469,8 +471,10 @@ const parseBlockContentWithState = (
   state: ParseBlockContentState,
 ): BlockContent[] => {
   const modelled: BlockContent[] = [];
-  const capturedSources = new Map<PreservedChild, XmlElement>();
   const observe = state.options.sourceParent === parent ? state.options.onSourceBlocks : undefined;
+  const observation = observe
+    ? { previousCount: 0, capturedSources: new Map<PreservedChild, XmlElement>(), observe }
+    : undefined;
 
   const preserved = dispatchChildrenWithContext({
     element: parent,
@@ -482,14 +486,14 @@ const parseBlockContentWithState = (
       resources: { styles, theme, numbering, rels, media },
       state,
       modelled,
-      observation: { previousCount: 0, capturedSources, observe },
+      observation,
     },
     afterChild: observeSourceBlocks,
   });
 
   return withPreservedChildren(modelled, preserved, (xml, capture): PreservedBlock => {
     const block: PreservedBlock = { type: "preservedBlock", xml };
-    const source = capturedSources.get(capture);
+    const source = observation?.capturedSources.get(capture);
     if (source) observe?.(source, [block]);
     return block;
   });

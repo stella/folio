@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+
+import { assertProperty } from "../../../../test/property-testing";
 
 import { createModelVersionTracker } from "./modelVersion";
 
@@ -140,4 +143,90 @@ describe("model version tracker", () => {
     expect(reduced).not.toBe(expanded);
     expect(readVersion(model)).toBe(reduced);
   });
+});
+
+test("reachable shared graphs invalidate for edits and stabilize after each edit", async () => {
+  await assertProperty(
+    fc.property(
+      fc.array(fc.record({ text: fc.string(), count: fc.integer() }), {
+        minLength: 1,
+        maxLength: 20,
+      }),
+      fc.nat(),
+      (records, ordinal) => {
+        const readVersion = createModelVersionTracker();
+        const shared = records[ordinal % records.length]!;
+        const model = { records, alias: shared };
+        const before = readVersion(model);
+        expect(readVersion(model)).toBe(before);
+        shared.text += " edited";
+        const edited = readVersion(model);
+        expect(edited).not.toBe(before);
+        expect(readVersion(model)).toBe(edited);
+
+        model.alias = { ...shared };
+        const replaced = readVersion(model);
+        expect(replaced).not.toBe(edited);
+        expect(readVersion(model)).toBe(replaced);
+        shared.count = shared.count === 0 ? 1 : 0;
+        const remainingAliasEdit = readVersion(model);
+        expect(remainingAliasEdit).not.toBe(replaced);
+        expect(readVersion(model)).toBe(remainingAliasEdit);
+      },
+    ),
+  );
+});
+
+test("a removed subgraph is never inspected during invalidation", () => {
+  let reads = 0;
+  const detached = {
+    get value() {
+      reads += 1;
+      return "original";
+    },
+  };
+  const model = { branch: detached };
+  const readVersion = createModelVersionTracker();
+  const before = readVersion(model);
+  expect(reads).toBe(1);
+  model.branch = { value: "replacement" };
+  const after = readVersion(model);
+  expect(after).not.toBe(before);
+  expect(reads).toBe(1);
+  expect(readVersion(model)).toBe(after);
+  expect(reads).toBe(1);
+});
+
+test("versions remain independent when a tracker alternates roots sharing records", () => {
+  const shared = { text: "before" };
+  const first = { shared };
+  const second = { shared };
+  const readVersion = createModelVersionTracker();
+  const firstVersion = readVersion(first);
+  const secondVersion = readVersion(second);
+  shared.text = "after";
+  expect(readVersion(first)).not.toBe(firstVersion);
+  expect(readVersion(second)).not.toBe(secondVersion);
+});
+
+test("a failed invalidation cannot publish the earlier version after recovery", () => {
+  let failing = false;
+  const model = {
+    first: "before",
+    nested: {
+      get value() {
+        if (failing) throw new TypeError("Synthetic read failure");
+        return "stable";
+      },
+    },
+  };
+  const readVersion = createModelVersionTracker();
+  const before = readVersion(model);
+  model.first = "after";
+  failing = true;
+  expect(() => readVersion(model)).toThrow("Synthetic read failure");
+  failing = false;
+  const recovered = readVersion(model);
+  expect(recovered).not.toBe(before);
+  expect(readVersion(model)).toBe(recovered);
 });

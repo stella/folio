@@ -14,7 +14,7 @@ import {
   type XmlElement,
 } from "./xmlParser";
 import { XML_NAMESPACE_URI } from "./xmlNamespaceContext";
-import { isSafeCapturedXmlDocument, isSafeParsedXmlDocument } from "./verbatimCapture";
+import { isSafeCapturedXmlDocument, getSingleParsedXmlDocumentElement } from "./verbatimCapture";
 import { TaggedError } from "better-result";
 
 class DocumentSourceReplayError extends TaggedError("DocumentSourceReplayError")<{
@@ -22,6 +22,7 @@ class DocumentSourceReplayError extends TaggedError("DocumentSourceReplayError")
 }> {}
 
 const validatedSources = new WeakMap<NonNullable<DocumentBody["source"]>, string>();
+const originalSources = new WeakMap<NonNullable<DocumentBody["source"]>, string>();
 
 const safeSourceXml = (xml: string): string => {
   if (!isSafeCapturedXmlDocument(xml)) {
@@ -30,11 +31,17 @@ const safeSourceXml = (xml: string): string => {
   return xml;
 };
 
-const safeCapturedSource = (source: NonNullable<DocumentBody["source"]>): string => {
+const safeCapturedSource = (source: NonNullable<DocumentBody["source"]>): string | null => {
   if (validatedSources.get(source) === source.xml) return source.xml;
-  const xml = safeSourceXml(source.xml);
-  validatedSources.set(source, xml);
-  return xml;
+  // Retaining a reference grants no replay authority. Validate the actual XML
+  // at first output, so namespace/attribute validation is absent from parsing.
+  // Do not rely on a retained tree: callers can mutate that tree independently.
+  if (!isSafeCapturedXmlDocument(source.xml)) {
+    if (originalSources.get(source) === source.xml) return null;
+    throw new DocumentSourceReplayError({ message: "Document source XML is not safe to replay." });
+  }
+  validatedSources.set(source, source.xml);
+  return source.xml;
 };
 
 const shellFingerprint = (body: DocumentBody): string =>
@@ -78,9 +85,12 @@ export const captureDocumentSource = (
   body: DocumentBody,
   source: { xml: string; root: XmlElement; groups: ReadonlyMap<XmlElement, BlockContent[]> },
 ): void => {
-  // Malformed packages keep the existing rebuilding path; they cannot grant
-  // raw replay authority merely because the tolerant parser accepted them.
-  if (!isSafeParsedXmlDocument(source.xml, source.root)) return;
+  // Reject extra roots immediately. Full replay validation is deferred to
+  // output; tolerant parsing alone never grants raw replay authority.
+  const root = getSingleParsedXmlDocumentElement(source.root);
+  // The fallback parser can discard trailing text and has no exact ranges.
+  // Such a tree cannot establish ownership of the complete source part.
+  if (!root || !getXmlSourceRange(root)) return;
   const blocks: NonNullable<DocumentBody["source"]>["blocks"] = new Map();
   const capturedGroups = new Set<XmlElement>();
   for (const [element, content] of source.groups) {
@@ -103,7 +113,7 @@ export const captureDocumentSource = (
       : shellFingerprint(body),
     blocks,
   };
-  validatedSources.set(body.source, source.xml);
+  originalSources.set(body.source, source.xml);
 };
 
 type ReplayDocumentSourceOptions = {
@@ -123,6 +133,8 @@ export const replayDocumentSource = ({
   const source = body.source;
   if (!source) return null;
   if (source.shellFingerprint !== shellFingerprint(body)) return null;
+  const sourceXml = safeCapturedSource(source);
+  if (sourceXml === null) return null;
 
   const replacements: { start: number; end: number; xml: string }[] = [];
   let index = 0;
@@ -151,13 +163,13 @@ export const replayDocumentSource = ({
   }
   // Deleting a tail must not replay the source's deleted blocks.
   if (source.blocks.size !== body.content.length) return null;
-  if (replacements.length === 0) return safeCapturedSource(source);
+  if (replacements.length === 0) return sourceXml;
   const chunks: string[] = [];
   let cursor = 0;
   for (const replacement of replacements) {
-    chunks.push(source.xml.slice(cursor, replacement.start), replacement.xml);
+    chunks.push(sourceXml.slice(cursor, replacement.start), replacement.xml);
     cursor = replacement.end;
   }
-  chunks.push(source.xml.slice(cursor));
+  chunks.push(sourceXml.slice(cursor));
   return safeSourceXml(chunks.join(""));
 };
