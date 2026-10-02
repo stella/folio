@@ -28,7 +28,13 @@ import type {
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { extractFailureMarkers, parseKnownFailures } from "./failure-fingerprints";
-import { closedAsDuplicate, duplicateTarget, fileClasses, type Issue } from "./fuzz-issue-classes";
+import {
+  closedAsDuplicate,
+  duplicateTarget,
+  fileClasses,
+  type Issue,
+  type IssueStore,
+} from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "fuzz-failure",
@@ -241,11 +247,18 @@ export type Filed = { fingerprint: string; issue: string | null };
  * Open or update the issue of every finding (see the module comment);
  * returns where each went. `root` is the repository checkout.
  */
-export const fileFindings = (
-  findings: readonly Finding[],
-  context: Context,
-  root: string,
-): Promise<Filed[]> => {
+type FileFindingsOptions = {
+  findings: readonly Finding[];
+  context: Context;
+  root: string;
+  store?: IssueStore;
+};
+export const fileFindings = ({
+  findings,
+  context,
+  root,
+  store,
+}: FileFindingsOptions): Promise<Filed[]> => {
   const known = new Map(
     parseKnownFailures(
       JSON.parse(readFileSync(path.join(root, "test", "known-failure-fingerprints.json"), "utf8")),
@@ -255,7 +268,7 @@ export const fileFindings = (
     findings,
     context,
     known,
-    store: {
+    store: store ?? {
       list: async () => {
         const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}&per_page=100`;
         const pages: unknown = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text());
@@ -336,7 +349,11 @@ const main = async (): Promise<void> => {
     });
     return;
   }
-  const results = await fileFindings(findings, context, path.resolve(import.meta.dir, ".."));
+  const results = await fileFindings({
+    findings,
+    context,
+    root: path.resolve(import.meta.dir, ".."),
+  });
   for (const { fingerprint, issue } of results)
     console.log(`${fingerprint}: ${issue ?? "not filed"}`);
 };
