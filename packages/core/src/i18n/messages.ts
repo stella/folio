@@ -1,41 +1,10 @@
-// The per-locale catalogs are inlined into a generated TS module rather than
-// imported as raw `./messages/*.json`. Core's tsdown `unbundle: true` build
-// mirrors every imported `.json` to a per-locale `dist/i18n/messages/<locale>.js`
-// module, for which rolldown emits a malformed
-// `export { <locale>_default as default, folio }` (the `folio` named binding is
-// never declared). That breaks any downstream bundler processing core's dist.
-// Importing from `catalogs.gen.ts` keeps `.json` out of the build graph, so no
-// per-locale `.js` is emitted. The `*.json` files remain the source of truth the
-// i18n tooling reads; run `bun scripts/i18n-catalogs-gen.ts` to regenerate.
+// The generated TS catalogs keep raw JSON out of the source-mirrored build.
+// Import a messages/<locale> entry to load one catalog independently.
 import { CATALOGS as GENERATED_CATALOGS } from "./messages/catalogs.gen";
 
-// folio bundles its own UI translations: the editor reads the `folio.*`
-// namespace via `useTranslations("folio")`, and a consumer merges this catalog
-// into its app messages so the editor localizes itself with no host-supplied
-// strings. The single date-picker label the editor used to read from `common`
-// is folded into `folio.*`, so folio owns exactly one top-level namespace and a
-// shallow merge against the host's other namespaces never collides.
-export const FOLIO_LOCALES = [
-  "en",
-  "de",
-  "fr",
-  "es",
-  "cs",
-  "ar",
-  "et",
-  "he",
-  "hi",
-  "hu",
-  "lt",
-  "lv",
-  "pl",
-  "pt-BR",
-  "sk",
-  "tr",
-  "zh-CN",
-] as const;
+import { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
 
-export type FolioLocale = (typeof FOLIO_LOCALES)[number];
+export { FOLIO_LOCALES, type FolioLocale } from "./messages/locales";
 
 // The exported type is self-contained: it references neither the generated
 // catalog nor any locale JSON, so the emitted `messages.d.ts` carries no

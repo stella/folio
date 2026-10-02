@@ -839,6 +839,12 @@ jobs:
       - name: Run interaction specs
         run: bun run test:interactions
 
+      - name: Run pinned revision interleaving seeds
+        env:
+          FOLIO_FUZZ_SEEDS: "11,29"
+          FOLIO_FUZZ_RUNS: "1"
+        run: bunx playwright test --project=interleaving-fuzzer --workers=1
+
       # Safe to gate on, unlike the screenshot baselines above: this compares
       # the measurer's width against the painted width, both read from the same
       # browser in one layout pass, so cross-machine font rendering cancels out.

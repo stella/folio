@@ -2404,6 +2404,181 @@
       "fingerprint": "1da7085b8c0c1c0b",
       "issueOrPr": "#1379",
       "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "8c86306234fb8e29",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "82bb4a9c6ba2beb9",
+        "title": "consumer flow comments / tracked-changes: changes re-segment after save",
+        "reportSeed": 1785651632,
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "comments",
+          "mode": "tracked-changes",
+          "seed": 1785651632,
+          "steps": [
+            {
+              "action": "mistake",
+              "seed": 2921440578
+            },
+            {
+              "action": "save and reopen",
+              "seed": 1465945647
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 3297511460,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1308F7CE"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 1402004450,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1608FC87",
+                  "quote": "invoice",
+                  "comment": {
+                    "text": "Warranty delivery period invoice schedule agreement."
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1785651632"
+        }
+      }
+    },
+    {
+      "fingerprint": "82bb4a9c6ba2beb9",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "73c7b924a911a13a",
+      "issueOrPr": "#1384",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1384,
+        "primary": "3fd5801d7296db3e",
+        "title": "consumer flow unusedNumbering / tracked-changes: heading properties are lost",
+        "reportSeed": 1785651826,
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "unusedNumbering",
+          "mode": "tracked-changes",
+          "seed": 694344246,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 2766522247,
+              "operations": [
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "1608FC87",
+                  "properties": {
+                    "styleId": "Heading2"
+                  }
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                }
+              ]
+            }
+          ],
+          "origin": "shrunk from reseed+dropOperation of b4d3b9d93f02c1f2"
+        }
+      }
+    },
+    {
+      "fingerprint": "3fd5801d7296db3e",
+      "issueOrPr": "#1384",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "549dda931aa1b431",
+      "issueOrPr": "#1466",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1466,
+        "primary": "3031f8841bda4736",
+        "reportSeed": 1026398924,
+        "title": "tracked bullet acceptance followed by merge leaves a missing numbering definition",
+        "causeMessage": "Cannot repack invalid DOCX document model:\nDOCX model error at package.document.content[3].formatting.numPr.numId: Numbering definition 3 is missing.",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "trackedChanges",
+          "mode": "tracked-changes",
+          "seed": 1026397197,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 1338526882,
+              "operations": [
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "0A88C0B1",
+                  "text": "Agreement party supplier invoice term.",
+                  "numbering": {
+                    "start": "new",
+                    "kind": "bullet"
+                  }
+                }
+              ]
+            },
+            {
+              "action": "accept all",
+              "seed": 1714597764
+            },
+            {
+              "action": "story batch",
+              "seed": 4114059415,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "1188CBB6",
+                  "separator": " "
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from unpin+splice+reseed of 716b1e669abc7a9b",
+          "title": "PINNED #1466, reported seed 1026398924: inserted bullet accepted before a tracked merge must remain saveable"
+        }
+      }
+    },
+    {
+      "fingerprint": "3031f8841bda4736",
+      "issueOrPr": "#1466",
+      "firstSeen": "2026-10-02"
     }
   ]
 }

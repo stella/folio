@@ -45,6 +45,9 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
+    "./i18n/messages/*": "./src/i18n/messages/*.gen.ts",
+    "./i18n/messages/*.gen": "./src/i18n/messages/*.gen.ts",
+    "./i18n/messages/locales": "./src/i18n/messages/locales.ts",
     "./markdown": "./src/markdown/index.ts",
     "./server": "./src/server.ts",
     "./redline": "./src/redline.ts",

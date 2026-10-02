@@ -47,6 +47,12 @@ import {
 } from "./bookmarkParser";
 import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
+import {
+  foldListNumberFields,
+  isListNumberField,
+  isListNumberGapMarker,
+  isTabOnlyRun,
+} from "./foldedListNumberFields";
 import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   HYPERLINK_CHILD_HANDLERS,
@@ -128,18 +134,6 @@ const FOLIO_REVIEW_HISTORY_NAMESPACES: ReadonlySet<string> = new Set([
 /**
  * Extract plain text from a math element (recursive text content extraction)
  */
-function extractPlainText(runs: Run[]): string {
-  let out = "";
-  for (const run of runs) {
-    for (const c of run.content) {
-      if (c.type === "text") {
-        out += c.text;
-      }
-    }
-  }
-  return out;
-}
-
 function extractMathText(el: XmlElement): string {
   let text = "";
   if (el.type === "text" && typeof el.text === "string") {
@@ -1139,6 +1133,41 @@ type ParagraphContentsWalk = {
   scan: ComplexFieldScan;
 };
 
+/**
+ * The `w:r` elements a complex field, or a run holding one tab, was read
+ * from. A list paragraph draws its `LISTNUM` fields in the list marker and
+ * keeps their markup in the content as it was read; these are where that
+ * markup comes from.
+ */
+const fieldSourceElements = new WeakMap<ComplexField, readonly XmlElement[]>();
+const tabRunSources = new WeakMap<Run, XmlElement>();
+
+/**
+ * Whether the content read so far ends in a list-number field whose markup is
+ * kept, with nothing but range markers after it: the next tab is its tab.
+ */
+const followsListNumberField = (contents: readonly ParagraphContent[]): boolean => {
+  for (let index = contents.length - 1; index >= 0; index -= 1) {
+    const item = contents[index];
+    if (item === undefined || isListNumberGapMarker(item)) {
+      continue;
+    }
+    return item.type === "complexField" && fieldSourceElements.has(item);
+  }
+  return false;
+};
+
+const sourceMarkupOf = (item: ComplexField | Run): string | undefined => {
+  if (item.type === "run") {
+    const element = tabRunSources.get(item);
+    return element ? captureVerbatimXml(element) : undefined;
+  }
+  const elements = fieldSourceElements.get(item);
+  return elements && elements.length > 0
+    ? elements.map((element) => captureVerbatimXml(element)).join("")
+    : undefined;
+};
+
 /** The complex field a paragraph walk has open, if any. */
 type ComplexFieldScan = {
   inComplexField: boolean;
@@ -1152,6 +1181,9 @@ type ComplexFieldScan = {
   // code/result split is what puts the `begin` back too, so a field closed in
   // a later paragraph still has the character that opens it.
   complexFieldOpenRuns: Run[];
+  // The `w:r` elements read since the `begin`, in source order, or null once
+  // one of them holds something the model also keeps as an item of its own.
+  complexFieldSourceRuns: XmlElement[] | null;
   afterSeparator: boolean;
   complexFieldState: FieldState;
   complexFieldDataXml: string | undefined;
@@ -1455,6 +1487,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       scan.complexFieldCodeRuns = [];
       scan.complexFieldResultRuns = [];
       scan.complexFieldOpenRuns = [];
+      scan.complexFieldSourceRuns = [];
       // `w:fldLock` / `w:dirty` live on the begin fldChar of this field.
       scan.complexFieldState = beginFieldState;
       scan.complexFieldDataXml = beginFieldData ? captureVerbatimXml(beginFieldData) : undefined;
@@ -1479,6 +1512,13 @@ const PARAGRAPH_CONTENT_HANDLERS = {
 
     if (scan.inComplexField) {
       scan.complexFieldOpenRuns.push(withOrphanFieldCharsPreserved(run, runElement));
+      // A comment reference inside a field run is also an item beside the
+      // field, so the run's markup would write it a second time.
+      if (commentReferenceId !== null || trackedContext === "deletion") {
+        scan.complexFieldSourceRuns = null;
+      } else {
+        scan.complexFieldSourceRuns?.push(runElement);
+      }
       if (instrText) {
         scan.complexFieldInstr += instrText;
       }
@@ -1599,6 +1639,10 @@ const PARAGRAPH_CONTENT_HANDLERS = {
           complexField.formatting = scan.complexFieldFormatting;
         }
 
+        // Only a list-number field is ever folded, so only its markup is kept.
+        if (scan.complexFieldSourceRuns !== null && isListNumberField(complexField)) {
+          fieldSourceElements.set(complexField, scan.complexFieldSourceRuns);
+        }
         contents.push(complexField);
         if (commentReferenceId !== null) {
           contents.push({
@@ -1642,7 +1686,15 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // with no `begin` before it lands here, and it is field structure
       // with no field: the same capture keeps it.
       if (hasRunPayload({ run, runElement, rels, media })) {
-        contents.push(withOrphanFieldCharsPreserved(run, runElement));
+        const kept = withOrphanFieldCharsPreserved(run, runElement);
+        if (
+          isTabOnlyRun(kept) &&
+          trackedContext !== "deletion" &&
+          followsListNumberField(contents)
+        ) {
+          tabRunSources.set(kept, runElement);
+        }
+        contents.push(kept);
       }
     }
   },
@@ -1893,6 +1945,7 @@ function parseParagraphContents(
     complexFieldCodeRuns: [],
     complexFieldResultRuns: [],
     complexFieldOpenRuns: [],
+    complexFieldSourceRuns: null,
     afterSeparator: false,
     complexFieldState: {},
     complexFieldDataXml: undefined,
@@ -2076,8 +2129,9 @@ export function parseParagraph(
 
   // Text-box enrichment matches model runs to source w:r elements by position.
   // Its block parsers defer this merge until that source-dependent pass ends.
-  paragraph.content =
-    options?.runConsolidation === "deferred" ? rawContent : consolidateParagraphContent(rawContent);
+  const consolidated = (content: ParagraphContent[]): ParagraphContent[] =>
+    options?.runConsolidation === "deferred" ? content : consolidateParagraphContent(content);
+  paragraph.content = consolidated(rawContent);
 
   // Compute list rendering if this is a list item.
   //
@@ -2178,54 +2232,23 @@ export function parseParagraph(
         // the marker zone) from the inline content — that way the host
         // paragraph's marker zone reads "7.1[gap](a)" and the body text on
         // line 1 begins at the same column as the wrapped lines below.
-        let implicitChildLevelAdvances = 0;
-        const foldedMarkerSuffix: string[] = [];
-        const filteredContent: ParagraphContent[] = [];
-        let dropNextTab = false;
-        // Word inserts paragraph-mark / bookmark / comment-range metadata
-        // between a LISTNUM field and its trailing tab. Skip those when
-        // hunting for the tab to drop, otherwise `dropNextTab` clears on
-        // the metadata node and the tab survives, breaking alignment.
-        const isMetadataContent = (content: ParagraphContent): boolean =>
-          content.type === "bookmarkStart" ||
-          content.type === "bookmarkEnd" ||
-          content.type === "commentRangeStart" ||
-          content.type === "commentRangeEnd" ||
-          content.type === "commentReference";
-        for (const content of paragraph.content) {
-          if (dropNextTab && isMetadataContent(content)) {
-            filteredContent.push(content);
-            continue;
-          }
-          if (dropNextTab) {
-            dropNextTab = false;
-            if (
-              content.type === "run" &&
-              content.content.length === 1 &&
-              content.content[0]?.type === "tab"
-            ) {
-              continue;
-            }
-          }
-          if (content.type === "complexField") {
-            const isListNum =
-              content.fieldType === "LISTNUM" ||
-              content.instruction.trim().toUpperCase().startsWith("LISTNUM");
-            if (isListNum) {
-              implicitChildLevelAdvances += 1;
-              const cached = extractPlainText(content.fieldResult);
-              if (cached) {
-                foldedMarkerSuffix.push(cached);
-              }
-              dropNextTab = true;
-              continue;
-            }
-          }
-          filteredContent.push(content);
-        }
-        if (foldedMarkerSuffix.length > 0) {
-          paragraph.content = filteredContent;
-          listRendering.marker = `${listRendering.marker}\t${foldedMarkerSuffix.join(" ")}`;
+        // The fold reads the content as parsed, before runs are merged: the
+        // captures are keyed to the runs the walk produced.
+        // Most paragraphs hold no field at all, and so nothing to fold.
+        const fold = rawContent.some((item) => item.type === "complexField")
+          ? foldListNumberFields(rawContent, sourceMarkupOf)
+          : { content: rawContent, cached: [], fieldCount: 0 };
+        // A bullet's marker is its glyph alone, and a marker with no text of
+        // its own has nothing to show a field after: neither hides one.
+        const markerShowsFields =
+          !listRendering.isBullet && level.lvlText !== "" && !level.lvlText.includes("\t");
+        if (fold.cached.length > 0 && markerShowsFields) {
+          // Bookmark and comment-range markers can stand between a field and
+          // its trailing tab; the fold steps over them, so the tab still
+          // leaves the line and the markers stay. The field and the tab stay
+          // in the content as markup that shows nothing, where they stood.
+          paragraph.content = consolidated(fold.content);
+          listRendering.marker = `${listRendering.marker}\t${fold.cached.join(" ")}`;
           const nextLevel = numbering.getLevel(numId, ilvl + 1);
           if (
             nextLevel?.pPr?.hangingIndent === true &&
@@ -2239,8 +2262,8 @@ export function parseParagraph(
             }
           }
         }
-        if (implicitChildLevelAdvances > 0) {
-          listRendering.implicitChildLevelAdvances = implicitChildLevelAdvances;
+        if (fold.fieldCount > 0) {
+          listRendering.implicitChildLevelAdvances = fold.fieldCount;
         }
         paragraph.listRendering = listRendering;
 
