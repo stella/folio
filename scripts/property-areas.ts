@@ -17,6 +17,7 @@
  *
  * Usage:
  *   bun scripts/property-areas.ts [--base <ref>] [--factor <n>] [--dry-run]
+ *   bun scripts/property-areas.ts --shard 1/4     (one partition of selected files)
  *   bun scripts/property-areas.ts --all            (every property file)
  *
  * `--base` (default `origin/main`) is diffed from its merge base with HEAD.
@@ -169,24 +170,44 @@ const pinnedSeedFiles = (): string[] =>
     .filter((key) => !key.startsWith("$"))
     .map((key) => key.split("::")[0] as string);
 
+type PropertyShard = { index: number; count: number };
+
+export const parsePropertyShard = (raw: string): PropertyShard => {
+  const match = /^(\d+)\/(\d+)$/.exec(raw);
+  if (match === null) throw new Error("--shard must be an index/count pair");
+  const index = Number(match[1]);
+  const count = Number(match[2]);
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(count) || index < 1 || index > count)
+    throw new Error("--shard requires 1 ≤ index ≤ count");
+  return { index, count };
+};
+
+/** Stable file partitions preserve each property's call site and CI seed. */
+export const shardPropertyFiles = (
+  files: readonly PropertyFile[],
+  shard: PropertyShard,
+): PropertyFile[] => files.filter((_, index) => index % shard.count === shard.index - 1);
+
 const parseArgs = (argv: readonly string[]) => {
   let base = "origin/main";
   let factor: number | undefined;
   let dryRun = false;
   let all = false;
+  let shard: PropertyShard | undefined;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--base") base = argv[++index] ?? base;
     else if (arg === "--factor") factor = Number(argv[++index]);
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--all") all = true;
+    else if (arg === "--shard") shard = parsePropertyShard(argv[++index] ?? "");
     else throw new Error(`Unknown argument ${String(arg)}`);
   }
   const envFactor = process.env["PROPERTY_TEST_NUM_RUNS_FACTOR"];
   const defaultFactor = all ? 1 : 5;
   factor ??= envFactor === undefined || envFactor === "" ? defaultFactor : Number(envFactor);
   if (!Number.isFinite(factor) || factor < 1) throw new Error("the factor must be a number ≥ 1");
-  return { base, factor, dryRun, all };
+  return { base, factor, dryRun, all, shard };
 };
 
 const changedFiles = async (base: string): Promise<string[]> => {
@@ -196,7 +217,7 @@ const changedFiles = async (base: string): Promise<string[]> => {
 };
 
 if (import.meta.main) {
-  const { base, factor, dryRun, all } = parseArgs(process.argv.slice(2));
+  const { base, factor, dryRun, all, shard } = parseArgs(process.argv.slice(2));
   let selected: PropertyFile[];
   if (all) {
     selected = propertyFiles();
@@ -207,6 +228,13 @@ if (import.meta.main) {
     const areas = [...new Set(selected.map(({ area }) => area))];
     console.log(
       `${String(changed.length)} changed files vs ${base}; ${String(selected.length)} property files in ${String(areas.length)} areas at factor ${String(factor)}${areas.length > 0 ? `: ${areas.join(", ")}` : ""}`,
+    );
+  }
+  if (shard !== undefined) {
+    const total = selected.length;
+    selected = shardPropertyFiles(selected, shard);
+    console.log(
+      `Shard ${String(shard.index)}/${String(shard.count)}: ${String(selected.length)} of ${String(total)} files`,
     );
   }
   if (dryRun || selected.length === 0) {

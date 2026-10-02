@@ -3,7 +3,14 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-import { areaOf, propertyFiles, selectPropertyFiles, touchedAreas } from "./property-areas";
+import {
+  areaOf,
+  parsePropertyShard,
+  propertyFiles,
+  selectPropertyFiles,
+  shardPropertyFiles,
+  touchedAreas,
+} from "./property-areas";
 
 const makePropertyFile = (repoPath: string) => ({
   area: areaOf(repoPath) as string,
@@ -54,6 +61,58 @@ const actualPropertyDrivers = (): string[] => {
 };
 
 describe("property areas", () => {
+  test("shards partition the actual selected files exactly once without changing package ownership", () => {
+    const files = propertyFiles();
+    for (const count of [1, 2, 4, files.length + 1]) {
+      const shards = Array.from({ length: count }, (_, index) =>
+        shardPropertyFiles(files, parsePropertyShard(`${String(index + 1)}/${String(count)}`)),
+      );
+      const partitioned = shards.flat();
+      expect(partitioned.length).toBe(files.length);
+      expect(new Set(partitioned).size).toBe(files.length);
+      expect(partitioned.toSorted((a, b) => a.file.localeCompare(b.file))).toEqual(files);
+      expect(
+        Math.max(...shards.map((shard) => shard.length)) -
+          Math.min(...shards.map((shard) => shard.length)),
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("the workflow matrix exercises every selected file and collects every failure", () => {
+    const workflow = Bun.YAML.parse(
+      readFileSync(path.resolve(import.meta.dir, "../.github/workflows/ci.yml"), "utf8"),
+    );
+    const job = workflow.jobs["property-areas"];
+    const files = propertyFiles();
+    const exercised = [...job.strategy.matrix.shard].flatMap((raw: string) =>
+      shardPropertyFiles(files, parsePropertyShard(raw)),
+    );
+    expect(exercised.length).toBe(files.length);
+    expect(new Set(exercised).size).toBe(files.length);
+    expect(exercised.toSorted((a, b) => a.file.localeCompare(b.file))).toEqual(files);
+    expect(job.strategy["fail-fast"]).toBe(false);
+    const step = job.steps.find(
+      (entry: { name?: string }) => entry.name === "Changed areas' properties at 5x numRuns",
+    );
+    expect(step.run).toContain('--factor 5 --shard "${PROPERTY_SHARD}"');
+    expect(step.env.PROPERTY_SHARD).toBe("${{ matrix.shard }}");
+  });
+
+  test("invalid shard coordinates fail instead of silently dropping coverage", () => {
+    for (const raw of [
+      "",
+      "0/4",
+      "5/4",
+      "1/0",
+      "1",
+      "1/2/3",
+      "-1/4",
+      "1.5/4",
+      "1/9007199254740992",
+    ])
+      expect(() => parsePropertyShard(raw)).toThrow();
+  });
+
   test("an area is the package and the first directory under src", () => {
     expect(areaOf("packages/core/src/compare/diff/align.ts")).toBe("core/compare");
     expect(areaOf("packages/docx-core/src/index.ts")).toBe("docx-core");
