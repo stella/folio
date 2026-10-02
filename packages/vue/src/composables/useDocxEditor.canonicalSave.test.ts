@@ -116,7 +116,16 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     editor.setDocument(unsupportedWrite);
     expect(editor.getDocument()?.package.document.content).not.toHaveLength(0);
     expect(errors.at(0)?.message).toContain("Direct document model changes are unavailable");
+    expect(editor.parseError.value).toBeNull();
+    expect(editor.isReady.value).toBe(true);
     const view = editor.editorView.value ?? panic("Expected body editor view");
+    // Exercise the hidden manager's refusal callback as well as model writes.
+    const bold = view.state.schema.marks["bold"] ?? panic("Expected bold mark");
+    view.dispatch(view.state.tr.addMark(1, 6, bold.create()));
+    expect(errors.at(-1)?.message).toContain("unavailable");
+    expect(editor.parseError.value).toBeNull();
+    expect(editor.isReady.value).toBe(true);
+    expect(view.state.doc.rangeHasMark(1, 6, bold)).toBe(false);
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 6)));
     view.dom.dispatchEvent(
       new InputEvent("beforeinput", {
@@ -132,7 +141,8 @@ test("canonical edits save and reopen the canonical text and paragraph identity"
     await new Promise((resolve) => window.setTimeout(resolve, 300));
     expect(hostChanges).toBeGreaterThan(0);
     const saved = await editor.save();
-    expect(errors).toHaveLength(1);
+    expect(errors).toHaveLength(2);
+    expect(editor.parseError.value).toBeNull();
     if (!saved) panic("Expected saved canonical DOCX");
     const reopened = await parseDocx(await saved.arrayBuffer(), {
       preloadFonts: false,
