@@ -1631,6 +1631,779 @@
       "fingerprint": "608356ec399f6db2",
       "issueOrPr": "#1410",
       "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "1c6f520a41a4dcf4",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "d24b4106710bf3e7",
+        "reportSeed": 1026397225,
+        "reportSeeds": [1026397225],
+        "title": "1c6f520a41a4dcf4: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "unusedNumbering",
+          "mode": "tracked-changes",
+          "seed": 1026397191,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 2226127334,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "1108F4A8",
+                  "text": "A rewritten clause."
+                },
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "1108F4A8",
+                  "text": "An added clause."
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 3425857477,
+              "operations": [
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "1108F4A8",
+                  "find": "rewritten",
+                  "replace": "revised"
+                }
+              ]
+            },
+            {
+              "action": "new reviewer",
+              "seed": 1650656377
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 2218550850,
+              "operations": [
+                {
+                  "type": "insertTable",
+                  "blockId": "1308F7CE",
+                  "rows": [
+                    ["Term", "Value"],
+                    ["Period", "12 months"]
+                  ]
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 1522773983,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "@1"
+                }
+              ]
+            },
+            {
+              "action": "core batch",
+              "seed": 2090668456,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "1108F4A8",
+                    "startOffset": 10,
+                    "endOffset": 16,
+                    "selectedTextHash": "hwx73rb"
+                  },
+                  "comment": {
+                    "text": "Check this word."
+                  }
+                },
+                {
+                  "type": "formatRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "1108F4A8",
+                    "startOffset": 10,
+                    "endOffset": 16,
+                    "selectedTextHash": "hwx73rb"
+                  },
+                  "formatting": {
+                    "italic": true
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from splice+delete of 58a8af7a9e1b4f4a",
+          "title": "PINNED #1379 1c6f520a41a4dcf4, reported seed 1026397225: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "d24b4106710bf3e7",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "241ee96385acec0d",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "5dc813d1554e9ed2",
+        "reportSeed": 1026399023,
+        "reportSeeds": [1026399023],
+        "title": "241ee96385acec0d: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "tables",
+          "mode": "tracked-changes",
+          "seed": 1026399023,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 2226129166,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "541D18C6",
+                    "startOffset": 6,
+                    "endOffset": 14,
+                    "selectedTextHash": "hnavq79"
+                  },
+                  "comment": {
+                    "text": "Check this word."
+                  }
+                },
+                {
+                  "type": "formatRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "541D18C6",
+                    "startOffset": 6,
+                    "endOffset": 14,
+                    "selectedTextHash": "hnavq79"
+                  },
+                  "formatting": {
+                    "italic": true
+                  }
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 962457826,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "541D18C6"
+                },
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "511D140D",
+                  "find": "The",
+                  "replace": "revised"
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1026399023",
+          "title": "PINNED #1379 241ee96385acec0d, reported seed 1026399023: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "5dc813d1554e9ed2",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "494eb13095458d0e",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "cc40e4858c3b9e66",
+        "reportSeed": 1026398514,
+        "reportSeeds": [1026398514],
+        "title": "494eb13095458d0e: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "comments",
+          "mode": "tracked-changes",
+          "seed": 1026398514,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 898516120,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1308F7CE",
+                  "quote": "and",
+                  "comment": {
+                    "text": "Period payment clause goods schedule goods schedule."
+                  }
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 4241941761,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "1308F7CE",
+                  "separator": " "
+                }
+              ]
+            },
+            {
+              "action": "accept all",
+              "seed": 323045347
+            },
+            {
+              "action": "story batch",
+              "seed": 1522775490,
+              "operations": [
+                {
+                  "type": "splitBlock",
+                  "blockId": "1408F961",
+                  "offset": 8
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 67280559,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1608FC87"
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from random flow seed 1026398514",
+          "title": "PINNED #1379 494eb13095458d0e, reported seed 1026398514: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "cc40e4858c3b9e66",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "a457048c6f4050b6",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "846747e4ae98553b",
+        "reportSeed": 1026398713,
+        "reportSeeds": [1026398713],
+        "title": "a457048c6f4050b6: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "tracked-changes",
+          "seed": 1026396995,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 1906422405,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "058C549F",
+                    "startOffset": 37,
+                    "endOffset": 42,
+                    "selectedTextHash": "h4k7sdk"
+                  },
+                  "comment": {
+                    "text": "Check this word."
+                  }
+                },
+                {
+                  "type": "formatRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "058C549F",
+                    "startOffset": 37,
+                    "endOffset": 42,
+                    "selectedTextHash": "h4k7sdk"
+                  },
+                  "formatting": {
+                    "italic": true
+                  }
+                }
+              ]
+            },
+            {
+              "action": "mistake",
+              "seed": 2410375681
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from delete+delete+splice of dd6482be1d59c359",
+          "title": "PINNED #1379 a457048c6f4050b6, reported seed 1026398713: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "846747e4ae98553b",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "a6798edd1e165853",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "4c32024f0765473e",
+        "reportSeed": 1026398037,
+        "reportSeeds": [1026398037],
+        "title": "a6798edd1e165853: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "comments",
+          "mode": "tracked-changes",
+          "seed": 1026398037,
+          "steps": [
+            {
+              "action": "add_comment",
+              "seed": 3929811599
+            },
+            {
+              "action": "new reviewer",
+              "seed": 3801929205
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 3170093535,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "1508FAF4",
+                  "text": "Period payment party."
+                }
+              ]
+            },
+            {
+              "action": "save and reopen",
+              "seed": 1146704131
+            },
+            {
+              "action": "story batch",
+              "seed": 514868461,
+              "operations": [
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "1408F961",
+                  "text": "Written written goods written written written."
+                },
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "1508FAF4",
+                    "startOffset": 7,
+                    "endOffset": 14,
+                    "selectedTextHash": "h7umevi"
+                  },
+                  "comment": {
+                    "text": "Agreement supplier party warranty warranty clause goods."
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1026398037",
+          "title": "PINNED #1379 a6798edd1e165853, reported seed 1026398037: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "4c32024f0765473e",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "b4fcc3f71f4d3b79",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "e027b7c4c29080c4",
+        "reportSeed": 1026397380,
+        "reportSeeds": [1026397380],
+        "title": "b4fcc3f71f4d3b79: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "tracked-changes",
+          "seed": 1026397380,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 4057693336,
+              "operations": [
+                {
+                  "type": "formatRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "068C5632",
+                    "startOffset": 0,
+                    "endOffset": 7,
+                    "selectedTextHash": "hk7ezx1"
+                  },
+                  "formatting": {
+                    "italic": true
+                  }
+                },
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "068C5632",
+                  "find": "Launch",
+                  "replace": "amended",
+                  "precondition": {
+                    "blockTextHash": "hrit6rr"
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from random flow seed 1026397380",
+          "title": "PINNED #1379 b4fcc3f71f4d3b79, reported seed 1026397380: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "e027b7c4c29080c4",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "d1d649f92ee45f9c",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "3aefb0513a0a78cf",
+        "reportSeed": 1026396991,
+        "reportSeeds": [1026396991],
+        "title": "d1d649f92ee45f9c: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "tracked-changes",
+          "seed": 1026396991,
+          "steps": [
+            {
+              "action": "mistake",
+              "seed": 2162185937
+            },
+            {
+              "action": "story batch",
+              "seed": 3482222174,
+              "operations": [
+                {
+                  "type": "splitBlock",
+                  "blockId": "078C57C5",
+                  "offset": 13
+                },
+                {
+                  "type": "insertAfterBlock",
+                  "blockId": "078C57C5",
+                  "text": "Invoice written invoice.",
+                  "alignment": "right"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 3858293056,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "@5",
+                  "text": "Delivery buyer buyer schedule invoice warranty invoice."
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 4170422741,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "058C549F",
+                    "startOffset": 35,
+                    "endOffset": 44,
+                    "selectedTextHash": "hs1tsq3"
+                  },
+                  "comment": {
+                    "text": "Check this word."
+                  }
+                },
+                {
+                  "type": "formatRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "058C549F",
+                    "startOffset": 35,
+                    "endOffset": 44,
+                    "selectedTextHash": "hs1tsq3"
+                  },
+                  "formatting": {
+                    "italic": true
+                  }
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1026396991",
+          "title": "PINNED #1379 d1d649f92ee45f9c, reported seed 1026396991: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "3aefb0513a0a78cf",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "df1d2173cb82f5ed",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "a53dc206d57083d6",
+        "reportSeed": 1026397717,
+        "reportSeeds": [1026397717],
+        "title": "df1d2173cb82f5ed: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "plain",
+          "mode": "tracked-changes",
+          "seed": 1026397717,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 962456520,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "1408F961",
+                  "text": "Delivery warranty schedule."
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1308F7CE"
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 1210645008,
+              "operations": [
+                {
+                  "type": "commentOnBlock",
+                  "blockId": "1408F961",
+                  "quote": "schedule",
+                  "comment": {
+                    "text": "Goods written party written warranty period buyer schedule."
+                  }
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 2970693324,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1408F961"
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from collisions flow seed 1026397717",
+          "title": "PINNED #1379 df1d2173cb82f5ed, reported seed 1026397717: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "a53dc206d57083d6",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "fa1357188a96bc51",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "type": "consumer",
+        "issue": 1379,
+        "primary": "1da7085b8c0c1c0b",
+        "reportSeed": 1026397480,
+        "reportSeeds": [1026397480],
+        "title": "fa1357188a96bc51: tracked revision entries split at comment or formatting boundaries",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "plain",
+          "mode": "tracked-changes",
+          "seed": 1026397480,
+          "steps": [
+            {
+              "action": "add_comment",
+              "seed": 202738219
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 1146703574,
+              "operations": [
+                {
+                  "type": "commentOnRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "1408F961",
+                    "startOffset": 35,
+                    "endOffset": 42,
+                    "selectedTextHash": "h7ptyo8"
+                  },
+                  "comment": {
+                    "text": "Agreement delivery term warranty agreement invoice payment schedule."
+                  }
+                }
+              ]
+            },
+            {
+              "action": "save and reopen",
+              "seed": 2850386993
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 1586715653,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "1408F961",
+                  "text": "Goods agreement goods buyer supplier agreement payment goods."
+                },
+                {
+                  "type": "splitBlock",
+                  "blockId": "1308F7CE",
+                  "offset": 49
+                }
+              ]
+            }
+          ],
+          "weights": {
+            "version": 1,
+            "cells": {},
+            "operations": []
+          },
+          "origin": "shrunk from random flow seed 1026397480",
+          "title": "PINNED #1379 fa1357188a96bc51, reported seed 1026397480: reader projection survives save"
+        }
+      }
+    },
+    {
+      "fingerprint": "1da7085b8c0c1c0b",
+      "issueOrPr": "#1379",
+      "firstSeen": "2026-10-02"
     }
   ]
 }
