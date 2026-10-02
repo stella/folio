@@ -7,6 +7,8 @@ import { resolveWholeStory } from "../../internal/wholeStoryRevisionResolution";
 import type { Document, Paragraph, Run } from "../../types/document";
 import { createStarterKit } from "../extensions/StarterKit";
 import { ExtensionManager } from "../extensions/ExtensionManager";
+import { schema } from "../schema";
+import { RUN_IDENTITY_MARK_NAME } from "../runIdentity";
 import { fromProseDoc, proseDocToBlocks } from "./fromProseDoc";
 import { headerFooterToProseDoc, toProseDoc } from "./toProseDoc";
 
@@ -140,7 +142,87 @@ describe("authored run boundary ownership", () => {
     );
   });
 
-  test("rejecting a reopened insertion rejoins its original run without joining neighbors", () => {
+  // The old fixture copied one run record into two imported w:r records and
+  // mistook equal payloads for shared ownership. Imported records own distinct
+  // identities even when a revision separates otherwise identical properties.
+  test("revision resolution retains distinct authored runs with equal payloads", () => {
+    fc.assert(
+      fc.property(
+        runs,
+        fc.constantFrom("insertion", "deletion", "runPropertyChange"),
+        fc.constantFrom("accept", "reject"),
+        fc.boolean(),
+        (content, revision, mode, withSession) => {
+          // SAFETY: the generator always produces at least two runs.
+          const first = content[0]!;
+          // Give property-change rejection an explicit previous state so this
+          // ownership invariant does not depend on absent-vs-empty formatting.
+          const boundaryRun =
+            revision === "runPropertyChange" && first.formatting === undefined
+              ? { ...first, formatting: { bold: false } }
+              : first;
+          const sharedAttributes = withSession ? [{ name: "rsidR", value: "00AB12CD" }] : undefined;
+          const owned = (value: string): Run => ({
+            ...boundaryRun,
+            content: [{ type: "text", text: value }],
+            ...(sharedAttributes === undefined ? {} : { preservedAttributes: sharedAttributes }),
+          });
+          const left = owned("left");
+          const right = owned("right");
+          const middle: Run = { type: "run", content: [{ type: "text", text: "!" }] };
+          const source = documentOf([
+            {
+              type: "paragraph",
+              content:
+                revision === "runPropertyChange"
+                  ? [
+                      {
+                        ...left,
+                        propertyChanges: [
+                          {
+                            type: "runPropertyChange",
+                            info: { id: 4, author: "Reviewer" },
+                            previousFormatting: boundaryRun.formatting,
+                            currentFormatting: boundaryRun.formatting,
+                          },
+                        ],
+                      },
+                      right,
+                      ...content.slice(1),
+                    ]
+                  : [
+                      left,
+                      {
+                        type: revision,
+                        info: { id: 4, author: "Reviewer" },
+                        content: [middle],
+                      },
+                      right,
+                      ...content.slice(1),
+                    ],
+            },
+          ]);
+          const { resolved } = resolveWholeStory({
+            doc: toProseDoc(source),
+            mode,
+            styleResolver: null,
+          });
+          const retainsMiddle =
+            (revision === "insertion" && mode === "accept") ||
+            (revision === "deletion" && mode === "reject");
+          expect(savedRuns(fromProseDoc(resolved, source))).toEqual([
+            left,
+            ...(retainsMiddle ? [middle] : []),
+            right,
+            ...content.slice(1),
+          ]);
+        },
+      ),
+      propertyConfig(),
+    );
+  });
+
+  test("rejecting a tracked insertion rejoins actual same-source pieces without joining neighbors", () => {
     fc.assert(
       fc.property(runs, fc.nat(), fc.boolean(), (content, pickedOffset, withSession) => {
         // SAFETY: the generator always produces at least two runs.
@@ -150,31 +232,37 @@ describe("authored run boundary ownership", () => {
           : first;
         const originalText = runText([original]);
         const offset = 1 + (pickedOffset % (originalText.length - 1));
-        const piece = (value: string): Run => ({
-          ...original,
-          content: [{ type: "text", text: value }],
-        });
-        const source = documentOf([
-          {
-            type: "paragraph",
-            content: [
-              piece(originalText.slice(0, offset)),
-              {
-                type: "insertion",
-                info: { id: 4, author: "Reviewer" },
-                content: [{ type: "run", content: [{ type: "text", text: "!" }] }],
-              },
-              piece(originalText.slice(offset)),
-              ...content.slice(1),
-            ],
-          },
-        ]);
+        const sourceRuns = [original, ...content.slice(1)];
+        const source = documentOf([{ type: "paragraph", content: sourceRuns }]);
+        const state = EditorState.create({ doc: toProseDoc(source) });
+        const position = 1 + offset;
+        // insertText inherits the projected source's actual runIdentity mark;
+        // adding the revision splits that owner instead of importing new runs.
+        const edited = state.apply(
+          state.tr
+            .insertText("!", position)
+            .addMark(
+              position,
+              position + 1,
+              schema.mark("insertion", { revisionId: 4, author: "Reviewer" }),
+            ),
+        );
+        const sourceOwner = state.doc
+          .nodeAt(1)
+          ?.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
+        expect(sourceOwner).toBeDefined();
+        for (const piecePosition of [1, position, position + 1]) {
+          const pieceOwner = edited.doc
+            .nodeAt(piecePosition)
+            ?.marks.find(({ type }) => type.name === RUN_IDENTITY_MARK_NAME);
+          expect(pieceOwner?.attrs).toEqual(sourceOwner?.attrs);
+        }
         const { resolved } = resolveWholeStory({
-          doc: toProseDoc(source),
+          doc: edited.doc,
           mode: "reject",
           styleResolver: null,
         });
-        expect(savedRuns(fromProseDoc(resolved, source))).toEqual([original, ...content.slice(1)]);
+        expect(savedRuns(fromProseDoc(resolved, source))).toEqual(sourceRuns);
       }),
       propertyConfig(),
     );
