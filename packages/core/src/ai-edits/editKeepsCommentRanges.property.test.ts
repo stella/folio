@@ -20,7 +20,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
@@ -235,7 +235,7 @@ const commentPlainText = (comment: Comment | undefined): string =>
 
 describe("an edit leaves every comment and bookmark range balanced and anchored", () => {
   test("over generated documents and operations", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(generatedCase, async (raw) => {
         const generated = toCase(raw);
         const source = await createDocx(buildDocument(generated));
@@ -341,7 +341,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           }).toEqual({ id, opensInTime: true, closesInTime: true });
         }
       }),
-      propertyConfig({ numRuns: 40 }),
+      { numRuns: 40 },
     );
   }, 180_000);
 });

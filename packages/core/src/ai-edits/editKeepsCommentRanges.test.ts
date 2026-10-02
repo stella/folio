@@ -17,7 +17,11 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../test/property-testing";
 import { createDocx } from "../docx/rezip";
 import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
@@ -180,66 +184,89 @@ const LINK_TEXT = "the standard terms";
 const LINK_TARGET = "https://example.invalid/standard-terms";
 const REPLACED_LINK_TEXT = "the revised terms of engagement";
 
-const buildLinkedDocument = (): Document => ({
-  package: {
-    document: {
-      content: [
-        {
-          type: "paragraph",
-          paraId: "30000001",
-          content: [
-            {
-              type: "hyperlink",
-              href: LINK_TARGET,
-              tooltip: "Standard terms",
-              children: [run(LINK_TEXT)],
-            },
-          ],
-        },
-      ],
+const buildLinkedDocument = (cuts: number[]): Document => {
+  let start = 0;
+  const children = [...cuts, LINK_TEXT.length].map((end) => {
+    const child = run(LINK_TEXT.slice(start, end));
+    start = end;
+    return child;
+  });
+  return {
+    package: {
+      document: {
+        content: [
+          {
+            type: "paragraph",
+            paraId: "30000001",
+            content: [
+              {
+                type: "hyperlink",
+                href: LINK_TARGET,
+                tooltip: "Standard terms",
+                children,
+              },
+            ],
+          },
+        ],
+      },
     },
-  },
-});
+  };
+};
+
+// XML elements may split visible text at any authored run boundary.
+const xmlText = (xml: string) =>
+  Array.from(xml.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu), ([, text]) => text ?? "").join("");
 
 describe("replaceInBlock over a block whose text is a hyperlink", () => {
   test.each(["direct", "tracked-changes"] as const)(
     "keeps the link on the new text in %s mode",
     async (mode) => {
-      const reviewer = await FolioDocxReviewer.fromBuffer(await createDocx(buildLinkedDocument()), {
-        author: "Editor",
-      });
-      const [target] = reviewer.snapshot().blocks;
-      expect(target?.text).toBe(LINK_TEXT);
-      reviewer.applyOperations(
-        [
-          {
-            id: "r1",
-            type: "replaceInBlock",
-            blockId: target?.id ?? "",
-            find: LINK_TEXT,
-            replace: REPLACED_LINK_TEXT,
+      await assertProperty(
+        fc.asyncProperty(
+          fc.subarray(Array.from({ length: LINK_TEXT.length - 1 }, (_, index) => index + 1)),
+          async (cuts) => {
+            const reviewer = await FolioDocxReviewer.fromBuffer(
+              await createDocx(buildLinkedDocument(cuts)),
+              {
+                author: "Editor",
+              },
+            );
+            const [target] = reviewer.snapshot().blocks;
+            expect(target?.text).toBe(LINK_TEXT);
+            reviewer.applyOperations(
+              [
+                {
+                  id: "r1",
+                  type: "replaceInBlock",
+                  blockId: target?.id ?? "",
+                  find: LINK_TEXT,
+                  replace: REPLACED_LINK_TEXT,
+                },
+              ],
+              { mode },
+            );
+
+            const saved = await reviewer.toBuffer();
+            const xml = await documentXml(saved);
+            const relationships = await (async () => {
+              const zip = await JSZip.loadAsync(saved);
+              return (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
+            })();
+
+            // The link still wraps the replacement, and still points where it did.
+            const linked = [...xml.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu)].map(
+              ([, inside]) => inside ?? "",
+            );
+            expect(linked.map(xmlText).join("")).toBe(REPLACED_LINK_TEXT);
+            expect(relationships).toContain(LINK_TARGET);
+            // Nothing outside a link carries the new text: the replacement did not
+            // escape the hyperlink it replaced.
+            expect(
+              xmlText(xml.replaceAll(/<w:hyperlink\b[^>]*>[\s\S]*?<\/w:hyperlink>/gu, "")),
+            ).toBe("");
           },
-        ],
-        { mode },
-      );
-
-      const saved = await reviewer.toBuffer();
-      const xml = await documentXml(saved);
-      const relationships = await (async () => {
-        const zip = await JSZip.loadAsync(saved);
-        return (await zip.file("word/_rels/document.xml.rels")?.async("text")) ?? "";
-      })();
-
-      // The link still wraps the replacement, and still points where it did.
-      const linked = [...xml.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu)].map(
-        ([, inside]) => inside ?? "",
-      );
-      expect(linked.some((inside) => inside.includes(REPLACED_LINK_TEXT))).toBe(true);
-      expect(relationships).toContain(LINK_TARGET);
-      // Nothing outside a link carries the new text: the replacement did not
-      // escape the hyperlink it replaced.
-      expect(xml.replaceAll(/<w:hyperlink\b[^>]*>[\s\S]*?<\/w:hyperlink>/gu, "")).not.toContain(
-        REPLACED_LINK_TEXT,
+        ),
+        { numRuns: 12 },
       );
     },
   );
