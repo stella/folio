@@ -13,7 +13,7 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import {
   blockTexts,
@@ -215,7 +215,7 @@ const hasLoneSurrogate = (value: string): boolean => {
 
 describe("an offset-taking operation at any offset", () => {
   test("changes no text beyond what it names, and cuts no character", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(
         textArbitrary,
         fc.constantFrom<OffsetOperation>(
@@ -325,7 +325,7 @@ describe("an offset-taking operation at any offset", () => {
           }
         },
       ),
-      propertyConfig({ numRuns: 120 }),
+      { numRuns: 120 },
     );
   }, 300_000);
 });

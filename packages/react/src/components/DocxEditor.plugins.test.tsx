@@ -13,6 +13,8 @@ import { IntlProvider } from "use-intl";
 import { getFolioMessages } from "@stll/folio-core/i18n/messages";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
 
+import { PagedEditor } from "../paged-editor/PagedEditor";
+import type { PagedEditorRef } from "../paged-editor/PagedEditor";
 import { DocxEditor } from "./DocxEditor";
 import type { DocxEditorRef } from "./DocxEditor.props";
 
@@ -116,3 +118,106 @@ test("replacing the document resets the scroll position", async () => {
     container.remove();
   }
 });
+
+const createReadyScrollFixture = () => {
+  const editor = createRef<DocxEditorRef>();
+  const onEditorViewReady = (view: EditorView | null) => {
+    if (view) {
+      const scrollRoot = editor.current?.getScrollRoot();
+      if (scrollRoot) scrollRoot.scrollTop = 321;
+    }
+  };
+  return { editor, onEditorViewReady };
+};
+
+const documentIO = {
+  getDocx: async () => null,
+  loadDocument: () => {},
+  loadDocx: async () => {},
+};
+
+test("host view-ready navigation wins over a pending initial scroll offset", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const { editor, onEditorViewReady } = createReadyScrollFixture();
+  const frames = new Map<number, FrameRequestCallback>();
+  let frameId = 0;
+  const previousRequest = globalThis.requestAnimationFrame;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = (callback) => {
+    frameId += 1;
+    frames.set(frameId, callback);
+    return frameId;
+  };
+  globalThis.cancelAnimationFrame = (id) => {
+    frames.delete(id);
+  };
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+          <DocxEditor
+            ref={editor}
+            document={createEmptyDocument({ initialText: "Initial scroll precedence" })}
+            showToolbar={false}
+            initialScrollTop={42}
+            onEditorViewReady={onEditorViewReady}
+          />
+        </IntlProvider>,
+      );
+    });
+    await act(async () => {
+      editor.current?.ensureEditorView({ focus: false });
+    });
+    const scrollRoot = editor.current?.getScrollRoot() ?? panic("The editor has no scroll root");
+    expect(scrollRoot.scrollTop).toBe(321);
+    const scheduled = [...frames.values()];
+    frames.clear();
+    await act(async () => {
+      for (const callback of scheduled) callback(performance.now());
+    });
+    expect(scrollRoot.scrollTop).toBe(321);
+  } finally {
+    await act(async () => root.unmount());
+    globalThis.requestAnimationFrame = previousRequest;
+    globalThis.cancelAnimationFrame = previousCancel;
+    container.remove();
+  }
+});
+
+for (const existingMarker of [undefined, "host-owned"]) {
+  test(`external paged-editor scroll roots preserve marker ownership (${existingMarker ?? "unmarked"})`, async () => {
+    const scrollRoot = document.createElement("div");
+    if (existingMarker !== undefined) scrollRoot.setAttribute("data-folio-scroll", existingMarker);
+    const container = document.createElement("div");
+    scrollRoot.append(container);
+    document.body.append(scrollRoot);
+    const root = createRoot(container);
+    const editor = createRef<PagedEditorRef>();
+    const scrollContainerRef = createRef<HTMLDivElement>();
+    scrollContainerRef.current = scrollRoot;
+    try {
+      await act(async () => {
+        root.render(
+          <IntlProvider locale="en" timeZone="UTC" messages={getFolioMessages("en")}>
+            <PagedEditor
+              ref={editor}
+              document={null}
+              documentIdentity="scroll-root-lifecycle"
+              documentIO={documentIO}
+              markupView="all-markup"
+              scrollContainerRef={scrollContainerRef}
+            />
+          </IntlProvider>,
+        );
+      });
+      expect(editor.current?.getScrollRoot()).toBe(scrollRoot);
+      expect(scrollRoot.getAttribute("data-folio-scroll")).toBe(existingMarker ?? "");
+      await act(async () => root.unmount());
+      expect(scrollRoot.getAttribute("data-folio-scroll")).toBe(existingMarker ?? null);
+    } finally {
+      scrollRoot.remove();
+    }
+  });
+}

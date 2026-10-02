@@ -19,6 +19,7 @@ import { paragraphNumberingSlots } from "../model/paragraphNumbering";
 import type { StyleDefinitions } from "../model/styles";
 import { serializeSequenceChildren } from "../schema/sequenceChildren";
 import { requiresXmlSpacePreserve } from "./textWhitespace";
+import { assertValidOoxmlNumericIds } from "./numericIds";
 import { attr, pushOnOffElement, serializeOnOffElement } from "./xml";
 import { escapeXmlAttribute, escapeXmlText } from "./xmlEscape";
 
@@ -164,6 +165,12 @@ export const serializeDocumentToDocx = async (
   }
   word?.file(DEFAULT_FOOTER_PART_NAME, buildFooterXml(options.language));
   word?.folder("_rels")?.file("document.xml.rels", documentRelsXml(hasNumbering));
+
+  for (const [path, file] of Object.entries(zip.files)) {
+    if (file.dir || !path.endsWith(".xml")) continue;
+    // oxlint-disable-next-line no-await-in-loop -- validate each part before the shared ZIP writer emits any output
+    assertValidOoxmlNumericIds(await file.async("text"), path);
+  }
 
   return await zip.generateAsync({
     type: "arraybuffer",

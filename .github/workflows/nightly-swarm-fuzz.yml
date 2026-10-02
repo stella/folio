@@ -1,0 +1,89 @@
+name: Nightly Swarm Fuzz
+
+on:
+  schedule:
+    - cron: "53 3 * * *"
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: nightly-swarm-fuzz-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  swarm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - name: Generate and shrink swarm flows
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
+          bun scripts/consumer-scenarios.ts -- continuous-fuzz.test.ts 2>&1 | tee test-results/swarm-fuzz.log
+        env:
+          FOLIO_SCENARIO_SWARM: "1"
+          FOLIO_SCENARIO_BUDGET_SECONDS: "1200"
+          FOLIO_SCENARIO_FUZZ_STEPS: "20"
+          FOLIO_SCENARIO_SHRINK_SECONDS: "240"
+          FOLIO_SCENARIO_FAILURES_DIR: test-results/fuzz-failures
+          FOLIO_SCENARIO_MINIMIZED_DIR: test-results/fuzz-minimized
+      - name: Keep full and minimized traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: swarm-fuzz
+          path: test-results
+          retention-days: 14
+
+  # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
+  # on a branch reports in its run, not in the issue tracker.
+  report:
+    name: File failures by fingerprint
+    needs: [swarm]
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        continue-on-error: true
+        with:
+          name: swarm-fuzz
+          path: fuzz-results
+
+      - name: Open or update one issue per fingerprint
+        run: >-
+          bun scripts/fuzz-failure-issues.ts
+          --log fuzz-results/swarm-fuzz.log
+          --records fuzz-results/fuzz-failures
+          --source "swarm fuzz" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

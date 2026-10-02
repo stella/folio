@@ -18,6 +18,7 @@ import { withoutOrphanCommentRanges } from "./commentRangeIntegrity";
 import { hasUnsynthesizedReplyRanges } from "./commentReplyMarkers";
 import { validateFolioDocumentModel } from "./modelValidation";
 import { parseNumbering } from "./numberingParser";
+import { normalizeImportedNumericIds } from "./numericIdNormalization";
 import { isUnsafePackagePath } from "./packageParts";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 import {
@@ -435,6 +436,22 @@ export async function attemptSelectiveSave(
     for (const [path, file] of Object.entries(zip.files)) {
       if (!file.dir && isUnsafePackagePath(path)) {
         return null;
+      }
+    }
+
+    // Callers may retain the pre-import bytes while the parser repairs numeric
+    // identities in doc.originalBuffer. Normalize that supplied baseline before
+    // splicing so untouched parts and serialized edits use the same id spaces.
+    if (originalBuffer !== doc.originalBuffer) {
+      const sourceParts = new Map<string, string>();
+      for (const [path, file] of Object.entries(zip.files)) {
+        const lowerPath = path.toLowerCase();
+        if (file.dir || !lowerPath.startsWith("word/") || !lowerPath.endsWith(".xml")) continue;
+        // oxlint-disable-next-line no-await-in-loop -- reserve the complete baseline id spaces before remapping
+        sourceParts.set(path, await file.async("text"));
+      }
+      for (const [path, xml] of normalizeImportedNumericIds(sourceParts)) {
+        if (xml !== sourceParts.get(path)) zip.file(path, xml);
       }
     }
 

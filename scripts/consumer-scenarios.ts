@@ -53,6 +53,8 @@ import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { parseConsumerArgs } from "./consumer-scenario-args";
+
 import { commitSeed } from "../test/commit-seed";
 import {
   type Expectations,
@@ -70,6 +72,7 @@ import {
   type FeatureCoverage,
 } from "../test/consumer-scenarios/support/feature-coverage";
 import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
+import { CONSUMER_DEPENDENCIES } from "./consumer-scenario-dependencies";
 
 const scenarioSrc = path.join(repoRoot, "test", "consumer-scenarios");
 
@@ -81,49 +84,7 @@ const PACKAGES = [
   { dir: "cli", name: "@stll/folio-cli" },
 ] as const;
 
-/** Third-party packages a consumer installs next to folio. */
-const CONSUMER_DEPENDENCIES = ["prosemirror-state@^1.4.4", "prosemirror-model@^1.25.9"];
 const TYPECHECK_DEPENDENCIES = ["typescript@^6", "@types/node@^22"];
-
-type Args = {
-  tarballs: string | null;
-  packOnly: string | null;
-  keep: boolean;
-  typecheck: boolean;
-  only: string | null;
-  coverageOut: string;
-  featureCoverageOut: string;
-  files: string[];
-};
-
-const parseArgs = (argv: readonly string[]): Args => {
-  const args: Args = {
-    tarballs: null,
-    packOnly: null,
-    keep: false,
-    typecheck: false,
-    only: null,
-    coverageOut: path.join(repoRoot, "test-results", "consumer-scenarios-coverage.json"),
-    featureCoverageOut: path.join(repoRoot, "test-results", "consumer-scenarios-features.json"),
-    files: [],
-  };
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    const value = (): string => argv[++index] ?? panic(`consumer-scenarios: ${arg} needs a value`);
-    if (arg === "--tarballs") args.tarballs = path.resolve(value());
-    else if (arg === "--pack-only") args.packOnly = path.resolve(value());
-    else if (arg === "--keep") args.keep = true;
-    else if (arg === "--typecheck") args.typecheck = true;
-    else if (arg === "--only") args.only = value();
-    else if (arg === "--coverage-out") args.coverageOut = path.resolve(value());
-    else if (arg === "--feature-coverage-out") args.featureCoverageOut = path.resolve(value());
-    else if (arg === "--") args.files.push(...argv.slice(index + 1));
-    else if (arg !== undefined && !arg.startsWith("-")) args.files.push(arg);
-    else panic(`consumer-scenarios: unknown argument ${arg}`);
-    if (arg === "--") break;
-  }
-  return args;
-};
 
 // ---------------------------------------------------------------------------
 // Import guard
@@ -398,7 +359,7 @@ const reportCoverage = async (
   return failures.length === 0 ? null : failures.join("\n");
 };
 
-const args = parseArgs(process.argv.slice(2));
+const args = parseConsumerArgs(process.argv.slice(2), repoRoot);
 
 if (args.packOnly !== null) {
   const tarballs = await packAll(args.packOnly);
@@ -433,14 +394,18 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     "FOLIO_SCENARIO_CORPUS_DIR",
     "FOLIO_SCENARIO_FAILURES_DIR",
     "FOLIO_SCENARIO_MINIMIZED_DIR",
+    "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
+    "FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT",
   ]) {
     const value = process.env[name];
     if (value !== undefined && value !== "") environment[name] = path.resolve(value);
   }
   // Fingerprints with an open issue: continuous-fuzz.test.ts records them without failing.
-  const known = JSON.parse(
-    await readFile(path.join(repoRoot, "test", "known-failure-fingerprints.json"), "utf8"),
-  ) as { known: { fingerprint: string }[] };
+  const knownRegistryPath = path.join(repoRoot, "test", "known-failure-fingerprints.json");
+  environment["FOLIO_SCENARIO_KNOWN_FAILURE_REGISTRY"] = knownRegistryPath;
+  const known = JSON.parse(await readFile(knownRegistryPath, "utf8")) as {
+    known: { fingerprint: string }[];
+  };
   environment["FOLIO_SCENARIO_KNOWN_FINGERPRINTS"] = known.known
     .map(({ fingerprint }) => fingerprint)
     .join(",");

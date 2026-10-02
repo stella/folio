@@ -14,9 +14,11 @@ import path from "node:path";
 import { createReviewerBridge } from "@stll/folio-agents/bridges/reviewer";
 import { generateRedlineDocx } from "@stll/folio-agents/compare";
 import { executeFolioToolCallUntyped } from "@stll/folio-agents/execute";
+import type { FolioAgentToolOptions } from "@stll/folio-agents/suggest-changes-options";
 import { FOLIO_AGENT_TOOL_NAMES } from "@stll/folio-agents/types";
 import type { FolioAIEditApplyMode, FolioDocxReviewer } from "@stll/folio-core/server";
 
+import { expandBatchOperations, type ExpandedBatch } from "./batch-operations";
 import {
   checkExpectedVersion,
   errnoCode,
@@ -202,15 +204,16 @@ const mutateWithAgentTool = async ({
   options,
 }: MutateOptions): Promise<Result<Mutation, FolioCliError>> => {
   if (tool.type !== "agentWrite") return panic("mutateWithAgentTool needs an agentWrite tool");
-  const reviewer = await openReviewer(source, options.author);
-  if (reviewer.isErr()) return Result.err(reviewer.error);
+  const opened = await openReviewer(source, options.author);
+  if (opened.isErr()) return Result.err(opened.error);
+  const { reviewer } = opened.value;
   const idSeed = await nextRevisionIdSeed(source.bytes);
   if (idSeed.isErr()) return Result.err(idSeed.error);
 
   const commentTool =
     tool.agentTool === FOLIO_AGENT_TOOL_NAMES.replyComment ||
     tool.agentTool === FOLIO_AGENT_TOOL_NAMES.resolveComment;
-  if (commentTool && !commentExists(reviewer.value, args["commentId"])) {
+  if (commentTool && !commentExists(reviewer, args["commentId"])) {
     return Result.err(
       cliError({
         code: FOLIO_CLI_ERROR_CODES.notFound,
@@ -220,22 +223,36 @@ const mutateWithAgentTool = async ({
     );
   }
 
-  const bridge = createReviewerBridge(reviewer.value, {
+  const bridge = createReviewerBridge(reviewer, {
     mode: tool.editMode === "tracked-or-direct" ? options.mode : "tracked-changes",
     revisionStamp: { date: options.date, idSeed: idSeed.value },
   });
-  const executed = executeFolioToolCallUntyped(tool.agentTool, args, bridge);
+  let callArgs: Readonly<Record<string, unknown>> = args;
+  let callOptions: FolioAgentToolOptions = {};
+  let replaced: ExpandedBatch["replaced"] = [];
+  if (tool.agentTool === FOLIO_AGENT_TOOL_NAMES.suggestChanges) {
+    const batch = expandBatchOperations(args["operations"], bridge);
+    if (batch.isErr()) return Result.err(batch.error);
+    callArgs = { ...args, operations: batch.value.operations };
+    callOptions = batch.value.options;
+    replaced = batch.value.replaced;
+  }
+  const executed = executeFolioToolCallUntyped(tool.agentTool, callArgs, bridge, callOptions);
   if (!executed.ok) return Result.err(invalidInput(executed.error));
   const refusal = refusalFor(executed.result);
   if (refusal !== null) return Result.err(refusal);
 
-  const saved = await saveReviewer(reviewer.value, options.repack);
+  const saved = await saveReviewer(reviewer, options.repack);
   if (saved.isErr()) return Result.err(saved.error);
   const receipts =
     isRecord(executed.result) && Array.isArray(executed.result["receipts"])
       ? executed.result["receipts"]
       : [];
-  return Result.ok({ ...saved.value, result: executed.result, receipts });
+  const result =
+    replaced.length > 0 && isRecord(executed.result)
+      ? { ...executed.result, replaced }
+      : executed.result;
+  return Result.ok({ ...saved.value, result, receipts });
 };
 
 const isResolveAction = (value: unknown): value is ResolveChangeAction =>
@@ -259,12 +276,13 @@ const resolveChanges = async ({
       ),
     );
   }
-  const reviewer = await openReviewer(source, options.author);
-  if (reviewer.isErr()) return Result.err(reviewer.error);
+  const opened = await openReviewer(source, options.author);
+  if (opened.isErr()) return Result.err(opened.error);
+  const { reviewer } = opened.value;
 
   let resolved: number | readonly string[];
   if (all === true) {
-    const count = action === "accept" ? reviewer.value.acceptAll() : reviewer.value.rejectAll();
+    const count = action === "accept" ? reviewer.acceptAll() : reviewer.rejectAll();
     if (count === 0) {
       return Result.err(
         cliError({
@@ -276,7 +294,7 @@ const resolveChanges = async ({
     resolved = count;
   } else {
     const selected = idList ?? [];
-    const known = new Set(reviewer.value.getChanges().map(({ id }) => String(id)));
+    const known = new Set(reviewer.getChanges().map(({ id }) => String(id)));
     const missing = selected.filter((id) => !known.has(id));
     if (missing.length > 0) {
       return Result.err(
@@ -290,9 +308,7 @@ const resolveChanges = async ({
     }
     for (const id of selected) {
       const changed =
-        action === "accept"
-          ? reviewer.value.acceptChange(Number(id))
-          : reviewer.value.rejectChange(Number(id));
+        action === "accept" ? reviewer.acceptChange(Number(id)) : reviewer.rejectChange(Number(id));
       if (!changed) {
         return Result.err(
           cliError({
@@ -304,11 +320,11 @@ const resolveChanges = async ({
     }
     resolved = selected;
   }
-  const saved = await saveReviewer(reviewer.value, options.repack);
+  const saved = await saveReviewer(reviewer, options.repack);
   if (saved.isErr()) return Result.err(saved.error);
   return Result.ok({
     ...saved.value,
-    result: { action, resolved, remaining: reviewer.value.getChanges().length },
+    result: { action, resolved, remaining: reviewer.getChanges().length },
     receipts: [],
   });
 };

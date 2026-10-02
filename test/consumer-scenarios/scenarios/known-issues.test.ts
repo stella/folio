@@ -45,51 +45,46 @@ const applyTo = (reviewer: Reviewer, story: Story, operation: Operation, mode: M
 };
 
 describe("findings not yet filed", () => {
-  expectedFailure(
-    "SUGGESTED_NOTE_EDIT_SAVE_THROWS",
-    "a footnote suggested twice around a save, with body suggestions, saves",
-    FINDING_SYMPTOMS.SUGGESTED_NOTE_EDIT_SAVE_THROWS,
-    async () => {
-      const footnote = { type: "footnote", noteId: 1 } as const;
-      let reviewer = await openReviewer(await notesDocument());
-      const note = () => rowsOf(reviewer, footnote)[0] as { id: string; text: string };
-      const lastBody = () => reviewer.getContent().at(-1) as { id: string };
-      const { id, text } = note();
-      const range = createFolioAITextRangeHandle({
-        blockId: id,
-        text,
-        startOffset: 0,
-        endOffset: 7,
-      });
-      applyTo(
-        reviewer,
-        footnote,
-        { type: "formatRange", range, formatting: { italic: true } },
-        "suggested",
-      );
-      applyTo(
-        reviewer,
-        { type: "main" },
-        { type: "insertAfterBlock", blockId: lastBody().id, text: "One." },
-        "suggested",
-      );
-      // Suggestions stay out of the package: this saves the document before them.
-      reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
-      applyTo(
-        reviewer,
-        footnote,
-        { type: "replaceBlock", blockId: note().id, text: "Rewritten note." },
-        "suggested",
-      );
-      applyTo(
-        reviewer,
-        { type: "main" },
-        { type: "insertBeforeBlock", blockId: lastBody().id, text: "Two." },
-        "suggested",
-      );
-      await reviewer.toBuffer();
-    },
-  );
+  test("a footnote suggested twice around a save, with body suggestions, saves", async () => {
+    const footnote = { type: "footnote", noteId: 1 } as const;
+    let reviewer = await openReviewer(await notesDocument());
+    const note = () => rowsOf(reviewer, footnote)[0] as { id: string; text: string };
+    const lastBody = () => reviewer.getContent().at(-1) as { id: string };
+    const { id, text } = note();
+    const range = createFolioAITextRangeHandle({
+      blockId: id,
+      text,
+      startOffset: 0,
+      endOffset: 7,
+    });
+    applyTo(
+      reviewer,
+      footnote,
+      { type: "formatRange", range, formatting: { italic: true } },
+      "suggested",
+    );
+    applyTo(
+      reviewer,
+      { type: "main" },
+      { type: "insertAfterBlock", blockId: lastBody().id, text: "One." },
+      "suggested",
+    );
+    // Suggestions stay out of the package: this saves the document before them.
+    reviewer = await openReviewer(new Uint8Array(await reviewer.toBuffer()));
+    applyTo(
+      reviewer,
+      footnote,
+      { type: "replaceBlock", blockId: note().id, text: "Rewritten note." },
+      "suggested",
+    );
+    applyTo(
+      reviewer,
+      { type: "main" },
+      { type: "insertBeforeBlock", blockId: lastBody().id, text: "Two." },
+      "suggested",
+    );
+    await reviewer.toBuffer();
+  });
 
   expectedFailure(
     "INSERT_AFTER_PENDING_MERGE",

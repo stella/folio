@@ -54,7 +54,7 @@ import type { EditorView } from "prosemirror-view";
 import { createLatestRequestGate } from "@stll/folio-core/controller/latestRequestGate";
 import type { FlowBlock, Layout, Measure } from "@stll/folio-core/layout-engine/types";
 import { projectRangesToRects } from "@stll/folio-core/paged-layout/rangeProjection";
-import { prefersReducedMotionBehavior } from "@stll/folio-core/paged-layout/scrollNavigation";
+import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import type { AnonymizationMatch } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 import {
   getAnonymizationMatches,
@@ -161,10 +161,7 @@ function scrollSelectedIntoView(): void {
   }
   const nextIndex = cycle?.canonical === canonical ? (cycle.index + 1) % spans.length : 0;
   cycle = { canonical, index: nextIndex };
-  spans.item(nextIndex)?.scrollIntoView({
-    block: "center",
-    behavior: prefersReducedMotionBehavior(),
-  });
+  scrollEditorElementIntoView(spans.item(nextIndex));
 }
 
 watch(

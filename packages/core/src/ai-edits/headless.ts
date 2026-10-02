@@ -48,6 +48,11 @@ import type { Command } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 
+import {
+  allocateCommentId,
+  createCommentIdAllocator,
+  seedCommentAllocator,
+} from "../prosemirror/commentIdAllocator";
 import { createReply } from "../docx/replyToComment";
 import { applyReplyThreadMarkers } from "../docx/commentReplyMarkers";
 import { attemptSelectiveSave } from "../docx/selectiveSave";
@@ -127,6 +132,7 @@ import type {
 } from "../types/document";
 import { deterministicHexId } from "../utils/hexId";
 import { getCachedNumberingMap } from "../docx/numberingParser";
+import { createNumberingIdAllocator } from "../docx/numberingIds";
 import {
   recreateProseNodeWithParagraphPropertySource,
   transferProseParagraphPropertySource,
@@ -189,14 +195,6 @@ import type {
   FolioAIEditSnapshot,
 } from "./types";
 
-/**
- * Standalone comment-id allocator for the reviewer. The React editor uses
- * `Date.now()`-seeded ids from `commentsHelpers`; that module is DOM-bound
- * (`EditorView`, `findBodyPmAnchors`) and unimportable here, so the reviewer
- * mints its own. Seeded once per realm and incremented so ids stay unique
- * across reviewers created within the same millisecond.
- */
-let commentIdCursor = Date.now();
 let undoHandleCursor = Date.now();
 
 /**
@@ -639,7 +637,7 @@ type FolioDocxComparisonStoryProjection = {
 type FolioDocxComparisonProjection = {
   stories: readonly FolioDocxComparisonStoryProjection[];
   revisions: {
-    highestId: number;
+    ids: readonly number[];
     present: boolean;
   };
 };
@@ -1111,7 +1109,6 @@ export class FolioDocxReviewer {
   private readonly importedFooters = new Map<string, HeaderFooter>();
   private readonly resolvedStoryExpectations = new Map<string, FolioResolvedStoryExpectation>();
   private readonly createdComments: Comment[] = [];
-  private readonly usedCommentIds: Set<number>;
   /** Comments the body anchored when it was loaded, read as the editor projects it. */
   private readonly loadedMainCommentIds: ReadonlySet<number>;
   private readonly documentOperationUndoEntries: FolioDocumentOperationUndoEntry[] = [];
@@ -1136,9 +1133,9 @@ export class FolioDocxReviewer {
     this.originalBuffer = args.originalBuffer;
     this.state = args.state;
     this.author = args.author;
-    this.usedCommentIds = new Set(
-      (args.baseDocument.package.document.comments ?? []).map(({ id }) => id),
-    );
+    seedCommentAllocator(createCommentIdAllocator(), args.baseDocument.package.document.comments, {
+      state: args.state,
+    });
     this.loadedMainCommentIds = anchoredCommentIdsInProseDoc(args.state.doc);
     comparisonAccessByReviewer.set(
       this,
@@ -1329,8 +1326,8 @@ export class FolioDocxReviewer {
     );
     const levelsByNumId = referencedNumberingLevelsByNumId({ references });
     const importedAbstractIds = new Map<number, number>();
-    let nextAbstractId = 0;
-    for (const id of abstracts.keys()) nextAbstractId = Math.max(nextAbstractId, id + 1);
+    const existingAbstractIds = [...abstracts.keys(), ...targetAbstracts.keys()];
+    const abstractIds = createNumberingIdAllocator("abstract", existingAbstractIds);
     for (const numId of levelsByNumId.keys()) {
       const targetNum = targetNums.get(numId);
       if (!targetNum) return "conflict";
@@ -1357,9 +1354,8 @@ export class FolioDocxReviewer {
         abstractNumId = targetAbstract.abstractNumId;
         const collision = abstracts.get(abstractNumId);
         if (collision && canonicalJson(collision) !== canonicalJson(targetAbstract)) {
-          abstractNumId = nextAbstractId++;
+          abstractNumId = abstractIds.next();
         }
-        nextAbstractId = Math.max(nextAbstractId, abstractNumId + 1);
         importedAbstractIds.set(targetAbstract.abstractNumId, abstractNumId);
         abstracts.set(abstractNumId, { ...targetAbstract, abstractNumId });
       }
@@ -1392,9 +1388,8 @@ export class FolioDocxReviewer {
       target.abstractNums.map((entry) => [entry.abstractNumId, entry]),
     );
     const levelsByNumId = referencedNumberingLevelsByNumId({ references });
-    let nextNumId = 0;
-    for (const id of nums.keys()) nextNumId = Math.max(nextNumId, id + 1);
-    for (const id of targetNums.keys()) nextNumId = Math.max(nextNumId, id + 1);
+    const existingNumIds = [...nums.keys(), ...targetNums.keys()];
+    const numberingIds = createNumberingIdAllocator("num", existingNumIds);
     const remapped = new Map<number, number>();
     for (const numId of levelsByNumId.keys()) {
       const targetNum = targetNums.get(numId);
@@ -1403,7 +1398,7 @@ export class FolioDocxReviewer {
       const existingNum = nums.get(numId);
       if (!existingNum) continue;
       if (!sameReferencedNumberingLevels({ current, target, numId, levelsByNumId })) {
-        remapped.set(numId, nextNumId++);
+        remapped.set(numId, numberingIds.next());
       }
     }
     return remapped;
@@ -1569,11 +1564,11 @@ export class FolioDocxReviewer {
     mode: FolioDocxComparisonProjectionMode,
   ): FolioDocxComparisonProjection {
     const handles = this.listStoryHandlesInternal();
-    let highestId = 0;
+    const ids = new Set<number>();
     let present = false;
     if (mode === "with-revision-census") {
       for (const change of this.currentFinalSectionProperties()?.propertyChanges ?? []) {
-        highestId = Math.max(highestId, change.info.id);
+        ids.add(change.info.id);
         present = true;
       }
       // Census every arriving story before resolution mutates any reviewer
@@ -1585,7 +1580,7 @@ export class FolioDocxReviewer {
           continue;
         }
         const stats = getTrackedChangeStatsFromDoc(state.doc);
-        highestId = Math.max(highestId, stats.highestId);
+        for (const id of stats.ids) ids.add(id);
         present ||= stats.present;
       }
     }
@@ -1597,7 +1592,7 @@ export class FolioDocxReviewer {
         snapshot: this.resolveReviewedStorySnapshotInternal({ story: handle, view: "final" }),
       });
     }
-    return { stories, revisions: { highestId, present } };
+    return { stories, revisions: { ids: [...ids], present } };
   }
 
   /**
@@ -2187,7 +2182,6 @@ export class FolioDocxReviewer {
       return null;
     }
     this.createdComments.push(reply);
-    this.usedCommentIds.add(reply.id);
     this.anchorReplyInEditor({ parentId: reply.parentId ?? parentId, replyId: reply.id });
     return { id: reply.id, author: reply.author, date: reply.date ?? null, text: input.text };
   }
@@ -3517,12 +3511,7 @@ export class FolioDocxReviewer {
 
   /** Allocate outside every parsed or newly-created comment and reply id. */
   private nextCommentId(): number {
-    while (this.usedCommentIds.has(commentIdCursor)) {
-      commentIdCursor += 1;
-    }
-    const id = commentIdCursor++;
-    this.usedCommentIds.add(id);
-    return id;
+    return allocateCommentId();
   }
 
   /**

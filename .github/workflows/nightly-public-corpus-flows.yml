@@ -1,0 +1,103 @@
+name: Nightly Public Corpus Flows
+
+on:
+  workflow_call:
+  schedule:
+    - cron: "47 4 * * *"
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Replay a uint32 seed (blank chooses a fresh run seed)
+        required: false
+        type: string
+      steps:
+        description: Steps per public document (8–16)
+        default: "12"
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: nightly-public-corpus-flows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  corpus-flows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile
+      - name: Set cache outside the checkout
+        run: echo "FOLIO_CORPUS_CACHE=$RUNNER_TEMP/folio-corpus" >> "$GITHUB_ENV"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.FOLIO_CORPUS_CACHE }}
+          key: folio-corpus-${{ hashFiles('corpus/sources.lock.json') }}
+      - name: Fetch pinned public corpus
+        run: bun run corpus:fetch
+      - name: Stage eight bounded tier-one flow starts
+        run: bun scripts/stage-public-corpus-flows.ts
+      - name: Run full consumer flows and shrink failures
+        env:
+          REPLAY_SEED: ${{ inputs.seed }}
+          REQUESTED_STEPS: ${{ inputs.steps }}
+          FOLIO_SCENARIO_PUBLIC_CORPUS_FUZZ: "1"
+          FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT: ${{ github.workspace }}/test-results/public-corpus
+        run: |
+          set -o pipefail
+          mkdir -p "$FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT"
+          export FOLIO_SCENARIO_SEED="${REPLAY_SEED:-$((GITHUB_RUN_ID * 7919 % 2147483647))}"
+          export FOLIO_SCENARIO_PUBLIC_CORPUS_STEPS="${REQUESTED_STEPS:-12}"
+          bun scripts/consumer-scenarios.ts -- public-corpus-fuzz.test.ts 2>&1 | tee "$FOLIO_SCENARIO_PUBLIC_CORPUS_OUTPUT/run.log"
+      - name: Preserve replay environment and minimized traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: public-corpus-full-flows
+          path: test-results/public-corpus
+          retention-days: 14
+          if-no-files-found: error
+
+  report:
+    name: File public corpus findings
+    needs: corpus-flows
+    if: failure() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: public-corpus-full-flows
+          path: fuzz-results
+      - name: Open or update findings by fingerprint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          bun scripts/fuzz-failure-issues.ts --log fuzz-results/run.log
+          --records fuzz-results --run-url "$RUN_URL" --sha "$GITHUB_SHA"
+          --source public-corpus-flows

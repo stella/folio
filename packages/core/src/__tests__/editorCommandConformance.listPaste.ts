@@ -1,6 +1,6 @@
 import { DOCUMENT_SHAPES } from "./documentShapes";
 import { EXTRA_OPERATIONS } from "./editorCommandConformance";
-import { SELECTION_PLACEMENTS } from "./editorHarness";
+import { TEXTBLOCK_SELECTION_PLACEMENTS } from "./editorHarness";
 
 // Direct-list shapes exercise numbering carried on paragraph marks. Style
 // rebasing has separate gaps, so its shapes keep their existing coverage.
@@ -17,7 +17,7 @@ const operations = EXTRA_OPERATIONS.filter(
 const pairs = shapes.flatMap((shape) => operations.map((operation) => ({ shape, operation })));
 
 export const LIST_PASTE_RESOLUTION_CASES = pairs.flatMap(({ shape, operation }) =>
-  SELECTION_PLACEMENTS.map((placement) => ({ shape, operation, placement })),
+  TEXTBLOCK_SELECTION_PLACEMENTS.map((placement) => ({ shape, operation, placement })),
 );
 
 export const LIST_PASTE_RESOLUTION_KEYS = pairs.map(({ shape, operation }) => ({

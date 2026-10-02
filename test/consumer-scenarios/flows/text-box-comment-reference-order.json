@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 774176689,
+  "steps": [
+    {
+      "action": "add_comment",
+      "seed": 1342071162
+    },
+    {
+      "action": "reply and resolve",
+      "seed": 14458625
+    },
+    {
+      "action": "core batch",
+      "seed": 2718472086,
+      "operations": [
+        {
+          "type": "commentOnBlock",
+          "blockId": "39CF981B",
+          "quote": "The",
+          "comment": {
+            "text": "Party warranty agreement."
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "formatRange",
+    "insertAfterBlock",
+    "deleteBlock",
+    "commentOnBlock",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from dropOperation+splice+delete of 3827f6d30d65b8bf",
+  "title": "comment references remain before following text-box drawings across save"
+}

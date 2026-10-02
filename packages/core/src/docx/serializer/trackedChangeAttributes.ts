@@ -7,7 +7,7 @@ import type {
   TrackedChangeInfo,
 } from "../../types/document";
 import { DATE_UTC_ATTRIBUTE } from "../trackedChangeInfo";
-import { escapeXmlAttribute } from "@stll/docx-core";
+import { assertValidOoxmlNumericId, escapeXmlAttribute } from "@stll/docx-core";
 
 type SerializableTrackedChangeInfo = TrackedChangeInfo | PropertyChangeInfo;
 
@@ -29,6 +29,12 @@ export const getSingularRunPropertyChange = (
 export const trackedChangeAttributeEntries = (
   info: SerializableTrackedChangeInfo,
 ): readonly (readonly [string, string])[] => {
+  assertValidOoxmlNumericId({
+    value: info.id,
+    partPath: "word/*.xml",
+    elementName: "tracked change",
+    attributeName: "w:id",
+  });
   const author = typeof info.author === "string" ? info.author.trim() : "";
   const date = typeof info.date === "string" ? info.date.trim() : "";
   const rawUtcDate: unknown = info.utcDate;

@@ -27,6 +27,7 @@ export const SELECTION_TYPES = [
   "cross-paragraph",
   "whole-document",
   "cell-selection",
+  "node-selection",
   "none",
 ] as const;
 export type SelectionType = (typeof SELECTION_TYPES)[number];
@@ -36,6 +37,59 @@ export type FeatureCounts = Record<string, number>;
 export type FeatureCoverage = { version: 1; cells: FeatureCounts; operations: string[] };
 
 const DELIMITER = " | ";
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Validate and snapshot only generation inputs; derived report fields are discarded. */
+export const parseFeatureCoverage = (value: unknown): FeatureCoverage => {
+  if (
+    !isRecord(value) ||
+    value["version"] !== 1 ||
+    !isRecord(value["cells"]) ||
+    !Array.isArray(value["operations"])
+  ) {
+    throw new TypeError("feature coverage needs version 1, cells, and operations");
+  }
+  const operations = value["operations"].filter(
+    (operation): operation is string => typeof operation === "string" && operation.length > 0,
+  );
+  if (
+    operations.length !== value["operations"].length ||
+    new Set(operations).size !== operations.length
+  ) {
+    throw new TypeError("feature coverage operations must be distinct nonempty strings");
+  }
+  const cells: FeatureCounts = {};
+  for (const [key, count] of Object.entries(value["cells"])) {
+    const [operation, feature, selection, extra] = key.split(DELIMITER);
+    if (
+      !operation ||
+      !operations.includes(operation) ||
+      !(DOCUMENT_FEATURES as readonly unknown[]).includes(feature) ||
+      !(SELECTION_TYPES as readonly unknown[]).includes(selection) ||
+      extra !== undefined ||
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count < 0
+    ) {
+      throw new TypeError(`invalid feature coverage cell ${key}`);
+    }
+    cells[key] = count;
+  }
+  return { version: 1, cells, operations };
+};
+
+/** Generation's operation weights must derive from the flow's recorded input. */
+export const featureOperationHits = (report: FeatureCoverage): FeatureCounts => {
+  const hits: FeatureCounts = {};
+  for (const [key, count] of Object.entries(report.cells)) {
+    const operation = key.split(DELIMITER).at(0);
+    if (!operation) throw new TypeError("feature coverage cell has no operation");
+    hits[operation] = (hits[operation] ?? 0) + count;
+  }
+  return hits;
+};
+
 export const featureCellKey = ({ operation, feature, selection }: FeatureCell): string =>
   [operation, feature, selection].join(DELIMITER);
 
@@ -126,6 +180,7 @@ export const shapeFeatureSignature = (features: readonly string[]): DocumentFeat
 
 export const placementSelection = (placement: string, isCellSelection = false): SelectionType => {
   if (isCellSelection) return "cell-selection";
+  if (placement === "node") return "node-selection";
   if (placement.startsWith("caret-")) return "caret";
   if (placement === "word" || placement === "paragraph") return "paragraph-range";
   if (placement === "cross-paragraph") return "cross-paragraph";

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "suggested",
+  "seed": 774176334,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 3797895990,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "6C3D4F0C",
+            "startOffset": 18,
+            "endOffset": 23,
+            "selectedTextHash": "h4gr0cj"
+          },
+          "formatting": {
+            "bold": true
+          }
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "6C3D4F0C",
+          "text": "Term supplier notice term term clause goods warranty."
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 4110025675
+    },
+    {
+      "action": "story batch",
+      "seed": 1646624192,
+      "operations": [
+        {
+          "type": "formatRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "6C3D4F0C",
+            "startOffset": 3,
+            "endOffset": 10,
+            "selectedTextHash": "h2dcbi0"
+          },
+          "formatting": {
+            "italic": true
+          }
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 2086636271,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "2C3555E4",
+          "text": "Clause agreement period written invoice written agreement supplier."
+        }
+      ]
+    }
+  ],
+  "swarm": ["formatRange", "insertBeforeBlock", "insertTableColumn"],
+  "origin": "shrunk from collisions flow seed 774176334",
+  "title": "suggested footnote edits rejected from the save snapshot remain saveable"
+}
