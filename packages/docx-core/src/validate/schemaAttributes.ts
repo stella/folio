@@ -136,6 +136,8 @@ export const validateSchemaAttributes = (xml: string): string | null => {
       parseAttributeValue: false,
       trimValues: false,
       processEntities: true,
+      // Enable numeric XML references without adding HTML named entities.
+      htmlEntities: {},
       ignoreDeclaration: true,
     }).parse(xml),
   );

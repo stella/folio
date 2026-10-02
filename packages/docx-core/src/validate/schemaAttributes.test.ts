@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { validateSchemaAttributes } from "./schemaAttributes";
 
@@ -84,21 +87,27 @@ describe("schema-derived story attribute oracle", () => {
 
   test("checks builtin integer ranges without floating point rounding", () => {
     expect(
-      validateSchemaAttributes(`<w:sz xmlns:w="${TRANSITIONAL}" w:val="18446744073709551615"/>`),
+      validateSchemaAttributes(
+        `<w:rPr xmlns:w="${TRANSITIONAL}"><w:sz w:val="18446744073709551615"/></w:rPr>`,
+      ),
     ).toBeNull();
     expect(
-      validateSchemaAttributes(`<w:sz xmlns:w="${TRANSITIONAL}" w:val="18446744073709551616"/>`),
+      validateSchemaAttributes(
+        `<w:rPr xmlns:w="${TRANSITIONAL}"><w:sz w:val="18446744073709551616"/></w:rPr>`,
+      ),
     ).toContain("Invalid attribute value");
-    expect(validateSchemaAttributes(`<w:sz xmlns:w="${TRANSITIONAL}" w:val="-1"/>`)).toContain(
-      "Invalid attribute value",
-    );
+    expect(
+      validateSchemaAttributes(`<w:rPr xmlns:w="${TRANSITIONAL}"><w:sz w:val="-1"/></w:rPr>`),
+    ).toContain("Invalid attribute value");
   });
 
   test.each([TRANSITIONAL, STRICT])(
     "applies schema whitespace per union member under %s",
     (namespace) => {
       const part = (tag: string, value: string) =>
-        `<w:${tag} xmlns:w="${namespace}" w:val="${value}"/>`;
+        tag === "sz"
+          ? `<w:rPr xmlns:w="${namespace}"><w:sz w:val="${value}"/></w:rPr>`
+          : `<w:${tag} xmlns:w="${namespace}" w:val="${value}"/>`;
       // ST_Jc derives from xs:string: ASCII padding is part of the enum value.
       for (const value of [" center ", "&#x9;center&#xA;", "&#xA0;center&#xA0;"]) {
         expect(validateSchemaAttributes(part("jc", value))).toContain("Invalid attribute value");
@@ -122,6 +131,35 @@ describe("schema-derived story attribute oracle", () => {
       expect(validateSchemaAttributes(part("sz", " 12 "))).toBeNull();
       expect(validateSchemaAttributes(part("sz", " 12pt "))).toContain("Invalid attribute value");
     },
+  );
+
+  test(
+    "annotation ids preserve validity across numeric XML encodings",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.integer(),
+          fc.constantFrom(TRANSITIONAL, STRICT),
+          fc.constantFrom("decimal", "hex"),
+          (id, namespace, encoding) => {
+            const encoded = [...String(id)]
+              .map((character) =>
+                encoding === "decimal"
+                  ? `&#${character.codePointAt(0)};`
+                  : `&#x${character.codePointAt(0)?.toString(16)};`,
+              )
+              .join("");
+            expect(
+              validateSchemaAttributes(
+                `<x:commentReference xmlns:x="${namespace}" x:id="${encoded}"/>`,
+              ),
+            ).toBeNull();
+          },
+        ),
+        propertyConfig({ numRuns: 100 }),
+      );
+    },
+    propertyTestTimeout(5_000),
   );
 
   test("decodes XML entities before checking enums", () => {

@@ -212,6 +212,15 @@ describe("validateDocxPackage archive inflation limits", () => {
 
   test("leaves a highly compressible binary entry to the byte and archive limits", async () => {
     const zip = await JSZip.loadAsync(await packageWithDocument(documentOfSize(16)));
+    const declarations = await zip.file("[Content_Types].xml")?.async("string");
+    if (!declarations) throw new TypeError("Missing binary fixture declarations");
+    zip.file(
+      "[Content_Types].xml",
+      declarations.replace(
+        "</Types>",
+        '<Default Extension="bmp" ContentType="image/bmp"/><Default Extension="bin" ContentType="application/octet-stream"/></Types>',
+      ),
+    );
     zip.file("word/media/image1.bmp", new Uint8Array(5 * 1024 * 1024).fill(0xff));
     // Incompressible padding keeps the archive as a whole under the ratio cap.
     zip.file("padding.bin", crypto.getRandomValues(new Uint8Array(64 * 1024)), {

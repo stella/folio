@@ -26,6 +26,8 @@ const parser = new XMLParser({
   parseTagValue: false,
   parseAttributeValue: false,
   processEntities: true,
+  // Enable numeric XML references without adding HTML named entities.
+  htmlEntities: {},
   ignoreDeclaration: true,
 });
 const isRecord = (value: unknown): value is Record<string, unknown> =>
