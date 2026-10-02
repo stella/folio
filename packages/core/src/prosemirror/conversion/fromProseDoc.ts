@@ -28,7 +28,6 @@ import {
 } from "../../internal/paragraphFormattingSerialization";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
-import { foldedListNumberFieldsOf } from "../../docx/foldedListNumberFields";
 import { isInlineSdtContent, isSimpleFieldContent } from "../../docx/inlineWrapperContent";
 import {
   BLOCK_TREE_DESCENT,
@@ -85,7 +84,6 @@ import type {
   ImagePosition,
   ShapeFill,
   ShapeOutline,
-  FoldedListNumberFields,
   PositionedBookmarkMarker,
   PreservedAttribute,
   SectionProperties,
@@ -1217,13 +1215,9 @@ const keepOneRecordCarriedByIdentity = (blocks: readonly BlockContent[]): void =
     preservedAttributes?: PreservedAttribute[];
     bookmarks?: PositionedBookmarkMarker[];
     preserved?: PreservedMarkup;
-    foldedListNumberFields?: FoldedListNumberFields;
   }): void => {
     if (!isAuthored(record.preservedAttributes)) {
       delete record.preservedAttributes;
-    }
-    if (!isAuthored(record.foldedListNumberFields)) {
-      delete record.foldedListNumberFields;
     }
     if (!isAuthored(record.bookmarks)) {
       delete record.bookmarks;
@@ -1854,16 +1848,6 @@ function convertPMParagraph(
   // below is what decides whether this paragraph is the one that authored it.
   if (attrs._preservedAttributes && attrs._preservedAttributes.length > 0) {
     paragraph.preservedAttributes = attrs._preservedAttributes;
-  }
-
-  // The fields folded into the list marker, by reference like the remainder
-  // above. They belong to the numbering level they were folded under, so a
-  // paragraph that left it, or lost its numbering, takes none with it.
-  if (attrs._foldedListNumberFields) {
-    paragraph.foldedListNumberFields = attrs._foldedListNumberFields;
-    if (!foldedListNumberFieldsOf(paragraph)) {
-      delete paragraph.foldedListNumberFields;
-    }
   }
 
   linkParagraphPropertySourceCandidate(paragraph, node);
@@ -3770,8 +3754,10 @@ const isInlineLevelPreservedXml = (node: PMNode): boolean =>
 
 /** The paragraph-level capture an inline-level atom writes back. */
 const createPreservedInline = (node: PMNode): PreservedInline => {
-  const { xml, text } = expectPreservedXmlAttrs(node);
-  return { type: "preservedInline", xml, text };
+  const { xml, text, foldedListNumber } = expectPreservedXmlAttrs(node);
+  return foldedListNumber
+    ? { type: "preservedInline", xml, text, foldedListNumber }
+    : { type: "preservedInline", xml, text };
 };
 
 /**

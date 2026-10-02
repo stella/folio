@@ -222,8 +222,6 @@ export type {
   PreservedInline,
   TableCellBlock,
   FieldType,
-  FoldedListNumberField,
-  FoldedListNumberFields,
   SimpleField,
   ComplexField,
   Field,

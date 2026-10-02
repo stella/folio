@@ -270,7 +270,6 @@ export type Paragraph = {
     reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];
     listRendering?: ListRendering;
-    foldedListNumberFields?: FoldedListNumberFields;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
     preservedAttributes?: PreservedAttribute[];

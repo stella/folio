@@ -437,22 +437,6 @@ export type FloatingTableProperties = {
 };
 
 // @public
-export type FoldedListNumberField = {
-    field: ComplexField;
-    tab?: Run;
-    offset: number;
-    markersBefore: number;
-    markersBeforeTab?: number;
-};
-
-// @public
-export type FoldedListNumberFields = {
-    numId: number;
-    level: number;
-    fields: FoldedListNumberField[];
-};
-
-// @public
 export type FontCharset = {
     val?: string;
     characterSet?: string;
@@ -980,7 +964,6 @@ export type Paragraph = {
     reviewCarrier?: ReviewCarrier;
     content: ParagraphContent[];
     listRendering?: ListRendering;
-    foldedListNumberFields?: FoldedListNumberFields;
     renderedPageBreakBefore?: boolean;
     sectionProperties?: SectionProperties;
     preservedAttributes?: PreservedAttribute[];
@@ -1221,6 +1204,7 @@ export type PreservedInline = {
     type: "preservedInline";
     xml: string;
     text: string;
+    foldedListNumber?: "field" | "tab";
 };
 
 // @public

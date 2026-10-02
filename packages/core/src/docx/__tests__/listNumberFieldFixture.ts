@@ -175,7 +175,7 @@ const fieldXml = (field: FieldSpec, ids: MarkupIds): { inline: string; trailing:
   return { inline, trailing };
 };
 
-const paragraphXml = (spec: ParagraphSpec, ids: MarkupIds): string => {
+const paragraphXml = (spec: ParagraphSpec, ids: MarkupIds, authored?: string): string => {
   let inline = "";
   let trailing = "";
   for (const field of spec.fields) {
@@ -186,16 +186,23 @@ const paragraphXml = (spec: ParagraphSpec, ids: MarkupIds): string => {
   return (
     `<w:p w14:paraId="${spec.paraId}"><w:pPr><w:numPr><w:ilvl w:val="1"/>` +
     `<w:numId w:val="${numIdOf(spec.marker)}"/></w:numPr></w:pPr>` +
-    `${inline}${textRun(spec.body)}${trailing}</w:p>`
+    `${authored ?? `${inline}${textRun(spec.body)}${trailing}`}</w:p>`
   );
 };
 
 export const PLAIN_PARAGRAPH_ID = "20000009";
 
-/** A package of the given numbered paragraphs, closed by one plain paragraph. */
-export const listNumberFieldDocx = (paragraphs: readonly ParagraphSpec[]): Promise<ArrayBuffer> => {
+/**
+ * A package of the given numbered paragraphs, closed by one plain paragraph.
+ * `authored` gives, by `paraId`, inline markup to use in place of what the
+ * paragraph's spec would write.
+ */
+export const listNumberFieldDocx = (
+  paragraphs: readonly ParagraphSpec[],
+  authored: Readonly<Record<string, string>> = {},
+): Promise<ArrayBuffer> => {
   const ids: MarkupIds = { next: 1, comments: [] };
-  const body = paragraphs.map((spec) => paragraphXml(spec, ids)).join("");
+  const body = paragraphs.map((spec) => paragraphXml(spec, ids, authored[spec.paraId])).join("");
   const documentXml =
     `${XML_DECLARATION}<w:document ${W} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     `<w:body>${body}<w:p w14:paraId="${PLAIN_PARAGRAPH_ID}"><w:r><w:t>Plain.</w:t></w:r></w:p>` +
@@ -311,8 +318,36 @@ export const layoutMarkers = (model: Document): (string | null)[] =>
 export const modelMarkers = (model: Document): (string | null)[] =>
   bodyParagraphs(model).map((paragraph) => paragraph.listRendering?.marker ?? null);
 
-export const foldedSource = (model: Document): unknown[] =>
-  bodyParagraphs(model).map((paragraph) => paragraph.foldedListNumberFields ?? null);
+/**
+ * What each paragraph's content holds, by kind and in order, with the fold's
+ * captures named. Neighbouring runs count once: where text is cut into runs
+ * is not what the fold decides.
+ */
+export const contentShapes = (model: Document): string[][] =>
+  bodyParagraphs(model).map((paragraph) => {
+    const shape: string[] = [];
+    for (const item of paragraph.content) {
+      const kind =
+        item.type === "preservedInline" && item.foldedListNumber !== undefined
+          ? `folded:${item.foldedListNumber}`
+          : item.type;
+      if (kind !== "run" || shape.at(-1) !== "run") {
+        shape.push(kind);
+      }
+    }
+    return shape;
+  });
+
+/** The fold's captures in a ProseMirror document, in document order. */
+export const foldedCaptureNodes = (doc: PMNode): { node: PMNode; position: number }[] => {
+  const found: { node: PMNode; position: number }[] = [];
+  doc.descendants((node, position) => {
+    if (node.type.name === "preservedXml" && node.attrs["foldedListNumber"] != null) {
+      found.push({ node, position });
+    }
+  });
+  return found;
+};
 
 export const paragraphNode = (doc: PMNode, paraId: string): { node: PMNode; position: number } => {
   const found: { node: PMNode; position: number }[] = [];

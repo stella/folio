@@ -1,21 +1,19 @@
 /**
- * Folding a paragraph's `LISTNUM` fields into its marker and writing them
- * back are inverses: whatever stood in the content, the fields and their tabs
- * return to where they were, and nothing else moves.
- *
- * The second property regroups the kept text into runs of its own before the
- * fields go back, which is what a pass through the editor does to it.
+ * The fold of a paragraph's `LISTNUM` fields changes what two kinds of item
+ * are and nothing about where anything stands: every field, and the tab after
+ * it, becomes the markup it was read from, in the same place, and every other
+ * item is the same object at the same index.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
-import type { ComplexField, Paragraph, ParagraphContent, Run } from "../types/document";
+import type { ComplexField, ParagraphContent, Run } from "../types/document";
 import {
-  foldedListNumberFieldsOf,
   foldListNumberFields,
-  withFoldedListNumberFields,
+  isFoldedListNumberCapture,
+  isTabOnlyRun,
 } from "./foldedListNumberFields";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -38,9 +36,6 @@ const MARKER_TYPES = [
   "commentRangeStart",
   "commentRangeEnd",
 ] as const;
-
-/** Ways a paragraph stops owning the fields its marker folded. */
-const NUMBERING_CHANGES = ["level", "numId", "unnumbered", "unrecorded"] as const;
 
 const contentArbitrary: fc.Arbitrary<ParagraphContent[]> = fc.array(
   fc.oneof(
@@ -79,70 +74,90 @@ const contentArbitrary: fc.Arbitrary<ParagraphContent[]> = fc.array(
   { maxLength: 12 },
 );
 
-const NUM_ID = 4;
-const LEVEL = 1;
+const isListNumberField = (item: ParagraphContent): boolean =>
+  item.type === "complexField" && item.fieldType === "LISTNUM";
 
-const foldedParagraph = (content: readonly ParagraphContent[]): Paragraph => {
-  const fold = foldListNumberFields(content);
+const isMarker = (item: ParagraphContent): boolean =>
+  MARKER_TYPES.some((type) => type === item.type);
+
+/** Markup that names the item it stands for, so a capture can be traced back. */
+const sourcesOf = (content: readonly ParagraphContent[]) => {
+  const markup = new Map<ParagraphContent, string>();
+  const items = new Map<string, ParagraphContent>();
+  for (const [index, item] of content.entries()) {
+    markup.set(item, `<w:r data-index="${index}"/>`);
+    items.set(`<w:r data-index="${index}"/>`, item);
+  }
   return {
-    type: "paragraph",
-    content: fold.content,
-    listRendering: { marker: "%1.%2", level: LEVEL, numId: NUM_ID, isBullet: false },
-    foldedListNumberFields: { numId: NUM_ID, level: LEVEL, fields: fold.fields },
+    markupOf: (item: ParagraphContent): string | undefined => markup.get(item),
+    itemOf: (xml: string): ParagraphContent | undefined => items.get(xml),
   };
 };
 
-/** Adjacent text runs joined into one, as the editor regroups them. */
-const regrouped = (content: readonly ParagraphContent[]): ParagraphContent[] => {
-  const joined: ParagraphContent[] = [];
-  for (const item of content) {
-    const previous = joined.at(-1);
-    const text = item.type === "run" ? item.content.at(0) : undefined;
-    const previousText = previous?.type === "run" ? previous.content.at(0) : undefined;
-    if (text?.type === "text" && previousText?.type === "text") {
-      joined[joined.length - 1] = textRun(previousText.text + text.text);
-    } else {
-      joined.push(item);
-    }
-  }
-  return joined;
-};
-
-/** The content one unit at a time, so where a run boundary falls does not show. */
-const units = (content: readonly ParagraphContent[]): string[] =>
-  content.flatMap((item) => {
-    if (item.type === "run") {
-      return item.content.flatMap((piece) =>
-        piece.type === "text"
-          ? [...piece.text].map((character) => `text:${character}`)
-          : [piece.type],
-      );
-    }
-    if (item.type === "complexField") {
-      return [`field:${item.instruction}:${JSON.stringify(item.fieldResult)}`];
-    }
-    return ["id" in item ? `${item.type}:${String(item.id)}` : item.type];
-  });
-
-describe("folding LISTNUM fields out of a paragraph and writing them back", () => {
-  test("takes out every LISTNUM field, the tab after it, and nothing else", () => {
+describe("folding LISTNUM fields into captures of their own markup", () => {
+  test("every item keeps its place, and a capture stands for the item that was there", () => {
     assertProperty(
       fc.property(contentArbitrary, (content) => {
-        const fold = foldListNumberFields(content);
-        const listNumberFields = content.filter(
-          (item) => item.type === "complexField" && item.fieldType === "LISTNUM",
-        );
+        const sources = sourcesOf(content);
 
-        expect(fold.fields.map((folded) => folded.field)).toEqual(listNumberFields);
-        expect(fold.content.some((item) => listNumberFields.includes(item))).toBe(false);
-        expect(fold.content.length + fold.fields.length).toBe(
-          content.length - fold.fields.filter(({ tab }) => tab !== undefined).length,
+        const fold = foldListNumberFields(content, sources.markupOf);
+
+        expect(fold.content).toHaveLength(content.length);
+        const restored = fold.content.map((item) =>
+          isFoldedListNumberCapture(item) ? sources.itemOf(item.xml) : item,
         );
+        for (const [index, item] of content.entries()) {
+          expect(restored[index]).toBe(item);
+        }
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  test("the captures are exactly the fields and the tabs that follow them", () => {
+    assertProperty(
+      fc.property(contentArbitrary, (content) => {
+        const sources = sourcesOf(content);
+
+        const fold = foldListNumberFields(content, sources.markupOf);
+
+        expect(fold.fieldCount).toBe(content.filter(isListNumberField).length);
+        let afterField = false;
+        for (const [index, item] of content.entries()) {
+          const folded = fold.content[index];
+          if (!folded) {
+            throw new Error(`The fold dropped the item at ${index}`);
+          }
+          const kind = isFoldedListNumberCapture(folded) ? folded.foldedListNumber : undefined;
+          if (isListNumberField(item)) {
+            expect(kind).toBe("field");
+            expect(folded).toMatchObject({ text: "" });
+            afterField = true;
+          } else if (isMarker(item)) {
+            // A marker neither is folded nor ends the wait for the tab.
+            expect(kind).toBeUndefined();
+          } else {
+            expect(kind).toBe(afterField && isTabOnlyRun(item) ? "tab" : undefined);
+            afterField = false;
+          }
+        }
+      }),
+      { numRuns: 300 },
+    );
+  });
+
+  test("the cached display is each folded field's result text, in order", () => {
+    assertProperty(
+      fc.property(contentArbitrary, (content) => {
+        const fold = foldListNumberFields(content, sourcesOf(content).markupOf);
+
         expect(fold.cached).toEqual(
-          fold.fields.flatMap(({ field: folded }) =>
-            folded.fieldResult.flatMap((run) =>
-              run.content.flatMap((piece) => (piece.type === "text" ? [piece.text] : [])),
-            ),
+          content.flatMap((item) =>
+            item.type === "complexField" && item.fieldType === "LISTNUM"
+              ? item.fieldResult.flatMap((run) =>
+                  run.content.flatMap((piece) => (piece.type === "text" ? [piece.text] : [])),
+                )
+              : [],
           ),
         );
       }),
@@ -150,123 +165,19 @@ describe("folding LISTNUM fields out of a paragraph and writing them back", () =
     );
   });
 
-  test("writes each field and tab back where it stood", () => {
+  test("an item with no markup to stand for it is left as it is", () => {
     assertProperty(
       fc.property(contentArbitrary, (content) => {
-        expect(withFoldedListNumberFields(foldedParagraph(content))).toEqual(content);
-      }),
-      { numRuns: 300 },
-    );
-  });
+        const fold = foldListNumberFields(content, () => undefined);
 
-  test("writes each field back between the same characters once the text is regrouped", () => {
-    assertProperty(
-      fc.property(contentArbitrary, (content) => {
-        const paragraph = foldedParagraph(content);
-        paragraph.content = regrouped(paragraph.content);
-
-        expect(units(withFoldedListNumberFields(paragraph))).toEqual(units(content));
-      }),
-      { numRuns: 300 },
-    );
-  });
-
-  test("writes the fields back only under the numbering level that folded them", () => {
-    assertProperty(
-      fc.property(contentArbitrary, fc.constantFrom(...NUMBERING_CHANGES), (content, change) => {
-        const paragraph = foldedParagraph(content);
-        const rendering = paragraph.listRendering;
-        if (!rendering) {
-          throw new Error("The folded paragraph is numbered");
+        expect(fold.content).toHaveLength(content.length);
+        for (const [index, item] of content.entries()) {
+          expect(fold.content[index]).toBe(item);
         }
-        switch (change) {
-          case "level":
-            paragraph.listRendering = { ...rendering, level: LEVEL + 1 };
-            break;
-          case "numId":
-            paragraph.listRendering = { ...rendering, numId: NUM_ID + 1 };
-            break;
-          case "unnumbered":
-            delete paragraph.listRendering;
-            break;
-          case "unrecorded":
-            delete paragraph.foldedListNumberFields;
-            break;
-          default: {
-            const unhandled: never = change;
-            throw new Error(`Unhandled change ${String(unhandled)}`);
-          }
-        }
-
-        expect(foldedListNumberFieldsOf(paragraph)).toBeUndefined();
-        expect(withFoldedListNumberFields(paragraph)).toBe(paragraph.content);
+        expect(fold.cached).toEqual([]);
+        expect(fold.fieldCount).toBe(content.filter(isListNumberField).length);
       }),
       { numRuns: 100 },
     );
-  });
-});
-
-describe("writing folded LISTNUM fields back into edited content", () => {
-  const listNumber = field(" LISTNUM ", "(a)");
-
-  const paragraphWith = (
-    content: ParagraphContent[],
-    position: { offset: number; markersBefore: number; markersBeforeTab?: number },
-  ): Paragraph => ({
-    type: "paragraph",
-    content,
-    listRendering: { marker: "%1.%2\t(a)", level: LEVEL, numId: NUM_ID, isBullet: false },
-    foldedListNumberFields: {
-      numId: NUM_ID,
-      level: LEVEL,
-      fields: [{ field: listNumber, tab: tabRun(), ...position }],
-    },
-  });
-
-  test("a field recorded past the end of the content goes at the end", () => {
-    const paragraph = paragraphWith([textRun("ab")], { offset: 9, markersBefore: 0 });
-
-    expect(withFoldedListNumberFields(paragraph)).toEqual([textRun("ab"), listNumber, tabRun()]);
-  });
-
-  test("a field whose markers are gone goes ahead of the text at its offset", () => {
-    const paragraph = paragraphWith([textRun("ab"), textRun("cd")], {
-      offset: 2,
-      markersBefore: 2,
-      markersBeforeTab: 1,
-    });
-
-    expect(withFoldedListNumberFields(paragraph)).toEqual([
-      textRun("ab"),
-      listNumber,
-      tabRun(),
-      textRun("cd"),
-    ]);
-  });
-
-  test("a field recorded inside one run cuts the run and keeps its formatting on both halves", () => {
-    const bold: Run = {
-      type: "run",
-      formatting: { bold: true },
-      content: [{ type: "text", text: "abcd" }],
-    };
-    const paragraph = paragraphWith([bold], { offset: 1, markersBefore: 0 });
-
-    expect(withFoldedListNumberFields(paragraph)).toEqual([
-      { ...bold, content: [{ type: "text", text: "a" }] },
-      listNumber,
-      tabRun(),
-      { ...bold, content: [{ type: "text", text: "bcd" }] },
-    ]);
-  });
-
-  test("the paragraph's own content is left as it was", () => {
-    const content = [textRun("abcd")];
-    const paragraph = paragraphWith(content, { offset: 2, markersBefore: 0 });
-
-    withFoldedListNumberFields(paragraph);
-
-    expect(paragraph.content).toBe(content);
-    expect(content).toEqual([textRun("abcd")]);
   });
 });

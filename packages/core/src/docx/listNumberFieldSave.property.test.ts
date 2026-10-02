@@ -6,8 +6,8 @@
  * and compared with the markup the paragraph was authored from: instruction,
  * field characters, cached result, the tab, the range markers between them and
  * the text around them, in order. The reopened document is compared with the
- * one first opened: the folded source, with its run formatting, and the marker
- * each paragraph carries and is laid out with.
+ * one first opened: which items the reader folded, and the marker each
+ * paragraph carries and is laid out with.
  *
  * Each case goes out three ways, because each takes a different route through
  * the save: no paragraph of its own edited, text typed into every paragraph,
@@ -28,7 +28,7 @@ import {
   documentXmlOf,
   expectedTokens,
   type FieldSpec,
-  foldedSource,
+  contentShapes,
   type GapMarker,
   inlineTokens,
   layoutMarkers,
@@ -107,6 +107,9 @@ const paragraphsArbitrary: fc.Arbitrary<ParagraphSpec[]> = fc
 
 const TYPED = "!";
 
+const foldedKinds = (model: Document): string[][] =>
+  contentShapes(model).map((shape) => shape.filter((kind) => kind.startsWith("folded:")));
+
 const expectSaved = async (
   saved: ArrayBuffer,
   original: Document,
@@ -120,7 +123,7 @@ const expectSaved = async (
   }
 
   const reopened = await openDocx(saved);
-  expect(foldedSource(reopened)).toEqual(foldedSource(original));
+  expect(foldedKinds(reopened)).toEqual(foldedKinds(original));
   expect(modelMarkers(reopened)).toEqual(modelMarkers(original));
   expect(layoutMarkers(reopened)).toEqual(layoutMarkers(original));
 };
@@ -134,12 +137,8 @@ const expectFolded = (parsed: Document, specs: readonly ParagraphSpec[]): void =
       throw new Error(`The document has no paragraph ${spec.paraId}`);
     }
     const cached = cachedDisplay(spec);
-    const folded = paragraph.foldedListNumberFields;
-    expect(folded?.fields.map(({ field }) => field.instruction)).toEqual(
-      spec.fields.map(({ instruction }) => instruction),
-    );
-    expect(folded?.fields.map(({ tab }) => tab !== undefined)).toEqual(
-      spec.fields.map(({ tab }) => tab),
+    expect(foldedKinds(parsed).at(index)).toEqual(
+      spec.fields.flatMap(({ tab }) => (tab ? ["folded:field", "folded:tab"] : ["folded:field"])),
     );
     expect(JSON.stringify(paragraph.content)).not.toContain("complexField");
     // A bullet's marker is redrawn in its symbol font, cached text included.

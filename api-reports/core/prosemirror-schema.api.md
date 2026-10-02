@@ -358,7 +358,6 @@ export type ParagraphAttrs = {
     };
     _sectionProperties?: import__stll_docx_core_model.SectionProperties;
     _preservedAttributes?: import__stll_docx_core_model.PreservedAttribute[];
-    _foldedListNumberFields?: import__stll_docx_core_model.FoldedListNumberFields;
     _propertyChanges?: ParagraphPropertyChangeAttrs[];
     pPrMark?: import__stll_docx_core_model.ParagraphMarkChange;
     _suggestedInsert?: SuggestedStructuralMarker | null;
@@ -387,6 +386,7 @@ export type PreservedXmlAttrs = {
     xml: string;
     text: string;
     level: PreservedXmlLevel;
+    foldedListNumber?: "field" | "tab";
 };
 
 // @public (undocumented)

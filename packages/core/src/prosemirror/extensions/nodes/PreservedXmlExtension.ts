@@ -30,6 +30,9 @@ export const PreservedXmlExtension = createNodeExtension({
       // A run child is the case a paste through the DOM is most likely to
       // carry, and the one whose re-wrapping in a `w:r` is always legal.
       level: { default: PRESERVED_XML_LEVELS.run },
+      // `undefined`, so a capture that is not a folded list-number field
+      // serializes exactly as it did before the attr existed.
+      foldedListNumber: { default: undefined },
     },
     parseDOM: [
       {
@@ -46,18 +49,25 @@ export const PreservedXmlExtension = createNodeExtension({
             node.dataset["docxPreservedLevel"] === PRESERVED_XML_LEVELS.inline
               ? PRESERVED_XML_LEVELS.inline
               : PRESERVED_XML_LEVELS.run;
-          return { xml, text: node.dataset["docxPreservedText"] ?? "", level };
+          const folded = node.dataset["docxFoldedListNumber"];
+          return {
+            xml,
+            text: node.dataset["docxPreservedText"] ?? "",
+            level,
+            ...(folded === "field" || folded === "tab" ? { foldedListNumber: folded } : {}),
+          };
         },
       },
     ],
     toDOM(node) {
-      const { xml, text, level } = expectPreservedXmlAttrs(node);
+      const { xml, text, level, foldedListNumber } = expectPreservedXmlAttrs(node);
       return [
         "span",
         {
           "data-docx-preserved-xml": xml,
           "data-docx-preserved-level": level,
           ...(text === "" ? {} : { "data-docx-preserved-text": text }),
+          ...(foldedListNumber ? { "data-docx-folded-list-number": foldedListNumber } : {}),
           contenteditable: "false",
         },
         text,
