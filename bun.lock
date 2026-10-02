@@ -60,7 +60,7 @@
     },
     "packages/cli": {
       "name": "@stll/folio-cli",
-      "version": "0.3.4",
+      "version": "0.4.0",
       "bin": {
         "folio": "./src/bin.ts",
       },
@@ -94,7 +94,7 @@
     },
     "packages/core": {
       "name": "@stll/folio-core",
-      "version": "0.54.1",
+      "version": "0.54.2",
       "dependencies": {
         "@stll/docx-core": "workspace:^",
         "@stll/docx-utils": "^0.1.0",
@@ -129,7 +129,7 @@
     },
     "packages/docx-core": {
       "name": "@stll/docx-core",
-      "version": "0.30.0",
+      "version": "0.30.1",
       "dependencies": {
         "@stll/docx-utils": "^0.1.0",
         "better-result": "3.0.1",
@@ -227,7 +227,7 @@
     },
     "packages/react": {
       "name": "@stll/folio-react",
-      "version": "0.24.1",
+      "version": "0.24.2",
       "dependencies": {
         "@base-ui/react": "1.8.0",
         "@fontsource/arimo": "^5.2.8",
@@ -262,7 +262,7 @@
     },
     "packages/vue": {
       "name": "@stll/folio-vue",
-      "version": "0.21.1",
+      "version": "0.21.2",
       "dependencies": {
         "@fontsource/arimo": "^5.2.8",
         "@fontsource/caladea": "^5.2.8",
@@ -304,7 +304,7 @@
   "overrides": {
     "archiver": "8.0.0",
     "brace-expansion": "5.0.12",
-    "devalue": "5.9.3",
+    "devalue": "5.9.4",
     "fast-uri": "3.1.8",
     "nanoid": "3.3.18",
     "postcss": "8.5.25",
@@ -1352,7 +1352,7 @@
 
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
-    "devalue": ["devalue@5.9.3", "", {}, "sha512-xRumYOCUZN/EesqHEU3WOXanOZNvfZFZ/o1AHVFDX1yI0UAkZkOgDXt341CzKoBVIkgQba55/+DjGBKrIoKcHw=="],
+    "devalue": ["devalue@5.9.4", "", {}, "sha512-sPAT4pztbu6586/hrhOnMKS17IJrvg12mXiSPSS3W5qDeN2RGgvZ0diZCm31dBbnevfVmujNO3IM2wrS4Y2Rhg=="],
 
     "devframe": ["devframe@0.7.13", "", { "dependencies": { "@valibot/to-json-schema": "^1.7.1", "birpc": "^4.0.0", "crossws": "^0.4.10", "destr": "^2.0.5", "h3": "^2.0.1-rc.22", "mrmime": "^2.0.1", "nostics": "^1.2.0", "pathe": "^2.0.3", "ufo": "^1.6.4", "valibot": "^1.4.2" }, "peerDependencies": { "@modelcontextprotocol/sdk": "^1.0.0", "cac": "^7.0.0" }, "optionalPeers": ["@modelcontextprotocol/sdk", "cac"] }, "sha512-Ay/FJxXpzlLuN0dT4f4F4uE+XTmUO3mGe+lkbkWIALg95fUdlBZWkRq/nMi7S2B7xll/b2FhvjUi/sXm8IQPcw=="],
 

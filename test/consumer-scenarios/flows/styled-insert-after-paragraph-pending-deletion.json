@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "tracked-changes",
+  "seed": 1026399033,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 962457836,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "1688D395"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1778540797,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1688D395",
+          "text": "Party period delivery buyer.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 1026399033",
+  "title": "PINNED #1453, reported seed 1026399033: styled insert after a paragraph pending deletion"
+}

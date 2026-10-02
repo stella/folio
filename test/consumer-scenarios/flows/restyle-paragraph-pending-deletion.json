@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "comments",
+  "mode": "tracked-changes",
+  "seed": 1026398003,
+  "steps": [
+    {
+      "action": "core batch",
+      "seed": 1906422161,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "1108F4A8"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 131221245,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "1108F4A8",
+          "properties": {
+            "styleId": null
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from collisions flow seed 1026398003",
+  "title": "PINNED #1453, reported seed 1026398003: restyle a paragraph pending deletion"
+}
