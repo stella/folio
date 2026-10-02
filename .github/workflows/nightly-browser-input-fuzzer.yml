@@ -17,6 +17,7 @@ jobs:
       contents: read
     outputs:
       findings: ${{ steps.fuzz.outcome == 'failure' }}
+      interleaving_findings: ${{ steps.interleaving.outcome == 'failure' }}
 
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -43,14 +44,40 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          mkdir -p test-results
-          export FOLIO_FUZZ_SEEDS="${FOLIO_FUZZ_SEEDS},$(date +%s)"
-          bunx playwright test --project=browser-fuzzer --workers=1 2>&1 | tee test-results/browser-fuzz.log
+          mkdir -p fuzz-artifacts/browser
+          fresh_seed=$(date +%s)
+          export FOLIO_FUZZ_SEEDS="${FOLIO_FUZZ_SEEDS},${fresh_seed}"
+          bunx playwright test --project=browser-fuzzer --workers=1 --output=fuzz-playwright/browser 2>&1 | tee fuzz-artifacts/browser/browser-fuzz.log
         env:
           CI: "true"
           FOLIO_FUZZ_LANE: "nightly"
           FOLIO_FUZZ_SEEDS: "11,29,47,83,131,197,263,347,431,557"
           FOLIO_FUZZ_RUNS: "20"
+
+      - name: Random AI and human revision interleaving
+        if: always()
+        id: interleaving
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          CI: "true"
+          FOLIO_FUZZ_LANE: "nightly"
+          FOLIO_FUZZ_SEEDS: "11,29,${{ github.run_number }}"
+          FOLIO_FUZZ_RUNS: "10"
+        run: |
+          set -o pipefail
+          mkdir -p fuzz-artifacts/interleaving
+          bunx playwright test --project=interleaving-fuzzer --workers=1 --output=fuzz-playwright/interleaving 2>&1 | tee fuzz-artifacts/interleaving/interleaving.log
+
+      - name: Keep interleaving repro artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: interleaving-findings
+          path: |
+            fuzz-artifacts/interleaving
+            fuzz-playwright/interleaving
+          retention-days: 14
 
       - name: Keep minimized traces and browser artifacts
         if: always()
@@ -58,14 +85,14 @@ jobs:
         with:
           name: browser-input-fuzzer
           path: |
-            test-results
-            playwright-report
+            fuzz-artifacts/browser
+            fuzz-playwright/browser
           retention-days: 14
 
   report:
     name: File browser fuzz findings
     needs: browser-input-fuzzer
-    if: always() && needs.browser-input-fuzzer.outputs.findings == 'true'
+    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.findings == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     concurrency:
@@ -91,6 +118,39 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
-          bun scripts/fuzz-failure-issues.ts --log fuzz-results/test-results/browser-fuzz.log
-          --records fuzz-results/test-results/browser-fuzz-failures --run-url "$RUN_URL"
+          bun scripts/fuzz-failure-issues.ts --log fuzz-results/fuzz-artifacts/browser/browser-fuzz.log
+          --records fuzz-results/fuzz-artifacts/browser/findings --run-url "$RUN_URL"
           --sha "$GITHUB_SHA" --source nightly-browser-input
+
+  interleaving-report:
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    name: File AI and human revision interleaving findings
+    needs: browser-input-fuzzer
+    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.interleaving_findings == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: interleaving-findings
+          path: fuzz-results
+      - name: File findings by fingerprint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          bun scripts/fuzz-failure-issues.ts
+          --log fuzz-results/fuzz-artifacts/interleaving/interleaving.log --records fuzz-results/fuzz-artifacts/interleaving/findings
+          --source "AI and human revision interleaving" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
