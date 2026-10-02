@@ -1,16 +1,12 @@
 #!/usr/bin/env bun
 /**
- * File fuzz failures as GitHub issues, one per fingerprint.
+ * File fuzz failures as GitHub issues, one per failure class.
  *
- * Reads the `FOLIO_FAILURE {json}` lines of one or more logs and the failure
- * records a fuzz run wrote (`test/consumer-scenarios/support/failure-fingerprints.ts`,
- * which add the minimized flow and every replay line), groups them by
- * fingerprint, and for each one opens an issue labelled `fuzz-failure`, or
- * updates the issue already filed for it: an open one gets its occurrence
- * count, seeds and latest replay refreshed in place (no comment per run), a
- * closed one is reopened with a comment, because the failure came back. A
- * fingerprint `test/known-failure-fingerprints.json` lists is already
- * tracked where it says and gets no issue.
+ * Reads failure markers and minimized replay records. The class signature
+ * groups related failures; fingerprints identify replay cases in its seed
+ * table. Repeated runs are idempotent. Recent closed classes reopen; older
+ * recurrences link a new issue. Known fingerprints remain tracked in their
+ * registry, and new issue creation is capped per run.
  *
  * Usage:
  *   bun scripts/fuzz-failure-issues.ts [--log <file>]… [--records <dir>]…
@@ -20,6 +16,7 @@
  */
 
 import { $ } from "bun";
+import { TaggedError } from "better-result";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -29,18 +26,13 @@ import type {
   FailureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { extractFailureMarkers, parseKnownFailures } from "./failure-fingerprints";
+import { fileClasses, type Issue } from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "fuzz-failure",
   color: "b60205",
-  description: "A failure a fuzz run found, one issue per fingerprint",
+  description: "A failure a fuzz run found, one issue per failure class",
 };
-
-/** New issues one run may open; updates to filed ones are not capped. */
-const MAX_NEW_ISSUES = 15;
-const MAX_TEXT = 6_000;
-const MAX_SEEDS = 12;
-const STATE_MARKER = "fuzz-failure-state";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -81,7 +73,7 @@ export const parseFailureRecord = (value: unknown): FailureRecord | null => {
 };
 
 /** One fingerprint's failures from a run: the most useful record and every seed. */
-export type Finding = { record: FailureRecord; seeds: number[] };
+export type Finding = { record: FailureRecord; seeds: number[]; records: FailureRecord[] };
 
 const stepsOf = (record: FailureRecord): number => record.shrink?.steps ?? Number.POSITIVE_INFINITY;
 
@@ -98,10 +90,20 @@ export const collectFindings = (
     const { fingerprint, seed } = record.marker;
     const found = findings.get(fingerprint);
     if (found === undefined) {
-      findings.set(fingerprint, { record, seeds: [seed] });
+      findings.set(fingerprint, { record, seeds: [seed], records: [record] });
       return;
     }
     if (!found.seeds.includes(seed)) found.seeds.push(seed);
+    const existingIndex = found.records.findIndex(
+      ({ marker }) => marker.seed === seed && marker.path === record.marker.path,
+    );
+    if (existingIndex < 0) found.records.push(record);
+    else {
+      const existing = found.records.at(existingIndex);
+      if (existing !== undefined && !bare && stepsOf(record) < stepsOf(existing)) {
+        found.records[existingIndex] = record;
+      }
+    }
     if (!bare && stepsOf(record) < stepsOf(found.record)) found.record = record;
   };
   for (const record of records) add(record, false);
@@ -112,25 +114,19 @@ export const collectFindings = (
     );
     if (shrunk !== undefined) {
       if (!shrunk.seeds.includes(marker.seed)) shrunk.seeds.push(marker.seed);
+      if (!shrunk.records.some(({ marker: existing }) => existing.seed === marker.seed)) {
+        shrunk.records.push({
+          version: 1,
+          marker,
+          replays: [marker.repro],
+          error: marker.assertion,
+        });
+      }
       continue;
     }
     add({ version: 1, marker, replays: [marker.repro], error: marker.assertion }, true);
   }
   return [...findings.values()];
-};
-
-// ---------------------------------------------------------------------------
-// Issue text
-// ---------------------------------------------------------------------------
-
-export type IssueState = {
-  fingerprint: string;
-  /** The fingerprint before shrinking, which an unshrunk report of the same failure carries. */
-  primary?: string;
-  count: number;
-  firstSeen: string;
-  lastSeen: string;
-  seeds: number[];
 };
 
 export type Context = {
@@ -139,123 +135,6 @@ export type Context = {
   source: string;
   date: string;
 };
-
-const truncate = (text: string): string =>
-  text.length > MAX_TEXT
-    ? `${text.slice(0, MAX_TEXT)}\n… (${String(text.length - MAX_TEXT)} more characters)`
-    : text;
-
-const fence = (text: string, lang = ""): string => {
-  const ticks = text.includes("```") ? "````" : "```";
-  return `${ticks}${lang}\n${truncate(text)}\n${ticks}`;
-};
-
-export const issueTitle = ({ record }: Finding): string => {
-  const { fingerprint, test, assertion } = record.marker;
-  const title = `Fuzz failure [${fingerprint}]: ${test}: ${assertion}`;
-  return title.length <= 240 ? title : `${title.slice(0, 239)}…`;
-};
-
-/** The fingerprint an issue title files, or null. */
-export const fingerprintOfTitle = (title: string): string | null =>
-  /^Fuzz failure \[([0-9a-f]{16})\]/u.exec(title)?.[1] ?? null;
-
-export const readState = (body: string): IssueState | null => {
-  const match = new RegExp(`<!-- ${STATE_MARKER} (\\{.*?\\}) -->`, "u").exec(body);
-  if (match === null) return null;
-  try {
-    const value: unknown = JSON.parse(match[1] as string);
-    if (
-      isRecord(value) &&
-      typeof value["fingerprint"] === "string" &&
-      typeof value["count"] === "number" &&
-      typeof value["firstSeen"] === "string" &&
-      typeof value["lastSeen"] === "string" &&
-      Array.isArray(value["seeds"])
-    ) {
-      return value as IssueState;
-    }
-  } catch {
-    // An edited state reads as none: the next update starts it afresh.
-  }
-  return null;
-};
-
-type IssueFingerprintOptions = { title: string; body: string | null };
-
-/** Human-filed findings may keep terse titles and carry identity in their state. */
-export const issueFingerprint = ({ title, body }: IssueFingerprintOptions): string | null =>
-  fingerprintOfTitle(title) ?? readState(body ?? "")?.fingerprint ?? null;
-
-/** The state after this run saw `finding` (`previous` is the issue's, if filed). */
-export const nextState = (
-  finding: Finding,
-  previous: IssueState | null,
-  date: string,
-): IssueState => ({
-  fingerprint: previous?.fingerprint ?? finding.record.marker.fingerprint,
-  primary: previous?.primary ?? finding.record.marker.primary ?? finding.record.marker.fingerprint,
-  count: (previous?.count ?? 0) + 1,
-  firstSeen: previous?.firstSeen ?? date,
-  lastSeen: date,
-  seeds: [...new Set([...finding.seeds, ...(previous?.seeds ?? [])])].slice(0, MAX_SEEDS),
-});
-
-export const issueBody = (finding: Finding, state: IssueState, context: Context): string => {
-  const { record } = finding;
-  const { marker } = record;
-  const where = [
-    context.runUrl === null ? context.source : `[${context.source}](${context.runUrl})`,
-    context.sha === null ? null : `commit \`${context.sha.slice(0, 12)}\``,
-  ]
-    .filter((part) => part !== null)
-    .join(", ");
-  const [replay, ...others] = record.replays;
-  const sections = [
-    `A fuzz flow failed in ${where}.`,
-    "",
-    `**Test:** ${marker.test}`,
-    `**Symptom:** \`${marker.assertion}\``,
-    ...(marker.diff === undefined ? [] : [`**Differences:** \`${marker.diff}\``]),
-    ...(marker.flow === undefined ? [] : [`**Minimized operations:** \`${marker.flow}\``]),
-    `**Fingerprint:** \`${marker.fingerprint}\``,
-    `**Seed:** \`${String(marker.seed)}\`${marker.path === null ? "" : `, **path:** \`${marker.path}\``}`,
-    "",
-    "### Replay",
-    fence(replay ?? marker.repro, "sh"),
-  ];
-  if (others.length > 0) {
-    sections.push("", "Also replays with:", fence(others.join("\n"), "sh"));
-  }
-  if (record.flow !== undefined) {
-    const shrunk =
-      record.shrink === undefined
-        ? ""
-        : ` (${String(record.shrink.steps)} steps, shrunk from ${String(record.shrink.from)} in ${String(record.shrink.attempts)} replays)`;
-    sections.push(
-      "",
-      `### Minimized flow${shrunk}`,
-      fence(JSON.stringify(record.flow, null, 2), "json"),
-    );
-  }
-  if (record.error.trim() !== "") {
-    sections.push("", "### Error", fence(record.error.trim()));
-  }
-  sections.push(
-    "",
-    "### Occurrences",
-    `Seen in ${String(state.count)} run${state.count === 1 ? "" : "s"} since ${state.firstSeen}, last on ${state.lastSeen}. Seeds: ${state.seeds.map((seed) => `\`${String(seed)}\``).join(", ")}.`,
-    "",
-    `<!-- ${STATE_MARKER} ${JSON.stringify(state)} -->`,
-  );
-  return sections.join("\n");
-};
-
-// ---------------------------------------------------------------------------
-// Filing
-// ---------------------------------------------------------------------------
-
-type Issue = { number: number; title: string; state: string; body: string | null };
 
 const parseArgs = (argv: readonly string[]) => {
   const options = {
@@ -301,6 +180,37 @@ const writeBody = (body: string): string => {
   return file;
 };
 
+class IssueResponseError extends TaggedError("IssueResponseError")<{ message: string }> {}
+
+/** Reject malformed API responses before they can affect matching or writes. */
+export const parseIssueResponse = (value: unknown): Issue => {
+  if (!isRecord(value)) throw new IssueResponseError({ message: "Invalid GitHub issue response" });
+  const number = value["number"];
+  const title = value["title"];
+  const body = value["body"];
+  const state = typeof value["state"] === "string" ? value["state"].toLowerCase() : null;
+  const closedAt = value["closed_at"] ?? value["closedAt"] ?? null;
+  if (
+    typeof number !== "number" ||
+    !Number.isSafeInteger(number) ||
+    number <= 0 ||
+    typeof title !== "string" ||
+    (body !== null && typeof body !== "string") ||
+    (state !== "open" && state !== "closed") ||
+    (closedAt !== null && typeof closedAt !== "string")
+  )
+    throw new IssueResponseError({ message: "Invalid GitHub issue fields" });
+  return { number, title, body, state, closedAt };
+};
+
+/** Validate paginated GitHub responses before selecting an issue to update. */
+export const parseIssuePages = (pages: unknown): Issue[] => {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new IssueResponseError({ message: "Invalid GitHub issue pages" });
+  }
+  return pages.flat().map(parseIssueResponse);
+};
+
 /** Where a finding was filed: `#<number>`, or null when it was not. */
 export type Filed = { fingerprint: string; issue: string | null };
 
@@ -308,7 +218,7 @@ export type Filed = { fingerprint: string; issue: string | null };
  * Open or update the issue of every finding (see the module comment);
  * returns where each went. `root` is the repository checkout.
  */
-export const fileFindings = async (
+export const fileFindings = (
   findings: readonly Finding[],
   context: Context,
   root: string,
@@ -316,82 +226,35 @@ export const fileFindings = async (
   const known = new Map(
     parseKnownFailures(
       JSON.parse(readFileSync(path.join(root, "test", "known-failure-fingerprints.json"), "utf8")),
-    ).map((entry) => [entry.fingerprint, entry]),
+    ).map((entry) => [entry.fingerprint, entry.issueOrPr]),
   );
-  await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`
-    .quiet()
-    .nothrow();
-  const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}&per_page=100`;
-  const pages = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text()) as Issue[][];
-  const filed = new Map<string, Issue>();
-  const byPrimary = new Map<string, Issue>();
-  const keep = (map: Map<string, Issue>, key: string, issue: Issue): void => {
-    const current = map.get(key);
-    if (current === undefined || (current.state !== "open" && issue.state === "open")) {
-      map.set(key, issue);
-    }
-  };
-  // Newest first, so an open issue wins over an older closed one.
-  for (const issue of pages.flat().sort((a, b) => b.number - a.number)) {
-    const fingerprint = issueFingerprint(issue);
-    if (fingerprint === null) continue;
-    keep(filed, fingerprint, issue);
-    keep(byPrimary, readState(issue.body ?? "")?.primary ?? fingerprint, issue);
-  }
-  // A shrunk failure and an unshrunk report of it share the primary fingerprint.
-  const issueOf = ({ fingerprint, primary }: FailureMarker): Issue | undefined =>
-    filed.get(fingerprint) ??
-    (primary === undefined ? byPrimary.get(fingerprint) : filed.get(primary));
-
-  const results: Filed[] = [];
-  let opened = 0;
-  for (const finding of findings) {
-    const { fingerprint } = finding.record.marker;
-    const title = issueTitle(finding);
-    const { primary } = finding.record.marker;
-    const entry =
-      known.get(fingerprint) ?? (primary === undefined ? undefined : known.get(primary));
-    const issue = issueOf(finding.record.marker);
-    if (issue === undefined && entry !== undefined) {
-      // Tracked where the registry says; a run every few hours adds nothing there.
-      console.log(`known ${fingerprint}: ${entry.issueOrPr}`);
-      results.push({ fingerprint, issue: entry.issueOrPr });
-      continue;
-    }
-    if (issue === undefined) {
-      if (opened >= MAX_NEW_ISSUES) {
-        console.log(`not filed (cap of ${String(MAX_NEW_ISSUES)} new issues): ${title}`);
-        results.push({ fingerprint, issue: null });
-        continue;
-      }
-      const body = issueBody(finding, nextState(finding, null, context.date), context);
-      const url = (
-        await $`gh issue create --title ${title} --label ${LABEL.name} --body-file ${writeBody(body)}`.text()
-      ).trim();
-      opened += 1;
-      console.log(`opened ${url}: ${title}`);
-      const number = /\/issues\/(\d+)$/u.exec(url)?.[1];
-      results.push({ fingerprint, issue: number === undefined ? null : `#${number}` });
-      continue;
-    }
-    const number = String(issue.number);
-    const body = issueBody(
-      finding,
-      nextState(finding, readState(issue.body ?? ""), context.date),
-      context,
-    );
-    await $`gh issue edit ${number} --body-file ${writeBody(body)}`.quiet();
-    if (issue.state !== "open") {
-      await $`gh issue reopen ${number}`.quiet();
-      const note = `Failed again in ${context.runUrl ?? context.source}, so reopening: the fix did not hold for this fingerprint.`;
-      await $`gh issue comment ${number} --body-file ${writeBody(note)}`.quiet();
-      console.log(`reopened #${number}: ${title}`);
-    } else {
-      console.log(`updated #${number}: ${title}`);
-    }
-    results.push({ fingerprint, issue: `#${number}` });
-  }
-  return results;
+  return fileClasses({
+    findings,
+    context,
+    known,
+    store: {
+      list: async () => {
+        const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}&per_page=100`;
+        const pages: unknown = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text());
+        return parseIssuePages(pages);
+      },
+      create: async (title, body) => {
+        await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`.quiet();
+        const url = (
+          await $`gh issue create --title ${title} --label ${LABEL.name} --body-file ${writeBody(body)}`.text()
+        ).trim();
+        return parseIssueResponse(
+          JSON.parse(await $`gh issue view ${url} --json number,title,state,body,closedAt`.text()),
+        );
+      },
+      edit: async (number, body) => {
+        await $`gh issue edit ${number} --body-file ${writeBody(body)}`.quiet();
+      },
+      reopen: async (number) => {
+        await $`gh issue reopen ${number}`.quiet();
+      },
+    },
+  });
 };
 
 /** The findings in `logs` (their FOLIO_FAILURE lines) and the record directories. */
@@ -410,21 +273,39 @@ const main = async (): Promise<void> => {
     runUrl: options.runUrl,
     sha: options.sha,
     source: options.source,
-    date: new Date().toISOString().slice(0, 10),
+    date: new Date().toISOString(),
   };
   if (findings.length === 0) {
     console.log("no fuzz failures to file");
     return;
   }
   if (options.dryRun) {
-    for (const finding of findings) {
-      console.log(
-        `=== ${issueTitle(finding)}\n${issueBody(finding, nextState(finding, null, context.date), context)}\n`,
-      );
-    }
+    let number = 0;
+    await fileClasses({
+      findings,
+      context,
+      known: new Map(),
+      store: {
+        list: () => Promise.resolve([]),
+        create: (title, body) => {
+          console.log(`=== ${title}\n${body}\n`);
+          return Promise.resolve({
+            number: ++number,
+            title,
+            body,
+            state: "open",
+            closedAt: null,
+          } satisfies Issue);
+        },
+        edit: () => Promise.resolve(),
+        reopen: () => Promise.resolve(),
+      },
+    });
     return;
   }
-  await fileFindings(findings, context, path.resolve(import.meta.dir, ".."));
+  const results = await fileFindings(findings, context, path.resolve(import.meta.dir, ".."));
+  for (const { fingerprint, issue } of results)
+    console.log(`${fingerprint}: ${issue ?? "not filed (creation cap)"}`);
 };
 
 if (import.meta.main) {

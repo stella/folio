@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "suggested",
+  "seed": 774176091,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2838777792,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1188CBB6",
+          "text": "Delivery warranty invoice agreement delivery notice supplier party."
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2646954201,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@8",
+          "text": "Warranty written period warranty.",
+          "styleId": "Heading2"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3903049241,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "1788D528",
+          "text": "Goods warranty payment.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "swarm": ["insertAfterBlock", "insertBeforeBlock", "insertTableRow", "deleteTableRow"],
+  "origin": "shrunk from random flow seed 774176091",
+  "title": "heading numbering does not come from reader sample"
+}
