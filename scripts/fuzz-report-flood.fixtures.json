@@ -1,0 +1,246 @@
+{
+  "failures": [
+    {
+      "test": "consumer flow comments / tracked-changes",
+      "message": "step 14: Numbering provenance missing for 1108F4A8"
+    },
+    {
+      "test": "consumer flow plain / tracked-changes",
+      "message": "step 3: Numbering provenance missing for 1508FAF4"
+    },
+    {
+      "test": "consumer flow emoji / tracked-changes",
+      "message": "step 9: Numbering provenance missing for 669A232A"
+    },
+    {
+      "test": "consumer flow stories / tracked-changes",
+      "message": "step 2: Numbering provenance missing for 1608FC87"
+    },
+    {
+      "test": "consumer flow tables / suggested",
+      "message": "step 7: Numbering provenance missing for 1408F961"
+    },
+    {
+      "test": "consumer flow styleNumbered / tracked-changes",
+      "message": "\"Scope\": kind is \"paragraph\", expected \"heading\""
+    },
+    {
+      "test": "consumer flow directNumbered / tracked-changes",
+      "message": "\"Term\": kind is \"heading\", expected \"paragraph\""
+    },
+    {
+      "test": "consumer flow lists / tracked-changes",
+      "message": "\"First item\": kind is \"paragraph\", expected \"heading\""
+    },
+    {
+      "test": "consumer flow plain / suggested",
+      "message": "\"Payment\": kind is \"paragraph\", expected \"heading\""
+    },
+    {
+      "test": "consumer flow notes / tracked-changes",
+      "message": "\"Notice\": kind is \"heading\", expected \"paragraph\""
+    },
+    {
+      "test": "consumer flow trackedChanges / direct",
+      "message": "\"Fees\": kind is \"paragraph\", expected \"heading\""
+    },
+    { "test": "consumer flow lists / suggested", "message": "step 5: no comment" },
+    { "test": "consumer flow styleNumbered / direct", "message": "step 11: no comment" },
+    {
+      "test": "consumer flow tables / tracked-changes",
+      "message": "docxToMarkdown vs getContent()"
+    },
+    {
+      "test": "consumer flow notes / suggested",
+      "message": "Cannot repack invalid DOCX document model"
+    },
+    {
+      "test": "packages/core/src/docx/__tests__/roundtrip.property.test.ts::round-trip preserves document structure",
+      "message": "expect(received).toEqual(expected)"
+    },
+    {
+      "test": "packages/core/src/docx/__tests__/numbering.property.test.ts::numbering survives save and reopen",
+      "message": "expect(received).toEqual(expected)"
+    },
+    {
+      "test": "packages/core/src/docx/__tests__/revisions.property.test.ts::accepting every revision matches the direct edit",
+      "message": "expect(received).toEqual(expected)"
+    }
+  ],
+  "standing": [
+    {
+      "number": 1384,
+      "title": "Fuzz failure [73c7b924a911a13a]: consumer flow unusedNumbering / tracked-changes: <text>: kind is <text>, expected <text>"
+    },
+    {
+      "number": 1389,
+      "title": "Fuzz failure [c2680c2870752543]: consumer flow comments / direct: no comment"
+    },
+    {
+      "number": 1409,
+      "title": "Fuzz failure [d8916c79962390be]: consumer flow styleNumbered / tracked-changes: docxToMarkdown vs getContent()"
+    }
+  ],
+  "filed": [
+    {
+      "number": 1448,
+      "title": "Fuzz checks: expect(received).toEqual(expected)",
+      "signature": [
+        "<path>::round-trip preserves document structure",
+        "packages/core/src/docx/__tests__/roundtrip.property.test.ts::round-trip preserves document structure",
+        "all",
+        "expect(received).toEqual(expected)"
+      ]
+    },
+    {
+      "number": 1449,
+      "title": "Fuzz checks: expect(received).toEqual(expected)",
+      "signature": [
+        "<path>::numbering survives save and reopen",
+        "packages/core/src/docx/__tests__/numbering.property.test.ts::numbering survives save and reopen",
+        "all",
+        "expect(received).toEqual(expected)"
+      ]
+    },
+    {
+      "number": 1450,
+      "title": "Fuzz checks: expect(received).toEqual(expected)",
+      "signature": [
+        "<path>::accepting every revision matches the direct edit",
+        "packages/core/src/docx/__tests__/revisions.property.test.ts::accepting every revision matches the direct edit",
+        "all",
+        "expect(received).toEqual(expected)"
+      ]
+    },
+    {
+      "number": 1452,
+      "title": "Consumer flow: docxToMarkdown vs getContent()",
+      "signature": ["consumer-flow", "tables", "tracked-changes", "docxToMarkdown vs getContent()"]
+    },
+    {
+      "number": 1453,
+      "title": "Consumer flow: Numbering provenance missing for <id>",
+      "signature": [
+        "consumer-flow",
+        "comments",
+        "tracked-changes",
+        "Numbering provenance missing for <id>"
+      ]
+    },
+    {
+      "number": 1454,
+      "title": "Consumer flow: Numbering provenance missing for <id>",
+      "signature": [
+        "consumer-flow",
+        "plain",
+        "tracked-changes",
+        "Numbering provenance missing for <id>"
+      ]
+    },
+    {
+      "number": 1455,
+      "title": "Consumer flow: <text>: kind is <text>, expected <text>",
+      "signature": [
+        "consumer-flow",
+        "styleNumbered",
+        "tracked-changes",
+        "<text>: kind is <text>, expected <text>"
+      ]
+    },
+    {
+      "number": 1456,
+      "title": "Consumer flow: <text>: kind is <text>, expected <text>",
+      "signature": [
+        "consumer-flow",
+        "directNumbered",
+        "tracked-changes",
+        "<text>: kind is <text>, expected <text>"
+      ]
+    },
+    {
+      "number": 1457,
+      "title": "Consumer flow: Numbering provenance missing for <id>",
+      "signature": [
+        "consumer-flow",
+        "emoji",
+        "tracked-changes",
+        "Numbering provenance missing for <id>"
+      ]
+    },
+    {
+      "number": 1458,
+      "title": "Consumer flow: no comment",
+      "signature": ["consumer-flow", "lists", "suggested", "no comment"]
+    },
+    {
+      "number": 1459,
+      "title": "Consumer flow: <text>: kind is <text>, expected <text>",
+      "signature": [
+        "consumer-flow",
+        "lists",
+        "tracked-changes",
+        "<text>: kind is <text>, expected <text>"
+      ]
+    },
+    {
+      "number": 1460,
+      "title": "Consumer flow: <text>: kind is <text>, expected <text>",
+      "signature": [
+        "consumer-flow",
+        "plain",
+        "suggested",
+        "<text>: kind is <text>, expected <text>"
+      ]
+    },
+    {
+      "number": 1461,
+      "title": "Consumer flow: Numbering provenance missing for <id>",
+      "signature": [
+        "consumer-flow",
+        "stories",
+        "tracked-changes",
+        "Numbering provenance missing for <id>"
+      ]
+    },
+    {
+      "number": 1462,
+      "title": "Consumer flow: <text>: kind is <text>, expected <text>",
+      "signature": [
+        "consumer-flow",
+        "notes",
+        "tracked-changes",
+        "<text>: kind is <text>, expected <text>"
+      ]
+    },
+    {
+      "number": 1463,
+      "title": "Consumer flow: no comment",
+      "signature": ["consumer-flow", "styleNumbered", "direct", "no comment"]
+    },
+    {
+      "number": 1464,
+      "title": "Consumer flow: Numbering provenance missing for <id>",
+      "signature": ["consumer-flow", "tables", "suggested", "Numbering provenance missing for <id>"]
+    },
+    {
+      "number": 1465,
+      "title": "Consumer flow: <text>: kind is <text>, expected <text>",
+      "signature": [
+        "consumer-flow",
+        "trackedChanges",
+        "direct",
+        "<text>: kind is <text>, expected <text>"
+      ]
+    },
+    {
+      "number": 1466,
+      "title": "Consumer flow: Cannot repack invalid DOCX document model",
+      "signature": [
+        "consumer-flow",
+        "notes",
+        "suggested",
+        "Cannot repack invalid DOCX document model"
+      ]
+    }
+  ]
+}
