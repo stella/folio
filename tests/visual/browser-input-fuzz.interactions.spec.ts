@@ -14,7 +14,7 @@ import {
 } from "../../packages/core/src/controller/__tests__/freshRenderHarness";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
-  BROWSER_SHAPES,
+  BROWSER_SHAPE_TARGETS,
   browserInputTraceArbitrary,
   BROWSER_PASTE_PAYLOADS,
   browserSuggestionActionKinds,
@@ -436,16 +436,22 @@ const checkFreshRender = (trace: BrowserInputTrace) => {
   });
 };
 
-// Derive fixtures from the generator's target map so a new drag target also
-// requires this deterministic gesture invariant in both editor modes.
-const isDragTarget = (target: string): target is BrowserDragTarget =>
-  Object.hasOwn(BROWSER_SHAPES, target);
-for (const target of Object.keys(BROWSER_SHAPES).filter(isDragTarget)) {
+// Derive deterministic drag fixtures from the generator's shape map, so every
+// shape with a target gets this gesture invariant in both editor modes.
+const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+  Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
+const browserDragShapes = Object.keys(BROWSER_SHAPE_TARGETS).filter(
+  (shape): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+    isBrowserShape(shape) && BROWSER_SHAPE_TARGETS[shape] !== null,
+);
+for (const shape of browserDragShapes) {
+  const target = BROWSER_SHAPE_TARGETS[shape];
+  if (target === null) throw new Error(`browser drag shape ${shape} has no target`);
   for (const suggesting of [false, true]) {
-    test(`painted ${target} drag after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
+    test(`painted ${target} drag in ${shape} after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
       page,
     }) => {
-      const source = await shapeArrayBuffer(BROWSER_SHAPES[target]);
+      const source = await shapeArrayBuffer(shape);
       const baseline = project(await FolioDocxReviewer.fromBuffer(source));
       await load(page, source, baseline, suggesting);
       await paste(page, {
