@@ -35,9 +35,16 @@ export default defineConfig({
     {
       name: "interactions",
       testMatch: /(?:interactions|editing-flows)\.spec\.ts/u,
-      testIgnore: /browser-input-fuzz\.interactions\.spec\.ts/u,
+      testIgnore: /(?:browser-input|ai-human-interleaving)-fuzz\.interactions\.spec\.ts/u,
     },
-    { name: "browser-fuzzer", testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u },
+    {
+      name: "browser-fuzzer",
+      testMatch: /browser-input-fuzz\.interactions\.spec\.ts/u,
+    },
+    {
+      name: "interleaving-fuzzer",
+      testMatch: /ai-human-interleaving-fuzz\.interactions\.spec\.ts/u,
+    },
     // Measure/paint parity compares two numbers read from the SAME browser in
     // the same layout pass, so unlike the screenshot baselines it cannot go
     // flaky on cross-machine font rendering, and it is safe to gate CI on.
