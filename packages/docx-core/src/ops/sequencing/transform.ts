@@ -421,6 +421,22 @@ export const transformBatch = (
   over: readonly SequencedBatch[],
   options: TransformOptions = {},
 ): Result<DocumentBatch, BatchRejection> => {
+  for (const candidate of [batch, ...over]) {
+    const invalid = candidate.ops.find(
+      (op) =>
+        (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE ||
+          op.type === DOCUMENT_OP_TYPES.SET_RUN_PROPS) &&
+        !sameParagraph(op.from, op.to),
+    );
+    if (invalid === undefined) continue;
+    return Result.err(
+      new BatchRejection({
+        reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+        message: "A range must start and end in the same paragraph.",
+        opType: invalid.type,
+      }),
+    );
+  }
   let ops = [...batch.ops];
   const order = options.order ?? "after";
   for (const sequenced of over) {

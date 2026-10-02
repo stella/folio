@@ -6,7 +6,8 @@ import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOps } from "../apply";
 import { equalForStaleness } from "../equality";
 import { DOCUMENT_OP_SCHEMA_VERSION, type DocumentOp } from "../types";
-import type { DocumentBatch, SequencedBatch } from "./envelope";
+import { BATCH_REJECTION_REASONS, type DocumentBatch, type SequencedBatch } from "./envelope";
+import { createSequencer } from "./sequencer";
 import { transformBatch } from "./transform";
 
 const at = (offset: number, blockId = "00000001") => ({ story: "main", blockId, offset }) as const;
@@ -210,6 +211,73 @@ describe("position transforms", () => {
             batch(deletion(0, 6)),
           );
         }),
+        propertyConfig({ numRuns: 100 }),
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test(
+    "invalid cross-paragraph ranges cannot become valid through rebasing",
+    () => {
+      fc.assert(
+        fc.property(
+          fc.integer({ min: 0, max: 6 }),
+          fc.integer({ min: 0, max: 6 }),
+          fc.integer({ min: 0, max: 6 }),
+          fc.boolean(),
+          (fromOffset, toOffset, splitOffset, reverse) => {
+            const from = at(fromOffset, reverse ? "00000002" : "00000001");
+            const to = at(toOffset, reverse ? "00000001" : "00000002");
+            const invalidRanges = [
+              { type: "deleteRange", from, to },
+              { type: "setRunProps", from, to, patch: { bold: true } },
+            ] as const satisfies readonly DocumentOp[];
+            const split = {
+              type: "splitBlock",
+              at: at(splitOffset),
+              newBlockId: "00000003",
+              newHalf: "second",
+            } as const satisfies DocumentOp;
+            const document = {
+              package: {
+                document: {
+                  content: [paragraph("00000001", "abcdef"), paragraph("00000002", "uvwxyz")],
+                },
+              },
+            } satisfies Document;
+            for (const invalid of invalidRanges) {
+              expect(applyDocumentOps(document, [invalid]).isErr()).toBe(true);
+              for (const order of ["before", "after"] as const) {
+                for (const tail of [[], [sequenced(split)], [sequenced(insertion(0, "X"))]]) {
+                  const result = transformBatch(batch(invalid), tail, { order });
+                  expect(result.isErr()).toBe(true);
+                  if (result.isErr())
+                    expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
+                }
+                // Journal validation must run even with no incoming operations or an
+                // earlier journal operation that would consume the incoming range.
+                for (const incoming of [batch(), batch(deletion(0, 6)), batch(insertion(0, "X"))]) {
+                  expect(
+                    transformBatch(incoming, [sequenced(deletion(0, 6)), sequenced(invalid)], {
+                      order,
+                    }).isErr(),
+                  ).toBe(true);
+                }
+              }
+              const sequencer = createSequencer(document);
+              expect(sequencer.submit(batch(split)).type).toBe("ack");
+              const before = sequencer.document;
+              const submission = { ...batch(invalid), opId: "invalid-range" };
+              const rejected = sequencer.submit(submission);
+              expect(rejected.type).toBe("reject");
+              expect(sequencer.submit(submission)).toEqual(rejected);
+              expect(equalForStaleness(sequencer.document, before)).toBe(true);
+              expect(sequencer.headRev).toBe(1);
+              expect(sequencer.broadcasts).toHaveLength(1);
+            }
+          },
+        ),
         propertyConfig({ numRuns: 100 }),
       );
     },

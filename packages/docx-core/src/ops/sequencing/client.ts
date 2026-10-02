@@ -1,7 +1,6 @@
 import { Result, panic } from "better-result";
 
 import type { Document } from "../../model/document";
-import { applyDocumentOps } from "../apply";
 import { validateOpsDocument } from "../contract";
 import { equalForStaleness } from "../equality";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
@@ -162,37 +161,7 @@ export const createClient = (document: Document) => {
       return;
     }
     drop(entry, rejection.reason);
-    let rollback: DocumentBatch = { ...entry.batch, ops: entry.inverse };
     const later = entries.slice(index + 1);
-    let rollbackFailure: BatchRejection | undefined;
-    for (const pending of later) {
-      const rebased = transformBatch(rollback, [
-        { ...pending.batch, revision: headRev + 1, effects: pending.effects },
-      ]);
-      if (rebased.isErr()) {
-        rollbackFailure = rebased.error;
-        break;
-      }
-      rollback = rebased.value;
-    }
-    // A stale exact inverse is never forced; canonical replay is always available.
-    if (rollbackFailure !== undefined) {
-      notices.push({ opId: entry.batch.opId, ops: entry.batch.ops, reason: rollbackFailure });
-    } else {
-      const rolledBack = applyDocumentOps(current, rollback.ops);
-      if (rolledBack.isOk()) {
-        current = rolledBack.value.document;
-      } else {
-        notices.push({
-          opId: entry.batch.opId,
-          ops: entry.batch.ops,
-          reason: new BatchRejection({
-            reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
-            message: rolledBack.error.message,
-          }),
-        });
-      }
-    }
     entries.splice(index, 1);
     // Later batches were authored with the rejected edit present. Rebase them
     // over its inverse, refusing any whose dependency cannot be expressed.

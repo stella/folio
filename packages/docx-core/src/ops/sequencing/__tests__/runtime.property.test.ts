@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fc from "fast-check";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../../model/document";
 import { documentArbitrary, independentCopy } from "../../__tests__/documentArbitraries";
 import { applyDocumentOps } from "../../apply";
@@ -262,6 +262,9 @@ const simulate = ({
     createClient(independentCopy(document)),
   );
   const submitted = new Set<string>();
+  const admitted = new Set<string>();
+  const rejected = new Map<string, { client: number }>();
+  const rejectionReasons = new Map<string, BatchRejection>();
   const delivery: Delivery[] = [];
   let id = 1;
   let scheduleIndex = 0;
@@ -286,6 +289,7 @@ const simulate = ({
       ],
     };
     expect(client.enqueue(batch).isOk()).toBe(true);
+    admitted.add(batch.opId);
     if (enqueueLater) {
       const later: DocumentBatch = {
         ...batch,
@@ -301,6 +305,7 @@ const simulate = ({
         ],
       };
       expect(client.enqueue(later).isOk()).toBe(true);
+      admitted.add(later.opId);
     }
   }
   const submit = (index: number): void => {
@@ -321,6 +326,7 @@ const simulate = ({
         for (let target = 0; target < clientsCount; target += 1)
           delivery.push({ client: target, type: "broadcast", batch: broadcast });
     } else expect(result.headRev).toBe(sequencer.headRev);
+    if (result.type === "reject") rejected.set(batch.opId, { client: index });
   };
   const order = clients
     .map((_, index) => ({ index, priority: choice() }))
@@ -338,15 +344,37 @@ const simulate = ({
       expect(received.isOk()).toBe(true);
       expect(client.receiveBroadcast(event.batch).isOk()).toBe(true);
     } else if (event.result.type === "ack") client.receiveAck(event.result);
-    else client.receiveReject(event.result);
+    else {
+      if (client.pending.some(({ opId }) => opId === event.result.opId))
+        rejectionReasons.set(event.result.opId, event.result.reason);
+      client.receiveReject(event.result);
+      const noticeCount = client.notices.length;
+      client.receiveReject(event.result);
+      expect(client.notices).toHaveLength(noticeCount);
+    }
     for (let index = 0; index < clientsCount; index += 1) submit(index);
   }
-  for (const client of clients) {
+  const sequencedIds = new Set(sequencer.broadcasts.map(({ opId }) => opId));
+  const droppedIds: string[] = [];
+  for (const [index, client] of clients.entries()) {
     expect(client.headRev).toBe(sequencer.headRev);
     expect(client.pending).toHaveLength(0);
     expect(equalForStaleness(client.document, sequencer.document)).toBe(true);
-    for (const notice of client.notices) expect(notice.ops).toBeDefined();
+    for (const notice of client.notices) {
+      expect(notice.ops).toBeDefined();
+      droppedIds.push(notice.opId);
+    }
+    for (const [opId, rejection] of rejected) {
+      if (rejection.client !== index) continue;
+      const notices = client.notices.filter((notice) => notice.opId === opId);
+      expect(notices).toHaveLength(1);
+      const reason = rejectionReasons.get(opId);
+      if (reason !== undefined) expect(notices.at(0)?.reason).toBe(reason);
+    }
   }
+  expect(new Set(droppedIds).size).toBe(droppedIds.length);
+  expect(new Set([...sequencedIds, ...droppedIds])).toEqual(admitted);
+  for (const opId of rejected.keys()) expect(droppedIds).toContain(opId);
   return { accepted, submitted: submitted.size };
 };
 
@@ -358,7 +386,7 @@ describe("reference sequencing convergence", () => {
       group,
       () => {
         let accepted = 0;
-        fc.assert(
+        assertProperty(
           fc.property(
             generatedDocument,
             fc.integer({ min: 2, max: 4 }),
@@ -376,7 +404,7 @@ describe("reference sequencing convergence", () => {
               expect(result.accepted).toBeGreaterThanOrEqual(2);
             },
           ),
-          propertyConfig({ numRuns: NUM_RUNS }),
+          { numRuns: NUM_RUNS },
         );
         expect(accepted).toBeGreaterThanOrEqual(NUM_RUNS * 2);
       },
@@ -387,7 +415,7 @@ describe("reference sequencing convergence", () => {
   test(
     "mixed operations with causal pending queues",
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(
           generatedDocument,
           fc.integer({ min: 2, max: 4 }),
@@ -404,7 +432,7 @@ describe("reference sequencing convergence", () => {
             expect(result.accepted).toBeGreaterThan(0);
           },
         ),
-        propertyConfig({ numRuns: NUM_RUNS }),
+        { numRuns: NUM_RUNS },
       );
     },
     propertyTestTimeout(30_000),
@@ -415,7 +443,7 @@ describe("reference sequencing convergence", () => {
     () => {
       let accepted = 0;
       let dropped = 0;
-      fc.assert(
+      assertProperty(
         fc.property(generatedDocument, fc.nat(), (document, seed) => {
           const forward = operation({ document, group: "insertInsert", role: 0, seed, id: 1 });
           const applied = applyDocumentOps(document, [forward]);
@@ -465,7 +493,7 @@ describe("reference sequencing convergence", () => {
               expect(applyDocumentOps(before, transformed.value.ops).isOk()).toBe(true);
           }
         }),
-        propertyConfig({ numRuns: NUM_RUNS }),
+        { numRuns: NUM_RUNS },
       );
       expect(accepted).toBeGreaterThan(0);
       expect(dropped).toBeGreaterThan(0);
@@ -479,7 +507,7 @@ describe("reference sequencing convergence", () => {
       const textArbitrary = fc
         .array(fc.constantFrom("X", "é", "😀"), { minLength: 1, maxLength: 3 })
         .map((parts) => parts.join(""));
-      fc.assert(
+      assertProperty(
         fc.property(
           generatedDocument,
           textArbitrary,
@@ -556,7 +584,7 @@ describe("reference sequencing convergence", () => {
             expect(client.pending).toHaveLength(2);
           },
         ),
-        propertyConfig({ numRuns: NUM_RUNS }),
+        { numRuns: NUM_RUNS },
       );
     },
     propertyTestTimeout(30_000),
