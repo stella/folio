@@ -81,6 +81,7 @@ export const useDocumentLoader = ({
 }: UseDocumentLoaderParams): UseDocumentLoaderReturn => {
   /** Original DOCX buffer kept for selective save / full repack. */
   const originalBufferRef = useRef<ArrayBuffer | null>(null);
+  const originalBufferIdentityRef = useRef<string | null>(null);
   const [loadedDocumentIdentity, setLoadedDocumentIdentity] = useState("0");
 
   // The manager instance is stable; its bound methods are created once so the
@@ -129,16 +130,16 @@ export const useDocumentLoader = ({
     void api.loadBuffer(source.buffer, { password });
   }, [documentBuffer, initialDocument, password, api]);
 
-  // Keep decrypted ZIP bytes for save/export (falls back to the raw prop buffer).
+  // A saved baseline belongs to this load; internal edits must not replace it.
   useEffect(() => {
+    if (originalBufferIdentityRef.current === loadedDocumentIdentity) return;
+    originalBufferIdentityRef.current = loadedDocumentIdentity;
     if (history.state?.originalBuffer) {
       originalBufferRef.current = history.state.originalBuffer;
       return;
     }
-    if (documentBuffer instanceof ArrayBuffer) {
-      originalBufferRef.current = documentBuffer;
-    }
-  }, [history.state, documentBuffer]);
+    originalBufferRef.current = documentBuffer instanceof ArrayBuffer ? documentBuffer : null;
+  }, [history.state, documentBuffer, loadedDocumentIdentity]);
 
   return {
     loadBuffer: api.loadBuffer,

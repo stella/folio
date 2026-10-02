@@ -11,6 +11,10 @@ on:
     - cron: "41 */2 * * *"
   workflow_dispatch:
     inputs:
+      long_flows:
+        description: Run the CI-only 100-page long-flow lane
+        type: boolean
+        default: false
       minutes:
         description: "Consumer-scenario fuzz budget in minutes"
         required: false
@@ -29,6 +33,7 @@ permissions: {}
 
 jobs:
   consumer-fuzz:
+    if: ${{ !inputs.long_flows }}
     name: Consumer-scenario fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -99,6 +104,7 @@ jobs:
           if-no-files-found: ignore
 
   property-fuzz:
+    if: ${{ !inputs.long_flows }}
     name: Property fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -134,6 +140,12 @@ jobs:
           path: test-results/property-fuzz.log
           retention-days: 14
           if-no-files-found: ignore
+
+  long-flows:
+    if: ${{ inputs.long_flows }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/nightly-long-fuzz.yml
 
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.

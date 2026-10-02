@@ -42,6 +42,7 @@ import {
 } from "./archiveInflation";
 import { openDocxBuffer } from "./encryption/openEncryptedDocx";
 import { DOCX_CONTAINER_TYPES, detectDocxContainerType } from "./encryption/containerFormat";
+import { detectRasterMimeType, RASTER_MIME_TYPES } from "./rasterMime";
 import { decodeXmlBytes } from "./xmlEncoding";
 import {
   assertXmlResourceLimits,
@@ -99,12 +100,7 @@ export type DocxUnzipLimits = {
 };
 
 const DEFAULT_ALLOWED_MEDIA_MIME_TYPES = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/bmp",
-  "image/tiff",
-  "image/webp",
+  ...RASTER_MIME_TYPES,
   // EMF/WMF: browsers cannot render metafiles natively, but Word stores
   // header logos and OLE previews this way. Load when the byte signature
   // validates so the parser can extract an embedded PNG/JPEG raster.
@@ -480,10 +476,17 @@ export async function unzipDocx(
           return null;
         }
         const binaryContent = result.bytes.buffer;
-        if (!isMediaContentAllowed(binaryContent, mimeType)) {
+        const effectiveMimeType = RASTER_MIME_TYPES.has(mimeType)
+          ? detectRasterMimeType(binaryContent)
+          : mimeType;
+        if (
+          !effectiveMimeType ||
+          !limits.allowedMediaMimeTypes.has(effectiveMimeType) ||
+          !isMediaContentAllowed(binaryContent, effectiveMimeType)
+        ) {
           return null;
         }
-        return { type: "media", path, mimeType, content: binaryContent };
+        return { type: "media", path, mimeType: effectiveMimeType, content: binaryContent };
       });
     } else if (lowerPath.startsWith("word/fonts/")) {
       // Embedded fonts are optional for editing and original ZIP preservation.
@@ -936,29 +939,11 @@ function isEntryTooLarge(declaredSize: number | null, maxBytes: number): boolean
 }
 
 function isMediaContentAllowed(data: ArrayBuffer, mimeType: string): boolean {
+  if (RASTER_MIME_TYPES.has(mimeType)) {
+    return detectRasterMimeType(data) === mimeType;
+  }
   const bytes = new Uint8Array(data);
   switch (mimeType) {
-    case "image/png":
-      return bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
-    case "image/jpeg":
-      return bytes[0] === 0xff && bytes[1] === 0xd8;
-    case "image/gif":
-      return bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38;
-    case "image/bmp":
-      return bytes[0] === 0x42 && bytes[1] === 0x4d;
-    case "image/webp":
-      return (
-        bytes[0] === 0x52 &&
-        bytes[1] === 0x49 &&
-        bytes[2] === 0x46 &&
-        bytes[3] === 0x46 &&
-        bytes[8] === 0x57 &&
-        bytes[9] === 0x45 &&
-        bytes[10] === 0x42 &&
-        bytes[11] === 0x50
-      );
-    case "image/tiff":
-      return (bytes[0] === 0x49 && bytes[1] === 0x49) || (bytes[0] === 0x4d && bytes[1] === 0x4d);
     case "image/x-emf":
     case "image/emf":
       return (

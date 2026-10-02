@@ -50,6 +50,10 @@
         :view="activeEditorView"
         :get-commands="getCommands"
         :state-tick="stateTick"
+        :can-undo="activeHistoryAvailability.canUndo"
+        :can-redo="activeHistoryAvailability.canRedo"
+        :on-undo="undoActiveStory"
+        :on-redo="redoActiveStory"
         :zoom-percent="zoomPercent"
         :is-min-zoom="isMinZoom"
         :is-max-zoom="isMaxZoom"
@@ -1679,6 +1683,22 @@ const { exposed } = useDocxEditorRefApi({
   onPrint: props.onPrint,
   onSave: props.onSave,
 });
+const activeHistoryAvailability = computed(() => {
+  void stateTick.value;
+  const paged = exposed.getEditorRef();
+  return { canUndo: paged?.canUndo() ?? false, canRedo: paged?.canRedo() ?? false };
+});
+
+function undoActiveStory(): void {
+  exposed.undo();
+  activeEditorView.value?.focus();
+}
+
+function redoActiveStory(): void {
+  exposed.redo();
+  activeEditorView.value?.focus();
+}
+
 defineExpose(exposed);
 </script>
 

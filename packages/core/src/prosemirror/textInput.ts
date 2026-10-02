@@ -114,6 +114,14 @@ export const handleEditorBeforeInput = (view: EditorView, event: InputEvent): bo
   return true;
 };
 
+/**
+ * Plugin compositionend handlers run before ProseMirror queues its final DOM
+ * flush. A second microtask runs after that flush and sees the committed state.
+ */
+export const afterNativeCompositionFlush = (callback: () => void): void => {
+  queueMicrotask(() => queueMicrotask(callback));
+};
+
 /** Route committed text through the model before the browser mutates mark spans. */
 export const createTextInputPlugin = () => {
   // PM can clear view.composing before its final DOM flush. Keep that commit
@@ -129,7 +137,7 @@ export const createTextInputPlugin = () => {
         },
         compositionend(view, event) {
           compositions.set(view, event);
-          queueMicrotask(() => {
+          afterNativeCompositionFlush(() => {
             if (compositions.get(view) === event) compositions.delete(view);
           });
           return false;

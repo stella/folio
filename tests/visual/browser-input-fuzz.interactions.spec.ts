@@ -11,13 +11,22 @@ import {
 } from "../../packages/core/src/controller/__tests__/freshRenderHarness";
 import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
 import {
+  BROWSER_SHAPES,
   browserInputTraceArbitrary,
+  BROWSER_PASTE_PAYLOADS,
   browserSuggestionActionKinds,
   parseBrowserInputTraceConfig,
   type BrowserInputAction,
   type BrowserInputTrace,
   type BrowserDragTarget,
 } from "./browserInputTrace";
+import {
+  failureMarker,
+  failureRecord,
+  logFailureMarker,
+  writeFailureRecord,
+} from "../../test/consumer-scenarios/support/failure-fingerprints";
+import { clipboardHtmlProjection } from "./clipboardHtmlProjection";
 
 declare global {
   var __folioPlayground: { getEditorRef: () => DocxEditorRef | null } | undefined;
@@ -25,6 +34,10 @@ declare global {
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const INPUT_TRACE = browserInputTraceArbitrary();
+const PAINTED_POSITION_MODULE = `/@fs${
+  new URL("../../packages/core/src/layout-bridge/dom/clickToPositionDom.ts", import.meta.url)
+    .pathname
+}`;
 
 type Block = {
   kind: string;
@@ -86,13 +99,75 @@ const load = async (page: Page, bytes: ArrayBuffer, baseline: Block[], suggestin
   );
 };
 
-const selectTarget = async (page: Page, target: BrowserDragTarget) => {
-  const coords = await page.evaluate((wanted) => {
+const selectTableTarget = async (page: Page) => {
+  const cells = await page.evaluate(() => {
     const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
     if (!view) throw new Error("browser editor unavailable");
-    const positions: number[] = [];
+    const positions: { pos: number; paragraphPos: number }[] = [];
+    view.state.doc.descendants((node, pos) => {
+      if (positions.length >= 2) return false;
+      if (node.type.name !== "tableCell") return true;
+      let paragraphPos: number | null = null;
+      node.descendants((child, offset) => {
+        if (paragraphPos !== null) return false;
+        if (child.isTextblock) paragraphPos = pos + 1 + offset;
+        return !child.isTextblock;
+      });
+      if (paragraphPos !== null) positions.push({ pos, paragraphPos });
+      return false;
+    });
+    return positions;
+  });
+  const [anchor, head] = cells;
+  if (!anchor || !head) return false;
+
+  // The PM view is off-screen. Pointer actions must use the painted body cells,
+  // whose paragraph positions also let us wait for layout after preceding edits.
+  const paintedCell = (paragraphPos: number) =>
+    page
+      .locator(`.layout-page-content .layout-table-cell[data-pm-start="${paragraphPos}"]`)
+      .first();
+  const anchorCell = paintedCell(anchor.paragraphPos);
+  const headCell = paintedCell(head.paragraphPos);
+  await anchorCell.scrollIntoViewIfNeeded();
+  await headCell.scrollIntoViewIfNeeded();
+  const [from, to] = await Promise.all([anchorCell.boundingBox(), headCell.boundingBox()]);
+  if (!from || !to) throw new Error("table drag targets are not painted");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 4 });
+  await page.mouse.up();
+
+  // A missed drag must fail at the input boundary, before paste/delete can edit
+  // whichever caret the previous action happened to leave in each mode.
+  const selected = await page.evaluate(() => {
+    const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+      ?.state.selection;
+    if (!selection || !("$anchorCell" in selection) || !("$headCell" in selection)) return null;
+    const selectedAnchor = selection.$anchorCell;
+    const selectedHead = selection.$headCell;
+    if (
+      !selectedAnchor ||
+      typeof selectedAnchor !== "object" ||
+      !("pos" in selectedAnchor) ||
+      !selectedHead ||
+      typeof selectedHead !== "object" ||
+      !("pos" in selectedHead)
+    )
+      return null;
+    return { anchor: selectedAnchor.pos, head: selectedHead.pos };
+  });
+  expect(selected).toEqual({ anchor: anchor.pos, head: head.pos });
+  return true;
+};
+
+const selectTarget = async (page: Page, target: BrowserDragTarget) => {
+  if (target === "table") return selectTableTarget(page);
+  const positions = await page.evaluate((wanted) => {
+    const view = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView();
+    if (!view) throw new Error("browser editor unavailable");
+    const targets: { pos: number; size: number; type: "paragraph" | "inline" }[] = [];
     const targetName = {
-      table: "tableCell",
       list: "paragraph",
       note: "footnoteRef",
       field: "field",
@@ -102,26 +177,90 @@ const selectTarget = async (page: Page, target: BrowserDragTarget) => {
       const matches =
         node.type.name === targetName &&
         (wanted !== "list" || (node.attrs["numPr"] !== null && node.attrs["numPr"] !== undefined));
-      if (matches && positions.length < 2) positions.push(pos);
-      if (wanted === "note" && node.marks.some((mark) => mark.type.name === targetName)) {
-        positions.push(pos);
+      if (targets.length >= 2) return false;
+      if (
+        matches ||
+        (wanted === "note" && node.marks.some((mark) => mark.type.name === targetName))
+      ) {
+        targets.push({
+          pos,
+          size: node.nodeSize,
+          type: node.type.name === "paragraph" ? "paragraph" : "inline",
+        });
       }
       return true;
     });
-    if (positions.length === 0) return null;
-    const from = Math.max(1, positions.at(0) ?? 1);
-    const to = Math.min(view.state.doc.content.size - 1, (positions.at(1) ?? from + 2) + 1);
-    return { from: view.coordsAtPos(from), to: view.coordsAtPos(to) };
+    const first = targets.at(0);
+    if (!first) return null;
+    const last = targets.at(1) ?? first;
+    // Paragraph node boundaries are not caret positions. Start inside the
+    // paragraph, or in text before an atom so image mousedown can drag text.
+    const rawFrom = first.type === "paragraph" ? first.pos + 1 : first.pos - 1;
+    const rawTo =
+      last.type === "paragraph" ? last.pos + Math.min(2, last.size - 1) : last.pos + last.size + 2;
+    const from = Math.max(view.state.doc.resolve(first.pos).start(), rawFrom);
+    const to = Math.min(
+      view.state.doc.content.size - 1,
+      last.type === "paragraph" ? last.pos + last.size - 1 : view.state.doc.resolve(last.pos).end(),
+      rawTo,
+    );
+    return {
+      from,
+      to,
+      targetFrom: first.pos,
+      targetTo: first.pos + first.size,
+      targetType: first.type,
+    };
   }, target);
-  if (!coords) return false;
-  await page.mouse.move(coords.from.left, coords.from.top + 3);
+  if (!positions) return false;
+  expect(positions.to).toBeGreaterThan(positions.from);
+
+  // Every pointer target uses the painted body. The hidden PM view has its
+  // own off-screen geometry, which cannot drive the visible editor's hit test.
+  const args = { moduleUrl: PAINTED_POSITION_MODULE, positions };
+  const readPaintedCoords = async ({ moduleUrl, positions: planned }: typeof args) => {
+    const {
+      getCaretPositionFromDom,
+      clickToPositionDom,
+    }: typeof import("../../packages/core/src/layout-bridge/dom/clickToPositionDom") = await import(
+      moduleUrl
+    );
+    const coordinate = (position: number) => {
+      const caret = getCaretPositionFromDom(document.body, position, new DOMRect());
+      if (!caret) return null;
+      const y = caret.y + caret.height / 2;
+      for (const offset of [0, 0.25, -0.25, 0.5, -0.5]) {
+        const x = caret.x + offset;
+        if (clickToPositionDom(document.body, x, y) === position) return { x, y };
+      }
+      return null;
+    };
+    const from = coordinate(planned.from);
+    const to = coordinate(planned.to);
+    return from && to ? { from, to } : null;
+  };
+  await page.waitForFunction(readPaintedCoords, args);
+  const coords = await page.evaluate(readPaintedCoords, args);
+  if (!coords) throw new Error("drag targets are not painted at their document positions");
+  await page.mouse.move(coords.from.x, coords.from.y);
   await page.mouse.down();
-  await page.mouse.move(coords.to.left, coords.to.top + 3, { steps: 4 });
+  await page.mouse.move(coords.to.x, coords.to.y, { steps: 4 });
   await page.mouse.up();
+  const selected = await page.evaluate(() => {
+    const selection = globalThis.__folioPlayground?.getEditorRef()?.getEditorRef()?.getView()
+      ?.state.selection;
+    return selection ? { from: selection.from, to: selection.to } : null;
+  });
+  expect(selected).toEqual({ from: positions.from, to: positions.to });
+  if (positions.targetType === "inline") {
+    expect(selected?.from).toBeLessThanOrEqual(positions.targetFrom);
+    expect(selected?.to).toBeGreaterThanOrEqual(positions.targetTo);
+  }
   return true;
 };
 
 const paste = async (page: Page, action: Extract<BrowserInputAction, { html: string }>) => {
+  const expectedHtml = await page.evaluate(clipboardHtmlProjection, action.html);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.evaluate(async ({ html, plain }) => {
     const parts: Record<string, Blob> = { "text/plain": new Blob([plain], { type: "text/plain" }) };
@@ -134,6 +273,8 @@ const paste = async (page: Page, action: Extract<BrowserInputAction, { html: str
         document.documentElement.dataset["fuzzPasteReceived"] = "seen";
         document.documentElement.dataset["fuzzPasteHtml"] =
           event.clipboardData?.getData("text/html") ?? "";
+        document.documentElement.dataset["fuzzPastePlain"] =
+          event.clipboardData?.getData("text/plain") ?? "";
       },
       { capture: true, once: true },
     );
@@ -143,8 +284,14 @@ const paste = async (page: Page, action: Extract<BrowserInputAction, { html: str
     .poll(() => page.locator("html").getAttribute("data-fuzz-paste-received"))
     .toBe("seen");
   await expect
-    .poll(() => page.locator("html").getAttribute("data-fuzz-paste-html"))
-    .toContain(action.html);
+    .poll(async () =>
+      page.evaluate(
+        clipboardHtmlProjection,
+        (await page.locator("html").getAttribute("data-fuzz-paste-html")) ?? "",
+      ),
+    )
+    .toBe(expectedHtml);
+  await expect(page.locator("html")).toHaveAttribute("data-fuzz-paste-plain", action.plain);
 };
 
 const drive = async (page: Page, action: BrowserInputAction) => {
@@ -171,13 +318,29 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       return;
     case "imeReplacement": {
       const cdp = await page.context().newCDPSession(page);
-      await cdp.send("Input.imeSetComposition", {
-        text: action.text,
-        selectionStart: action.text.length,
-        selectionEnd: action.text.length,
-      });
-      await cdp.send("Input.insertText", { text: action.text });
-      await cdp.detach();
+      try {
+        for (const text of action.updates) {
+          await cdp.send("Input.imeSetComposition", {
+            text,
+            // CDP offsets count UTF-16 code units, including surrogate pairs.
+            selectionStart: text.length,
+            selectionEnd: text.length,
+          });
+        }
+        if (action.completion === "commit") {
+          const text = action.updates.at(-1);
+          if (text === undefined) throw new Error("IME lifecycle has no updates");
+          await cdp.send("Input.insertText", { text });
+        } else {
+          await cdp.send("Input.imeSetComposition", {
+            text: "",
+            selectionStart: 0,
+            selectionEnd: 0,
+          });
+        }
+      } finally {
+        await cdp.detach();
+      }
       return;
     }
     case "cut":
@@ -193,6 +356,11 @@ const drive = async (page: Page, action: BrowserInputAction) => {
       return;
     case "redo":
       await page.keyboard.press(`${MODIFIER}+Shift+z`);
+      return;
+    case "historyBurst":
+      for (const key of action.keys) {
+        await page.keyboard.press(key === "undo" ? `${MODIFIER}+z` : `${MODIFIER}+Shift+z`);
+      }
       return;
     case "selectionDrag":
       if (!(await selectTarget(page, action.target))) {
@@ -265,6 +433,28 @@ const checkFreshRender = (trace: BrowserInputTrace) => {
   });
 };
 
+// Derive fixtures from the generator's target map so a new drag target also
+// requires this deterministic gesture invariant in both editor modes.
+const isDragTarget = (target: string): target is BrowserDragTarget =>
+  Object.hasOwn(BROWSER_SHAPES, target);
+for (const target of Object.keys(BROWSER_SHAPES).filter(isDragTarget)) {
+  for (const suggesting of [false, true]) {
+    test(`painted ${target} drag after paste selects its planned range (${suggesting ? "suggesting" : "editing"})`, async ({
+      page,
+    }) => {
+      const source = await shapeArrayBuffer(BROWSER_SHAPES[target]);
+      const baseline = project(await FolioDocxReviewer.fromBuffer(source));
+      await load(page, source, baseline, suggesting);
+      await paste(page, {
+        kind: "pasteHtml",
+        plain: "First bold\nSecond",
+        html: "<p>First <strong>bold</strong></p><p>Second</p>",
+      });
+      expect(await selectTarget(page, target)).toBe(true);
+    });
+  }
+}
+
 const config = parseBrowserInputTraceConfig(
   process.env,
   process.env["FOLIO_FUZZ_LANE"] === "nightly" ? "nightly" : "pullRequest",
@@ -273,6 +463,47 @@ test.setTimeout(600_000);
 
 test("browser generator covers every declared suggestion input kind", () => {
   expect(new Set(browserSuggestionActionKinds)).toEqual(new Set(SUGGESTION_INPUT_KINDS));
+});
+
+test("clipboard oracle accepts HTML serialization and detects text, attribute and markup changes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  for (const { html } of Object.values(BROWSER_PASTE_PAYLOADS)) {
+    const expected = await page.evaluate(clipboardHtmlProjection, html);
+    // Clipboard writers parse document wrappers before delivering a paste.
+    // Chromium adds the omitted head in the full-document fixture (seed 11).
+    expect(await page.evaluate(clipboardHtmlProjection, expected)).toBe(expected);
+    expect(await page.evaluate(clipboardHtmlProjection, "")).not.toBe(expected);
+    const mutations = await page.evaluate((source) => {
+      const textDocument = new DOMParser().parseFromString(source, "text/html");
+      const walker = textDocument.createTreeWalker(textDocument.body, NodeFilter.SHOW_TEXT);
+      const firstText = walker.nextNode();
+      if (!firstText) throw new Error("clipboard fixture has no text to mutate");
+      firstText.textContent = "lost clipboard text";
+      const attributeDocument = new DOMParser().parseFromString(source, "text/html");
+      const element = attributeDocument.body.firstElementChild;
+      if (!element) throw new Error("clipboard fixture has no element to mutate");
+      element.setAttribute("data-fuzz-mutated", "true");
+      const markupDocument = new DOMParser().parseFromString(source, "text/html");
+      const wrapper = markupDocument.body.firstElementChild;
+      if (!wrapper) throw new Error("clipboard fixture has no markup to mutate");
+      wrapper.replaceWith(...wrapper.childNodes);
+      return [
+        textDocument.documentElement.outerHTML,
+        attributeDocument.documentElement.outerHTML,
+        markupDocument.documentElement.outerHTML,
+      ];
+    }, html);
+    for (const mutation of mutations) {
+      expect(await page.evaluate(clipboardHtmlProjection, mutation)).not.toBe(expected);
+    }
+  }
+  const source = BROWSER_PASTE_PAYLOADS.pasteWordHtml.html;
+  const normalized = source.replace("<body>", "<head></head><body>");
+  expect(await page.evaluate(clipboardHtmlProjection, source)).toBe(
+    await page.evaluate(clipboardHtmlProjection, normalized),
+  );
 });
 
 for (const seed of config.seeds) {
@@ -302,6 +533,22 @@ for (const seed of config.seeds) {
     );
     if (verdict.failed) {
       const failure = verdict.errorInstance;
+      const trace = verdict.counterexample?.at(0);
+      if (trace !== undefined && failure !== undefined && failure !== null) {
+        const marker = failureMarker({
+          test: "browser input preserves readers, fresh render, and suggesting equivalence",
+          seed,
+          path: verdict.counterexamplePath,
+          repro: `FOLIO_FUZZ_SEEDS=${seed} FOLIO_FUZZ_RUNS=${config.runs} bunx playwright test --project=browser-fuzzer tests/visual/browser-input-fuzz.interactions.spec.ts --workers=1`,
+          failure,
+          flow: `${trace.shape}: ${trace.actions.map(({ kind }) => kind).join(" → ")}`,
+        });
+        logFailureMarker(marker);
+        writeFailureRecord(
+          "fuzz-artifacts/browser/findings",
+          failureRecord(marker, failure, { flow: trace }),
+        );
+      }
       const detail =
         failure instanceof Error ? (failure.stack ?? failure.message) : fc.stringify(failure);
       throw new Error(

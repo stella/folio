@@ -31,7 +31,7 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const SCANNED_ROOTS = ["packages", "scripts", "parity"] as const;
 const BUDGET_HELPER = "propertyTestTimeout";
 const RUN_COUNT_HELPER = "propertyConfig";
-const ASSERT_HELPER = "assertProperty";
+const ASSERT_HELPERS = new Set(["assertProperty", "assertPinnedProperty"]);
 const FAST_CHECK_DRIVERS = new Set(["assert", "sample", "check"]);
 const TEST_CALLEES = new Set(["test", "it"]);
 
@@ -46,7 +46,7 @@ const callsFastCheck = (node: ts.CallExpression): boolean =>
 
 /** `assertProperty(...)`: `fc.assert` through `propertyConfig`. */
 const callsAssertHelper = (node: ts.CallExpression): boolean =>
-  ts.isIdentifier(node.expression) && node.expression.text === ASSERT_HELPER;
+  ts.isIdentifier(node.expression) && ASSERT_HELPERS.has(node.expression.text);
 
 const drivesFastCheck = (node: ts.CallExpression): boolean =>
   callsFastCheck(node) || callsAssertHelper(node);
@@ -240,7 +240,10 @@ describe("property test budgets", () => {
       "probe.ts:2",
     ]);
     expect(
-      bypassingSites("probe.ts", "fc.assert(p, propertyConfig());\nassertProperty(p, {});"),
+      bypassingSites(
+        "probe.ts",
+        "fc.assert(p, propertyConfig());\nassertProperty(p, {});\nassertPinnedProperty(p, {});",
+      ),
     ).toEqual([]);
   });
 

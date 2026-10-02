@@ -71,7 +71,7 @@
     "prepack": "bun run build",
     "pack:dry-run": "bun pm pack --dry-run",
     "typecheck": "vue-tsc --noEmit -p tsconfig.build.json",
-    "test": "bun test src"
+    "test": "bun test --preload ./test/vueDom.preload.ts src"
   },
   "dependencies": {
     "@fontsource/arimo": "^5.2.8",

@@ -11,6 +11,7 @@ import path from "node:path";
 
 import { commitSeed, hash32 } from "../test/commit-seed";
 import {
+  assertPinnedProperty,
   assertProperty,
   enclosingTitles,
   overridePinnedSeedsForTesting,
@@ -216,6 +217,30 @@ describe("pinned regression seeds", () => {
     expect(runs).toBe(2 * 2);
   });
 
+  test("pinned-only assertions never draw a fresh pass or scale its case count", () => {
+    withEnv({ PROPERTY_TEST_NUM_RUNS_FACTOR: "3" });
+    const pinned = [entry(101), entry(202)];
+    overridePinnedSeedsForTesting({
+      [`${FILE}::pinned-only assertions never draw a fresh pass or scale its case count`]: pinned,
+    });
+    let runs = 0;
+    assertPinnedProperty(
+      fc.property(fc.nat(), () => {
+        runs += 1;
+      }),
+      { numRuns: 200 },
+    );
+    expect(runs).toBe(pinned.length);
+  });
+
+  test("pinned-only assertions fail when no fixed seed is registered", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({});
+    expect(() => assertPinnedProperty(fc.property(fc.nat(), () => true))).toThrow(
+      /No fixed regression seeds/,
+    );
+  });
+
   test("explicit examples do not shift a pinned replay path", () => {
     withEnv({});
     overridePinnedSeedsForTesting({
@@ -242,7 +267,7 @@ describe("pinned regression seeds", () => {
     expect(() => propertyConfig()).toThrow(/only replay through assertProperty/);
   });
 
-  test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through assertProperty`, () => {
+  test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through a registry driver`, () => {
     const problems: string[] = [];
     for (const [key, entries] of Object.entries(readPinnedSeeds())) {
       const [file, title] = key.split("::") as [string, string | undefined];
@@ -254,10 +279,12 @@ describe("pinned regression seeds", () => {
         continue;
       }
       const sites = lines.flatMap((text, index) =>
-        /\bassertProperty\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text) ? [index + 1] : [],
+        /\bassert(?:Pinned)?Property\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text)
+          ? [index + 1]
+          : [],
       );
       if (!sites.some((line) => enclosingTitles(lines, line).at(-1) === title)) {
-        problems.push(`${key}: no assertProperty call inside a test with that title`);
+        problems.push(`${key}: no registry driver call inside a test with that title`);
       }
       for (const pinned of entries) {
         if (!Number.isInteger(pinned.seed) || (pinned.seed | 0) !== pinned.seed) {
