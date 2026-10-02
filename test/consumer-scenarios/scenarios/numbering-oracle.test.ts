@@ -17,6 +17,7 @@ import {
   modelOf,
   numberingFactsOf,
   rowsOf,
+  type Row,
 } from "../support/oracle.ts";
 
 test("style numbering comes from definitions, preserves direct overrides, and catches missing numbering", async () => {
@@ -41,7 +42,7 @@ test("style numbering comes from definitions, preserves direct overrides, and ca
           ? facts.styles.get("Heading2")
           : (facts.direct.get(anchor.id) ?? facts.styles.get("Heading2"));
       const expectedLevel = level?.kind === "reference" ? (level.ilvl ?? 0) : undefined;
-      const inserted = {
+      const inserted: Row = {
         ...anchor,
         id: "inserted",
         text: "Inserted clause",
@@ -55,8 +56,8 @@ test("style numbering comes from definitions, preserves direct overrides, and ca
             ? { numId: level.numId, level: expectedLevel ?? 0 }
             : undefined,
       };
-      const index = rows.indexOf(anchor);
-      const result = [...rows.slice(0, index + 1), inserted, ...rows.slice(index + 1)];
+      const result = rows.slice();
+      result.splice(rows.indexOf(anchor) + 1, 0, inserted);
       assert.deepEqual(compareWithModel(model, result), []);
       assert.match(
         compareWithModel(
