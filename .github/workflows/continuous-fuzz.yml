@@ -15,6 +15,14 @@ on:
         description: Run the CI-only 100-page long-flow lane
         type: boolean
         default: false
+      swarm:
+        description: Enable seeded operation subsets
+        type: boolean
+        default: false
+      public_corpus_flows:
+        description: Run full consumer flows from pinned public documents
+        type: boolean
+        default: false
       minutes:
         description: "Consumer-scenario fuzz budget in minutes"
         required: false
@@ -33,7 +41,7 @@ permissions: {}
 
 jobs:
   consumer-fuzz:
-    if: ${{ !inputs.long_flows }}
+    if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Consumer-scenario fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -54,6 +62,21 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # Branch-local feedback: never steer a branch from another branch's report.
+      - name: Restore feature coverage
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .fuzz/features.json
+          key: consumer-fuzz-features-${{ github.ref_name }}:${{ github.run_id }}
+          restore-keys: "consumer-fuzz-features-${{ github.ref_name }}:"
+
+      - name: Initialize uncovered cells
+        run: |
+          mkdir -p .fuzz
+          if [ ! -f .fuzz/features.json ]; then
+            echo '{"version":1,"cells":{},"operations":[]}' > .fuzz/features.json
+          fi
+
       # The corpus of flows that reached new states, carried from run to run.
       - name: Restore the flow corpus
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -65,6 +88,8 @@ jobs:
       # The seed derives from the run id: every run searches afresh, and a
       # rerun of a run replays it.
       - name: Fuzz for the budget
+        id: fuzz
+        timeout-minutes: 40
         run: |
           set -o pipefail
           if [[ ! "$MINUTES" =~ ^[0-9]+$ ]] || (( MINUTES < 1 || MINUTES > 40 )); then
@@ -74,15 +99,53 @@ jobs:
           mkdir -p test-results
           export FOLIO_SCENARIO_SEED=$(( (GITHUB_RUN_ID * 7919) % 2147483647 ))
           export FOLIO_SCENARIO_BUDGET_SECONDS=$(( MINUTES * 60 ))
-          bun scripts/consumer-scenarios.ts -- continuous-fuzz.test.ts 2>&1 \
+          bun scripts/consumer-scenarios.ts --feature-coverage-out test-results/fuzz-features.json -- continuous-fuzz.test.ts 2>&1 \
             | tee test-results/continuous-fuzz.log
         env:
+          FOLIO_FUZZ_HEALTH: "1"
           MINUTES: ${{ github.event.inputs.minutes || '25' }}
           FOLIO_SCENARIO_FUZZ_STEPS: "16"
+          FOLIO_SCENARIO_SWARM: ${{ inputs.swarm && '1' || '0' }}
           FOLIO_SCENARIO_SHRINK_SECONDS: "240"
           FOLIO_SCENARIO_CORPUS_DIR: .fuzz/corpus
           FOLIO_SCENARIO_FAILURES_DIR: test-results/fuzz-failures
           FOLIO_SCENARIO_MINIMIZED_DIR: test-results/fuzz-minimized
+          FOLIO_SCENARIO_FEATURE_WEIGHTS: .fuzz/features.json
+
+      # Save the input as well as the output: the exact report is part of replay.
+      - name: Keep coverage feedback and its replay input
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: continuous-fuzz-features
+          path: |
+            .fuzz/features.json
+            test-results/fuzz-features.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Advance coverage feedback
+        if: always() && !cancelled() && hashFiles('test-results/fuzz-features.json') != ''
+        run: cp test-results/fuzz-features.json .fuzz/features.json
+
+      - name: Save feature coverage
+        if: always() && !cancelled() && hashFiles('test-results/fuzz-features.json') != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .fuzz/features.json
+          key: consumer-fuzz-features-${{ github.ref_name }}:${{ github.run_id }}
+
+      - name: Check fuzz health
+        if: always()
+        run: |
+          if ! command -v bun >/dev/null || [ ! -f scripts/fuzz-health-check.ts ]; then
+            echo "::error::Fuzz infrastructure unavailable before health reporting"
+            echo "Fuzz health: **infrastructure**; setup failed before health reporting." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          bun scripts/fuzz-health-check.ts test-results/continuous-fuzz.log
+        env:
+          FUZZ_STEP_OUTCOME: ${{ steps.fuzz.outcome }}
 
       - name: Save the flow corpus
         if: always() && !cancelled()
@@ -104,7 +167,7 @@ jobs:
           if-no-files-found: ignore
 
   property-fuzz:
-    if: ${{ !inputs.long_flows }}
+    if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Property fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -124,13 +187,28 @@ jobs:
       # Every property, scaled up, under a salt no other run uses; a failure
       # logs its seed, replay line and fingerprint (test/property-testing.ts).
       - name: Property suite
+        id: fuzz
+        timeout-minutes: 35
         run: |
           set -o pipefail
           mkdir -p test-results
           bun run test:property 2>&1 | tee test-results/property-fuzz.log
         env:
+          FOLIO_FUZZ_HEALTH: "1"
           PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '4' }}
           PROPERTY_TEST_SEED_SALT: continuous-${{ github.run_id }}
+
+      - name: Check fuzz health
+        if: always()
+        run: |
+          if ! command -v bun >/dev/null || [ ! -f scripts/fuzz-health-check.ts ]; then
+            echo "::error::Fuzz infrastructure unavailable before health reporting"
+            echo "Fuzz health: **infrastructure**; setup failed before health reporting." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          bun scripts/fuzz-health-check.ts test-results/property-fuzz.log
+        env:
+          FUZZ_STEP_OUTCOME: ${{ steps.fuzz.outcome }}
 
       - name: Keep the log
         if: failure()
@@ -146,6 +224,13 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/nightly-long-fuzz.yml
+
+  public-corpus-flows:
+    if: ${{ inputs.public_corpus_flows }}
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/nightly-public-corpus-flows.yml
 
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.

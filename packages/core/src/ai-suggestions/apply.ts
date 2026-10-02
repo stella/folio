@@ -13,6 +13,8 @@
 
 import type { EditorView } from "prosemirror-view";
 
+import { mintRevisionId, seedRevisionIdsFromDoc } from "../prosemirror/plugins/revisionIds";
+
 import { resolveSuggestionAnchor } from "./conflict";
 import type { AISuggestion, AISuggestionApplyMode } from "./types";
 
@@ -22,7 +24,7 @@ export type ApplyResult = {
 };
 
 type ApplyOptions = {
-  view: EditorView;
+  view: Pick<EditorView, "state" | "dispatch">;
   suggestions: AISuggestion[];
   mode: AISuggestionApplyMode;
   author: string;
@@ -69,10 +71,10 @@ export function applySuggestions(options: ApplyOptions): ApplyResult {
       };
     }
     const date = new Date().toISOString();
-    let revisionSeed = Date.now();
+    seedRevisionIdsFromDoc(view.state.doc);
 
     for (const { suggestion, from, to } of resolved) {
-      const revisionId = revisionSeed++;
+      const revisionId = mintRevisionId();
       const attrs = { revisionId, author, date };
 
       if (suggestion.suggestedText.length > 0) {

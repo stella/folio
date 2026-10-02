@@ -7,12 +7,25 @@
  * Port of eigenpal/docx-editor#1093.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { Schema } from "prosemirror-model";
+import fc from "fast-check";
 
 import { MAX_REVISION_ID } from "@stll/docx-core/model";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
-import { mintRevisionId, seedRevisionIdsAbove, seedRevisionIdsFromDoc } from "./revisionIds";
+import {
+  claimRevisionIds,
+  mintRevisionId,
+  nextRevisionId,
+  nextRevisionIdRange,
+  revisionIdSeedAbove,
+  RevisionIdAllocationError,
+  seedRevisionIdsAbove,
+  seedRevisionIdsFromDoc,
+} from "./revisionIds";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 const schema = new Schema({
   nodes: {
@@ -26,11 +39,28 @@ const schema = new Schema({
     text: { group: "inline" },
   },
   marks: {
+    runPropertyChange: {
+      attrs: { changes: { default: [] } },
+      toDOM: () => ["span", 0],
+    },
     insertion: {
       attrs: { revisionId: { default: 0 }, author: { default: "" }, date: { default: "" } },
       toDOM: () => ["ins", 0],
     },
   },
+});
+
+test("deterministic revision seeds prefer valid ids above loaded values and skip occupied rollover intervals", () => {
+  expect(revisionIdSeedAbove([])).toBe(1);
+  expect(revisionIdSeedAbove([0, 2, 40])).toBe(41);
+  expect(revisionIdSeedAbove([Number.NaN, -1, MAX_REVISION_ID + 1, 8])).toBe(9);
+  const occupied = [0, 1, 3, MAX_REVISION_ID];
+  const seed = revisionIdSeedAbove(occupied);
+  expect(seed).toBe(4);
+  expect(revisionIdSeedAbove(occupied.toReversed())).toBe(seed);
+  mintRevisionId();
+  expect(revisionIdSeedAbove(occupied)).toBe(seed);
+  expect(seed).toBeLessThanOrEqual(MAX_REVISION_ID);
 });
 
 describe("mintRevisionId", () => {
@@ -116,13 +146,80 @@ describe("seedRevisionIdsFromDoc", () => {
   });
 });
 
-// MUST run last in this file: these drive the module counter to the very top of
-// the range, so any later test in this file that expects a specific low value
-// would see a wrapped counter.
+test("reserves every loaded run-property revision, including on rollover", () => {
+  const changes = [
+    { info: { id: 7_000_000, author: "Author" } },
+    { info: { id: MAX_REVISION_ID, author: "Author" } },
+  ];
+  const doc = schema.node("doc", null, [
+    schema.node("paragraph", null, [
+      schema.text("x", [schema.marks["runPropertyChange"]!.create({ changes })]),
+    ]),
+  ]);
+  seedRevisionIdsFromDoc(doc);
+  const id = mintRevisionId();
+  expect(id).not.toBe(7_000_000);
+  expect(id).not.toBe(MAX_REVISION_ID);
+  expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+});
+
 describe("range top boundary", () => {
-  test("seeding at the max id does not push the counter past the range", () => {
+  test("wrap skips loaded and previously issued ids", () => {
+    const issued = mintRevisionId();
     seedRevisionIdsAbove(MAX_REVISION_ID - 1);
+    const boundaryId = mintRevisionId();
+    expect(boundaryId).toBeLessThanOrEqual(MAX_REVISION_ID);
+    expect(boundaryId).not.toBe(issued);
     seedRevisionIdsAbove(MAX_REVISION_ID);
-    expect(mintRevisionId()).toBe(MAX_REVISION_ID);
+    const wrapped = mintRevisionId();
+    expect(wrapped).toBeGreaterThan(0);
+    expect(wrapped).not.toBe(issued);
+    expect(wrapped).not.toBe(MAX_REVISION_ID);
   });
+
+  test("rejects an overflowing batch before reserving it", () => {
+    const before = nextRevisionId();
+    expect(() => claimRevisionIds(MAX_REVISION_ID, MAX_REVISION_ID + 2)).toThrow(
+      RevisionIdAllocationError,
+    );
+    expect(nextRevisionId()).toBe(before);
+  });
+});
+
+test("shared contiguous batches avoid every occupied hole and high tail across producer schedules", () => {
+  // The prior allocation oracle checked single ids. Generate multi-id demands
+  // and loaded boundaries between batches, including single-id producers.
+  assertProperty(
+    fc.property(
+      fc.array(
+        fc.record({
+          offset: fc.integer({ min: 0, max: 64 }),
+          demand: fc.integer({ min: 2, max: 16 }),
+        }),
+        { minLength: 2, maxLength: 20 },
+      ),
+      (schedule) => {
+        const loaded = new Set(schedule.map(({ offset }) => MAX_REVISION_ID - offset));
+        for (const id of loaded) seedRevisionIdsAbove(id);
+        const issued = new Set<number>();
+        for (const { offset, demand } of schedule) {
+          seedRevisionIdsAbove(MAX_REVISION_ID - offset);
+          const first = nextRevisionIdRange();
+          claimRevisionIds(first, first + demand);
+          for (let id = first; id < first + demand; id += 1) {
+            expect(id).toBeGreaterThan(0);
+            expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+            expect(loaded.has(id)).toBe(false);
+            expect(issued.has(id)).toBe(false);
+            issued.add(id);
+          }
+          const reentrant = mintRevisionId();
+          expect(loaded.has(reentrant)).toBe(false);
+          expect(issued.has(reentrant)).toBe(false);
+          issued.add(reentrant);
+        }
+      },
+    ),
+    { numRuns: 40 },
+  );
 });

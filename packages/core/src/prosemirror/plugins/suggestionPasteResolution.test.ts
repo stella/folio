@@ -8,14 +8,14 @@ import {
   runConformanceCase,
   type ConformanceOperation,
 } from "../../__tests__/editorCommandConformance";
-import { SELECTION_PLACEMENTS } from "../../__tests__/editorHarness";
+import { TEXTBLOCK_SELECTION_PLACEMENTS } from "../../__tests__/editorHarness";
 
 const copiedBlocks = EXTRA_OPERATIONS.find(({ id }) => id === "paste:copied-blocks");
 const trackedShape = DOCUMENT_SHAPES.find(({ id }) => id === "tracked-changes");
 if (!copiedBlocks || !trackedShape) panic("Missing paste resolution inputs");
 
 describe("tracked paste resolution", () => {
-  test.each(SELECTION_PLACEMENTS)(
+  test.each(TEXTBLOCK_SELECTION_PLACEMENTS)(
     "copied revisions resolve like direct paste at %s",
     async (placement) => {
       const result = await runConformanceCase(trackedShape, copiedBlocks, placement);
@@ -28,7 +28,7 @@ describe("tracked paste resolution", () => {
 const REVISION_KINDS = ["insertion", "deletion", "moveTo", "moveFrom"] as const;
 const nestedCases = REVISION_KINDS.flatMap((outer) =>
   REVISION_KINDS.flatMap((inner) =>
-    SELECTION_PLACEMENTS.map((placement) => [outer, inner, placement] as const),
+    TEXTBLOCK_SELECTION_PLACEMENTS.map((placement) => [outer, inner, placement] as const),
   ),
 );
 const plainShape = DOCUMENT_SHAPES.find(({ id }) => id === "bare-package");
@@ -41,7 +41,7 @@ test.each(nestedCases)(
   async (outer, inner, placement) => {
     const operation = {
       id: "paste:nested-revisions",
-      placements: SELECTION_PLACEMENTS,
+      placements: TEXTBLOCK_SELECTION_PLACEMENTS,
       run: ({ view }) => {
         const markType =
           view.state.schema.marks[

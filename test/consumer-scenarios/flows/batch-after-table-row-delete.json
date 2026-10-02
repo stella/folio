@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "suggested",
+  "seed": 774176929,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 382953447,
+      "operations": [
+        {
+          "type": "replaceRange",
+          "range": {
+            "type": "textRange",
+            "story": "main",
+            "blockId": "61778922",
+            "startOffset": 5,
+            "endOffset": 9,
+            "selectedTextHash": "hykoz7o"
+          },
+          "replace": "updated"
+        }
+      ]
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 3109696018,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "3CCF9CD4",
+          "text": "Clause delivery invoice notice delivery delivery delivery."
+        }
+      ]
+    },
+    {
+      "action": "save and reopen",
+      "seed": 4117602570
+    },
+    {
+      "action": "add_comment",
+      "seed": 1022365417
+    },
+    {
+      "action": "suggest_changes",
+      "seed": 1398436299,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "2BDB94A8"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 1270553905,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "2BDB94A8",
+          "text": "Invoice warranty supplier term agreement invoice supplier."
+        },
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "30DB9C87",
+          "text": "Period buyer goods invoice."
+        },
+        {
+          "type": "insertTableRow",
+          "blockId": "31DB9E1A",
+          "position": "after",
+          "cellTexts": ["Row cell 1", "Row cell 2"]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceInBlock",
+    "replaceRange",
+    "insertBeforeBlock",
+    "deleteBlock",
+    "insertTableRow",
+    "deleteTableRow"
+  ],
+  "origin": "shrunk from swap+unpin+delete of 02908aeaca13e4a7",
+  "title": "PINNED #1356, reported seed 774176972: Fuzz failure [9983fd2a36e8a824]: consumer flow stories / suggested: [batchSequential] the batch (suggested: insertBeforeBlock, insertBeforeBlock, insertTableRow) leaves otherwise than its operations one at a time:"
+}

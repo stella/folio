@@ -9,7 +9,10 @@
  * the React hook so the two adapters feel identical under drag.
  */
 import { onScopeDispose, type Ref } from "vue";
-import { findVerticalScrollParent } from "@stll/folio-core/utils/findVerticalScrollParent";
+import {
+  getEditorScrollRoot,
+  scrollEditorBy,
+} from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { AUTO_SCROLL_EDGE_ZONE as EDGE_ZONE, computeAutoScrollDelta } from "../utils/autoScroll";
 
 export type DragAutoScrollOptions = {
@@ -31,14 +34,9 @@ export function useDragAutoScroll({
   let lastMouseX = 0;
   let lastMouseY = 0;
   let active = false;
-  let scrollParent: HTMLElement | null = null;
 
   function getScrollParent(): HTMLElement | null {
-    if (scrollParent) return scrollParent;
-    const pages = pagesContainer.value;
-    if (!pages) return null;
-    scrollParent = findVerticalScrollParent(pages);
-    return scrollParent;
+    return getEditorScrollRoot(pagesContainer.value);
   }
 
   function stopAutoScroll() {
@@ -58,7 +56,7 @@ export function useDragAutoScroll({
     const scrollDelta = computeAutoScrollDelta(rect, lastMouseY);
 
     if (scrollDelta !== 0) {
-      container.scrollTop += scrollDelta;
+      scrollEditorBy(container, scrollDelta);
       onScrollExtendSelection(lastMouseX, lastMouseY);
     }
     rafId = requestAnimationFrame(tick);

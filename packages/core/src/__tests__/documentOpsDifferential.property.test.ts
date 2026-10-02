@@ -2,6 +2,12 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
+import { TextSelection } from "prosemirror-state";
+
+import { extractRunFormatting } from "../layout-bridge/convert/runMarkFormatting";
+import { mergeRunFormatting } from "../layout-bridge/convert/runFormattingMerge";
+import { paragraphRunDefaults } from "../layout-bridge/convert/textFormattingConversion";
+import { expectParagraphAttrs } from "../prosemirror/attrs";
 
 import {
   applyDocumentOp,
@@ -51,6 +57,14 @@ const flowArbitrary = fc.record({
  */
 const renderedMarks = (node: PMNode): unknown[] =>
   node.marks.flatMap((mark) => {
+    // Font marks can be omitted when text uses its paragraph defaults.
+    // Compare their effective values separately, as the painter does.
+    if (
+      mark.type.name === "fontFamily" ||
+      mark.type.name === "fontSize" ||
+      mark.type.name === "runFormattingOverride"
+    )
+      return [];
     if (mark.type.name !== RUN_IDENTITY_MARK_NAME) return [mark.toJSON()];
     const { preservedAttributes, preserved } = expectRunIdentityMarkAttrs(mark);
     if (!preservedAttributes?.length && !preserved?.children?.length) return [];
@@ -60,14 +74,16 @@ const renderedMarks = (node: PMNode): unknown[] =>
 /** Compare every character and mark independently of internal text-leaf partitioning. */
 const contentView = (node: PMNode): unknown => {
   const children: unknown[] = [];
+  const defaults = node.isTextblock ? paragraphRunDefaults(expectParagraphAttrs(node)) : {};
   node.forEach((child) => {
     if (!child.isText) {
       children.push(contentView(child));
       return;
     }
     const marks = renderedMarks(child);
+    const formatting = mergeRunFormatting(defaults, extractRunFormatting(child.marks));
     for (const character of child.text ?? "") {
-      children.push({ type: child.type.name, text: character, marks });
+      children.push({ type: child.type.name, text: character, marks, formatting });
     }
   });
   return { type: node.type.name, text: node.text, marks: renderedMarks(node), children };
@@ -86,6 +102,22 @@ test("rendered differential oracle detects text, formatting and preserved metada
   expect(contentView(state.tr.addMark(from, to, captureOnly).doc)).toEqual(before);
   expect(contentView(state.tr.insertText("x", from).doc)).not.toEqual(before);
   expect(contentView(state.tr.delete(from, to).doc)).not.toEqual(before);
+  const fontSize = state.schema.marks["fontSize"];
+  const fontFamily = state.schema.marks["fontFamily"];
+  if (!fontSize || !fontFamily) throw new Error("oracle fixture has no font marks");
+  expect(contentView(state.tr.addMark(from, to, fontSize.create({ size: 40 })).doc)).not.toEqual(
+    before,
+  );
+  expect(
+    contentView(
+      state.tr.addMark(from, to, fontFamily.create({ ascii: "Courier New", hAnsi: "Courier New" }))
+        .doc,
+    ),
+  ).not.toEqual(before);
+  const inheritedFonts = state.tr
+    .removeMark(from, to, fontSize)
+    .removeMark(from, to, fontFamily).doc;
+  expect(contentView(inheritedFonts)).toEqual(before);
   for (const kind of ["bold", "italic"] as const) {
     const mark = state.schema.marks[kind];
     if (!mark) throw new Error(`oracle fixture has no ${kind} mark`);
@@ -132,6 +164,10 @@ test("PM and Document ops agree after every generated text and formatting step",
       const to = { story: OP_STORIES.MAIN, blockId, offset: end };
       const fromPosition = target.pos + 1 + offset;
       const toPosition = target.pos + 1 + end;
+      // PM insertText inherits stored/cursor marks, whereas Document inherits
+      // at the addressed position. Move the independent simulator's cursor
+      // there so a previous edit in another paragraph cannot supply its font.
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, fromPosition)));
       let transaction = state.tr;
       const operation = (() => {
         switch (step.kind) {

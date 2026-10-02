@@ -16,6 +16,8 @@ const STYLES_REL = "http://schemas.openxmlformats.org/officeDocument/2006/relati
 
 export type FixtureParagraph = {
   text: string;
+  /** Runs to write instead of one plain run of `text`; `text` must be their concatenation. */
+  runs?: readonly { text: string; bold?: boolean }[];
   /** `w14:paraId`; omit for a paragraph that carries none. */
   paraId?: string;
   /** `w:pStyle`; `Heading1` is defined as an outline level 0 heading. */
@@ -25,11 +27,30 @@ export type FixtureParagraph = {
 const escapeXml = (value: string): string =>
   value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
-const paragraphXml = ({ text, paraId, style }: FixtureParagraph): string => {
+/** A table: rows of cells, each cell one or more paragraphs. */
+export type FixtureTable = { rows: readonly (readonly (readonly FixtureParagraph[])[])[] };
+
+export type FixtureBlock = FixtureParagraph | FixtureTable;
+
+const runXml = ({ text, bold }: { text: string; bold?: boolean }): string =>
+  `<w:r>${bold === true ? "<w:rPr><w:b/></w:rPr>" : ""}<w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
+
+const paragraphXml = ({ text, runs, paraId, style }: FixtureParagraph): string => {
   const id = paraId === undefined ? "" : ` w14:paraId="${paraId}" w14:textId="77777777"`;
   const properties = style === undefined ? "" : `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>`;
-  return `<w:p${id}>${properties}<w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r></w:p>`;
+  return `<w:p${id}>${properties}${(runs ?? [{ text }]).map(runXml).join("")}</w:p>`;
 };
+
+const tableXml = ({ rows }: FixtureTable): string =>
+  `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>${rows
+    .map(
+      (cells) =>
+        `<w:tr>${cells.map((cell) => `<w:tc>${cell.map(paragraphXml).join("")}</w:tc>`).join("")}</w:tr>`,
+    )
+    .join("")}</w:tbl>`;
+
+const blockXml = (block: FixtureBlock): string =>
+  "rows" in block ? tableXml(block) : paragraphXml(block);
 
 const STYLES_XML =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -39,8 +60,8 @@ const STYLES_XML =
   '<w:basedOn w:val="Normal"/><w:pPr><w:outlineLvl w:val="0"/></w:pPr></w:style>' +
   "</w:styles>";
 
-/** Build a minimal WordprocessingML package holding the given paragraphs. */
-export const buildDocx = async (paragraphs: readonly FixtureParagraph[]): Promise<Uint8Array> => {
+/** Build a minimal WordprocessingML package holding the given paragraphs and tables. */
+export const buildDocx = async (paragraphs: readonly FixtureBlock[]): Promise<Uint8Array> => {
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -71,7 +92,7 @@ export const buildDocx = async (paragraphs: readonly FixtureParagraph[]): Promis
     "word/document.xml",
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       `<w:document xmlns:w="${W_NS}" xmlns:w14="${W14_NS}" xmlns:r="${R_NS}"><w:body>` +
-      `${paragraphs.map(paragraphXml).join("")}<w:sectPr/></w:body></w:document>`,
+      `${paragraphs.map(blockXml).join("")}<w:sectPr/></w:body></w:document>`,
   );
   return await zip.generateAsync({ type: "uint8array" });
 };
@@ -83,6 +104,73 @@ export const CONTRACT_PARAGRAPHS: readonly FixtureParagraph[] = [
   { text: "Late payment accrues interest.", paraId: "10000003" },
   { text: "Either party may terminate on notice.", paraId: "10000004" },
 ];
+
+const CLAUSE_TITLES = [
+  "Definitions",
+  "Services",
+  "Fees and Payment",
+  "Term and Termination",
+  "Warranties",
+  "Confidentiality",
+  "Liability",
+  "Intellectual Property",
+  "Data Protection",
+  "General",
+];
+
+const SENTENCES = [
+  "The Supplier shall perform the Services with reasonable skill and care and in accordance with good industry practice.",
+  "The Customer shall provide the Supplier with access to its premises, systems and personnel as reasonably required.",
+  "Any change to the scope of the Services shall be agreed in writing by both parties before it takes effect.",
+  "The Supplier shall notify the Customer promptly of any matter that may delay or prevent the performance of the Services.",
+  "Each party shall comply with all applicable laws and regulations in performing its obligations under this Agreement.",
+];
+
+const paraIdOf = (index: number): string => (0x20000000 + index).toString(16).toUpperCase();
+
+/**
+ * A contract of about four pages: ten numbered clauses of three paragraphs
+ * each, a party table after the first clause, and a bold defined term.
+ */
+export const fourPageContract = (): FixtureBlock[] => {
+  let next = 0;
+  const id = (): string => paraIdOf(next++);
+  const blocks: FixtureBlock[] = [
+    { text: "Services Agreement", paraId: id(), style: "Heading1" },
+    {
+      text: 'This Agreement is made between Acme Ltd (the "Supplier") and Beta plc (the "Customer").',
+      runs: [
+        { text: "This Agreement is made between Acme Ltd (the " },
+        { text: '"Supplier"', bold: true },
+        { text: ') and Beta plc (the "Customer").' },
+      ],
+      paraId: id(),
+    },
+  ];
+  for (const [clause, title] of CLAUSE_TITLES.entries()) {
+    blocks.push({ text: `${clause + 1}. ${title}`, paraId: id(), style: "Heading1" });
+    for (let item = 1; item <= 3; item += 1) {
+      const body = [0, 1, 2].map(
+        (offset) => SENTENCES[(clause + item + offset) % SENTENCES.length],
+      );
+      const lead =
+        clause === 6 && item === 2
+          ? "The Supplier's total liability is capped at the fees paid. "
+          : "";
+      blocks.push({ text: `${clause + 1}.${item} ${lead}${body.join(" ")}`, paraId: id() });
+    }
+    if (clause === 0) {
+      blocks.push({
+        rows: [
+          [[{ text: "Party", paraId: id() }], [{ text: "Role", paraId: id() }]],
+          [[{ text: "Acme Ltd", paraId: id() }], [{ text: "Supplier", paraId: id() }]],
+          [[{ text: "Beta plc", paraId: id() }], [{ text: "Customer", paraId: id() }]],
+        ],
+      });
+    }
+  }
+  return blocks;
+};
 
 /** A temporary directory removed by the returned `cleanup`. */
 export const makeTempDir = async (): Promise<{ dir: string; cleanup: () => Promise<void> }> => {
@@ -96,7 +184,7 @@ export const makeTempDir = async (): Promise<{ dir: string; cleanup: () => Promi
 export const writeDocx = async (
   dir: string,
   name: string,
-  paragraphs: readonly FixtureParagraph[],
+  paragraphs: readonly FixtureBlock[],
 ): Promise<string> => {
   const filePath = path.join(dir, name);
   await writeFile(filePath, await buildDocx(paragraphs));

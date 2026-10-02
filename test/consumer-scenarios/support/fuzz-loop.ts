@@ -27,7 +27,12 @@ import { shrinkFlow } from "./shrink.ts";
 
 /** The relation settings a replay needs to fail the same way, as `NAME=value` words. */
 export const relationEnv = (): string =>
-  ["FOLIO_SCENARIO_RELATIONS", "FOLIO_SCENARIO_RELATIONS_DEPTH"]
+  [
+    "FOLIO_SCENARIO_RELATIONS",
+    "FOLIO_SCENARIO_RELATIONS_DEPTH",
+    "FOLIO_SCENARIO_FEATURE_WEIGHTS",
+    "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
+  ]
     .flatMap((name) => {
       const value = process.env[name];
       return value === undefined ? [] : [`${name}=${shellQuote(value)}`];
@@ -45,6 +50,7 @@ export const seedReplay = (seed: number, steps: number, kind: FlowKind): string 
   return words(
     `FOLIO_SCENARIO_SEED=${seed} FOLIO_SCENARIO_FUZZ_STEPS=${steps} ${runs}`,
     relationEnv(),
+    process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "FOLIO_SCENARIO_SWARM=1" : "",
     `bun scripts/consumer-scenarios.ts --only '^${label} run 0 \\(' -- fuzz.test.ts`,
   );
 };
@@ -179,6 +185,7 @@ export type LoopOptions = {
 };
 
 export type LoopResult = {
+  completedCases: number;
   flows: number;
   mutants: number;
   admitted: number;
@@ -203,6 +210,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
   const control = createRandom(options.seed ^ 0x6c6f_6f70);
   const failures = new Map<string, { record: FailureRecord; count: number }>();
   const result: LoopResult = {
+    completedCases: 0,
     flows: 0,
     mutants: 0,
     admitted: 0,
@@ -270,6 +278,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
         // The same failure again: its line carries the shrunk one's fingerprint.
         seen.count += 1;
         logFailureMarker({ ...seen.record.marker, seed, repro });
+        result.completedCases += 1;
         continue;
       }
       const record = await recordFailure(error, { seed, repro }, shrinkLimits());
@@ -281,6 +290,7 @@ export const fuzzFor = async (options: LoopOptions): Promise<LoopResult> => {
           : `  shrunk from ${record.shrink.from} to ${record.shrink.steps} steps; replay: ${record.replays[0]}`,
       );
     }
+    result.completedCases += 1;
   }
   prune(corpus, options.corpusSize);
   result.corpus = corpus.entries.length;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 
+import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { computeScrollPageInfo } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import type { ScrollPageInfo } from "@stll/folio-core/paged-layout/scrollPageInfo";
 import {
@@ -143,7 +144,7 @@ export function useZoomAndPageInfo({
       return;
     }
     const nextScrollTop = getScrollTopForZoomAnchor(anchor, zoom);
-    scrollContainer.scrollTop = nextScrollTop;
+    scrollEditorTo(scrollContainer, { top: nextScrollTop, behavior: "instant" });
     updateScrollPageInfo(scrollContainer);
     scheduleScrollPageInfoFade();
   }, [zoom, scheduleScrollPageInfoFade, updateScrollPageInfo, scrollContainerRef]);

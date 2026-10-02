@@ -6,11 +6,12 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
 import { createEmptyDocument } from "@stll/folio-core/utils/createDocument";
-import { act, useState } from "react";
+import { act, useLayoutEffect, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { writeCommentAnchorIds } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 
+import { allocateCommentId, createComment } from "./commentsHelpers";
 import { useFolioComments } from "./useFolioComments";
 
 // React only silences its "not wrapped in act" warning when this flag is set.
@@ -47,6 +48,7 @@ type MountOptions = {
   onCommentsChange?: (comments: Comment[]) => void;
   /** Painted content root the highlight sync reads its anchors from. */
   editorContent?: HTMLElement;
+  onChildLayout?: (hook: Hook) => void;
 };
 
 const makeComment = (id: number): Comment => ({
@@ -62,9 +64,14 @@ const mount = ({
   commentsProp,
   onCommentsChange,
   editorContent,
+  onChildLayout,
 }: MountOptions = {}): Harness => {
   let latest: Hook | null = null;
   let bump: (() => void) | null = null;
+  const Child = ({ hook }: { hook: Hook }) => {
+    useLayoutEffect(() => onChildLayout?.(hook), [hook]);
+    return null;
+  };
   const Host = () => {
     const [, setTick] = useState(0);
     bump = () => setTick((tick) => tick + 1);
@@ -76,7 +83,7 @@ const mount = ({
       commentsProp,
       onCommentsChange,
     });
-    return null;
+    return <Child hook={latest} />;
   };
   const root = createRoot(document.createElement("div"));
   roots.push(root);
@@ -95,6 +102,44 @@ const mount = ({
 };
 
 describe("useFolioComments.setComments", () => {
+  test.each(["loaded", "controlled"] as const)(
+    "reserves %s comment IDs before creating a comment",
+    (source) => {
+      const existingId = allocateCommentId() + 500;
+      const existing = makeComment(existingId);
+      const doc = createEmptyDocument();
+      doc.package.document.comments = [existing];
+      mount(source === "loaded" ? { doc } : { commentsProp: [existing] });
+      expect(createComment("New note", "Reviewer").id).toBe(existingId + 1);
+    },
+  );
+
+  test.each(["loaded", "controlled"] as const)(
+    "reserves %s IDs before child layout callbacks",
+    (source) => {
+      const existingId = allocateCommentId() + 500;
+      const existing = makeComment(existingId);
+      const doc = createEmptyDocument();
+      doc.package.document.comments = [existing];
+      let allocated: number | undefined;
+      mount({
+        ...(source === "loaded" ? { doc } : { commentsProp: [existing] }),
+        onChildLayout: (hook) => {
+          allocated ??= hook.createComment("New note", "Reviewer").id;
+        },
+      });
+      expect(allocated).toBe(existingId + 1);
+    },
+  );
+
+  test("reserves IDs synchronously when adopting comments through the setter", () => {
+    const harness = mount();
+    const existingId = allocateCommentId() + 500;
+    act(() => {
+      harness.hook.setComments([makeComment(existingId)]);
+      expect(createComment("New note", "Reviewer").id).toBe(existingId + 1);
+    });
+  });
   test("uncontrolled: a mutation survives an unrelated host rerender", () => {
     const changes: Comment[][] = [];
     const harness = mount({ onCommentsChange: (next) => changes.push(next) });

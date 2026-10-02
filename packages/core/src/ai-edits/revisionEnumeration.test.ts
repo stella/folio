@@ -28,7 +28,7 @@ import {
   getTrackedChangesFromDoc,
   getTrackedChangesFromSnapshot,
 } from "./read";
-import { storyTablesOf } from "./snapshot";
+import { sourceDocumentOf, storyTablesOf } from "./snapshot";
 import type { FolioAIEditSnapshot } from "./types";
 
 const AUTHOR = "Reviewer";
@@ -622,13 +622,15 @@ describe("body revision enumeration", () => {
     });
     const stats = getTrackedChangeStatsFromDoc(doc);
     expect(statsWalks).toBe(1);
-    expect(stats).toEqual({
+    expect(stats).toMatchObject({
       highestId: Math.max(...expectedChanges.map(({ id }) => id)),
       present: true,
     });
+    expect(new Set(stats.ids)).toEqual(new Set(expectedChanges.map(({ id }) => id)));
     expect(getTrackedChangeStatsFromDoc(toProseDoc(createEmptyDocument()))).toEqual({
       highestId: 0,
       present: false,
+      ids: [],
     });
 
     const changes = getTrackedChangesFromDoc(doc);
@@ -768,6 +770,7 @@ describe("resolved story serialization structural matrix", () => {
       {
         snapshot: FolioAIEditSnapshot;
         changes: ReturnType<typeof getTrackedChangesFromSnapshot>;
+        ids: readonly number[];
       }
     >();
 
@@ -778,15 +781,25 @@ describe("resolved story serialization structural matrix", () => {
       }
       const arrivingChanges = getTrackedChangesFromSnapshot(arriving);
       expect(arrivingChanges).not.toHaveLength(0);
-      arrivingByStory.set(storyKey(story), { snapshot: arriving, changes: arrivingChanges });
+      arrivingByStory.set(storyKey(story), {
+        snapshot: arriving,
+        changes: arrivingChanges,
+        ids: getTrackedChangeStatsFromDoc(sourceDocumentOf(arriving)).ids,
+      });
     }
 
     const projection = comparisonAccess.projectStories("with-revision-census");
     expect(projection.stories.map(({ handle }) => handle)).toEqual(REVIEW_STORIES);
-    expect(projection.revisions).toEqual({
-      highestId: Math.max(...expectedChanges.map(({ id }) => id)),
-      present: true,
-    });
+    expect(projection.revisions.present).toBe(true);
+    expect(Math.max(...projection.revisions.ids)).toBe(
+      Math.max(...expectedChanges.map(({ id }) => id)),
+    );
+    expect(new Set(projection.revisions.ids)).toEqual(
+      new Set([...arrivingByStory.values()].flatMap(({ ids }) => ids)),
+    );
+    for (const { changes } of arrivingByStory.values()) {
+      for (const { id } of changes) expect(projection.revisions.ids).toContain(id);
+    }
 
     for (const { handle: story, snapshot: resolved } of projection.stories) {
       if (!resolved) {
