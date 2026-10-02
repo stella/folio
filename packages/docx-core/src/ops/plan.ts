@@ -7,7 +7,7 @@
 import { Result, panic } from "better-result";
 
 import { type Document, MAX_REVISION_ID } from "../model/document";
-import { applyDocumentOp, stampOf } from "./apply";
+import { applyDocumentOp, stampOf, type AppliedDocumentOp } from "./apply";
 import {
   blockListAt,
   sameBlockList,
@@ -51,6 +51,7 @@ import {
   EMPTY_PROPERTY_SETS,
   type DocumentOp,
   type NewIds,
+  type OpStory,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
@@ -96,6 +97,28 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
       return unreachable;
     }
   }
+};
+
+type TrimAppliedNewIdsOptions = {
+  op: DocumentOp;
+  applied: AppliedDocumentOp;
+  story: OpStory;
+};
+
+/** Keep only supplied ids that the successful operation put in changed paragraphs. */
+export const trimAppliedNewIds = ({ op, applied, story }: TrimAppliedNewIdsOptions): DocumentOp => {
+  if (!("newIds" in op) || op.newIds === undefined) return op;
+  const touched = new Set([...applied.touched.modified, ...applied.touched.inserted].map(idKey));
+  const paragraphs = storyParagraphs(storyBody(applied.document, story))
+    .map(({ paragraph }) => paragraph)
+    .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
+  const identities = new Set(identityKeysIn(paragraphs));
+  return withNewIds(op, {
+    revision: op.newIds.revision?.filter((id) =>
+      identities.has(`${IDENTITY_SPACES.REVISION}:${id}`),
+    ),
+    control: op.newIds.control?.filter((id) => identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)),
+  });
 };
 
 /** The largest id count {@link revisionIdDemand} searches before giving up. */
@@ -304,7 +327,23 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     if (applied.isErr()) return Result.err(applied.error);
     stampUsed ||= input.revision !== undefined && applied.value.revisions.length > 0;
     current = applied.value.document;
-    ops.push(op);
+    const story = (() => {
+      switch (input.type) {
+        case DOCUMENT_OP_TYPES.DELETE_RANGE:
+          return input.from.story;
+        case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+        case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+          return input.at.story;
+        case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+        case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+          return input.story;
+        default: {
+          const unreachable: never = input;
+          return unreachable;
+        }
+      }
+    })();
+    ops.push(trimAppliedNewIds({ op, applied: applied.value, story }));
     return Result.ok(undefined);
   };
   return { append, document: () => current, ops };

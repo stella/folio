@@ -9,6 +9,7 @@ export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./app
 export {
   compileEditorIntent,
   allocateEditorIntentIds,
+  createEditorIntentIdAllocator,
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,

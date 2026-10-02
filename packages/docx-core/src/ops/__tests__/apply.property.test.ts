@@ -34,9 +34,9 @@ import {
 import { projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { storyParagraphs } from "../blocks";
+import { storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
+import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import { sameRunFormatting } from "../inline";
 import {
   allocateEditorIntentIds,
@@ -45,7 +45,6 @@ import {
   physicalPositionAtEditorOffset,
   type EditorIntent,
 } from "../editorIntent";
-import { identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import {
   childrenOf,
   isInlineContainer,
@@ -73,6 +72,25 @@ import {
 } from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+
+const expectCompactIntentIds = (document: Document, ops: readonly DocumentOp[]): void => {
+  let current = document;
+  for (const op of ops) {
+    const applied = applyDocumentOp(current, op).unwrap();
+    if ("newIds" in op && op.newIds !== undefined) {
+      const changed = new Set([...applied.touched.modified, ...applied.touched.inserted]);
+      const records = storyParagraphs(storyBody(applied.document, OP_STORIES.MAIN))
+        .filter(({ paragraph }) => changed.has(paragraph.paraId ?? ""))
+        .map(({ paragraph }) => paragraph);
+      const identities = new Set(identityKeysIn(records));
+      for (const id of op.newIds.revision ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(true);
+      for (const id of op.newIds.control ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(true);
+    }
+    current = applied.document;
+  }
+};
 
 const NUM_RUNS = 10_000;
 
@@ -351,7 +369,6 @@ describe("document operations", () => {
             const head = gaps.at(input.head % gaps.length) ?? 0;
             const blockId = source.paraId ?? "";
             const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
-            const ids = allocateEditorIntentIds(tracked);
             let intent: EditorIntent;
             let suggested: EditorIntent;
             if (input.kind === "split") {
@@ -359,7 +376,7 @@ describe("document operations", () => {
                 type: "splitParagraph",
                 at: position(Math.min(anchor, head)),
                 to: position(Math.max(anchor, head)),
-                newBlockId: ids.newBlockId,
+                newBlockId: "00000003",
               };
               suggested = {
                 ...intent,
@@ -405,6 +422,11 @@ describe("document operations", () => {
                 to: physicalPositionAtEditorOffset(tracked, position(to)),
               };
             }
+            const ids = allocateEditorIntentIds(tracked, suggested);
+            if (intent.type === "splitParagraph" && suggested.type === "splitParagraph") {
+              intent = { ...intent, newBlockId: ids.newBlockId };
+              suggested = { ...suggested, newBlockId: ids.newBlockId };
+            }
             const editPlan = compileEditorIntent(direct, { intent, mode: { type: "editing" } });
             const trackedPlan = compileEditorIntent(tracked, {
               intent: suggested,
@@ -416,6 +438,8 @@ describe("document operations", () => {
             });
             if (editPlan.isErr()) throw editPlan.error;
             if (trackedPlan.isErr()) throw trackedPlan.error;
+            expectCompactIntentIds(direct, editPlan.value.ops);
+            expectCompactIntentIds(tracked, trackedPlan.value.ops);
             const edited = applyDocumentOps(direct, editPlan.value.ops);
             const suggestedEdit = applyDocumentOps(tracked, trackedPlan.value.ops);
             if (edited.isErr()) throw edited.error;

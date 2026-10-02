@@ -8,7 +8,7 @@ import {
   OP_STORIES,
   validateOpsDocument,
   compileEditorIntent,
-  allocateEditorIntentIds,
+  createEditorIntentIdAllocator,
   paragraphLogicalText,
   editorParagraphGroups,
   type EditorIntent,
@@ -387,7 +387,9 @@ type JournalInputOptions = Pick<StageOptions, "state" | "ops"> & {
 };
 
 type IntentInputOptions = Pick<JournalInputOptions, "semantic" | "time" | "grouping"> & {
-  intent: EditorIntent;
+  intent:
+    | Exclude<EditorIntent, { type: "splitParagraph" }>
+    | Omit<Extract<EditorIntent, { type: "splitParagraph" }>, "newBlockId">;
 };
 
 /** Immutable model authority with a journal staged independently of the PM view. */
@@ -395,6 +397,7 @@ class CanonicalSession {
   private currentDocument: Document;
   private currentProjection: CanonicalProjection;
   private currentVersion = 0;
+  private readonly allocateIntentIds = createEditorIntentIdAllocator();
   private mode: CanonicalSessionMode = { type: "editing" };
   private readonly sourceOwners = new Map<string, Paragraph>();
   private readonly applied: AppliedJournalGroup[] = [];
@@ -520,13 +523,11 @@ class CanonicalSession {
     if (at.isErr()) return at;
     const to = this.projection.inputAddressAt(state.selection.to);
     if (to.isErr()) return to;
-    const ids = allocateEditorIntentIds(this.document);
     return this.prepareIntent(state, {
       intent: {
         type: "splitParagraph",
         at: at.value,
         to: to.value,
-        newBlockId: ids.newBlockId,
       },
     });
   }
@@ -571,7 +572,7 @@ class CanonicalSession {
     if (checked.isErr()) return checked;
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
-    const ids = allocateEditorIntentIds(this.document);
+    const ids = this.allocateIntentIds(this.document, intent);
     const mode =
       this.mode.type === "editing"
         ? ({ type: "editing", newIds: ids.newIds } as const satisfies EditorIntentMode)
@@ -584,7 +585,10 @@ class CanonicalSession {
             },
             newIds: ids.newIds,
           } as const satisfies EditorIntentMode);
-    const compiled = compileEditorIntent(this.document, { intent, mode });
+    const compiled = compileEditorIntent(this.document, {
+      intent: intent.type === "splitParagraph" ? { ...intent, newBlockId: ids.newBlockId } : intent,
+      mode,
+    });
     if (compiled.isErr()) return refuse(compiled.error.message);
     return this.prepareJournalled({
       state,

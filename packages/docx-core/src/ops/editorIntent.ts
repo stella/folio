@@ -9,10 +9,17 @@ import {
   type TextFormatting,
 } from "../model/document";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
-import { IDENTITY_SPACES, idKey, packageIdentityKeys, packageParagraphIds } from "./ids";
+import { idKey } from "./ids";
+import { createCensusReader } from "./editorIntentCensus";
 import { leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
-import { appendTrackedDeletion, createTrackedPlan, selectedParagraphRuns } from "./plan";
+import {
+  appendTrackedDeletion,
+  createTrackedPlan,
+  selectedParagraphRuns,
+  trimAppliedNewIds,
+} from "./plan";
+import { applyDocumentOp } from "./apply";
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
@@ -25,7 +32,6 @@ import {
   SPLIT_HALVES,
   type DocumentOp,
   type NewIds,
-  type OpStory,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
@@ -44,48 +50,97 @@ export type EditorIntentMode =
 export type CompileEditorIntentOptions = { intent: EditorIntent; mode: EditorIntentMode };
 export type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
 
-/** Fresh identities for one input, bounded by its paragraph leaves and ancestor records. */
-export const allocateEditorIntentIds = (document: Document) => {
-  const identities = packageIdentityKeys(document.package);
-  const paragraphs = storyParagraphs(document.package.document);
-  // Each leaf can start a deletion segment; each ancestor can be cut at both
-  // endpoints. Paragraph joins need a mark and a property-change stamp.
-  const demand =
-    1 +
-    paragraphs.reduce(
-      (total, { paragraph }) =>
-        total +
-        3 +
-        leafSpans(paragraph.content).reduce(
-          (count, span) => count + 4 * (1 + span.ancestors.length),
-          0,
-        ),
-      0,
-    );
-  const fresh = (space: string, count: number) => {
-    const occupied = new Set(
-      identities
-        .filter((key) => key.startsWith(`${space}:`))
-        .map((key) => Number(key.slice(space.length + 1))),
-    );
-    const ids: number[] = [];
-    for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
-      if (!occupied.has(id)) ids.push(id);
+/** A split's paragraph identity is allocated with its other fresh identities. */
+type EditorIntentAllocation =
+  | Exclude<EditorIntent, { type: "splitParagraph" }>
+  | Omit<Extract<EditorIntent, { type: "splitParagraph" }>, "newBlockId">;
+
+const intentEndpoints = (intent: EditorIntentAllocation) => {
+  switch (intent.type) {
+    case "replaceText":
+      return {
+        story: intent.from.story,
+        fromId: intent.from.blockId,
+        toId: intent.to.blockId,
+        fromOffset: intent.from.offset,
+        toOffset: intent.to.offset,
+      };
+    case "splitParagraph":
+      return {
+        story: intent.at.story,
+        fromId: intent.at.blockId,
+        toId: (intent.to ?? intent.at).blockId,
+        fromOffset: intent.at.offset,
+        toOffset: (intent.to ?? intent.at).offset,
+      };
+    case "joinParagraphs":
+      return {
+        story: intent.story,
+        fromId: intent.blockId,
+        toId: intent.nextBlockId,
+        fromOffset: undefined,
+        toOffset: undefined,
+      };
+    default: {
+      const unreachable: never = intent;
+      return unreachable;
     }
-    return ids;
-  };
-  const revision = fresh(IDENTITY_SPACES.REVISION, demand + 1);
-  const revisionId = revision.at(0) ?? MAX_REVISION_ID + 1;
-  const usedParagraphs = new Set(packageParagraphIds(document.package).map(idKey));
-  let nextParagraph = 1;
-  while (usedParagraphs.has(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
-    nextParagraph += 1;
-  return {
-    revisionId,
-    newBlockId: nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
-    newIds: { revision: revision.slice(1), control: fresh(IDENTITY_SPACES.CONTROL, demand) },
+  }
+};
+
+/** Cache only immutable document versions; never retain a retired version strongly. */
+export const createEditorIntentIdAllocator = () => {
+  const readCensus = createCensusReader();
+  return (document: Document, intent: EditorIntentAllocation) => {
+    const census = readCensus(document);
+    const { story, fromId, toId, fromOffset, toOffset } = intentEndpoints(intent);
+    let locations = census.stories.get(story);
+    if (locations === undefined) {
+      locations = storyParagraphs(storyBody(document, story));
+      census.stories.set(story, locations);
+    }
+    const first = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(fromId),
+    );
+    const last = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(toId),
+    );
+    // Every selected leaf may start a deletion segment; ancestors may be cut
+    // at both endpoints. Each paragraph adds join/mark/property stamps.
+    let demand = 1;
+    const selected = first < 0 || last < first ? [] : locations.slice(first, last + 1);
+    for (const { paragraph } of selected) {
+      demand += 3;
+      const blockId = idKey(paragraph.paraId ?? "");
+      for (const span of leafSpans(paragraph.content)) {
+        if (blockId === idKey(fromId) && fromOffset !== undefined && span.after.offset < fromOffset)
+          continue;
+        if (blockId === idKey(toId) && toOffset !== undefined && span.before.offset > toOffset)
+          continue;
+        demand += 4 * (1 + span.ancestors.length);
+      }
+    }
+    const fresh = (occupied: ReadonlySet<number>, count: number) => {
+      const ids: number[] = [];
+      for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
+        if (!occupied.has(id)) ids.push(id);
+      }
+      return ids;
+    };
+    const revision = fresh(census.revisions, demand + 1);
+    let nextParagraph = 1;
+    while (census.paragraphs.has(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
+      nextParagraph += 1;
+    return {
+      revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,
+      newBlockId: nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
+      newIds: { revision: revision.slice(1), control: fresh(census.controls, demand) },
+    };
   };
 };
+
+/** Fresh identities bounded by the edit, with one package census per document version. */
+export const allocateEditorIntentIds = createEditorIntentIdAllocator();
 
 /** Accepted-view text without changing the canonical paragraph or its offset space. */
 export const paragraphVisibleText = (paragraph: Paragraph): string => {
@@ -347,16 +402,24 @@ export const compileEditorIntent = (
     }
     case "splitParagraph": {
       if (intent.to === undefined) {
-        ops = [
-          {
-            type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-            at: intent.at,
-            newBlockId: intent.newBlockId,
-            newHalf: SPLIT_HALVES.FIRST,
-            newParagraph: splitParagraphFields(document, intent.at),
-            ...tracked,
-          },
-        ];
+        const split = {
+          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          at: intent.at,
+          newBlockId: intent.newBlockId,
+          newHalf: SPLIT_HALVES.FIRST,
+          newParagraph: splitParagraphFields(document, intent.at),
+          ...tracked,
+        } as const;
+        if (mode.type === "suggesting") {
+          const plan = createTrackedPlan({
+            document,
+            revision: mode.revision,
+            newIds: mode.newIds,
+          });
+          const appended = plan.append(split);
+          if (appended.isErr()) return Result.err(appended.error);
+          ops = plan.ops;
+        } else ops = [split];
         selection = { ...intent.at, offset: 0, zeroWidthBefore: 0 };
         break;
       }
@@ -506,6 +569,37 @@ export const compileEditorIntent = (
       const unreachable: never = intent;
       return unreachable;
     }
+  }
+  // Simulate direct pieces in order: each consumes its own pool, and later
+  // pieces must not reuse identities created by an earlier piece.
+  if (mode.type === "editing") {
+    let current = document;
+    const compact: DocumentOp[] = [];
+    const takenRevision = new Set<number>();
+    const takenControl = new Set<number>();
+    const { story } = intentEndpoints(intent);
+    for (const input of ops) {
+      const op =
+        "newIds" in input && input.newIds !== undefined
+          ? {
+              ...input,
+              newIds: {
+                revision: input.newIds.revision?.filter((id) => !takenRevision.has(id)),
+                control: input.newIds.control?.filter((id) => !takenControl.has(id)),
+              },
+            }
+          : input;
+      const applied = applyDocumentOp(current, op);
+      if (applied.isErr()) return Result.err(applied.error);
+      const trimmed = trimAppliedNewIds({ op, applied: applied.value, story });
+      if ("newIds" in trimmed) {
+        for (const id of trimmed.newIds?.revision ?? []) takenRevision.add(id);
+        for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);
+      }
+      compact.push(trimmed);
+      current = applied.value.document;
+    }
+    ops = compact;
   }
   return Result.ok({ ops, selection });
 };

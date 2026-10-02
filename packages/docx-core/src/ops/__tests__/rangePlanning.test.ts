@@ -389,7 +389,7 @@ test.each([
         } as const;
         const direct = compileEditorIntent(document, { intent, mode: { type: "editing" } });
         if (direct.isErr()) throw direct.error;
-        const ids = allocateEditorIntentIds(document);
+        const ids = allocateEditorIntentIds(document, intent);
         const planned = compileEditorIntent(document, {
           intent,
           mode: {
@@ -461,7 +461,12 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
         },
         mode: { type: "editing" },
       });
-      const ids = allocateEditorIntentIds(tracked);
+      const ids = allocateEditorIntentIds(tracked, {
+        type: "joinParagraphs",
+        story: OP_STORIES.MAIN,
+        blockId: firstTracked.blockId,
+        nextBlockId: nextTracked.paragraphs.at(0)?.paraId ?? "",
+      });
       const trackedPlan = compileEditorIntent(tracked, {
         intent: {
           type: "joinParagraphs",
@@ -482,10 +487,13 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
       trackedOps.push(...trackedPlan.value.ops);
     }
     if (scenario === "splitGrouped") {
-      const ids = allocateEditorIntentIds(tracked);
       const directGroup = editorParagraphGroups(direct, OP_STORIES.MAIN).at(0);
       const trackedGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).at(0);
       if (!directGroup || !trackedGroup) panic("Expected split fixture group");
+      const ids = allocateEditorIntentIds(tracked, {
+        type: "splitParagraph",
+        at: physicalPositionAtEditorOffset(tracked, at(trackedGroup.blockId, 1)),
+      });
       const directPlan = compileEditorIntent(direct, {
         intent: {
           type: "splitParagraph",
