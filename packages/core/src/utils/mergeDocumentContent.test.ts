@@ -9,6 +9,9 @@
 // definition marker instead of a plain bullet/number.
 
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { panic } from "better-result";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { docxToMarkdown } from "../docx/server/docxToMarkdown";
 import { createDocx } from "../docx/rezip";
@@ -17,7 +20,7 @@ import { createStellaStyleDocumentPreset } from "../style-sets/stellaStyle";
 import type { BlockContent, Document, Paragraph, Table, TableCell } from "../types/document";
 import { createEmptyDocument } from "./createDocument";
 import { mergeDocumentContent } from "./mergeDocumentContent";
-import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import { MAX_REVISION_ID, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 
 const CLEAN = {
   annotations: "strip",
@@ -40,6 +43,57 @@ const stellaTargetWithClause = (): Document => {
 };
 
 describe("mergeDocumentContent", () => {
+  test(
+    "repeated merges keep numbering unique and bounded across loaded id ranges",
+    () => {
+      assertProperty(
+        fc.property(
+          fc.uniqueArray(
+            fc.oneof(
+              fc.constant(MAX_REVISION_ID),
+              fc.constant(MAX_REVISION_ID - 1),
+              fc.integer({ min: 1, max: MAX_REVISION_ID }),
+            ),
+            { minLength: 1, maxLength: 5 },
+          ),
+          (loadedIds) => {
+            const source = fromMarkdown("1. Imported list");
+            const abstract = source.package.numbering?.abstractNums.at(0);
+            const instance = source.package.numbering?.nums.at(0);
+            if (abstract === undefined || instance === undefined)
+              panic("Source list has no numbering definitions");
+            const target = createEmptyDocument();
+            target.package.numbering = {
+              abstractNums: loadedIds.map((id) => ({ ...abstract, abstractNumId: id })),
+              nums: loadedIds.map((id) => ({ ...instance, numId: id, abstractNumId: id })),
+            };
+            const firstMerge = mergeDocumentContent(target, source);
+            expect(mergeDocumentContent(target, source)).toEqual(firstMerge);
+            const merged = mergeDocumentContent(firstMerge, source);
+            const numIds = (merged.package.numbering?.nums ?? []).map(({ numId }) => numId);
+            const abstractIds = (merged.package.numbering?.abstractNums ?? []).map(
+              ({ abstractNumId }) => abstractNumId,
+            );
+            expect(new Set(numIds).size).toBe(numIds.length);
+            expect(new Set(abstractIds).size).toBe(abstractIds.length);
+            for (const id of [...numIds, ...abstractIds]) {
+              expect(Number.isInteger(id)).toBe(true);
+              expect(id).toBeGreaterThanOrEqual(0);
+              expect(id).toBeLessThanOrEqual(MAX_REVISION_ID);
+            }
+            for (const block of merged.package.document.content) {
+              if (block.type !== "paragraph") continue;
+              const numId = paragraphNumberingReferenceId(block.formatting?.numPr);
+              if (numId !== undefined) expect(numIds).toContain(numId);
+            }
+          },
+        ),
+        { numRuns: 80 },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
   test("appends source content and merges numbering definitions", () => {
     const target = stellaTargetWithClause();
     const merged = mergeDocumentContent(target, fromMarkdown("1. first\n2. second"));

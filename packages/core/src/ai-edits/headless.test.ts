@@ -3620,6 +3620,8 @@ describe("headless docx review notes read surface", () => {
 
   test("edits a footnote through story-scoped document operations", async () => {
     const baseline = await readNotesFixture();
+    const imported = await parseDocx(baseline, { preloadFonts: false });
+    if (!imported.originalBuffer) panic("parser must retain the imported package");
     const story = { type: "footnote", noteId: 2 } as const;
     const reviewer = await FolioDocxReviewer.fromBuffer(baseline, { author: "Reviewer" });
     const snapshot = reviewer.snapshotStory(story);
@@ -3659,10 +3661,10 @@ describe("headless docx review notes read surface", () => {
     const saved = await reviewer.toBuffer();
     expect(await partText(saved, "word/footnotes.xml")).toContain("Updated footnote");
     expect(await partBytes(saved, "word/document.xml")).toEqual(
-      await partBytes(baseline, "word/document.xml"),
+      await partBytes(imported.originalBuffer, "word/document.xml"),
     );
     expect(await partBytes(saved, "word/endnotes.xml")).toEqual(
-      await partBytes(baseline, "word/endnotes.xml"),
+      await partBytes(imported.originalBuffer, "word/endnotes.xml"),
     );
 
     const reopened = await FolioDocxReviewer.fromBuffer(saved);

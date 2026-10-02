@@ -1,6 +1,10 @@
 import { Selection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
+import {
+  allocateCommentId,
+  seedCommentIdAbove,
+} from "@stll/folio-core/prosemirror/commentIdAllocator";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { CommentMarkRange } from "./commentAnchors";
@@ -12,27 +16,7 @@ export const PENDING_COMMENT_ID = -1;
 /** Stable empty anchor positions Map used as the initial state. */
 export const EMPTY_ANCHOR_POSITIONS = new Map<string, number>();
 
-// In-process counter for new comment ids. Initial value is the current
-// timestamp so two unrelated editor mounts in the same browser session don't
-// collide on small monotonically-allocated ids.
-let nextCommentId = Date.now();
-
-export function allocateCommentId(): number {
-  return nextCommentId++;
-}
-
-/**
- * Bump the in-process comment-id counter above `id` so a later
- * `allocateCommentId()` can never re-mint an id that was adopted from an
- * external source-of-truth model. No-op when `id` is already below the
- * current counter. Mirrors the allocator-seeding behaviour of upstream
- * docx-editor's `CommentIdAllocator.seedAbove` (05f2ab84).
- */
-export function seedCommentIdAbove(id: number): void {
-  if (id >= nextCommentId) {
-    nextCommentId = id + 1;
-  }
-}
+export { allocateCommentId, seedCommentIdAbove };
 
 export function getCommentAuthorKey(author?: string): string {
   const trimmed = author?.trim();

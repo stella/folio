@@ -16,7 +16,7 @@ import type { Node as PmNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { findCollapsedLineEdgeCaretTarget } from "../../layout-bridge/dom/clickToPositionDom";
 import { findBodyEmptyRuns, findBodyPmSpans } from "../../layout-bridge/dom/findBodyPmSpans";
-import { findVerticalScrollParent } from "../../utils/findVerticalScrollParent";
+import { scrollEditorElementIntoView } from "../../paged-layout/editorScrollRoot";
 import {
   createTextStreamRange,
   descendantTextNodes,
@@ -59,16 +59,7 @@ export function createVisualLineState(): VisualLineState {
 }
 
 function scrollIntoViewIfNeeded(el: HTMLElement): void {
-  const container = findVerticalScrollParent(el);
-  if (!container) return;
-  const elRect = el.getBoundingClientRect();
-  const containerRect = container.getBoundingClientRect();
-  const margin = 40;
-  if (elRect.bottom > containerRect.bottom - margin) {
-    container.scrollTop += elRect.bottom - containerRect.bottom + margin;
-  } else if (elRect.top < containerRect.top + margin) {
-    container.scrollTop -= containerRect.top - elRect.top + margin;
-  }
+  scrollEditorElementIntoView(el, { block: "nearest", margin: 40, behavior: "instant" });
 }
 
 /** @internal */

@@ -539,13 +539,17 @@ export const getTrackedChangeGroupIdsFromDoc = (doc: PMNode, id: number): number
 /** @internal Read revision statistics without paying for an unrelated block projection. */
 export const getTrackedChangeStatsFromDoc = (
   doc: PMNode,
-): { highestId: number; present: boolean } => {
+): { highestId: number; present: boolean; ids: readonly number[] } => {
   let highestId = 0;
+  const revisionIds = new Set<number>();
   const groups = getTrackedChangeGroupsFromProjectedDoc(doc, null);
   for (const { ids } of groups) {
-    for (const id of ids) highestId = Math.max(highestId, id);
+    for (const id of ids) {
+      highestId = Math.max(highestId, id);
+      revisionIds.add(id);
+    }
   }
-  return { highestId, present: groups.length > 0 };
+  return { highestId, present: groups.length > 0, ids: [...revisionIds] };
 };
 
 /**

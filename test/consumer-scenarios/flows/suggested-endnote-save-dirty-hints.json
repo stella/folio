@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "suggested",
+  "seed": 774176273,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2478226788,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "0F49D7B9",
+          "text": "Term delivery schedule period period clause notice agreement."
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "0F49D7B9",
+          "find": "the",
+          "replace": "the Customer",
+          "precondition": {
+            "blockTextHash": "hgk6fja"
+          }
+        }
+      ]
+    },
+    {
+      "action": "new reviewer",
+      "seed": 766599973
+    },
+    {
+      "action": "story batch",
+      "seed": 2150577407,
+      "operations": [
+        {
+          "type": "insertBeforeBlock",
+          "blockId": "0F49D7B9",
+          "text": "Warranty agreement buyer buyer supplier written period delivery."
+        },
+        {
+          "type": "replaceInBlock",
+          "blockId": "0F49D7B9",
+          "find": "schedule",
+          "replace": "amended",
+          "precondition": {
+            "blockTextHash": "hgk6fja"
+          }
+        }
+      ]
+    }
+  ],
+  "swarm": ["replaceInBlock", "replaceRange", "insertBeforeBlock", "deleteTableRow"],
+  "origin": "shrunk from dropOperation+unpin+insert of 64a2d7777e9c0484",
+  "title": "suggested endnote edits rejected from the save snapshot remain saveable"
+}
