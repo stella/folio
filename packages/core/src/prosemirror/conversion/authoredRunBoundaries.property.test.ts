@@ -3,6 +3,7 @@ import fc from "fast-check";
 import { EditorState } from "prosemirror-state";
 
 import { propertyConfig } from "../../../../../test/property-testing";
+import { resolveWholeStory } from "../../internal/wholeStoryRevisionResolution";
 import type { Document, Paragraph, Run } from "../../types/document";
 import { createStarterKit } from "../extensions/StarterKit";
 import { ExtensionManager } from "../extensions/ExtensionManager";
@@ -58,22 +59,40 @@ describe("authored run boundary ownership", () => {
     );
   });
 
-  test("an insertion retains untouched neighboring runs through the production plugins", () => {
+  test("an interior insertion extends one ordinary run and retains its authored neighbors", () => {
     const manager = new ExtensionManager(createStarterKit());
     manager.buildSchema();
     manager.initializeRuntime();
     fc.assert(
-      fc.property(runs, (content) => {
+      fc.property(runs, fc.nat(), fc.nat(), (content, pickedRun, pickedOffset) => {
+        const runIndex = pickedRun % content.length;
+        const target = content.at(runIndex);
+        if (target === undefined) throw new TypeError("Expected the generated run");
+        const targetText = runText([target]);
+        const offset = 1 + (pickedOffset % (targetText.length - 1));
+        const position = 1 + runText(content.slice(0, runIndex)).length + offset;
         const source = documentOf([{ type: "paragraph", content }]);
         const state = EditorState.create({
           doc: toProseDoc(source),
           plugins: manager.getPlugins(),
         });
-        const edited = state.apply(state.tr.insertText("!", 2));
+        const edited = state.apply(state.tr.insertText("!", position));
         const saved = savedRuns(fromProseDoc(edited.doc, source));
-        const untouched = content.slice(1);
-        expect(saved.slice(-untouched.length)).toEqual(untouched);
-        expect(runText(saved)).toBe(runText(content).replace(/^./u, "$&!"));
+        expect(saved).toEqual(
+          content.map((run, index) =>
+            index === runIndex
+              ? {
+                  ...run,
+                  content: [
+                    {
+                      type: "text",
+                      text: targetText.slice(0, offset) + "!" + targetText.slice(offset),
+                    },
+                  ],
+                }
+              : run,
+          ),
+        );
       }),
       propertyConfig(),
     );
@@ -88,6 +107,46 @@ describe("authored run boundary ownership", () => {
           state = state.apply(state.tr.join(state.doc.child(0).nodeSize));
         }
         expect(savedRuns(fromProseDoc(state.doc, source))).toEqual(content);
+      }),
+      propertyConfig(),
+    );
+  });
+
+  test("rejecting a reopened insertion rejoins its original run without joining neighbors", () => {
+    fc.assert(
+      fc.property(runs, fc.nat(), fc.boolean(), (content, pickedOffset, withSession) => {
+        // SAFETY: the generator always produces at least two runs.
+        const first = content[0]!;
+        const original = withSession
+          ? { ...first, preservedAttributes: [{ name: "rsidR", value: "00AB12CD" }] }
+          : first;
+        const originalText = runText([original]);
+        const offset = 1 + (pickedOffset % (originalText.length - 1));
+        const piece = (value: string): Run => ({
+          ...original,
+          content: [{ type: "text", text: value }],
+        });
+        const source = documentOf([
+          {
+            type: "paragraph",
+            content: [
+              piece(originalText.slice(0, offset)),
+              {
+                type: "insertion",
+                info: { id: 4, author: "Reviewer" },
+                content: [{ type: "run", content: [{ type: "text", text: "!" }] }],
+              },
+              piece(originalText.slice(offset)),
+              ...content.slice(1),
+            ],
+          },
+        ]);
+        const { resolved } = resolveWholeStory({
+          doc: toProseDoc(source),
+          mode: "reject",
+          styleResolver: null,
+        });
+        expect(savedRuns(fromProseDoc(resolved, source))).toEqual([original, ...content.slice(1)]);
       }),
       propertyConfig(),
     );

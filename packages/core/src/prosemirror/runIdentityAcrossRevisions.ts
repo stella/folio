@@ -85,6 +85,12 @@ export const continueRunIdentitiesAcrossRevisions = (
       changed = true;
       return node.copy(Fragment.fromArray([...continued]));
     }
+    // Inserted text has its own identity after reopening, but still bridges
+    // the original run's pieces. It must not replace their continuation anchor.
+    if (node.marks.some(({ type }) => type.name === "insertion")) {
+      if (anchor) bridged = true;
+      return node;
+    }
     const identity = identityOf(node);
     if (!identity) {
       if (anchor && revisionMarksOf(node).length > 0) {

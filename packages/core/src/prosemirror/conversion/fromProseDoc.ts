@@ -2751,7 +2751,9 @@ function extractParagraphContent(
     if (currentHyperlink) {
       flushCurrentInline();
     }
-    const marksKey = getMarksKey(node.marks);
+    const marksKey = getMarksKey(
+      node.marks.filter(({ type }) => type.name !== RUN_IDENTITY_MARK_NAME),
+    );
     const ownerId = runIdentityId(node);
     const currentOwnerId = currentRun ? sourceRunOwners.get(currentRun) : undefined;
     const currentRunIsPlainText = currentRun?.content.every(
@@ -2764,18 +2766,24 @@ function extractParagraphContent(
       runsShareProperties(currentRun, run);
     const joinsOrdinaryText =
       coalescePlainText &&
-      ownerId === undefined &&
-      currentOwnerId === undefined &&
+      (ownerId === undefined || currentOwnerId === undefined) &&
       currentRunIsPlainText === true &&
+      currentRun !== null &&
+      currentRun.preservedAttributes === undefined &&
+      run.preservedAttributes === undefined &&
+      runsShareProperties(currentRun, run) &&
       currentMarksKey === marksKey;
 
     if (currentRun && (joinsOwnedSourceRun || joinsOrdinaryText)) {
-      if (joinsOrdinaryText) {
+      if (coalescePlainText && currentRunIsPlainText) {
         for (const runContent of run.content) {
           if (runContent.type === "text") {
             appendTextToRun(currentRun, runContent.text);
           }
         }
+        // New text may extend one source run, but cannot erase the boundary
+        // between that run and the next authored run.
+        rememberSourceRunOwner(currentRun, node, sourceRunOwners);
       } else {
         currentRun.content.push(...run.content);
       }

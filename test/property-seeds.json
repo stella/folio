@@ -126,6 +126,12 @@
       "seed": -1368426772,
       "note": "the oracle joined prose across a retained note reference and predicted a false refusal",
       "date": "2026-09-28"
+    },
+    {
+      "seed": 11,
+      "path": "62:1:1:2:3:3:3:3:3:3:3:3:4",
+      "note": "#1346: reopened insertion must bridge the original run identities instead of taking their continuation anchor (path at factor 5)",
+      "date": "2026-10-02"
     }
   ],
   "packages/core/src/ai-edits/batchOverlap.test.ts::refuses each conflict and applies the rest as one at a time would": [
@@ -578,6 +584,14 @@
     {
       "seed": -1094066634,
       "note": "Inline order oracle must compare text independently of valid adjacent-run consolidation",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/ai-edits/editKeepsCommentRanges.property.test.ts::over generated documents and operations": [
+    {
+      "seed": -542962416,
+      "path": "196:0:0:0:0:0:0:0:0:0:0:0:7",
+      "note": "#1346: replacing prose beside a note reference must not split ordinary source text into extra runs (path at factor 5)",
       "date": "2026-10-02"
     }
   ]
