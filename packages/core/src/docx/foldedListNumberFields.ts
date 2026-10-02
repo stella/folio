@@ -15,7 +15,11 @@
 
 import type {
   ComplexField,
+  Deletion,
   FoldedListNumber,
+  Insertion,
+  MoveFrom,
+  MoveTo,
   Paragraph,
   ParagraphContent,
   Run,
@@ -326,10 +330,7 @@ export const unfoldedListNumberContent = (content: ParagraphContent): ParagraphC
   return folded.kind === "field" ? folded.field : folded.run;
 };
 
-type TrackedChange = Extract<
-  ParagraphContent,
-  { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }
->;
+type TrackedChange = Insertion | Deletion | MoveFrom | MoveTo;
 
 /**
  * The one definition of a tracked change for the fold: content inserted,
