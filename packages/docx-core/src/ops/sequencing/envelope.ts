@@ -21,12 +21,15 @@ export type DocumentBatch = {
   revision?: number;
 };
 
+/** An operation with no position or structural effect. */
+export const NO_SEQUENCED_EFFECT = "none";
+
 /** Document-dependent facts captured when an operation is sequenced. */
 export type SequencedOpEffect =
   | { type: "splitBlock"; newHalf: SplitHalf }
   | { type: "joinBlocks"; firstLength: number }
   | { type: "touchedBlocks"; blockIds: readonly string[] }
-  | { type: "none" };
+  | { type: typeof NO_SEQUENCED_EFFECT };
 
 export type SequencedBatch = DocumentBatch & {
   revision: number;
@@ -377,8 +380,8 @@ const isDocumentBatch = (value: unknown): value is DocumentBatch =>
       array((effect) => {
         if (!isRecord(effect)) return false;
         switch (effect["type"]) {
-          case "none":
-            return object({ type: literal("none") })(effect);
+          case NO_SEQUENCED_EFFECT:
+            return object({ type: literal(NO_SEQUENCED_EFFECT) })(effect);
           case "splitBlock":
             return object({ type: literal("splitBlock"), newHalf: literal("first", "second") })(
               effect,
@@ -467,7 +470,7 @@ const decodeDocumentBatch = (
       !effects.every((effect: unknown, index: number) => {
         if (!isRecord(effect)) return false;
         const op = value.ops.at(index);
-        if (effect["type"] === "none")
+        if (effect["type"] === NO_SEQUENCED_EFFECT)
           return (
             op?.type !== "splitBlock" &&
             op?.type !== "joinBlocks" &&

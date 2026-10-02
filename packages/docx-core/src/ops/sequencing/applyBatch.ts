@@ -6,9 +6,8 @@ import { storyBody, storyParagraphs } from "../blocks";
 import { paragraphLength } from "../offsets";
 import type { DocumentOpRefusal } from "../refusal";
 import { DOCUMENT_OP_TYPES, SPLIT_HALVES, type DocumentOp } from "../types";
-import type { SequencedBatch } from "./envelope";
+import { NO_SEQUENCED_EFFECT, type SequencedBatch } from "./envelope";
 
-const NO_EFFECT = "none";
 const TOUCHED_BLOCKS_EFFECT = "touchedBlocks";
 
 type AppliedBatch = {
@@ -26,7 +25,7 @@ export const applyBatch = (
   const inverses: (readonly DocumentOp[])[] = [];
   const effects: NonNullable<SequencedBatch["effects"]>[number][] = [];
   for (const op of ops) {
-    let effect: NonNullable<SequencedBatch["effects"]>[number] = { type: NO_EFFECT };
+    let effect: NonNullable<SequencedBatch["effects"]>[number] = { type: NO_SEQUENCED_EFFECT };
     if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK) {
       const paragraph = storyParagraphs(storyBody(current, op.at.story)).find(
         ({ paragraph: candidate }) => candidate.paraId === op.at.blockId,
