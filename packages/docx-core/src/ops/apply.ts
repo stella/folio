@@ -65,6 +65,7 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
+import { captureDocumentOp, restoreDocumentOp } from "./wire";
 import { meetsContract, validateOpsDocument } from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
@@ -80,6 +81,7 @@ import {
   packageIdentityKeys,
   packageParagraphIds,
   paragraphIdsIn,
+  reservedIdentityKeysIn,
   slotKey,
 } from "./ids";
 import {
@@ -97,16 +99,19 @@ import {
   namesIds,
   patchedSet,
   patchRunsBetween,
+  type RunDecoration,
   runsBetween,
   splitAt,
 } from "./inline";
 import {
+  asParagraphContent,
   childNodes,
   defaultInsertionGap,
   type Gap,
   type InlineNode,
   isEmptyRecord,
   recordsBetween,
+  rebuildNode,
   spanningRecords,
   textsIn,
   zeroWidthLeavesAt,
@@ -454,6 +459,7 @@ const withFreshIds = ({
     after,
     newIds: newIds ?? {},
     usedElsewhere: () => identitiesOutside(document, before),
+    reserved: new Set(reservedIdentityKeysIn(document.package)),
     ...(inserted === undefined ? {} : { inserted }),
   });
   switch (freshened.kind) {
@@ -568,6 +574,7 @@ const wrappedContent = (
     to: Gap;
     kind: WrapKind;
     stamp: RevisionStamp;
+    resolutionJoin?: number;
   },
 ): Wrapped => {
   const wrapped = wrapTracked(options);
@@ -602,7 +609,8 @@ const inserted = (options: InsertedOptions): Applied => {
   let { content } = options;
   if (revision !== undefined) {
     // The wrap cuts the records again; an insertion the direct one refuses stays refused.
-    if (insertionInverse(location.paragraph.content, content, start, end) === undefined) {
+    const inverse = insertionInverse(location.paragraph.content, content, start, end);
+    if (inverse === undefined) {
       return refuse(
         op,
         DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
@@ -615,6 +623,7 @@ const inserted = (options: InsertedOptions): Applied => {
       to: end,
       kind: WRAP_KINDS.INSERTION,
       stamp: revision,
+      resolutionJoin: inverse.join + spanningRecords(content, [start, end], 0, 2).length,
     });
     if (wrapped.isErr()) {
       return Result.err(wrapped.error);
@@ -833,6 +842,7 @@ const deleteRange = (document: Document, op: DeleteRangeOp): Applied => {
       to,
       kind: WRAP_KINDS.DELETION,
       stamp: op.revision,
+      resolutionJoin: spanningRecords(paragraph.content, [from, to], 0, 2).length,
     });
     if (wrapped.isErr()) {
       return Result.err(wrapped.error);
@@ -970,12 +980,14 @@ const joinInline = (document: Document, op: JoinInlineOp): Applied => {
   );
 };
 
-/** Whether a property set states each key of `expected` as it says (`null`: absent). */
+/** Compare the stated values and own presence; null expects an omitted key. */
 const statesValues = (formatting: object | undefined, expected: object): boolean => {
-  const values = new Map(Object.entries(formatting ?? {}));
-  return Object.entries(expected).every(
-    ([key, value]) => value === undefined || structurallyEqual(values.get(key) ?? null, value),
-  );
+  return Object.entries(expected).every(([key, value]) => {
+    const owns = formatting !== undefined && Object.hasOwn(formatting, key);
+    if (value === null) return !owns;
+    if (formatting === undefined || !owns) return false;
+    return structurallyEqual(Reflect.get(formatting, key), value);
+  });
 };
 
 const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
@@ -1017,18 +1029,17 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
   if (revision !== undefined) {
     // Editor actions append separately rejectable records; low-level patches
     // retain the pending review's original formatting unless append is explicit.
-    const recordChange = (patchedRun: Run, previous: Run): Run => {
+    const changes = new Map<Run, Parameters<RunDecoration>[0]>();
+    const recordChange: RunDecoration = (options) => {
+      const { patched: patchedRun, previous } = options;
       if (
         (previous.propertyChanges?.length ?? 0) > 0 &&
         op.propertyReview !== PROPERTY_REVIEW_POLICIES.APPEND
       ) {
         return patchedRun;
       }
-      const change: RunPropertyChange = { type: "runPropertyChange", info: stampInfo(revision) };
-      if (previous.formatting !== undefined) {
-        change.previousFormatting = previous.formatting;
-      }
-      return { ...patchedRun, propertyChanges: [...(previous.propertyChanges ?? []), change] };
+      changes.set(patchedRun, options);
+      return patchedRun;
     };
     const tracked = patchRunsBetween(
       paragraph.content,
@@ -1041,13 +1052,59 @@ const setRunProps = (document: Document, op: SetRunPropsOp): Applied => {
     if (tracked === undefined) {
       return unchanged(document);
     }
+    // Source records cut by the patch consume their identities before this
+    // action introduces any new property-change records.
+    const freshened = withFreshIds({
+      document,
+      op,
+      before: [paragraph],
+      after: [withContent(paragraph, tracked.content)],
+      newIds: op.newIds,
+    });
+    if (freshened.isErr()) return Result.err(freshened.error);
+    const appendChanges = (
+      source: readonly InlineNode[],
+      fresh: readonly InlineNode[],
+    ): InlineNode[] => {
+      if (source.length !== fresh.length) panic("Freshening changed the run patch's structure.");
+      return fresh.map((node, index) => {
+        const original = source.at(index);
+        if (original === undefined || original.type !== node.type)
+          panic("Freshening changed the run patch's node kind.");
+        if (node.type === "run" && original.type === "run") {
+          const options = changes.get(original);
+          if (options === undefined) return node;
+          const change: RunPropertyChange = {
+            type: "runPropertyChange",
+            info: stampInfo(revision),
+            boundaryJoins: options.boundaryJoins,
+          };
+          if (options.previous.formatting !== undefined)
+            change.previousFormatting = options.previous.formatting;
+          const changed = Object.assign({}, node);
+          changed.propertyChanges = (node.propertyChanges ?? []).concat(change);
+          return changed;
+        }
+        const children = childNodes(node);
+        if (children === undefined) return node;
+        const priorChildren = childNodes(original);
+        if (priorChildren === undefined) panic("Freshening removed a run patch's child list.");
+        const next = appendChanges(priorChildren, children);
+        return next.every((child, childIndex) => child === children[childIndex])
+          ? node
+          : rebuildNode(node, next);
+      });
+    };
+    const sourceFresh = freshened.value.at(0);
+    if (sourceFresh === undefined) panic("Freshening removed the run patch's paragraph.");
+    const content = asParagraphContent(appendChanges(tracked.content, sourceFresh.content));
     return editOne(
       {
         document,
         op,
         story,
         at: location,
-        paragraph: withContent(paragraph, tracked.content),
+        paragraph: withContent(paragraph, content),
         newIds: op.newIds,
       },
       (result) => Result.ok([contentRestoring(story, result, paragraph)]),
@@ -2057,8 +2114,11 @@ const recordedRevisions = (
 /** Apply one operation to a document that meets the seed contract. */
 export const applyDocumentOp = (
   document: Document,
-  op: DocumentOp,
+  input: DocumentOp,
 ): Result<AppliedDocumentOp, DocumentOpRefusal> => {
+  const restored = restoreDocumentOp(input);
+  if (restored.isErr()) return restored;
+  const op = restored.value;
   const valid = validateOpsDocument(document);
   if (valid.isErr()) {
     return Result.err(refusal(op, valid.error.reason, valid.error.message));
@@ -2134,6 +2194,7 @@ export const applyDocumentOp = (
   meetsContract(edit.document);
   return Result.ok({
     ...edit,
+    inverse: edit.inverse.map(captureDocumentOp),
     revisions: stamp === undefined ? [] : recordedRevisions(document, edit, stamp),
   });
 };

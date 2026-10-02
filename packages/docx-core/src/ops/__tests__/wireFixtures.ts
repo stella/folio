@@ -483,6 +483,41 @@ export const envelopes = (): DocumentOpEnvelope[] => {
     out.push(toOpEnvelope(op));
     for (const inverse of applied.inverse) out.push(toOpEnvelope(inverse));
   }
+  const presenceInput: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "paragraph", paraId: "00000001", formatting: { numPr: undefined }, content: [] },
+        ],
+      },
+    },
+  };
+  const presenceOp = {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+    newBlockId: "00000002",
+    newParagraph: { formatting: { numPr: undefined } },
+  } as const satisfies DocumentOp;
+  const presenceEdit = applyDocumentOp(presenceInput, presenceOp).unwrap();
+  out.push(toOpEnvelope(presenceOp));
+  for (const inverse of presenceEdit.inverse) out.push(toOpEnvelope(inverse));
+  const presencePatch = {
+    type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+    story: OP_STORIES.MAIN,
+    blockId: "00000001",
+    patch: { numPr: undefined },
+    expected: { numPr: null },
+  } as const satisfies DocumentOp;
+  const patchInput: Document = {
+    package: {
+      document: {
+        content: [{ type: "paragraph", paraId: "00000001", content: [] }],
+      },
+    },
+  };
+  const patchEdit = applyDocumentOp(patchInput, presencePatch).unwrap();
+  out.push(toOpEnvelope(presencePatch));
+  for (const inverse of patchEdit.inverse) out.push(toOpEnvelope(inverse));
   return out;
 };
 

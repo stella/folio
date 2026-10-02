@@ -16,6 +16,11 @@ import type { PreservedAttribute, PreservedMarkup } from "./preservedMarkup";
 import type { OutlineLevel } from "./outlineLevel";
 import type { ParagraphNumberingOverride } from "./paragraphNumbering";
 
+/** Formatting journals retain an explicitly undefined own field. */
+type OwnFieldPresence<Formatting> = {
+  [Key in keyof Formatting]: Formatting[Key] | undefined;
+};
+
 // ============================================================================
 // TEXT FORMATTING (Run Properties - rPr)
 // ============================================================================
@@ -63,7 +68,7 @@ export type EmphasisMark = "none" | "dot" | "comma" | "circle" | "underDot";
 /**
  * Complete text formatting properties (w:rPr)
  */
-export type TextFormatting = {
+export type TextFormatting = OwnFieldPresence<{
   // Basic formatting
   /** Bold (w:b) */
   bold?: boolean;
@@ -210,7 +215,7 @@ export type TextFormatting = {
    * `mergeTextFormatting` drop it rather than inheriting it.
    */
   preserved?: PreservedMarkup;
-};
+}>;
 
 // ============================================================================
 // PARAGRAPH FORMATTING (Paragraph Properties - pPr)
@@ -269,7 +274,7 @@ export type { ParagraphAlignment };
  */
 export type SpacingExplicit = { before?: boolean; after?: boolean };
 
-export type ParagraphFormatting = {
+export type ParagraphFormatting = OwnFieldPresence<{
   // Alignment
   /** Paragraph alignment (w:jc) */
   alignment?: ParagraphAlignment;
@@ -459,7 +464,7 @@ export type ParagraphFormatting = {
    * tier it came from.
    */
   preserved?: PreservedMarkup;
-};
+}>;
 
 // ============================================================================
 // TABLE FORMATTING (w:tblPr, w:trPr, w:tcPr)

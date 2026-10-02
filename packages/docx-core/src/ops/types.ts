@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 6: text, formatting and review edits on
+ * Document operations, schema version 7: text, formatting and review edits on
  * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -15,14 +15,16 @@
  * removes, the values a patch replaced, the fields of a paragraph it merges
  * away) and is refused as stale when that has changed.
  *
- * Wire format. An operation is plain data and survives `JSON.stringify` and
- * `JSON.parse` unchanged; it is journaled inside a {@link DocumentOpEnvelope}
- * that names this schema. Operations embed model records (`Paragraph`,
+ * Wire format. Author operations enter JSON through {@link toOpEnvelope} or
+ * `captureDocumentOp`, which record own undefined property presence. Applied
+ * inverses already carry this metadata. The envelope names the schema. Operations embed model records (`Paragraph`,
  * `ParagraphContent`, property sets) as they stand in this schema version, so
  * those record shapes are part of the wire format too: changing one changes
  * what a journaled operation means, and needs a new schema version and a
  * migration of the journaled operations.
  */
+
+import { captureDocumentOp } from "./wire";
 
 import type {
   Paragraph,
@@ -67,6 +69,11 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 7 adds lossless own-undefined operation snapshot presence and
+ * explicit revision-boundary provenance. An explicit undefined patch value now
+ * sets an own undefined field; null removes it and an absent key is untouched.
+ * Older envelopes receive a structured
+ * unsupportedSchema refusal; no older deployed journal clients are supported.
  * Version 6 extends PR6 schema 5 with numbering-instance creation, section-endpoint
  * edits and JSON-safe exact section-map/view presence. Older envelopes receive an
  * unsupportedSchema refusal; no older deployed journal clients are supported.
@@ -81,7 +88,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 6;
+export const DOCUMENT_OP_SCHEMA_VERSION = 7;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
@@ -113,11 +120,11 @@ export type TextPosition = {
 };
 
 /**
- * Per-key change to a property set: a value sets the key, `null` clears it,
- * and a key the patch leaves out is untouched.
+ * Per-key change: a value, including explicit undefined, sets an owned key;
+ * null removes the key, and an omitted key is untouched.
  */
 export type FormattingPatch<Formatting> = {
-  readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null;
+  readonly [Key in keyof Formatting]?: Formatting[Key] | null | undefined;
 };
 
 /** A change to a run property set (`w:rPr`). */
@@ -205,7 +212,7 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
 } as const);
 export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
 
-/** The operation kinds of schema version 6. */
+/** The operation kinds of schema version 7. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
@@ -767,8 +774,8 @@ export type SetContainerBlocksOp = {
   blocks: readonly BlockContent[];
 };
 
-/** A schema-version-6 document operation. */
-export type DocumentOp =
+/** A schema-version-7 document operation. */
+export type DocumentOp = (
   | DeleteBlocksOp
   | InsertTableOp
   | DeleteTableOp
@@ -792,7 +799,11 @@ export type DocumentOp =
   | SetTableRowsOp
   | CreateNumberingInstanceOp
   | DeleteNumberingInstanceOp
-  | SetSectionEndpointOp;
+  | SetSectionEndpointOp
+) & {
+  /** Own undefined fields recorded by the operation capture boundary. */
+  undefinedFields?: readonly (readonly string[])[];
+};
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the
@@ -807,7 +818,7 @@ export type DocumentOpEnvelope = {
 /** An operation in the envelope it is journaled and sent in. */
 export const toOpEnvelope = (op: DocumentOp): DocumentOpEnvelope => ({
   schema: DOCUMENT_OP_SCHEMA_VERSION,
-  op,
+  op: captureDocumentOp(op),
 });
 
 /** The blocks an operation changed, by id. */

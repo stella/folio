@@ -10,7 +10,7 @@
  * exactly.
  */
 
-import { MAX_REVISION_ID, type Paragraph } from "../model/document";
+import { MAX_REVISION_ID, type Paragraph, type Deletion } from "../model/document";
 import { IDENTITY_SPACES, type IdentitySlot, slotKey } from "./ids";
 import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "./leaves";
 import { identitySlots, withInlineIdentity, withParagraphIdentity } from "./slots";
@@ -45,6 +45,8 @@ export type FreshenOptions = {
   usedElsewhere: () => ReadonlySet<string>;
   /** Records holding only content the edit inserted: they yield an id to records that held it before. */
   inserted?: ReadonlySet<object>;
+  /** Pending cut references must not be reused by a fresh identity. */
+  reserved?: ReadonlySet<string>;
 };
 
 export type FreshenOutcome =
@@ -56,6 +58,73 @@ const recordsOf = (paragraphs: readonly Paragraph[]): Set<object> => {
   const out = new Set<object>(paragraphs);
   for (const paragraph of paragraphs) visitNodes(paragraph.content, (node) => out.add(node));
   return out;
+};
+
+type RetainedIdentity = NonNullable<
+  NonNullable<Deletion["resolutionJoins"]>["retainedAfter"]
+>[number];
+
+const matchesSlots = (node: InlineNode, expected: RetainedIdentity["target"]): boolean => {
+  const slots = identitySlots(node);
+  return expected.every((target) =>
+    slots.some((slot) => slot.space === target.space && slot.id === target.id),
+  );
+};
+
+/** Bind the exact right fragment after its source identities were freshened. */
+const bindRetainedIdentities = (
+  before: readonly InlineNode[],
+  after: readonly InlineNode[],
+): InlineNode[] => {
+  type AtDepthOptions = {
+    old: InlineNode;
+    fresh: InlineNode;
+    entry: RetainedIdentity;
+    depth: number;
+  };
+  const atDepth = ({
+    old,
+    fresh,
+    entry,
+    depth,
+  }: AtDepthOptions): readonly IdentitySlot[] | undefined => {
+    if (depth === entry.depth) {
+      if (!matchesSlots(old, entry.target)) return undefined;
+      const oldSlots = identitySlots(old);
+      const freshSlots = identitySlots(fresh);
+      return entry.target.map((target) => {
+        const index = oldSlots.findIndex(
+          (slot) => slot.space === target.space && slot.id === target.id,
+        );
+        return freshSlots.at(index) ?? target;
+      });
+    }
+    const oldChildren = childNodes(old) ?? [];
+    const freshChildren = childNodes(fresh) ?? [];
+    for (const [index, child] of oldChildren.entries()) {
+      const freshChild = freshChildren.at(index);
+      if (freshChild === undefined) continue;
+      const slots = atDepth({ old: child, fresh: freshChild, entry, depth: depth + 1 });
+      if (slots !== undefined) return slots;
+    }
+    return undefined;
+  };
+  return after.map((node, index) => {
+    if (node.type !== "deletion" && node.type !== "moveFrom") return node;
+    const joins = node.resolutionJoins;
+    if (joins === undefined || joins.retainedAfter === undefined) return node;
+    const retained = joins.retainedAfter;
+    const oldRight = before.at(index + 1);
+    const freshRight = after.at(index + 1);
+    if (oldRight === undefined || freshRight === undefined) return node;
+    const bound = retained.map((entry) => {
+      const target = atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
+      return target === undefined ? entry : { depth: entry.depth, source: entry.source, target };
+    });
+    return Object.assign({}, node, {
+      resolutionJoins: Object.assign({}, joins, { retainedAfter: bound }),
+    });
+  });
 };
 
 /**
@@ -78,6 +147,7 @@ export const freshenIdentities = ({
   newIds,
   usedElsewhere,
   inserted = new Set(),
+  reserved = new Set(),
 }: FreshenOptions): FreshenOutcome => {
   const carried = recordsOf(before);
   const fixed = new Set<string>();
@@ -153,7 +223,10 @@ export const freshenIdentities = ({
       // A new id a record already carries (content the operation brings
       // restores it, say) is passed over: the next one is for this record.
       const pool = pools[slot.space];
-      const isTaken = (id: number) => taken.has(slotKey({ space: slot.space, id }));
+      const isTaken = (id: number) => {
+        const key = slotKey({ space: slot.space, id });
+        return taken.has(key) || reserved.has(key);
+      };
       let fresh = pool[next[slot.space]];
       while (fresh !== undefined && Number.isInteger(fresh) && isTaken(fresh)) {
         next[slot.space] += 1;
@@ -187,7 +260,7 @@ export const freshenIdentities = ({
       changed ||= result !== node;
       out.push(result);
     }
-    return changed ? out : nodes;
+    return changed ? bindRetainedIdentities(nodes, out) : nodes;
   };
 
   const paragraphs: Paragraph[] = [];

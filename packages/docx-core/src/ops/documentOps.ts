@@ -5,6 +5,7 @@
  * sequencer apply operations with one implementation.
  */
 
+export { captureDocumentOp } from "./wire";
 export { combineEdits } from "./edits";
 export {
   applyDocumentOpEnvelope,

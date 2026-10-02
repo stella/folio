@@ -11,10 +11,12 @@
  * marks ends in the paragraph after the last.
  */
 
-import { Result } from "better-result";
+import { panic, Result } from "better-result";
 
+import { MAX_REVISION_ID } from "../model/document";
 import type {
   Document,
+  Deletion,
   Paragraph,
   ParagraphMarkChangeKind,
   ParagraphPropertyChange,
@@ -30,10 +32,12 @@ import {
   childNodes,
   type InlineNode,
   mergeAlike,
+  mergeLists,
   rebuildNode,
   sameOwnFields,
 } from "./leaves";
 import { paragraphLength } from "./offsets";
+import { identitySlots, withInlineIdentity } from "./slots";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
@@ -89,12 +93,14 @@ const removePropertyChanges = <Change extends PropertyChange>(
   let removedPrevious: Change["previousFormatting"] | undefined = undefined;
   let removedAny = false;
   let removing = false;
+  const removedRunChanges: RunPropertyChange[] = [];
   for (const change of changes) {
     if (remove(change)) {
       if (!removing) {
         removedPrevious = change.previousFormatting;
         removing = true;
       }
+      if (change.type === "runPropertyChange") removedRunChanges.push(change);
       removedAny = true;
       continue;
     }
@@ -107,6 +113,24 @@ const removePropertyChanges = <Change extends PropertyChange>(
     if (removedPrevious !== undefined) {
       Object.assign(rebased, { previousFormatting: removedPrevious });
     }
+    if (rebased.type === "runPropertyChange" && removedRunChanges.length > 0) {
+      // A later suggestion inherits the cuts of a rejected earlier one,
+      // so rejecting it can still restore the original run topology.
+      if (
+        rebased.boundaryJoins === undefined ||
+        removedRunChanges.some((removed) => removed.boundaryJoins === undefined)
+      ) {
+        delete rebased.boundaryJoins;
+      } else {
+        rebased.boundaryJoins = [
+          ...new Set([
+            ...rebased.boundaryJoins,
+            ...removedRunChanges.flatMap((removed) => removed.boundaryJoins ?? []),
+          ]),
+        ];
+      }
+    }
+    removedRunChanges.length = 0;
     remaining.push(rebased);
     removedPrevious = undefined;
     removing = false;
@@ -259,6 +283,144 @@ const mergedAtSeam = (
   return [...left.slice(0, -1), ...mergeAtSeam(last, first, emptied), ...right.slice(1)];
 };
 
+type RetainedIdentity = NonNullable<
+  NonNullable<Deletion["resolutionJoins"]>["retainedAfter"]
+>[number];
+
+const hasSlots = (node: InlineNode, expected: RetainedIdentity["target"]): boolean => {
+  const actual = identitySlots(node);
+  return expected.every((target) =>
+    actual.some((slot) => slot.space === target.space && slot.id === target.id),
+  );
+};
+
+/** Only recorded slot references change; arbitrary numbers in the model never do. */
+const restoreRetainedIdentities = (
+  nodes: readonly InlineNode[],
+  transfers: readonly RetainedIdentity[],
+): InlineNode[] => {
+  const references = new Map<string, RetainedIdentity["source"][number]>();
+  let out = [...nodes];
+  for (const transfer of transfers) {
+    const source = transfer.source.map((slot) => references.get(slotKey(slot)) ?? slot);
+    let matched = false;
+    const restore = (node: InlineNode): InlineNode => {
+      const matches = hasSlots(node, transfer.target);
+      matched ||= matches;
+      let next = matches
+        ? withInlineIdentity(
+            node,
+            identitySlots(node).map((slot) => {
+              const index = transfer.target.findIndex(
+                (target) => slot.space === target.space && slot.id === target.id,
+              );
+              return index < 0
+                ? slot.id
+                : (source.at(index)?.id ??
+                    panic("A validated identity transfer has its source slot."));
+            }),
+          )
+        : node;
+      const children = childNodes(next);
+      if (children !== undefined) next = rebuildNode(next, children.map(restore));
+      return next;
+    };
+    out = out.map(restore);
+    if (!matched) continue;
+    for (const [index, target] of transfer.target.entries()) {
+      const restored = source.at(index);
+      if (restored === undefined || restored.space !== target.space)
+        panic("Validated identity transfers retain slot order and space.");
+      references.set(slotKey(target), restored);
+    }
+  }
+  // A later pending deletion may remove the fragment whose identity just
+  // returned. Rebase its explicit slot references, preserving that lineage.
+  const rebase = (node: InlineNode): InlineNode => {
+    let next = node;
+    if (isTrackedWrapper(node) && node.resolutionJoins?.retainedAfter !== undefined) {
+      const retainedAfter = node.resolutionJoins.retainedAfter.map((entry) => ({
+        depth: entry.depth,
+        source: entry.source.map((slot) => references.get(slotKey(slot)) ?? slot),
+        target: entry.target.map((slot) => references.get(slotKey(slot)) ?? slot),
+      }));
+      next = { ...node, resolutionJoins: { ...node.resolutionJoins, retainedAfter } };
+    }
+    const children = childNodes(next);
+    return children === undefined ? next : rebuildNode(next, children.map(rebase));
+  };
+  return out.map(rebase);
+};
+
+/** Journal-supplied provenance must name actual source slots at its recorded depth. */
+const validRetainedIdentities = (node: InlineNode): boolean => {
+  if (!isTrackedWrapper(node) || node.resolutionJoins === undefined) return true;
+  const joins = node.resolutionJoins;
+  if (
+    typeof joins !== "object" ||
+    joins === null ||
+    ![joins.before, joins.after, joins.remove].every(
+      (depth) => Number.isInteger(depth) && depth >= 0 && depth <= MAX_REVISION_ID,
+    )
+  )
+    return false;
+  if (joins.retainedAfter === undefined) return true;
+  if (!Array.isArray(joins.retainedAfter)) return false;
+  type AtDepthOptions = {
+    records: readonly InlineNode[];
+    depth: number;
+    source: RetainedIdentity["source"];
+  };
+  const atDepth = ({ records, depth, source }: AtDepthOptions): boolean => {
+    if (depth === 0) return records.some((record) => hasSlots(record, source));
+    return records.some((record) =>
+      atDepth({ records: childNodes(record) ?? [], depth: depth - 1, source }),
+    );
+  };
+  const validSlot = (slot: unknown): slot is RetainedIdentity["source"][number] => {
+    if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
+      return false;
+    return (
+      (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
+      typeof slot.id === "number" &&
+      Number.isInteger(slot.id) &&
+      slot.id >= 0 &&
+      slot.id <= MAX_REVISION_ID
+    );
+  };
+  const validEntry = (entry: unknown): boolean => {
+    if (
+      typeof entry !== "object" ||
+      entry === null ||
+      !("depth" in entry) ||
+      !("source" in entry) ||
+      !("target" in entry)
+    )
+      return false;
+    const { depth, source, target } = entry;
+    if (
+      typeof depth !== "number" ||
+      !Number.isInteger(depth) ||
+      depth < 0 ||
+      depth > MAX_REVISION_ID ||
+      !Array.isArray(source) ||
+      !Array.isArray(target) ||
+      !source.every(validSlot) ||
+      !target.every(validSlot) ||
+      source.length === 0 ||
+      source.length !== target.length
+    )
+      return false;
+    return (
+      new Set(source.map(slotKey)).size === source.length &&
+      new Set(target.map(slotKey)).size === target.length &&
+      source.every((slot, index) => slot.space === target.at(index)?.space) &&
+      atDepth({ records: node.content, depth, source })
+    );
+  };
+  return joins.retainedAfter.every(validEntry);
+};
+
 type ResolvedList = { nodes: InlineNode[]; changed: boolean };
 
 /**
@@ -268,25 +430,62 @@ type ResolvedList = { nodes: InlineNode[]; changed: boolean };
 const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): ResolvedList => {
   const out: InlineNode[] = [];
   const seams: number[] = [];
+  const exactSeams = new Map<number, number>();
+  const pending = [...nodes];
+  const recordExactSeam = (index: number, depth: number): void => {
+    if (depth > 0) exactSeams.set(index, Math.max(exactSeams.get(index) ?? 0, depth));
+  };
   /** Seams beside an emptied container, where only its fold happens. */
   const folds: number[] = [];
   let changed = false;
-  for (const node of nodes) {
+  for (const [index, node] of pending.entries()) {
     if (isTrackedWrapper(node) && resolution.ids.has(node.info.id)) {
       changed = true;
-      seams.push(out.length);
       if (removesContent(node, resolution.decision)) {
+        const transfers = node.resolutionJoins?.retainedAfter ?? [];
+        if (transfers.length > 0) {
+          // Restore before resolving later wrappers, so their own source
+          // references follow the fragment whose identity returned.
+          const prefixLength = out.length;
+          const restored = restoreRetainedIdentities(
+            out.concat(pending.slice(index + 1)),
+            transfers,
+          );
+          out.splice(0, out.length, ...restored.slice(0, prefixLength));
+          pending.splice(index + 1, pending.length - index - 1, ...restored.slice(prefixLength));
+        }
+        if (node.resolutionJoins === undefined) seams.push(out.length);
+        else recordExactSeam(out.length, node.resolutionJoins.remove);
         continue;
       }
+      if (node.resolutionJoins === undefined) seams.push(out.length);
+      else recordExactSeam(out.length, node.resolutionJoins.before);
       out.push(...resolveList(node.content, resolution).nodes);
-      seams.push(out.length);
+      if (node.resolutionJoins === undefined) seams.push(out.length);
+      else recordExactSeam(out.length, node.resolutionJoins.after);
       continue;
     }
     if (node.type === "run") {
       const run = resolveRun(node, resolution);
       if (run !== node) {
         changed = true;
-        seams.push(out.length, out.length + 1);
+        const selected = (node.propertyChanges ?? []).filter((change) =>
+          resolution.ids.has(change.info.id),
+        );
+        if (
+          selected.some(
+            (change) =>
+              change.boundaryJoins === undefined || change.boundaryJoins.includes("before"),
+          )
+        )
+          seams.push(out.length);
+        if (
+          selected.some(
+            (change) =>
+              change.boundaryJoins === undefined || change.boundaryJoins.includes("after"),
+          )
+        )
+          seams.push(out.length + 1);
       }
       out.push(run);
       continue;
@@ -311,7 +510,26 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
       seams.push(out.length);
       continue;
     }
-    const rebuilt = rebuildNode(node, inner.nodes);
+    let rebuilt = rebuildNode(node, inner.nodes);
+    if (isTrackedWrapper(rebuilt) && rebuilt.resolutionJoins?.retainedAfter !== undefined) {
+      const sourceKeys = new Set(identityKeysIn(inner.nodes));
+      const retainedAfter = rebuilt.resolutionJoins.retainedAfter.flatMap((entry) => {
+        const source: RetainedIdentity["source"][number][] = [];
+        const target: RetainedIdentity["target"][number][] = [];
+        for (const [slotIndex, slot] of entry.source.entries()) {
+          if (!sourceKeys.has(slotKey(slot))) continue;
+          const bound = entry.target.at(slotIndex);
+          if (bound === undefined)
+            panic("Validated cut provenance has paired source and target slots.");
+          source.push(slot);
+          target.push(bound);
+        }
+        return source.length === 0 ? [] : [{ depth: entry.depth, source, target }];
+      });
+      rebuilt = Object.assign({}, rebuilt, {
+        resolutionJoins: Object.assign({}, rebuilt.resolutionJoins, { retainedAfter }),
+      });
+    }
     // A container the resolution emptied, or one with such a container at an
     // edge, meets its neighbours there: otherwise an emptied piece of a cut
     // container, with no change resolved between it and the other piece,
@@ -329,13 +547,25 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
     return { nodes: out, changed };
   }
   const merges = new Set(seams);
-  for (const seam of [...new Set([...seams, ...folds])].toSorted((left, right) => right - left)) {
+  for (const seam of [...new Set([...seams, ...exactSeams.keys(), ...folds])].toSorted(
+    (left, right) => right - left,
+  )) {
     const left = out[seam - 1];
     const right = out[seam];
     if (left === undefined || right === undefined) continue;
-    const met = merges.has(seam)
-      ? mergeAtSeam(left, right, resolution.emptied)
-      : foldAtSeam(left, right, resolution.emptied);
+    const exactDepth = exactSeams.get(seam);
+    // Later independent edits may make a recorded seam non-alike. Join
+    // only the recorded depth and matching fields, preserving those edits.
+    let met: InlineNode[];
+    if (merges.has(seam)) {
+      met = mergeAtSeam(left, right, resolution.emptied);
+    } else if (exactDepth === undefined) {
+      met = foldAtSeam(left, right, resolution.emptied);
+    } else {
+      met =
+        mergeLists([left], [right], exactDepth, { mode: "asFarAsAlike" }) ??
+        panic("An as-far-as-alike merge always returns its records.");
+    }
     out.splice(seam - 1, 2, ...met);
   }
   return { nodes: out, changed };
@@ -599,6 +829,18 @@ export const resolveRevision = (
         op,
         DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
         `Revision ${unreachable} is not an inline change, property change, row change or paragraph mark.`,
+      ),
+    );
+  }
+
+  const validProvenance = (nodes: readonly InlineNode[]): boolean =>
+    nodes.every((node) => validRetainedIdentities(node) && validProvenance(childNodes(node) ?? []));
+  if (paragraphs.some(({ paragraph }) => !validProvenance(paragraph.content))) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "Resolution provenance must name valid source identity slots and cut depths.",
       ),
     );
   }

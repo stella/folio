@@ -40,12 +40,12 @@ test("older envelopes are refused structurally and current envelopes apply", asy
     text: "x",
     runProps: "inherit",
   } as const;
-  // Schema 5 belongs to PR6; this reader implements the explicit schema-6 cutover.
+  // Schema 5 belongs to PR6; this reader implements the explicit schema-7 cutover.
   const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
   expect(Array.isArray(older)).toBe(true);
-  for (const schema of [4, 5, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [4, 5, 6, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = applyDocumentOpEnvelope(document, { schema, op });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");

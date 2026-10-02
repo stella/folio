@@ -29,6 +29,7 @@ import type {
   TrackedRunContent,
 } from "../../model/document";
 import { paragraphNumberingReference } from "../../model/paragraphNumbering";
+import { captureDocumentOp } from "../wire";
 import { storyParagraphs } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { IDENTITY_SPACES, packageIdentityKeys, paragraphIdsIn } from "../ids";
@@ -566,13 +567,9 @@ export const reviewDocumentArbitrary: fc.Arbitrary<Document> = documentArbitrary
 
 /** A structurally equal copy that shares no record with its source. */
 export const independentCopy = <Value>(value: Value): Value => {
-  // JSON omits own undefined properties, making the section view disagree
-  // with its canonical content. Rebuild each occurrence independently while
-  // retaining every property, including explicit undefined.
-  const copy = structuredClone(value);
-  if (typeof copy !== "object" || copy === null) return copy;
-  for (const [key, item] of Object.entries(copy)) Reflect.set(copy, key, independentCopy(item));
-  return copy;
+  // Retain own undefined properties without sharing records with the source.
+  // The generator separately exercises shared and detached section views.
+  return structuredClone(value);
 };
 
 /** Random numbers an operation is drawn from once the document it targets is known. */
@@ -683,7 +680,10 @@ export const GENERATED_OP_KINDS: readonly DocumentOpType[] = OP_KINDS;
  * join across a section break, a slice whose open ends do not fit) exercise
  * refusals.
  */
-export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
+export const opFor = (document: Document, seed: OpSeed): DocumentOp =>
+  captureDocumentOp(rawOpFor(document, seed));
+
+const rawOpFor = (document: Document, seed: OpSeed): DocumentOp => {
   const paragraphs = storyParagraphs(document.package.document);
   const target = paragraphs[seed.block % paragraphs.length];
   if (target === undefined) {
@@ -918,10 +918,13 @@ const unmarkedJoin = (
  * and new ids for the records it creates past the first (one operation in
  * five names none, exercising the refusal).
  */
-export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): DocumentOp => {
+export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): DocumentOp =>
+  captureDocumentOp(rawTrackedOpFor(document, seed, index));
+
+const rawTrackedOpFor = (document: Document, seed: OpSeed, index: number): DocumentOp => {
   const kind =
     TRACKED_OP_KINDS[seed.kind % TRACKED_OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
-  const op = opFor(document, { ...seed, kind: OP_KINDS.indexOf(kind) });
+  const op = rawOpFor(document, { ...seed, kind: OP_KINDS.indexOf(kind) });
   const revision = stampFor(document, seed, index);
   const pool = (base: number, length: number) =>
     Array.from({ length }, (_, offset) => base + (seed.fresh % 100_000) * 8 + offset);

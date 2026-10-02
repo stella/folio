@@ -32,8 +32,10 @@ import {
   partitionNode,
   rebuildNode,
   startCursor,
+  spanningRecords,
 } from "./leaves";
 import { isTrackedChild } from "./offsets";
+import { identitySlots } from "./slots";
 import { DOCUMENT_OP_REFUSAL_REASONS, type DocumentOpRefusalReason } from "./refusal";
 import {
   PARAGRAPH_MARK_FORMATTING_KEYS,
@@ -261,10 +263,18 @@ const coveredAction = (node: InlineNode, kind: WrapKind): CoveredAction => {
   return "wrap";
 };
 
-type Entry = { node: InlineNode; covered: boolean };
+type Entry = {
+  node: InlineNode;
+  covered: boolean;
+  joinBefore?: number;
+  joinAfter?: number;
+  retainedAfter?: NonNullable<TrackedWrapper["resolutionJoins"]>["retainedAfter"];
+};
 
 type WrapState = {
-  gaps: readonly Gap[];
+  gaps: readonly [Gap, Gap];
+  resolutionJoin: number | undefined;
+  depth: number;
   kind: WrapKind;
   stamp: RevisionStamp;
   /** The wrappers the wrap created and has not merged away. */
@@ -282,6 +292,16 @@ const mergeWithStampedNeighbour = (out: InlineNode[], index: number, state: Wrap
     neighbour !== undefined &&
     isTrackedWrapper(neighbour) &&
     neighbour.type === wrapper.type &&
+    !(
+      wrapper.resolutionJoins !== undefined &&
+      neighbour.resolutionJoins !== undefined &&
+      (wrapper.resolutionJoins.before > 0 ||
+        wrapper.resolutionJoins.after > 0 ||
+        wrapper.resolutionJoins.remove > 0 ||
+        neighbour.resolutionJoins.before > 0 ||
+        neighbour.resolutionJoins.after > 0 ||
+        neighbour.resolutionJoins.remove > 0)
+    ) &&
     !state.created.has(neighbour) &&
     carriesStamp(neighbour.info, state.stamp);
   const left = out[index - 1];
@@ -323,16 +343,28 @@ const trackedContent = (
 const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[] | undefined => {
   const out: InlineNode[] = [];
   const wrapperAt: number[] = [];
-  let stretch: InlineNode[] = [];
+  let stretch: Entry[] = [];
   const flush = (): boolean => {
     if (stretch.length === 0) return true;
-    const content = trackedContent(stretch, state);
+    const content = trackedContent(
+      stretch.map(({ node }) => node),
+      state,
+    );
     if (content === undefined) return false;
     const info = stampInfo(state.stamp);
     const wrapper: InlineNode =
       state.kind === WRAP_KINDS.INSERTION
         ? { type: "insertion", info, content }
         : { type: "deletion", info, content };
+    if (state.resolutionJoin !== undefined && isTrackedWrapper(wrapper)) {
+      wrapper.resolutionJoins = {
+        before: stretch.at(0)?.joinBefore ?? 0,
+        after: stretch.at(-1)?.joinAfter ?? 0,
+        remove: Math.max(0, state.resolutionJoin - state.depth),
+      };
+      const retainedAfter = stretch.at(-1)?.retainedAfter;
+      if (retainedAfter !== undefined) wrapper.resolutionJoins.retainedAfter = retainedAfter;
+    }
     state.created.add(wrapper);
     state.recorded = true;
     wrapperAt.push(out.length);
@@ -340,7 +372,8 @@ const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[]
     stretch = [];
     return true;
   };
-  for (const { node, covered } of entries) {
+  for (const entry of entries) {
+    const { node, covered } = entry;
     const action = covered ? coveredAction(node, state.kind) : "skip";
     switch (action) {
       case "refuse":
@@ -353,16 +386,18 @@ const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[]
       case "descend": {
         if (!flush()) return undefined;
         const children = childNodes(node) ?? [];
+        state.depth += 1;
         const wrapped = groupCovered(
           children.map((child) => ({ node: child, covered: true })),
           state,
         );
+        state.depth -= 1;
         if (wrapped === undefined) return undefined;
         out.push(rebuildNode(node, wrapped));
         break;
       }
       case "wrap":
-        stretch.push(node);
+        stretch.push(entry);
         break;
       default: {
         const unreachable: never = action;
@@ -400,7 +435,9 @@ const wrapList = (
         const end: Cursor = { ...cursor };
         cursor.position = start.position;
         cursor.zeroWidthSeen = start.zeroWidthSeen;
+        state.depth += 1;
         const children = wrapList(childNodes(node) ?? [], cursor, state);
+        state.depth -= 1;
         if (children === undefined) return undefined;
         cursor.position = end.position;
         cursor.zeroWidthSeen = end.zeroWidthSeen;
@@ -413,7 +450,30 @@ const wrapList = (
           const unwrap =
             region === 1 && state.kind === WRAP_KINDS.INSERTION && isTrackedWrapper(piece);
           for (const part of unwrap ? (childNodes(piece) ?? []) : [piece]) {
-            entries.push({ node: part, covered: region === 1 });
+            const localGap = (gap: Gap): Gap => ({
+              offset: gap.offset - start.position,
+              zeroWidthBefore:
+                gap.offset === start.position
+                  ? gap.zeroWidthBefore - start.zeroWidthSeen
+                  : gap.zeroWidthBefore,
+            });
+            const afterChain = spanningRecords([node], [localGap(state.gaps[1])], 0, 1);
+            const retainedAfter =
+              region === 1 && state.kind === WRAP_KINDS.DELETION && measured.min === 1
+                ? afterChain.flatMap((record, depth) => {
+                    const source = identitySlots(record);
+                    return source.length === 0 ? [] : [{ depth, source, target: source }];
+                  })
+                : [];
+            entries.push({
+              node: part,
+              ...(retainedAfter.length === 0 ? {} : { retainedAfter }),
+              covered: region === 1,
+              joinBefore:
+                region === 1 ? spanningRecords([node], [localGap(state.gaps[0])], 0, 1).length : 0,
+              joinAfter:
+                region === 1 ? spanningRecords([node], [localGap(state.gaps[1])], 0, 1).length : 0,
+            });
           }
         }
         break;
@@ -432,6 +492,8 @@ export type WrapOptions = {
   to: Gap;
   kind: WrapKind;
   stamp: RevisionStamp;
+  /** Exact top-level cut depth restored when this wrapper content is removed. */
+  resolutionJoin?: number;
 };
 
 export type WrapOutcome =
@@ -444,9 +506,18 @@ export type WrapOutcome =
  * `unchanged` when there is nothing to record: every leaf is already
  * deleted, or an insertion sits inside a wrapper carrying the same stamp.
  */
-export const wrapTracked = ({ items, from, to, kind, stamp }: WrapOptions): WrapOutcome => {
+export const wrapTracked = ({
+  items,
+  from,
+  to,
+  kind,
+  stamp,
+  resolutionJoin,
+}: WrapOptions): WrapOutcome => {
   const state: WrapState = {
     gaps: [from, to],
+    resolutionJoin,
+    depth: 0,
     kind,
     stamp,
     created: new Set(),

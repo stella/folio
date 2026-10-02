@@ -1634,11 +1634,28 @@ export type TrackedRunContent =
   | PreservedInline
   | TrackedRunChange;
 
+/** Operation-created seams only; source OOXML has no such provenance. */
+type TrackedResolutionJoins = {
+  /** Exact join depths when the wrapper is retained and unwrapped. */
+  before: number;
+  after: number;
+  /** Exact join depth when the wrapper is removed. */
+  remove: number;
+  /** Source identities handed to the retained suffix when a deleted prefix goes. */
+  retainedAfter?: readonly {
+    depth: number;
+    source: readonly { space: "revision" | "control"; id: number }[];
+    target: readonly { space: "revision" | "control"; id: number }[];
+  }[];
+};
+
 /**
  * Insertion wrapper (w:ins) — runs inserted by tracked changes
  */
 export type Insertion = {
   type: "insertion";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Inserted content */
@@ -1650,6 +1667,8 @@ export type Insertion = {
  */
 export type Deletion = {
   type: "deletion";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Deleted content */
@@ -1661,6 +1680,8 @@ export type Deletion = {
  */
 export type MoveFrom = {
   type: "moveFrom";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Moved content */
@@ -1672,6 +1693,8 @@ export type MoveFrom = {
  */
 export type MoveTo = {
   type: "moveTo";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Moved content */
@@ -1786,6 +1809,8 @@ export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
  */
 export type RunPropertyChange = {
   type: "runPropertyChange";
+  /** Cuts created by this action; omitted on imported OOXML records. */
+  boundaryJoins?: readonly ("before" | "after")[];
   /** Tracked change metadata */
   info: PropertyChangeInfo;
   /** Run properties before the tracked change */
@@ -2254,7 +2279,7 @@ export type Paragraph = {
   /** Word's cached layout says this paragraph started on a new rendered page. */
   renderedPageBreakBefore?: boolean;
   /** Section properties (if this paragraph ends a section) */
-  sectionProperties?: SectionProperties;
+  sectionProperties?: SectionProperties | undefined;
   /**
    * Attributes `w:p` carried that this record has no field for.
    *
@@ -2734,9 +2759,9 @@ export type Section = {
   /** Content in this section */
   content: BlockContent[];
   /** Headers for this section */
-  headers?: Map<HeaderFooterType, HeaderFooter>;
+  headers?: Map<HeaderFooterType, HeaderFooter> | undefined;
   /** Footers for this section */
-  footers?: Map<HeaderFooterType, HeaderFooter>;
+  footers?: Map<HeaderFooterType, HeaderFooter> | undefined;
 };
 
 /**
@@ -2774,9 +2799,9 @@ export type DocumentBody = {
   /** All content (paragraphs, tables) */
   content: BlockContent[];
   /** Sections (derived from sectPr in paragraphs and final sectPr) */
-  sections?: Section[];
+  sections?: Section[] | undefined;
   /** Final section properties (from body's sectPr) */
-  finalSectionProperties?: SectionProperties;
+  finalSectionProperties?: SectionProperties | undefined;
   /** Comments from comments.xml */
   comments?: Comment[];
 };

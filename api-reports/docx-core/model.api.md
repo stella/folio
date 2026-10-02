@@ -201,6 +201,7 @@ export type CounterFormat = (typeof COUNTER_FORMATS)[number];
 // @public
 export type Deletion = {
     type: "deletion";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -243,8 +244,8 @@ export type DocumentBackgroundDrawing = {
 export type DocumentBody = {
     background?: DocumentBackground;
     content: BlockContent[];
-    sections?: Section[];
-    finalSectionProperties?: SectionProperties;
+    sections?: Section[] | undefined;
+    finalSectionProperties?: SectionProperties | undefined;
     comments?: Comment_2[];
 };
 
@@ -693,6 +694,7 @@ export type InlineWrapper = {
 // @public
 export type Insertion = {
     type: "insertion";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -849,6 +851,7 @@ export type MoveBookmarkMarker = BookmarkRangeMarker & {
 // @public
 export type MoveFrom = {
     type: "moveFrom";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -866,6 +869,7 @@ export type MoveFromRangeStart = {
 // @public
 export type MoveTo = {
     type: "moveTo";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -965,7 +969,7 @@ export type Paragraph = {
     content: ParagraphContent[];
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
-    sectionProperties?: SectionProperties;
+    sectionProperties?: SectionProperties | undefined;
     preservedAttributes?: PreservedAttribute[];
 };
 
@@ -1332,6 +1336,7 @@ export type RunContent = TextContent | TabContent | BreakContent | SymbolContent
 // @public
 export type RunPropertyChange = {
     type: "runPropertyChange";
+    boundaryJoins?: readonly ("before" | "after")[];
     info: PropertyChangeInfo;
     previousFormatting?: TextFormatting;
     currentFormatting?: TextFormatting;
@@ -1406,8 +1411,8 @@ export type SdtType = "richText" | "plainText" | "date" | "dropdown" | "comboBox
 export type Section = {
     properties: SectionProperties;
     content: BlockContent[];
-    headers?: Map<HeaderFooterType, HeaderFooter>;
-    footers?: Map<HeaderFooterType, HeaderFooter>;
+    headers?: Map<HeaderFooterType, HeaderFooter> | undefined;
+    footers?: Map<HeaderFooterType, HeaderFooter> | undefined;
 };
 
 // @public

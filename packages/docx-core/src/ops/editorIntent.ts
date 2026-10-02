@@ -1,6 +1,7 @@
 /** One editor intent, compiled to direct or tracked document operations. */
 import { Result, panic } from "better-result";
 import { applyDocumentOps } from "./apply";
+import { captureDocumentOp } from "./wire";
 import { applyFormattingPatch } from "./patch";
 import { paragraphNumberingReference } from "../model/paragraphNumbering";
 
@@ -16,7 +17,13 @@ import {
   type AbstractNumbering,
 } from "../model/document";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
-import { IDENTITY_SPACES, idKey, packageIdentityKeys, packageParagraphIds } from "./ids";
+import {
+  IDENTITY_SPACES,
+  idKey,
+  packageIdentityKeys,
+  reservedIdentityKeysIn,
+  packageParagraphIds,
+} from "./ids";
 import { leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import { appendTrackedDeletion, createTrackedPlan, selectedParagraphRuns } from "./plan";
@@ -79,7 +86,9 @@ export type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition 
 
 /** Fresh identities for one input, bounded by its paragraph leaves and ancestor records. */
 export const allocateEditorIntentIds = (document: Document, intent?: EditorIntent) => {
-  const identities = packageIdentityKeys(document.package);
+  const identities = packageIdentityKeys(document.package).concat(
+    reservedIdentityKeysIn(document.package),
+  );
   const paragraphs = (() => {
     if (intent === undefined) return storyParagraphs(document.package.document);
     switch (intent.type) {
@@ -783,5 +792,5 @@ export const compileEditorIntent = (
       return unreachable;
     }
   }
-  return Result.ok({ ops, selection });
+  return Result.ok({ ops: ops.map(captureDocumentOp), selection });
 };

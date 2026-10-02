@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-Preserve exact section history, return atomic section refusals, and reject unsupported operation envelopes.
+Preserve exact section and authored run history, capture undefined fields losslessly in schema-7 operation journals, and return atomic refusals for unsupported envelopes.

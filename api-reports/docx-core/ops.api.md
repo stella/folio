@@ -26,7 +26,7 @@ export type AppliedDocumentOp = {
 };
 
 // @public
-export const applyDocumentOp: (document: Document_2, op: DocumentOp) => Result<AppliedDocumentOp, DocumentOpRefusal>;
+export const applyDocumentOp: (document: Document_2, input: DocumentOp) => Result<AppliedDocumentOp, DocumentOpRefusal>;
 
 // @public
 export const applyDocumentOpEnvelope: (document: Document_2, envelope: {
@@ -45,6 +45,9 @@ export type BlockInsertionPoint = {
     type: "after";
     blockId: string;
 };
+
+// @public
+export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
 // @public
 export const combineEdits: (document: Document_2, edits: readonly DocumentEdit[]) => DocumentEdit;
@@ -153,7 +156,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 6;
+export const DOCUMENT_OP_SCHEMA_VERSION = 7;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -184,7 +187,9 @@ export const DOCUMENT_OP_TYPES: Readonly<{
 }>;
 
 // @public
-export type DocumentOp = DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp;
+export type DocumentOp = (DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp) & {
+    undefinedFields?: readonly (readonly string[])[];
+};
 
 // @public
 export type DocumentOpEnvelope = {
