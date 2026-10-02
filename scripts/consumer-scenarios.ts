@@ -401,9 +401,11 @@ const flowEnvironment = async (): Promise<Record<string, string>> => {
     if (value !== undefined && value !== "") environment[name] = path.resolve(value);
   }
   // Fingerprints with an open issue: continuous-fuzz.test.ts records them without failing.
-  const known = JSON.parse(
-    await readFile(path.join(repoRoot, "test", "known-failure-fingerprints.json"), "utf8"),
-  ) as { known: { fingerprint: string }[] };
+  const knownRegistryPath = path.join(repoRoot, "test", "known-failure-fingerprints.json");
+  environment["FOLIO_SCENARIO_KNOWN_FAILURE_REGISTRY"] = knownRegistryPath;
+  const known = JSON.parse(await readFile(knownRegistryPath, "utf8")) as {
+    known: { fingerprint: string }[];
+  };
   environment["FOLIO_SCENARIO_KNOWN_FINGERPRINTS"] = known.known
     .map(({ fingerprint }) => fingerprint)
     .join(",");
