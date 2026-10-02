@@ -4,7 +4,12 @@ import {
   failureMarker,
   failureRecord,
 } from "../test/consumer-scenarios/support/failure-fingerprints";
-import { collectFindings, parseFailureRecord, parseIssueResponse } from "./fuzz-failure-issues";
+import {
+  collectFindings,
+  parseFailureRecord,
+  parseIssuePages,
+  parseIssueResponse,
+} from "./fuzz-failure-issues";
 
 const marker = (seed: number, message = "step 3: no comment") =>
   failureMarker({
@@ -93,4 +98,19 @@ test("GitHub REST and CLI issue identities validate before filing", () => {
   );
   expect(() => parseIssueResponse({ ...fields, state: "unknown" })).toThrow();
   expect(() => parseIssueResponse({ ...fields, number: "20", state: "open" })).toThrow();
+});
+
+test("paginated issue responses fail before matching malformed issue data", () => {
+  expect(parseIssuePages([])).toEqual([]);
+  expect(() => parseIssuePages({})).toThrow();
+  expect(() => parseIssuePages([{}])).toThrow();
+  expect(() => parseIssuePages([[{ number: "20" }]])).toThrow();
+  const issue = {
+    number: 20,
+    title: "Standing report",
+    body: "Evidence",
+    state: "open",
+    closed_at: null,
+  };
+  expect(parseIssuePages([[issue], [issue]])).toHaveLength(2);
 });

@@ -203,6 +203,14 @@ export const parseIssueResponse = (value: unknown): Issue => {
   return { number, title, body, state, closedAt };
 };
 
+/** Validate paginated GitHub responses before selecting an issue to update. */
+export const parseIssuePages = (pages: unknown): Issue[] => {
+  if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
+    throw new IssueResponseError({ message: "Invalid GitHub issue pages" });
+  }
+  return pages.flat().map(parseIssueResponse);
+};
+
 /** Where a finding was filed: `#<number>`, or null when it was not. */
 export type Filed = { fingerprint: string; issue: string | null };
 
@@ -228,10 +236,7 @@ export const fileFindings = (
       list: async () => {
         const endpoint = `repos/{owner}/{repo}/issues?state=all&labels=${LABEL.name}&per_page=100`;
         const pages: unknown = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text());
-        if (!Array.isArray(pages) || !pages.every(Array.isArray)) {
-          throw new IssueResponseError({ message: "Invalid GitHub issue pages" });
-        }
-        return pages.flat().map(parseIssueResponse);
+        return parseIssuePages(pages);
       },
       create: async (title, body) => {
         await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`.quiet();

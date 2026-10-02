@@ -125,9 +125,8 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
-  # A red nightly nobody reads is a failure nobody fixes: open an issue per
-  # failing test (or comment on the open one), with the replay line and, for a
-  # property, the test/property-seeds.json entry that pins it once fixed.
+  # Property failures keep per-test issues and replay seeds. Conformance
+  # failures update one standing issue with the latest run and replay evidence.
   # Separate jobs so the test runs never hold a write token. Main only: a
   # dispatch on a branch reports in its run, not in the issue tracker.
   report-property:
