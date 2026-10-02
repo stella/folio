@@ -32,7 +32,12 @@ import type { RemovedSectionReference } from "../internal/sectionEndpointResolut
  * - docProps/* - Document properties (preserved)
  */
 
-import { escapeXmlAttribute, escapeXmlText, validateDocxPackage } from "@stll/docx-core";
+import {
+  assertValidOoxmlNumericIds,
+  escapeXmlAttribute,
+  escapeXmlText,
+  validateDocxPackage,
+} from "@stll/docx-core";
 import { mintRelationshipId } from "@stll/docx-core/model";
 import { panic, TaggedError } from "better-result";
 import JSZip from "jszip";
@@ -984,12 +989,15 @@ const normalizePackageIdsInZip = async (zip: JSZip, compressionLevel: number): P
   for (const [path, file] of Object.entries(zip.files)) {
     if (!file.dir && path.startsWith("word/") && path.endsWith(".xml")) {
       // oxlint-disable-next-line no-await-in-loop -- package parts share one id space and must be collected before rewriting
-      xmlParts.set(path, await file.async("text"));
+      const xml = await file.async("text");
+      assertValidOoxmlNumericIds(xml, path);
+      xmlParts.set(path, xml);
     }
   }
   const normalizedParts = normalizeParaIdRangeInXmlParts(normalizeRevisionIdsInXmlParts(xmlParts));
   for (const [path, xml] of normalizedParts) {
     if (xml !== xmlParts.get(path)) {
+      assertValidOoxmlNumericIds(xml, path);
       zip.file(path, xml, {
         compression: "DEFLATE",
         compressionOptions: { level: compressionLevel },

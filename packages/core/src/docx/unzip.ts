@@ -539,6 +539,34 @@ export async function unzipDocx(
   return content;
 }
 
+/** Keep extracted projections and the source ZIP aligned after parser normalization. */
+export const replaceRawDocxXmlParts = async (
+  content: RawDocxContent,
+  parts: ReadonlyMap<string, string>,
+): Promise<void> => {
+  let identitiesChanged = false;
+  for (const [path, xmlContent] of parts) {
+    if (content.allXml.get(path) === xmlContent) continue;
+    indexXmlContent(content, {
+      type: "xml",
+      path,
+      lowerPath: path.toLowerCase(),
+      content: xmlContent,
+    });
+    content.originalZip.file(path, xmlContent);
+    identitiesChanged = true;
+  }
+  if (identitiesChanged) {
+    content.originalBuffer = await content.originalZip.generateAsync({
+      type: "arraybuffer",
+      compression: "DEFLATE",
+      // Import needs a consistent baseline immediately; use fast compression
+      // for repaired entries while JSZip reuses untouched DEFLATE entries.
+      compressionOptions: { level: 1 },
+    });
+  }
+};
+
 /**
  * Preflight every XML part the unzip retains, not a named few.
  *
@@ -562,6 +590,13 @@ function assignXmlContent(
     budget,
   });
 
+  indexXmlContent(content, { type: "xml", path, lowerPath, content: xmlContent });
+}
+
+const indexXmlContent = (
+  content: RawDocxContent,
+  { path, lowerPath, content: xmlContent }: Extract<ExtractedEntry, { type: "xml" }>,
+): void => {
   content.allXml.set(path, xmlContent);
 
   if (lowerPath === "word/document.xml") {
@@ -607,7 +642,7 @@ function assignXmlContent(
     const filename = path.split("/").pop() || path;
     content.footers.set(filename, xmlContent);
   }
-}
+};
 
 function inflationLimitError(limit: InflationLimit, path: string): DocxSecurityError {
   switch (limit) {

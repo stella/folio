@@ -484,6 +484,73 @@
       "date": "2026-09-30"
     }
   ],
+  "packages/core/src/utils/mergeDocumentContent.test.ts::repeated merges keep numbering unique and bounded across loaded id ranges": [
+    {
+      "seed": -1284263412,
+      "path": "0:0:0",
+      "note": "The numbering oracle checks list paragraphs and skips the empty unnumbered target paragraph",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/ai-edits/commentIdAllocation.test.ts::comment and revision batches avoid loaded IDs and retain IDs on round-trip": [
+    {
+      "seed": 1641782380,
+      "note": "Loaded maximum IDs must wrap without crossing previously reserved comment or revision IDs; replay the whole sequence because realm allocation retains state. Failure path: 3.",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": 1447742509,
+      "note": "Shared revision batches need a free contiguous interval after loaded ids shorten the high tail; replay the whole sequence because realm allocation retains state. Failure path: 13:0:0.",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/ai-edits/characterBoundaries.test.ts::changes no text beyond what it names, and cuts no character": [
+    {
+      "seed": 702376610,
+      "note": "A multi-id replacement must not cross ids reserved by earlier batches after rollover; replay the whole sequence because realm allocation retains state. Failure path: 71.",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/docx/savedTextFidelity.property.test.ts::a plain repack preserves the paragraph's text": [
+    {
+      "seed": 118802345,
+      "note": "VML lexical shape ids must not become DrawingML numeric ids",
+      "date": "2026-10-01",
+      "path": "2:1:1:1"
+    }
+  ],
+  "packages/core/src/docx/savedTextFidelity.property.test.ts::the editor round trip preserves the paragraph's text": [
+    {
+      "seed": 958315626,
+      "note": "VML lexical shape ids must not become DrawingML numeric ids",
+      "date": "2026-10-01",
+      "path": "4:1:1:1"
+    }
+  ],
+  "packages/core/src/docx/drawingNumericIds.property.test.ts::every rebuilt drawing uses bounded numeric ids without changing its lexical model id": [
+    {
+      "seed": 1182167535,
+      "path": "0:0",
+      "note": "Drawing fixtures must satisfy the image model including wrap before testing bounded IDs",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/core/src/prosemirror/plugins/suggestionNestedListPaste.test.ts::retracting pasted list breaks preserves acceptance and rejection for paragraph properties": [
+    {
+      "seed": 197,
+      "path": "0:0:0:0:0:0:0:0:0",
+      "note": "Independent editing and suggesting documents allocate numbering deterministically from their own reserved IDs",
+      "date": "2026-10-01"
+    }
+  ],
+  "packages/docx-core/src/serialize/numericIds.test.ts::preflight and the writer agree over both numeric domains, aliases and encoded values": [
+    {
+      "seed": 1073962585,
+      "path": "7:0:0",
+      "note": "Decode numeric character references in identifiers and namespace bindings exactly once before schema classification",
+      "date": "2026-10-02"
+    }
+  ],
   "packages/core/src/docx/emptyRunSaveFixedPoint.property.test.ts::any sequence of empty, near-empty and not-yet-filled runs is a fixed point after the first save": [
     {
       "seed": -1759781140,

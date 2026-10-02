@@ -1,4 +1,5 @@
 import { attachXmlNamespaceContext, EMPTY_NAMESPACE_SCOPE } from "./xmlNamespaceContext";
+import { isOoxmlNumericIdAttributeName } from "@stll/docx-core";
 import type { XmlElement, XmlNamespaceScope } from "./xmlParser";
 import { FOLIO_XML_RESOURCE_LIMITS } from "./xmlResourceLimits";
 
@@ -28,32 +29,60 @@ type OpenTagVisitor = (
   attributeValueSpans: ReadonlyMap<string, AttributeValueSpan>,
 ) => ReadonlyMap<string, string> | null;
 
+type OpenTagScanVisitor = (...args: Parameters<OpenTagVisitor>) => null;
+
 type XmlReplacement = AttributeValueSpan & { value: string };
 type InternalParseXmlResult =
   | { status: "parsed"; value: XmlElement; replacements: XmlReplacement[] }
   | { status: "unsupported" };
 
-const parseStreamingXmlInternal = (
-  xml: string,
-  visitOpenTag?: OpenTagVisitor,
-  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
-): InternalParseXmlResult => {
+type AttributeNameOptions = { attributeName: string; elementName: string };
+
+type StreamingXmlOptions = {
+  xml: string;
+  inheritedNamespaceScope?: XmlNamespaceScope;
+} & (
+  | { mode: "tree"; visitOpenTag?: OpenTagScanVisitor }
+  | {
+      mode: "attributes";
+      visitOpenTag: OpenTagVisitor;
+      retainAttribute?: (options: AttributeNameOptions) => boolean;
+    }
+);
+
+const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseXmlResult => {
+  const { xml, inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE } = options;
+  const visitOpenTag = options.visitOpenTag;
+  let spanMode: ParseOpenTagOptions["spanMode"] = "none";
+  if (visitOpenTag !== undefined) spanMode = options.mode === "tree" ? "identities" : "all";
+  const openTagOptions = {
+    xml,
+    start: 0,
+    close: 0,
+    spanMode,
+    retainAttribute: options.mode === "attributes" ? options.retainAttribute : undefined,
+  } satisfies ParseOpenTagOptions;
   const root: XmlElement = { elements: [] };
   const stack: ElementFrame[] = [];
   const replacements: XmlReplacement[] = [];
   let cursor = 0;
   let mergeAdjacentText = false;
+  const acceptText = (text: string, merge: boolean): boolean => {
+    if (options.mode === "tree") return appendText(text, stack, merge);
+    const decoded = decodeXmlEntities(normalizeLineEndings(text));
+    return decoded !== null && (stack.length > 0 || decoded.trim().length === 0);
+  };
 
   while (cursor < xml.length) {
     const open = xml.indexOf("<", cursor);
     if (open === -1) {
-      if (!appendText(xml.slice(cursor), stack, mergeAdjacentText)) {
+      if (!acceptText(xml.slice(cursor), mergeAdjacentText)) {
         return { status: "unsupported" };
       }
       break;
     }
 
-    if (open > cursor && !appendText(xml.slice(cursor, open), stack, mergeAdjacentText)) {
+    if (open > cursor && !acceptText(xml.slice(cursor, open), mergeAdjacentText)) {
       return { status: "unsupported" };
     }
     if (open > cursor) {
@@ -71,7 +100,13 @@ const parseStreamingXmlInternal = (
 
     if (xml.startsWith("<![CDATA[", open)) {
       const close = xml.indexOf("]]>", open + 9);
-      if (close === -1 || !appendRawText(normalizeLineEndings(xml.slice(open + 9, close)), stack)) {
+      const text = normalizeLineEndings(xml.slice(open + 9, close));
+      if (
+        close === -1 ||
+        !(options.mode === "tree"
+          ? appendRawText(text, stack)
+          : stack.length > 0 || text.trim().length === 0)
+      ) {
         return { status: "unsupported" };
       }
       cursor = close + 3;
@@ -111,17 +146,31 @@ const parseStreamingXmlInternal = (
       continue;
     }
 
-    const parsedTag = parseOpenTag(xml, open + 1, close, visitOpenTag !== undefined);
+    openTagOptions.start = open + 1;
+    openTagOptions.close = close;
+    const parsedTag = parseOpenTag(openTagOptions);
     if (parsedTag.status === "unsupported") {
       return parsedTag;
     }
 
     const parent = stack.at(-1)?.element;
-    attachXmlNamespaceContext(
-      parsedTag.element,
-      parent === undefined ? inheritedNamespaceScope : parent.namespaceScope,
-    );
-    const rewritten = visitOpenTag?.(parsedTag.element, parsedTag.attributeValueSpans ?? new Map());
+    const scope = parent?.namespaceScope ?? inheritedNamespaceScope;
+    if (
+      options.mode === "attributes" &&
+      options.retainAttribute !== undefined &&
+      parsedTag.element.attributes === undefined
+    ) {
+      parsedTag.element.namespaceScope = scope;
+    } else {
+      attachXmlNamespaceContext(parsedTag.element, scope);
+    }
+    const shouldVisit =
+      options.mode === "tree"
+        ? parsedTag.attributeValueSpans !== undefined
+        : options.retainAttribute === undefined || parsedTag.element.attributes !== undefined;
+    const rewritten = shouldVisit
+      ? visitOpenTag?.(parsedTag.element, parsedTag.attributeValueSpans ?? new Map())
+      : null;
     if (rewritten) {
       for (const [attributeName, value] of rewritten) {
         const span = parsedTag.attributeValueSpans?.get(attributeName);
@@ -131,7 +180,7 @@ const parseStreamingXmlInternal = (
         replacements.push({ ...span, value });
       }
     }
-    appendElement(parent ?? root, parsedTag.element);
+    if (options.mode === "tree") appendElement(parent ?? root, parsedTag.element);
     if (!parsedTag.selfClosing) {
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
         return { status: "unsupported" };
@@ -156,10 +205,19 @@ export const parseStreamingXml = (
   xml: string,
   inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): ParseXmlResult => {
-  const parsed = parseStreamingXmlInternal(xml, undefined, inheritedNamespaceScope);
+  const parsed = parseStreamingXmlInternal({ xml, mode: "tree", inheritedNamespaceScope });
   return parsed.status === "parsed"
     ? { status: "parsed", value: parsed.value }
     : { status: "unsupported" };
+};
+
+/** Retain the body tree while collecting identities for import repair. */
+export const parseStreamingXmlWithIdentityVisitor = (
+  xml: string,
+  visitOpenTag: OpenTagScanVisitor,
+): ParseXmlResult => {
+  const parsed = parseStreamingXmlInternal({ xml, mode: "tree", visitOpenTag });
+  return parsed.status === "parsed" ? { status: "parsed", value: parsed.value } : parsed;
 };
 
 /** Rewrite selected decimal attribute values while preserving every other source byte. */
@@ -167,7 +225,7 @@ export const rewriteStreamingXmlDecimalAttributes = (
   xml: string,
   visitOpenTag: OpenTagVisitor,
 ): { status: "rewritten"; value: string } | { status: "unsupported" } => {
-  const parsed = parseStreamingXmlInternal(xml, visitOpenTag);
+  const parsed = parseStreamingXmlInternal({ xml, mode: "attributes", visitOpenTag });
   if (parsed.status === "unsupported") {
     return parsed;
   }
@@ -186,6 +244,23 @@ export const rewriteStreamingXmlDecimalAttributes = (
   return { status: "rewritten", value: chunks.join("") };
 };
 
+/** Visit identity attributes and namespace bindings without building an XML tree. */
+export const scanStreamingXmlNumericIdAttributes = (
+  xml: string,
+  visitOpenTag: OpenTagScanVisitor,
+) => {
+  const parsed = parseStreamingXmlInternal({
+    xml,
+    mode: "attributes",
+    visitOpenTag,
+    retainAttribute: ({ attributeName, elementName }) => {
+      if (attributeName === "xmlns" || attributeName.startsWith("xmlns:")) return true;
+      return isOoxmlNumericIdAttributeName({ elementName, attributeName });
+    },
+  });
+  return parsed.status === "parsed" ? { status: "scanned" as const } : parsed;
+};
+
 type ParsedOpenTag =
   | {
       status: "parsed";
@@ -196,12 +271,21 @@ type ParsedOpenTag =
     }
   | { status: "unsupported" };
 
-const parseOpenTag = (
-  xml: string,
-  start: number,
-  close: number,
-  captureAttributeSpans: boolean,
-): ParsedOpenTag => {
+type ParseOpenTagOptions = {
+  xml: string;
+  start: number;
+  close: number;
+  spanMode: "none" | "all" | "identities";
+  retainAttribute?: ((options: AttributeNameOptions) => boolean) | undefined;
+};
+
+const parseOpenTag = ({
+  xml,
+  start,
+  close,
+  spanMode,
+  retainAttribute,
+}: ParseOpenTagOptions): ParsedOpenTag => {
   let cursor = skipWhitespace(xml, start, close);
   const nameStart = cursor;
   cursor = scanName(xml, cursor, close);
@@ -214,9 +298,7 @@ const parseOpenTag = (
     return { status: "unsupported" };
   }
   let attributes: Record<string, string> | undefined;
-  const attributeValueSpans = captureAttributeSpans
-    ? new Map<string, AttributeValueSpan>()
-    : undefined;
+  let attributeValueSpans: Map<string, AttributeValueSpan> | undefined;
   let selfClosing = false;
 
   while (cursor < close) {
@@ -261,9 +343,18 @@ const parseOpenTag = (
     if (decoded === null) {
       return { status: "unsupported" };
     }
-    attributes ??= {};
-    attributes[attributeName] = decoded;
-    attributeValueSpans?.set(attributeName, { start: valueStart, end: cursor });
+    if (retainAttribute === undefined || retainAttribute({ attributeName, elementName: name })) {
+      attributes ??= {};
+      attributes[attributeName] = decoded;
+      if (
+        spanMode === "all" ||
+        (spanMode === "identities" &&
+          isOoxmlNumericIdAttributeName({ elementName: name, attributeName }))
+      ) {
+        attributeValueSpans ??= new Map();
+        attributeValueSpans.set(attributeName, { start: valueStart, end: cursor });
+      }
+    }
     cursor += 1;
   }
 
