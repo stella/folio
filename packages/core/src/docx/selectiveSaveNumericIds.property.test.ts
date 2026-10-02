@@ -12,8 +12,6 @@ import { attemptSelectiveSave } from "./selectiveSave";
 setDefaultTimeout(propertyTestTimeout(30_000));
 
 const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const MARKUP_COMPATIBILITY_NAMESPACE =
-  "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const invalidId = fc
   .oneof(
     fc.bigInt({ min: 2_147_483_648n, max: 99_999_999_999_999_999_999n }),
@@ -87,25 +85,9 @@ test("selective saves share imported numeric identities across original and cano
           expect(await savedZip.file("word/footnotes.xml")?.async("text")).toBe(canonicalNoteXml);
           // oxlint-disable-next-line no-await-in-loop -- compare each saved model against its edit mode
           const reopened = await parseDocx(saved, { preloadFonts: false });
-          const reopenedContent = structuredClone(reopened.package.document.content);
-          if (edited) {
-            const editedParagraph = reopenedContent.at(0);
-            if (editedParagraph?.type !== "paragraph")
-              panic("Selective save lost the edited synthetic paragraph");
-            // The selective patch cannot change document.xml's root attributes.
-            // Its rewritten paragraph therefore carries the generated ignorable
-            // namespace scope required by its w14:paraId; parsing exposes that
-            // local writer metadata as a preserved paragraph attribute.
-            expect(editedParagraph.preservedAttributes).toEqual([
-              {
-                name: "Ignorable",
-                namespace: MARKUP_COMPATIBILITY_NAMESPACE,
-                value: "w14",
-              },
-            ]);
-            delete editedParagraph.preservedAttributes;
-          }
-          expect(reopenedContent).toEqual(document.package.document.content);
+          // This direct-mutation path uses model serialization. Namespace
+          // metadata belongs to the generated root, not the edited paragraph.
+          expect(reopened.package.document.content).toEqual(document.package.document.content);
           expect(reopened.package.footnotes).toEqual(document.package.footnotes);
         }
       }
