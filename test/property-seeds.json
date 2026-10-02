@@ -932,5 +932,13 @@
       "date": "2026-10-02",
       "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
     }
+  ],
+  "packages/core/src/prosemirror/conversion/modelFixedPoint.property.test.ts::generated numbering definitions keep their metadata and markers": [
+    {
+      "seed": 870802920,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Preserve parsed list counter markers on unchanged numbering definitions instead of replacing them with the base template",
+      "date": "2026-10-02"
+    }
   ]
 }

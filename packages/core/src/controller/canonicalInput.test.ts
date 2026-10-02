@@ -171,11 +171,15 @@ describe("canonical input boundary", () => {
     const { view } = createRig();
     const structures: string[] = [];
     const boundary = createCanonicalInputBoundary({
-      replace: () => { throw new TypeError("Shift+Tab must not author text."); },
+      replace: () => {
+        throw new TypeError("Shift+Tab must not author text.");
+      },
       structure: (intent) => structures.push(intent),
       undo: () => false,
       redo: () => false,
-      refuse: (reason) => { throw new TypeError(reason); },
+      refuse: (reason) => {
+        throw new TypeError(reason);
+      },
     });
     const before = view.state;
     const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true });
@@ -211,6 +215,24 @@ describe("canonical input boundary", () => {
     boundary.handleDOMEvents.cut(view, new Event("cut", { cancelable: true }));
     boundary.handleDOMEvents.drop(view, new Event("drop", { cancelable: true }));
     expect(groupBoundaries).toHaveLength(6);
+  });
+
+  test("every structural or modifier refusal closes its gesture exactly once", () => {
+    const { boundary, view, groupBoundaries, refusals } = createRig();
+    const gestures = [
+      { key: "Enter" },
+      { key: "Enter", ctrlKey: true },
+      { key: "Enter", metaKey: true },
+      { key: "Backspace", ctrlKey: true },
+      { key: "Delete", altKey: true },
+    ];
+    for (const [index, gesture] of gestures.entries()) {
+      const event = new KeyboardEvent("keydown", { ...gesture, cancelable: true });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(groupBoundaries).toHaveLength(index + 1);
+      expect(refusals).toHaveLength(index + 1);
+    }
   });
 
   test("cancelable beforeinput emits one classified intent without a PM edit", () => {

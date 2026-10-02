@@ -13,6 +13,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   paragraphLogicalText,
+  packageParagraphIds,
   validateOpsDocument,
   type DocumentOp,
   type EditorIntent,
@@ -27,7 +28,7 @@ import {
   copyDocumentParagraphPropertySourceContract,
   copyParagraphPropertySource,
 } from "../docx/paragraphPropertySource";
-import { marksToTextFormatting } from "../prosemirror/runFormattingFromMarks";
+import { runFormattingPatchFromMarks } from "../prosemirror/runFormattingFromMarks";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import type { Document, Paragraph, StyleDefinitions } from "../types/document";
 
@@ -36,8 +37,10 @@ export class CanonicalSessionError extends TaggedError("CanonicalSessionError")<
   reason: "refused" | "noChange";
 }> {}
 
-const refuse = (message: string) => Result.err(new CanonicalSessionError({ message, reason: "refused" }));
-const noChange = (message: string) => Result.err(new CanonicalSessionError({ message, reason: "noChange" }));
+const refuse = (message: string) =>
+  Result.err(new CanonicalSessionError({ message, reason: "refused" }));
+const noChange = (message: string) =>
+  Result.err(new CanonicalSessionError({ message, reason: "noChange" }));
 
 export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
 export type CanonicalOrigin = "input" | "undo" | "redo";
@@ -154,8 +157,10 @@ const supportsTextContent = (content: Paragraph["content"]): boolean =>
         return item.content.every(
           (child) =>
             (child.type === "text" &&
-            !hasIllegalXmlCharacters(child.text) &&
-            !/[\t\r\n]/u.test(child.text)) || child.type === "tab" || child.type === "break",
+              !hasIllegalXmlCharacters(child.text) &&
+              !/[\t\r\n]/u.test(child.text)) ||
+            child.type === "tab" ||
+            child.type === "break",
         );
       case "insertion":
       case "deletion":
@@ -179,7 +184,10 @@ const supportsSeed = (document: Document): boolean => {
     return false;
   }
   return body.content.every(
-    (paragraph) => paragraph.type === "paragraph" && paragraph.reviewCarrier === undefined && supportsTextContent(paragraph.content),
+    (paragraph) =>
+      paragraph.type === "paragraph" &&
+      paragraph.reviewCarrier === undefined &&
+      supportsTextContent(paragraph.content),
   );
 };
 
@@ -420,38 +428,57 @@ class CanonicalSession {
   constructor({ document, projection, styles }: CanonicalSessionSeedOptions) {
     this.currentDocument = document;
     this.currentProjection = projection;
-    for (const block of document.package.document.content) {
-      if (block.type === "paragraph" && block.paraId !== undefined) this.allocatedBlockIds.add(block.paraId.toUpperCase());
-    }
+    for (const blockId of packageParagraphIds(document.package))
+      this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
     this.styles = styles == null ? styles : structuredClone(styles);
   }
 
   setMode(mode: CanonicalSessionMode): void {
-    if (this.mode.type === mode.type && (this.mode.type === "editing" || (mode.type === "suggesting" && this.mode.author === mode.author))) return;
-    this.mode = mode.type === "editing" ? { type: "editing" } : { type: "suggesting", author: mode.author };
+    if (
+      this.mode.type === mode.type &&
+      (this.mode.type === "editing" ||
+        (mode.type === "suggesting" && this.mode.author === mode.author))
+    )
+      return;
+    this.mode =
+      mode.type === "editing" ? { type: "editing" } : { type: "suggesting", author: mode.author };
     this.breakUndoGroup();
   }
 
   hasStyle(styleId: string): boolean {
-    return (this.styles ?? this.currentDocument.package.styles)?.styles.some((style) => style.styleId === styleId) ?? false;
+    return (
+      (this.styles ?? this.currentDocument.package.styles)?.styles.some(
+        (style) => style.styleId === styleId,
+      ) ?? false
+    );
   }
 
   private advanceBlockId(): void {
-    while (this.allocatedBlockIds.has(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase())) this.nextBlockId += 1;
+    while (this.allocatedBlockIds.has(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase()))
+      this.nextBlockId += 1;
   }
 
   private freshBlockId(): Result<string, CanonicalSessionError> {
-    if (this.nextBlockId > 0xffffffff) return refuse("The paragraph identity space is exhausted.");
+    if (this.nextBlockId > 0x7fffffff) return refuse("The paragraph identity space is exhausted.");
     return Result.ok(this.nextBlockId.toString(16).padStart(8, "0").toUpperCase());
   }
 
   private intentMode(document: Document, intent: EditorIntent): EditorIntentMode {
-    if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent)) return { type: "editing" };
+    if (this.mode.type === "editing" && !this.intentNeedsIdentityIds(document, intent))
+      return { type: "editing" };
     const ids = allocateEditorIntentIds(document, intent);
     return this.mode.type === "editing"
       ? { type: "editing", newIds: ids.newIds }
-      : { type: "suggesting", revision: { id: ids.revisionId, author: this.mode.author, date: new Date().toISOString() }, newIds: ids.newIds };
+      : {
+          type: "suggesting",
+          revision: {
+            id: ids.revisionId,
+            author: this.mode.author,
+            date: new Date().toISOString(),
+          },
+          newIds: ids.newIds,
+        };
   }
 
   private intentNeedsIdentityIds(document: Document, intent: EditorIntent): boolean {
@@ -481,13 +508,21 @@ class CanonicalSession {
     const hasIdentity = (value: unknown): boolean => {
       if (typeof value !== "object" || value === null) return false;
       if (Array.isArray(value)) return value.some(hasIdentity);
-      if ("id" in value && typeof value.id === "number" && ("author" in value || "sdtType" in value)) return true;
+      if (
+        "id" in value &&
+        typeof value.id === "number" &&
+        ("author" in value || "sdtType" in value)
+      )
+        return true;
       return Object.values(value).some(hasIdentity);
     };
     return blockIds.some((blockId) => {
-      const paragraph = document === this.currentDocument
-        ? this.currentProjection.paragraph(blockId)?.source
-        : document.package.document.content.find((block) => block.type === "paragraph" && block.paraId === blockId);
+      const paragraph =
+        document === this.currentDocument
+          ? this.currentProjection.paragraph(blockId)?.source
+          : document.package.document.content.find(
+              (block) => block.type === "paragraph" && block.paraId === blockId,
+            );
       return paragraph !== undefined && hasIdentity(paragraph);
     });
   }
@@ -559,15 +594,23 @@ class CanonicalSession {
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
     const intent = {
-        type: "replaceText",
-        from: start.value,
-        to: end.value,
-        text,
-        ...(state.storedMarks === null
-          ? {}
-          : { runProps: marksToTextFormatting(state.storedMarks) }),
+      type: "replaceText",
+      from: start.value,
+      to: end.value,
+      text,
+      ...(state.storedMarks === null
+        ? {}
+        : {
+            runPropsPatch: runFormattingPatchFromMarks(
+              state.selection.$from.marks(),
+              state.storedMarks,
+            ),
+          }),
     } as const satisfies EditorIntent;
-    const compiled = compileEditorIntent(this.currentDocument, { intent, mode: this.intentMode(this.currentDocument, intent) });
+    const compiled = compileEditorIntent(this.currentDocument, {
+      intent,
+      mode: this.intentMode(this.currentDocument, intent),
+    });
     if (compiled.isErr()) return refuse(compiled.error.message);
     const { ops, selection: caret } = compiled.value;
     const postSelection = { anchor: caret, head: caret };
@@ -655,7 +698,10 @@ class CanonicalSession {
         postSelection = { anchor: compiled.value.selection, head: compiled.value.selection };
       }
     }
-    const stagedApplied = { ...combineEdits(this.currentDocument, edits), revisions: edits.flatMap(({ revisions }) => revisions) };
+    const stagedApplied = {
+      ...combineEdits(this.currentDocument, edits),
+      revisions: edits.flatMap(({ revisions }) => revisions),
+    };
     return this.prepareJournalledOps({ state, ops, postSelection, stagedApplied });
   }
 
@@ -667,10 +713,16 @@ class CanonicalSession {
     return this.prepareJournalledOps({ state, ops, postSelection });
   }
 
-  private prepareJournalledOps({ state, ops, postSelection, stagedApplied }: JournalledOpsOptions): Result<CanonicalCommit, CanonicalSessionError> {
+  private prepareJournalledOps({
+    state,
+    ops,
+    postSelection,
+    stagedApplied,
+  }: JournalledOpsOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const preSelection = this.projection.selectionAt(state);
     if (preSelection.isErr()) return preSelection;
-    if (ops.length === 0 || stagedApplied?.inverse.length === 0) return noChange("The intent makes no document change.");
+    if (ops.length === 0 || stagedApplied?.inverse.length === 0)
+      return noChange("The intent makes no document change.");
     const preDocument = this.currentDocument;
     return this.stage({
       state,
@@ -757,7 +809,8 @@ class CanonicalSession {
     const secondGroup = groups.at(direction === "backward" ? index : index + 1);
     const first = firstGroup?.paragraphs.at(-1);
     const second = secondGroup?.paragraphs.at(0);
-    if (!first?.paraId || !second?.paraId) return noChange("There is no adjacent paragraph to join.");
+    if (!first?.paraId || !second?.paraId)
+      return noChange("There is no adjacent paragraph to join.");
     if (!isCanonicalJoinBoundary(state, direction))
       return refuse("Join requires a caret at a paragraph boundary.");
     return this.prepareIntent(state, {
@@ -808,6 +861,7 @@ class CanonicalSession {
   prepareUndo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
     const group = this.applied.at(-1);
     if (group === undefined) return refuse("There is no canonical edit to undo.");
+    const propertySourceDocument = group.entries.at(0)?.preDocument;
     return this.stage({
       state,
       ops:
@@ -816,7 +870,7 @@ class CanonicalSession {
           : group.entries.toReversed().flatMap((entry) => entry.inverse),
       selection: group.preSelection,
       origin: "undo",
-      propertySourceDocument: group.entries.at(0)?.preDocument,
+      ...(propertySourceDocument === undefined ? {} : { propertySourceDocument }),
       onPublish: (redoOps) => {
         this.applied.pop();
         this.undone.push({ type: "undone", group, redoOps });
@@ -828,12 +882,13 @@ class CanonicalSession {
   prepareRedo(state: EditorState): Result<CanonicalCommit, CanonicalSessionError> {
     const undone = this.undone.at(-1);
     if (undone === undefined) return refuse("There is no canonical edit to redo.");
+    const propertySourceDocument = undone.group.entries.at(-1)?.postDocument;
     return this.stage({
       state,
       ops: undone.redoOps,
       selection: undone.group.postSelection,
       origin: "redo",
-      propertySourceDocument: undone.group.entries.at(-1)?.postDocument,
+      ...(propertySourceDocument === undefined ? {} : { propertySourceDocument }),
       onPublish: (inverse) => {
         this.undone.pop();
         this.applied.push({
@@ -858,11 +913,20 @@ class CanonicalSession {
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const checked = this.checkState(state);
     if (checked.isErr()) return checked;
-    const applied = stagedApplied === undefined ? applyDocumentOps(this.currentDocument, ops) : Result.ok(stagedApplied);
+    const applied =
+      stagedApplied === undefined
+        ? applyDocumentOps(this.currentDocument, ops)
+        : Result.ok(stagedApplied);
     if (applied.isErr()) return refuse(applied.error.message);
     if (applied.value.inverse.length === 0) return noChange("The intent makes no document change.");
     preservePropertySources(applied.value.document, this.currentDocument);
-    const stagedSources = new Map(this.currentDocument.package.document.content.flatMap((block) => block.type === "paragraph" && block.paraId !== undefined ? [[block.paraId, block] as const] : []));
+    const stagedSources = new Map(
+      this.currentDocument.package.document.content.flatMap((block) =>
+        block.type === "paragraph" && block.paraId !== undefined
+          ? [[block.paraId, block] as const]
+          : [],
+      ),
+    );
     for (const op of ops) {
       if (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK) continue;
       const source = stagedSources.get(op.at.blockId);
@@ -941,7 +1005,12 @@ class CanonicalSession {
         if (!isCanonicalProjectionTransaction(transaction, this)) {
           return refuse("The staged canonical projection was changed after preparation.");
         }
-        for (const blockId of applied.value.touched.inserted) this.allocatedBlockIds.add(blockId.toUpperCase());
+        for (const blockId of applied.value.touched.inserted)
+          this.allocatedBlockIds.add(blockId.toUpperCase());
+        for (const op of ops) {
+          if (op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK)
+            this.allocatedBlockIds.add(op.newBlockId.toUpperCase());
+        }
         this.advanceBlockId();
         this.currentDocument = applied.value.document;
         this.currentProjection = projected.value;

@@ -1,10 +1,6 @@
 import { Result } from "better-result";
 import type { EditorState } from "prosemirror-state";
-import {
-  OP_STORIES,
-  type EditorIntent,
-  type TextPosition,
-} from "@stll/docx-core/ops";
+import { OP_STORIES, type EditorIntent, type TextPosition } from "@stll/docx-core/ops";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 import type { Paragraph, ListLevel } from "../types/document";
 import { getCachedNumberingMap } from "../docx/numberingParser";
@@ -17,7 +13,8 @@ import {
   type CanonicalSession,
 } from "./canonicalSession";
 
-const refuse = (message: string) => Result.err(new CanonicalSessionError({ message, reason: "refused" }));
+const refuse = (message: string) =>
+  Result.err(new CanonicalSessionError({ message, reason: "refused" }));
 
 const selectedParagraphs = (session: CanonicalSession, state: EditorState) => {
   const ids = new Set<string>();
@@ -50,8 +47,7 @@ const numberingIntent = (
     )
       return false;
     const level = map?.getLevel(item.formatting.numPr.numId, item.formatting.numPr.ilvl ?? 0);
-    if (level === undefined || (level.numFmt === "bullet") !== (request.kind === "bullet"))
-      return false;
+    if (level == null || (level.numFmt === "bullet") !== (request.kind === "bullet")) return false;
     return (
       request.format === undefined ||
       (level.numFmt === request.format.numFmt && level.lvlText === request.format.lvlText)

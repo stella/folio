@@ -265,13 +265,13 @@ describe("canonical structural commands", () => {
           expect([...exercised].sort()).toEqual([...kinds].sort());
           for (const entry of history.toReversed()) {
             state = accept(session, state, session.prepareUndo(state).unwrap());
-            expect(session.document).toEqual(entry.before);
+            expect(session.document).toStrictEqual(entry.before);
             expect(state.selection.toJSON()).toEqual(entry.preSelection);
           }
           expect(session.canUndo).toBe(false);
           for (const entry of history) {
             state = accept(session, state, session.prepareRedo(state).unwrap());
-            expect(session.document).toEqual(entry.after);
+            expect(session.document).toStrictEqual(entry.after);
             expect(state.selection.toJSON()).toEqual(entry.postSelection);
           }
           expect(session.canRedo).toBe(false);
@@ -283,52 +283,73 @@ describe("canonical structural commands", () => {
 
   test("marker rules atomically remove their marker, apply paragraph meaning and restore it on undo", async () => {
     await assertProperty(
-      fc.asyncProperty(autoformatMarkerArbitrary, async (generated) => {
-        const { marker } = generated;
-        const document = seed();
-        document.package.document.content = [
-          {
-            type: "paragraph",
-            paraId: "12345678",
-            content: [{ type: "run", content: [{ type: "text", text: marker }] }],
-          },
-        ];
-        const session = createCanonicalSession(document).unwrap();
-        let state = EditorState.create({ schema, doc: session.projection.doc });
-        state = select(state, marker.length + 1);
-        const before = session.document;
-        const selection = state.selection.toJSON();
-        const commit =
-          prepareCanonicalAutoformat(session, state, {
+      fc.asyncProperty(
+        autoformatMarkerArbitrary,
+        fc.boolean(),
+        async (generated, styleAvailable) => {
+          const { marker } = generated;
+          const document = seed();
+          document.package.document.content = [
+            {
+              type: "paragraph",
+              paraId: "12345678",
+              content: [{ type: "run", content: [{ type: "text", text: marker }] }],
+            },
+          ];
+          if (generated.type === "heading" && styleAvailable) {
+            document.package.styles = {
+              styles: [
+                {
+                  styleId: `Heading${generated.level}`,
+                  type: "paragraph",
+                  name: `Heading ${generated.level}`,
+                },
+              ],
+            };
+          }
+          const session = createCanonicalSession(document).unwrap();
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+          state = select(state, marker.length + 1);
+          const before = session.document;
+          const selection = state.selection.toJSON();
+          const prepared = prepareCanonicalAutoformat(session, state, {
             from: state.selection.head,
             to: state.selection.head,
             text: " ",
-          }) ?? panic("Declared marker was not recognized.");
-        state = accept(session, state, commit.unwrap());
-        expect(texts(session)).toEqual([""]);
-        expect(state.selection.head).toBe(1);
-        const paragraph = paragraphs(session).at(0) ?? panic("Rule paragraph disappeared.");
-        if (generated.type === "heading")
-          expect(paragraph.formatting?.styleId).toBe(`Heading${generated.level}`);
-        else {
-          expect(paragraph.formatting?.numPr?.kind).toBe("reference");
-          expect(session.document.package.numbering?.nums.length).toBe(1);
-          expect(state.doc.firstChild?.attrs["listNumFmt"]).toBe(
-            generated.type === "bullet" ? "bullet" : "decimal",
-          );
-          if (generated.type === "numbered") {
-            const level = session.document.package.numbering?.abstractNums.at(0)?.levels.at(0);
-            expect(level?.start).toBe(generated.start);
-            expect(level?.lvlText).toBe(`%1${generated.punctuation}`);
+          });
+          if (generated.type === "heading" && !styleAvailable) {
+            expect(prepared).toBeUndefined();
+            expect(session.document).toStrictEqual(before);
+            expect(state.selection.toJSON()).toEqual(selection);
+            return;
           }
-        }
-        state = accept(session, state, session.prepareUndo(state).unwrap());
-        expect(session.document).toEqual(before);
-        expect(state.selection.toJSON()).toEqual(selection);
-        expect(session.canUndo).toBe(false);
-        state = accept(session, state, session.prepareRedo(state).unwrap());
-        expect(texts(session)).toEqual([""]);
-      }),
+          const commit = prepared ?? panic("Declared marker was not recognized.");
+          state = accept(session, state, commit.unwrap());
+          expect(texts(session)).toEqual([""]);
+          expect(state.selection.head).toBe(1);
+          const paragraph = paragraphs(session).at(0) ?? panic("Rule paragraph disappeared.");
+          if (generated.type === "heading")
+            expect(paragraph.formatting?.styleId).toBe(`Heading${generated.level}`);
+          else {
+            expect(paragraph.formatting?.numPr?.kind).toBe("reference");
+            expect(session.document.package.numbering?.nums.length).toBe(1);
+            expect(state.doc.firstChild?.attrs["listNumFmt"]).toBe(
+              generated.type === "bullet" ? "bullet" : "decimal",
+            );
+            if (generated.type === "numbered") {
+              const level = session.document.package.numbering?.abstractNums.at(0)?.levels.at(0);
+              expect(level?.start).toBe(generated.start);
+              expect(level?.lvlText).toBe(`%1${generated.punctuation}`);
+            }
+          }
+          state = accept(session, state, session.prepareUndo(state).unwrap());
+          expect(session.document).toEqual(before);
+          expect(state.selection.toJSON()).toEqual(selection);
+          expect(session.canUndo).toBe(false);
+          state = accept(session, state, session.prepareRedo(state).unwrap());
+          expect(texts(session)).toEqual([""]);
+        },
+      ),
       { numRuns: 30 },
     );
   });
@@ -440,13 +461,13 @@ describe("canonical structural commands", () => {
           ).toBe(true);
           for (const entry of history.toReversed()) {
             state = accept(session, state, session.prepareUndo(state).unwrap());
-            expect(session.document).toEqual(entry.before);
+            expect(session.document).toStrictEqual(entry.before);
             expect(state.selection.toJSON()).toEqual(entry.preSelection);
           }
           expect(session.canUndo).toBe(false);
           for (const entry of history) {
             state = accept(session, state, session.prepareRedo(state).unwrap());
-            expect(session.document).toEqual(entry.after);
+            expect(session.document).toStrictEqual(entry.after);
             expect(state.selection.toJSON()).toEqual(entry.postSelection);
           }
           expect(session.canRedo).toBe(false);
