@@ -9,7 +9,7 @@
   },
   "react": {
     "types": 198533,
-    "instantiations": 366919
+    "instantiations": 385491
   },
   "agents": {
     "types": 131161,
@@ -41,7 +41,7 @@
   },
   "parity": {
     "types": 118724,
-    "instantiations": 130829
+    "instantiations": 137622
   },
   "reserved-values": {
     "types": 7571,

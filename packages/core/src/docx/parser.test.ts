@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
 
-import { parseDocx } from "./parser";
+import { getDocxSummary, getDocxVariables, parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
 
 const XML_DECLARATION = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`;
@@ -104,4 +104,10 @@ describe("parseDocx — w:themeFontLang resolves empty EastAsian theme slots", (
     expect(run.formatting?.fontFamily?.eastAsia).toBe("ＭＳ 明朝");
     expect(run.formatting?.fontFamily?.eastAsiaTheme).toBe("minorEastAsia");
   });
+});
+
+test("summary and variable readers retain their document-body parser", async () => {
+  const buffer = await createEmptyEaThemeFixture();
+  expect(await getDocxVariables(buffer)).toEqual([]);
+  expect(await getDocxSummary(buffer)).toMatchObject({ hasDocument: true, variableCount: 0 });
 });

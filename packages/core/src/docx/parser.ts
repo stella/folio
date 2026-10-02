@@ -54,7 +54,12 @@ import {
 } from "./commentReferenceNormalization";
 import { detectDocxConformanceClass } from "./conformance";
 import { parseCoreProperties } from "./corePropertiesParser";
-import { parseDocumentBody, extractAllTemplateVariables } from "./documentParser";
+import {
+  parseDocumentBody,
+  parseDocumentBodyTree,
+  extractAllTemplateVariables,
+} from "./documentParser";
+import { normalizeRawDocxNumericIds } from "./numericIdNormalization";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
@@ -94,7 +99,13 @@ import {
 import { countOpaqueRevisionWrappers } from "./opaqueCarrier";
 import { getEntryUncompressedSize, unzipDocx, getMediaMimeType, mediaToDataUrl } from "./unzip";
 import { detectRasterMimeType } from "./rasterMime";
-import { getAttribute, getChildElements, getLocalName, parseXmlDocument } from "./xmlParser";
+import {
+  getAttribute,
+  getChildElements,
+  getLocalName,
+  parseXml,
+  parseXmlDocument,
+} from "./xmlParser";
 import {
   UNNUMBERED_PARAGRAPH_WARNING,
   UNNUMBERED_STYLE_WARNING,
@@ -394,8 +405,6 @@ export async function parseDocxWithPreviewBudget(
 
     const timeStageAsync = async <T>(_name: string, fn: () => Promise<T>): Promise<T> => await fn();
 
-    const paragraphPropertySourceDigest = sha256Hex(buffer);
-
     // ========================================================================
     // STAGE 1: Unzip DOCX package (0-10%)
     // ========================================================================
@@ -403,6 +412,8 @@ export async function parseDocxWithPreviewBudget(
     const raw = await timeStageAsync("unzip", () =>
       unzipDocx(buffer, { ...unzipLimits, password, extractAllXml: false }),
     );
+    const repairedDocumentTree = await normalizeRawDocxNumericIds(raw);
+    const paragraphPropertySourceDigest = sha256Hex(raw.originalBuffer);
     if (raw.wasEncrypted) {
       parseContext.warn({ code: PARSE_WARNING_CODES.packageDecrypted });
     }
@@ -477,16 +488,16 @@ export async function parseDocxWithPreviewBudget(
 
     timeStage("documentBody", () => {
       if (raw.documentXml) {
-        documentBody = parseDocumentBody(
-          raw.documentXml,
+        documentBody = parseDocumentBodyTree({
+          doc: repairedDocumentTree ?? parseXml(raw.documentXml),
           styles,
           theme,
           numbering,
           rels,
           media,
-          parseContext.scoped({ part: "word/document.xml" }),
-          previews.ledger,
-        );
+          context: parseContext.scoped({ part: "word/document.xml" }),
+          previews: previews.ledger,
+        });
       } else {
         parseContext.warn({ code: PARSE_WARNING_CODES.documentPartMissing });
       }

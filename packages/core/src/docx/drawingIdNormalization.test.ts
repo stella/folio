@@ -1,10 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import JSZip from "jszip";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
+import { createEmptyDocument } from "../utils/createDocument";
 
 import type { Document, DrawingContent } from "../types/document";
 import { normalizeDrawingIds } from "./drawingIdNormalization";
 import { parseDocx } from "./parser";
 import { createEmptyDocx, repackDocx } from "./rezip";
+
+setDefaultTimeout(propertyTestTimeout(10_000));
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
 
@@ -44,6 +49,7 @@ const buildDocx = async (): Promise<ArrayBuffer> => {
       <w:body>
         <w:p><w:r>${textBoxDrawing("Generated")}</w:r></w:p>
         <w:p><w:r>${textBoxDrawing("Authored", "100000")}</w:r></w:p>
+        <w:p><w:r>${textBoxDrawing("Zero", "0")}</w:r></w:p>
         <w:sectPr/>
       </w:body>
     </w:document>`,
@@ -69,11 +75,11 @@ const shapeIds = ({ package: { document } }: Document): (string | undefined)[] =
 describe("drawing ID normalization", () => {
   test("assigns missing shape IDs without colliding and remains stable after save", async () => {
     const parsed = await parseDocx(await buildDocx(), { preloadFonts: false });
-    expect(shapeIds(parsed)).toEqual(["100001", "100000"]);
+    expect(shapeIds(parsed)).toEqual(["100001", "100000", "0"]);
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const reopened = await parseDocx(saved, { preloadFonts: false });
-    expect(shapeIds(reopened)).toEqual(["100001", "100000"]);
+    expect(shapeIds(reopened)).toEqual(["100001", "100000", "0"]);
   });
 
   test("reassigns a detached header drawing that collides with a main-story drawing", () => {
@@ -118,4 +124,44 @@ describe("drawing ID normalization", () => {
     expect(importedHeader.rawXml).toContain('wp:docPr id="100000"');
     expect(importedHeader.rawXml).toContain('pic:cNvPr id="100000"');
   });
+});
+
+test("converted lexical drawing ids avoid every authored numeric id and reach a fixed point", () => {
+  assertProperty(
+    fc.property(
+      fc.array(fc.stringMatching(/^[A-Za-z_][A-Za-z_0-9]{0,20}$/u), {
+        minLength: 1,
+        maxLength: 20,
+      }),
+      fc.constantFrom("", "+", "000"),
+      (ids, prefix) => {
+        const document = createEmptyDocument();
+        const authored = [
+          `${prefix}0`,
+          `${prefix}4294967295`,
+          `${prefix}100000`,
+          `${prefix}100001`,
+        ];
+        const drawings = [...authored, ...ids].map((id) => ({
+          type: "drawing" as const,
+          image: { rId: "rId1", id, size: { width: 914_400, height: 914_400 } },
+        }));
+        document.package.document.content = [
+          { type: "paragraph", content: [{ type: "run", content: drawings }] },
+        ];
+        const surfaces = { documentBody: document.package.document };
+        normalizeDrawingIds(surfaces);
+        const first = drawings.map(({ image }) => image.id);
+        expect(first.slice(0, authored.length)).toEqual(authored);
+        expect(new Set(first.map(Number)).size).toBe(first.length);
+        for (const id of first) {
+          expect(Number(id)).toBeGreaterThanOrEqual(0);
+          expect(Number(id)).toBeLessThanOrEqual(0xffff_ffff);
+        }
+        normalizeDrawingIds(surfaces);
+        expect(drawings.map(({ image }) => image.id)).toEqual(first);
+      },
+    ),
+    { numRuns: 40 },
+  );
 });

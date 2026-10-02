@@ -17,6 +17,7 @@ import type {
   Table,
 } from "../types/document";
 import { paragraphNumberingReferenceId } from "../docx/numberingReference";
+import { createNumberingIdAllocator } from "../docx/numberingIds";
 import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySource";
 
 /**
@@ -28,8 +29,8 @@ import { cloneParagraphWithoutPropertySource } from "../docx/paragraphPropertySo
  * merging markdown (or any other document) into a styled preset keeps that
  * preset's look. Only `source`'s numbering — the `w:abstractNum`/`w:num`
  * definitions its content's `numPr` references — travels with it, and every
- * `abstractNumId`/`numId` it carries is renumbered to sit strictly above
- * whatever `target` already uses. This is unconditional (not just on a
+ * `abstractNumId`/`numId` it carries moves to a fresh bounded id, preferring
+ * ids above the loaded range. This is unconditional (not just on a
  * detected collision): it is simpler to reason about, and makes repeated
  * merges into the same target safe too (merging two sources that each mint
  * `numId` 1 does not collide with each other either).
@@ -86,24 +87,27 @@ export function mergeDocumentContent(target: Document, source: Document): Docume
     content: BlockContent[],
     numbering: NumberingDefinitions,
   ): { content: BlockContent[]; numbering: NumberingDefinitions } {
-    const abstractNumIdBase = Math.max(
-      0,
-      ...(targetNumbering?.abstractNums ?? []).map((abstractNum) => abstractNum.abstractNumId),
-    );
-    const numIdBase = Math.max(0, ...(targetNumbering?.nums ?? []).map((num) => num.numId));
+    const existingAbstractIds = [
+      ...(targetNumbering?.abstractNums ?? []).map(({ abstractNumId }) => abstractNumId),
+      ...numbering.abstractNums.map(({ abstractNumId }) => abstractNumId),
+    ];
+    const existingNumIds = [
+      ...(targetNumbering?.nums ?? []).map(({ numId }) => numId),
+      ...numbering.nums.map(({ numId }) => numId),
+    ];
+    const abstractIds = createNumberingIdAllocator("abstract", existingAbstractIds);
+    const numIds = createNumberingIdAllocator("num", existingNumIds);
 
     const abstractNumIdRemap = new Map<number, number>();
-    const remappedAbstractNums: AbstractNumbering[] = numbering.abstractNums.map(
-      (abstractNum, index) => {
-        const remappedAbstractNumId = abstractNumIdBase + index + 1;
-        abstractNumIdRemap.set(abstractNum.abstractNumId, remappedAbstractNumId);
-        return { ...abstractNum, abstractNumId: remappedAbstractNumId };
-      },
-    );
+    const remappedAbstractNums: AbstractNumbering[] = numbering.abstractNums.map((abstractNum) => {
+      const remappedAbstractNumId = abstractIds.next();
+      abstractNumIdRemap.set(abstractNum.abstractNumId, remappedAbstractNumId);
+      return { ...abstractNum, abstractNumId: remappedAbstractNumId };
+    });
 
     const numIdRemap = new Map<number, number>();
-    const remappedNums: NumberingInstance[] = numbering.nums.map((num, index) => {
-      const remappedNumId = numIdBase + index + 1;
+    const remappedNums: NumberingInstance[] = numbering.nums.map((num) => {
+      const remappedNumId = numIds.next();
       numIdRemap.set(num.numId, remappedNumId);
       return {
         ...num,

@@ -326,16 +326,42 @@ export function parseDocumentBody(
   context?: ParseContext,
   previews: PreviewLedger = standalonePreviewLedger(),
 ): DocumentBody {
-  const result: DocumentBody = {
-    content: [],
-  };
+  if (!xml) return { content: [] };
+  return parseDocumentBodyTree({
+    doc: parseXml(xml),
+    styles,
+    theme,
+    numbering,
+    rels,
+    media,
+    context,
+    previews,
+  });
+}
 
-  if (!xml) {
-    return result;
-  }
+type ParsedDocumentBodyOptions = {
+  doc: XmlElement;
+  styles: StyleMap | null;
+  theme: Theme | null;
+  numbering: NumberingMap | null;
+  rels: RelationshipMap | null;
+  media: Map<string, MediaFile> | null;
+  context?: ParseContext | undefined;
+  previews: PreviewLedger;
+};
 
-  // Parse XML
-  const doc = parseXml(xml);
+/** Consume the same tree the import identity pass repaired. */
+export const parseDocumentBodyTree = ({
+  doc,
+  styles,
+  theme,
+  numbering,
+  rels,
+  media,
+  context,
+  previews,
+}: ParsedDocumentBodyOptions): DocumentBody => {
+  const result: DocumentBody = { content: [] };
 
   // Find root document element (w:document), under whatever prefix — or
   // default namespace — the part binds WordprocessingML to.
@@ -378,7 +404,7 @@ export function parseDocumentBody(
   result.sections = buildSections(result.content, result.finalSectionProperties);
 
   return result;
-}
+};
 
 // ============================================================================
 // UTILITY FUNCTIONS

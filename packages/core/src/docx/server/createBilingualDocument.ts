@@ -20,6 +20,9 @@
  * independently editable text for a translation row to address.
  */
 
+import { createBookmarkIdAllocator } from "../bookmarkIds";
+import { createNumberingIdAllocator } from "../numberingIds";
+
 import { TaggedError } from "better-result";
 
 import {
@@ -482,8 +485,8 @@ const createNumberingCloner = ({
   const nums = numbering?.nums ?? [];
   const abstractById = new Map(abstractNums.map((item) => [item.abstractNumId, item]));
   const numById = new Map(nums.map((item) => [item.numId, item]));
-  let nextAbstractNumId = Math.max(0, ...abstractNums.map((item) => item.abstractNumId)) + 1;
-  let nextNumId = Math.max(0, ...nums.map((item) => item.numId)) + 1;
+  const abstractIds = createNumberingIdAllocator("abstract", abstractById.keys());
+  const instanceIds = createNumberingIdAllocator("num", numById.keys());
 
   const clonedAbstract = new Map<number, AbstractNumbering>();
   const clonedNum = new Map<number, NumberingInstance>();
@@ -508,10 +511,9 @@ const createNumberingCloner = ({
     const { numStyleLink: _numStyleLink, styleLink: _styleLink, ...rest } = resolved;
     const clone: AbstractNumbering = {
       ...rest,
-      abstractNumId: nextAbstractNumId,
+      abstractNumId: abstractIds.next(),
       levels: structuredClone(resolved.levels),
     };
-    nextAbstractNumId += 1;
     clonedAbstract.set(sourceId, clone);
     return clone;
   };
@@ -556,10 +558,9 @@ const createNumberingCloner = ({
     }
     const clone: NumberingInstance = {
       ...source,
-      numId: nextNumId,
+      numId: instanceIds.next(),
       abstractNumId: abstract ? abstract.abstractNumId : source.abstractNumId,
     };
-    nextNumId += 1;
     clonedNum.set(numId, clone);
     return clone.numId;
   };
@@ -694,7 +695,7 @@ type BookmarkIdMinter = {
 };
 
 const createBookmarkIdMinter = (source: unknown): BookmarkIdMinter => {
-  let nextId = 0;
+  const reservedIds: number[] = [];
   const remapped = new Map<number, number>();
   const visit = (value: unknown, seen: Set<object>): void => {
     if (typeof value !== "object" || value === null || seen.has(value)) return;
@@ -706,16 +707,17 @@ const createBookmarkIdMinter = (source: unknown): BookmarkIdMinter => {
     const record = value as Record<string, unknown>;
     if (record["type"] === "bookmarkStart" || record["type"] === "bookmarkEnd") {
       const id = record["id"];
-      if (typeof id === "number") nextId = Math.max(nextId, id + 1);
+      if (typeof id === "number") reservedIds.push(id);
     }
     Object.values(record).forEach((item) => visit(item, seen));
   };
   visit(source, new Set());
+  const allocator = createBookmarkIdAllocator(reservedIds);
   return {
     mint: (sourceId) => {
       const existing = remapped.get(sourceId);
       if (existing !== undefined) return existing;
-      const id = nextId++;
+      const id = allocator.next();
       remapped.set(sourceId, id);
       return id;
     },
