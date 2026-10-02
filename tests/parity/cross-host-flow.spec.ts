@@ -19,6 +19,7 @@ import { fileVersionOf } from "../../packages/cli/src/document";
 import { buildDocx, makeTempDir } from "../../packages/cli/src/__tests__/fixtures";
 import { propertyConfig, propertyTestTimeout } from "../../test/property-testing";
 import { openEditor } from "./parity-fixture";
+import { assertGeneratedFlowReceipt } from "./flow-receipt";
 
 // Authored paragraph ids address the original paragraphs through insertions and saves.
 // Actions shrink independently; each replacement keeps its find token available.
@@ -36,34 +37,6 @@ const flowArbitrary = fc.record({
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-
-// Validate effectiveness separately from equality: four no-op hosts must fail.
-const assertReceipt = (value: unknown, id: string) => {
-  if (!isRecord(value)) throw new Error("Operation result is not an object");
-  expect(value["skipped"]).toEqual([]);
-  const applied: unknown = value["applied"];
-  if (!Array.isArray(applied)) throw new Error("Missing applied operations");
-  expect(applied.map((entry: unknown) => (isRecord(entry) ? entry["id"] : undefined))).toEqual([
-    id,
-  ]);
-  const receipts: unknown = value["receipts"];
-  if (!Array.isArray(receipts)) throw new Error("Missing operation receipts");
-  expect(receipts).toHaveLength(1);
-  const receipt: unknown = receipts.at(0);
-  if (!isRecord(receipt)) throw new Error("Missing operation receipt");
-  expect(receipt["operationId"]).toBe(id);
-  expect(receipt["operationIndex"]).toBe(0);
-  const affected: unknown = receipt["affected"];
-  if (!Array.isArray(affected)) throw new Error("Missing affected targets");
-  expect(affected.length).toBeGreaterThan(0);
-  for (const target of affected) {
-    if (!isRecord(target)) throw new Error("Receipt target is not an object");
-    expect(target["type"]).toBe("block");
-    expect(target["story"]).toBe("main");
-    expect(target["blockId"]).toEqual(expect.any(String));
-    expect(target["effect"]).toEqual(expect.any(String));
-  }
-};
 
 const semanticProjection = async (bytes: Uint8Array) => {
   expect(await validateDocxPackage(bytes)).toEqual({ valid: true });
@@ -136,7 +109,8 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
         });
         const headless = await FolioDocxReviewer.fromBuffer(new Uint8Array(source).buffer);
         for (const batch of batches) {
-          assertReceipt(headless.applyDocumentOperations(batch), batch.operations[0].id);
+          const operation = batch.operations[0];
+          assertGeneratedFlowReceipt(headless.applyDocumentOperations(batch), operation);
         }
         const outputs = [{ name: "headless", bytes: new Uint8Array(await headless.toBuffer()) }];
         for (const [name, page] of [
@@ -151,7 +125,11 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
             },
             { source: [...source], batches },
           );
-          output.results.forEach((result, index) => assertReceipt(result, `flow-${index}`));
+          output.results.forEach((result, index) => {
+            const batch = batches.at(index);
+            if (!batch) throw new Error("Missing generated flow batch");
+            assertGeneratedFlowReceipt(result, batch.operations[0]);
+          });
           outputs.push({ name, bytes: new Uint8Array(output.bytes) });
         }
         const { dir, cleanup } = await makeTempDir();
@@ -194,7 +172,7 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
             }
             expect(envelope["ok"]).toBe(true);
             expect(envelope["data"]["status"]).toBe("committed");
-            assertReceipt(envelope["data"]["result"], batch.operations[0].id);
+            assertGeneratedFlowReceipt(envelope["data"]["result"], batch.operations[0]);
             expect(fileVersionOf(new Uint8Array(await readFile(file)))).not.toBe(
               fileVersionOf(before),
             );
@@ -215,7 +193,22 @@ test("generated flow saves equivalent semantics in React, Vue, headless and CLI"
           ).toEqual(expected.map(({ text }) => text));
         }
       }),
-      propertyConfig({ numRuns: 5, endOnFailure: false }),
+      propertyConfig({
+        numRuns: 5,
+        endOnFailure: false,
+        // PINNED #1407: seed 501525673, path 1:0:1:2:2:2:2:2:2.
+        examples: [
+          [
+            {
+              paragraphs: 2,
+              actions: [
+                { kind: "insert", target: 0, text: "café" },
+                { kind: "replace", target: 0, text: "café" },
+              ],
+            },
+          ],
+        ],
+      }),
     );
     if (!verdict.failed) return;
     const failure = {

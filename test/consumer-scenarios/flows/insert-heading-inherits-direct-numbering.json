@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "emoji",
+  "mode": "direct",
+  "seed": 774176024,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 2206942068,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "048C530C",
+          "text": "A second-level heading.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "insertAfterBlock",
+          "blockId": "048C530C",
+          "text": "A new bullet.",
+          "numbering": {
+            "start": "new",
+            "kind": "bullet"
+          }
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 2455130556,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "@2",
+          "text": "Period buyer clause supplier supplier payment written.",
+          "styleId": "Heading2"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "commentOnRange",
+    "insertAfterBlock",
+    "insertBeforeBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "deleteTableRow",
+    "insertTableColumn"
+  ],
+  "origin": "shrunk from splice+unpin of 2bb5dc79b47f6e07",
+  "title": "insert heading inherits direct numbering"
+}
