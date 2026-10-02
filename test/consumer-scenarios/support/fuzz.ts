@@ -59,8 +59,10 @@ import {
   type Mode,
   type Operation,
   randomOperation,
+  supports,
 } from "./operations.ts";
 import { createRandom, type Random, sentence } from "./random.ts";
+import { drawSwarm, swarmIncludesBatch } from "./swarm.ts";
 import { biasedPicker, blocksOfStory, featureIndex, storyKindOf, type Picker } from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
@@ -87,6 +89,7 @@ export type Flow = {
   planned: FlowStep | undefined;
   /** Ids of the fixture's blocks, which every run of the flow opens with. */
   fixtureIds: ReadonlySet<string>;
+  swarm: string[] | undefined;
 };
 
 const MAIN: FolioDocumentStoryHandle = { type: "main" };
@@ -163,6 +166,9 @@ const randomOperations = (
   const drawn = drawOperations(flow, blocks, pick);
   const pinned = flow.planned?.operations;
   const used = pinned === undefined ? drawn : (fromPositions(pinned, blocks) as Operation[]);
+  if (!swarmIncludesBatch(flow.swarm, used)) {
+    throw new TypeError("flow file: pinned operation is disabled by its swarm");
+  }
   const traced = flow.trace.at(-1);
   if (traced !== undefined) {
     traced.operations = toPositions(used, blocks, flow.fixtureIds) as Operation[];
@@ -219,7 +225,7 @@ const drawOperations = (
   if (flow.kind === "collisions" && flow.random.chance(0.5)) {
     const names = Object.keys(COLLISIONS);
     const collision = COLLISIONS[flow.random.pick(names)]?.(blocks);
-    if (collision) return collision;
+    if (collision && swarmIncludesBatch(flow.swarm, collision)) return collision;
   }
   const count = 1 + flow.random.int(3);
   const operations: Operation[] = [];
@@ -228,7 +234,7 @@ const drawOperations = (
       flow.generation === "legacy" ? blocksOf(flow) : blocks,
       flow.mode,
       flow.random,
-      { pick, operationHits },
+      { pick, operationHits, ...(flow.swarm === undefined ? {} : { types: flow.swarm }) },
     );
     if (operation) operations.push(operation);
   }
@@ -551,6 +557,7 @@ export type FlowOptions = {
   generation?: Generation;
   /** Explicit fixtures are never added to the ordinary seeded fixture selection. */
   fixture?: typeof LARGE_DOCUMENT_FIXTURE;
+  swarm?: "enabled" | "disabled";
 };
 
 /** The fixture and mode a seed's flow runs on. */
@@ -628,6 +635,7 @@ type Plan = {
   random: Random;
   steps: number;
   planned?: readonly FlowStep[];
+  swarm?: string[];
   /** Where the flow came from, for its flow file. */
   origin?: string;
 };
@@ -635,6 +643,14 @@ type Plan = {
 const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   registerFeatureOperations(Object.keys(GENERATORS));
   const { seed, kind, generation, fixture, mode } = plan;
+  if (
+    plan.swarm !== undefined &&
+    (plan.swarm.length === 0 ||
+      new Set(plan.swarm).size !== plan.swarm.length ||
+      plan.swarm.some((type) => !Object.hasOwn(GENERATORS, type) || !supports(type, mode)))
+  ) {
+    throw new TypeError("flow file: swarm contains an unknown or unsupported operation kind");
+  }
   const load =
     fixture === LARGE_DOCUMENT_FIXTURE ? largeDocument : flowFixtures(kind, generation)[fixture];
   if (load === undefined) {
@@ -655,6 +671,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     planned: undefined,
     // Read from a reviewer of its own, so the flow's never serves an extra read.
     fixtureIds: blockIdsOf(await openReviewer(bytes)),
+    swarm: plan.swarm,
   };
   const { log } = flow;
   const file = (): FlowFile => ({
@@ -665,6 +682,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     mode,
     seed,
     steps: flow.trace,
+    ...(plan.swarm === undefined ? {} : { swarm: plan.swarm }),
     ...(plan.origin === undefined ? {} : { origin: plan.origin }),
   });
   const signature = new Set<string>();
@@ -729,14 +747,36 @@ export const runFlow = (
   seed: number,
   steps: number,
   kind: FlowKind = "random",
-  { generation = "targeted", fixture: explicitFixture, ...options }: FlowOptions & RunOptions = {},
+  {
+    generation = "targeted",
+    fixture: explicitFixture,
+    swarm = process.env["FOLIO_SCENARIO_SWARM"] === "1" ? "enabled" : "disabled",
+    ...options
+  }: FlowOptions & RunOptions = {},
 ): Promise<FlowRun> => {
   const random = createRandom(seed);
   const drawnFixture = random.pick(Object.keys(flowFixtures(kind, generation)));
   const fixture = explicitFixture ?? drawnFixture;
   const mode = random.pick(MODES);
+  const enabled =
+    swarm === "enabled"
+      ? drawSwarm(
+          seed,
+          Object.keys(GENERATORS).filter((type) => supports(type, mode)),
+        )
+      : undefined;
   return execute(
-    { seed, kind, generation, fixture, mode, random, steps, origin: `${kind} flow seed ${seed}` },
+    {
+      seed,
+      kind,
+      generation,
+      fixture,
+      mode,
+      random,
+      steps,
+      ...(enabled === undefined ? {} : { swarm: enabled }),
+      origin: `${kind} flow seed ${seed}`,
+    },
     options,
   );
 };
@@ -757,6 +797,7 @@ export const runFlowFile = (file: FlowFile, options: RunOptions = {}): Promise<F
       random: createRandom(file.seed),
       steps: file.steps.length,
       planned: file.steps,
+      ...(file.swarm === undefined ? {} : { swarm: file.swarm }),
       ...(file.origin === undefined ? {} : { origin: file.origin }),
     },
     options,

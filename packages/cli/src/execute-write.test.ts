@@ -6,6 +6,7 @@ import { FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { CONTRACT_PARAGRAPHS, makeTempDir, writeDocx } from "./__tests__/fixtures";
 import { fileVersionOf } from "./document";
+import { CLI_READ_BOUNDS, executeReadTool } from "./execute-read";
 import { executeWriteTool, type WriteOptions } from "./execute-write";
 import { stagePathFor } from "./journal";
 import { acquireLease } from "./lock";
@@ -116,6 +117,93 @@ describe("suggest_changes in place", () => {
     expect(replayed).toEqual({ ...first, status: "replayed" });
     expect(await versionOf(file)).toBe(after);
     expect(conflict.isErr() && conflict.error.code).toBe("transaction_conflict");
+  });
+});
+
+type ReadBlock = { blockId: string; text: string; blockIdSource: string };
+
+const readBlocks = async (filePath: string): Promise<ReadBlock[]> => {
+  const tool = findFileTool("read_document");
+  if (!tool) throw new Error("read_document is not registered");
+  const read = (
+    await executeReadTool(tool, { path: filePath, args: {} }, CLI_READ_BOUNDS)
+  ).unwrap();
+  return (read.result as { blocks: ReadBlock[] }).blocks;
+};
+
+describe("block ids of a file without paragraph ids", () => {
+  const UNIDENTIFIED = [
+    { text: "The Supplier shall deliver." },
+    { text: "The Supplier is liable up to $50." },
+    { text: "Notices go to the Supplier." },
+  ];
+
+  const renameIn = (blockId: string) => ({
+    type: "replaceInBlock",
+    blockId,
+    find: "Supplier",
+    replace: "Provider",
+  });
+
+  test("survive a tracked edit, so the next call on that paragraph needs no re-read", async () => {
+    const source = await writeDocx(dir, "plain.docx", UNIDENTIFIED);
+    const before = await readBlocks(source);
+    expect(before.map(({ blockIdSource }) => blockIdSource)).toEqual([
+      "synthetic",
+      "synthetic",
+      "synthetic",
+    ]);
+    const [first, liability] = before;
+    if (first === undefined || liability === undefined) throw new Error("fixture blocks missing");
+
+    const renamed = (
+      await write("suggest_changes", { operations: [renameIn(liability.blockId)] }, { source })
+    ).unwrap();
+    const commented = await write(
+      "add_comment",
+      { blockId: liability.blockId, text: "Cap seems low." },
+      { source },
+    );
+    const again = await write(
+      "suggest_changes",
+      { operations: [renameIn(first.blockId)] },
+      { source },
+    );
+
+    expect(renamed["saveStrategy"]).toBe("selective");
+    expect(commented.isOk()).toBe(true);
+    expect(again.isOk()).toBe(true);
+    const after = await readBlocks(source);
+    expect(after.map(({ blockId }) => blockId)).toEqual(before.map(({ blockId }) => blockId));
+    expect(after.every(({ blockIdSource }) => blockIdSource === "package")).toBe(true);
+  });
+
+  test("survive a paragraph inserted before them", async () => {
+    const source = await writeDocx(dir, "plain.docx", UNIDENTIFIED);
+    const before = await readBlocks(source);
+    const [first, , notices] = before;
+    if (first === undefined || notices === undefined) throw new Error("fixture blocks missing");
+
+    (
+      await write(
+        "suggest_changes",
+        {
+          operations: [{ type: "insertAfterBlock", blockId: first.blockId, text: "A new clause." }],
+        },
+        { source, overrides: { repack: "allow" } },
+      )
+    ).unwrap();
+    const renamed = await write(
+      "suggest_changes",
+      { operations: [renameIn(notices.blockId)] },
+      { source },
+    );
+
+    expect(renamed.isOk()).toBe(true);
+    const after = await readBlocks(source);
+    expect(
+      after.filter(({ text }) => text !== "A new clause.").map(({ blockId }) => blockId),
+    ).toEqual(before.map(({ blockId }) => blockId));
   });
 });
 

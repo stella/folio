@@ -16,8 +16,8 @@
     "instantiations": 147674
   },
   "cli": {
-    "types": 172716,
-    "instantiations": 238404
+    "types": 181365,
+    "instantiations": 247046
   },
   "editor-web": {
     "types": 196858,
@@ -36,7 +36,7 @@
     "instantiations": 280391
   },
   "playground-vue": {
-    "types": 216352,
+    "types": 230416,
     "instantiations": 910970
   },
   "parity": {
