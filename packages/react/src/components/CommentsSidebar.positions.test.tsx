@@ -40,6 +40,7 @@ const renderDrawer = async (
   scrollElement: HTMLDivElement,
   anchorPositions: Map<string, number>,
 ) => {
+  scrollElement.setAttribute("data-folio-scroll", "");
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);

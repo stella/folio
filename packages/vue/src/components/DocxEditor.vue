@@ -501,6 +501,7 @@ import {
 } from "@stll/folio-core/layout-bridge/engine/measuring";
 import { onFontsLoaded } from "@stll/folio-core/utils/fontLoader";
 import { twipsToPixels } from "@stll/folio-core/paged-layout/sectionGeometry";
+import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { findBodyPmAnchors } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import {
   computePanelLayout,
@@ -1554,22 +1555,25 @@ function applyInitialScrollTop(): void {
   const top = props.initialScrollTop;
   requestAnimationFrame(() => {
     if (editorScrollRef.value) {
-      editorScrollRef.value.scrollTop = top;
+      scrollEditorTo(editorScrollRef.value, { top, behavior: "instant" });
     }
   });
 }
 
-watch(isReady, (ready) => {
-  if (!ready) {
-    // Document unloaded/swapped: re-arm the one-shot so `initialScrollTop` is
-    // applied to the next document too, not just the first.
+// Reset as the previous document unloads, before the next view-ready callback.
+// A host's navigation from onEditorViewReady or ready then owns the scroll.
+watch(
+  isReady,
+  (ready) => {
+    if (ready) return;
     initialScrollAppliedRef.value = false;
-    return;
-  }
-  if (editorScrollRef.value) {
-    editorScrollRef.value.scrollTop = 0;
-    editorScrollRef.value.scrollLeft = 0;
-  }
+    scrollEditorTo(editorScrollRef.value, { top: 0, left: 0, behavior: "instant" });
+  },
+  { flush: "sync" },
+);
+
+watch(isReady, (ready) => {
+  if (!ready) return;
   // Mark that a document has painted, so a later `preserveDocumentWhileLoading`
   // swap keeps the prior pages visible instead of flashing the loading state.
   hasRenderedDocumentOnce.value = true;
@@ -1658,7 +1662,6 @@ const { exposed } = useDocxEditorRefApi({
   saveDocument,
   layout,
   pagesRef,
-  pagesViewportRef,
   scrollRootRef: editorScrollRef,
   zoom,
   scrollVisiblePositionIntoView,

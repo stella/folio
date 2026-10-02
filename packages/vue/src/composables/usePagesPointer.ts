@@ -45,6 +45,7 @@ import {
 import type { ImageSelectionInfo } from "../components/imageSelectionTypes";
 import type { HyperlinkPopupData } from "../components/ui/hyperlinkPopupTypes";
 import { useDragAutoScroll } from "./useDragAutoScroll";
+import { viewportPosition } from "../utils/viewportPosition";
 
 type CommandFactory = (...args: readonly unknown[]) => Command;
 type Commands = Record<string, CommandFactory>;
@@ -268,7 +269,7 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
   }
 
   function scrollVisiblePositionIntoView(pmPos: number) {
-    scrollVisiblePositionIntoViewImpl(opts.pagesRef.value, opts.scrollRootRef.value, pmPos);
+    scrollVisiblePositionIntoViewImpl(opts.pagesRef.value, pmPos);
   }
 
   function selectWord(pos: number) {
@@ -343,16 +344,15 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
       return;
     }
 
-    // viewportEl carries `transform: scale(zoom)`; its rect is screen-space.
-    // The button is an absolutely-positioned child of that scaled element, so
-    // its left/top live in the element's own (unscaled) coords. Divide the
-    // screen-space offset by zoom or it gets re-scaled and drifts (#928).
-    const zoom = opts.zoom.value || 1;
-    const viewportRect = viewportEl.getBoundingClientRect();
+    const position = viewportPosition({
+      clientX: hit.clientX,
+      clientY: hit.clientY,
+      viewport: viewportEl.getBoundingClientRect(),
+    });
     tableInsertButton.value = {
       type: hit.type,
-      x: (hit.clientX - viewportRect.left) / zoom,
-      y: (hit.clientY - viewportRect.top) / zoom,
+      x: position.left,
+      y: position.top,
       cellPmPos: hit.cellPmPos,
     };
     clearTableInsertTimer();
@@ -408,15 +408,19 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     // it on scroll via CSS alone, no JS listener needed.
     const viewport = opts.pagesViewportRef.value;
     if (!viewport) return;
-    const vpRect = viewport.getBoundingClientRect();
     const linkRect = anchor.getBoundingClientRect();
+    const position = viewportPosition({
+      clientX: linkRect.left,
+      clientY: linkRect.bottom,
+      viewport: viewport.getBoundingClientRect(),
+    });
     const title = anchor.getAttribute("title");
     opts.hyperlinkPopupData.value = {
       href,
       displayText: anchor.textContent ?? "",
       position: {
-        top: linkRect.bottom - vpRect.top + viewport.scrollTop + 4,
-        left: linkRect.left - vpRect.left + viewport.scrollLeft,
+        top: position.top + 4,
+        left: position.left,
       },
       ...(title ? { tooltip: title } : {}),
     };
@@ -467,23 +471,21 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
     if (!rId) return;
     const activeRId = rId;
 
-    // Bounding rect relative to the pages-viewport. zoom is applied via
-    // CSS transform on the viewport, so use the unscaled element coords.
+    // The inline editor is a sibling of the scaled pages, inside the
+    // unscaled viewport; keep the painted rectangle's client-pixel dimensions.
     const viewport = opts.pagesViewportRef.value;
     if (!viewport) return;
     const elRect = hfEl.getBoundingClientRect();
     const vpRect = viewport.getBoundingClientRect();
-    const z = opts.zoom.value || 1;
     hfEdit.value = {
       isFirstPage,
       pageNumber,
       position,
       rId: activeRId,
       targetRect: {
-        top: (elRect.top - vpRect.top + viewport.scrollTop) / z,
-        left: (elRect.left - vpRect.left + viewport.scrollLeft) / z,
-        width: elRect.width / z,
-        height: elRect.height / z,
+        ...viewportPosition({ clientX: elRect.left, clientY: elRect.top, viewport: vpRect }),
+        width: elRect.width,
+        height: elRect.height,
       },
     };
     requestAnimationFrame(() => {
@@ -586,15 +588,17 @@ export function usePagesPointer(opts: UsePagesPointerOptions): UsePagesPointerRe
           const pageNumber = Number.parseInt(page.dataset["pageNumber"] ?? "1", 10);
           const slotRect = slot.getBoundingClientRect();
           const viewportRect = viewport.getBoundingClientRect();
-          const scale = opts.zoom.value || 1;
           hfEdit.value = {
             ...edit,
             pageNumber,
             targetRect: {
-              top: (slotRect.top - viewportRect.top + viewport.scrollTop) / scale,
-              left: (slotRect.left - viewportRect.left + viewport.scrollLeft) / scale,
-              width: slotRect.width / scale,
-              height: slotRect.height / scale,
+              ...viewportPosition({
+                clientX: slotRect.left,
+                clientY: slotRect.top,
+                viewport: viewportRect,
+              }),
+              width: slotRect.width,
+              height: slotRect.height,
             },
           };
         }

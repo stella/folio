@@ -64,6 +64,11 @@ import {
   supports,
 } from "./operations.ts";
 import { createRandom, type Random, sentence } from "./random.ts";
+import {
+  isPublicCorpusFixture,
+  loadPublicCorpusFixture,
+  type PublicCorpusFixture,
+} from "./public-corpus.ts";
 import { drawSwarm, swarmIncludesBatch } from "./swarm.ts";
 import { biasedPicker, blocksOfStory, featureIndex, storyKindOf, type Picker } from "./targets.ts";
 
@@ -561,7 +566,7 @@ const flowFixtures = (
 export type FlowOptions = {
   generation?: Generation;
   /** Explicit fixtures are never added to the ordinary seeded fixture selection. */
-  fixture?: typeof LARGE_DOCUMENT_FIXTURE;
+  fixture?: PublicCorpusFixture | typeof LARGE_DOCUMENT_FIXTURE;
   swarm?: "enabled" | "disabled";
 };
 
@@ -657,8 +662,11 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   ) {
     throw new TypeError("flow file: swarm contains an unknown or unsupported operation kind");
   }
-  const load =
-    fixture === LARGE_DOCUMENT_FIXTURE ? largeDocument : flowFixtures(kind, generation)[fixture];
+  const load = (() => {
+    if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument;
+    if (isPublicCorpusFixture(fixture)) return () => loadPublicCorpusFixture(fixture);
+    return flowFixtures(kind, generation)[fixture];
+  })();
   if (load === undefined) {
     throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
   }

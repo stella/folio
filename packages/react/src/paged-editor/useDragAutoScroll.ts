@@ -7,6 +7,10 @@
  */
 
 import { useCallback, useRef } from "react";
+import {
+  getEditorScrollRoot,
+  scrollEditorBy,
+} from "@stll/folio-core/paged-layout/editorScrollRoot";
 
 /** Pixel distance from container edge where auto-scroll activates. */
 const EDGE_ZONE = 40;
@@ -14,29 +18,11 @@ const EDGE_ZONE = 40;
 const MAX_SPEED = 12;
 
 export type DragAutoScrollOptions = {
-  /** Ref to the pages container (used to find the scroll parent). */
+  /** Ref to the pages container (used to resolve the marked scroll root). */
   pagesContainerRef: React.RefObject<HTMLDivElement | null>;
   /** Called during auto-scroll to extend the selection at the current mouse position. */
   onScrollExtendSelection: (clientX: number, clientY: number) => void;
 };
-
-/**
- * Find the nearest scrollable ancestor.
- */
-function findScrollParent(el: HTMLElement): HTMLElement | null {
-  let parent = el.parentElement;
-  while (parent && parent !== document.documentElement) {
-    const { overflowY } = getComputedStyle(parent);
-    if (
-      (overflowY === "auto" || overflowY === "scroll") &&
-      parent.scrollHeight > parent.clientHeight
-    ) {
-      return parent;
-    }
-    parent = parent.parentElement;
-  }
-  return null;
-}
 
 export function useDragAutoScroll({
   pagesContainerRef,
@@ -45,19 +31,11 @@ export function useDragAutoScroll({
   const rafIdRef = useRef<number | null>(null);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const activeRef = useRef(false);
-  const scrollParentRef = useRef<HTMLElement | null>(null);
 
-  const getScrollParent = useCallback((): HTMLElement | null => {
-    if (scrollParentRef.current) {
-      return scrollParentRef.current;
-    }
-    const pages = pagesContainerRef.current;
-    if (!pages) {
-      return null;
-    }
-    scrollParentRef.current = findScrollParent(pages);
-    return scrollParentRef.current;
-  }, [pagesContainerRef]);
+  const getScrollParent = useCallback(
+    () => getEditorScrollRoot(pagesContainerRef.current),
+    [pagesContainerRef],
+  );
 
   const stopAutoScroll = useCallback(() => {
     activeRef.current = false;
@@ -93,7 +71,7 @@ export function useDragAutoScroll({
     }
 
     if (scrollDelta !== 0) {
-      container.scrollTop += scrollDelta;
+      scrollEditorBy(container, scrollDelta);
       // After scrolling, extend the selection to the (now shifted) mouse position
       onScrollExtendSelection(mx, my);
     }

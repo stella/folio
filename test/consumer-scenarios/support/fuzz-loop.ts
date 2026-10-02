@@ -27,7 +27,12 @@ import { shrinkFlow } from "./shrink.ts";
 
 /** The relation settings a replay needs to fail the same way, as `NAME=value` words. */
 export const relationEnv = (): string =>
-  ["FOLIO_SCENARIO_RELATIONS", "FOLIO_SCENARIO_RELATIONS_DEPTH", "FOLIO_SCENARIO_FEATURE_WEIGHTS"]
+  [
+    "FOLIO_SCENARIO_RELATIONS",
+    "FOLIO_SCENARIO_RELATIONS_DEPTH",
+    "FOLIO_SCENARIO_FEATURE_WEIGHTS",
+    "FOLIO_SCENARIO_PUBLIC_CORPUS_DIR",
+  ]
     .flatMap((name) => {
       const value = process.env[name];
       return value === undefined ? [] : [`${name}=${shellQuote(value)}`];

@@ -35,6 +35,34 @@ export function buildParityBridge(
       return { bytes: [...new Uint8Array(saved)], results };
     },
     getTotalPages: () => getRef()?.getTotalPages() ?? 0,
+    scrollToPage: (pageNumber, handle) => {
+      const ref = getRef();
+      const api = handle === "document" ? ref : ref?.getEditorRef();
+      if (!api) {
+        return false;
+      }
+      api.scrollToPage(pageNumber);
+      return true;
+    },
+    readScrollViewport: (pageNumber) => {
+      const root = getRef()?.getScrollRoot();
+      const target = document.querySelector(`[data-page-number="${pageNumber}"]`);
+      if (!root || !target) {
+        return null;
+      }
+      const pageRect = target.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      return {
+        scrollTop: root.scrollTop,
+        clientHeight: root.clientHeight,
+        scrollHeight: root.scrollHeight,
+        rootMatches: root.matches("[data-folio-scroll]"),
+        pageTop: pageRect.top,
+        pageBottom: pageRect.bottom,
+        viewportTop: rootRect.top,
+        viewportBottom: rootRect.bottom,
+      };
+    },
     ensureView: () => getRef()?.ensureEditorView({ focus: false }),
     hasView: () => liveView() !== null,
     getDocumentText: () => getRef()?.getEditor()?.getState()?.doc.textContent ?? "",

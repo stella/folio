@@ -587,6 +587,11 @@ jobs:
       - name: Run measure/paint parity specs
         run: bun run test:measure-parity
 
+      # Every scroll and navigation ref method must move the real scroll
+      # container, in React and Vue alike.
+      - name: Scroll navigation parity
+        run: bunx playwright test --project=parity tests/parity/scroll-root.spec.ts --workers=1
+
       # The editor bundle a VS Code webview loads, built and driven under the
       # webview's Content Security Policy against a fake extension.
       - name: Run editor-web webview check

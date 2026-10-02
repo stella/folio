@@ -23,6 +23,9 @@
         :on-copy="() => clipboardCallbackCounts.copy++"
         :on-cut="() => clipboardCallbackCounts.cut++"
         :on-paste="() => clipboardCallbackCounts.paste++"
+        :on-editor-view-ready="scrollParityHost.onViewReady"
+        @ready="scrollParityHost.onReady"
+        :preserve-document-while-loading="query.has('readyScroll') || query.has('readyEventScroll')"
       />
     </main>
     <p v-if="status" class="pg-vue-status">{{ status }}</p>
@@ -44,10 +47,13 @@ import type {
 
 import type { FolioParityBridge } from "./parityBridge";
 import { buildParityBridge } from "./parityBridge";
+import { buildScrollParityBridge } from "./scrollParityBridge";
+import type { ScrollParityBridge } from "./scrollParityBridge";
 
 declare global {
   // eslint-disable-next-line no-var
   var __folioParity: FolioParityBridge | undefined;
+  var __folioScrollParity: ScrollParityBridge | undefined;
   // eslint-disable-next-line no-var
   var __folioVueCollaboration:
     | {
@@ -62,6 +68,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 const editorRef = ref<DocxEditorRef | null>(null);
+const scrollParityHost = buildScrollParityBridge(() => editorRef.value);
 const documentBuffer = shallowRef<ArrayBuffer | null>(null);
 const currentDocument = shallowRef<FolioDocument | null>(null);
 const status = ref("");
@@ -100,6 +107,7 @@ collaborationAwareness?.setLocalStateField("user", {
 
 onMounted(() => {
   void loadFromQuery();
+  globalThis.__folioScrollParity = scrollParityHost;
   globalThis.__folioParity = buildParityBridge(
     () => editorRef.value,
     (kind) => clipboardCallbackCounts[kind],
@@ -144,6 +152,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   globalThis.__folioParity = undefined;
+  globalThis.__folioScrollParity = undefined;
   globalThis.__folioVueCollaboration = undefined;
   collaborationAwareness?.destroy();
   collaborationDocument?.destroy();

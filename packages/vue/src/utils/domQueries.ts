@@ -15,12 +15,10 @@
  */
 
 import type { EditorView } from "prosemirror-view";
-import {
-  findBodyPmSpans,
-  findBodyPmAnchor,
-} from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
+import { findBodyPmSpans } from "@stll/folio-core/layout-bridge/dom/findBodyPmSpans";
 import { clickToPositionDom } from "@stll/folio-core/layout-bridge/dom/clickToPositionDom";
 import { findWordBoundaries } from "./textSelection";
+import { scrollPagesToPmPosition } from "@stll/folio-core/paged-layout/scrollToPmPosition";
 
 /**
  * Resolve the painted header/footer instance nearest the viewport center — the
@@ -79,42 +77,13 @@ export function findElementAtPosition(
   return null;
 }
 
-/**
- * Smooth-scroll the viewport so the painted element at `pmPos` is
- * visible (48px top padding). Falls back to a CSS attribute selector
- * when no body span carries pmPos in its [start,end] range.
- */
+/** Scroll the painted layout within its editor scroll root. */
 export function scrollVisiblePositionIntoView(
   pagesContainer: HTMLElement | null,
-  viewport: HTMLElement | null,
   pmPos: number,
 ): void {
-  if (!pagesContainer || !viewport) return;
-  // Resolve the painted element the same way the React paged-scroll API does:
-  // an exact, body-scoped `data-pm-start` anchor first (paragraph elements,
-  // including headings, carry one), then the run-span [start,end] range. A
-  // heading's pmPos is the paragraph node position, which only the anchor
-  // match catches — the span loop alone would miss it (#930). The old
-  // unscoped `[data-pm-start]` fallback is dropped: it could latch onto a
-  // header/footer element sharing the same PM position.
-  let targetEl: HTMLElement | null = findBodyPmAnchor(pagesContainer, pmPos);
-  if (!targetEl) {
-    for (const el of findBodyPmSpans(pagesContainer)) {
-      const start = Number(el.dataset["pmStart"]);
-      const end = Number(el.dataset["pmEnd"]);
-      if (Number.isFinite(start) && Number.isFinite(end) && pmPos >= start && pmPos <= end) {
-        targetEl = el;
-        break;
-      }
-    }
-  }
-  if (!targetEl) return;
-  const viewportRect = viewport.getBoundingClientRect();
-  const targetRect = targetEl.getBoundingClientRect();
-  viewport.scrollTo({
-    top: targetRect.top - viewportRect.top + viewport.scrollTop - 48,
-    behavior: "smooth",
-  });
+  if (!pagesContainer) return;
+  scrollPagesToPmPosition(pagesContainer, pmPos);
 }
 
 /**

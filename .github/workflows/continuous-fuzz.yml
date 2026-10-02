@@ -19,6 +19,10 @@ on:
         description: Enable seeded operation subsets
         type: boolean
         default: false
+      public_corpus_flows:
+        description: Run full consumer flows from pinned public documents
+        type: boolean
+        default: false
       minutes:
         description: "Consumer-scenario fuzz budget in minutes"
         required: false
@@ -37,7 +41,7 @@ permissions: {}
 
 jobs:
   consumer-fuzz:
-    if: ${{ !inputs.long_flows }}
+    if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Consumer-scenario fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -163,7 +167,7 @@ jobs:
           if-no-files-found: ignore
 
   property-fuzz:
-    if: ${{ !inputs.long_flows }}
+    if: ${{ !inputs.long_flows && !inputs.public_corpus_flows }}
     name: Property fuzz
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -220,6 +224,13 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/nightly-long-fuzz.yml
+
+  public-corpus-flows:
+    if: ${{ inputs.public_corpus_flows }}
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/nightly-public-corpus-flows.yml
 
   # Separate so the fuzz jobs never hold a write token. Main only: a dispatch
   # on a branch reports in its run, not in the issue tracker.
