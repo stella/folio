@@ -489,6 +489,7 @@ export async function parseDocxWithPreviewBudget(
     timeStage("documentBody", () => {
       if (raw.documentXml) {
         documentBody = parseDocumentBodyTree({
+          xml: raw.documentXml,
           doc: repairedDocumentTree ?? parseXml(raw.documentXml),
           styles,
           theme,

@@ -273,6 +273,10 @@ describe("a shape read from mc:AlternateContent", () => {
       undefined,
       undefined,
     ]);
+    expect(await savedDocumentPart(parsed)).toContain(choice);
+    // This law checks rebuilding each shape, independently of the whole-part
+    // source capture that correctly retains the authored Fallback unchanged.
+    delete parsed.package.document.source;
     const saved = await savedDocumentPart(parsed);
     expect(textOf(saved)).toBe("Hostfirstsecond");
   });

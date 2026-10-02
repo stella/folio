@@ -22,6 +22,14 @@ import { PARAGRAPH_MARK_CHANGE_KINDS, type ParagraphMarkChangeKind } from "@stll
 
 import type { FolioDocumentStoryHandle } from "../ai-edits/headless";
 import type { FolioAIBlock } from "../ai-edits/types";
+import type {
+  BlockContent,
+  ParagraphContent,
+  RunContent,
+  Shape,
+  TableCell,
+  TableRow,
+} from "../types/document";
 import { paragraphSpacingEqual } from "../prosemirror/paragraphSpacing";
 import { paragraphIndentationEqual } from "../prosemirror/paragraphIndentation";
 import { sameFolioContentOutlineLevel } from "./content";
@@ -456,6 +464,57 @@ const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
   return isRecord(change) && change["type"] === "tableRowDeletion";
 };
 
+type OwnedContentNode = BlockContent | ParagraphContent | RunContent | Shape | TableCell | TableRow;
+
+/** Every content discriminator must decide which fields own nested content. */
+const CONTENT_OWNERSHIP = {
+  paragraph: ["content"],
+  table: ["rows"],
+  tableRow: ["cells"],
+  tableCell: ["content"],
+  blockSdt: ["content"],
+  blockCustomXml: ["content"],
+  run: ["content"],
+  hyperlink: ["children"],
+  simpleField: ["content"],
+  complexField: ["fieldCode", "fieldResult"],
+  inlineSdt: ["content"],
+  inlineWrapper: ["content"],
+  insertion: ["content"],
+  deletion: ["content"],
+  moveFrom: ["content"],
+  moveTo: ["content"],
+  shape: ["shape", "textBody"],
+  drawing: [],
+  text: [],
+  tab: [],
+  break: [],
+  symbol: [],
+  footnoteRef: [],
+  endnoteRef: [],
+  fieldChar: [],
+  instrText: [],
+  softHyphen: [],
+  noBreakHyphen: [],
+  renderedPageBreak: [],
+  preservedXml: [],
+  preservedBlock: [],
+  preservedInline: [],
+  mathEquation: [],
+  bookmarkStart: [],
+  bookmarkEnd: [],
+  commentRangeStart: [],
+  commentRangeEnd: [],
+  commentReference: [],
+  moveFromRangeStart: [],
+  moveFromRangeEnd: [],
+  moveToRangeStart: [],
+  moveToRangeEnd: [],
+} as const satisfies Record<OwnedContentNode["type"], readonly string[]>;
+
+const isContentOwnerKind = (kind: string): kind is keyof typeof CONTENT_OWNERSHIP =>
+  Object.hasOwn(CONTENT_OWNERSHIP, kind);
+
 /**
  * Every container in a package whose final paragraph mark carries a revision.
  *
@@ -468,10 +527,9 @@ const isADeletedTableRow = (value: Record<string, unknown>): boolean => {
  * accepting nor rejecting everything can clear. The exception is a cell of a
  * row the package is DELETING: there the mark leaves with its row.
  *
- * The walk is over the package model rather than over a list of the containers
- * known today: a container is any sequence that ends in a paragraph, so a part
- * the model grows later is covered the day it arrives instead of the day
- * someone remembers this function.
+ * The walk starts at each story's owned content. Source captures and derived
+ * section views hold aliases and snapshots, not paragraph containers; walking
+ * those would count a captured one-paragraph group as a story of its own.
  *
  * `since` scopes it to the revisions a comparison MINTED: a base may arrive
  * carrying one of these on a paragraph in a part no story mounts, which folio
@@ -525,12 +583,33 @@ export const revisedFinalParagraphMarks = (
       return;
     }
     const inADeletedRow = insideADeletedRow || isADeletedTableRow(value);
-    for (const [key, item] of Object.entries(value)) {
+    // Only content ownership edges lead to nested containers. Formatting,
+    // source captures and derived views may contain model-shaped snapshots.
+    const kind = value["type"];
+    const ownedFields =
+      typeof kind === "string" && isContentOwnerKind(kind)
+        ? CONTENT_OWNERSHIP[kind]
+        : ["content", "textBody"];
+    for (const key of ownedFields) {
+      const item = value[key];
+      if (item === undefined) continue;
       trail.push(key);
       visit(item, inADeletedRow);
       trail.pop();
     }
   };
-  visit(packageModel, false);
+  if (!isRecord(packageModel)) return found;
+  const pkg = isRecord(packageModel["package"]) ? packageModel["package"] : packageModel;
+  if (pkg !== packageModel) trail.push("package");
+  for (const key of ["document", "headers", "footers", "footnotes", "endnotes"]) {
+    trail.push(key);
+    visit(pkg[key], false);
+    if (key === "document" && isRecord(pkg[key])) {
+      trail.push("comments");
+      visit(pkg[key]["comments"], false);
+      trail.pop();
+    }
+    trail.pop();
+  }
   return found;
 };

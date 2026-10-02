@@ -199,6 +199,8 @@ type DispatchChildrenOptions<Container extends DispatchedContainer, Context = un
    * {@link sequencePositions}.
    */
   capturePosition: (child: XmlElement) => number;
+  /** Observe the exact source child after its reader or capture ran. */
+  afterChild?: (child: XmlElement, capture: PreservedChild | undefined, context: Context) => void;
   /**
    * Dispositions for names the container's content model does not declare.
    *
@@ -279,6 +281,7 @@ export const dispatchChildrenWithContext = <Container extends DispatchedContaine
   element,
   handlers,
   capturePosition,
+  afterChild,
   undeclared,
   undeclaredNamespaces,
   context,
@@ -315,16 +318,21 @@ export const dispatchChildrenWithContext = <Container extends DispatchedContaine
         ownDisposition(undeclaredNamespaces, transitionalNamespaceOf(namespace)));
     if (disposition === undefined || disposition === CAPTURE) {
       capture(child);
+      afterChild?.(child, children.at(-1), context);
       continue;
     }
     // `DROPPED_WITH_ITS_WRAPPER`, or a child another reader owns: either way
     // this walk writes nothing down and the decision is recorded elsewhere.
     if (typeof disposition !== "function") {
+      afterChild?.(child, undefined, context);
       continue;
     }
     if (disposition(child, context) === CAPTURE) {
       capture(child);
+      afterChild?.(child, children.at(-1), context);
+      continue;
     }
+    afterChild?.(child, undefined, context);
   }
 
   return children.length === 0 ? undefined : { children };

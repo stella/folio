@@ -50,6 +50,7 @@ const VOLATILE_KEYS: ReadonlySet<string> = new Set([
 
 /** The serializer's licence to replay captured bytes, not the content it replays. */
 const CAPTURE_KEYS: ReadonlySet<string> = new Set([
+  "source",
   "sourceXml",
   "gridSourceXml",
   "verbatimXml",

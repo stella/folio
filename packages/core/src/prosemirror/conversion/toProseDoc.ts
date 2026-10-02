@@ -79,7 +79,6 @@ import {
   PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR,
   createProseParagraphWithPropertySource,
   proseParagraphAttrsWithoutPropertySource,
-  getDocumentParagraphPropertySourceContract,
   recreateProseNodeWithParagraphPropertySource,
   transportTableCellsWithParagraphPropertySources,
 } from "../../docx/paragraphPropertySource";
@@ -150,6 +149,11 @@ import {
   type TableCellPosition,
 } from "./effectiveTableCellFormatting";
 import { createMarkInterner } from "./markInterner";
+import {
+  currentSourceProjection,
+  documentProjectionInput,
+  rememberSourceProjection,
+} from "./sourceProjection";
 import { withAlternateContent } from "../alternateContentAttrs";
 import { replayableShapeAlternateContent } from "../../docx/shapeAlternateContent";
 import { hasSinkChildren } from "./preservedSinkCarriers";
@@ -457,7 +461,18 @@ const collectPairedBookmarkIds = (blocks: readonly BlockContent[]): ReadonlySet<
  * @param options - Conversion options including style definitions
  */
 export function toProseDoc(document: Document, options?: ToProseDocOptions): PMNode {
-  const paragraphs = document.package.document.content;
+  // Immutable editor trees can be shared. Explicit resolvers and warning sinks
+  // still run the conversion; mutable model input is checked exactly on reuse.
+  if (
+    options?.styles === undefined &&
+    options?.theme === undefined &&
+    options?.warn === undefined
+  ) {
+    const cached = currentSourceProjection(document);
+    if (cached) return cached;
+  }
+  const input = documentProjectionInput(document);
+  const paragraphs = input.content;
   const nodes: PMNode[] = [];
 
   // Default to the document's own styles (symmetric with `theme` below) so a
@@ -465,8 +480,8 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   // The save-side `w:rStyle` reconciliation relies on this: without it, an
   // unexpanded run would look like the user stripped the style's formatting
   // (eigenpal/docx-editor#833).
-  const styleResolver = createStyleEngine(options?.styles ?? document.package.styles);
-  const theme = options?.theme ?? document.package.theme ?? null;
+  const styleResolver = createStyleEngine(options?.styles ?? input.styles);
+  const theme = options?.theme ?? input.theme;
   const nextTextBoxGroupId = createTextBoxGroupIdFactory();
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
@@ -533,20 +548,14 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     nodes.push(schema.node("paragraph", {}, []));
   }
 
-  const finalSectionStart =
-    document.package.document.sections?.at(-1)?.properties.sectionStart ?? null;
-  const adjustLineHeightInTable = document.package.settings?.adjustLineHeightInTable === true;
-  const doNotUseIndentAsNumberingTabStop =
-    document.package.settings?.doNotUseIndentAsNumberingTabStop === true;
   const pmDoc = stampNumberedRefFieldBaselines(
     schema.node(
       "doc",
       {
-        [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]:
-          getDocumentParagraphPropertySourceContract(document) ?? null,
-        _finalSectionStart: finalSectionStart,
-        _adjustLineHeightInTable: adjustLineHeightInTable,
-        _doNotUseIndentAsNumberingTabStop: doNotUseIndentAsNumberingTabStop,
+        [PROSE_PARAGRAPH_SOURCE_CONTRACT_ATTR]: input.contract,
+        _finalSectionStart: input.finalSectionStart,
+        _adjustLineHeightInTable: input.adjustLineHeightInTable,
+        _doNotUseIndentAsNumberingTabStop: input.doNotUseIndentAsNumberingTabStop,
       },
       nodes,
     ),
@@ -555,6 +564,9 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
     pmDoc,
     "Document conversion produced an invalid ProseMirror document",
   );
+  if (options?.styles === undefined && options?.theme === undefined) {
+    rememberSourceProjection(document, pmDoc);
+  }
   return pmDoc;
 }
 

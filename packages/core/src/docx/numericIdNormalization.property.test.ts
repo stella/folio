@@ -15,6 +15,7 @@ import type { Document } from "../types/document";
 import { createDocx, createEmptyDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import { parseXmlWithFastXmlParser, type XmlElement } from "./xmlParser";
+import { getXmlSourceRange } from "./streamingXmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -84,6 +85,13 @@ test("the retained repair tree equals an independent parse of the normalized XML
         expect(tree).toBeDefined();
         if (rewritten === undefined) return;
         expect(tree).toEqual(parseXmlWithFastXmlParser(rewritten));
+        const paragraph = tree?.elements?.at(0)?.elements?.at(0)?.elements?.at(0);
+        const range = paragraph === undefined ? undefined : getXmlSourceRange(paragraph);
+        const expectedParagraph = rewritten.match(/<x:p>[\s\S]*?<\/x:p>/u)?.[0];
+        expect(range).toBeDefined();
+        expect(expectedParagraph).toBeDefined();
+        if (range === undefined || expectedParagraph === undefined) return;
+        expect(rewritten.slice(range.start, range.end)).toBe(expectedParagraph);
         expect(parts.get("word/document.xml")).toBe(xml);
       },
     ),

@@ -14,6 +14,7 @@ import { panic } from "better-result";
 
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
 import {
+  parseStreamingXml,
   scanStreamingXmlNumericIdAttributes,
   parseStreamingXmlWithIdentityVisitor,
 } from "./streamingXmlParser";
@@ -98,8 +99,6 @@ type ImportedIdentitySpan = {
   end: number;
   space: string;
   key: string;
-  element: XmlElement;
-  attributeName: string;
 };
 
 type NumericIdNormalizationOptions = { onParsedDocument?: (document: XmlElement) => void };
@@ -180,8 +179,6 @@ export const normalizeImportedNumericIds = (
             end: span.end,
             space: attribute.space,
             key,
-            element,
-            attributeName: attribute.name,
           });
         }
         return null;
@@ -214,14 +211,19 @@ export const normalizeImportedNumericIds = (
       const replacement = spaces.get(span.space)?.replacements.get(span.key);
       if (replacement === undefined || replacement === "")
         panic("Missing imported numeric identity replacement");
-      if (span.element.attributes === undefined)
-        panic("Missing imported numeric identity attributes");
-      span.element.attributes[span.attributeName] = replacement;
       chunks.push(xml.slice(cursor, span.start), replacement);
       cursor = span.end;
     }
     chunks.push(xml.slice(cursor));
-    normalized.set(path, chunks.join(""));
+    const rewritten = chunks.join("");
+    normalized.set(path, rewritten);
+    if (path.toLowerCase() === "word/document.xml" && parsedDocument !== undefined) {
+      // Attribute repair can change offsets used by the retained tree's source ranges.
+      const reparsed = parseStreamingXml(rewritten);
+      if (reparsed.status === "unsupported")
+        panic("Normalized document XML became unsupported after numeric identity repair");
+      parsedDocument = reparsed.value;
+    }
   }
   if (parsedDocument !== undefined) options.onParsedDocument?.(parsedDocument);
   return normalized;

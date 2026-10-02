@@ -87,14 +87,18 @@ const withoutLegNames = (failures: readonly CorpusFailure[]) =>
   }));
 
 describe("the forced leg asks for the reuse it means", () => {
-  test("the reuse it forces is implemented, and the one it declines refuses", async () => {
+  test("the forced leg rebuilds while matched reuse retains its source", async () => {
     const { parsed } = await invariantInput(RICH_BODY);
     const proseDoc = toProseDoc(parsed);
 
     expect(projectedWithoutReuse(proseDoc, parsed).package.document.content).toHaveLength(
       parsed.package.document.content.length,
     );
-    expect(() => fromProseDoc(proseDoc, parsed, { reuse: "matched" })).toThrow(/not implemented/);
+    const matched = fromProseDoc(proseDoc, parsed, { reuse: "matched" });
+    expect(matched.package.document.content.at(0)).toBe(parsed.package.document.content.at(0));
+    expect(projectedWithoutReuse(proseDoc, parsed).package.document.content.at(0)).not.toBe(
+      parsed.package.document.content.at(0),
+    );
   });
 });
 

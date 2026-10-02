@@ -8,7 +8,15 @@ type ParseXmlResult = { status: "parsed"; value: XmlElement } | { status: "unsup
 type ElementFrame = {
   element: XmlElement;
   name: string;
+  start: number;
 };
+
+type XmlSourceRange = { start: number; end: number };
+const sourceRanges = new WeakMap<XmlElement, XmlSourceRange>();
+
+/** Exact ranges for the part root and its first two levels of children. */
+export const getXmlSourceRange = (element: XmlElement): XmlSourceRange | undefined =>
+  sourceRanges.get(element);
 
 const BUILT_IN_ENTITIES = {
   amp: "&",
@@ -141,6 +149,9 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
       if (!frame || frame.name !== name) {
         return { status: "unsupported" };
       }
+      if (stack.length <= 2) {
+        sourceRanges.set(frame.element, { start: frame.start, end: close + 1 });
+      }
       cursor = close + 1;
       mergeAdjacentText = false;
       continue;
@@ -185,7 +196,9 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
         return { status: "unsupported" };
       }
-      stack.push({ element: parsedTag.element, name: parsedTag.name });
+      stack.push({ element: parsedTag.element, name: parsedTag.name, start: open });
+    } else if (stack.length <= 2) {
+      sourceRanges.set(parsedTag.element, { start: open, end: close + 1 });
     }
     cursor = close + 1;
     mergeAdjacentText = false;

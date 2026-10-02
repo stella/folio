@@ -20,11 +20,20 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { parseDocx } from "../docx/parser";
 import { createDocx } from "../docx/rezip";
 import { findParagraphOffsets } from "../docx/selectiveXmlPatch";
+import {
+  getLocalName,
+  getNamespaceUri,
+  getTextContent,
+  OOXML_NAMESPACE_SCOPE,
+  parseXml,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "../docx/xmlParser";
 import type { Comment, Document, Paragraph, ParagraphContent } from "../types/document";
 import { FolioDocxReviewer } from "./headless";
 import type { FolioAIEditOperation } from "./types";
@@ -37,6 +46,7 @@ const EDIT_MODES = ["direct", "tracked-changes"] as const;
 const OPERATION_KINDS = ["replaceInBlock", "insertAfterBlock", "deleteBlock"] as const;
 
 const FOOTNOTE_ID = 2;
+const REPLACEMENT_TEXT = "Superseded wording throughout.";
 
 type GeneratedSpan = { first: number; last: number };
 type GeneratedComment = GeneratedSpan & { author: string; text: string };
@@ -181,7 +191,7 @@ const operationFor = (
         type: "replaceInBlock",
         blockId,
         find: paragraphText(blockIndex),
-        replace: "Superseded wording throughout.",
+        replace: REPLACEMENT_TEXT,
       };
     case "insertAfterBlock":
       return { id: "edit", type: "insertAfterBlock", blockId, text: "An inserted paragraph." };
@@ -233,9 +243,41 @@ const commentPlainText = (comment: Comment | undefined): string =>
     .map((item) => (item.type === "text" ? item.text : ""))
     .join("");
 
+/** XML run boundaries and transparent carriers do not divide visible text. */
+const savedVisibleText = (xml: string): string => {
+  const parts: string[] = [];
+  const visit = (element: XmlElement): void => {
+    if (
+      WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "") &&
+      getLocalName(element.name ?? "") === "t"
+    ) {
+      parts.push(getTextContent(element));
+      return;
+    }
+    for (const child of element.elements ?? []) visit(child);
+  };
+  visit(parseXml(xml, OOXML_NAMESPACE_SCOPE));
+  return parts.join("");
+};
+
+test.each(["w", "x", ""])(
+  "saved visible text ignores segmentation and resolves namespaces and entities (%s)",
+  (prefix) => {
+    const name = (local: string) => (prefix ? `${prefix}:${local}` : local);
+    const binding = prefix ? `xmlns:${prefix}` : "xmlns";
+    for (const uri of WORDPROCESSINGML_NAMESPACE_URIS) {
+      const namespaceAttributes = `${binding}="${uri}"${prefix ? "" : ` xmlns:w="${uri}"`}`;
+      for (let split = 0; split <= REPLACEMENT_TEXT.length; split++) {
+        const xml = `<${name("p")} ${namespaceAttributes} xmlns:e="urn:extension"><${name("r")}><${name("t")}>${REPLACEMENT_TEXT.slice(0, split)}</${name("t")}></${name("r")}><${name("commentRangeStart")} ${prefix || "w"}:id="0"/><${name("hyperlink")}><${name("r")}><${name("t")}>${REPLACEMENT_TEXT.slice(split)}</${name("t")}></${name("r")}></${name("hyperlink")}><${name("commentRangeEnd")} ${prefix || "w"}:id="0"/><${name("r")}><${name("t")}> &amp; &quot;&lt;&quot;</${name("t")}></${name("r")}><e:t>ignored</e:t></${name("p")}>`;
+        expect(savedVisibleText(xml)).toBe(`${REPLACEMENT_TEXT} & "<"`);
+      }
+    }
+  },
+);
+
 describe("an edit leaves every comment and bookmark range balanced and anchored", () => {
   test("over generated documents and operations", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(generatedCase, async (raw) => {
         const generated = toCase(raw);
         const source = await createDocx(buildDocument(generated));
@@ -272,15 +314,11 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             continue;
           }
           const paragraph = xml.slice(offsets.start, offsets.end);
-          const visible = [...paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
-            .map(([, part]) => part ?? "")
-            .join("");
+          const visible = savedVisibleText(paragraph);
           const inside = [...paragraph.matchAll(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gu)]
             .map(([, part]) => part ?? "")
             .join("");
-          const insideVisible = [...inside.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/gu)]
-            .map(([, part]) => part ?? "")
-            .join("");
+          const insideVisible = savedVisibleText(inside);
           expect({
             index,
             target: rels.includes(linkTarget(index)),
@@ -297,9 +335,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
             generated.edit.kind === "replaceInBlock" &&
             generated.edit.blockIndex === generated.noteRefParagraph;
           if (offsets && replacedIt) {
-            expect(xml.slice(offsets.start, offsets.end)).toContain(
-              "Superseded wording throughout.",
-            );
+            expect(savedVisibleText(xml.slice(offsets.start, offsets.end))).toBe(REPLACEMENT_TEXT);
           }
         }
 
@@ -341,7 +377,7 @@ describe("an edit leaves every comment and bookmark range balanced and anchored"
           }).toEqual({ id, opensInTime: true, closesInTime: true });
         }
       }),
-      propertyConfig({ numRuns: 40 }),
+      { numRuns: 40 },
     );
   }, 180_000);
 });

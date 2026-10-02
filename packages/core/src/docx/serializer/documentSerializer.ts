@@ -19,6 +19,9 @@ import type {
 } from "../../types/document";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { themeColorToken } from "@stll/docx-core/model";
+import { replayDocumentSource } from "../documentSource";
+import { readRootNamespaceBindings } from "./partNamespaces";
+import { sourceScopedBlocks } from "./sourceBlockNamespace";
 import { serializeBlockSdt } from "./blockSdtSerializer";
 import { serializeBlockCustomXml } from "./blockCustomXmlSerializer";
 import { serializeBookmarkMarker } from "./markupRangeAttributes";
@@ -163,6 +166,17 @@ export function serializeDocument(
 ): string {
   // Reset auto-incrementing image/shape ID counter for this serialization pass
   resetAutoIdCounter();
+
+  const source = doc.package.document.source;
+  const replayed = replayDocumentSource({
+    body: doc.package.document,
+    serialize: (blocks) =>
+      sourceScopedBlocks(serializeBodyContent(blocks), {
+        conformance: doc.package.conformanceClass,
+        bindings: sourceBindings ?? readRootNamespaceBindings(source?.xml ?? ""),
+      }),
+  });
+  if (replayed !== null) return replayed;
 
   const body =
     serializeDocumentBackground(doc.package.document.background) +

@@ -5,6 +5,7 @@ import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps, validateOpsDocument } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, INHERIT_RUN_PROPS, OP_STORIES } from "../types";
+import { packageIdentityKeys, packageParagraphIds } from "../ids";
 
 const run = (text: string): Run => ({ type: "run", content: [{ type: "text", text }] });
 
@@ -40,6 +41,23 @@ const parsedShape = (...content: Paragraph[]): Document => ({
 });
 
 describe("the id census", () => {
+  test("replay captures never contribute live paragraph or revision identities", () => {
+    const live = paragraph("00000001", "live");
+    const historical: Paragraph = {
+      ...paragraph("00000002", "historical"),
+      pPrMark: { kind: "ins", info: { id: 41, author: "Reviewer" } },
+    };
+    const document = parsedShape(live);
+    document.package.document.source = {
+      xml: "<document/>",
+      shellFingerprint: "",
+      blocks: new Map([[live, { start: 0, end: 0, fingerprint: "", content: [live, historical] }]]),
+    };
+    expect(packageParagraphIds(document.package)).toEqual([live.paraId]);
+    expect(packageIdentityKeys(document.package)).toEqual([]);
+    expect(reasonOf(document, typing("00000001"))).toBeUndefined();
+  });
+
   test("counts a paragraph the section view also holds once", () => {
     const document = parsedShape(paragraph("00000001", "a"), paragraph("00000002", "b"));
     const [first] = document.package.document.content;

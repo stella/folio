@@ -14,6 +14,7 @@ import type {
   MediaFile,
   PreservedBlock,
   Paragraph,
+  PreservedChild,
   RelationshipMap,
   Theme,
 } from "../types/document";
@@ -47,6 +48,8 @@ import {
 } from "./xmlParser";
 
 type ParseBlockContentOptions = {
+  sourceParent?: XmlElement;
+  onSourceBlocks?: (child: XmlElement, blocks: BlockContent[]) => void;
   inHeaderFooter?: boolean;
   // Source root `xmlns:*` declarations, threaded to the run parser so a captured
   // VML `w:pict` replay stays self-contained under non-canonical prefixes.
@@ -307,6 +310,22 @@ type BlockContentWalk = {
   resources: BlockContentResources;
   state: ParseBlockContentState;
   modelled: BlockContent[];
+  observation: {
+    previousCount: number;
+    capturedSources: Map<PreservedChild, XmlElement>;
+    observe: ParseBlockContentOptions["onSourceBlocks"];
+  };
+};
+
+const observeSourceBlocks = (
+  child: XmlElement,
+  capture: PreservedChild | undefined,
+  { modelled, observation }: BlockContentWalk,
+): void => {
+  if (!observation.observe) return;
+  if (capture) observation.capturedSources.set(capture, child);
+  else observation.observe(child, modelled.slice(observation.previousCount));
+  observation.previousCount = modelled.length;
 };
 
 const BLOCK_CONTENT_UNDECLARED = {
@@ -450,6 +469,8 @@ const parseBlockContentWithState = (
   state: ParseBlockContentState,
 ): BlockContent[] => {
   const modelled: BlockContent[] = [];
+  const capturedSources = new Map<PreservedChild, XmlElement>();
+  const observe = state.options.sourceParent === parent ? state.options.onSourceBlocks : undefined;
 
   const preserved = dispatchChildrenWithContext({
     element: parent,
@@ -457,14 +478,21 @@ const parseBlockContentWithState = (
     capturePosition: () => modelled.length,
     undeclared: BLOCK_CONTENT_UNDECLARED,
     handlers: BLOCK_CONTENT_HANDLERS,
-    context: { resources: { styles, theme, numbering, rels, media }, state, modelled },
+    context: {
+      resources: { styles, theme, numbering, rels, media },
+      state,
+      modelled,
+      observation: { previousCount: 0, capturedSources, observe },
+    },
+    afterChild: observeSourceBlocks,
   });
 
-  return withPreservedChildren(
-    modelled,
-    preserved,
-    (xml): PreservedBlock => ({ type: "preservedBlock", xml }),
-  );
+  return withPreservedChildren(modelled, preserved, (xml, capture): PreservedBlock => {
+    const block: PreservedBlock = { type: "preservedBlock", xml };
+    const source = capturedSources.get(capture);
+    if (source) observe?.(source, [block]);
+    return block;
+  });
 };
 
 const parseBlockSdt = (

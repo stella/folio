@@ -2768,7 +2768,27 @@ export type DocumentBackground = {
 /**
  * Document body (w:body)
  */
+type DocumentBodySource = {
+  /** Complete part, including its namespace scope and unmodelled root children. */
+  xml: string;
+  /** Null requires serializer repair of markup outside the captured blocks. */
+  shellFingerprint: string | null;
+  /** Source ownership follows object identity through a graph-preserving clone. */
+  blocks: Map<
+    BlockContent,
+    {
+      start: number;
+      end: number;
+      /** Null requires serializer repair even when the parsed model is unchanged. */
+      fingerprint: string | null;
+      content: BlockContent[];
+    }
+  >;
+};
+
 export type DocumentBody = {
+  /** Source part and block captures; invalidated by model changes. */
+  source?: DocumentBodySource;
   /** Optional `w:document/w:background`, serialized before the body. */
   background?: DocumentBackground;
   /** All content (paragraphs, tables) */

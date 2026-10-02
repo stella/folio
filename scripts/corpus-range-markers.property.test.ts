@@ -28,7 +28,7 @@ import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseD
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
 import type { Paragraph } from "@stll/folio-core/types/document";
 
-import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 import {
@@ -229,11 +229,15 @@ const editFirstParagraph = (paragraph: Paragraph): void => {
 
 type SaveResult = { documentXml: string; violations: SchemaViolation[] };
 
-type SaveOptions = { subject: MarkerCase; viaEditor: boolean };
+type SaveOptions = { subject: MarkerCase; viaEditor: boolean; reuse?: "matched" | "none" };
 
-const saveEdited = async ({ subject, viaEditor }: SaveOptions): Promise<SaveResult> => {
+const saveEdited = async ({
+  subject,
+  viaEditor,
+  reuse = "none",
+}: SaveOptions): Promise<SaveResult> => {
   const parsed = await parseDocx(await buildDocx(subject), { preloadFonts: false });
-  const document = viaEditor ? fromProseDoc(toProseDoc(parsed), parsed) : parsed;
+  const document = viaEditor ? fromProseDoc(toProseDoc(parsed), parsed, { reuse }) : parsed;
   const first = document.package.document.content.at(0);
   if (first?.type !== "paragraph") {
     throw new Error("the fixture did not parse as a paragraph");
@@ -277,7 +281,7 @@ const EDITOR_PROJECTION = {
 describe("range markers keep every attribute a real save re-serializes", () => {
   for (const marker of MARKER_NAMES) {
     test(`w:${marker}`, async () => {
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(markerCase(marker), async (subject) => {
           const { documentXml, violations } = await saveEdited({ subject, viaEditor: false });
 
@@ -290,7 +294,7 @@ describe("range markers keep every attribute a real save re-serializes", () => {
           expect(violations).toEqual([]);
         }),
         // Each run writes and re-reads a package, so the budget is per-marker.
-        propertyConfig({ numRuns: 20 }),
+        { numRuns: 20 },
       );
     });
   }
@@ -300,8 +304,11 @@ describe("what the editor projection carries, it carries whole", () => {
   for (const marker of MARKER_NAMES) {
     test(`w:${marker}`, async () => {
       const projection = EDITOR_PROJECTION[marker];
-      await fc.assert(
+      await assertProperty(
         fc.asyncProperty(markerCase(marker), async (subject) => {
+          const retained = await saveEdited({ subject, viaEditor: true, reuse: "matched" });
+          expect(savedAttributes(retained.documentXml, marker)).toEqual(subject.attributes);
+          expect(retained.violations).toEqual([]);
           const { documentXml, violations } = await saveEdited({ subject, viaEditor: true });
           const written = savedAttributes(documentXml, marker);
           expect(violations).toEqual([]);
@@ -318,7 +325,7 @@ describe("what the editor projection carries, it carries whole", () => {
             }
           }
         }),
-        propertyConfig({ numRuns: 20 }),
+        { numRuns: 20 },
       );
     });
   }

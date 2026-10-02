@@ -378,6 +378,12 @@
       "path": "133:0:0:10:9:9:9:9:9:9",
       "note": "#1221: accepting a note reference's deletion drops the note and the comment anchored in it",
       "date": "2026-09-29"
+    },
+    {
+      "seed": 1322234818,
+      "path": "66:0:4:3:3:0:1:8:8:8:8",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
     }
   ],
   "packages/core/src/prosemirror/rebaseParagraphRuns.test.ts::paragraph style commands carry pending cursor formatting through changed and equal cascades": [
@@ -567,6 +573,12 @@
       "note": "VML lexical shape ids must not become DrawingML numeric ids",
       "date": "2026-10-01",
       "path": "2:1:1:1"
+    },
+    {
+      "seed": 1002679830,
+      "path": "97:0",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
     }
   ],
   "packages/core/src/docx/savedTextFidelity.property.test.ts::the editor round trip preserves the paragraph's text": [
@@ -575,6 +587,12 @@
       "note": "VML lexical shape ids must not become DrawingML numeric ids",
       "date": "2026-10-01",
       "path": "4:1:1:1"
+    },
+    {
+      "seed": -771999091,
+      "path": "12:0",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
     }
   ],
   "packages/core/src/docx/drawingNumericIds.property.test.ts::every rebuilt drawing uses bounded numeric ids without changing its lexical model id": [
@@ -610,6 +628,63 @@
     {
       "seed": -1094066634,
       "note": "Inline order oracle must compare text independently of valid adjacent-run consolidation",
+      "date": "2026-10-02"
+    }
+  ],
+  "scripts/corpus-range-markers.property.test.ts::w:${marker}": [
+    {
+      "seed": 786947610,
+      "path": "0:0:0",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/compare/compare.property.test.ts::no container's final paragraph mark carries any revision (${name})": [
+    {
+      "seed": -1751475484,
+      "note": "Retained source metadata must not create final paragraph containers. Historical styled-content fixture path 3:0:1 is preserved as its exact fixture-scoped moveParagraph(0, before 2) example; this shared test identity cannot apply fixture-specific shrink paths to every fixture.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1751475484,
+      "note": "Retained source metadata must not create final paragraph containers. Historical with-tables fixture path 0:0:0:0:0:0:0:0:0:0:0:0:0:0 is preserved as its exact fixture-scoped insertParagraphAfter(10, AaA aAA aAA) example; this shared test identity cannot apply fixture-specific shrink paths to every fixture.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1751475484,
+      "note": "Retained source metadata must not create final paragraph containers. Historical complex-styles and synthetic fixture path 2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0 is preserved as each fixture's exact insertParagraphAfter(0, Aaa Aaa aaA) example; this shared test identity cannot apply fixture-specific shrink paths to every fixture.",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/docx/relationshipReferences.property.test.ts::resolve after the round trip to exactly what they resolved to before": [
+    {
+      "seed": 273441692,
+      "path": "0:0:0:1",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/docx/selectiveSaveNumericIds.property.test.ts::selective saves share imported numeric identities across original and canonical baselines": [
+    {
+      "seed": -1621280029,
+      "path": "0:0",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/ai-edits/editKeepsCommentRanges.property.test.ts::over generated documents and operations": [
+    {
+      "seed": 857861448,
+      "path": "4:0:2:3:3:3:3:3:3:3",
+      "note": "Retained source metadata and projection reuse must preserve live story normalization",
+      "date": "2026-10-02"
+    }
+  ],
+  "packages/core/src/docx/documentSource.property.test.ts::source replay performs required whitespace repairs across profiles and clones": [
+    {
+      "seed": -80639575,
+      "path": "1:1",
+      "note": "Whitespace replay follows the required XML-space preservation boundary across profiles and clones",
       "date": "2026-10-02"
     }
   ]
