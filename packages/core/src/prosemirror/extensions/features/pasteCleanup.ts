@@ -309,40 +309,6 @@ export function cleanPastedHtml(html: string, options: CleanPastedHtmlOptions = 
   }
 }
 
-/**
- * Remove the list-number fields a copied paragraph drew in its list marker.
- *
- * The copy does not take the marker's field with it: the paragraph it was
- * copied from still holds the field, and the pasted text is numbered by the
- * list it lands in.
- */
-export function removeFoldedListNumberFields(slice: Slice): Slice {
-  let found = false;
-  slice.content.descendants((node) => {
-    if (node.type.name === "preservedXml" && node.attrs["foldedListNumber"] != null) {
-      found = true;
-    }
-    return !found;
-  });
-  if (!found) {
-    return slice;
-  }
-
-  const filterFragment = (fragment: Fragment): Fragment => {
-    const children: PMNode[] = [];
-    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Fragment.forEach
-    fragment.forEach((node) => {
-      if (node.type.name === "preservedXml" && node.attrs["foldedListNumber"] != null) {
-        return;
-      }
-      children.push(node.childCount === 0 ? node : node.copy(filterFragment(node.content)));
-    });
-    return Fragment.fromArray(children);
-  };
-
-  return new Slice(filterFragment(slice.content), slice.openStart, slice.openEnd);
-}
-
 /** Remove incomplete or duplicate bookmark pairs at copied slice edges. */
 export function removeUnpairedBookmarkBoundaries(slice: Slice): Slice {
   const boundaries: BookmarkBoundaryOccurrence[] = [];

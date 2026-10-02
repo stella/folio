@@ -28,6 +28,7 @@ import {
 } from "../../internal/paragraphFormattingSerialization";
 import { joinCommentRangesAcrossParagraphs } from "../../docx/commentRangeJoin";
 import { completeCommentReferences } from "../../docx/commentReferenceCompletion";
+import { normalizeFoldedListNumbers } from "../../docx/foldedListNumberFields";
 import { isInlineSdtContent, isSimpleFieldContent } from "../../docx/inlineWrapperContent";
 import {
   BLOCK_TREE_DESCENT,
@@ -1821,6 +1822,9 @@ function convertPMParagraph(
   if (listRendering) {
     paragraph.listRendering = listRendering;
   }
+  // A folded list-number field is hidden only while this paragraph's marker
+  // shows it; every other one goes back on the line before it is written.
+  normalizeFoldedListNumbers(paragraph);
   if (attrs.renderedPageBreakBefore) {
     paragraph.renderedPageBreakBefore = true;
   }

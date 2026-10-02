@@ -37,7 +37,19 @@ const capture = (kind: "field" | "tab", serial: number): ParagraphContent => ({
   type: "preservedInline",
   xml: `<w:r data-serial="${serial}"/>`,
   text: "",
-  foldedListNumber: kind,
+  foldedListNumber:
+    kind === "field"
+      ? {
+          kind,
+          field: {
+            type: "complexField",
+            instruction: " LISTNUM ",
+            fieldType: "LISTNUM",
+            fieldCode: [],
+            fieldResult: [{ type: "run", content: [{ type: "text", text: `(${serial})` }] }],
+          },
+        }
+      : { kind, run: { type: "run", content: [{ type: "tab" }] } },
 });
 
 /** A story of paragraphs whose captures each carry markup of their own. */
@@ -70,7 +82,7 @@ const capturesOf = (document: Document): unknown[] =>
   paragraphsOf(document).flatMap((paragraph) =>
     paragraph.content.flatMap((item) =>
       item.type === "preservedInline" && item.foldedListNumber !== undefined
-        ? [[item.foldedListNumber, item.xml]]
+        ? [[item.foldedListNumber.kind, item.xml]]
         : [],
     ),
   );

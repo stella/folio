@@ -1,13 +1,15 @@
 /**
- * A save writes back every `LISTNUM` field the reader folded into a list
- * marker, and what the reader shows for the paragraph does not change.
+ * A save writes back every `LISTNUM` field of a numbered paragraph, the ones
+ * the reader folded into the list marker and the ones on the line, and what
+ * the reader shows for the paragraph does not change.
  *
  * Two oracles that share nothing. The saved markup is read without the parser
  * and compared with the markup the paragraph was authored from: instruction,
  * field characters, cached result, the tab, the range markers between them and
  * the text around them, in order. The reopened document is compared with the
- * one first opened: which items the reader folded, and the marker each
- * paragraph carries and is laid out with.
+ * one first opened: which items the reader folded, the marker each paragraph
+ * carries and is laid out with, and that the fields it shows are the fields
+ * its markup holds.
  *
  * Each case goes out three ways, because each takes a different route through
  * the save: no paragraph of its own edited, text typed into every paragraph,
@@ -21,13 +23,17 @@ import { EditorState } from "prosemirror-state";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { foldedListNumberPlugin } from "../prosemirror/foldedListNumber";
 import type { Document } from "../types/document";
 import {
   bodyParagraphs,
   cachedDisplay,
   documentXmlOf,
   expectedTokens,
+  fieldResultsInFile,
+  fieldResultsShown,
   type FieldSpec,
+  foldedFieldsOf,
   contentShapes,
   type GapMarker,
   inlineTokens,
@@ -45,6 +51,7 @@ import {
   withSettledTail,
 } from "./__tests__/listNumberFieldFixture";
 import { repackDocx } from "./rezip";
+import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -62,9 +69,9 @@ const fieldArbitrary: fc.Arbitrary<FieldSpec> = fc.record({
     " LISTNUM  LegalDefault \\l 3 ",
     " listnum NumberDefault \\s 2 ",
   ),
-  // A literal percent sign, a tab inside the cached result, and a field that
-  // cached nothing.
-  result: fc.constantFrom("(a)", "(ii)", "50%", "%", "a\tb", ""),
+  // A literal percent sign among them; the fixed example below adds a tab
+  // inside the cached result.
+  result: fc.constantFrom("(a)", "(ii)", "50%", "%"),
   formatting: fc.constantFrom(...RESULT_FORMATTING),
   before: fc.constantFrom("", "", "and ", "x"),
   gap: fc.uniqueArray(fc.constantFrom(...GAP_MARKERS), { maxLength: 3 }),
@@ -72,25 +79,17 @@ const fieldArbitrary: fc.Arbitrary<FieldSpec> = fc.record({
 });
 
 /**
- * The fields of one paragraph the reader folds. At least one caches a display,
- * or the marker has nothing to show and the reader folds none. A comment opens
- * after the last field only, as the last marker ahead of its tab: its range
- * runs to the paragraph's end, and what else may stand inside an open range is
- * the editor's to order, not this save's.
+ * A comment opens after the last field only, as the last marker ahead of its
+ * tab: its range runs to the paragraph's end, and what else may stand inside
+ * an open range is the editor's to order, not this save's.
  */
-const foldable = (fields: FieldSpec[]): FieldSpec[] => {
-  const cachesNothing = fields.every(({ result }) => result === "");
-  return fields.map((field, index): FieldSpec => {
+const foldable = (fields: FieldSpec[]): FieldSpec[] =>
+  fields.map((field, index): FieldSpec => {
     const last = index === fields.length - 1;
     const bookmarks = field.gap.filter((marker) => marker !== "comment");
     const commented = last && field.gap.includes("comment");
-    return {
-      ...field,
-      result: cachesNothing && index === 0 ? "(a)" : field.result,
-      gap: commented ? [...bookmarks, "comment"] : bookmarks,
-    };
+    return { ...field, gap: commented ? [...bookmarks, "comment"] : bookmarks };
   });
-};
 
 const paragraphsArbitrary: fc.Arbitrary<ParagraphSpec[]> = fc
   .array(
@@ -126,6 +125,11 @@ const expectSaved = async (
   expect(foldedKinds(reopened)).toEqual(foldedKinds(original));
   expect(modelMarkers(reopened)).toEqual(modelMarkers(original));
   expect(layoutMarkers(reopened)).toEqual(layoutMarkers(original));
+  for (const paragraph of bodyParagraphs(reopened)) {
+    expect(fieldResultsShown(paragraph)).toBe(
+      fieldResultsInFile(inlineTokens(serializeParagraph(paragraph))),
+    );
+  }
 };
 
 /** What the reader owes each paragraph before any save is looked at. */
@@ -136,15 +140,18 @@ const expectFolded = (parsed: Document, specs: readonly ParagraphSpec[]): void =
     if (!paragraph) {
       throw new Error(`The document has no paragraph ${spec.paraId}`);
     }
-    const cached = cachedDisplay(spec);
+    // Only the fields that open the paragraph are behind the marker.
+    const folded = foldedFieldsOf(spec);
     expect(foldedKinds(parsed).at(index)).toEqual(
-      spec.fields.flatMap(({ tab }) => (tab ? ["folded:field", "folded:tab"] : ["folded:field"])),
+      folded.flatMap(({ tab }) => (tab ? ["folded:field", "folded:tab"] : ["folded:field"])),
     );
-    expect(JSON.stringify(paragraph.content)).not.toContain("complexField");
-    // A bullet's marker is redrawn in its symbol font, cached text included.
-    if (spec.marker !== "symbol") {
-      expect(paragraph.listRendering?.marker.endsWith(`\t${cached}`)).toBe(true);
+    const marker = paragraph.listRendering?.marker ?? "";
+    if (folded.length > 0) {
+      expect(marker.endsWith(`\t${cachedDisplay(folded)}`)).toBe(true);
+    } else if (spec.marker !== "symbol") {
+      expect(marker.includes("\t")).toBe(false);
     }
+    expect(fieldResultsShown(paragraph)).toBe(cachedDisplay(spec.fields));
   }
 };
 
@@ -157,7 +164,10 @@ describe("saving paragraphs whose list markers hold LISTNUM fields", () => {
           const buffer = await listNumberFieldDocx(specs);
           const parsed = await openDocx(buffer);
           expectFolded(parsed, specs);
-          const opened = EditorState.create({ doc: toProseDoc(parsed) });
+          const opened = EditorState.create({
+            doc: toProseDoc(parsed),
+            plugins: [foldedListNumberPlugin()],
+          });
 
           // No paragraph of its own edited.
           const beside = typeInto(opened, PLAIN_PARAGRAPH_ID, "Plain.", TYPED);
@@ -200,7 +210,7 @@ describe("saving paragraphs whose list markers hold LISTNUM fields", () => {
                   fields: [
                     {
                       instruction: " LISTNUM ",
-                      result: "50%",
+                      result: "a\tb",
                       formatting: "symbol",
                       before: "",
                       gap: ["bookmark"],
@@ -208,15 +218,15 @@ describe("saving paragraphs whose list markers hold LISTNUM fields", () => {
                     },
                     {
                       instruction: "LISTNUM",
-                      result: "a\tb",
+                      result: "50%",
                       formatting: "bold",
-                      before: "and ",
+                      before: "",
                       gap: ["bookmarkStart"],
                       tab: true,
                     },
                     {
                       instruction: " LISTNUM  LegalDefault \\l 3 ",
-                      result: "",
+                      result: "(a)",
                       formatting: "symbol",
                       before: "x",
                       gap: ["comment"],

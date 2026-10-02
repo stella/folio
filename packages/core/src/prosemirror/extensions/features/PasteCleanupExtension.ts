@@ -9,8 +9,8 @@
  *    default clipboard parser; ProseMirror chains every plugin's
  *    `transformPastedHTML`, so this cooperates with the inliner rather than
  *    replacing it, and `<style>` blocks are left intact for it to resolve.
- * 2. `transformPasted` — drops the list-number fields a copied paragraph drew
- *    in its marker, drops unpaired bookmark and move-range boundaries,
+ * 2. `transformPasted` — puts the list-number fields a copied paragraph drew
+ *    in its marker on the line, drops unpaired bookmark and move-range boundaries,
  *    then points pasted headings at the open document's own heading style
  *    (see {@link retargetPastedHeadingStyles}).
  * 3. `Mod-Alt-v` — "paste without formatting", inserting clipboard text with
@@ -20,12 +20,12 @@
 import { Plugin } from "prosemirror-state";
 
 import { pasteWithoutFormatting } from "../../commands/pastePlainText";
+import { unfoldPastedListNumberFields } from "../../foldedListNumber";
 import { createExtension } from "../create";
 import type { ExtensionRuntime } from "../types";
 import { Priority } from "../types";
 import {
   cleanPastedHtml,
-  removeFoldedListNumberFields,
   removeUnpairedBookmarkBoundaries,
   removeUnpairedMoveRangeBoundaries,
 } from "./pasteCleanup";
@@ -54,7 +54,7 @@ export const PasteCleanupExtension = createExtension<PasteCleanupOptions>({
           numberPastedHtmlLists(
             retargetPastedHeadingStyles(
               removeUnpairedMoveRangeBoundaries(
-                removeUnpairedBookmarkBoundaries(removeFoldedListNumberFields(slice)),
+                removeUnpairedBookmarkBoundaries(unfoldPastedListNumberFields(slice)),
               ),
               view,
             ),

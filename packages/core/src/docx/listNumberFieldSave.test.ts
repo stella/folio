@@ -1,17 +1,25 @@
 /**
- * A numbered paragraph's inline `LISTNUM` fields are drawn as part of its list
- * marker. They stay in the paragraph's content as the markup they were read
- * from, showing nothing, so a save owes the file every one of them as it was:
- * the instruction, the field characters, the cached result with its
+ * A `LISTNUM` field that opens a numbered paragraph is drawn as part of the
+ * list marker. It stays in the paragraph's content as a capture of the markup
+ * it was read from, showing nothing, so a save owes the file the field as it
+ * was: the instruction, the field characters, the cached result with its
  * formatting, the tab after it, and where they sat.
+ *
+ * A capture is hidden only while its paragraph's marker shows it. Wherever an
+ * edit takes it out of that, it becomes the ordinary field again, on the
+ * line, so the page never hides a field the file holds.
  */
 
 import { describe, expect, test } from "bun:test";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { removeFoldedListNumberFields } from "../prosemirror/extensions/features/pasteCleanup";
+import {
+  foldedListNumberPlugin,
+  unfoldPastedListNumberFields,
+} from "../prosemirror/foldedListNumber";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
 import { paragraphNumberingAttr } from "../prosemirror/numberingAttr";
 import type { Document } from "../types/document";
@@ -20,10 +28,13 @@ import {
   contentShapes,
   documentXmlOf,
   expectedTokens,
+  fieldResultsInFile,
+  fieldResultsShown,
   foldedCaptureNodes,
   inlineTokens,
   layoutMarkers,
   listNumberFieldDocx,
+  liveFoldFaults,
   modelMarkers,
   openDocx,
   paragraphMarkupOf,
@@ -56,6 +67,7 @@ const LEADING: ParagraphSpec = {
   body: "Body text",
 };
 
+/** One field that opens the paragraph, and one behind its text. */
 const INLINE: ParagraphSpec = {
   paraId: "20000002",
   marker: "decimal",
@@ -71,7 +83,7 @@ const INLINE: ParagraphSpec = {
     {
       instruction: "LISTNUM \\l 4",
       result: "(i)",
-      formatting: "symbol",
+      formatting: "plain",
       before: "first; ",
       gap: ["comment"],
       tab: false,
@@ -81,6 +93,32 @@ const INLINE: ParagraphSpec = {
 };
 
 const SPECS = [LEADING, INLINE];
+
+/** No range markers: a paragraph that can be copied without copying an id. */
+const SIMPLE: ParagraphSpec = {
+  paraId: "20000001",
+  marker: "decimal",
+  fields: [
+    {
+      instruction: " LISTNUM ",
+      result: "(a)",
+      formatting: "plain",
+      before: "",
+      gap: [],
+      tab: true,
+    },
+  ],
+  body: "cd",
+};
+
+const SIMPLE_FIELD_TOKENS = [
+  "fldChar:begin",
+  "code: LISTNUM ",
+  "fldChar:separate",
+  "text:(a)",
+  "fldChar:end",
+  "tab",
+];
 
 const LEADING_FIELD_TOKENS = [
   "fldChar:begin",
@@ -95,6 +133,14 @@ const LEADING_FIELD_TOKENS = [
 
 const ALL_CODES = ["code: LISTNUM  LegalDefault \\l 3 ", "code: LISTNUM ", "code:LISTNUM \\l 4"];
 
+const FRESH_PARAGRAPH_ID = "2000000A";
+
+/** Split at `position`, the new paragraph taking an id of its own as the editor gives it one. */
+const splitAt = (state: EditorState, position: number): EditorState =>
+  state.apply(
+    state.tr.split(position).setNodeAttribute(position + 1, "paraId", FRESH_PARAGRAPH_ID),
+  );
+
 const codes = (tokens: readonly string[]): string[] =>
   tokens.filter((token) => token.startsWith("code:"));
 
@@ -103,6 +149,38 @@ const foldedKinds = (model: Document): string[][] =>
 
 const paragraphTokens = (model: Document): string[][] =>
   bodyParagraphs(model).map((paragraph) => inlineTokens(serializeParagraph(paragraph)));
+
+/** Every paragraph shows the field results its markup holds: none hidden, none twice. */
+const expectShownIsWritten = (model: Document): void => {
+  for (const paragraph of bodyParagraphs(model)) {
+    expect(fieldResultsShown(paragraph)).toBe(
+      fieldResultsInFile(inlineTokens(serializeParagraph(paragraph))),
+    );
+  }
+};
+
+/**
+ * The editor state, what a save of it writes, and the document read back:
+ * each shows exactly the fields the file holds, and the file holds `codes`.
+ */
+const expectHonest = async (
+  doc: PMNode,
+  parsed: Document,
+  expectedCodes: readonly string[],
+): Promise<Document> => {
+  expect(liveFoldFaults(doc)).toEqual([]);
+  const rebuilt = fromProseDoc(doc, parsed);
+  expectShownIsWritten(rebuilt);
+  expect(paragraphTokens(rebuilt).flatMap(codes)).toEqual([...expectedCodes]);
+
+  const reopened = await openDocx(await repackDocx(rebuilt, { updateModifiedDate: false }));
+  expectShownIsWritten(reopened);
+  expect(paragraphTokens(reopened).flatMap(codes)).toEqual([...expectedCodes]);
+  expect(bodyParagraphs(reopened).map(fieldResultsShown)).toEqual(
+    bodyParagraphs(rebuilt).map(fieldResultsShown),
+  );
+  return rebuilt;
+};
 
 const expectSavedFields = async (
   saved: ArrayBuffer,
@@ -120,34 +198,48 @@ const expectSavedFields = async (
   expect(paragraphMarkupOf(xml, LEADING.paraId)).toMatch(
     /<w:b\/>(?:(?!<\/w:r>).)*<w:t[^>]*>\(a\)<\/w:t>/u,
   );
-  expect(paragraphMarkupOf(xml, INLINE.paraId)).toMatch(
-    /w:ascii="Symbol"(?:(?!<\/w:r>).)*<w:t[^>]*>\(i\)<\/w:t>/u,
-  );
 
   const reopened = await openDocx(saved);
   expect(foldedKinds(reopened)).toEqual(foldedKinds(original));
   expect(modelMarkers(reopened)).toEqual(modelMarkers(original));
   expect(layoutMarkers(reopened)).toEqual(layoutMarkers(original));
+  expectShownIsWritten(reopened);
+};
+
+type Fixture = {
+  buffer: ArrayBuffer;
+  parsed: Document;
+  /** The editor as it runs: every change is followed by the fold's own pass. */
+  state: EditorState;
+  /** The same document with nothing watching it. */
+  bare: EditorState;
 };
 
 const fixture = async (
   specs: readonly ParagraphSpec[] = SPECS,
-): Promise<{ buffer: ArrayBuffer; parsed: Document; state: EditorState }> => {
-  const buffer = await listNumberFieldDocx(specs);
+  options: Parameters<typeof listNumberFieldDocx>[1] = {},
+): Promise<Fixture> => {
+  const buffer = await listNumberFieldDocx(specs, options);
   const parsed = await openDocx(buffer);
-  return { buffer, parsed, state: EditorState.create({ doc: toProseDoc(parsed) }) };
+  const doc = toProseDoc(parsed);
+  return {
+    buffer,
+    parsed,
+    state: EditorState.create({ doc, plugins: [foldedListNumberPlugin()] }),
+    bare: EditorState.create({ doc }),
+  };
 };
 
 describe("the reader's fold of LISTNUM fields", () => {
-  test("shows each field in the marker and keeps its markup where it stood", async () => {
-    const { parsed } = await fixture();
+  test("hides the field that opens a paragraph behind its marker, and no other", async () => {
+    const { parsed, state } = await fixture();
     const [leading, inline] = bodyParagraphs(parsed);
     if (!leading || !inline) {
       throw new Error("The fixture opens with two numbered paragraphs");
     }
 
     expect(leading.listRendering?.marker.endsWith("\t(a)")).toBe(true);
-    expect(inline.listRendering?.marker.endsWith("\t(b) (i)")).toBe(true);
+    expect(inline.listRendering?.marker.endsWith("\t(b)")).toBe(true);
     expect(expectedTokens(LEADING).slice(0, LEADING_FIELD_TOKENS.length)).toEqual(
       LEADING_FIELD_TOKENS,
     );
@@ -160,21 +252,18 @@ describe("the reader's fold of LISTNUM fields", () => {
       "folded:tab",
       "run",
     ]);
+    // The field behind "first; " is on the line, where the text is.
     expect(inlineShape?.slice(0, 6)).toEqual([
       "folded:field",
       "folded:tab",
       "run",
-      "folded:field",
+      "complexField",
       "commentRangeStart",
       "run",
     ]);
-    // A capture shows nothing: the marker is where the field is read.
-    for (const item of [...leading.content, ...inline.content]) {
-      if (item.type === "preservedInline") {
-        expect(item.text).toBe("");
-      }
-    }
-    expect(paragraphTokens(parsed).slice(0, 2).map(codes).flat()).toEqual(ALL_CODES);
+    expect(paragraphTokens(parsed).flatMap(codes)).toEqual(ALL_CODES);
+    expectShownIsWritten(parsed);
+    expect(liveFoldFaults(state.doc)).toEqual([]);
   });
 
   test("a field with no cached result folds nothing", async () => {
@@ -195,6 +284,13 @@ describe("the reader's fold of LISTNUM fields", () => {
     ]);
 
     expect(contentShapes(parsed).at(0)).toEqual(["complexField", "run"]);
+  });
+
+  test("a bullet's marker hides no field", async () => {
+    const { parsed } = await fixture([{ ...SIMPLE, marker: "symbol" }]);
+
+    expect(contentShapes(parsed).at(0)).toEqual(["complexField", "run"]);
+    expectShownIsWritten(parsed);
   });
 });
 
@@ -251,16 +347,18 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
 
   test("a field whose display is a recorded numbering change is written as it was read", async () => {
     const buffer = await listNumberFieldDocx([LEADING], {
-      [LEADING.paraId]:
-        `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-        `<w:r><w:instrText xml:space="preserve"> LISTNUM </w:instrText></w:r>` +
-        `<w:r><w:fldChar w:fldCharType="end"><w:numberingChange w:id="9" w:author="A" w:date="2024-01-01T00:00:00Z" w:original="(a)"/></w:fldChar></w:r>` +
-        `<w:r><w:tab/></w:r><w:r><w:t>Body text</w:t></w:r>`,
+      authored: {
+        [LEADING.paraId]:
+          `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
+          `<w:r><w:instrText xml:space="preserve"> LISTNUM </w:instrText></w:r>` +
+          `<w:r><w:fldChar w:fldCharType="end"><w:numberingChange w:id="9" w:author="A" w:date="2024-01-01T00:00:00Z" w:original="(a)"/></w:fldChar></w:r>` +
+          `<w:r><w:tab/></w:r><w:r><w:t>Body text</w:t></w:r>`,
+      },
     });
     const parsed = await openDocx(buffer);
     expect(bodyParagraphs(parsed).at(0)?.listRendering?.marker.endsWith("\t(a)")).toBe(true);
     const edited = typeInto(
-      EditorState.create({ doc: toProseDoc(parsed) }),
+      EditorState.create({ doc: toProseDoc(parsed), plugins: [foldedListNumberPlugin()] }),
       LEADING.paraId,
       "Body text",
       "!",
@@ -282,219 +380,120 @@ describe("saving a paragraph whose list marker holds LISTNUM fields", () => {
   });
 });
 
-const ANCHORED: ParagraphSpec = {
-  paraId: "20000001",
-  marker: "decimal",
-  fields: [
-    {
-      instruction: " LISTNUM ",
-      result: "(a)",
-      formatting: "plain",
-      before: "ab ",
-      gap: [],
-      tab: true,
-    },
-  ],
-  body: "cd",
-};
+describe("typing around the field a marker shows", () => {
+  for (const watched of [true, false]) {
+    const editor = watched ? "the editor's own pass" : "the save alone";
 
-type Edit = (state: EditorState) => EditorState;
+    test(`text typed at the very start of the paragraph lands behind the field and its tab (${editor})`, async () => {
+      const { buffer, parsed, state, bare } = await fixture([SIMPLE]);
+      const start = watched ? state : bare;
+      const { position } = paragraphNode(start.doc, SIMPLE.paraId);
 
-const insertAt =
-  (position: (state: EditorState) => number, text: string): Edit =>
-  (state) =>
-    state.apply(state.tr.insertText(text, position(state)));
+      const typed = start.apply(start.tr.insertText("X", position + 1));
 
-const deleteText =
-  (text: string): Edit =>
-  (state) => {
-    const from = positionOfText(state.doc, ANCHORED.paraId, text);
-    return state.apply(state.tr.delete(from, from + text.length));
-  };
-
-const capture = (state: EditorState, kind: "field" | "tab"): number => {
-  const found = foldedCaptureNodes(state.doc).find(
-    ({ node }) => node.attrs["foldedListNumber"] === kind,
-  );
-  if (!found) {
-    throw new Error(`The paragraph holds no ${kind} capture`);
-  }
-  return found.position;
-};
-
-const startOf =
-  (text: string) =>
-  (state: EditorState): number =>
-    positionOfText(state.doc, ANCHORED.paraId, text);
-
-const endOf =
-  (text: string) =>
-  (state: EditorState): number =>
-    positionOfText(state.doc, ANCHORED.paraId, text) + text.length;
-
-const ANCHOR_CASES: { name: string; edits: Edit[]; before: string; body: string }[] = [
-  {
-    name: "typed ahead of the field",
-    edits: [insertAt(startOf("ab "), "X")],
-    before: "Xab ",
-    body: "cd",
-  },
-  { name: "deleted ahead of the field", edits: [deleteText("b")], before: "a ", body: "cd" },
-  {
-    name: "typed right before the field",
-    edits: [insertAt((state) => capture(state, "field"), "Y")],
-    before: "ab Y",
-    body: "cd",
-  },
-  {
-    name: "deleted right before the field",
-    edits: [deleteText(" ")],
-    before: "ab",
-    body: "cd",
-  },
-  {
-    name: "typed right after the tab",
-    edits: [insertAt((state) => capture(state, "tab") + 1, "Z")],
-    before: "ab ",
-    body: "Zcd",
-  },
-  { name: "deleted right after the tab", edits: [deleteText("c")], before: "ab ", body: "d" },
-  {
-    name: "typed after the field",
-    edits: [insertAt(endOf("cd"), "W")],
-    before: "ab ",
-    body: "cdW",
-  },
-  {
-    name: "typed and deleted on every side at once",
-    edits: [
-      insertAt(startOf("ab "), "X"),
-      deleteText("b"),
-      insertAt((state) => capture(state, "field"), "Y"),
-      insertAt((state) => capture(state, "tab") + 1, "Z"),
-      deleteText("c"),
-      insertAt(endOf("d"), "W"),
-    ],
-    before: "Xa Y",
-    body: "ZdW",
-  },
-];
-
-describe("a LISTNUM field in the middle of a paragraph stays between its neighbours", () => {
-  for (const { name, edits, before, body } of ANCHOR_CASES) {
-    test(`text ${name}`, async () => {
-      const { buffer, parsed, state } = await fixture([ANCHORED]);
-      let edited = state;
-      for (const edit of edits) {
-        edited = edit(edited);
+      if (watched) {
+        expect(liveFoldFaults(typed.doc)).toEqual([]);
+        expect(paragraphNode(typed.doc, SIMPLE.paraId).node.firstChild?.type.name).toBe(
+          "preservedXml",
+        );
       }
-
-      const saved = await saveDocx(fromProseDoc(edited.doc, parsed), buffer, [ANCHORED.paraId]);
-
-      const markup = paragraphMarkupOf(await documentXmlOf(saved), ANCHORED.paraId);
-      expect(inlineTokens(markup)).toEqual([
-        `text:${before}`,
-        "fldChar:begin",
-        "code: LISTNUM ",
-        "fldChar:separate",
-        "text:(a)",
-        "fldChar:end",
-        "tab",
-        `text:${body}`,
-      ]);
-      expect(modelMarkers(await openDocx(saved))).toEqual(modelMarkers(parsed));
+      const saved = await saveDocx(fromProseDoc(typed.doc, parsed), buffer, [SIMPLE.paraId]);
+      const markup = paragraphMarkupOf(await documentXmlOf(saved), SIMPLE.paraId);
+      expect(inlineTokens(markup)).toEqual([...SIMPLE_FIELD_TOKENS, "text:Xcd"]);
+      const reopened = await openDocx(saved);
+      expect(modelMarkers(reopened)).toEqual(modelMarkers(parsed));
+      expectShownIsWritten(reopened);
     });
   }
-});
 
-describe("editing a paragraph whose list marker holds LISTNUM fields", () => {
-  test("a split leaves the fields in the half they stood in", async () => {
+  test("text typed between the field and its tab leaves the field hidden and the tab on the line", async () => {
+    const { parsed, state } = await fixture([SIMPLE]);
+    const [field, tab] = foldedCaptureNodes(state.doc);
+    if (!field || !tab) {
+      throw new Error("The paragraph opens with a field capture and a tab capture");
+    }
+
+    const typed = state.apply(state.tr.insertText("X", tab.position));
+
+    const rebuilt = await expectHonest(typed.doc, parsed, ["code: LISTNUM "]);
+    expect(paragraphTokens(rebuilt).at(0)).toEqual([
+      ...SIMPLE_FIELD_TOKENS.slice(0, 5),
+      "text:X",
+      "tab",
+      "text:cd",
+    ]);
+    expect(foldedKinds(rebuilt).at(0)).toEqual(["folded:field"]);
+  });
+
+  test("text typed after the tab, and deleted there, leaves the field where it was", async () => {
+    const { buffer, parsed, state } = await fixture([SIMPLE]);
+    const typed = typeInto(state, SIMPLE.paraId, "cd", "!");
+    const from = positionOfText(typed.doc, SIMPLE.paraId, "d");
+    const edited = typed.apply(typed.tr.delete(from, from + 1));
+
+    const saved = await saveDocx(fromProseDoc(edited.doc, parsed), buffer, [SIMPLE.paraId]);
+
+    const markup = paragraphMarkupOf(await documentXmlOf(saved), SIMPLE.paraId);
+    expect(inlineTokens(markup)).toEqual([...SIMPLE_FIELD_TOKENS, "text:c!"]);
+    expect(liveFoldFaults(edited.doc)).toEqual([]);
+  });
+
+  test("Enter at the very start leaves an empty paragraph above, and the field with its text", async () => {
+    const { parsed, state } = await fixture([SIMPLE]);
+    const { position } = paragraphNode(state.doc, SIMPLE.paraId);
+
+    const split = splitAt(state, position + 1);
+
+    const rebuilt = await expectHonest(split.doc, parsed, ["code: LISTNUM "]);
+    const [first, second] = paragraphTokens(rebuilt);
+    expect(first).toEqual([]);
+    expect(second).toEqual([...SIMPLE_FIELD_TOKENS, "text:cd"]);
+    // The empty paragraph's marker no longer shows a field it does not hold.
+    expect(modelMarkers(rebuilt).at(0)?.includes("\t")).toBe(false);
+    expect(modelMarkers(rebuilt).at(1)?.endsWith("\t(a)")).toBe(true);
+  });
+
+  test("Enter in the text leaves the field with the first half", async () => {
     const { parsed, state } = await fixture();
     const middle = positionOfText(state.doc, LEADING.paraId, " text");
 
-    const rebuilt = fromProseDoc(state.apply(state.tr.split(middle)).doc, parsed);
+    const split = splitAt(state, middle);
 
+    const rebuilt = await expectHonest(split.doc, parsed, ALL_CODES);
     const [first, second] = paragraphTokens(rebuilt);
     expect(first).toEqual([...LEADING_FIELD_TOKENS, "text:Body"]);
     expect(second).toEqual(["text: text"]);
-    expect(paragraphTokens(rebuilt).map(codes).flat()).toEqual(ALL_CODES);
+    expect(modelMarkers(rebuilt).at(1)?.includes("\t")).toBe(false);
   });
 
-  test("a split ahead of the fields leaves them in the second half, and only there", async () => {
-    const { parsed, state } = await fixture();
-    const { position } = paragraphNode(state.doc, LEADING.paraId);
-
-    const rebuilt = fromProseDoc(state.apply(state.tr.split(position + 1)).doc, parsed);
-
-    const [first, second] = paragraphTokens(rebuilt);
-    expect(first).toEqual([]);
-    expect(second).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
-    expect(paragraphTokens(rebuilt).map(codes).flat()).toEqual(ALL_CODES);
-  });
-
-  test("a join keeps the fields of both paragraphs, each where it stood", async () => {
+  test("Backspace at the very start joins the paragraph behind the one before, with its field on the line", async () => {
     const { parsed, state } = await fixture();
     const { node, position } = paragraphNode(state.doc, LEADING.paraId);
 
-    const rebuilt = fromProseDoc(state.apply(state.tr.join(position + node.nodeSize)).doc, parsed);
+    const joined = state.apply(state.tr.join(position + node.nodeSize));
 
+    const rebuilt = await expectHonest(joined.doc, parsed, ALL_CODES);
     expect(bodyParagraphs(rebuilt)).toHaveLength(2);
+    // The first paragraph's marker still shows its own field, and only that one.
+    expect(foldedKinds(rebuilt).at(0)).toEqual(["folded:field", "folded:tab"]);
+    expect(modelMarkers(rebuilt).at(0)?.endsWith("\t(a)")).toBe(true);
     const tokens = paragraphTokens(rebuilt).at(0) ?? [];
-    expect(codes(tokens)).toEqual(ALL_CODES);
     expect(tokens.slice(0, LEADING_FIELD_TOKENS.length + 2)).toEqual([
       ...LEADING_FIELD_TOKENS,
       "text:Body text",
       "fldChar:begin",
     ]);
-    expect(tokens).toContain("text:first; ");
+    expect(
+      fieldResultsShown(bodyParagraphs(rebuilt)[0] ?? { type: "paragraph", content: [] }),
+    ).toBe("(a) (b) (i)");
   });
+});
 
-  test("a copy pasted elsewhere takes no field, and the paragraph it came from keeps its own", async () => {
-    const { state } = await fixture();
-    const { node, position } = paragraphNode(state.doc, LEADING.paraId);
-    const copied = state.doc.slice(position, position + node.nodeSize);
-    expect(foldedCaptureNodes(copied.content.firstChild ?? node)).toHaveLength(2);
-
-    const pasted = state.apply(state.tr.replaceRange(0, 0, removeFoldedListNumberFields(copied)));
-
-    const copy = pasted.doc.firstChild;
-    if (!copy) {
-      throw new Error("The paste put a paragraph at the start of the document");
-    }
-    expect(copy.textContent).toBe(LEADING.body);
-    expect(foldedCaptureNodes(copy)).toHaveLength(0);
-    expect(foldedCaptureNodes(pasted.doc).map(({ node: found }) => found.attrs["xml"])).toEqual(
-      foldedCaptureNodes(state.doc).map(({ node: found }) => found.attrs["xml"]),
-    );
-  });
-
-  test("a slice that holds no field is pasted as it is", async () => {
-    const { state } = await fixture();
-    const { node, position } = paragraphNode(state.doc, PLAIN_PARAGRAPH_ID);
-    const copied = state.doc.slice(position, position + node.nodeSize);
-
-    expect(removeFoldedListNumberFields(copied)).toBe(copied);
-  });
-
-  test("a paragraph moved to another level of its list keeps the fields", async () => {
+describe("a field its marker stops showing goes back on the line", () => {
+  test("a paragraph taken out of its list", async () => {
     const { parsed, state } = await fixture();
     const { node, position } = paragraphNode(state.doc, LEADING.paraId);
-    const moved = state.apply(
-      state.tr.setNodeMarkup(position, undefined, {
-        ...node.attrs,
-        numPr: paragraphNumberingAttr(paragraphNumberingReference({ numId: 1, ilvl: 2 })),
-      }),
-    );
 
-    const tokens = paragraphTokens(fromProseDoc(moved.doc, parsed));
-
-    expect(tokens.at(0)).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
-    expect(tokens.map(codes).flat()).toEqual(ALL_CODES);
-  });
-
-  test("a paragraph taken out of its list keeps the fields", async () => {
-    const { parsed, state } = await fixture();
-    const { node, position } = paragraphNode(state.doc, LEADING.paraId);
     const unnumbered = state.apply(
       state.tr.setNodeMarkup(position, undefined, {
         ...node.attrs,
@@ -503,19 +502,153 @@ describe("editing a paragraph whose list marker holds LISTNUM fields", () => {
       }),
     );
 
-    const tokens = paragraphTokens(fromProseDoc(unnumbered.doc, parsed));
-
-    expect(tokens.at(0)).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
+    expect(foldedCaptureNodes(paragraphNode(unnumbered.doc, LEADING.paraId).node)).toHaveLength(0);
+    const rebuilt = await expectHonest(unnumbered.doc, parsed, ALL_CODES);
+    expect(paragraphTokens(rebuilt).at(0)).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
+    expect(foldedKinds(rebuilt).at(0)).toEqual([]);
+    expect(
+      fieldResultsShown(bodyParagraphs(rebuilt)[0] ?? { type: "paragraph", content: [] }),
+    ).toBe("(a)");
   });
 
-  test("a field deleted with the content around it is not written", async () => {
+  test("a paragraph moved to another level, whose marker is drawn anew", async () => {
     const { parsed, state } = await fixture();
     const { node, position } = paragraphNode(state.doc, LEADING.paraId);
+
+    const moved = state.apply(
+      state.tr.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        numPr: paragraphNumberingAttr(paragraphNumberingReference({ numId: 1, ilvl: 2 })),
+        listMarker: "(%3)",
+        listMarkerTemplate: "(%3)",
+      }),
+    );
+
+    expect(foldedCaptureNodes(paragraphNode(moved.doc, LEADING.paraId).node)).toHaveLength(0);
+    const rebuilt = await expectHonest(moved.doc, parsed, ALL_CODES);
+    expect(paragraphTokens(rebuilt).at(0)).toEqual([...LEADING_FIELD_TOKENS, "text:Body text"]);
+  });
+
+  test("a numbered paragraph joined behind a plain one", async () => {
+    const { parsed, state } = await fixture([SIMPLE], { plainFirst: true });
+    const { node, position } = paragraphNode(state.doc, PLAIN_PARAGRAPH_ID);
+
+    const joined = state.apply(state.tr.join(position + node.nodeSize));
+
+    expect(foldedCaptureNodes(joined.doc)).toHaveLength(0);
+    const rebuilt = await expectHonest(joined.doc, parsed, ["code: LISTNUM "]);
+    expect(paragraphTokens(rebuilt)).toEqual([["text:Plain.", ...SIMPLE_FIELD_TOKENS, "text:cd"]]);
+    expect(
+      fieldResultsShown(bodyParagraphs(rebuilt)[0] ?? { type: "paragraph", content: [] }),
+    ).toBe("(a)");
+  });
+
+  test("the save alone does the same when nothing watched the edit", async () => {
+    const { parsed, bare } = await fixture();
+    const { node, position } = paragraphNode(bare.doc, LEADING.paraId);
+    const unnumbered = bare.apply(
+      bare.tr.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        ...CLEARED_LIST_RENDERING_ATTRS,
+        numPr: null,
+      }),
+    );
+    const joined = unnumbered.apply(
+      unnumbered.tr.join(position + paragraphNode(unnumbered.doc, LEADING.paraId).node.nodeSize),
+    );
+
+    const rebuilt = fromProseDoc(joined.doc, parsed);
+
+    expectShownIsWritten(rebuilt);
+    expect(foldedKinds(rebuilt).at(0)).toEqual([]);
+    expect(paragraphTokens(rebuilt).flatMap(codes)).toEqual(ALL_CODES);
+    const reopened = await openDocx(await repackDocx(rebuilt, { updateModifiedDate: false }));
+    expectShownIsWritten(reopened);
+  });
+});
+
+describe("moving and copying a paragraph whose marker shows a field", () => {
+  const paragraphSlice = (state: EditorState) => {
+    const { node, position } = paragraphNode(state.doc, SIMPLE.paraId);
+    return {
+      position,
+      size: node.nodeSize,
+      slice: state.doc.slice(position, position + node.nodeSize),
+    };
+  };
+
+  test("a copy pasted elsewhere shows its field, and the paragraph it came from keeps its own", async () => {
+    const { parsed, state } = await fixture([SIMPLE]);
+    const { slice } = paragraphSlice(state);
+    const end = state.doc.content.size;
+
+    const pasted = state.apply(
+      state.tr
+        .replaceRange(end, end, unfoldPastedListNumberFields(slice))
+        .setNodeAttribute(end, "paraId", FRESH_PARAGRAPH_ID),
+    );
+
+    // One hidden field, as before: the copy brought none.
+    expect(foldedCaptureNodes(pasted.doc).map(({ node }) => node.attrs["xml"])).toEqual(
+      foldedCaptureNodes(state.doc).map(({ node }) => node.attrs["xml"]),
+    );
+    const rebuilt = await expectHonest(pasted.doc, parsed, ["code: LISTNUM ", "code: LISTNUM "]);
+    expect(foldedKinds(rebuilt)).toEqual([["folded:field", "folded:tab"], [], []]);
+    expect(paragraphTokens(rebuilt).at(2)).toEqual([...SIMPLE_FIELD_TOKENS, "text:cd"]);
+  });
+
+  test("cut and pasted elsewhere, the paragraph still has its field, once, and on the line", async () => {
+    const { parsed, state } = await fixture([SIMPLE]);
+    const { position, size, slice } = paragraphSlice(state);
+    const cut = state.apply(state.tr.delete(position, position + size));
+    const end = cut.doc.content.size;
+
+    const pasted = cut.apply(cut.tr.replaceRange(end, end, unfoldPastedListNumberFields(slice)));
+
+    expect(foldedCaptureNodes(pasted.doc)).toHaveLength(0);
+    const rebuilt = await expectHonest(pasted.doc, parsed, ["code: LISTNUM "]);
+    expect(paragraphTokens(rebuilt)).toEqual([
+      ["text:Plain."],
+      [...SIMPLE_FIELD_TOKENS, "text:cd"],
+    ]);
+  });
+
+  test("dragged elsewhere in one step, the paragraph still has its field, once", async () => {
+    const { parsed, state } = await fixture([SIMPLE]);
+    const { position, size, slice } = paragraphSlice(state);
+    const end = state.doc.content.size;
+
+    // A drop deletes the dragged range and inserts the slice in one transaction.
+    const tr = state.tr.delete(position, position + size);
+    const target = tr.mapping.map(end);
+    const dropped = state.apply(
+      tr.replaceRange(target, target, unfoldPastedListNumberFields(slice)),
+    );
+
+    expect(foldedCaptureNodes(dropped.doc)).toHaveLength(0);
+    const rebuilt = await expectHonest(dropped.doc, parsed, ["code: LISTNUM "]);
+    expect(paragraphTokens(rebuilt)).toEqual([
+      ["text:Plain."],
+      [...SIMPLE_FIELD_TOKENS, "text:cd"],
+    ]);
+  });
+
+  test("a slice that holds no field is pasted as it is", async () => {
+    const { state } = await fixture();
+    const { node, position } = paragraphNode(state.doc, PLAIN_PARAGRAPH_ID);
+    const copied = state.doc.slice(position, position + node.nodeSize);
+
+    expect(unfoldPastedListNumberFields(copied)).toBe(copied);
+  });
+
+  test("a field deleted with the content around it is not written, and its marker stops showing it", async () => {
+    const { parsed, state } = await fixture();
+    const { node, position } = paragraphNode(state.doc, LEADING.paraId);
+
     const emptied = state.apply(state.tr.delete(position + 1, position + node.nodeSize - 1));
 
-    const tokens = paragraphTokens(fromProseDoc(emptied.doc, parsed));
-
-    expect(tokens.at(0)).toEqual([]);
-    expect(tokens.map(codes).flat()).toEqual(ALL_CODES.slice(1));
+    const rebuilt = await expectHonest(emptied.doc, parsed, ALL_CODES.slice(1));
+    expect(paragraphTokens(rebuilt).at(0)).toEqual([]);
+    expect(modelMarkers(rebuilt).at(0)?.includes("\t")).toBe(false);
   });
 });

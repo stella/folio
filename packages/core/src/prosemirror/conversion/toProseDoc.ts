@@ -60,6 +60,7 @@ import type {
   MoveFrom,
   MoveTo,
   MathEquation,
+  FoldedListNumber,
   ParagraphContent,
   ShapeTextBody,
   Theme,
@@ -604,12 +605,33 @@ function convertBlockBookmarkBoundary(block: BookmarkStart | BookmarkEnd): PMNod
  * `w:r`. It carries whatever marks surround it, so a capture inside a
  * `w:ins` keeps the insertion and is accepted or rejected with it.
  */
+/**
+ * The nodes the editor shows for what a folded list-number capture stands
+ * for, as JSON. The capture carries them so that it can be replaced by them,
+ * wherever it ends up, without coming back through this conversion.
+ */
+function unfoldedListNumberNodeJson(folded: FoldedListNumber): unknown[] {
+  const item: ParagraphContent = folded.kind === "field" ? folded.field : folded.run;
+  const paragraph = headerFooterToProseDoc([{ type: "paragraph", content: [item] }]).firstChild;
+  const nodes: unknown[] = [];
+  // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+  paragraph?.forEach((node) => {
+    nodes.push(node.toJSON());
+  });
+  return nodes;
+}
+
 function preservedInlineNode(content: PreservedInline): PMNode {
   return schema.node("preservedXml", {
     xml: content.xml,
     text: content.text,
     level: PRESERVED_XML_LEVELS.inline,
-    ...(content.foldedListNumber ? { foldedListNumber: content.foldedListNumber } : {}),
+    ...(content.foldedListNumber
+      ? {
+          foldedListNumber: content.foldedListNumber,
+          foldedListNumberNodes: unfoldedListNumberNodeJson(content.foldedListNumber),
+        }
+      : {}),
   });
 }
 

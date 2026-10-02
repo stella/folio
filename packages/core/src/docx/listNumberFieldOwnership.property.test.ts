@@ -1,12 +1,15 @@
 /**
- * Each `LISTNUM` field a list marker draws exists once, whatever is done
- * around it. A split leaves it in one half, a join carries it into the joined
- * paragraph, typing moves it along with its neighbours, and a paste brings
- * none with it. So after any sequence of those, the document holds the fields
- * it was opened with, in the order it was opened with, and each of them once.
+ * Under any sequence of splits, joins, typing and pastes, the editor never
+ * hides a `LISTNUM` field the page does not show, and never hides one twice.
+ *
+ * After every step each paragraph is in the form the fold allows: its
+ * captures open it and its marker shows exactly their fields. A capture is
+ * one of those the document was opened with, and stands once. And at the end
+ * the fields each paragraph shows are the fields its saved markup holds, with
+ * every field the document was opened with still among them.
  *
  * Every field in the fixture caches a display of its own, so one written
- * twice, or one that changed places with another, shows.
+ * twice, hidden, or lost shows.
  */
 
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
@@ -17,16 +20,21 @@ import { EditorState } from "prosemirror-state";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { removeFoldedListNumberFields } from "../prosemirror/extensions/features/pasteCleanup";
+import {
+  foldedListNumberPlugin,
+  unfoldPastedListNumberFields,
+} from "../prosemirror/foldedListNumber";
 import {
   bodyParagraphs,
+  fieldResultsInFile,
+  fieldResultsShown,
   foldedCaptureNodes,
   inlineTokens,
   listNumberFieldDocx,
+  liveFoldFaults,
   openDocx,
   type ParagraphSpec,
 } from "./__tests__/listNumberFieldFixture";
-import { isFoldedListNumberCapture } from "./foldedListNumberFields";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
@@ -160,7 +168,7 @@ const applyStep = (state: EditorState, step: Step): EditorState => {
       const copied = state.doc.slice(Math.min(a, b), Math.max(a, b));
       const at = positionOf(state.doc, step.at);
       // What the editor's paste does to a slice before it lands.
-      return state.apply(state.tr.replaceRange(at, at, removeFoldedListNumberFields(copied)));
+      return state.apply(state.tr.replaceRange(at, at, unfoldPastedListNumberFields(copied)));
     }
     default: {
       const unhandled: never = step;
@@ -169,39 +177,45 @@ const applyStep = (state: EditorState, step: Step): EditorState => {
   }
 };
 
-const captureMarkup = (doc: PMNode): unknown[] =>
-  foldedCaptureNodes(doc).map(({ node }) => [node.attrs["foldedListNumber"], node.attrs["xml"]]);
+const captureMarkup = (doc: PMNode): string[] =>
+  foldedCaptureNodes(doc).map(({ node }) => String(node.attrs["xml"]));
 
 describe("the LISTNUM fields of a document under splits, joins, typing and pastes", () => {
   test(
-    "each field is still held once, and in the order the document was opened with",
+    "no field is hidden unless a marker shows it, and none is hidden twice or lost",
     async () => {
       const parsed = await openDocx(await listNumberFieldDocx(SPECS));
-      const opened = EditorState.create({ doc: toProseDoc(parsed) });
+      const opened = EditorState.create({
+        doc: toProseDoc(parsed),
+        plugins: [foldedListNumberPlugin()],
+      });
       const original = captureMarkup(opened.doc);
-      expect(original).toHaveLength(7);
+      // The field behind "one " and the field behind "two " are on the line.
+      expect(original).toHaveLength(4);
+      expect(liveFoldFaults(opened.doc)).toEqual([]);
 
       assertProperty(
         fc.property(fc.array(stepArbitrary, { minLength: 1, maxLength: 12 }), (steps) => {
           let state = opened;
           for (const step of steps) {
             state = applyStep(state, step);
-            expect(captureMarkup(state.doc)).toEqual(original);
+            expect(liveFoldFaults(state.doc)).toEqual([]);
+            const hidden = captureMarkup(state.doc);
+            expect(new Set(hidden).size).toBe(hidden.length);
+            expect(hidden.filter((xml) => !original.includes(xml))).toEqual([]);
           }
 
           const paragraphs = bodyParagraphs(fromProseDoc(state.doc, parsed));
-          const captures = paragraphs.flatMap((paragraph) =>
-            paragraph.content.filter(isFoldedListNumberCapture),
-          );
-          expect(captures.map(({ foldedListNumber, xml }) => [foldedListNumber, xml])).toEqual(
-            original,
-          );
-          // The same count read off the markup a save writes.
-          const tokens = paragraphs.flatMap((paragraph) =>
-            inlineTokens(serializeParagraph(paragraph)),
-          );
-          expect(tokens.filter((token) => RESULTS.includes(token))).toEqual(RESULTS);
-          expect(tokens.filter((token) => token === "fldChar:begin")).toHaveLength(4);
+          const written: string[] = [];
+          for (const paragraph of paragraphs) {
+            const tokens = inlineTokens(serializeParagraph(paragraph));
+            expect(fieldResultsShown(paragraph)).toBe(fieldResultsInFile(tokens));
+            written.push(...tokens);
+          }
+          // Nothing here deletes, so every field is still written at least once.
+          for (const result of RESULTS) {
+            expect(written).toContain(result);
+          }
         }),
         { numRuns: 150 },
       );

@@ -386,7 +386,8 @@ export type PreservedXmlAttrs = {
     xml: string;
     text: string;
     level: PreservedXmlLevel;
-    foldedListNumber?: "field" | "tab";
+    foldedListNumber?: import__stll_docx_core_model.FoldedListNumber;
+    foldedListNumberNodes?: unknown[];
 };
 
 // @public (undocumented)

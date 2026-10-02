@@ -36,6 +36,7 @@ import {
 } from "../../types/documentEnumValues";
 import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
 import { isSerializablePreservedAttribute } from "../../docx/attributeRemainder";
+import { isFoldedListNumber } from "../../docx/foldedListNumberFields";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
 import { paragraphNumberingFromAttrValue } from "../numberingAttr";
 import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
@@ -663,13 +664,20 @@ export const readPreservedXmlAttrs = (
 
   requiredString(attrs, "xml", "preservedXml.attrs.xml", issues);
   requiredString(attrs, "text", "preservedXml.attrs.text", issues);
-  optionalOneOf(
-    attrs,
-    "foldedListNumber",
-    "preservedXml.attrs.foldedListNumber",
-    issues,
-    FOLDED_LIST_NUMBER_VALUES,
-  );
+  const folded = attrs["foldedListNumber"];
+  if (folded !== undefined && folded !== null && !isFoldedListNumber(folded)) {
+    issues.push({
+      path: "preservedXml.attrs.foldedListNumber",
+      message: "Expected a folded list-number field or tab.",
+    });
+  }
+  const foldedNodes = attrs["foldedListNumberNodes"];
+  if (foldedNodes !== undefined && foldedNodes !== null && !Array.isArray(foldedNodes)) {
+    issues.push({
+      path: "preservedXml.attrs.foldedListNumberNodes",
+      message: "Expected an array.",
+    });
+  }
   // The level decides whether the save path writes the markup inside a `w:r`.
   // A value the schema does not name is not a default to fall back on: it
   // would put a paragraph child in a run, which Word reports as unreadable.
@@ -2607,8 +2615,6 @@ const optionalOneOf = (
 };
 
 const LINE_SPACING_PROVENANCE_VALUES = ["value", "rule", "both"] as const;
-
-const FOLDED_LIST_NUMBER_VALUES = ["field", "tab"] as const;
 
 const optionalLineSpacingProvenance = (
   attrs: Record<string, unknown>,

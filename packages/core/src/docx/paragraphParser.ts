@@ -2210,7 +2210,11 @@ export function parseParagraph(
         // The fold reads the content as parsed, before runs are merged: the
         // captures are keyed to the runs the walk produced.
         const fold = foldListNumberFields(rawContent, sourceMarkupOf);
-        if (fold.cached.length > 0) {
+        // A bullet's marker is its glyph alone, and a marker with no text of
+        // its own has nothing to show a field after: neither hides one.
+        const markerShowsFields =
+          !listRendering.isBullet && level.lvlText !== "" && !level.lvlText.includes("\t");
+        if (fold.cached.length > 0 && markerShowsFields) {
           // Bookmark and comment-range markers can stand between a field and
           // its trailing tab; the fold steps over them, so the tab still
           // leaves the line and the markers stay. The field and the tab stay

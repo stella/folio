@@ -10,7 +10,8 @@ import type { EditorState } from "prosemirror-state";
 
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Document, Paragraph } from "../../types/document";
+import type { ComplexField, Document, Paragraph } from "../../types/document";
+import { foldedListNumberOf, isFoldedListNumber } from "../foldedListNumberFields";
 import { parseDocx } from "../parser";
 import { repackDocx } from "../rezip";
 import { attemptSelectiveSave } from "../selectiveSave";
@@ -192,20 +193,26 @@ const paragraphXml = (spec: ParagraphSpec, ids: MarkupIds, authored?: string): s
 
 export const PLAIN_PARAGRAPH_ID = "20000009";
 
-/**
- * A package of the given numbered paragraphs, closed by one plain paragraph.
- * `authored` gives, by `paraId`, inline markup to use in place of what the
- * paragraph's spec would write.
- */
+type FixtureOptions = {
+  /** By `paraId`, inline markup to use in place of what the paragraph's spec would write. */
+  authored?: Readonly<Record<string, string>>;
+  /** Put the plain paragraph ahead of the numbered ones rather than after them. */
+  plainFirst?: boolean;
+};
+
+/** A package of the given numbered paragraphs and one plain paragraph, which closes it. */
 export const listNumberFieldDocx = (
   paragraphs: readonly ParagraphSpec[],
-  authored: Readonly<Record<string, string>> = {},
+  { authored = {}, plainFirst = false }: FixtureOptions = {},
 ): Promise<ArrayBuffer> => {
   const ids: MarkupIds = { next: 1, comments: [] };
-  const body = paragraphs.map((spec) => paragraphXml(spec, ids, authored[spec.paraId])).join("");
+  const numbered = paragraphs
+    .map((spec) => paragraphXml(spec, ids, authored[spec.paraId]))
+    .join("");
+  const plain = `<w:p w14:paraId="${PLAIN_PARAGRAPH_ID}"><w:r><w:t>Plain.</w:t></w:r></w:p>`;
   const documentXml =
     `${XML_DECLARATION}<w:document ${W} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-    `<w:body>${body}<w:p w14:paraId="${PLAIN_PARAGRAPH_ID}"><w:r><w:t>Plain.</w:t></w:r></w:p>` +
+    `<w:body>${plainFirst ? plain + numbered : numbered + plain}` +
     `<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>`;
   const commentsXml =
     `${XML_DECLARATION}<w:comments ${W}>` +
@@ -295,12 +302,114 @@ export const withSettledTail = (tokens: readonly string[]): string[] => {
   return [...tokens.slice(0, lastText + 1), ...tokens.slice(lastText + 1).toSorted()];
 };
 
-/** The cached display the reader shows for `spec`'s fields, joined as the marker joins it. */
-export const cachedDisplay = (spec: ParagraphSpec): string =>
-  spec.fields
+/**
+ * The fields of `spec` the reader folds into the marker: the ones that open
+ * the paragraph, when its marker has text to show them after and at least one
+ * of them cached a display.
+ */
+export const foldedFieldsOf = (spec: ParagraphSpec): FieldSpec[] => {
+  if (spec.marker === "symbol") {
+    return [];
+  }
+  const opening: FieldSpec[] = [];
+  for (const field of spec.fields) {
+    if (field.before !== "") {
+      break;
+    }
+    opening.push(field);
+  }
+  return opening.some((field) => field.result.replaceAll("\t", "") !== "") ? opening : [];
+};
+
+/** The cached display the marker shows for `fields`, joined as the marker joins it. */
+export const cachedDisplay = (fields: readonly FieldSpec[]): string =>
+  fields
     .map((field) => field.result.replaceAll("\t", ""))
     .filter((text) => text !== "")
     .join(" ");
+
+/** The cached result of every field in a paragraph's markup, in order, as one line. */
+export const fieldResultsInFile = (tokens: readonly string[]): string => {
+  const results: string[] = [];
+  let inResult = false;
+  for (const token of tokens) {
+    if (token === "fldChar:separate") {
+      inResult = true;
+      results.push("");
+    } else if (token === "fldChar:end") {
+      inResult = false;
+    } else if (inResult && token.startsWith("text:")) {
+      results[results.length - 1] += token.slice("text:".length);
+    }
+  }
+  return results.filter((text) => text !== "").join(" ");
+};
+
+const resultOf = (field: ComplexField): string =>
+  field.fieldResult
+    .flatMap((run) => run.content.flatMap((piece) => (piece.type === "text" ? [piece.text] : [])))
+    .join("");
+
+/**
+ * The field results a paragraph shows, as one line: what its marker shows
+ * after its own text, then each field that stands on the line. A capture
+ * shows nothing, so a field hidden behind a marker that does not show it is
+ * missing here and present in the file.
+ */
+export const fieldResultsShown = (paragraph: Paragraph): string => {
+  const marker = paragraph.listRendering?.marker ?? "";
+  const tab = marker.indexOf("\t");
+  const shown = tab === -1 || paragraph.listRendering?.isBullet ? [] : [marker.slice(tab + 1)];
+  for (const item of paragraph.content) {
+    if (item.type === "complexField") {
+      shown.push(resultOf(item));
+    }
+  }
+  return shown.filter((text) => text !== "").join(" ");
+};
+
+/**
+ * Every paragraph of a live document is in the form the fold allows: its
+ * captures open it, and its marker shows exactly their fields.
+ */
+export const liveFoldFaults = (doc: PMNode): string[] => {
+  const faults: string[] = [];
+  doc.descendants((node) => {
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+    const marker: unknown = node.attrs["listMarker"];
+    const tab = typeof marker === "string" ? marker.indexOf("\t") : -1;
+    const suffix = typeof marker === "string" && tab !== -1 ? marker.slice(tab + 1) : "";
+    const hidden: string[] = [];
+    let opening = true;
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    node.forEach((child) => {
+      const folded: unknown =
+        child.type.name === "preservedXml" ? child.attrs["foldedListNumber"] : null;
+      if (isFoldedListNumber(folded)) {
+        if (!opening) {
+          faults.push(`a capture stands behind shown content in ${String(node.attrs["paraId"])}`);
+        }
+        if (folded.kind === "field") {
+          hidden.push(resultOf(folded.field));
+        }
+        return;
+      }
+      if (child.isText || child.type.name === "field" || child.type.name === "tab") {
+        opening = false;
+      }
+    });
+    const cached = hidden.filter((text) => text !== "").join(" ");
+    if (cached !== suffix) {
+      faults.push(
+        `${String(node.attrs["paraId"])} hides "${cached}" and its marker shows "${suffix}"`,
+      );
+    }
+    return true;
+  });
+  return faults;
+};
 
 export const openDocx = (buffer: ArrayBuffer): Promise<Document> =>
   parseDocx(buffer, { preloadFonts: false, detectVariables: false });
@@ -327,10 +436,8 @@ export const contentShapes = (model: Document): string[][] =>
   bodyParagraphs(model).map((paragraph) => {
     const shape: string[] = [];
     for (const item of paragraph.content) {
-      const kind =
-        item.type === "preservedInline" && item.foldedListNumber !== undefined
-          ? `folded:${item.foldedListNumber}`
-          : item.type;
+      const folded = foldedListNumberOf(item);
+      const kind = folded ? `folded:${folded.kind}` : item.type;
       if (kind !== "run" || shape.at(-1) !== "run") {
         shape.push(kind);
       }
