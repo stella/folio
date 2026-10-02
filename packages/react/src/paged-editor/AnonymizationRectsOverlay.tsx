@@ -27,7 +27,7 @@
 import React, { useEffect, useRef } from "react";
 
 import type { SelectionRect } from "@stll/folio-core/layout-bridge/engine/selectionRects";
-import { prefersReducedMotionBehavior } from "@stll/folio-core/paged-layout/scrollNavigation";
+import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { slugAnonymizationLabel } from "@stll/folio-core/prosemirror/plugins/anonymizationDecorations";
 
 export type AnonymizationRectGroup = {
@@ -111,10 +111,7 @@ export const AnonymizationRectsOverlay = ({
     cycleRef.current = { canonical: selectedCanonical, index: nextIndex };
     const el = spans[nextIndex];
     if (el) {
-      el.scrollIntoView({
-        block: "center",
-        behavior: prefersReducedMotionBehavior(),
-      });
+      scrollEditorElementIntoView(el);
     }
   }, [selectedCanonical, selectionSeq]);
 

@@ -10,13 +10,19 @@
 
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import fc from "fast-check";
+import { panic } from "better-result";
+import { MAX_REVISION_ID } from "@stll/docx-core/model";
+
+import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
+import { createEmptyDocument } from "../utils/createDocument";
 
 import type { BlockContent, Comment, Document, Paragraph } from "../types/document";
 import { applyReplyThreadMarkers } from "./commentReplyMarkers";
 import { parseComments } from "./commentParser";
 import { parseDocx } from "./parser";
 import { RELATIONSHIP_TYPES } from "./relsParser";
-import { replyToComment } from "./replyToComment";
+import { createReply, replyToComment } from "./replyToComment";
 import { repackDocx, validateDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
 import {
@@ -350,6 +356,63 @@ describe("comment reply threads — round-trip", () => {
 });
 
 describe("comment reply threads — create-reply API", () => {
+  test("standalone replies to the maximum loaded ID remain bounded", () => {
+    const document = createEmptyDocument();
+    document.package.document.comments = [
+      { id: MAX_REVISION_ID, author: "Reviewer", content: [textParagraph("Root")] },
+    ];
+    const first =
+      replyToComment(document, MAX_REVISION_ID, { author: "Reviewer", text: "First" }) ??
+      panic("Expected a reply");
+    const second =
+      replyToComment(document, MAX_REVISION_ID, { author: "Reviewer", text: "Second" }) ??
+      panic("Expected a reply");
+    for (const id of [first.id, second.id]) {
+      expect(Number.isInteger(id)).toBe(true);
+      expect(id).toBeGreaterThan(0);
+      expect(id).toBeLessThan(MAX_REVISION_ID);
+    }
+    expect(first.id).not.toBe(second.id);
+    expect(first.parentId).toBe(MAX_REVISION_ID);
+    expect(second.parentId).toBe(MAX_REVISION_ID);
+  });
+
+  test(
+    "reply batches against loaded snapshots reserve the whole comment ID range",
+    () => {
+      // Previous reply fixtures only used IDs 1–3 and checked threading, so max+1
+      // overflow and repeated creation against an unchanged snapshot were invisible.
+      fc.assert(
+        fc.property(
+          fc.uniqueArray(
+            fc.oneof(fc.integer({ min: 1, max: MAX_REVISION_ID }), fc.constant(MAX_REVISION_ID)),
+            { minLength: 1, maxLength: 8 },
+          ),
+          (ids) => {
+            const comments = ids.map((id) => ({
+              id,
+              author: "Reviewer",
+              content: [textParagraph("Root")],
+            }));
+            const parentId = ids.at(0) ?? panic("Expected a loaded comment");
+            const issued = new Set(ids);
+            for (let batch = 0; batch < 4; batch += 1) {
+              const reply =
+                createReply(comments, parentId, { author: "Reviewer", text: "Reply" }) ??
+                panic("Expected a reply");
+              expect(Number.isInteger(reply.id)).toBe(true);
+              expect(reply.id).toBeGreaterThan(0);
+              expect(reply.id).toBeLessThanOrEqual(MAX_REVISION_ID);
+              expect(issued.has(reply.id)).toBe(false);
+              issued.add(reply.id);
+            }
+          },
+        ),
+        propertyConfig({ numRuns: 30 }),
+      );
+    },
+    propertyTestTimeout(30_000),
+  );
   test("replyToComment produces a reply that round-trips as a proper reply", async () => {
     const buffer = await buildSingleCommentDocx();
     const doc = await parse(buffer);

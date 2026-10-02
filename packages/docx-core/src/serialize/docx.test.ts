@@ -3,6 +3,7 @@ import JSZip from "jszip";
 
 import type { Document, ParagraphNumberingOverride, Table } from "../model/document";
 import { serializeDocumentToDocx } from "./docx";
+import { InvalidOoxmlNumericIdError } from "./numericIds";
 
 const docWithBorder = (style: string, rgb: string): Document => {
   const table: Table = {
@@ -59,6 +60,21 @@ const readNumberingXml = async (buf: ArrayBuffer): Promise<string> => {
   }
   return xml;
 };
+
+test("the standalone DOCX writer refuses overflowing replayed identifiers", async () => {
+  const document: Document = {
+    package: {
+      document: {
+        content: [
+          { type: "preservedBlock", xml: '<w:bookmarkStart w:id="2147483648" w:name="marker"/>' },
+        ],
+      },
+    },
+  };
+  await expect(serializeDocumentToDocx(document)).rejects.toBeInstanceOf(
+    InvalidOoxmlNumericIdError,
+  );
+});
 
 test("numbering markers serialize independent complex-script typography", async () => {
   const document: Document = {

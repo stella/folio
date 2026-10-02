@@ -1,4 +1,4 @@
-import { prefersReducedMotionBehavior } from "@stll/folio-core/paged-layout/scrollNavigation";
+import { scrollEditorElementIntoView } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import {
   createDefaultFindOptions,
   createSearchPattern,
@@ -80,13 +80,12 @@ export const scrollToMatch = (containerElement: HTMLElement | null, match: FindM
     return;
   }
   const paragraphElement =
-    containerElement.querySelector(`[data-paragraph-index="${match.paragraphIndex}"]`) ??
-    containerElement.querySelector(
+    containerElement.querySelector<HTMLElement>(
+      `[data-paragraph-index="${match.paragraphIndex}"]`,
+    ) ??
+    containerElement.querySelector<HTMLElement>(
       `.layout-paragraph[data-block-id="block-${match.paragraphIndex + 1}"]`,
     ) ??
-    containerElement.querySelectorAll(".layout-paragraph").item(match.paragraphIndex);
-  paragraphElement.scrollIntoView({
-    behavior: prefersReducedMotionBehavior(),
-    block: "center",
-  });
+    containerElement.querySelectorAll<HTMLElement>(".layout-paragraph").item(match.paragraphIndex);
+  scrollEditorElementIntoView(paragraphElement);
 };

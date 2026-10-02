@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
-import { FolioDocxReviewer } from "@stll/folio-core/server";
+import { ensureParaIds, FolioDocxReviewer } from "@stll/folio-core/server";
 
 import { cliError, FOLIO_CLI_ERROR_CODES, type FolioCliError } from "./errors";
 import { errnoCode, fileVersionOf, NO_FOLLOW, sameFile, type FileIdentity } from "./file-system";
@@ -129,16 +129,49 @@ export const readDocumentFile = async (
 };
 
 /**
+ * Where a block id comes from. `package` ids are the paragraph's own
+ * `w14:paraId` in the file; `synthetic` ids were minted for a paragraph the
+ * file gives none, and are valid for the fileVersion they were read at. The
+ * first change written to such a file stores them, so from then on they are
+ * the package's own.
+ */
+export type FolioBlockIdSource = "package" | "synthetic";
+
+/** A reviewer over one file and which of its block ids the file itself carries. */
+export type OpenedDocument = {
+  reviewer: FolioDocxReviewer;
+  /** Ids minted for paragraphs without one; `null` when none could be minted up front. */
+  mintedIds: ReadonlySet<string> | null;
+};
+
+/**
+ * Give every paragraph a `w14:paraId`, deterministically from the file's
+ * bytes, so the ids a read reports are the ids a later change writes into the
+ * file: a paragraph edited by one call is found by the same id in the next.
+ * A package the pass cannot or may not rewrite (a signed one) is opened as it
+ * is, with position-derived ids.
+ */
+const withParagraphIds = async (
+  bytes: Uint8Array<ArrayBuffer>,
+): Promise<{ bytes: Uint8Array; mintedIds: ReadonlySet<string> | null }> => {
+  const normalized = await Result.tryPromise(() => ensureParaIds(bytes));
+  return normalized.isOk()
+    ? { bytes: normalized.value.docx, mintedIds: new Set(normalized.value.mintedParaIds) }
+    : { bytes, mintedIds: null };
+};
+
+/**
  * Parse a loaded file into a headless reviewer. `author` is required for a
  * reviewer that will author changes; reads pass none and never write.
  */
 export const openReviewer = async (
   file: LoadedFile,
   author?: string,
-): Promise<Result<FolioDocxReviewer, FolioCliError>> =>
-  await Result.tryPromise({
+): Promise<Result<OpenedDocument, FolioCliError>> => {
+  const { bytes, mintedIds } = await withParagraphIds(file.bytes);
+  const reviewer = await Result.tryPromise({
     try: () =>
-      FolioDocxReviewer.fromBuffer(file.bytes.slice().buffer, {
+      FolioDocxReviewer.fromBuffer(bytes.slice().buffer, {
         ...(author !== undefined && { author }),
       }),
     catch: (error) =>
@@ -147,6 +180,10 @@ export const openReviewer = async (
         message: `${file.path} is not a readable .docx package: ${describeError(error)}`,
       }),
   });
+  return reviewer.isErr()
+    ? Result.err(reviewer.error)
+    : Result.ok({ reviewer: reviewer.value, mintedIds });
+};
 
 /** Refuse when the caller's expected version is not the file's current one. */
 export const checkExpectedVersion = (

@@ -1,4 +1,379 @@
 {
-  "$comment": "Known open failure fingerprints.",
-  "known": []
+  "$comment": "Known open failure fingerprints. Consumer acceptance cases are exact minimized-flow replays.",
+  "known": [
+    {
+      "fingerprint": "5f0168fbf69566cd",
+      "issueOrPr": "#1341",
+      "firstSeen": "2026-10-01",
+      "acceptance": {
+        "type": "browser",
+        "issue": 1341,
+        "primary": "0b5cdf07d5da1fda",
+        "title": "Table input: accepted text differs after cell deletion and typing",
+        "reportSeed": 29,
+        "trace": {
+          "shape": "tables",
+          "actions": [
+            {
+              "kind": "dragCellDelete"
+            },
+            {
+              "kind": "typing",
+              "text": "alpha"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "fingerprint": "0b5cdf07d5da1fda",
+      "issueOrPr": "#1341",
+      "firstSeen": "2026-10-01"
+    },
+    {
+      "fingerprint": "24e996d99fd086cb",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1350,
+        "primary": "de4ea4376e144f1e",
+        "title": "Fuzz failure [24e996d99fd086cb]: consumer flow trackedChanges / tracked-changes: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "trackedChanges",
+          "mode": "tracked-changes",
+          "seed": 774176527,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 1909965473,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "0A88C0B1",
+                  "separator": " "
+                }
+              ]
+            }
+          ],
+          "swarm": [
+            "commentOnRange",
+            "insertBeforeBlock",
+            "deleteBlock",
+            "mergeBlockWithNext",
+            "setBlockParagraphProperties",
+            "commentOnBlock",
+            "insertTable",
+            "insertTableRow",
+            "insertTableColumn"
+          ],
+          "origin": "shrunk from dropOperation+swap+splice of 4f24093d375ec040"
+        },
+        "type": "consumer",
+        "reportSeed": 774176758
+      }
+    },
+    {
+      "fingerprint": "de4ea4376e144f1e",
+      "issueOrPr": "#1350",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "4fd39893ffb61a7a",
+      "issueOrPr": "#1351",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1351,
+        "primary": "bbff0f5468045ea1",
+        "title": "Fuzz failure [4fd39893ffb61a7a]: consumer flow notes / direct: the reopened package shows something else than the reviewer that saved it",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "notes",
+          "mode": "direct",
+          "seed": 31371,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 191128944,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "2F355A9D"
+                }
+              ]
+            }
+          ],
+          "origin": "shrunk from splice of 554b3bbc30eeaf61"
+        },
+        "type": "consumer",
+        "reportSeed": 774176098
+      }
+    },
+    {
+      "fingerprint": "bbff0f5468045ea1",
+      "issueOrPr": "#1351",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "0151749367fd20ab",
+      "issueOrPr": "#1355",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1355,
+        "primary": "a382d2d2b765caf7",
+        "title": "Fuzz failure [0151749367fd20ab]: consumer flow directNumbered / tracked-changes: end of flow: [rejectAll] the flow's batches replayed tracked and rejected do not give the fixture back (fixture → rejected):",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "directNumbered",
+          "mode": "tracked-changes",
+          "seed": 774176251,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 1659186934,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "4207D525"
+                }
+              ]
+            },
+            {
+              "action": "new reviewer",
+              "seed": 3230001358
+            },
+            {
+              "action": "accept all",
+              "seed": 3797895831
+            },
+            {
+              "action": "story batch",
+              "seed": 3854260798,
+              "operations": [
+                {
+                  "type": "replaceBlock",
+                  "blockId": "4207D525",
+                  "text": "Written delivery term party goods agreement agreement."
+                }
+              ]
+            },
+            {
+              "action": "suggest_changes",
+              "seed": 3094542734,
+              "operations": [
+                {
+                  "type": "splitBlock",
+                  "blockId": "4207D525",
+                  "offset": 22
+                }
+              ]
+            }
+          ],
+          "swarm": ["replaceInBlock", "replaceBlock", "deleteBlock", "splitBlock", "deleteTable"],
+          "origin": "shrunk from swap+splice+splice of 59fc9b62eeb8548c"
+        },
+        "type": "consumer",
+        "reportSeed": 774176510
+      }
+    },
+    {
+      "fingerprint": "a382d2d2b765caf7",
+      "issueOrPr": "#1355",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "735c8578d9ca938a",
+      "issueOrPr": "#1359",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1359,
+        "primary": "0564a4da20f1c987",
+        "title": "Fuzz failure [735c8578d9ca938a]: consumer flow comments / direct: end of flow: [directTracked] the flow's batches replayed tracked and accepted read otherwise than replayed direct (direct → tracked):",
+        "flow": {
+          "version": 1,
+          "kind": "random",
+          "generation": "targeted",
+          "fixture": "comments",
+          "mode": "direct",
+          "seed": 774176109,
+          "steps": [
+            {
+              "action": "story batch",
+              "seed": 3421824883,
+              "operations": [
+                {
+                  "type": "deleteBlock",
+                  "blockId": "1508FAF4"
+                }
+              ]
+            },
+            {
+              "action": "core batch",
+              "seed": 1454800376,
+              "operations": [
+                {
+                  "type": "setBlockParagraphProperties",
+                  "blockId": "1608FC87",
+                  "properties": {
+                    "styleId": "Heading2"
+                  }
+                }
+              ]
+            }
+          ],
+          "swarm": [
+            "replaceInBlock",
+            "insertBeforeBlock",
+            "deleteBlock",
+            "setBlockParagraphProperties",
+            "commentOnBlock",
+            "insertTableRow",
+            "deleteTableRow",
+            "insertTableColumn",
+            "deleteTable"
+          ],
+          "origin": "shrunk from random flow seed 774176109"
+        },
+        "type": "consumer",
+        "reportSeed": 774176109
+      }
+    },
+    {
+      "fingerprint": "0564a4da20f1c987",
+      "issueOrPr": "#1359",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "2e7105353dd49ef4",
+      "issueOrPr": "#1360",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1360,
+        "primary": "ad8a804ccdd560a4",
+        "title": "Fuzz failure [2e7105353dd49ef4]: consumer flow emoji / tracked-changes: block texts differ:",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "emoji",
+          "mode": "tracked-changes",
+          "seed": 774176988,
+          "steps": [
+            {
+              "action": "suggest_changes",
+              "seed": 3166060974,
+              "operations": [
+                {
+                  "type": "mergeBlockWithNext",
+                  "blockId": "048C530C",
+                  "separator": " "
+                },
+                {
+                  "type": "deleteBlock",
+                  "blockId": "058C549F"
+                }
+              ]
+            }
+          ],
+          "swarm": [
+            "replaceRange",
+            "formatRange",
+            "insertBeforeBlock",
+            "deleteBlock",
+            "mergeBlockWithNext",
+            "setBlockParagraphProperties",
+            "insertTable",
+            "insertTableRow"
+          ],
+          "origin": "shrunk from collisions flow seed 774176988"
+        },
+        "type": "consumer",
+        "reportSeed": 774176988
+      }
+    },
+    {
+      "fingerprint": "ad8a804ccdd560a4",
+      "issueOrPr": "#1360",
+      "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "3d8b6715ac1390a3",
+      "issueOrPr": "#1361",
+      "firstSeen": "2026-10-02",
+      "acceptance": {
+        "issue": 1361,
+        "primary": "b3cc737b6d20bf0c",
+        "title": "Fuzz failure [3d8b6715ac1390a3]: consumer flow styleNumbered / direct: [readerStability] getContent reads otherwise after the save than before it (before → after):",
+        "flow": {
+          "version": 1,
+          "kind": "collisions",
+          "generation": "targeted",
+          "fixture": "styleNumbered",
+          "mode": "direct",
+          "seed": 774176254,
+          "steps": [
+            {
+              "action": "core batch",
+              "seed": 1973906397,
+              "operations": [
+                {
+                  "type": "replaceInBlock",
+                  "blockId": "1D7C8229",
+                  "find": "Agreement",
+                  "replace": "",
+                  "precondition": {
+                    "blockTextHash": "hnqfstq"
+                  }
+                }
+              ]
+            },
+            {
+              "action": "story batch",
+              "seed": 4245484289,
+              "operations": [
+                {
+                  "type": "replaceRange",
+                  "range": {
+                    "type": "textRange",
+                    "story": "main",
+                    "blockId": "1F7C854F",
+                    "startOffset": 0,
+                    "endOffset": 11,
+                    "selectedTextHash": "hmk415m"
+                  },
+                  "replace": "updated"
+                }
+              ]
+            }
+          ],
+          "swarm": [
+            "replaceInBlock",
+            "replaceRange",
+            "commentOnRange",
+            "insertAfterBlock",
+            "insertBeforeBlock",
+            "replaceBlock",
+            "deleteBlock",
+            "insertTable",
+            "deleteTableRow",
+            "insertTableColumn"
+          ],
+          "origin": "shrunk from collisions flow seed 774176254"
+        },
+        "type": "consumer",
+        "reportSeed": 774176254
+      }
+    },
+    {
+      "fingerprint": "b3cc737b6d20bf0c",
+      "issueOrPr": "#1361",
+      "firstSeen": "2026-10-02"
+    }
+  ]
 }

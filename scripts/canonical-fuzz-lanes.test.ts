@@ -55,7 +55,7 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
   expect(
     steps.find((step) => step["name"] === "Preserve nightly failure status")?.["if"],
   ).toContain("steps.canonical.outcome == 'failure'");
-  const report = jobs["report"];
+  const report = jobs["report-canonical"];
   if (!record(report)) throw new Error("Missing issue reporter");
   expect(report["permissions"]).toEqual({ contents: "read", issues: "write" });
   expect(report["if"]).toContain("github.ref == 'refs/heads/main'");
@@ -67,7 +67,13 @@ test("nightly explicitly executes both lanes and keeps logs for issue filing", (
     String(step["run"] ?? "").includes("scripts/fuzz-failure-issues.ts"),
   );
   expect(filing?.["run"]).toContain("fuzz-results/fuzz-artifacts/canonical/canonical-fuzz.log");
-  expect(filing?.["run"]).toContain("fuzz-results/fuzz-artifacts/browser/browser-fuzz.log");
+  const browserReport = jobs["report"];
+  if (!record(browserReport)) throw new Error("Missing browser issue reporter");
+  const browserFiling = stepsOf(browserReport).find((step) =>
+    String(step["run"] ?? "").includes("scripts/fuzz-failure-issues.ts"),
+  );
+  expect(browserFiling?.["run"]).toContain("fuzz-results/fuzz-artifacts/browser/browser-fuzz.log");
+  expect(report["if"]).toContain("outputs.canonical_findings == 'true'");
   expect(filing?.["run"]).toContain("--records fuzz-results/fuzz-artifacts/canonical/findings");
 });
 
@@ -89,12 +95,10 @@ test("all nightly evidence survives Playwright output cleanup and is uploaded", 
     expect(lane["continue-on-error"]).toBe(true);
     expect(lane["run"]).not.toContain("tee test-results/");
   }
-  expect(steps.find((step) => step["id"] === "findings")?.["run"]).toContain(
-    "fuzz-artifacts/{canonical,browser}/*.log",
-  );
-  const upload = steps.find(
-    (step) => step["name"] === "Keep minimized traces and browser artifacts",
-  );
+  const fuzz = jobs["browser-input-fuzzer"];
+  if (!record(fuzz) || !record(fuzz["outputs"])) throw new Error("Missing fuzz outputs");
+  expect(fuzz["outputs"]["canonical_findings"]).toBe("${{ steps.canonical.outcome == 'failure' }}");
+  const upload = steps.find((step) => step["name"] === "Keep health log and minimized traces");
   const options = upload?.["with"];
   if (!record(options)) throw new Error("Missing upload options");
   expect(String(options["path"]).split("\n")).toContain("fuzz-artifacts/canonical");

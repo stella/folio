@@ -6,7 +6,11 @@ import { resolve } from "node:path";
 
 import { propertyConfig, propertyTestTimeout } from "../../../../test/property-testing";
 
-import { parseStreamingXml, rewriteStreamingXmlDecimalAttributes } from "./streamingXmlParser";
+import {
+  parseStreamingXml,
+  rewriteStreamingXmlDecimalAttributes,
+  scanStreamingXmlNumericIdAttributes,
+} from "./streamingXmlParser";
 import {
   getNamespaceUri,
   OOXML_NAMESPACE_SCOPE,
@@ -102,6 +106,52 @@ const XML_CASES = [
 ] as const;
 
 describe("parseStreamingXml", () => {
+  test("identity scans preserve namespace and source spans without retaining content", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 2_147_483_647 }),
+        fc.array(fc.constantFrom("text", "&amp;", "&#65;", "日本語"), { maxLength: 100 }),
+        (id, text) => {
+          const namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+          const xml = `<x:document xmlns:x="${namespace}"><x:p data-content="discard"><x:commentRangeStart x:id="${id}"/>${text.join("")}<x:p xmlns:x="urn:foreign"><x:commentReference x:id='${id}'/></x:p><x:commentRangeEnd x:id="${id}"/></x:p></x:document>`;
+          const events: { name: string | undefined; namespace: string | undefined; id: string }[] =
+            [];
+          const result = scanStreamingXmlNumericIdAttributes(xml, (element, spans) => {
+            expect(element.elements).toBeUndefined();
+            expect(element.attributes?.["data-content"]).toBeUndefined();
+            const span = spans.get("x:id");
+            if (span) {
+              events.push({
+                name: element.name,
+                namespace: getNamespaceUri(element),
+                id: xml.slice(span.start, span.end),
+              });
+            }
+            return null;
+          });
+          expect(result).toEqual({ status: "scanned" });
+          expect(events).toEqual([
+            { name: "x:commentRangeStart", namespace, id: String(id) },
+            { name: "x:commentReference", namespace: "urn:foreign", id: String(id) },
+            { name: "x:commentRangeEnd", namespace, id: String(id) },
+          ]);
+        },
+      ),
+      propertyConfig({ numRuns: 100 }),
+    );
+  });
+
+  test.each([
+    "<!DOCTYPE root><root/>",
+    "<root><child></root>",
+    "<root>&custom;</root>",
+    '<root unrelated="&custom;"/>',
+    '<root __proto__="unsafe"/>',
+    `<root>${"<x>".repeat(101)}value${"</x>".repeat(101)}</root>`,
+  ])("identity scans reject unsupported XML: %s", (xml) => {
+    expect(scanStreamingXmlNumericIdAttributes(xml, () => null)).toEqual({ status: "unsupported" });
+  });
+
   test.each(XML_CASES)("matches the compatibility parser", (xml) => {
     expect(parseStreamingXml(xml)).toEqual({
       status: "parsed",

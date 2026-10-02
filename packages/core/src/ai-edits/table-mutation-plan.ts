@@ -1,3 +1,7 @@
+import { panic } from "better-result";
+import type { Node as PMNode } from "prosemirror-model";
+import { TableMap } from "prosemirror-tables";
+
 export type TableRectangle = {
   left: number;
   top: number;
@@ -29,6 +33,7 @@ type TableMutationPlan<T> = {
 
 export const planTableMutations = <T>(
   candidates: readonly TableMutationPlanCandidate<T>[],
+  doc: PMNode,
 ): TableMutationPlan<T> => {
   const tableStructureMutations = new Set<number>();
   const mergeTables = new Set<number>();
@@ -78,6 +83,17 @@ export const planTableMutations = <T>(
         skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
         continue;
       }
+      if (
+        claimedRectangles.length > 0 &&
+        mergesRemoveRow({
+          doc,
+          tablePosition: target.tablePosition,
+          rectangles: [...claimedRectangles, target.rectangle],
+        })
+      ) {
+        skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
+        continue;
+      }
       claimedRectangles.push(target.rectangle);
       mergeRectanglesByTable.set(target.tablePosition, claimedRectangles);
       executable.push(candidate.item);
@@ -115,6 +131,42 @@ export const planTableMutations = <T>(
   }
 
   return { executable, skipped };
+};
+
+type MergesRemoveRowOptions = {
+  doc: PMNode;
+  tablePosition: number;
+  rectangles: readonly TableRectangle[];
+};
+
+/**
+ * Disjoint merges can still share a row's survival. Direct merging closes a
+ * row left without cells, invalidating other rectangles' original row indices;
+ * tracked merging cannot record that removal. Keep a row-removing merge alone
+ * and refuse the later merge when their combined folded cells empty a row.
+ */
+const mergesRemoveRow = ({ doc, tablePosition, rectangles }: MergesRemoveRowOptions): boolean => {
+  const table = doc.nodeAt(tablePosition);
+  if (table?.type.spec["tableRole"] !== "table") {
+    return panic("A planned cell merge lost its table", { position: tablePosition });
+  }
+  const map = TableMap.get(table);
+  const folded = new Set<number>();
+  for (const rectangle of rectangles) {
+    const kept = map.map[rectangle.top * map.width + rectangle.left];
+    for (const position of map.cellsInRect(rectangle)) {
+      if (position !== kept) folded.add(position);
+    }
+  }
+  let removesRow = false;
+  table.forEach((row, rowOffset) => {
+    let remaining = row.childCount;
+    row.forEach((_cell, cellOffset) => {
+      if (folded.has(rowOffset + 1 + cellOffset)) remaining--;
+    });
+    if (row.childCount > 0 && remaining === 0) removesRow = true;
+  });
+  return removesRow;
 };
 
 const tableRectanglesOverlap = (left: TableRectangle, right: TableRectangle): boolean =>

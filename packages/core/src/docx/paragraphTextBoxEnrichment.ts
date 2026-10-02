@@ -36,6 +36,7 @@ import type { TableParserFn } from "./textBoxParser";
 import { isVmlPictParsedByRunParser } from "./vmlImageParser";
 import {
   findChildByLocalName,
+  findWordprocessingChild,
   findDeep,
   getAttribute,
   getChildElements,
@@ -633,6 +634,15 @@ const enrichTextBoxRuns = ({
 
     if ((hasNonTextBoxContent || fillsEmptyCarrier) && parsedRun) {
       lastConsumedRun = parsedRun;
+      parsedIndex += 1;
+    }
+    // A comment-reference-only XML run produces a standalone reference;
+    // a mixed run produces its payload followed by that reference. Consume
+    // both before matching the next XML run to its model position.
+    if (
+      findWordprocessingChild(xmlChild, "commentReference") &&
+      content[parsedIndex]?.type === "commentReference"
+    ) {
       parsedIndex += 1;
     }
   }

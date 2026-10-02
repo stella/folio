@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "notes",
+  "mode": "tracked-changes",
+  "seed": 774176255,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 3805472211,
+      "operations": [
+        {
+          "type": "deleteBlock",
+          "blockId": "2E35590A"
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 3733954714,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "0F49D7B9",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "formatRange",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "setBlockParagraphProperties",
+    "commentOnBlock",
+    "insertTable",
+    "insertTableColumn",
+    "deleteTable"
+  ],
+  "origin": "shrunk from random flow seed 774176255",
+  "title": "PINNED #1353, reported seed 774176255: Fuzz failure [4fd46a030f4d37ba]: consumer flow notes / tracked-changes: block texts differ:"
+}

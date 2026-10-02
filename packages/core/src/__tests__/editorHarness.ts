@@ -13,7 +13,12 @@
  */
 
 import type { Node as PMNode, Slice } from "prosemirror-model";
-import { AllSelection, EditorState as PMEditorState, TextSelection } from "prosemirror-state";
+import {
+  AllSelection,
+  EditorState as PMEditorState,
+  NodeSelection,
+  TextSelection,
+} from "prosemirror-state";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
@@ -323,24 +328,22 @@ export const textblocks = (doc: PMNode): TextblockMatch[] => {
   return found;
 };
 
-export type SelectionPlacement =
-  | "caret-start"
-  | "caret-middle"
-  | "caret-end"
-  | "word"
-  | "paragraph"
-  | "cross-paragraph"
-  | "document";
-
-export const SELECTION_PLACEMENTS: readonly SelectionPlacement[] = [
+export const SELECTION_PLACEMENTS = [
   "caret-start",
   "caret-middle",
   "caret-end",
   "word",
   "paragraph",
   "cross-paragraph",
+  "node",
   "document",
-];
+] as const;
+export type SelectionPlacement = (typeof SELECTION_PLACEMENTS)[number];
+
+/** Placements available without an inline atom in the focused textblock. */
+export const TEXTBLOCK_SELECTION_PLACEMENTS = SELECTION_PLACEMENTS.filter(
+  (placement) => placement !== "node",
+);
 
 /**
  * Place the selection relative to the textblock holding `focus`. Returns null
@@ -365,6 +368,17 @@ export const placeSelection = (
       ),
     );
   switch (placement) {
+    case "node": {
+      let position: number | undefined;
+      target.node.descendants((node, offset) => {
+        if (position !== undefined) return false;
+        if (node.isAtom && NodeSelection.isSelectable(node)) position = start + offset;
+        return !node.isAtom;
+      });
+      return position === undefined
+        ? null
+        : state.apply(state.tr.setSelection(NodeSelection.create(state.doc, position)));
+    }
     case "caret-start": {
       return create(start, start);
     }

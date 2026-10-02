@@ -14,6 +14,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo, useLayoutEffe
 import { CheckIcon, MoreVerticalIcon } from "lucide-react";
 import { useLocale, useTranslations } from "use-intl";
 
+import { scrollEditorTo } from "@stll/folio-core/paged-layout/editorScrollRoot";
 import { commentAnchorSelector } from "@stll/folio-core/render-dom/commentAnchorAttributes";
 import type { Comment, Paragraph } from "@stll/folio-core/types/content";
 import { closestHtmlElement, queryHtmlElement } from "@stll/folio-core/utils/domGuards";
@@ -622,7 +623,10 @@ export const CommentsSidebar: React.FC<CommentsSidebarProps> = ({
     if (!scrollEl || anchorY === undefined) {
       return;
     }
-    scrollEl.scrollTop = Math.max(0, anchorY - scrollEl.clientHeight / 3);
+    scrollEditorTo(scrollEl, {
+      top: Math.max(0, anchorY - scrollEl.clientHeight / 3),
+      behavior: "instant",
+    });
   };
 
   // Cards sit beside their anchors when positions are known; a drawer, and a
