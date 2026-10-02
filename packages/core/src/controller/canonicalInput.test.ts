@@ -95,6 +95,55 @@ afterEach(() => {
 afterAll(() => GlobalRegistrator.unregister());
 
 describe("canonical input boundary", () => {
+  test("structural key and native input hooks lower once without authorizing PM mutation", () => {
+    const { view } = createRig(1);
+    const structure: string[] = [];
+    const commands: string[] = [];
+    const inputs: CanonicalReplacement[] = [];
+    const boundary = createCanonicalInputBoundary({
+      structure: (intent) => structure.push(intent),
+      command: (name) => commands.push(name),
+      replace: (input) => inputs.push(input),
+      refuse: (reason) => {
+        throw new TypeError(reason);
+      },
+      undo: () => false,
+      redo: () => false,
+    });
+    for (const init of [
+      { key: "Enter" },
+      { key: "Enter", shiftKey: true },
+      { key: "Enter", ctrlKey: true },
+      { key: "Backspace" },
+      { key: "Tab" },
+      { key: "b", metaKey: true },
+    ]) {
+      const event = new KeyboardEvent("keydown", { ...init, cancelable: true });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    for (const inputType of ["insertParagraph", "insertLineBreak", "deleteContentBackward"]) {
+      const event = new InputEvent("beforeinput", { inputType, cancelable: true });
+      expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(structure).toEqual([
+      "split",
+      "lineBreak",
+      "pageBreak",
+      "joinBackward",
+      "tab",
+      "split",
+      "lineBreak",
+      "joinBackward",
+    ]);
+    expect(commands).toEqual(["toggleBold"]);
+    expect(inputs).toEqual([]);
+    expect(
+      boundary.takeNativeProposal(view.state, view.state.tr.insertText("foreign", 1)),
+    ).toBeNull();
+  });
+
   test.each(["keydown", "mousedown", "blur", "paste", "cut", "drop", "compositionstart"] as const)(
     "%s expires the preceding gesture's native proposal",
     (gesture) => {
@@ -117,6 +166,28 @@ describe("canonical input boundary", () => {
       boundary.reset();
     },
   );
+
+  test("Shift+Tab outside a list consumes the gesture without inserting a tab", () => {
+    const { view } = createRig();
+    const structures: string[] = [];
+    const boundary = createCanonicalInputBoundary({
+      replace: () => {
+        throw new TypeError("Shift+Tab must not author text.");
+      },
+      structure: (intent) => structures.push(intent),
+      undo: () => false,
+      redo: () => false,
+      refuse: (reason) => {
+        throw new TypeError(reason);
+      },
+    });
+    const before = view.state;
+    const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true });
+    expect(boundary.handleKeyDown(view, event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(structures).toEqual([]);
+    expect(view.state).toBe(before);
+  });
 
   test("each refused keyboard gesture surfaces its own refusal without a browser input event", () => {
     const { boundary, view, refusals, groupBoundaries } = createRig();

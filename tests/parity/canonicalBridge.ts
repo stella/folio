@@ -62,12 +62,13 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
         if (block.type !== "paragraph") return false;
         const token = getParagraphPropertySourceToken(block);
         const node = state.doc.child(index);
-        return (
-          paragraphPropertySourceTokenMatchesContract(token, sourceContract) &&
-          getProseParagraphPropertySourceToken(node) === token &&
-          (getParagraphPropertySource(block) === undefined ||
-            paragraphPropertySourceBelongsToDocument(block, canonical))
-        );
+        return token === undefined
+          ? getProseParagraphPropertySourceToken(node) == null &&
+              getParagraphPropertySource(block) === undefined
+          : paragraphPropertySourceTokenMatchesContract(token, sourceContract) &&
+              getProseParagraphPropertySourceToken(node) === token &&
+              (getParagraphPropertySource(block) === undefined ||
+                paragraphPropertySourceBelongsToDocument(block, canonical));
       }),
     );
     return {

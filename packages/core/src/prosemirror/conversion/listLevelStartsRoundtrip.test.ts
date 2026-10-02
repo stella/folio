@@ -14,7 +14,8 @@ import { fromMarkdown } from "../../markdown/fromMarkdown";
 import type { Document } from "../../types/document";
 import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
-import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import { paragraphNumberingReference, paragraphNumberingReferenceId } from "@stll/docx-core/model";
+import { applyDocumentOps, DOCUMENT_OP_TYPES, normalizeForOps } from "@stll/docx-core/ops";
 
 type FixtureOptions = {
   /** `w:start` for abstract level 0. */
@@ -75,6 +76,45 @@ const levelStartsOf = (model: Document): (number[] | undefined)[] =>
   );
 
 describe("listRendering.levelStarts round-trip", () => {
+  test("authored numbering operations replace stale cached starts and clear removed lists", async () => {
+    const initial = normalizeForOps(await numberedFixture({ startOverride: 5 }));
+    const paragraph = initial.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph" || paragraph.paraId === undefined)
+      throw new TypeError("Expected identified paragraph.");
+    const numId = paragraphNumberingReferenceId(paragraph.formatting?.numPr);
+    const original = initial.package.numbering?.nums.find((num) => num.numId === numId);
+    if (original === undefined) throw new TypeError("Expected numbering instance.");
+    const nextId =
+      Math.max(0, ...(initial.package.numbering?.nums.map((num) => num.numId) ?? [])) + 1;
+    const changed = applyDocumentOps(initial, [
+      {
+        type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+        num: { numId: nextId, abstractNumId: original.abstractNumId },
+      },
+      {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+        story: "main",
+        blockId: paragraph.paraId,
+        patch: { numPr: paragraphNumberingReference({ numId: nextId, ilvl: 0 }) },
+      },
+    ]).unwrap();
+    const projection = toProseDoc(changed.document);
+    expect(projection.firstChild?.attrs["listStartOverride"]).toBeNull();
+    expect(projection.firstChild?.attrs["listLevelStarts"]).toEqual([1]);
+    expect(markers(changed.document).at(0)).toBe("1.");
+    const cleared = applyDocumentOps(changed.document, [
+      {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+        story: "main",
+        blockId: paragraph.paraId,
+        patch: { numPr: { kind: "none" } },
+      },
+    ]).unwrap();
+    expect(toProseDoc(cleared.document).firstChild?.attrs["listNumFmt"]).toBeNull();
+    expect(markers(cleared.document).at(0)).toBeNull();
+    expect(applyDocumentOps(changed.document, changed.inverse).unwrap().document).toEqual(initial);
+  });
+
   const cases: { name: string; options: FixtureOptions; expected: (string | null)[] }[] = [
     { name: "default start", options: {}, expected: ["1.", "2.", null] },
     { name: "abstract level start 5", options: { start: 5 }, expected: ["5.", "6.", null] },
