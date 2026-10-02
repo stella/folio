@@ -77,6 +77,65 @@ const cells = (reading: TableReading) =>
     ]),
   );
 
+test("a row-removing merge cannot shift another merge's original row coordinates", async () => {
+  // The right cell spanning the first two rows leaves row 1 with only left
+  // cells. The taller left merge runs first and removes that row; a shorter
+  // right merge would then read rows 2..3 as the original rows 3..4.
+  const spec: TableSpec = {
+    rows: 5,
+    columns: 3,
+    cells: [
+      ...Array.from({ length: 5 }, (_, row) =>
+        [0, 1].map((column) => ({
+          row,
+          column,
+          rowSpan: 1,
+          columnSpan: 1,
+          text: `left-${row}-${column}`,
+        })),
+      ).flat(),
+      { row: 0, column: 2, rowSpan: 2, columnSpan: 1, text: "right-top" },
+      { row: 2, column: 2, rowSpan: 1, columnSpan: 1, text: "right-middle" },
+      { row: 3, column: 2, rowSpan: 1, columnSpan: 1, text: "" },
+      { row: 4, column: 2, rowSpan: 1, columnSpan: 1, text: "right-bottom" },
+    ],
+  };
+  const base = await buildTableDocx(spec);
+  const direct = await open(base);
+  const result = direct.applyDocumentOperations({
+    version: FOLIO_DOCUMENT_OPERATION_CONTRACT_VERSION,
+    mode: "direct",
+    operations: [
+      {
+        id: "tall",
+        type: "mergeTableCells",
+        blockId: blockId(direct, "left-4-1"),
+        endBlockId: blockId(direct, "left-0-0"),
+      },
+      {
+        id: "short",
+        type: "mergeTableCells",
+        blockId: blockId(direct, "right-middle"),
+        rowCount: 2,
+      },
+    ],
+  });
+  expect(result.applied.map(({ id }) => id)).toEqual(["tall"]);
+  expect(result.skipped).toEqual([{ id: "short", reason: "unsupportedBlock" }]);
+  const reading = await readReviewerTables(direct);
+  expect(tableReadingProblems(reading)).toEqual([]);
+  const rightCells = reading.snapshot.at(0)?.cells.filter(({ column }) => column === 2);
+  expect(rightCells?.map(({ text, rowSpan }) => [text, rowSpan])).toEqual([
+    ["right-top", 1],
+    ["right-middle", 1],
+    ["", 1],
+    ["right-bottom", 1],
+  ]);
+  for (const { text } of spec.cells) {
+    if (text !== "") expect(reading.texts.join("\n")).toContain(text);
+  }
+});
+
 describe("inserting a row inside a vertical merge", () => {
   test.each(["direct", "tracked-changes"] as const)(
     "refuses a cell text the new row has no cell for, and changes nothing (%s)",
