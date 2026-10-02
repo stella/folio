@@ -66,6 +66,16 @@ describe("CI plan", () => {
     expect(fullDepth).toBe("scoped");
   });
 
+  test("random browser input fuzz runs only outside PR and merge gates", () => {
+    const nightly = readWorkflow("nightly-browser-input-fuzzer.yml");
+    const triggers = nightly["on"];
+    if (!isRecord(triggers)) throw new Error("browser fuzz workflow is missing triggers");
+    expect(Object.keys(triggers).toSorted()).toEqual(["schedule", "workflow_dispatch"]);
+    expect(JSON.stringify(readWorkflow("ci.yml"))).not.toContain("--project=browser-fuzzer");
+    expect(JSON.stringify(nightly)).toContain("--project=browser-fuzzer");
+    expect(jobs).not.toHaveProperty("browser-fuzzer-smoke");
+  });
+
   // CodSpeed rejects merge_group events, so benchmarks keep their own
   // pull-request, main-push and nightly triggers.
   test("benchmarks never run on merge groups", () => {

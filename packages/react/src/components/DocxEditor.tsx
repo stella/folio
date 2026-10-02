@@ -2934,12 +2934,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       let savedBuffer: ArrayBuffer | null = null;
 
       try {
-        const captureSaveSnapshot = () => {
-          const view = pagedEditorRef.current?.getView();
-          return { view, editorState: view?.state, baselineBuffer: originalBufferRef.current };
-        };
-        const canonicalSnapshot =
-          experimentalSession === "canonical" ? captureSaveSnapshot() : null;
+        const view = pagedEditorRef.current?.getView();
+        const editorState = view?.state;
+        const baselineBuffer = originalBufferRef.current;
         // Build the current document from the selected session. A note goes with its
         // reference: one nothing refers to any more is not saved.
         const current = buildCurrentDocument();
@@ -2958,7 +2955,6 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const useSelectiveForSave =
           flags.selectiveSave && options?.mode !== FOLIO_DOCX_SERIALIZATION_MODE.full;
         const shouldAttemptSelective = useSelectiveForSave || flags.selectiveSaveTripwire;
-        const { view, editorState, baselineBuffer } = canonicalSnapshot ?? captureSaveSnapshot();
         let selectiveBuffer: ArrayBuffer | null = null;
 
         if (shouldAttemptSelective && editorState && baselineBuffer) {
@@ -2980,9 +2976,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
           const repack = () => repackDocx(repackSourceDoc);
-          return view && editorState
+          return editorState
             ? repackWithEditorSectionRemovals({
-                state: experimentalSession === "canonical" ? editorState : view.state,
+                state: editorState,
                 document: repackSourceDoc,
                 repack,
               })
@@ -3017,8 +3013,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         // Clear change tracker after successful save
         if (
           view &&
-          (experimentalSession !== "canonical" ||
-            (pagedEditorRef.current?.getView() === view && view.state.doc === editorState?.doc))
+          pagedEditorRef.current?.getView() === view &&
+          view.state.doc === editorState?.doc
         ) {
           originalBufferRef.current = buffer;
           view.dispatch(clearTrackedChanges(view.state));
@@ -3034,14 +3030,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       }
       return savedBuffer;
     },
-    [
-      buildCurrentDocument,
-      experimentalSession,
-      onError,
-      originalBufferRef,
-      featureFlags,
-      onSelectiveSaveTripwire,
-    ],
+    [buildCurrentDocument, onError, originalBufferRef, featureFlags, onSelectiveSaveTripwire],
   );
 
   // Host-facing save keeps callback and dirty-state policy outside the

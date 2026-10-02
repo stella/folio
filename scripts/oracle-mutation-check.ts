@@ -7,6 +7,11 @@ import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import {
+  ORACLE_MUTATIONS,
+  relationForOracle,
+  type OracleMutation,
+} from "../test/consumer-scenarios/support/oracle-mutations";
 import { repoRoot } from "./packaged-consumer-lib";
 
 type Mutation = {
@@ -134,8 +139,14 @@ const fuzzEnv = {
   FOLIO_SCENARIO_COLLISION_RUNS: "2",
 };
 
-const run = async (command: string[], cwd = repoRoot) => {
-  const child = Bun.spawn(command, { cwd, env: fuzzEnv, stdout: "pipe", stderr: "pipe" });
+type RunOptions = { cwd?: string; env?: Record<string, string> };
+const run = async (command: string[], { cwd = repoRoot, env = {} }: RunOptions = {}) => {
+  const child = Bun.spawn(command, {
+    cwd,
+    env: { ...fuzzEnv, ...env },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -220,6 +231,50 @@ try {
   if (healthy.exitCode !== 0) {
     throw new Error(`Unmutated consumer scenarios failed:\n${healthy.output}`);
   }
+  const oracleNames = Object.keys(ORACLE_MUTATIONS).filter((key): key is OracleMutation =>
+    Object.hasOwn(ORACLE_MUTATIONS, key),
+  );
+  for (const oracle of oracleNames) {
+    const probe = ORACLE_MUTATIONS[oracle];
+    const command = [
+      "bun",
+      scenarioScript,
+      "--tarballs",
+      baseline,
+      "--only",
+      `^oracle sensitivity: ${oracle}$`,
+      "--",
+      "oracle-sensitivity.test.ts",
+    ];
+    const env = {
+      FOLIO_SCENARIO_RELATIONS: relationForOracle(oracle) ?? "none",
+      FOLIO_SCENARIO_RELATIONS_DEPTH: "full",
+      FOLIO_ORACLE_MUTATION: "",
+    };
+    // A healthy run of this exact filter must execute; unrelated failures or skips are not kills.
+    const control = await run(command, { env });
+    if (control.exitCode !== 0 || !control.output.includes(`✔ oracle sensitivity: ${oracle}`)) {
+      throw new Error(
+        `${oracle}: healthy oracle probe failed or did not execute:\n${control.output}`,
+      );
+    }
+    console.log(`→ oracle ${oracle}: ${probe.bug}`);
+    const mutant = await run(command, { env: { ...env, FOLIO_ORACLE_MUTATION: oracle } });
+    if (mutant.exitCode === 0) {
+      throw new Error(
+        `SURVIVED oracle ${oracle}: injected defect escaped its oracle.\n${mutant.output}`,
+      );
+    }
+    if (
+      !mutant.output.includes(`✖ oracle sensitivity: ${oracle}`) ||
+      !mutant.output.includes(probe.assertion)
+    ) {
+      throw new Error(
+        `${oracle}: mutant failed outside its intended oracle assertion:\n${mutant.output}`,
+      );
+    }
+    console.log(`CAUGHT oracle ${oracle}: ${probe.assertion}`);
+  }
   let survivors = 0;
   for (const mutation of selected) {
     console.log(`→ ${mutation.id}: ${mutation.bug}`);
@@ -247,7 +302,9 @@ try {
       `${survivors} of ${selected.length} mutations survived the consumer scenarios.`,
     );
   }
-  console.log(`All ${selected.length} mutations were caught.`);
+  console.log(
+    `All ${selected.length} packed mutations and ${oracleNames.length} targeted oracle defects were caught.`,
+  );
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }

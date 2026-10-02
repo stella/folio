@@ -50,8 +50,23 @@ jobs:
           set -o pipefail
           bun run test:property 2>&1 | tee property-test.log
         env:
+          FOLIO_DOCUMENT_OPS_RANDOM: "1"
           PROPERTY_TEST_NUM_RUNS_FACTOR: ${{ github.event.inputs.factor || '10' }}
           PROPERTY_TEST_SEED_SALT: ${{ github.run_id }}
+
+      # Open findings stay outside the fixed regression registry, and replay
+      # independently so a failure cannot prevent the fresh suite from running.
+      - name: Replay open Document differential finding (#1343)
+        if: always()
+        working-directory: packages/core
+        run: |
+          set -o pipefail
+          bun test src/__tests__/documentOpsDifferential.property.test.ts -t 'PM and Document ops agree after every generated text and formatting step' 2>&1 | tee -a ../../property-test.log
+        env:
+          FOLIO_DOCUMENT_OPS_RANDOM: "1"
+          PROPERTY_TEST_NUM_RUNS_FACTOR: "1"
+          PROPERTY_TEST_SEED: "961221164"
+          PROPERTY_TEST_PATH: "1:4:2:4:4:4:5:7:7:0:1:3:3:3:5:4:4:7:7:7:7:7:7:4:3:3:3:3:3"
 
       - name: Keep the log for the failure report
         if: failure()

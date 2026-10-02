@@ -1362,10 +1362,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // refresh the story managers, and clear the document dirty signal only
     // after serialization succeeds. The ref API owns comment-dirty reset and
     // the host's onSave callback.
-    if (
-      toValue(experimentalSession) !== "canonical" ||
-      (editorView.value === savedView && savedView?.state.doc === savedState?.doc)
-    ) {
+    if (editorView.value === savedView && savedView?.state.doc === savedState?.doc) {
       docModel.value = result.document;
       syncSecondaryStoryEditors();
       isDirty.value = false;

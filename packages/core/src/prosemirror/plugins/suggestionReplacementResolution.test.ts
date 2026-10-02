@@ -21,50 +21,57 @@ const paragraph = (text: string) => schema.node("paragraph", null, schema.text(t
 
 // Exercise the real composition lifecycle, including the browser-owned native
 // replacement between its start and deferred end handlers.
-test("IME replacement preserves open paragraph edges across every text range", async () => {
-  const baseline = schema.node("doc", null, [
-    schema.node("paragraph", { alignment: "center", indentLeft: 240 }, schema.text("First")),
-    schema.node("paragraph", { alignment: "right", indentLeft: 480 }, schema.text("Second")),
-  ]);
-  const properties = (doc: typeof baseline) =>
-    textblocks(doc).map(({ node }) => paragraphPropertiesSnapshot(node));
-  const ranges = [];
-  for (let from = 1; from <= 6; from++) {
-    for (let to = 8; to <= 14; to++) ranges.push({ from, to });
-  }
-  for (const { from, to } of ranges) {
-    const plugin = createSuggestionModePlugin(true, "Reviewer");
-    const view = new HeadlessEditorView(EditorState.create({ doc: baseline, plugins: [plugin] }));
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
-    plugin.props.handleDOMEvents?.["compositionstart"]?.call(
-      plugin,
-      view as never,
-      new Event("compositionstart"),
-    );
-    const direct = view.state.tr.insertText("alpha").doc;
-    view.dispatch(view.state.tr.insertText("alpha"));
-    plugin.props.handleDOMEvents?.["compositionend"]?.call(
-      plugin,
-      view as never,
-      new Event("compositionend"),
-    );
-    await Promise.resolve();
-    let accepted = view.state;
-    acceptAllChanges()(accepted, (tr) => {
-      accepted = accepted.apply(tr);
-    });
-    expect(accepted.doc.textContent).toBe(direct.textContent);
-    expect(accepted.doc.childCount).toBe(direct.childCount);
-    expect(properties(accepted.doc)).toEqual(properties(direct));
-    let rejected = view.state;
-    rejectAllChanges()(rejected, (tr) => {
-      rejected = rejected.apply(tr);
-    });
-    expect(rejected.doc.textContent).toBe(baseline.textContent);
-    expect(rejected.doc.childCount).toBe(baseline.childCount);
-    expect(properties(rejected.doc)).toEqual(properties(baseline));
-  }
-});
+test.each(["beforeEnd", "nativeEndFlush"] as const)(
+  "%s: IME replacement preserves open paragraph edges across every text range",
+  async (commitTiming) => {
+    const baseline = schema.node("doc", null, [
+      schema.node("paragraph", { alignment: "center", indentLeft: 240 }, schema.text("First")),
+      schema.node("paragraph", { alignment: "right", indentLeft: 480 }, schema.text("Second")),
+    ]);
+    const properties = (doc: typeof baseline) =>
+      textblocks(doc).map(({ node }) => paragraphPropertiesSnapshot(node));
+    const ranges = [];
+    for (let from = 1; from <= 6; from++) {
+      for (let to = 8; to <= 14; to++) ranges.push({ from, to });
+    }
+    for (const { from, to } of ranges) {
+      const plugin = createSuggestionModePlugin(true, "Reviewer");
+      const view = new HeadlessEditorView(EditorState.create({ doc: baseline, plugins: [plugin] }));
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+      plugin.props.handleDOMEvents?.["compositionstart"]?.call(
+        plugin,
+        view as never,
+        new Event("compositionstart"),
+      );
+      const direct = view.state.tr.insertText("alpha").doc;
+      if (commitTiming === "beforeEnd") view.dispatch(view.state.tr.insertText("alpha"));
+      plugin.props.handleDOMEvents?.["compositionend"]?.call(
+        plugin,
+        view as never,
+        new Event("compositionend"),
+      );
+      if (commitTiming === "nativeEndFlush") {
+        queueMicrotask(() => view.dispatch(view.state.tr.insertText("alpha")));
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+      let accepted = view.state;
+      acceptAllChanges()(accepted, (tr) => {
+        accepted = accepted.apply(tr);
+      });
+      expect(accepted.doc.textContent).toBe(direct.textContent);
+      expect(accepted.doc.childCount).toBe(direct.childCount);
+      expect(properties(accepted.doc)).toEqual(properties(direct));
+      let rejected = view.state;
+      rejectAllChanges()(rejected, (tr) => {
+        rejected = rejected.apply(tr);
+      });
+      expect(rejected.doc.textContent).toBe(baseline.textContent);
+      expect(rejected.doc.childCount).toBe(baseline.childCount);
+      expect(properties(rejected.doc)).toEqual(properties(baseline));
+    }
+  },
+);
 
 const project = (reviewer: FolioDocxReviewer) =>
   reviewer.snapshot().blocks.map(({ kind, text, displayLabel, listLevel, table }) => ({
@@ -124,6 +131,7 @@ test.each(["mixed-lists", "image", "notes"])(
           new Event("compositionend"),
         );
         await Promise.resolve();
+        await Promise.resolve();
         if (shapeId === "mixed-lists") view.typeText("alpha");
       }
       outputs.push(await saveHarnessState(view.state, base));
@@ -142,6 +150,37 @@ test.each(["mixed-lists", "image", "notes"])(
     );
   },
 );
+
+test("plain paste followed by backward and forward deletion preserves bookmark review equivalence", async () => {
+  const shape =
+    DOCUMENT_SHAPES.find(({ id }) => id === "fields-links-bookmarks") ??
+    panic("Missing bookmarked shape");
+  const bytes = await shape.build();
+  const base = await parseShapeDocument(bytes);
+  const baseline = project(await FolioDocxReviewer.fromBuffer(bytes.slice().buffer));
+  const saved = [];
+  for (const mode of ["editing", "suggesting"] as const) {
+    const view = new HeadlessEditorView(createHarnessState(base, mode));
+    view.paste(new Slice(Fragment.from(paragraph("alpha")), 1, 1));
+    view.pressKey("Backspace");
+    view.pressKey("Delete");
+    saved.push(await saveHarnessState(view.state, base));
+  }
+
+  const edited = saved.at(0) ?? panic("Missing direct output");
+  const suggested = saved.at(1) ?? panic("Missing tracked output");
+  const accepted = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
+  accepted.acceptAll();
+  const direct = await FolioDocxReviewer.fromBuffer(edited.bytes.slice().buffer);
+  expect(project(direct).at(0)?.text).toBe("alphookmarked heading text");
+  expect(project(await FolioDocxReviewer.fromBuffer(await accepted.toBuffer()))).toEqual(
+    project(direct),
+  );
+
+  const rejected = await FolioDocxReviewer.fromBuffer(suggested.bytes.slice().buffer);
+  rejected.rejectAll();
+  expect(project(await FolioDocxReviewer.fromBuffer(await rejected.toBuffer()))).toEqual(baseline);
+});
 
 test.each([1, 2, 3, 4, 5])(
   "table paste after %s tracked deletions removes the same leading break as direct paste",

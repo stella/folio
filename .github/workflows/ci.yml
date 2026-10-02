@@ -108,7 +108,6 @@ jobs:
       container_contract_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).container_contract }}
       docx_kernel_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).docx_kernel }}
       interactions_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).interactions }}
-      browser_fuzzer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).browser_fuzzer }}
       differential_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).differential }}
       consumer_scenarios_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).consumer_scenarios }}
       packaged_consumer_required: ${{ github.event_name == 'merge_group' || fromJSON(steps.plan.outputs.areas).packaged_consumer }}
@@ -593,41 +592,6 @@ jobs:
       - name: Run editor-web webview check
         run: bun --filter @stll/folio-editor-web test:e2e
 
-  browser-fuzzer-smoke:
-    name: Browser input fuzzer (PR seeds)
-    if: needs.ci-plan.outputs.browser_fuzzer_required == 'true'
-    needs: ci-plan
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          persist-credentials: false
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version-file: "package.json"
-
-      - run: bun install --frozen-lockfile
-
-      - name: Install Playwright Chromium
-        run: |
-          sudo rm -f \
-            /etc/apt/sources.list.d/azure-cli.list \
-            /etc/apt/sources.list.d/azure-cli.sources \
-            /etc/apt/sources.list.d/microsoft-prod.list \
-            /etc/apt/sources.list.d/microsoft-prod.sources
-          bunx playwright install --with-deps chromium
-
-      - name: Run fixed-seed browser fuzzer
-        run: bunx playwright test --project=browser-fuzzer --workers=1
-        env:
-          CI: "true"
-          FOLIO_FUZZ_SEEDS: "11,29"
-          FOLIO_FUZZ_RUNS: "2"
-
   differential:
     name: Differential parser parity (folio vs python-docx + Open XML SDK)
     needs: ci-plan
@@ -783,7 +747,6 @@ jobs:
       - container-contract
       - docx-kernel
       - interactions
-      - browser-fuzzer-smoke
       - differential
       - consumer-scenarios
       - packaged-consumer
@@ -810,7 +773,6 @@ jobs:
             "container-contract":{"area":"container_contract_required","depth":"full"},
             "docx-kernel":{"area":"docx_kernel_required","depth":"full"},
             "interactions":{"area":"interactions_required","depth":"full"},
-            "browser-fuzzer-smoke":{"area":"browser_fuzzer_required"},
             "differential":{"area":"differential_required","depth":"full"},
             "consumer-scenarios":{"area":"consumer_scenarios_required","depth":"full"},
             "packaged-consumer":{"area":"packaged_consumer_required","depth":"full"}}

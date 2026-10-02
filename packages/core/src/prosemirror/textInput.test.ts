@@ -247,7 +247,7 @@ describe("text input routing", () => {
     expect(view.state.doc.textContent).toBe("alpha BETA omega");
   });
 
-  test("does not intercept through the composition-end microtask", async () => {
+  test("does not intercept through the native composition-end flush", async () => {
     const view = createView([schema.text("A")]);
     view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
 
@@ -259,6 +259,10 @@ describe("text input routing", () => {
     expect(settlingEvent.defaultPrevented).toBe(false);
     expect(view.state.doc.textContent).toBe("A");
 
+    await Promise.resolve();
+    const flushingEvent = dispatchBeforeInput(view, { data: "え" });
+    expect(flushingEvent.defaultPrevented).toBe(false);
+    expect(view.state.doc.textContent).toBe("A");
     await Promise.resolve();
     const settledEvent = dispatchBeforeInput(view, { data: "う" });
     expect(settledEvent.defaultPrevented).toBe(true);

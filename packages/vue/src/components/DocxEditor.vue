@@ -50,6 +50,10 @@
         :view="activeEditorView"
         :get-commands="getCommands"
         :state-tick="stateTick"
+        :can-undo="activeHistoryAvailability.canUndo"
+        :can-redo="activeHistoryAvailability.canRedo"
+        :on-undo="undoActiveStory"
+        :on-redo="redoActiveStory"
         :zoom-percent="zoomPercent"
         :is-min-zoom="isMinZoom"
         :is-max-zoom="isMaxZoom"
@@ -1211,14 +1215,6 @@ const toolbarDynamicProps = computed(() => {
   const styles = getDocument()?.package.styles?.styles;
   if (styles !== undefined) {
     dynamic.documentStyles = styles;
-  }
-  if (props.experimentalSession === "canonical") {
-    return {
-      ...dynamic,
-      ...activeHistoryAvailability.value,
-      onUndo: undoActiveStory,
-      onRedo: redoActiveStory,
-    };
   }
   return dynamic;
 });

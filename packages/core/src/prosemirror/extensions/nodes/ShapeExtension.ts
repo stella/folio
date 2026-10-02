@@ -362,9 +362,9 @@ function createShapeElement(
     case "straightConnector1": {
       const el = document.createElementNS(SVG_NS, "line");
       setNum(el, "x1", 0);
-      setNum(el, "y1", h / 2);
+      setNum(el, "y1", 0);
       setNum(el, "x2", w);
-      setNum(el, "y2", h / 2);
+      setNum(el, "y2", h);
       return el;
     }
     case "rightBrace": {
@@ -772,9 +772,13 @@ export const ShapeExtension = createNodeExtension({
       // Build SVG via DOM APIs so attribute values are escaped by the browser.
       const svg = document.createElementNS(SVG_NS, "svg");
       svg.setAttribute("xmlns", SVG_NS);
-      setNum(svg, "width", w);
-      setNum(svg, "height", h);
-      svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+      // A line can have a zero extent on one axis. Its viewport must still
+      // have area, while the geometry and layout retain their authored size.
+      const viewportWidth = w === 0 ? 1 : w;
+      const viewportHeight = h === 0 ? 1 : h;
+      setNum(svg, "width", viewportWidth);
+      setNum(svg, "height", viewportHeight);
+      svg.setAttribute("viewBox", `0 0 ${viewportWidth} ${viewportHeight}`);
 
       let gradient: SVGElement | null = null;
       let fillAttr: string;
@@ -792,7 +796,7 @@ export const ShapeExtension = createNodeExtension({
       const strokeAttr = attrs.outlineStyle === "none" ? "none" : safeStrokeColor;
       svg.setAttribute(
         "style",
-        `fill:${fillAttr};stroke:${strokeAttr};stroke-width:${strokeWidth}`,
+        `fill:${fillAttr};stroke:${strokeAttr};stroke-width:${strokeWidth};overflow:visible`,
       );
 
       if (gradient) {

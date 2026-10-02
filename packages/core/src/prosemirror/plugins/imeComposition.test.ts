@@ -208,6 +208,21 @@ describe("SuggestionMode IME composition", () => {
     expect(view.state.doc.textContent).toBe("Hello World世界");
   });
 
+  test("composition revisions wait for the native final flush queued after compositionend", async () => {
+    const { view, domEvents } = setup("Hello World");
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 7, 12)));
+    domEvents.compositionstart(view);
+    domEvents.compositionend(view);
+    // ProseMirror queues this flush after plugin DOM handlers have returned.
+    queueMicrotask(() => view.dispatch(view.state.tr.insertText("世界", 7, 12)));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(view.state.doc.textContent).toBe("Hello World世界");
+    expect(deletionText(view.state)).toEqual(["World"]);
+    expect(insertionText(view.state)).toEqual(["世界"]);
+    expect(view.state.selection.from).toBe(14);
+  });
+
   test("the catch-all resumes for non-composition input after composing ends", async () => {
     const { view, domEvents } = setup("Hello");
 

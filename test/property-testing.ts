@@ -479,19 +479,45 @@ export function assertProperty<Ts>(
   // shifts fast-check's path indices away from the recorded counterexample.
   const replays = pinned.map((entry) => buildConfig({ ...params, examples: [] }, identity, entry));
   const generated = configFor(params, identity, true);
+  return runConfiguredProperty(property, [...replays, generated]);
+}
+
+/** Run only registry seeds for bugs already fixed, without a fresh generated pass. */
+export function assertPinnedProperty<Ts>(
+  property: fc.IAsyncProperty<Ts>,
+  params?: fc.Parameters<Ts>,
+): Promise<void>;
+export function assertPinnedProperty<Ts>(
+  property: fc.IProperty<Ts>,
+  params?: fc.Parameters<Ts>,
+): void;
+export function assertPinnedProperty<Ts>(
+  property: fc.IRawProperty<Ts>,
+  params: fc.Parameters<Ts> = {},
+): Promise<void> | void {
+  const identity = identify();
+  const pinned = pinnedFor(identity.key);
+  if (pinned.length === 0)
+    throw new Error(`No fixed regression seeds registered for ${String(identity.key)}`);
+  const replays = pinned.map((entry) => {
+    const config = buildConfig({ ...params, examples: [] }, identity, entry);
+    config.numRuns = 1;
+    return config;
+  });
+  return runConfiguredProperty(property, replays);
+}
+
+const runConfiguredProperty = <Ts>(
+  property: fc.IRawProperty<Ts>,
+  configs: readonly fc.Parameters<Ts>[],
+): Promise<void> | void => {
   if (property.isAsync()) {
     return (async () => {
-      for (const replay of replays) {
-        await fc.assert(property, replay);
-      }
-      await fc.assert(property, generated);
+      for (const config of configs) await fc.assert(property, config);
     })();
   }
-  for (const replay of replays) {
-    fc.assert(property, replay);
-  }
-  fc.assert(property, generated);
-}
+  for (const config of configs) fc.assert(property, config);
+};
 
 /**
  * Scale a per-test Bun timeout (ms) by the same nightly factor that scales

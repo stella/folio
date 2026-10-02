@@ -5699,28 +5699,28 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return experimentalSession === "canonical" && target.type === "body"
+          return target.type === "body"
             ? (hiddenPMRef.current?.undo() ?? false)
             : historyUndo(target.view.state, target.view.dispatch);
         },
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return experimentalSession === "canonical" && target.type === "body"
+          return target.type === "body"
             ? (hiddenPMRef.current?.redo() ?? false)
             : historyRedo(target.view.state, target.view.dispatch);
         },
         canUndo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return experimentalSession === "canonical" && target.type === "body"
+          return target.type === "body"
             ? (hiddenPMRef.current?.canUndo() ?? false)
             : historyUndo(target.view.state);
         },
         canRedo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return experimentalSession === "canonical" && target.type === "body"
+          return target.type === "body"
             ? (hiddenPMRef.current?.canRedo() ?? false)
             : historyRedo(target.view.state);
         },
