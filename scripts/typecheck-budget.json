@@ -1,6 +1,6 @@
 {
   "docx-core": {
-    "types": 22261,
+    "types": 23878,
     "instantiations": 31096
   },
   "core": {
@@ -8,7 +8,7 @@
     "instantiations": 195474
   },
   "react": {
-    "types": 198533,
+    "types": 210447,
     "instantiations": 391782
   },
   "agents": {
@@ -20,11 +20,11 @@
     "instantiations": 247046
   },
   "editor-web": {
-    "types": 196858,
-    "instantiations": 277660
+    "types": 208804,
+    "instantiations": 294882
   },
   "vue": {
-    "types": 218903,
+    "types": 230754,
     "instantiations": 920985
   },
   "nuxt": {
@@ -37,7 +37,7 @@
   },
   "playground-vue": {
     "types": 233857,
-    "instantiations": 910970
+    "instantiations": 966452
   },
   "parity": {
     "types": 118724,

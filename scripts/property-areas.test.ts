@@ -9,6 +9,7 @@ import {
   propertyFiles,
   runPropertyBatches,
   selectPropertyFiles,
+  shardPropertyFiles,
   touchedAreas,
 } from "./property-areas";
 
@@ -61,6 +62,33 @@ const actualPropertyDrivers = (): string[] => {
 };
 
 describe("property areas", () => {
+  test("shards cover every selected file exactly once regardless of input order", () => {
+    const inventory = propertyFiles();
+    for (const total of [1, 2, 4, inventory.length + 1]) {
+      const exercised: string[] = [];
+      for (let index = 1; index <= total; index += 1) {
+        const shard = { index, total };
+        const files = shardPropertyFiles(inventory, shard);
+        expect(shardPropertyFiles(inventory.toReversed(), shard)).toEqual(files);
+        for (const { file } of files) exercised.push(file);
+      }
+      expect(exercised.toSorted()).toEqual(inventory.map(({ file }) => file).toSorted());
+      expect(new Set(exercised).size).toBe(exercised.length);
+    }
+    expect(shardPropertyFiles([], { index: 1, total: 4 })).toEqual([]);
+  });
+
+  test("invalid shards fail rather than silently skipping properties", () => {
+    for (const shard of [
+      { index: 0, total: 4 },
+      { index: 5, total: 4 },
+      { index: 1, total: 0 },
+      { index: 1.5, total: 4 },
+      { index: 1, total: Number.NaN },
+    ])
+      expect(() => shardPropertyFiles(ALL, shard)).toThrow();
+  });
+
   test("an area is the package and the first directory under src", () => {
     expect(areaOf("packages/core/src/compare/diff/align.ts")).toBe("core/compare");
     expect(areaOf("packages/docx-core/src/index.ts")).toBe("docx-core");
