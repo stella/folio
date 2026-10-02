@@ -42,7 +42,7 @@ type StreamingXmlOptions = {
   xml: string;
   inheritedNamespaceScope?: XmlNamespaceScope;
 } & (
-  | { mode: "tree" }
+  | { mode: "tree"; visitOpenTag?: OpenTagScanVisitor }
   | {
       mode: "attributes";
       visitOpenTag: OpenTagVisitor;
@@ -52,14 +52,16 @@ type StreamingXmlOptions = {
 
 const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseXmlResult => {
   const { xml, inheritedNamespaceScope = EMPTY_NAMESPACE_SCOPE } = options;
-  const visitOpenTag = options.mode === "attributes" ? options.visitOpenTag : undefined;
+  const visitOpenTag = options.visitOpenTag;
+  let spanMode: ParseOpenTagOptions["spanMode"] = "none";
+  if (visitOpenTag !== undefined) spanMode = options.mode === "tree" ? "identities" : "all";
   const openTagOptions = {
     xml,
     start: 0,
     close: 0,
-    captureAttributeSpans: visitOpenTag !== undefined,
+    spanMode,
     retainAttribute: options.mode === "attributes" ? options.retainAttribute : undefined,
-  };
+  } satisfies ParseOpenTagOptions;
   const root: XmlElement = { elements: [] };
   const stack: ElementFrame[] = [];
   const replacements: XmlReplacement[] = [];
@@ -162,12 +164,13 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
     } else {
       attachXmlNamespaceContext(parsedTag.element, scope);
     }
-    const rewritten =
-      options.mode === "attributes" &&
-      options.retainAttribute !== undefined &&
-      parsedTag.element.attributes === undefined
-        ? null
-        : visitOpenTag?.(parsedTag.element, parsedTag.attributeValueSpans ?? new Map());
+    const shouldVisit =
+      options.mode === "tree"
+        ? parsedTag.attributeValueSpans !== undefined
+        : options.retainAttribute === undefined || parsedTag.element.attributes !== undefined;
+    const rewritten = shouldVisit
+      ? visitOpenTag?.(parsedTag.element, parsedTag.attributeValueSpans ?? new Map())
+      : null;
     if (rewritten) {
       for (const [attributeName, value] of rewritten) {
         const span = parsedTag.attributeValueSpans?.get(attributeName);
@@ -206,6 +209,15 @@ export const parseStreamingXml = (
   return parsed.status === "parsed"
     ? { status: "parsed", value: parsed.value }
     : { status: "unsupported" };
+};
+
+/** Retain the body tree while collecting identities for import repair. */
+export const parseStreamingXmlWithIdentityVisitor = (
+  xml: string,
+  visitOpenTag: OpenTagScanVisitor,
+): ParseXmlResult => {
+  const parsed = parseStreamingXmlInternal({ xml, mode: "tree", visitOpenTag });
+  return parsed.status === "parsed" ? { status: "parsed", value: parsed.value } : parsed;
 };
 
 /** Rewrite selected decimal attribute values while preserving every other source byte. */
@@ -263,7 +275,7 @@ type ParseOpenTagOptions = {
   xml: string;
   start: number;
   close: number;
-  captureAttributeSpans: boolean;
+  spanMode: "none" | "all" | "identities";
   retainAttribute?: (options: AttributeNameOptions) => boolean;
 };
 
@@ -271,7 +283,7 @@ const parseOpenTag = ({
   xml,
   start,
   close,
-  captureAttributeSpans,
+  spanMode,
   retainAttribute,
 }: ParseOpenTagOptions): ParsedOpenTag => {
   let cursor = skipWhitespace(xml, start, close);
@@ -334,7 +346,11 @@ const parseOpenTag = ({
     if (retainAttribute === undefined || retainAttribute({ attributeName, elementName: name })) {
       attributes ??= {};
       attributes[attributeName] = decoded;
-      if (captureAttributeSpans) {
+      if (
+        spanMode === "all" ||
+        (spanMode === "identities" &&
+          isOoxmlNumericIdAttributeName({ elementName: name, attributeName }))
+      ) {
         attributeValueSpans ??= new Map();
         attributeValueSpans.set(attributeName, { start: valueStart, end: cursor });
       }

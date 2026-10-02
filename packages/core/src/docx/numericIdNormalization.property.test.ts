@@ -14,6 +14,7 @@ import { createEmptyDocument } from "../utils/createDocument";
 import type { Document } from "../types/document";
 import { createDocx, createEmptyDocx, repackDocx } from "./rezip";
 import { attemptSelectiveSave } from "./selectiveSave";
+import { parseXmlWithFastXmlParser, type XmlElement } from "./xmlParser";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -45,6 +46,36 @@ test("in-range packages reuse their source map without a reservation or rewrite 
           ],
         ]);
         expect(normalizeImportedNumericIds(parts)).toBe(parts);
+      },
+    ),
+    propertyConfig({ numRuns: 100 }),
+  );
+});
+
+test("the retained repair tree equals an independent parse of the normalized XML", () => {
+  fc.assert(
+    fc.property(
+      invalidId,
+      fc.constantFrom(...WORD_NAMESPACES),
+      fc.boolean(),
+      (id, namespace, encoded) => {
+        const spelling = encoded
+          ? [...id].map((character) => `&#${character.charCodeAt(0)};`).join("")
+          : id;
+        const xml = `<x:document xmlns:x="${namespace}"><x:body><x:p><x:bookmarkStart x:id="1"/><x:commentRangeStart x:id='${spelling}'/><x:r><x:rPr><x:color x:val="123456"/></x:rPr><x:t>A&amp;B</x:t></x:r><x:commentRangeEnd x:id="${id}"/></x:p></x:body></x:document>`;
+        let tree: XmlElement | undefined;
+        const parts = new Map([["word/document.xml", xml]]);
+        const normalized = normalizeImportedNumericIds(parts, {
+          onParsedDocument: (parsed) => {
+            tree = parsed;
+          },
+        });
+        const rewritten = normalized.get("word/document.xml");
+        expect(rewritten).toBeDefined();
+        expect(tree).toBeDefined();
+        if (rewritten === undefined) return;
+        expect(tree).toEqual(parseXmlWithFastXmlParser(rewritten));
+        expect(parts.get("word/document.xml")).toBe(xml);
       },
     ),
     propertyConfig({ numRuns: 100 }),

@@ -8,11 +8,15 @@ import {
   assertValidOoxmlNumericId,
   mayContainOoxmlNumericIds,
   mayContainInvalidOoxmlNumericIds,
+  isOoxmlNumericIdAttributeName,
 } from "@stll/docx-core";
 import { panic } from "better-result";
 
 import { REVISION_ELEMENT_NAMES } from "./revisionIdNormalization";
-import { scanStreamingXmlNumericIdAttributes } from "./streamingXmlParser";
+import {
+  scanStreamingXmlNumericIdAttributes,
+  parseStreamingXmlWithIdentityVisitor,
+} from "./streamingXmlParser";
 import {
   getLocalName,
   getNamespaceUri,
@@ -68,6 +72,8 @@ const identitySpace = ({ elementName, attributeName, domain }: IdentitySpaceOpti
 const identifiedAttributes = (element: XmlElement) => {
   const attributes = [];
   for (const [name, value] of Object.entries(element.attributes ?? {})) {
+    if (!isOoxmlNumericIdAttributeName({ elementName: element.name ?? "", attributeName: name }))
+      continue;
     if (value === undefined || !/^[+-]?\d+$/u.test(String(value).trim())) continue;
     const domain = ooxmlNumericIdDomain({
       elementName: element.name ?? "",
@@ -87,7 +93,16 @@ const identifiedAttributes = (element: XmlElement) => {
 };
 
 type IdentitySpace = { reserved: Set<number>; replacements: Map<string, string>; next: number };
-type ImportedIdentitySpan = { start: number; end: number; space: string; key: string };
+type ImportedIdentitySpan = {
+  start: number;
+  end: number;
+  space: string;
+  key: string;
+  element: XmlElement;
+  attributeName: string;
+};
+
+type NumericIdNormalizationOptions = { onParsedDocument?: (document: XmlElement) => void };
 
 /**
  * Repair out-of-range imported integers before any model or opaque XML is captured.
@@ -96,6 +111,7 @@ type ImportedIdentitySpan = { start: number; end: number; space: string; key: st
  */
 export const normalizeImportedNumericIds = (
   parts: ReadonlyMap<string, string>,
+  options: NumericIdNormalizationOptions = {},
 ): ReadonlyMap<string, string> => {
   if (![...parts.values()].some((xml) => mayContainInvalidOoxmlNumericIds(xml, "range")))
     return parts;
@@ -106,13 +122,17 @@ export const normalizeImportedNumericIds = (
   const spaces = new Map<string, IdentitySpace>();
   const reservedPools = new Map<string, Set<number>>();
   const changedSpans = new Map<string, ImportedIdentitySpan[]>();
+  let parsedDocument: XmlElement | undefined;
   type ScanOptions = {
     path: string;
     xml: string;
     visitor: Parameters<typeof scanStreamingXmlNumericIdAttributes>[1];
   };
   const scan = ({ path, xml, visitor }: ScanOptions): void => {
-    const scanned = scanStreamingXmlNumericIdAttributes(xml, visitor);
+    const scanned =
+      path.toLowerCase() === "word/document.xml" && options.onParsedDocument !== undefined
+        ? parseStreamingXmlWithIdentityVisitor(xml, visitor)
+        : scanStreamingXmlNumericIdAttributes(xml, visitor);
     if (scanned.status === "unsupported") {
       throw new XmlResourceLimitError({
         message: `Numeric-id normalization could not safely scan ${path}`,
@@ -121,6 +141,7 @@ export const normalizeImportedNumericIds = (
         allowed: 0,
       });
     }
+    if (scanned.status === "parsed") parsedDocument = scanned.value;
   };
   for (const [path, xml] of candidates) {
     scan({
@@ -154,7 +175,14 @@ export const normalizeImportedNumericIds = (
             spans = [];
             changedSpans.set(path, spans);
           }
-          spans.push({ start: span.start, end: span.end, space: attribute.space, key });
+          spans.push({
+            start: span.start,
+            end: span.end,
+            space: attribute.space,
+            key,
+            element,
+            attributeName: attribute.name,
+          });
         }
         return null;
       },
@@ -186,18 +214,30 @@ export const normalizeImportedNumericIds = (
       const replacement = spaces.get(span.space)?.replacements.get(span.key);
       if (replacement === undefined || replacement === "")
         panic("Missing imported numeric identity replacement");
+      if (span.element.attributes === undefined)
+        panic("Missing imported numeric identity attributes");
+      span.element.attributes[span.attributeName] = replacement;
       chunks.push(xml.slice(cursor, span.start), replacement);
       cursor = span.end;
     }
     chunks.push(xml.slice(cursor));
     normalized.set(path, chunks.join(""));
   }
+  if (parsedDocument !== undefined) options.onParsedDocument?.(parsedDocument);
   return normalized;
 };
 
 /** Parser boundary: all captures and selective-save bytes see the same identities. */
-export const normalizeRawDocxNumericIds = async (raw: RawDocxContent): Promise<void> => {
-  const normalized = normalizeImportedNumericIds(raw.allXml);
-  if (normalized === raw.allXml) return;
+export const normalizeRawDocxNumericIds = async (
+  raw: RawDocxContent,
+): Promise<XmlElement | undefined> => {
+  let documentTree: XmlElement | undefined;
+  const normalized = normalizeImportedNumericIds(raw.allXml, {
+    onParsedDocument: (tree) => {
+      documentTree = tree;
+    },
+  });
+  if (normalized === raw.allXml) return documentTree;
   await replaceRawDocxXmlParts(raw, normalized);
+  return documentTree;
 };
