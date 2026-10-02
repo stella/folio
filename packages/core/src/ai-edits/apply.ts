@@ -174,6 +174,7 @@ import {
 } from "./table-cell-mutations";
 import {
   planTableMutations,
+  tableMergeFoldedRows,
   type TableMutationPlanTarget,
   type TableRectangle,
 } from "./table-mutation-plan";
@@ -1770,9 +1771,17 @@ type TableCellMerge = {
 
 type TableCellSplit = TableCellMerge;
 
-const getTableMutationPlanTarget = (item: ResolvedBase): TableMutationPlanTarget => {
+const getTableMutationPlanTarget = (item: ResolvedBase, doc: PMNode): TableMutationPlanTarget => {
   if (item.tableCellMerge) {
-    return { type: "mergeCells", ...item.tableCellMerge };
+    const table = doc.nodeAt(item.tableCellMerge.tablePosition);
+    if (!table || table.type.spec["tableRole"] !== "table") {
+      panic("Resolved table merge must target a table");
+    }
+    return {
+      type: "mergeCells",
+      ...item.tableCellMerge,
+      foldedRows: tableMergeFoldedRows(table, item.tableCellMerge.rectangle),
+    };
   }
   if (item.tableCellSplit) {
     return { type: "splitCell", ...item.tableCellSplit };
@@ -1988,7 +1997,7 @@ const batchClaimOf = ({ item, doc, producesTrackedChanges }: BatchClaimOptions):
     case "insertTableColumn":
     case "mergeTableCells":
     case "splitTableCell": {
-      const target = getTableMutationPlanTarget(item);
+      const target = getTableMutationPlanTarget(item, doc);
       let axis: "row" | "column" | "cell" = "cell";
       if (item.operation.type === "insertTableRow") axis = "row";
       if (item.operation.type === "insertTableColumn") axis = "column";
@@ -3737,7 +3746,7 @@ const applyFolioAIEditOperationsInternal = ({
     resolved.map((item) => ({
       item,
       operationId: item.operation.id,
-      target: getTableMutationPlanTarget(item),
+      target: getTableMutationPlanTarget(item, view.state.doc),
     })),
   );
   skipped.push(...tablePlan.skipped);

@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { Schema } from "prosemirror-model";
+
+import { assertProperty } from "../../../../test/property-testing";
 
 import {
   planTableMutations,
+  tableMergeFoldedRows,
   type TableMutationPlanTarget,
   type TableRectangle,
 } from "./table-mutation-plan";
@@ -25,12 +30,99 @@ const candidate = (item: string, target: TableMutationPlanTarget): Candidate => 
   target,
 });
 
+const schema = new Schema({
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: { content: "text*", group: "block" },
+    text: {},
+    table: { content: "tableRow+", group: "block", tableRole: "table" },
+    tableRow: { content: "tableCell+", tableRole: "row" },
+    tableCell: {
+      content: "block+",
+      tableRole: "cell",
+      attrs: {
+        colspan: { default: 1 },
+        rowspan: { default: 1 },
+        colwidth: { default: null },
+      },
+    },
+  },
+});
+
+const planningTable = schema.node(
+  "table",
+  null,
+  Array.from({ length: 3 }, () =>
+    schema.node(
+      "tableRow",
+      null,
+      Array.from({ length: 3 }, () => schema.node("tableCell", null, [schema.node("paragraph")])),
+    ),
+  ),
+);
+
+type MergeCandidateOptions = { item: string; tablePosition: number; rectangle: TableRectangle };
+
+const mergeCandidate = ({ item, tablePosition, rectangle: bounds }: MergeCandidateOptions) =>
+  candidate(item, {
+    type: "mergeCells",
+    tablePosition,
+    rectangle: bounds,
+    foldedRows: tableMergeFoldedRows(planningTable, bounds),
+  });
+
 describe("table mutation planning", () => {
+  test("disjoint merges retain a starting cell in every shared row, in any order", () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 2, maxLength: 6 }),
+        fc.integer({ min: 2, max: 5 }),
+        fc.nat(),
+        fc.boolean(),
+        (widths, height, rotation, reverse) => {
+          const table = schema.node(
+            "table",
+            null,
+            Array.from({ length: height }, () =>
+              schema.node(
+                "tableRow",
+                null,
+                widths.map((colspan) =>
+                  schema.node("tableCell", { colspan }, [schema.node("paragraph")]),
+                ),
+              ),
+            ),
+          );
+          let left = 0;
+          const candidates = widths.map((width, index) => {
+            const bounds = rectangle(left, 0, left + width, height);
+            left += width;
+            return candidate(String(index), {
+              type: "mergeCells",
+              tablePosition: 10,
+              rectangle: bounds,
+              foldedRows: tableMergeFoldedRows(table, bounds),
+            });
+          });
+          const start = rotation % candidates.length;
+          const rotated = [...candidates.slice(start), ...candidates.slice(0, start)];
+          const ordered = reverse ? rotated.toReversed() : rotated;
+          const plan = planTableMutations(ordered);
+          expect(plan.executable).toEqual(ordered.slice(0, -1).map(({ item }) => item));
+          expect(plan.skipped).toEqual([
+            { id: ordered.at(-1)?.operationId, reason: "unsupportedBlock" },
+          ]);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test("rejects cell-shape edits that share a table with structural edits", () => {
     const plan = planTableMutations([
       candidate("insert-row", { type: "tableStructure", tablePosition: 10 }),
-      candidate("merge", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "merge",
         tablePosition: 10,
         rectangle: rectangle(0, 0, 1, 2),
       }),
@@ -51,8 +143,8 @@ describe("table mutation planning", () => {
 
   test("rejects merge and split combinations on the same table", () => {
     const plan = planTableMutations([
-      candidate("merge", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "merge",
         tablePosition: 10,
         rectangle: rectangle(0, 0, 1, 2),
       }),
@@ -72,28 +164,28 @@ describe("table mutation planning", () => {
 
   test("distinguishes duplicate, overlapping, and disjoint rectangles", () => {
     const plan = planTableMutations([
-      candidate("first", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "first",
         tablePosition: 10,
         rectangle: rectangle(0, 0, 1, 2),
       }),
-      candidate("duplicate", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "duplicate",
         tablePosition: 10,
         rectangle: rectangle(0, 0, 1, 2),
       }),
-      candidate("overlap", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "overlap",
         tablePosition: 10,
         rectangle: rectangle(0, 1, 1, 3),
       }),
-      candidate("disjoint", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "disjoint",
         tablePosition: 10,
         rectangle: rectangle(1, 0, 2, 2),
       }),
-      candidate("other-table", {
-        type: "mergeCells",
+      mergeCandidate({
+        item: "other-table",
         tablePosition: 20,
         rectangle: rectangle(0, 1, 1, 3),
       }),

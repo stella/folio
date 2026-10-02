@@ -1,3 +1,6 @@
+import type { Node as PMNode } from "prosemirror-model";
+import { TableMap } from "prosemirror-tables";
+
 export type TableRectangle = {
   left: number;
   top: number;
@@ -8,7 +11,12 @@ export type TableRectangle = {
 export type TableMutationPlanTarget =
   | { type: "none" }
   | { type: "tableStructure"; tablePosition: number }
-  | { type: "mergeCells"; tablePosition: number; rectangle: TableRectangle }
+  | {
+      type: "mergeCells";
+      tablePosition: number;
+      rectangle: TableRectangle;
+      foldedRows: ReturnType<typeof tableMergeFoldedRows>;
+    }
   | { type: "splitCell"; tablePosition: number; rectangle: TableRectangle };
 
 type TableMutationPlanCandidate<T> = {
@@ -51,6 +59,7 @@ export const planTableMutations = <T>(
   }
 
   const mergeRectanglesByTable = new Map<number, TableRectangle[]>();
+  const foldedRowsByTable = new Map<number, Map<number, number>>();
   const splitRectanglesByTable = new Map<number, TableRectangle[]>();
   const executable: T[] = [];
   const skipped: TableMutationPlanSkip[] = [];
@@ -78,6 +87,23 @@ export const planTableMutations = <T>(
         skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
         continue;
       }
+      const foldedRows = foldedRowsByTable.get(target.tablePosition) ?? new Map<number, number>();
+      // Disjoint rectangles can still depend on the same row. Refuse the
+      // later merge when together they remove its last starting cell: direct
+      // mode closes that row, but tracked mode cannot record its closure.
+      if (
+        target.foldedRows.some(({ row, cellCount, foldedCount }) => {
+          const claimedCount = foldedRows.get(row) ?? 0;
+          return claimedCount > 0 && claimedCount + foldedCount >= cellCount;
+        })
+      ) {
+        skipped.push({ id: candidate.operationId, reason: "unsupportedBlock" });
+        continue;
+      }
+      for (const { row, foldedCount } of target.foldedRows) {
+        foldedRows.set(row, (foldedRows.get(row) ?? 0) + foldedCount);
+      }
+      foldedRowsByTable.set(target.tablePosition, foldedRows);
       claimedRectangles.push(target.rectangle);
       mergeRectanglesByTable.set(target.tablePosition, claimedRectangles);
       executable.push(candidate.item);
@@ -115,6 +141,19 @@ export const planTableMutations = <T>(
   }
 
   return { executable, skipped };
+};
+
+/** Count physical cells folded away, excluding the retained origin cell. */
+export const tableMergeFoldedRows = (table: PMNode, rectangle: TableRectangle) => {
+  const map = TableMap.get(table);
+  const rows = new Map<number, { row: number; cellCount: number; foldedCount: number }>();
+  for (const position of map.cellsInRect(rectangle).slice(1)) {
+    const row = map.findCell(position).top;
+    const counts = rows.get(row) ?? { row, cellCount: table.child(row).childCount, foldedCount: 0 };
+    counts.foldedCount++;
+    rows.set(row, counts);
+  }
+  return [...rows.values()];
 };
 
 const tableRectanglesOverlap = (left: TableRectangle, right: TableRectangle): boolean =>
