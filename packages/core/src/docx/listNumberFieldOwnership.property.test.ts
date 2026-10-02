@@ -4,7 +4,7 @@
  *
  * After every step each paragraph is in the form the fold allows: its
  * captures open it and its marker shows exactly their fields. A capture is
- * one of those the document was opened with, and stands once. And at the end
+ * one of those the document was opened with, and stands no more often than it did. And at the end
  * the fields each paragraph shows are the fields its saved markup holds, with
  * every field the document was opened with still among them.
  *
@@ -200,9 +200,14 @@ describe("the LISTNUM fields of a document under splits, joins, typing and paste
           for (const step of steps) {
             state = applyStep(state, step);
             expect(liveFoldFaults(state.doc)).toEqual([]);
-            const hidden = captureMarkup(state.doc);
-            expect(new Set(hidden).size).toBe(hidden.length);
-            expect(hidden.filter((xml) => !original.includes(xml))).toEqual([]);
+            // Two tabs read from the same markup are alike, so captures are
+            // counted, not told apart: none may stand more often than it did.
+            const left = [...original];
+            for (const xml of captureMarkup(state.doc)) {
+              const at = left.indexOf(xml);
+              expect(at).not.toBe(-1);
+              left.splice(at, 1);
+            }
           }
 
           const paragraphs = bodyParagraphs(fromProseDoc(state.doc, parsed));
@@ -217,7 +222,11 @@ describe("the LISTNUM fields of a document under splits, joins, typing and paste
             expect(written).toContain(result);
           }
         }),
-        { numRuns: 150 },
+        {
+          numRuns: 150,
+          // Text typed at the very start of a paragraph whose marker shows a field.
+          examples: [[[{ kind: "type", at: { paragraph: 0, offset: 0 } }]]],
+        },
       );
     },
     propertyTestTimeout(120_000),

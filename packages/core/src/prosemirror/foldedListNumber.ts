@@ -13,6 +13,7 @@
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 import { Fragment, type Mark, type Node as PMNode, Slice } from "prosemirror-model";
 import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
+import { AttrStep } from "prosemirror-transform";
 
 import {
   cachedListNumberText,
@@ -65,7 +66,7 @@ const foldItemOf = (node: PMNode): ListNumberFoldItem => {
  * lands, and a run it shares an id with by accident is not its run.
  */
 const withMarks = (node: PMNode, marks: readonly Mark[]): PMNode => {
-  let set = node.marks.filter((mark) => mark.type.name !== RUN_IDENTITY_MARK_NAME);
+  let set: readonly Mark[] = node.marks.filter((mark) => mark.type.name !== RUN_IDENTITY_MARK_NAME);
   for (const mark of marks) {
     set = mark.addToSet(set);
   }
@@ -177,22 +178,90 @@ const normalizeParagraph = (tr: Transaction, paragraph: PMNode, position: number
   tr.insert(tr.mapping.map(position + 1, -1), stretch);
 };
 
+type Range = { from: number; to: number };
+
 /**
- * A transaction that brings every paragraph of `state` to the form the fold
- * allows, or nothing when every paragraph already has it.
+ * Where `transactions` changed the document, in the positions of the document
+ * they left. A step that replaces content says so in its map; a step that
+ * sets one node's attribute has an empty map and says where in `pos`. Steps
+ * that only add or remove marks change neither content nor a marker.
  */
-export const normalizeFoldedListNumbers = (state: EditorState): Transaction | null => {
-  const paragraphs: { node: PMNode; position: number }[] = [];
-  state.doc.descendants((node, position) => {
-    if (node.type.name === "paragraph") {
-      paragraphs.push({ node, position });
+const changedRanges = (transactions: readonly Transaction[]): Range[] => {
+  const ranges: Range[] = [];
+  for (const [index, transaction] of transactions.entries()) {
+    const later = transactions.slice(index + 1);
+    const toFinal = (position: number, assoc: number, step: number): number => {
+      let mapped = transaction.mapping.slice(step + 1).map(position, assoc);
+      for (const after of later) {
+        mapped = after.mapping.map(mapped, assoc);
+      }
+      return mapped;
+    };
+    for (const [step, made] of transaction.steps.entries()) {
+      if (made instanceof AttrStep) {
+        const at = toFinal(made.pos, 1, step);
+        ranges.push({ from: at, to: at + 1 });
+        continue;
+      }
+      made.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+        ranges.push({ from: toFinal(newStart, -1, step), to: toFinal(newEnd, 1, step) });
+      });
     }
-    return !node.isTextblock || node.childCount > 0;
-  });
+  }
+  return ranges;
+};
+
+/**
+ * The paragraphs a change can have taken out of the form the fold allows:
+ * those the changed ranges touch, and the one on either side of each range,
+ * since a join or a split changes the paragraph next to where it lands.
+ */
+const paragraphsNear = (doc: PMNode, ranges: readonly Range[]): Map<number, PMNode> => {
+  const paragraphs = new Map<number, PMNode>();
+  const size = doc.content.size;
+  for (const { from, to } of ranges) {
+    const start = Math.max(0, Math.min(from, size) - 1);
+    const end = Math.min(size, Math.max(to, from) + 1);
+    doc.nodesBetween(start, end, (node, position) => {
+      if (node.type.name === "paragraph") {
+        paragraphs.set(position, node);
+      }
+      return true;
+    });
+  }
+  return paragraphs;
+};
+
+/**
+ * A transaction that brings the paragraphs of `state` to the form the fold
+ * allows, or nothing when they already have it. With `transactions`, only the
+ * paragraphs they changed, and the neighbours of each change, are looked at;
+ * without, every paragraph is.
+ */
+export const normalizeFoldedListNumbers = (
+  state: EditorState,
+  transactions?: readonly Transaction[],
+): Transaction | null => {
+  const paragraphs = new Map<number, PMNode>();
+  if (transactions) {
+    for (const [position, node] of paragraphsNear(state.doc, changedRanges(transactions))) {
+      paragraphs.set(position, node);
+    }
+  } else {
+    state.doc.descendants((node, position) => {
+      if (node.type.name === "paragraph") {
+        paragraphs.set(position, node);
+      }
+      return true;
+    });
+  }
 
   const tr = state.tr;
-  for (const { node, position } of paragraphs) {
-    normalizeParagraph(tr, node, position);
+  for (const position of [...paragraphs.keys()].toSorted((a, b) => a - b)) {
+    const node = paragraphs.get(position);
+    if (node) {
+      normalizeParagraph(tr, node, position);
+    }
   }
   // Not an edit of the user's: nothing here is a tracked change.
   return tr.docChanged ? tr.setMeta(SUGGESTION_BYPASS_META, true) : null;
@@ -202,10 +271,11 @@ export const normalizeFoldedListNumbers = (state: EditorState): Transaction | nu
 export const foldedListNumberPlugin = (): Plugin =>
   new Plugin({
     appendTransaction(transactions, _oldState, newState) {
-      if (!transactions.some(({ docChanged }) => docChanged)) {
+      const changes = transactions.filter(({ docChanged }) => docChanged);
+      if (changes.length === 0) {
         return null;
       }
-      return normalizeFoldedListNumbers(newState);
+      return normalizeFoldedListNumbers(newState, transactions);
     },
   });
 

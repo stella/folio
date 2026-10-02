@@ -142,7 +142,6 @@ const opFor = (document: Document, step: Step, serial: number): DocumentOp | und
         story: OP_STORIES.MAIN,
         blockId: paragraph.paraId,
         nextBlockId: next.paraId,
-        depth: 2,
         survivor: step.half,
       };
     }
@@ -219,7 +218,6 @@ describe("the captures of folded LISTNUM fields under split, join and typing", (
       story: OP_STORIES.MAIN,
       blockId: first.paraId,
       nextBlockId: second.paraId,
-      depth: 2,
     });
     if (joined.isErr()) {
       throw joined.error;

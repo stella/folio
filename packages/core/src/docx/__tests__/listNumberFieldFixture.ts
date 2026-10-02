@@ -293,13 +293,24 @@ export const expectedTokens = (spec: ParagraphSpec): string[] =>
   inlineTokens(paragraphXml(spec, { next: 1, comments: [] }));
 
 /**
- * `tokens` with everything after the last text put in a fixed order: the
- * range markers that close at the paragraph's end have no order among them
- * that a save owes the file.
+ * `tokens` with the two orders a save does not owe the file put one way.
+ *
+ * The range markers that close at the paragraph's end have no order among
+ * them, so everything after the last text is sorted. And a comment range that
+ * opens right ahead of a tab opens right behind it once the paragraph has been
+ * through the editor, which anchors a comment to the text it covers; the
+ * comment start is put behind the tab on both sides of a comparison.
  */
 export const withSettledTail = (tokens: readonly string[]): string[] => {
   const lastText = tokens.findLastIndex((token) => token.startsWith("text:"));
-  return [...tokens.slice(0, lastText + 1), ...tokens.slice(lastText + 1).toSorted()];
+  const head = tokens.slice(0, lastText + 1);
+  for (let index = 0; index < head.length - 1; index += 1) {
+    if (head[index] === "commentRangeStart" && head[index + 1] === "tab") {
+      head[index] = "tab";
+      head[index + 1] = "commentRangeStart";
+    }
+  }
+  return [...head, ...tokens.slice(lastText + 1).toSorted()];
 };
 
 /**

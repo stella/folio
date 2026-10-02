@@ -202,6 +202,26 @@ describe("saving paragraphs whose list markers hold LISTNUM fields", () => {
         {
           numRuns: 30,
           examples: [
+            // A comment that opens between a field on the line and its tab.
+            [
+              [
+                {
+                  paraId: "20000001",
+                  marker: "decimal",
+                  fields: [
+                    {
+                      instruction: " LISTNUM ",
+                      result: "(a)",
+                      formatting: "plain",
+                      before: "and ",
+                      gap: ["comment"],
+                      tab: true,
+                    },
+                  ],
+                  body: "Body",
+                },
+              ],
+            ],
             [
               [
                 {

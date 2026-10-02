@@ -18,6 +18,7 @@ import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 import {
   foldedListNumberPlugin,
+  normalizeFoldedListNumbers,
   unfoldPastedListNumberFields,
 } from "../prosemirror/foldedListNumber";
 import { CLEARED_LIST_RENDERING_ATTRS } from "../prosemirror/listMarker";
@@ -650,5 +651,35 @@ describe("moving and copying a paragraph whose marker shows a field", () => {
     const rebuilt = await expectHonest(emptied.doc, parsed, ALL_CODES.slice(1));
     expect(paragraphTokens(rebuilt).at(0)).toEqual([]);
     expect(modelMarkers(rebuilt).at(0)?.includes("\t")).toBe(false);
+  });
+});
+
+describe("the editor's own pass looks only where a change was made", () => {
+  test("a paragraph out of form elsewhere is left until it is itself changed", async () => {
+    const { bare } = await fixture();
+    // With nothing watching, the second paragraph loses its numbering and keeps its captures.
+    const { node, position } = paragraphNode(bare.doc, INLINE.paraId);
+    const stale = bare.apply(
+      bare.tr.setNodeMarkup(position, undefined, {
+        ...node.attrs,
+        ...CLEARED_LIST_RENDERING_ATTRS,
+        numPr: null,
+      }),
+    );
+    const watched = EditorState.create({ doc: stale.doc, plugins: [foldedListNumberPlugin()] });
+    const capturesOf = (state: EditorState): number =>
+      foldedCaptureNodes(paragraphNode(state.doc, INLINE.paraId).node).length;
+
+    const elsewhere = typeInto(watched, LEADING.paraId, LEADING.body, "!");
+
+    expect(capturesOf(elsewhere)).toBe(2);
+    expect(liveFoldFaults(elsewhere.doc)).not.toEqual([]);
+    // A pass over the whole document would have found it.
+    expect(normalizeFoldedListNumbers(elsewhere)).not.toBeNull();
+
+    const touched = typeInto(elsewhere, INLINE.paraId, INLINE.body, "!");
+
+    expect(capturesOf(touched)).toBe(0);
+    expect(liveFoldFaults(touched.doc)).toEqual([]);
   });
 });
