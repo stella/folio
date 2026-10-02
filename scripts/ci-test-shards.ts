@@ -48,7 +48,9 @@ export const discoverTestSuites = (repoRoot = REPO_ROOT): TestSuite[] => {
         preloads.push(preload);
         continue;
       }
-      if (!arg || arg.startsWith("-")) panic(`Unsupported test argument in ${manifest}`);
+      if (!arg || arg.startsWith("-") || !/^[\w./-]+$/u.test(arg)) {
+        panic(`Unsupported test argument in ${manifest}: ${arg}`);
+      }
       roots.push(arg);
     }
     suites.push({ cwd, preloads, files: discoverFiles(cwd, roots) });

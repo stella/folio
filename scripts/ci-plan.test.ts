@@ -97,11 +97,17 @@ describe("CI plan", () => {
       expect(suites.find(({ cwd }) => cwd === "packages/example")?.preloads).toEqual([
         "./test/setup.ts",
       ]);
-      writeFileSync(
-        path.join(fixtureRoot, "packages/example/package.json"),
-        JSON.stringify({ scripts: { test: "bun run custom-tests" } }),
-      );
-      expect(() => discoverTestSuites(fixtureRoot)).toThrow("Unsupported test command");
+      for (const command of [
+        "bun run custom-tests",
+        "bun test src && bun test other",
+        "bun test --timeout 5000 src",
+      ]) {
+        writeFileSync(
+          path.join(fixtureRoot, "packages/example/package.json"),
+          JSON.stringify({ scripts: { test: command } }),
+        );
+        expect(() => discoverTestSuites(fixtureRoot)).toThrow("Unsupported test");
+      }
     } finally {
       rmSync(fixtureRoot, { recursive: true, force: true });
     }
