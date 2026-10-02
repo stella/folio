@@ -6,6 +6,7 @@ import {
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import {
   collectFindings,
+  parseCommentPages,
   parseFailureRecord,
   parseIssuePages,
   parseIssueResponse,
@@ -96,6 +97,28 @@ test("GitHub REST and CLI issue identities validate before filing", () => {
   expect(parseIssueResponse({ ...fields, state: "CLOSED", closedAt: "2026-10-01" }).state).toBe(
     "closed",
   );
+  expect(
+    parseIssueResponse({
+      ...fields,
+      state: "closed",
+      closed_at: "2026-10-01",
+      state_reason: "not_planned",
+    }),
+  ).toEqual({ ...fields, state: "closed", closedAt: "2026-10-01", stateReason: "not_planned" });
+  expect(
+    parseIssueResponse({
+      ...fields,
+      state: "CLOSED",
+      closedAt: "2026-10-01",
+      stateReason: "NOT_PLANNED",
+    }).stateReason,
+  ).toBe("NOT_PLANNED");
+  expect(parseCommentPages([[{ body: "Duplicate of #7" }], [{ body: "later" }]])).toEqual([
+    "Duplicate of #7",
+    "later",
+  ]);
+  expect(() => parseCommentPages([[{ body: null }]])).toThrow();
+  expect(() => parseCommentPages({})).toThrow();
   expect(() => parseIssueResponse({ ...fields, state: "unknown" })).toThrow();
   expect(() => parseIssueResponse({ ...fields, number: "20", state: "open" })).toThrow();
 });
