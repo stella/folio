@@ -16,6 +16,9 @@ import { updateDocumentContent } from "./fromProseDoc";
 import { toProseDoc } from "./toProseDoc";
 import { paragraphNumberingReference, paragraphNumberingReferenceId } from "@stll/docx-core/model";
 import { applyDocumentOps, DOCUMENT_OP_TYPES, normalizeForOps } from "@stll/docx-core/ops";
+import { computeListRendering, getCachedNumberingMap } from "../../docx/numberingParser";
+import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 
 type FixtureOptions = {
   /** `w:start` for abstract level 0. */
@@ -24,12 +27,14 @@ type FixtureOptions = {
   nestedStart?: number;
   /** Instance-level `w:startOverride` for level 0. */
   startOverride?: number;
+  foldedListNum?: boolean;
 };
 
 const numberedFixture = async ({
   start = 1,
   nestedStart,
   startOverride,
+  foldedListNum = false,
 }: FixtureOptions = {}): Promise<Document> => {
   const model = fromMarkdown("1. Alpha\n2. Beta\n\nTail.");
   const [alpha, beta] = model.package.document.content;
@@ -55,12 +60,24 @@ const numberedFixture = async ({
       start: nestedStart,
       numFmt: "lowerLetter",
       lvlText: "%2.",
-      pPr: { indentation: { left: 1440, hanging: 360 } },
+      pPr: { indentLeft: 1440, indentFirstLine: -360, hangingIndent: true },
     };
     beta.formatting = { ...beta.formatting, numPr: { kind: "reference", numId, ilvl: 1 } };
   }
   if (startOverride !== undefined) {
     instance.levelOverrides = [{ ilvl: 0, startOverride }];
+  }
+  if (foldedListNum) {
+    alpha.content.unshift(
+      {
+        type: "complexField",
+        instruction: "LISTNUM",
+        fieldType: "LISTNUM",
+        fieldCode: [],
+        fieldResult: [{ type: "run", content: [{ type: "text", text: "(a)" }] }],
+      },
+      { type: "run", content: [{ type: "tab" }] },
+    );
   }
   return parseDocx(await createDocx(model), { preloadFonts: false, detectVariables: false });
 };
@@ -76,6 +93,120 @@ const levelStartsOf = (model: Document): (number[] | undefined)[] =>
   );
 
 describe("listRendering.levelStarts round-trip", () => {
+  test("unchanged ordinary lists preserve each parsed counter marker and rendering field", async () => {
+    const initial = await numberedFixture({ startOverride: 5 });
+    const projection = toProseDoc(initial);
+    for (const [index, paragraph] of initial.package.document.content.entries()) {
+      if (paragraph.type !== "paragraph" || paragraph.listRendering === undefined) continue;
+      const attrs = projection.child(index).attrs;
+      for (const [key, value] of Object.entries(listRenderingAttrPatch(paragraph.listRendering))) {
+        expect(attrs[key]).toEqual(value);
+      }
+    }
+    expect(projection.child(0).attrs["listMarker"]).toBe("5.");
+    expect(projection.child(1).attrs["listMarker"]).toBe("6.");
+  });
+
+  test("unchanged LISTNUM folding preserves its suffix, child advance and second-slot alignment", async () => {
+    const initial = await numberedFixture({ start: 7, nestedStart: 1, foldedListNum: true });
+    const paragraph = initial.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph" || paragraph.listRendering === undefined)
+      throw new TypeError("Expected parsed LISTNUM rendering.");
+    expect(paragraph.listRendering.marker).toBe("7.\t(a)");
+    expect(paragraph.listRendering.markerTemplate).toBe("%1.");
+    expect(paragraph.listRendering.implicitChildLevelAdvances).toBe(1);
+    expect(paragraph.listRendering.markerSecondSlotOffsetTwips).toBe(360);
+    expect(paragraph.content.some((item) => item.type === "complexField")).toBe(false);
+    const projection = toProseDoc(initial);
+    for (const [key, value] of Object.entries(listRenderingAttrPatch(paragraph.listRendering))) {
+      expect(projection.child(0).attrs[key]).toEqual(value);
+    }
+    const rebuilt = updateDocumentContent(initial, projection);
+    const rebuiltFirst = rebuilt.package.document.content.at(0);
+    expect(rebuiltFirst?.type === "paragraph" ? rebuiltFirst.listRendering : undefined).toEqual(
+      paragraph.listRendering,
+    );
+    expect(markers(rebuilt).at(1)).toBe("b.");
+  });
+
+  test("same reference recomputes cached rendering when its definition changes", async () => {
+    const initial = await numberedFixture({ startOverride: 5 });
+    for (const mutation of ["template", "start", "format", "marker", "tabs"] as const) {
+      const changed = structuredClone(initial);
+      const paragraph = changed.package.document.content.at(0);
+      const numbering = changed.package.numbering;
+      if (
+        paragraph?.type !== "paragraph" ||
+        numbering === undefined ||
+        paragraph.formatting?.numPr?.kind !== "reference"
+      )
+        throw new TypeError("Expected numbered rendering fixture.");
+      const numPr = paragraph.formatting.numPr;
+      const instance = numbering.nums.find((num) => num.numId === numPr.numId);
+      const definition = numbering.abstractNums.find(
+        (abstract) => abstract.abstractNumId === instance?.abstractNumId,
+      );
+      const level = definition?.levels.at(0);
+      if (!instance || !level) throw new TypeError("Missing numbering definition.");
+      switch (mutation) {
+        case "template":
+          level.lvlText = "(%1)";
+          break;
+        case "start":
+          instance.levelOverrides = [{ ilvl: 0, startOverride: 11 }];
+          break;
+        case "format":
+          level.numFmt = "upperRoman";
+          break;
+        case "marker":
+          level.rPr = { bold: true, allCaps: true };
+          break;
+        case "tabs":
+          level.pPr = { tabs: [{ alignment: "left", position: 900 }] };
+          break;
+        default: {
+          const unreachable: never = mutation;
+          throw new TypeError(`Unknown rendering mutation ${unreachable}`);
+        }
+      }
+      const computed = computeListRendering(numPr, getCachedNumberingMap(numbering));
+      if (computed === null) throw new TypeError("Changed definition did not resolve.");
+      const attrs = toProseDoc(changed).child(0).attrs;
+      for (const [key, value] of Object.entries(listRenderingAttrPatch(computed))) {
+        expect(attrs[key]).toEqual(value);
+      }
+      expect(attrs["listMarker"]).toBe(level.lvlText);
+    }
+  });
+
+  test("changing a LISTNUM alignment definition invalidates its paragraph-local rendering", async () => {
+    const initial = await numberedFixture({ start: 7, nestedStart: 1, foldedListNum: true });
+    const changed = structuredClone(initial);
+    const nextLevel = changed.package.numbering?.abstractNums
+      .at(0)
+      ?.levels.find((level) => level.ilvl === 1);
+    if (!nextLevel) throw new TypeError("Expected child numbering level.");
+    nextLevel.pPr = { ...nextLevel.pPr, indentFirstLine: -720, hangingIndent: true };
+    const attrs = toProseDoc(changed).child(0).attrs;
+    expect(attrs["listMarker"]).toBe("%1.");
+    expect(attrs["listImplicitChildLevelAdvances"]).toBeNull();
+    expect(attrs["listMarkerSecondSlotOffsetTwips"]).toBeNull();
+  });
+
+  test("explicit no-numbering clears cached LISTNUM and ordinary-list rendering", async () => {
+    for (const foldedListNum of [false, true]) {
+      const initial = await numberedFixture({ nestedStart: 1, foldedListNum });
+      const paragraph = initial.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") throw new TypeError("Expected numbered paragraph.");
+      paragraph.formatting = { ...paragraph.formatting, numPr: { kind: "none" } };
+      const attrs = toProseDoc(initial).child(0).attrs;
+      for (const [key, value] of Object.entries(CLEARED_LIST_RENDERING_ATTRS)) {
+        expect(attrs[key]).toEqual(value);
+      }
+      expect(markers(initial).at(0)).toBeNull();
+    }
+  });
+
   test("authored numbering operations replace stale cached starts and clear removed lists", async () => {
     const initial = normalizeForOps(await numberedFixture({ startOverride: 5 }));
     const paragraph = initial.package.document.content.at(0);

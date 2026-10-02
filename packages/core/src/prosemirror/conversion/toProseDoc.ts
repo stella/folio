@@ -29,6 +29,7 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  ListRendering,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
@@ -66,6 +67,7 @@ import type {
 } from "../../types/document";
 import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
+import { canonicalJson } from "../../utils/canonicalJson";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
@@ -686,6 +688,13 @@ function convertBlockCustomXml(
   );
 }
 
+const listRenderingDefinition = ({
+  marker: _marker,
+  implicitChildLevelAdvances: _advances,
+  markerSecondSlotOffsetTwips: _secondSlot,
+  ...definition
+}: ListRendering) => definition;
+
 /**
  * Convert a Paragraph to a ProseMirror paragraph node
  *
@@ -717,23 +726,32 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
-  // Numbering is authored package state; cached paragraph rendering may predate an op.
   const numPr = paragraph.formatting?.numPr;
-  if (context.numbering !== undefined && numPr?.kind === "reference") {
+  if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  else if (context.numbering !== undefined && numPr?.kind === "reference") {
     const rendering = computeListRendering(numPr, context.numbering);
     if (rendering !== null) {
       const cached = paragraph.listRendering;
-      const local =
-        cached?.numId === numPr.numId && cached.level === (numPr.ilvl ?? 0)
-          ? {
-              implicitChildLevelAdvances: cached.implicitChildLevelAdvances,
-              markerSecondSlotOffsetTwips: cached.markerSecondSlotOffsetTwips,
-            }
-          : {};
+      const nextLevel = context.numbering.getLevel(numPr.numId, (numPr.ilvl ?? 0) + 1);
+      const nextSlotOffset =
+        nextLevel?.pPr?.hangingIndent === true &&
+        nextLevel.pPr.indentFirstLine !== undefined &&
+        nextLevel.pPr.indentFirstLine < 0
+          ? -nextLevel.pPr.indentFirstLine
+          : undefined;
+      // Parsed markers include paragraph counters and folded LISTNUM text that
+      // the definition-only computation cannot reconstruct. Preserve them only
+      // while their reference and every rendering definition field still match.
+      const cacheMatches =
+        cached !== undefined &&
+        canonicalJson(listRenderingDefinition(cached)) ===
+          canonicalJson(listRenderingDefinition(rendering)) &&
+        ((cached.implicitChildLevelAdvances ?? 0) === 0 ||
+          cached.markerSecondSlotOffsetTwips === nextSlotOffset);
       Object.assign(
         attrs,
         CLEARED_LIST_RENDERING_ATTRS,
-        listRenderingAttrPatch({ ...rendering, ...local }),
+        listRenderingAttrPatch(cacheMatches ? cached : rendering),
       );
     } else Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
   }
