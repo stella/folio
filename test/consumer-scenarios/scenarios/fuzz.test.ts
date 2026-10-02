@@ -51,7 +51,11 @@ const saveSample = async (
   await writeFile(path.join(SAMPLE_DIR, `${fingerprint}-${seed}.docx`), bytes);
 };
 
-const relationRepro = ["FOLIO_SCENARIO_RELATIONS", "FOLIO_SCENARIO_RELATIONS_DEPTH"]
+const relationRepro = [
+  "FOLIO_SCENARIO_RELATIONS",
+  "FOLIO_SCENARIO_RELATIONS_DEPTH",
+  "FOLIO_SCENARIO_SWARM",
+]
   .flatMap((name) => {
     const value = process.env[name];
     return value === undefined ? [] : [`${name}=${shellQuote(value)}`];
