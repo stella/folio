@@ -4,8 +4,15 @@
 // no job reads, an output no area feeds, or a job that runs without asking the
 // plan would each drift in silence, so all three are checked here.
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+  assignTestShards,
+  discoverTestSuites,
+  focusedTestFiles,
+  TEST_SHARD_COUNT,
+} from "./ci-test-shards";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PLAN_JOB = "ci-plan";
@@ -56,6 +63,85 @@ describe("CI plan", () => {
   const jobs = readJobs();
   const { areas, fullDepth } = readPolicy();
   const planOutputs = jobs[PLAN_JOB]?.outputs ?? {};
+
+  test("discovery includes new nested test files under every command root", () => {
+    const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-shards-"));
+    try {
+      const extensions = ["js", "jsx", "ts", "tsx", "mjs", "cjs", "mts", "cts"];
+      const stems = ["unit.test", "flow.spec", "unit_test", "flow_spec"];
+      const files = stems.flatMap((stem) =>
+        extensions.map((extension) => `packages/example/src/nested/${stem}.${extension}`),
+      );
+      files.push(
+        "packages/example/scripts/generator.test.ts",
+        "scripts/ci-new.test.mjs",
+        "benchmarks/compare/new.spec.ts",
+      );
+      for (const file of [...files, "packages/example/src/nested/helper.ts"]) {
+        const target = path.join(fixtureRoot, file);
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, "");
+      }
+      writeFileSync(
+        path.join(fixtureRoot, "packages/example/package.json"),
+        JSON.stringify({ scripts: { test: "bun test --preload ./test/setup.ts src scripts" } }),
+      );
+      const suites = discoverTestSuites(fixtureRoot);
+      const discovered = suites.flatMap(({ files: suiteFiles }) => suiteFiles);
+      expect(discovered.toSorted()).toEqual(files.toSorted());
+      expect(
+        assignTestShards(discovered)
+          .flatMap((shard) => Array.from(shard))
+          .toSorted(),
+      ).toEqual(files.toSorted());
+      expect(suites.find(({ cwd }) => cwd === "packages/example")?.preloads).toEqual([
+        "./test/setup.ts",
+      ]);
+      writeFileSync(
+        path.join(fixtureRoot, "packages/example/package.json"),
+        JSON.stringify({ scripts: { test: "bun run custom-tests" } }),
+      );
+      expect(() => discoverTestSuites(fixtureRoot)).toThrow("Unsupported test command");
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("every discovered and focused test belongs to exactly one deterministic shard", () => {
+    const suites = discoverTestSuites();
+    const files = [...suites.flatMap(({ files: suiteFiles }) => suiteFiles), ...focusedTestFiles];
+    const shards = assignTestShards(files);
+    expect(shards).toHaveLength(TEST_SHARD_COUNT);
+    const exercised = shards.flatMap((shard) => Array.from(shard));
+    expect(exercised.toSorted()).toEqual([...new Set(files)].toSorted());
+    expect(shards.map((shard) => Array.from(shard))).toEqual(
+      assignTestShards(files.toReversed()).map((shard) => Array.from(shard)),
+    );
+    // An unmeasured file receives exactly one assignment.
+    const future = "packages/core/src/new-area/new-detector.property.test.ts";
+    expect(assignTestShards([...files, future]).filter((shard) => shard.has(future))).toHaveLength(
+      1,
+    );
+    expect(suites.find(({ cwd }) => cwd === "packages/vue")?.preloads).toEqual([
+      "./test/vueDom.preload.ts",
+    ]);
+    const root = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+    expect(root.workspaces).toEqual(["packages/*"]);
+    expect(root.scripts.test).toBe(
+      "bun --filter '*' test && bun test scripts && bun test benchmarks/compare",
+    );
+    for (let shard = 1; shard <= TEST_SHARD_COUNT; shard++) {
+      const id = `tests-${shard}`;
+      expect(jobs[id]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
+      const workflow = readWorkflow("ci.yml");
+      expect(JSON.stringify(workflow)).toContain(`--shard ${shard} --depth fast`);
+      expect(JSON.stringify(workflow)).toContain(`--shard ${shard} --depth full`);
+      expect(JSON.stringify(workflow)).toContain(`fuzz-log-full-test-suite-${shard}`);
+    }
+    expect(Object.keys(jobs).filter((job) => /^tests-\d+$/u.test(job))).toHaveLength(
+      TEST_SHARD_COUNT,
+    );
+  });
 
   // The shared planner's full-depth output can depend on labels or non-PR
   // events. Neither may promote this workflow's depth or expand its path scopes.

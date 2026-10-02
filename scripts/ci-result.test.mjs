@@ -101,9 +101,10 @@ describe("CI result", () => {
       expect(runResult(event, baseline).exitCode).toBe(0);
       for (const [job, { result }] of Object.entries(baseline)) {
         if (job === "ci-plan" || result !== "success") continue;
-        for (const failure of ["failure", "cancelled", "skipped"]) {
+        for (const failure of ["failure", "cancelled", "skipped", "missing"]) {
           const needs = structuredClone(baseline);
-          needs[job].result = failure;
+          if (failure === "missing") delete needs[job];
+          else needs[job].result = failure;
           const run = runResult(event, needs);
           expect(run.exitCode).toBe(1);
           expect(run.stdout.toString()).toContain(`${job} (selected, ${failure})`);
