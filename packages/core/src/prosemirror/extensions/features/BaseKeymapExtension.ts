@@ -14,6 +14,7 @@ import {
   selectParentNode,
 } from "prosemirror-commands";
 import type { Mark, Node as PMNode, Schema } from "prosemirror-model";
+import { EditorState, TextSelection } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
 
 import type { TextFormatting } from "../../../types/document";
@@ -144,14 +145,33 @@ function applyNextParagraphStyle(
   return true;
 }
 
+// Whole-paragraph replacement can map the old text endpoint to the surrounding
+// block boundary. Split from the deletion's valid caret instead of that endpoint.
+const blockBoundaryDeletion = (state: EditorState): Transaction | null => {
+  if (!(state.selection instanceof TextSelection) || state.selection.empty) return null;
+  const tr = state.tr.deleteSelection();
+  return tr.doc.resolve(tr.mapping.map(state.selection.from)).parent.isTextblock ? null : tr;
+};
+
 export const splitBlockClearBorders: Command = (state, dispatch, view) => {
+  const deletion = blockBoundaryDeletion(state);
+  // The native split only needs the document, selection, and stored marks.
+  // Keep preview transactions away from live plugin hooks; styling below reads
+  // the original state's resolver and the surviving paragraph's attributes.
+  const splitState = deletion
+    ? EditorState.create({
+        doc: deletion.doc,
+        selection: deletion.selection,
+        storedMarks: deletion.storedMarks,
+      })
+    : state;
   // Capture source paragraph info BEFORE split (splitBlock resets everything)
-  const { $from: preSplitFrom } = state.selection;
+  const { $from: preSplitFrom } = splitState.selection;
   const sourcePara = preSplitFrom.parent.type.name === "paragraph" ? preSplitFrom.parent : null;
 
   // Collect run formatting from the cursor position before splitting.
   // Use storedMarks if set, otherwise resolve from the position.
-  const preMarks = state.storedMarks || preSplitFrom.marks();
+  const preMarks = splitState.storedMarks || preSplitFrom.marks();
   const caretFormattingMarks = preMarks.filter((mark) =>
     RUN_FORMATTING_MARK_NAMES.has(mark.type.name),
   );
@@ -167,11 +187,17 @@ export const splitBlockClearBorders: Command = (state, dispatch, view) => {
       }
     : undefined;
 
-  if (!splitBlock(state, capturingDispatch, view)) {
+  if (!splitBlock(splitState, capturingDispatch, view)) {
     return false;
   }
 
   if (dispatch && splitResult.tr !== null) {
+    if (deletion) {
+      for (const step of splitResult.tr.steps) deletion.step(step);
+      deletion.setSelection(splitResult.tr.selection.getBookmark().resolve(deletion.doc));
+      deletion.setStoredMarks(splitResult.tr.storedMarks);
+      splitResult.tr = deletion;
+    }
     // After split, cursor is in the new (second) paragraph.
     // Apply attr inheritance, border clearing, and stored marks to the SAME transaction.
     const tr = splitResult.tr;

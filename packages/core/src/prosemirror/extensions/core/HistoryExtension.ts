@@ -44,8 +44,11 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
   let previousKind: InputKind | undefined;
   let deletionGroup = 0;
   let previousInputTime = 0;
+  let pendingDeletionGroup: number | null = null;
   return new Plugin({
     filterTransaction(tr) {
+      const pendingGroup = pendingDeletionGroup;
+      pendingDeletionGroup = null;
       if (isHistoryTransaction(tr) || (!tr.docChanged && tr.selectionSet)) {
         previousKind = undefined;
         return true;
@@ -58,7 +61,12 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
       ) {
         // History's composition token groups empty-map mark steps too. Negative
         // tokens keep semantic deletion groups separate from native compositions.
-        tr.setMeta("composition", deletionGroup);
+        if (pendingGroup !== null) {
+          tr.setMeta("composition", pendingGroup);
+        } else if (!tr.getMeta("appendedTransaction")) {
+          // A command between deletion inputs also ends the input sequence.
+          previousKind = undefined;
+        }
       }
       return true;
     },
@@ -77,6 +85,10 @@ const inputBoundaryPlugin = (newGroupDelay: number): Plugin => {
         }
         previousInputTime = now;
         previousKind = kind;
+        pendingDeletionGroup =
+          kind === "deleteBackward" || kind === "deleteForward" || kind === "deletion"
+            ? deletionGroup
+            : null;
       };
       const keydown = (event: KeyboardEvent) => {
         if (event.isComposing) return;

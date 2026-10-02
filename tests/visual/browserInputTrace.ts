@@ -10,13 +10,6 @@ export const BROWSER_TRACE_FIXED_SEEDS = {
 } as const;
 
 export type BrowserDragTarget = "table" | "list" | "note" | "field" | "inlineObject";
-export const BROWSER_SHAPES = {
-  table: "tables",
-  list: "mixed-lists",
-  note: "notes",
-  field: "fields-links-bookmarks",
-  inlineObject: "image",
-} as const satisfies Record<BrowserDragTarget, string>;
 export type BrowserPasteKind = Extract<
   (typeof SUGGESTION_INPUT_KINDS)[number],
   "pastePlain" | "pasteHtml" | "pasteWordHtml" | "pasteListHtml" | "pasteTable" | "pasteMultiBlock"
@@ -28,37 +21,49 @@ export type BrowserInputAction =
   | { kind: "backspace" }
   | { kind: "delete" }
   | { kind: BrowserPasteKind; plain: string; html: string }
-  | { kind: "imeReplacement"; text: string }
+  | { kind: "imeReplacement"; updates: string[]; completion: "commit" | "cancel" }
   | { kind: "cut" }
   | { kind: "dragCellDelete" }
   | { kind: "undo" }
   | { kind: "redo" }
+  | { kind: "historyBurst"; keys: ("undo" | "redo")[] }
   | { kind: "selectionDrag"; target: BrowserDragTarget };
 
 export type BrowserInputTrace = {
-  shape: (typeof BROWSER_SHAPES)[BrowserDragTarget];
+  shape: keyof typeof BROWSER_SHAPE_TARGETS;
   actions: BrowserInputAction[];
 };
 
-const WORDS = ["alpha", "buyer", "shall", "valid", "invoice", "café", "東京"] as const;
+const WORDS = [
+  "alpha",
+  "buyer",
+  "shall",
+  "valid",
+  "invoice",
+  "café",
+  "東京",
+  "e\u0301",
+  "👩🏽‍⚖️",
+  "مرحبا",
+] as const;
 const plainTextArbitrary = fc
   .array(fc.constantFrom(...WORDS), { minLength: 1, maxLength: 4 })
   .map((words) => words.join(" "));
 const textArbitrary = fc
   .array(fc.constantFrom(...WORDS), { minLength: 1, maxLength: 3 })
   .map((words) => words.join(" "));
-const pastePayload = {
+export const BROWSER_PASTE_PAYLOADS = {
   pasteHtml: {
     plain: "First bold\nSecond",
     html: "<p>First <strong>bold</strong></p><p>Second</p>",
   },
-  pasteGoogleDocsHtml: {
+  pasteWebAppHtml: {
     plain: "First bold\nSecond",
-    html: '<b id="docs-internal-guid-folio"><p style="line-height:1.15"><span style="font-weight:700">First bold</span></p><p><span>Second</span></p></b>',
+    html: '<meta charset="utf-8"><b id="docs-internal-guid-folio"><p dir="ltr" style="line-height:1.15;margin:0"><span style="font-size:11pt;font-weight:700;white-space:pre-wrap">First bold</span></p><p><span style="white-space:pre-wrap">Second</span></p></b>',
   },
   pasteWordHtml: {
     plain: "Opening\nClosing",
-    html: '<p class="MsoNormal">Opening</p><p class="MsoNormal">Closing</p>',
+    html: '<html xmlns:o="urn:schemas-microsoft-com:office:office"><body><!--StartFragment--><p class="MsoNormal" style="margin:0;font-size:11pt">Opening<o:p></o:p></p><p class="MsoNormal" style="margin-top:0">Closing<o:p>&nbsp;</o:p></p><!--EndFragment--></body></html>',
   },
   pasteListHtml: {
     plain: "Alpha\nNested\nOmega",
@@ -71,6 +76,13 @@ const pastePayload = {
   pasteMultiBlock: { plain: "Title\nBody", html: "<p>Title</p><p>Body</p>" },
 } as const;
 
+/** Updates and completion shrink independently, preserving a valid lifecycle. */
+export const browserImeActionArbitrary = fc.record({
+  kind: fc.constant("imeReplacement"),
+  updates: fc.array(textArbitrary, { minLength: 1, maxLength: 4 }),
+  completion: fc.constantFrom("commit", "cancel"),
+}) satisfies fc.Arbitrary<BrowserInputAction>;
+
 const suggestionActionArbitraries = {
   typing: textArbitrary.map((text) => ({ kind: "typing", text }) as const),
   enter: fc.constant({ kind: "enter" } as const),
@@ -78,17 +90,23 @@ const suggestionActionArbitraries = {
   delete: fc.constant({ kind: "delete" } as const),
   pastePlain: plainTextArbitrary.map((plain) => ({ kind: "pastePlain", plain, html: "" }) as const),
   pasteHtml: fc.constantFrom(
-    { kind: "pasteHtml", ...pastePayload.pasteHtml } as const,
-    { kind: "pasteHtml", ...pastePayload.pasteGoogleDocsHtml } as const,
+    { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteHtml } as const,
+    { kind: "pasteHtml", ...BROWSER_PASTE_PAYLOADS.pasteWebAppHtml } as const,
   ),
-  pasteWordHtml: fc.constant({ kind: "pasteWordHtml", ...pastePayload.pasteWordHtml } as const),
-  pasteListHtml: fc.constant({ kind: "pasteListHtml", ...pastePayload.pasteListHtml } as const),
-  pasteTable: fc.constant({ kind: "pasteTable", ...pastePayload.pasteTable } as const),
+  pasteWordHtml: fc.constant({
+    kind: "pasteWordHtml",
+    ...BROWSER_PASTE_PAYLOADS.pasteWordHtml,
+  } as const),
+  pasteListHtml: fc.constant({
+    kind: "pasteListHtml",
+    ...BROWSER_PASTE_PAYLOADS.pasteListHtml,
+  } as const),
+  pasteTable: fc.constant({ kind: "pasteTable", ...BROWSER_PASTE_PAYLOADS.pasteTable } as const),
   pasteMultiBlock: fc.constant({
     kind: "pasteMultiBlock",
-    ...pastePayload.pasteMultiBlock,
+    ...BROWSER_PASTE_PAYLOADS.pasteMultiBlock,
   } as const),
-  imeReplacement: textArbitrary.map((text) => ({ kind: "imeReplacement", text }) as const),
+  imeReplacement: browserImeActionArbitrary,
   cut: fc.constant({ kind: "cut" } as const),
   dragCellDelete: fc.constant({ kind: "dragCellDelete" } as const),
 } satisfies Record<(typeof SUGGESTION_INPUT_KINDS)[number], fc.Arbitrary<BrowserInputAction>>;
@@ -101,24 +119,41 @@ const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[] = [
   ),
   fc.constant({ kind: "undo" } as const),
   fc.constant({ kind: "redo" } as const),
+  fc.record({
+    kind: fc.constant("historyBurst"),
+    keys: fc.array(fc.constantFrom("undo", "redo"), { minLength: 2, maxLength: 6 }),
+  }),
 ];
 
-const targetForShape = {
+/** A shape declares only targets it actually contains; text-only fixtures omit drags. */
+export const BROWSER_SHAPE_TARGETS = {
   tables: "table",
   "mixed-lists": "list",
+  "single-decimal-list": "list",
+  "single-bullet-list": "list",
   notes: "note",
   "fields-links-bookmarks": "field",
   image: "inlineObject",
-} as const satisfies Record<(typeof BROWSER_SHAPES)[BrowserDragTarget], BrowserDragTarget>;
+  "bare-package": null,
+  "plain-markdown": null,
+  "rtl-cjk": null,
+  sections: null,
+  "header-footer": null,
+} as const satisfies Record<string, BrowserDragTarget | null>;
+
+const isBrowserShape = (shape: string): shape is keyof typeof BROWSER_SHAPE_TARGETS =>
+  Object.hasOwn(BROWSER_SHAPE_TARGETS, shape);
+const shapeArbitrary = fc.constantFrom(
+  ...Object.keys(BROWSER_SHAPE_TARGETS).filter(isBrowserShape),
+);
 
 /** fast-check shrinks action sequences and their payloads to minimal failing traces. */
 export const browserInputTraceArbitrary = (maxActions = 6): fc.Arbitrary<BrowserInputTrace> =>
-  fc.constantFrom(...Object.values(BROWSER_SHAPES)).chain((shape) => {
-    const actions = [
-      ...commonActionArbitraries,
-      fc.constant({ kind: "selectionDrag", target: targetForShape[shape] } as const),
-    ];
-    if (shape === BROWSER_SHAPES.table) actions.push(suggestionActionArbitraries.dragCellDelete);
+  shapeArbitrary.chain((shape) => {
+    const actions = [...commonActionArbitraries];
+    const target = BROWSER_SHAPE_TARGETS[shape];
+    if (target !== null) actions.push(fc.constant({ kind: "selectionDrag", target } as const));
+    if (target === "table") actions.push(suggestionActionArbitraries.dragCellDelete);
     return fc.record({
       shape: fc.constant(shape),
       actions: fc.array(fc.oneof(...actions), { minLength: 1, maxLength: maxActions }),
@@ -138,7 +173,11 @@ export const parseBrowserInputTraceConfig = (
     seedsText === undefined ? BROWSER_TRACE_FIXED_SEEDS[lane] : seedsText.split(",").map(Number);
   const defaultRuns = lane === "nightly" ? 20 : 2;
   const runs = runsText === undefined ? defaultRuns : Number(runsText);
-  if (seeds.length === 0 || seeds.some((seed) => !Number.isSafeInteger(seed)))
+  if (
+    seedsText?.split(",").some((seed) => seed.trim().length === 0) ||
+    seeds.length === 0 ||
+    seeds.some((seed) => !Number.isSafeInteger(seed))
+  )
     throw new Error("FOLIO_FUZZ_SEEDS must be comma-separated safe integers");
   if (!Number.isSafeInteger(runs) || runs < 1)
     throw new Error("FOLIO_FUZZ_RUNS must be a positive safe integer");

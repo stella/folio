@@ -279,6 +279,46 @@ describe("HistoryExtension input grouping", () => {
       editor.press(UNDO);
       expect(editor.view.state.doc.eq(firstDelete)).toBe(true);
     });
+
+    for (const direction of ["Backward", "Forward"] as const) {
+      test(`${representation}: toolbar edits do not inherit ${direction} deletion grouping`, () => {
+        const editor = createEditor("editor");
+        input(editor.view, "insertText");
+        editor.type("alpha");
+        const typed = editor.view.state.doc;
+        input(editor.view, `deleteContent${direction}`);
+        const deletion = editor.view.state.tr;
+        const from = direction === "Backward" ? 5 : 1;
+        if (representation === "replacement") deletion.delete(from, from + 1);
+        else deletion.addMark(from, from + 1, editor.view.state.schema.mark("bold"));
+        editor.view.dispatch(deletion);
+        const deleted = editor.view.state.doc;
+        const toolbar = editor.view.state.tr.addMark(
+          1,
+          editor.view.state.doc.content.size - 1,
+          editor.view.state.schema.mark("italic"),
+        );
+        editor.view.dispatch(toolbar);
+        expect(toolbar.getMeta("composition")).toBeUndefined();
+        const styled = editor.view.state.doc;
+        input(editor.view, `deleteContent${direction}`);
+        const nextDeletion = editor.view.state.tr;
+        if (representation === "replacement") {
+          const nextFrom = direction === "Backward" ? 4 : 1;
+          nextDeletion.delete(nextFrom, nextFrom + 1);
+        } else {
+          const nextFrom = direction === "Backward" ? 4 : 2;
+          nextDeletion.addMark(nextFrom, nextFrom + 1, editor.view.state.schema.mark("bold"));
+        }
+        editor.view.dispatch(nextDeletion);
+        editor.press(UNDO);
+        expect(editor.view.state.doc.eq(styled)).toBe(true);
+        editor.press(UNDO);
+        expect(editor.view.state.doc.eq(deleted)).toBe(true);
+        editor.press(UNDO);
+        expect(editor.view.state.doc.eq(typed)).toBe(true);
+      });
+    }
   }
 
   test("keyboard boundaries run before a key handler consumes deletion", () => {

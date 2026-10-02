@@ -11,11 +11,24 @@
  *   (retracting your own suggestion)
  */
 
+import {
+  joinBackward,
+  joinForward,
+  selectNodeBackward,
+  selectNodeForward,
+} from "prosemirror-commands";
 import { isHistoryTransaction } from "prosemirror-history";
 import { undoInputRule } from "prosemirror-inputrules";
 import { Slice, type Node as PMNode, type MarkType } from "prosemirror-model";
-import { AllSelection, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
-import type { EditorState, Transaction } from "prosemirror-state";
+import {
+  AllSelection,
+  EditorState,
+  Plugin,
+  PluginKey,
+  Selection,
+  TextSelection,
+} from "prosemirror-state";
+import type { Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import { Mapping, ReplaceStep, type Step } from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
@@ -26,7 +39,7 @@ import { clearIndentOnBackspace } from "../commands/clearParagraphIndent";
 import { paragraphPropertiesSnapshot } from "../commands/propertyChangeScope";
 import { paragraphEndsItsContainer } from "../containerFinalParagraph";
 import type { ParagraphPropertyChangeAttrs } from "../schema/nodes";
-import { handleEditorBeforeInput } from "../textInput";
+import { afterNativeCompositionFlush, handleEditorBeforeInput } from "../textInput";
 import { splitBlockClearBorders } from "../extensions/features/BaseKeymapExtension";
 import { JOINED_RUNS_RESTYLED_META } from "../extensions/features/JoinedRunStyleExtension";
 import { expandNoteReferenceDeletionRange } from "../extensions/marks/noteReferenceDeletion";
@@ -1084,6 +1097,30 @@ type ParagraphMarkAttr = {
   info: TrackedChangeInfo;
 };
 
+type CaretDeleteTarget =
+  | { type: "inlineUnit"; from: number; to: number }
+  | { type: "paragraphEdge" };
+
+/** Find the adjacent visible unit without consuming a bookmark range marker. */
+function caretDeleteTarget(
+  state: EditorState,
+  direction: "backward" | "forward",
+): CaretDeleteTarget {
+  const { $from } = state.selection;
+  const backward = direction === "backward";
+  let from = backward ? $from.pos - 1 : $from.pos;
+  let to = backward ? $from.pos : $from.pos + 1;
+  while (from >= $from.start() && to <= $from.end()) {
+    const adjacent = state.doc.resolve(from).nodeAfter;
+    if (adjacent?.type.name !== "bookmarkBoundary") {
+      return { type: "inlineUnit", from, to };
+    }
+    from += backward ? -adjacent.nodeSize : adjacent.nodeSize;
+    to += backward ? -adjacent.nodeSize : adjacent.nodeSize;
+  }
+  return { type: "paragraphEdge" };
+}
+
 /**
  * Detect a caret-at-paragraph-boundary scenario where Backspace/Delete should
  * record a tracked paragraph-mark deletion instead of joining paragraphs.
@@ -1095,8 +1132,8 @@ type ParagraphMarkAttr = {
  * - Delete-at-paragraph-end     → current paragraph.
  *
  * Returns `null` when there is no adjacent sibling paragraph (the join would
- * not produce paragraph-mark merging — e.g. doc start, doc end, or sibling
- * is a table). The default merge path then runs unchanged.
+ * not produce paragraph-mark merging, e.g. doc start, doc end, or a table).
+ * Bookmark markers at an edge do not hide the adjacent paragraph break.
  */
 export function paragraphBoundaryTarget(
   state: EditorState,
@@ -1112,10 +1149,11 @@ export function paragraphBoundaryTarget(
   const paragraphStart = $from.before();
   const paragraphEnd = $from.after();
 
+  if (caretDeleteTarget(state, direction).type !== "paragraphEdge") {
+    return null;
+  }
+
   if (direction === "backward") {
-    if ($from.parentOffset !== 0) {
-      return null;
-    }
     if (paragraphStart === 0) {
       return null;
     }
@@ -1127,9 +1165,6 @@ export function paragraphBoundaryTarget(
     return paragraphStart - prev.nodeSize;
   }
 
-  if ($from.parentOffset !== $from.parent.content.size) {
-    return null;
-  }
   if (paragraphEnd >= state.doc.content.size) {
     return null;
   }
@@ -1297,12 +1332,24 @@ function handleSuggestionDelete(
 
   // --- Caret delete (one character or a whole note reference) ---
   const isBackward = direction === "backward";
-  const deletePos = isBackward ? $from.pos - 1 : $from.pos;
-  const deleteEnd = isBackward ? $from.pos : $from.pos + 1;
-
-  if (deletePos < 0 || deleteEnd > state.doc.content.size) {
-    return true;
+  const target = caretDeleteTarget(state, direction);
+  if (target.type === "paragraphEdge") {
+    const edge = isBackward ? $from.start() : $from.end();
+    if ($from.pos === edge) return false;
+    // The paragraph-break handler claimed paragraph joins above. For another
+    // block sibling, run the ordinary join at the visible edge. A clean
+    // transient state avoids dispatching a selection-only transaction first.
+    const virtual = EditorState.create({
+      doc: state.doc,
+      selection: TextSelection.create(state.doc, edge),
+    });
+    const join = isBackward ? joinBackward : joinForward;
+    if (join(virtual, dispatch)) return true;
+    const selectNode = isBackward ? selectNodeBackward : selectNodeForward;
+    return selectNode(virtual, dispatch);
   }
+  const deletePos = target.from;
+  const deleteEnd = target.to;
 
   const noteRange = expandNoteReferenceDeletionRange(state.doc, deletePos, deleteEnd);
   const rangeFrom = noteRange?.from ?? deletePos;
@@ -1601,7 +1648,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
         // settles. PM commits the composed text in its own compositionend flush
         // (which runs after this handler); `composing` stays true across that
         // flush so the catch-all skips it, then the range is marked and the flag
-        // cleared one microtask later. See `markComposedAsInsertion`.
+        // cleared after the native final flush. See `markComposedAsInsertion`.
         compositionend(view: EditorView) {
           const pluginState = suggestionModeKey.getState(view.state);
           const from = compositionFrom;
@@ -1613,7 +1660,7 @@ export function createSuggestionModePlugin(initialActive = false, author = "User
             compositionId = null;
             return false;
           }
-          queueMicrotask(() => {
+          afterNativeCompositionFlush(() => {
             try {
               // Re-read state: suggestion mode may have been toggled off (or the
               // author changed) between scheduling and running this callback.
