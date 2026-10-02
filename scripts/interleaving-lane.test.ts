@@ -38,7 +38,7 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
   const source = readFileSync(".github/workflows/nightly-browser-input-fuzzer.yml", "utf8");
   expect(source.match(/^    outputs:$/gmu)).toHaveLength(1);
   expect(job["outputs"]).toEqual({
-    findings: "${{ steps.fuzz.outcome == 'failure' }}",
+    findings: "${{ steps.findings.outputs.found }}",
     interleaving_findings: "${{ steps.interleaving.outcome == 'failure' }}",
   });
   expect(job["permissions"]).toEqual({ contents: "read" });
@@ -80,8 +80,9 @@ test("interleaving random lane uses a bounded scheduled workflow with issue fili
         step["uses"].startsWith("actions/upload-artifact@") &&
         requireRecord(step["with"])["name"] === artifactName,
     );
+    const canonicalArtifacts = id === "fuzz" ? "fuzz-artifacts/canonical\n" : "";
     expect(requireRecord(upload?.["with"])["path"]).toBe(
-      `fuzz-artifacts/${lane}\nfuzz-playwright/${lane}\n`,
+      `fuzz-artifacts/${lane}\n${canonicalArtifacts}fuzz-playwright/${lane}\n`,
     );
   }
   const random = steps.find((step) => step["id"] === "interleaving");
