@@ -297,7 +297,7 @@ export type DocxPackage = {
     settings?: DocumentSettings;
     styles?: StyleDefinitions;
     theme?: Theme;
-    numbering?: NumberingDefinitions;
+    numbering?: NumberingDefinitions | undefined;
     fontTable?: FontTable;
     footnotes?: Footnote[];
     endnotes?: Endnote[];

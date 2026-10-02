@@ -521,3 +521,44 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
     expectUndo(rejected, suggested.document);
   },
 );
+
+test.each(["body", "cell"] as const)(
+  "ranged split inherits the surviving paragraph formatting in a %s",
+  (container) => {
+    const document = documentOf(
+      wrap(
+        [
+          { ...paragraph("00000001", "first"), formatting: { alignment: "center" } },
+          { ...paragraph("00000002", "last"), formatting: { alignment: "end", keepNext: true } },
+        ],
+        container,
+      ),
+    );
+    const intent = {
+      type: "splitParagraph",
+      at: at("00000001", 2),
+      to: at("00000002", 2),
+      newBlockId: "00000003",
+    } as const;
+    const planned = compileEditorIntent(document, { intent, mode: { type: "editing" } });
+    if (planned.isErr()) throw planned.error;
+    const edited = apply(document, planned.value.ops);
+    for (const item of paragraphs(edited.document)) {
+      expect(item.formatting).toStrictEqual({ alignment: "end", keepNext: true });
+    }
+    expectUndo(edited, document);
+  },
+);
+
+test("intent identity demand excludes unrelated paragraph leaves", () => {
+  const target = paragraph("00000001", "target");
+  const unrelated = {
+    ...paragraph("00000002", ""),
+    content: Array.from({ length: 100 }, () => run("other")),
+  };
+  const intent = { type: "splitParagraph", at: at("00000001", 2), newBlockId: "00000003" } as const;
+  const small = allocateEditorIntentIds(documentOf([target]), intent);
+  const large = allocateEditorIntentIds(documentOf([target, unrelated]), intent);
+  expect(large.newIds.revision?.length).toBe(small.newIds.revision?.length);
+  expect(large.newIds.control?.length).toBe(small.newIds.control?.length);
+});

@@ -1,9 +1,12 @@
 /** Pure wire-fixture construction, shared by snapshot tests and generation. */
 import path from "node:path";
 import type { Document, Paragraph, Table, TableRow } from "../../model/document";
+import { captureSectionView, captureSectionViewState } from "../blocks";
 import { applyDocumentOp } from "../apply";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
+  SECTION_BOUNDARY_POLICIES,
+  PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpEnvelope,
@@ -181,7 +184,7 @@ const OPS: readonly DocumentOp[] = [
   {
     type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
     endpoint: { type: "paragraph", blockId: "00000002" },
-    properties: { pageWidth: 12_240 },
+    properties: { type: "present", value: { pageWidth: 12_240 } },
   },
 ];
 
@@ -372,6 +375,114 @@ export const envelopes = (): DocumentOpEnvelope[] => {
   if (terminalResult.isErr()) throw terminalResult.error;
   out.push(toOpEnvelope(terminalOp));
   for (const inverse of terminalResult.value.inverse) out.push(toOpEnvelope(inverse));
+  const sectionBoundary: Paragraph = {
+    ...second,
+    paraId: "00000051",
+    sectionProperties: { pageWidth: 10_000 },
+  };
+  const sectionFinal: Paragraph = { ...second, paraId: "00000052" };
+  const sectionDocument: Document = {
+    package: {
+      document: {
+        content: [sectionBoundary, sectionFinal],
+        finalSectionProperties: { pageHeight: 12_000 },
+        sections: [
+          {
+            properties: sectionBoundary.sectionProperties ?? {},
+            content: [sectionBoundary],
+            headers: undefined,
+            footers: new Map(),
+          },
+          { properties: { pageHeight: 12_000 }, content: [sectionFinal] },
+        ],
+      },
+    },
+  };
+  const snapshot = captureSectionView(sectionDocument.package.document.sections ?? []);
+  const sectionOps = [
+    {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000051",
+      nextBlockId: "00000052",
+      sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+      at: at("00000051", 1),
+      newBlockId: "00000053",
+      firstSectionProperties: { pageWidth: 7_000 },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: [sectionBoundary],
+      blocks: [{ ...sectionBoundary, sectionProperties: { pageWidth: 11_000 } }],
+      sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+    },
+    {
+      type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+      story: OP_STORIES.MAIN,
+      expected: [sectionBoundary],
+      blocks: [{ ...sectionBoundary, formatting: { alignment: "end" } }],
+      sectionView: { expected: snapshot, restore: snapshot },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+      endpoint: { type: "final" },
+      properties: { type: "present", value: { pageHeight: 12_000 } },
+      expectedSectionMetadata: captureSectionViewState(sectionDocument.package.document),
+      sectionMetadata: {
+        type: "sections",
+        value: snapshot.map(({ properties, headers }) => ({
+          properties,
+          headers,
+          footers: { type: "undefined" as const },
+        })),
+      },
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_RUN_PROPS,
+      from: at("00000051", 0),
+      to: at("00000051", 1),
+      patch: { bold: true },
+      revision: stamp(251),
+      propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
+    },
+    {
+      type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000051",
+      patch: { alignment: "center" },
+      revision: stamp(252),
+      propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of sectionOps) {
+    const applied = applyDocumentOp(sectionDocument, op);
+    if (applied.isErr()) throw applied.error;
+    out.push(toOpEnvelope(op));
+    for (const inverse of applied.value.inverse) out.push(toOpEnvelope(inverse));
+  }
+  for (const endpoint of [{ type: "paragraph", blockId: "00000002" }, { type: "final" }] as const) {
+    const input: Document = {
+      package: {
+        document: {
+          content: [{ ...second, sectionProperties: undefined }],
+          finalSectionProperties: undefined,
+        },
+      },
+    };
+    const op = {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+      endpoint,
+      expected: { type: "undefined" },
+      properties: { type: "present", value: { pageWidth: 10_000 } },
+    } as const satisfies DocumentOp;
+    const applied = applyDocumentOp(input, op).unwrap();
+    out.push(toOpEnvelope(op));
+    for (const inverse of applied.inverse) out.push(toOpEnvelope(inverse));
+  }
   return out;
 };
 

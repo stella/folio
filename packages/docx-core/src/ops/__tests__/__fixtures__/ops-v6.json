@@ -2445,7 +2445,10 @@
         "blockId": "00000002"
       },
       "properties": {
-        "pageWidth": 12240
+        "type": "present",
+        "value": {
+          "pageWidth": 12240
+        }
       }
     }
   },
@@ -2463,7 +2466,15 @@
           "pageWidth": 12240
         }
       },
-      "expectedSectionMetadata": null
+      "properties": {
+        "type": "omitted"
+      },
+      "expectedSectionMetadata": {
+        "type": "omitted"
+      },
+      "sectionMetadata": {
+        "type": "omitted"
+      }
     }
   },
   {
@@ -5608,6 +5619,820 @@
           ]
         }
       ]
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "joinBlocks",
+      "story": "main",
+      "blockId": "00000051",
+      "nextBlockId": "00000052",
+      "sectionBoundary": "remove"
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "splitBlock",
+      "at": {
+        "story": "main",
+        "blockId": "00000052",
+        "offset": 5,
+        "zeroWidthBefore": 0
+      },
+      "newBlockId": "00000051",
+      "newHalf": "first",
+      "newParagraph": {},
+      "firstSectionProperties": {
+        "pageWidth": 10000
+      },
+      "sectionView": {
+        "expected": [
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ],
+        "restore": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "splitBlock",
+      "at": {
+        "story": "main",
+        "blockId": "00000051",
+        "offset": 1
+      },
+      "newBlockId": "00000053",
+      "firstSectionProperties": {
+        "pageWidth": 7000
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "joinBlocks",
+      "story": "main",
+      "blockId": "00000053",
+      "nextBlockId": "00000051",
+      "depth": 2,
+      "survivor": "second",
+      "expectedRetired": {},
+      "expectedSurvivor": {},
+      "sectionBoundary": "remove",
+      "sectionView": {
+        "expected": [
+          {
+            "properties": {
+              "pageWidth": 7000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          },
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ],
+        "restore": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 10000
+          }
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 11000
+          }
+        }
+      ],
+      "sectionBoundaries": "replace"
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 11000
+          }
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 10000
+          }
+        }
+      ],
+      "sectionBoundaries": "replace",
+      "sectionView": {
+        "expected": [
+          {
+            "properties": {
+              "pageWidth": 11000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ],
+        "restore": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 10000
+          }
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 10000
+          },
+          "formatting": {
+            "alignment": "end"
+          }
+        }
+      ],
+      "sectionView": {
+        "expected": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ],
+        "restore": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "replaceBlocks",
+      "story": "main",
+      "expected": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 10000
+          },
+          "formatting": {
+            "alignment": "end"
+          }
+        }
+      ],
+      "blocks": [
+        {
+          "type": "paragraph",
+          "paraId": "00000051",
+          "content": [
+            {
+              "type": "run",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Delta"
+                }
+              ]
+            }
+          ],
+          "sectionProperties": {
+            "pageWidth": 10000
+          }
+        }
+      ]
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setSectionEndpoint",
+      "endpoint": {
+        "type": "final"
+      },
+      "properties": {
+        "type": "present",
+        "value": {
+          "pageHeight": 12000
+        }
+      },
+      "expectedSectionMetadata": {
+        "type": "sections",
+        "value": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ]
+      },
+      "sectionMetadata": {
+        "type": "sections",
+        "value": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "undefined"
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "undefined"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setSectionEndpoint",
+      "endpoint": {
+        "type": "final"
+      },
+      "expected": {
+        "type": "present",
+        "value": {
+          "pageHeight": 12000
+        }
+      },
+      "properties": {
+        "type": "present",
+        "value": {
+          "pageHeight": 12000
+        }
+      },
+      "expectedSectionMetadata": {
+        "type": "sections",
+        "value": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "undefined"
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "undefined"
+            }
+          }
+        ]
+      },
+      "sectionMetadata": {
+        "type": "sections",
+        "value": [
+          {
+            "properties": {
+              "pageWidth": 10000
+            },
+            "headers": {
+              "type": "undefined"
+            },
+            "footers": {
+              "type": "entries",
+              "value": []
+            }
+          },
+          {
+            "properties": {
+              "pageHeight": 12000
+            },
+            "headers": {
+              "type": "omitted"
+            },
+            "footers": {
+              "type": "omitted"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setRunProps",
+      "from": {
+        "story": "main",
+        "blockId": "00000051",
+        "offset": 0
+      },
+      "to": {
+        "story": "main",
+        "blockId": "00000051",
+        "offset": 1
+      },
+      "patch": {
+        "bold": true
+      },
+      "revision": {
+        "id": 251,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      },
+      "propertyReview": "append"
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "replaceInline",
+      "story": "main",
+      "blockId": "00000051",
+      "expected": [
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "text",
+              "text": "D"
+            }
+          ],
+          "formatting": {
+            "bold": true
+          },
+          "propertyChanges": [
+            {
+              "type": "runPropertyChange",
+              "info": {
+                "id": 251,
+                "author": "Reviewer",
+                "date": "2026-02-03T04:05:06Z",
+                "initials": "R"
+              }
+            }
+          ]
+        },
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "text",
+              "text": "elta"
+            }
+          ]
+        }
+      ],
+      "content": [
+        {
+          "type": "run",
+          "content": [
+            {
+              "type": "text",
+              "text": "Delta"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setParagraphProps",
+      "story": "main",
+      "blockId": "00000051",
+      "patch": {
+        "alignment": "center"
+      },
+      "revision": {
+        "id": 252,
+        "author": "Reviewer",
+        "date": "2026-02-03T04:05:06Z",
+        "initials": "R"
+      },
+      "propertyReview": "append"
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "00000051",
+      "expected": {
+        "formatting": {
+          "alignment": "center"
+        },
+        "propertyChanges": [
+          {
+            "type": "paragraphPropertyChange",
+            "info": {
+              "id": 252,
+              "author": "Reviewer",
+              "date": "2026-02-03T04:05:06Z",
+              "initials": "R"
+            }
+          }
+        ]
+      },
+      "review": {}
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setSectionEndpoint",
+      "endpoint": {
+        "type": "paragraph",
+        "blockId": "00000002"
+      },
+      "expected": {
+        "type": "undefined"
+      },
+      "properties": {
+        "type": "present",
+        "value": {
+          "pageWidth": 10000
+        }
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setSectionEndpoint",
+      "endpoint": {
+        "type": "paragraph",
+        "blockId": "00000002"
+      },
+      "expected": {
+        "type": "present",
+        "value": {
+          "pageWidth": 10000
+        }
+      },
+      "properties": {
+        "type": "undefined"
+      },
+      "expectedSectionMetadata": {
+        "type": "omitted"
+      },
+      "sectionMetadata": {
+        "type": "omitted"
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setSectionEndpoint",
+      "endpoint": {
+        "type": "final"
+      },
+      "expected": {
+        "type": "undefined"
+      },
+      "properties": {
+        "type": "present",
+        "value": {
+          "pageWidth": 10000
+        }
+      }
+    }
+  },
+  {
+    "schema": 6,
+    "op": {
+      "type": "setSectionEndpoint",
+      "endpoint": {
+        "type": "final"
+      },
+      "expected": {
+        "type": "present",
+        "value": {
+          "pageWidth": 10000
+        }
+      },
+      "properties": {
+        "type": "undefined"
+      },
+      "expectedSectionMetadata": {
+        "type": "omitted"
+      },
+      "sectionMetadata": {
+        "type": "omitted"
+      }
     }
   }
 ]

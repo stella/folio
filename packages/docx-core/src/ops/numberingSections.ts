@@ -1,12 +1,12 @@
 import { Result } from "better-result";
 
+import { MAX_REVISION_ID, type Document, type SectionProperties } from "../model/document";
 import {
-  MAX_REVISION_ID,
-  type BlockContent,
-  type Document,
-  type Section,
-  type SectionProperties,
-} from "../model/document";
+  captureSectionViewState,
+  rebuildSections,
+  restoreSectionViewState,
+  sectionsInStep,
+} from "./blocks";
 import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import {
@@ -16,7 +16,7 @@ import {
   type DocumentOp,
   type NumberingPartState,
   type SetSectionEndpointOp,
-  type SectionViewEntry,
+  type SectionPropertiesState,
 } from "./types";
 import type { DocumentEdit } from "./edits";
 
@@ -261,68 +261,68 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
   );
 };
 
-const groupsFor = (blocks: readonly BlockContent[]): BlockContent[][] => {
-  const groups: BlockContent[][] = [];
-  let current: BlockContent[] = [];
-  for (const block of blocks) {
-    current.push(block);
-    if (block.type === "paragraph" && block.sectionProperties !== undefined) {
-      groups.push(current);
-      current = [];
-    }
-  }
-  if (current.length > 0 || groups.length === 0) groups.push(current);
-  return groups;
+type SectionPropertiesRecord = {
+  sectionProperties?: SectionProperties;
+  finalSectionProperties?: SectionProperties;
 };
 
-const sectionViewOf = (sections: readonly Section[] | undefined): SectionViewEntry[] | undefined =>
-  sections?.map(({ properties, headers, footers }) => ({
-    properties,
-    ...(headers === undefined ? {} : { headers: [...headers] }),
-    ...(footers === undefined ? {} : { footers: [...footers] }),
-  }));
+type CaptureSectionPropertiesOptions = {
+  record: SectionPropertiesRecord;
+  key: keyof SectionPropertiesRecord;
+};
 
-const sectionFromView = (
-  { properties, headers, footers }: SectionViewEntry,
-  content: BlockContent[],
-): Section => ({
-  properties,
-  content,
-  ...(headers === undefined ? {} : { headers: new Map(headers) }),
-  ...(footers === undefined ? {} : { footers: new Map(footers) }),
-});
+const captureSectionProperties = ({
+  record,
+  key,
+}: CaptureSectionPropertiesOptions): SectionPropertiesState => {
+  const value = record[key];
+  if (value !== undefined) return { type: "present", value };
+  return Object.hasOwn(record, key) ? { type: "undefined" } : { type: "omitted" };
+};
 
-const nextSectionView = (
-  document: Document,
-  content: BlockContent[],
-  finalProperties: SectionProperties | undefined,
-): Section[] | undefined => {
-  const previous = document.package.document.sections;
-  if (previous === undefined) return undefined;
-  const groups = groupsFor(content);
-  const oldGroups = groupsFor(document.package.document.content);
-  return groups.map((group, index) => {
-    const end = group.at(-1);
-    const previousIndex = oldGroups.findIndex(
-      (oldGroup) => end !== undefined && oldGroup.includes(end),
-    );
-    const prior =
-      previous[previousIndex < 0 ? Math.min(index, previous.length - 1) : previousIndex];
-    const properties =
-      end?.type === "paragraph" && end.sectionProperties !== undefined
-        ? end.sectionProperties
-        : (finalProperties ?? prior?.properties ?? {});
-    return Object.assign({}, prior, { properties, content: group });
-  });
+type RestoreSectionPropertiesOptions = CaptureSectionPropertiesOptions & {
+  state: SectionPropertiesState;
+};
+
+const restoreSectionProperties = ({
+  record,
+  key,
+  state,
+}: RestoreSectionPropertiesOptions): void => {
+  switch (state.type) {
+    case "omitted":
+      switch (key) {
+        case "sectionProperties":
+          delete record.sectionProperties;
+          return;
+        case "finalSectionProperties":
+          delete record.finalSectionProperties;
+          return;
+        default: {
+          const unreachable: never = key;
+          return unreachable;
+        }
+      }
+    case "undefined":
+      record[key] = undefined;
+      return;
+    case "present":
+      record[key] = state.value;
+      return;
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
 };
 
 const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
   const body = document.package.document;
   const { endpoint } = op;
-  const oldView = sectionViewOf(body.sections);
+  const oldView = captureSectionViewState(body);
   if (
     op.expectedSectionMetadata !== undefined &&
-    !structurallyEqual(oldView, op.expectedSectionMetadata ?? undefined)
+    !structurallyEqual(oldView, op.expectedSectionMetadata)
   ) {
     return failed(
       op,
@@ -336,62 +336,78 @@ const applySectionEndpoint = (document: Document, op: SetSectionEndpointOp) => {
           (block) => block.type === "paragraph" && block.paraId === endpoint.blockId,
         )
       : undefined;
-  let previous = body.finalSectionProperties;
-  if (endpoint.type === "paragraph")
-    previous = target?.type === "paragraph" ? target.sectionProperties : undefined;
-  const found = endpoint.type === "final" || target !== undefined;
-  if (!found)
+  const endpointParagraph = target?.type === "paragraph" ? target : undefined;
+  const record = endpoint.type === "final" ? body : endpointParagraph;
+  if (record === undefined)
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
       "The section endpoint paragraph does not exist.",
     );
-  if (
-    op.expected !== undefined &&
-    !structurallyEqual(previous, op.expected.type === "absent" ? undefined : op.expected.value)
-  )
+  const key = endpoint.type === "final" ? "finalSectionProperties" : "sectionProperties";
+  const previous = captureSectionProperties({ record, key });
+  if (op.expected !== undefined && !structurallyEqual(previous, op.expected))
     return failed(
       op,
       DOCUMENT_OP_REFUSAL_REASONS.STALE,
       "The section endpoint differs from the expected value.",
     );
-  if (structurallyEqual(previous, op.properties)) return unchanged(document);
   const content =
     endpoint.type === "final"
       ? body.content
       : body.content.map((block) => {
           if (block.type !== "paragraph" || block.paraId !== endpoint.blockId) return block;
           const paragraph = Object.assign({}, block);
-          if (op.properties === undefined) delete paragraph.sectionProperties;
-          else paragraph.sectionProperties = op.properties;
+          restoreSectionProperties({
+            record: paragraph,
+            key: "sectionProperties",
+            state: op.properties,
+          });
           return paragraph;
         });
-  const finalProperties = endpoint.type === "final" ? op.properties : body.finalSectionProperties;
-  const sections =
-    op.sectionMetadata === undefined
-      ? nextSectionView(document, content, finalProperties)
-      : groupsFor(content).map((group, index) =>
-          sectionFromView(op.sectionMetadata?.[index] ?? { properties: {} }, group),
-        );
-  const bodyWithoutFinalProperties = { ...body };
-  delete bodyWithoutFinalProperties.finalSectionProperties;
-  const nextBody = {
-    ...(endpoint.type === "final" ? bodyWithoutFinalProperties : body),
-    content,
-    ...(endpoint.type === "final" && op.properties !== undefined
-      ? { finalSectionProperties: op.properties }
-      : {}),
-    ...(sections === undefined ? {} : { sections }),
-  };
+  let nextBody = { ...body, content };
+  if (endpoint.type === "final")
+    restoreSectionProperties({
+      record: nextBody,
+      key: "finalSectionProperties",
+      state: op.properties,
+    });
+  if (op.sectionMetadata !== undefined) {
+    const restored = restoreSectionViewState(nextBody, op.sectionMetadata);
+    if (restored.isErr()) return failed(op, restored.error.reason, restored.error.message);
+    nextBody = restored.value;
+  } else if (body.sections !== undefined) {
+    const source = {
+      ...document,
+      package: {
+        ...document.package,
+        document: {
+          ...body,
+          finalSectionProperties: nextBody.finalSectionProperties,
+        },
+      },
+    };
+    const rebuilt = rebuildSections({ document: source, content, previous: body.sections });
+    if (rebuilt.isErr()) return failed(op, rebuilt.error.reason, rebuilt.error.message);
+    nextBody.sections = rebuilt.value;
+  }
+  if (!sectionsInStep(nextBody))
+    return failed(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      "The section metadata conflicts with its canonical boundaries.",
+    );
+  const nextView = captureSectionViewState(nextBody);
+  if (structurallyEqual(previous, op.properties) && structurallyEqual(oldView, nextView))
+    return unchanged(document);
   const next = { ...document, package: { ...document.package, document: nextBody } };
   const inverse: SetSectionEndpointOp = {
     type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
     endpoint,
-    expected:
-      op.properties === undefined ? { type: "absent" } : { type: "present", value: op.properties },
-    ...(previous === undefined ? {} : { properties: previous }),
-    expectedSectionMetadata: sectionViewOf(sections) ?? null,
-    ...(oldView === undefined ? {} : { sectionMetadata: oldView }),
+    expected: op.properties,
+    properties: previous,
+    expectedSectionMetadata: nextView,
+    sectionMetadata: oldView,
   };
   return Result.ok({
     document: next,

@@ -1,6 +1,7 @@
 /** One editor intent, compiled to direct or tracked document operations. */
 import { Result, panic } from "better-result";
 import { applyDocumentOps } from "./apply";
+import { applyFormattingPatch } from "./patch";
 import { paragraphNumberingReference } from "../model/paragraphNumbering";
 
 import {
@@ -46,6 +47,7 @@ export type EditorIntent =
       to: TextPosition;
       text: string;
       runProps?: TextFormatting;
+      runPropsPatch?: RunPropsPatch;
     }
   | { type: "formatRun"; from: TextPosition; to: TextPosition; patch: RunPropsPatch }
   | { type: "formatParagraph"; at: TextPosition; patch: ParagraphPropsPatch }
@@ -62,6 +64,7 @@ export type EditorIntent =
       to: TextPosition;
       atom: TabContent | BreakContent;
       runProps?: TextFormatting;
+      runPropsPatch?: RunPropsPatch;
     }
   | { type: "splitParagraph"; at: TextPosition; to?: TextPosition; newBlockId: string }
   | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
@@ -75,9 +78,51 @@ export type CompileEditorIntentOptions = { intent: EditorIntent; mode: EditorInt
 export type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
 
 /** Fresh identities for one input, bounded by its paragraph leaves and ancestor records. */
-export const allocateEditorIntentIds = (document: Document) => {
+export const allocateEditorIntentIds = (document: Document, intent?: EditorIntent) => {
   const identities = packageIdentityKeys(document.package);
-  const paragraphs = storyParagraphs(document.package.document);
+  const paragraphs = (() => {
+    if (intent === undefined) return storyParagraphs(document.package.document);
+    switch (intent.type) {
+      case "replaceText":
+      case "insertAtom":
+      case "formatRun": {
+        const selected = selectedParagraphRuns(document, intent.from, intent.to);
+        return selected.isOk() ? selected.value.flat() : [];
+      }
+      case "splitParagraph": {
+        if (intent.to !== undefined) {
+          const selected = selectedParagraphRuns(document, intent.at, intent.to);
+          return selected.isOk() ? selected.value.flat() : [];
+        }
+        return storyParagraphs(storyBody(document, intent.at.story)).filter(
+          ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.at.blockId),
+        );
+      }
+      case "formatParagraph":
+        return storyParagraphs(storyBody(document, intent.at.story)).filter(
+          ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.at.blockId),
+        );
+      case "setList": {
+        const ids = new Set(intent.items.map(({ at }) => idKey(at.blockId)));
+        const first = intent.items.at(0);
+        return first === undefined
+          ? []
+          : storyParagraphs(storyBody(document, first.at.story)).filter(({ paragraph }) =>
+              ids.has(idKey(paragraph.paraId ?? "")),
+            );
+      }
+      case "joinParagraphs":
+        return storyParagraphs(storyBody(document, intent.story)).filter(
+          ({ paragraph }) =>
+            idKey(paragraph.paraId ?? "") === idKey(intent.blockId) ||
+            idKey(paragraph.paraId ?? "") === idKey(intent.nextBlockId),
+        );
+      default: {
+        const exhaustive: never = intent;
+        return exhaustive;
+      }
+    }
+  })();
   // Each leaf can start a deletion segment; each ancestor can be cut at both
   // endpoints. Paragraph joins need a mark and a property-change stamp.
   const demand =
@@ -250,6 +295,23 @@ const authoredFormatting = (
     : formattingAt(previous, paragraphLength(previous));
 };
 
+type IntentRunFormattingOptions = {
+  from: TextPosition;
+  to: TextPosition;
+  runProps?: TextFormatting;
+  runPropsPatch?: RunPropsPatch;
+};
+
+const intentRunFormatting = (
+  document: Document,
+  { from, to, runProps, runPropsPatch }: IntentRunFormattingOptions,
+): TextFormatting => {
+  const authored = runProps ?? authoredFormatting(document, from, to);
+  return runPropsPatch === undefined
+    ? authored
+    : (applyFormattingPatch(authored, runPropsPatch) ?? {});
+};
+
 /** A new logical paragraph inherits the surviving paragraph mark's formatting. */
 const splitParagraphFields = (document: Document, at: TextPosition) => {
   const survivor = editorParagraphGroups(document, at.story)
@@ -376,6 +438,9 @@ export const compileEditorIntent = (
                 ? intent.to
                 : { story: intent.to.story, blockId, offset: paragraphLength(paragraph) },
             patch: intent.patch,
+            ...(mode.type === "suggesting"
+              ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
+              : {}),
             ...tracked,
           } as const;
         }),
@@ -408,8 +473,7 @@ export const compileEditorIntent = (
               content: [
                 {
                   type: "run",
-                  formatting:
-                    intent.runProps ?? authoredFormatting(document, intent.from, intent.to),
+                  formatting: intentRunFormatting(document, intent),
                   content: [intent.atom],
                 },
               ],
@@ -434,7 +498,7 @@ export const compileEditorIntent = (
       const content = [
         {
           type: "run",
-          formatting: intent.runProps ?? authoredFormatting(document, intent.from, intent.to),
+          formatting: intentRunFormatting(document, intent),
           content: [intent.atom],
         },
       ] satisfies ParagraphContent[];
@@ -464,7 +528,7 @@ export const compileEditorIntent = (
           }),
         );
       }
-      const runProps = intent.runProps ?? authoredFormatting(document, from, to);
+      const runProps = intentRunFormatting(document, intent);
       // Both modes insert the same authored run; source XML attributes belong
       // to the existing run rather than to newly typed text.
       const content = (
@@ -602,6 +666,8 @@ export const compileEditorIntent = (
         mode,
       });
       if (deletion.isErr()) return deletion;
+      const deleted = applyDocumentOps(document, deletion.value.ops);
+      if (deleted.isErr()) return Result.err(deleted.error);
       ops = [
         ...deletion.value.ops,
         {
@@ -609,6 +675,7 @@ export const compileEditorIntent = (
           at: deletion.value.selection,
           newBlockId: intent.newBlockId,
           newHalf: SPLIT_HALVES.FIRST,
+          newParagraph: splitParagraphFields(deleted.value.document, deletion.value.selection),
           ...allocationFields,
         },
       ];

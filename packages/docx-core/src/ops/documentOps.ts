@@ -5,7 +5,13 @@
  * sequencer apply operations with one implementation.
  */
 
-export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
+export { combineEdits } from "./edits";
+export {
+  applyDocumentOpEnvelope,
+  applyDocumentOp,
+  applyDocumentOps,
+  type AppliedDocumentOp,
+} from "./apply";
 export {
   compileEditorIntent,
   allocateEditorIntentIds,
@@ -76,6 +82,10 @@ export {
   type SetParagraphReviewOp,
   type SetRunPropsOp,
   type SetTableRowsOp,
+  type SectionPropertiesState,
+  type SectionMapState,
+  type SectionViewEntry,
+  type SectionViewState,
   type SectionEndpoint,
   type SetSectionEndpointOp,
   type SplitBlockOp,
@@ -85,3 +95,5 @@ export {
   type TextPosition,
   type TouchedBlocks,
 } from "./types";
+
+export { packageParagraphIds } from "./ids";

@@ -40,24 +40,24 @@ import type {
 } from "../model/document";
 import type { AbstractNumbering, NumberingDefinitions, NumberingInstance } from "../model/lists";
 
-/** JSON-safe section metadata; content is derived from the body's canonical blocks. */
+/** JSON-safe map presence, including an explicitly undefined section map. */
+export type SectionMapState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "entries"; value: readonly (readonly [HeaderFooterType, HeaderFooter])[] };
+
+/** Section content is derived from the body's canonical blocks. */
 export type SectionViewEntry = {
   properties: SectionProperties;
-  headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
-  footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+  headers: SectionMapState;
+  footers: SectionMapState;
 };
 
-type SectionViewChange = {
-  expected: readonly SectionViewEntry[];
-  restore: readonly SectionViewEntry[];
-};
-
-/** JSON-safe section metadata; content is derived from the body's canonical blocks. */
-export type SectionViewEntry = {
-  properties: SectionProperties;
-  headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
-  footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
-};
+/** Exact presence and metadata of the derived section view. */
+export type SectionViewState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "sections"; value: readonly SectionViewEntry[] };
 
 type SectionViewChange = {
   expected: readonly SectionViewEntry[];
@@ -67,7 +67,9 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
- * Version 6 adds numbering-instance creation and section-endpoint edits.
+ * Version 6 extends PR6 schema 5 with numbering-instance creation, section-endpoint
+ * edits and JSON-safe exact section-map/view presence. Older envelopes receive an
+ * unsupportedSchema refusal; no older deployed journal clients are supported.
  * Version 5 adds explicit section-boundary removal/restoration and separately
  * rejectable paragraph-property reviews over an existing revision.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
@@ -354,6 +356,8 @@ export type JoinInlineOp = {
  * set before the patch. A run already carrying one keeps it, and with it the
  * formatting it started from. A tracked patch joins nothing, so `joinStart`
  * and `joinEnd` must be absent.
+ * `propertyReview: "append"` records a separately rejectable action over
+ * existing review, preserving the current formatting as that action's baseline.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
@@ -366,6 +370,7 @@ export type SetRunPropsOp = {
   joinEnd?: number;
   newIds?: NewIds;
   revision?: RevisionStamp;
+  propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 /**
@@ -705,16 +710,17 @@ export type DeleteNumberingInstanceOp = {
 
 /** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */
 export type SectionEndpoint = { type: "paragraph"; blockId: string } | { type: "final" };
-export type ExpectedSectionProperties =
-  | { type: "absent" }
+export type SectionPropertiesState =
+  | { type: "omitted" }
+  | { type: "undefined" }
   | { type: "present"; value: SectionProperties };
 export type SetSectionEndpointOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT;
   endpoint: SectionEndpoint;
-  expected?: ExpectedSectionProperties;
-  properties?: SectionProperties;
-  expectedSectionMetadata?: readonly SectionViewEntry[] | null;
-  sectionMetadata?: readonly SectionViewEntry[];
+  expected?: SectionPropertiesState;
+  properties: SectionPropertiesState;
+  expectedSectionMetadata?: SectionViewState;
+  sectionMetadata?: SectionViewState;
 };
 
 /**

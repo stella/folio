@@ -2,12 +2,14 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
-import type { Document, Paragraph } from "../../model/document";
+import type { Document, Paragraph, Section, HeaderFooter } from "../../model/document";
+import { captureSectionView, captureSectionViewState } from "../blocks";
+import { contractViolation } from "../contract";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { serializeDocumentToDocx } from "../../serialize/docx";
 import { paragraphNumberingReference } from "../../model/paragraphNumbering";
-import { DOCUMENT_OP_TYPES } from "../types";
-import type { DocumentOp } from "../types";
+import { DOCUMENT_OP_TYPES, SECTION_BOUNDARY_POLICIES } from "../types";
+import type { DocumentOp, SectionPropertiesState } from "../types";
 import { propertyConfig } from "../../../../../test/property-testing";
 import { documentArbitrary } from "./documentArbitraries";
 
@@ -95,9 +97,13 @@ test("generated section endpoint edits restore paragraph, final, and section-vie
         endpoint,
         expected:
           current === undefined
-            ? { type: "absent" as const }
+            ? {
+                type: Object.hasOwn(target, "sectionProperties")
+                  ? ("undefined" as const)
+                  : ("omitted" as const),
+              }
             : { type: "present" as const, value: current },
-        properties,
+        properties: { type: "present", value: properties },
       });
       expect(paragraphEdit.isOk()).toBe(true);
       if (paragraphEdit.isErr()) return;
@@ -122,9 +128,13 @@ test("generated section endpoint edits restore paragraph, final, and section-vie
         endpoint: { type: "final" },
         expected:
           finalProperties === undefined
-            ? { type: "absent" as const }
+            ? {
+                type: Object.hasOwn(document.package.document, "finalSectionProperties")
+                  ? ("undefined" as const)
+                  : ("omitted" as const),
+              }
             : { type: "present" as const, value: finalProperties },
-        properties: { ...finalProperties, pageHeight: width + 1 },
+        properties: { type: "present", value: { ...finalProperties, pageHeight: width + 1 } },
       });
       expect(finalEdit.isOk()).toBe(true);
       if (finalEdit.isErr()) return;
@@ -149,8 +159,8 @@ test("section endpoint edits preserve exact inverse for explicit and absent prop
     const forward = applyDocumentOp(base, {
       type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
       endpoint,
-      expected: { type: "absent" },
-      properties: { pageWidth: 12_240, marginTop: 720 },
+      expected: { type: "omitted" },
+      properties: { type: "present", value: { pageWidth: 12_240, marginTop: 720 } },
     });
     expect(forward.isOk()).toBe(true);
     if (forward.isErr()) continue;
@@ -189,6 +199,7 @@ test("numbering deletion refuses live paragraph and shared abstract references",
     abstractNum,
   });
   expect(liveReference.isErr()).toBe(true);
+  if (liveReference.isErr()) expect(liveReference.error.reason).toBe("stale");
 
   const sharedAbstract = {
     ...base,
@@ -203,6 +214,7 @@ test("numbering deletion refuses live paragraph and shared abstract references",
     abstractNum,
   });
   expect(stillUsed.isErr()).toBe(true);
+  if (stillUsed.isErr()) expect(stillUsed.error.reason).toBe("stale");
 });
 
 test("numbering and section inverses restore byte-equivalent DOCX parts", async () => {
@@ -220,7 +232,7 @@ test("numbering and section inverses restore byte-equivalent DOCX parts", async 
     {
       type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
       endpoint: { type: "paragraph" as const, blockId: "00000001" },
-      properties: { pageWidth: 12_240, marginTop: 720 },
+      properties: { type: "present", value: { pageWidth: 12_240, marginTop: 720 } },
     },
   ] as const;
   let current = base;
@@ -240,4 +252,307 @@ test("numbering and section inverses restore byte-equivalent DOCX parts", async 
     originalDocumentXml,
   );
   expect(restoredZip.file("word/numbering.xml")).toBeNull();
+});
+
+const header: HeaderFooter = { type: "header", hdrFtrType: "default", content: [] };
+const footer: HeaderFooter = { type: "footer", hdrFtrType: "default", content: [] };
+const sectionPresence = ["omitted", "undefined", "empty", "populated"] as const;
+
+test("generated section boundary changes preserve exact map presence through wire undo and redo", () => {
+  fc.assert(
+    fc.property(
+      fc.constantFrom(...sectionPresence),
+      fc.constantFrom(...sectionPresence),
+      fc.integer({ min: 8_000, max: 20_000 }),
+      (headerPresence, footerPresence, width) => {
+        const boundary: Paragraph = { ...paragraph, sectionProperties: { pageWidth: width } };
+        const last: Paragraph = { ...paragraph, paraId: "00000002" };
+        const firstSection: Section = {
+          properties: boundary.sectionProperties ?? {},
+          content: [boundary],
+        };
+        const finalSection: Section = { properties: { pageHeight: width }, content: [last] };
+        const fill = (
+          section: Section,
+          key: "headers" | "footers",
+          presence: typeof headerPresence,
+        ) => {
+          switch (presence) {
+            case "omitted":
+              return;
+            case "undefined":
+              section[key] = undefined;
+              return;
+            case "empty":
+              section[key] = new Map();
+              return;
+            case "populated":
+              section[key] = new Map([["default", key === "headers" ? header : footer]]);
+              return;
+            default: {
+              const unreachable: never = presence;
+              return unreachable;
+            }
+          }
+        };
+        fill(firstSection, "headers", headerPresence);
+        fill(firstSection, "footers", footerPresence);
+        fill(finalSection, "headers", footerPresence);
+        fill(finalSection, "footers", headerPresence);
+        const original: Document = {
+          package: {
+            document: {
+              content: [boundary, last],
+              finalSectionProperties: finalSection.properties,
+              sections: [firstSection, finalSection],
+            },
+          },
+        };
+        const forward = applyDocumentOp(original, {
+          type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+          story: "main",
+          blockId: "00000001",
+          nextBlockId: "00000002",
+          sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE,
+        }).unwrap();
+        expect(contractViolation(forward.document)).toBeUndefined();
+        const inverse: DocumentOp[] = JSON.parse(JSON.stringify(forward.inverse));
+        const undo = applyDocumentOps(forward.document, inverse).unwrap();
+        expect(undo.document).toStrictEqual(original);
+        expect(captureSectionViewState(undo.document.package.document)).toStrictEqual(
+          captureSectionViewState(original.package.document),
+        );
+        for (const [index, originalSection] of original.package.document.sections?.entries() ??
+          []) {
+          const restored = undo.document.package.document.sections?.at(index);
+          expect(Object.hasOwn(restored ?? {}, "headers")).toBe(
+            Object.hasOwn(originalSection, "headers"),
+          );
+          expect(Object.hasOwn(restored ?? {}, "footers")).toBe(
+            Object.hasOwn(originalSection, "footers"),
+          );
+        }
+        const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+        expect(redo.document).toStrictEqual(forward.document);
+      },
+    ),
+    propertyConfig({ numRuns: 40 }),
+  );
+});
+
+test("section reconstruction refuses unresolved parts and missing canonical properties atomically", () => {
+  const boundary: Paragraph = { ...paragraph, sectionProperties: { pageWidth: 10_000 } };
+  const original: Document = {
+    package: {
+      document: {
+        content: [boundary],
+        sections: [{ properties: boundary.sectionProperties ?? {}, content: [boundary] }],
+      },
+    },
+  };
+  for (const properties of [
+    undefined,
+    { pageWidth: 11_000, headerReferences: [{ type: "default" as const, rId: "rIdMissing" }] },
+  ]) {
+    const replacement: Paragraph = {
+      ...paragraph,
+      ...(properties === undefined ? {} : { sectionProperties: properties }),
+    };
+    const result = applyDocumentOps(original, [
+      {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+        story: "main",
+        blockId: "00000001",
+        patch: { alignment: "end" },
+      },
+      {
+        type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+        story: "main",
+        expected: [{ ...boundary, formatting: { alignment: "end" } }],
+        blocks: [replacement],
+        sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+      },
+    ]);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.reason).toBe("sectionBoundary");
+    expect(original.package.document.content.at(0)).toBe(boundary);
+    expect(original.package.document.sections?.at(0)?.properties).toBe(boundary.sectionProperties);
+  }
+});
+
+test("same-count replacements rebuild changed section properties and stale snapshots refuse", () => {
+  const boundary: Paragraph = { ...paragraph, sectionProperties: { pageWidth: 10_000 } };
+  const original: Document = {
+    package: {
+      document: {
+        content: [boundary],
+        sections: [
+          { properties: boundary.sectionProperties ?? {}, content: [boundary], headers: undefined },
+        ],
+      },
+    },
+  };
+  const changed: Paragraph = { ...boundary, sectionProperties: { pageWidth: 11_000 } };
+  const forward = applyDocumentOp(original, {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story: "main",
+    expected: [boundary],
+    blocks: [changed],
+    sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+  }).unwrap();
+  expect(forward.document.package.document.sections?.at(0)?.properties).toEqual(
+    changed.sectionProperties,
+  );
+  expect(contractViolation(forward.document)).toBeUndefined();
+  const undo = applyDocumentOps(forward.document, forward.inverse).unwrap();
+  expect(captureSectionViewState(undo.document.package.document)).toStrictEqual(
+    captureSectionViewState(original.package.document),
+  );
+  const invalid = applyDocumentOp(original, {
+    type: DOCUMENT_OP_TYPES.REPLACE_BLOCKS,
+    story: "main",
+    expected: [boundary],
+    blocks: [changed],
+    sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE,
+    sectionView: {
+      expected: captureSectionView(original.package.document.sections ?? []),
+      restore: [],
+    },
+  });
+  expect(invalid.isErr()).toBe(true);
+  if (invalid.isErr()) expect(invalid.error.reason).toBe("stale");
+  expect(original.package.document.content.at(0)).toBe(boundary);
+});
+
+test("metadata-only endpoint updates and view creation have exact inverses", () => {
+  for (const view of ["omitted", "undefined", "sections"] as const) {
+    const original = structuredClone(base);
+    const body = original.package.document;
+    if (view === "undefined") body.sections = undefined;
+    if (view === "sections")
+      body.sections = [{ properties: {}, content: body.content, headers: undefined }];
+    const before = captureSectionViewState(body);
+    const forward = applyDocumentOp(original, {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+      endpoint: { type: "final" },
+      properties: { type: "omitted" },
+      expectedSectionMetadata: before,
+      sectionMetadata: {
+        type: "sections",
+        value: [
+          {
+            properties: {},
+            headers: { type: "entries", value: [["default", header]] },
+            footers: { type: "undefined" },
+          },
+        ],
+      },
+    }).unwrap();
+    expect(forward.inverse.length).toBe(1);
+    expect(forward.document.package.document.sections?.at(0)?.headers?.get("default")).toEqual(
+      header,
+    );
+    const undo = applyDocumentOps(
+      forward.document,
+      JSON.parse(JSON.stringify(forward.inverse)),
+    ).unwrap();
+    expect(undo.document).toStrictEqual(original);
+    expect(Object.hasOwn(undo.document.package.document, "sections")).toBe(
+      Object.hasOwn(body, "sections"),
+    );
+    expect(captureSectionViewState(undo.document.package.document)).toStrictEqual(before);
+    expect(applyDocumentOps(undo.document, undo.inverse).unwrap().document).toStrictEqual(
+      forward.document,
+    );
+    const stale = applyDocumentOp(original, {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+      endpoint: { type: "final" },
+      properties: { type: "omitted" },
+      expectedSectionMetadata: { type: "sections", value: [] },
+    });
+    expect(stale.isErr()).toBe(true);
+    if (stale.isErr()) expect(stale.error.reason).toBe("stale");
+  }
+});
+
+test("endpoint property states preserve exact omitted and undefined keys through wire history", () => {
+  fc.assert(
+    fc.property(fc.integer({ min: 8_000, max: 20_000 }), (width) => {
+      for (const endpoint of [
+        { type: "paragraph", blockId: "00000001" },
+        { type: "final" },
+      ] as const) {
+        for (const beforeType of ["omitted", "undefined", "present"] as const) {
+          for (const afterType of ["omitted", "undefined", "present"] as const) {
+            const original = structuredClone(base);
+            const body = original.package.document;
+            const first = body.content.at(0);
+            if (first?.type !== "paragraph") throw new TypeError("Missing fixture paragraph.");
+            const beforeValue = { pageWidth: width };
+            switch (beforeType) {
+              case "omitted":
+                break;
+              case "undefined":
+                if (endpoint.type === "final") body.finalSectionProperties = undefined;
+                else first.sectionProperties = undefined;
+                break;
+              case "present":
+                if (endpoint.type === "final") body.finalSectionProperties = beforeValue;
+                else first.sectionProperties = beforeValue;
+                break;
+              default: {
+                const unreachable: never = beforeType;
+                return unreachable;
+              }
+            }
+            const before = (
+              beforeType === "present"
+                ? ({ type: beforeType, value: beforeValue } as const)
+                : ({ type: beforeType } as const)
+            ) satisfies SectionPropertiesState;
+            const after = (
+              afterType === "present"
+                ? ({ type: afterType, value: { pageWidth: width + 1 } } as const)
+                : ({ type: afterType } as const)
+            ) satisfies SectionPropertiesState;
+            const forward = applyDocumentOp(original, {
+              type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+              endpoint,
+              expected: before,
+              properties: after,
+            }).unwrap();
+            const nextBody = forward.document.package.document;
+            const nextParagraph = nextBody.content.at(0);
+            const nextRecord = endpoint.type === "final" ? nextBody : nextParagraph;
+            const key = endpoint.type === "final" ? "finalSectionProperties" : "sectionProperties";
+            expect(Object.hasOwn(nextRecord ?? {}, key)).toBe(afterType !== "omitted");
+            const undo = applyDocumentOps(
+              forward.document,
+              JSON.parse(JSON.stringify(forward.inverse)),
+            ).unwrap();
+            expect(undo.document).toStrictEqual(original);
+            const undoRecord =
+              endpoint.type === "final"
+                ? undo.document.package.document
+                : undo.document.package.document.content.at(0);
+            expect(Object.hasOwn(undoRecord ?? {}, key)).toBe(beforeType !== "omitted");
+            expect(applyDocumentOps(undo.document, undo.inverse).unwrap().document).toStrictEqual(
+              forward.document,
+            );
+            if (beforeType !== "present") {
+              const stale = applyDocumentOp(original, {
+                type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+                endpoint,
+                expected: { type: beforeType === "omitted" ? "undefined" : "omitted" },
+                properties: after,
+              });
+              expect(stale.isErr()).toBe(true);
+              if (stale.isErr()) expect(stale.error.reason).toBe("stale");
+            }
+          }
+        }
+      }
+    }),
+    propertyConfig({ numRuns: 10 }),
+  );
 });
