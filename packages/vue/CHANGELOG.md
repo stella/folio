@@ -1,5 +1,17 @@
 # @stll/folio-vue
 
+## 0.21.2
+
+### Patch Changes
+
+- [#1310](https://github.com/stella/folio/pull/1310) [`196c4ad`](https://github.com/stella/folio/commit/196c4ad17f5ac67830575e70cc7b7d4f3e14b537) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Preserve edits made during asynchronous saves and route toolbar history through the active editor story.
+
+- [#1332](https://github.com/stella/folio/pull/1332) [`531e08c`](https://github.com/stella/folio/commit/531e08c1f7c45d359363d94ee36a67a2cfa7be9c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Keep editor navigation inside its scroll root and preserve host scrolling from ready callbacks.
+
+- [#1332](https://github.com/stella/folio/pull/1332) [`531e08c`](https://github.com/stella/folio/commit/531e08c1f7c45d359363d94ee36a67a2cfa7be9c) Thanks [@jan-kubica](https://github.com/jan-kubica)! - Align table controls and header/footer editing controls with zoomed pages.
+- Updated dependencies [[`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a), [`5c41464`](https://github.com/stella/folio/commit/5c4146499edee70f5c1dbc120942d92dcd636d9a), [`664c02d`](https://github.com/stella/folio/commit/664c02da242e655e170bccbc7dd159bb38e04934), [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a), [`06274bd`](https://github.com/stella/folio/commit/06274bd0f78342aad38d414d70b5a86aa30db61b), [`06274bd`](https://github.com/stella/folio/commit/06274bd0f78342aad38d414d70b5a86aa30db61b), [`f8f9e10`](https://github.com/stella/folio/commit/f8f9e101688cf84049e5f5d65c2c3c9bef88aa5f), [`d094301`](https://github.com/stella/folio/commit/d094301245d865248178b36eb1046d27c170325e), [`41984db`](https://github.com/stella/folio/commit/41984db4acc7a8a322a54102ec1f1955ea5cafe8), [`daa059e`](https://github.com/stella/folio/commit/daa059e8da69fb227e66b294b105558ea3291635), [`56c9a99`](https://github.com/stella/folio/commit/56c9a991bea5b6c04c2a571106287c067ae5e611), [`c3a3a38`](https://github.com/stella/folio/commit/c3a3a3802ca05edc1898394b0b49e08e9d59185a), [`76d7f95`](https://github.com/stella/folio/commit/76d7f95e1d13f6ba2a4fba3c90d37fcb2fe5fedd), [`531e08c`](https://github.com/stella/folio/commit/531e08c1f7c45d359363d94ee36a67a2cfa7be9c), [`6aedc69`](https://github.com/stella/folio/commit/6aedc69547cc6177ed47f65043d26a0615a50c05), [`0050375`](https://github.com/stella/folio/commit/00503758e2c003df57deefef8b0d77e725c08371), [`0503f19`](https://github.com/stella/folio/commit/0503f1927e09c8b0bc536bb192e2b442500f8ca1), [`1f43f54`](https://github.com/stella/folio/commit/1f43f5450ece51e10dbfa4fd0bff9f2fee39dfe9), [`0503f19`](https://github.com/stella/folio/commit/0503f1927e09c8b0bc536bb192e2b442500f8ca1), [`664c02d`](https://github.com/stella/folio/commit/664c02da242e655e170bccbc7dd159bb38e04934), [`64692e8`](https://github.com/stella/folio/commit/64692e8b6fe506564d136c1cb38cf89ee0b32c33), [`8115ca7`](https://github.com/stella/folio/commit/8115ca7b29d0cc16c056c8da5ec6f8a0ef158936), [`d5bc0c2`](https://github.com/stella/folio/commit/d5bc0c2d937e603aad07dc7ee74fee3f39cff4a7), [`9b65b05`](https://github.com/stella/folio/commit/9b65b0559c0102a02971a020b7b84c0a66f3d6f8), [`9b65b05`](https://github.com/stella/folio/commit/9b65b0559c0102a02971a020b7b84c0a66f3d6f8), [`9b65b05`](https://github.com/stella/folio/commit/9b65b0559c0102a02971a020b7b84c0a66f3d6f8), [`5c31599`](https://github.com/stella/folio/commit/5c31599f7074ff3e667b249fb30d4cee2bfb2d89)]:
+  - @stll/folio-core@0.54.2
+
 ## 0.21.1
 
 ### Patch Changes
