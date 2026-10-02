@@ -45,16 +45,16 @@ const packageFileNames = (zip: JSZip): string[] =>
     .sort();
 
 type ExpectUnrelatedPartsPreservedOptions = {
-  originalBytes: ArrayBuffer;
+  importedBytes: ArrayBuffer;
   savedBytes: ArrayBuffer;
 };
 
 const expectUnrelatedPartsPreserved = async ({
-  originalBytes,
+  importedBytes,
   savedBytes,
 }: ExpectUnrelatedPartsPreservedOptions): Promise<void> => {
   const [originalZip, savedZip] = await Promise.all([
-    JSZip.loadAsync(originalBytes),
+    JSZip.loadAsync(importedBytes),
     JSZip.loadAsync(savedBytes),
   ]);
   const originalNames = packageFileNames(originalZip);
@@ -135,6 +135,7 @@ const editFixtureText = async ({
 }: EditFixtureTextOptions) => {
   const originalBytes = readFixture({ directory, filename });
   const parsed = await parseDocx(originalBytes);
+  if (!parsed.originalBuffer) panic("parser must retain the imported package");
   const originalPm = toProseDoc(parsed);
   const editedPm = replaceUniqueText({
     doc: originalPm,
@@ -147,7 +148,7 @@ const editFixtureText = async ({
   const reopened = await parseDocx(savedBytes);
 
   return {
-    originalBytes,
+    importedBytes: parsed.originalBuffer,
     originalComments: parsed.package.document.comments ?? [],
     originalPm,
     originalSectionProperties:
@@ -211,6 +212,7 @@ describe("corpus edit/save/reopen", () => {
   test.each(FIXTURE_FILES)("preserves package content after a body edit (%s)", async (filename) => {
     const originalBytes = readFixture({ filename });
     const parsed = await parseDocx(originalBytes);
+    if (!parsed.originalBuffer) panic("parser must retain the imported package");
     const originalPm = toProseDoc(parsed);
     const marker = `${EDIT_MARKER_PREFIX}${filename}`;
     const markerParagraph = originalPm.type.schema.nodes.paragraph.create(
@@ -226,7 +228,7 @@ describe("corpus edit/save/reopen", () => {
 
     expect(reopenedPm.textContent).toBe(`${originalPm.textContent}${marker}`);
     expect(reopenedPm.childCount).toBe(originalPm.childCount + 1);
-    await expectUnrelatedPartsPreserved({ originalBytes, savedBytes });
+    await expectUnrelatedPartsPreserved({ importedBytes: parsed.originalBuffer, savedBytes });
   });
 });
 

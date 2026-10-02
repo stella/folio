@@ -87,7 +87,7 @@ test("comparison projection avoids a separate nested-revision scan", async () =>
 
   expect(baseProjection.stories).toHaveLength(5);
   expect(baseProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
-  expect(baseProjection.revisions).toEqual({ highestId: 0, present: false });
+  expect(baseProjection.revisions).toEqual({ ids: [], present: false });
   expect(baseTraversals.map((read) => read())).toEqual([2, 2, 2, 2, 2]);
 
   const targetReviewer = await FolioDocxReviewer.fromBuffer(await storyMatrixDocx("after"));
@@ -97,7 +97,7 @@ test("comparison projection avoids a separate nested-revision scan", async () =>
 
   expect(targetProjection.stories).toHaveLength(5);
   expect(targetProjection.stories.every(({ snapshot }) => snapshot !== null)).toBe(true);
-  expect(targetProjection.revisions).toEqual({ highestId: 0, present: false });
+  expect(targetProjection.revisions).toEqual({ ids: [], present: false });
   expect(targetTraversals.map((read) => read())).toEqual([1, 1, 1, 1, 1]);
 });
 

@@ -99,11 +99,11 @@ export function resetAutoIdCounter(): void {
   nextAutoId = 100_000;
 }
 
-/** Get a unique positive integer ID, using the provided value or generating one */
+/** Get an unsigned integer ID, using the provided value or generating one */
 function getUniqueId(id: string | number | undefined): string {
   // VML shape ids are strings; rebuilding as DrawingML must not copy that
   // lexical identity into unsigned numeric docPr/cNvPr attributes.
-  if (id !== undefined && isValidOoxmlNumericId(id, "unsigned32") && Number(id) > 0) {
+  if (id !== undefined && isValidOoxmlNumericId(id, "unsigned32")) {
     return String(id);
   }
   if (!isValidOoxmlNumericId(nextAutoId, "unsigned32")) {

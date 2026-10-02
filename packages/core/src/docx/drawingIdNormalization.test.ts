@@ -49,6 +49,7 @@ const buildDocx = async (): Promise<ArrayBuffer> => {
       <w:body>
         <w:p><w:r>${textBoxDrawing("Generated")}</w:r></w:p>
         <w:p><w:r>${textBoxDrawing("Authored", "100000")}</w:r></w:p>
+        <w:p><w:r>${textBoxDrawing("Zero", "0")}</w:r></w:p>
         <w:sectPr/>
       </w:body>
     </w:document>`,
@@ -74,11 +75,11 @@ const shapeIds = ({ package: { document } }: Document): (string | undefined)[] =
 describe("drawing ID normalization", () => {
   test("assigns missing shape IDs without colliding and remains stable after save", async () => {
     const parsed = await parseDocx(await buildDocx(), { preloadFonts: false });
-    expect(shapeIds(parsed)).toEqual(["100001", "100000"]);
+    expect(shapeIds(parsed)).toEqual(["100001", "100000", "0"]);
 
     const saved = await repackDocx(parsed, { updateModifiedDate: false });
     const reopened = await parseDocx(saved, { preloadFonts: false });
-    expect(shapeIds(reopened)).toEqual(["100001", "100000"]);
+    expect(shapeIds(reopened)).toEqual(["100001", "100000", "0"]);
   });
 
   test("reassigns a detached header drawing that collides with a main-story drawing", () => {
@@ -135,7 +136,12 @@ test("converted lexical drawing ids avoid every authored numeric id and reach a 
       fc.constantFrom("", "+", "000"),
       (ids, prefix) => {
         const document = createEmptyDocument();
-        const authored = [`${prefix}100000`, `${prefix}100001`];
+        const authored = [
+          `${prefix}0`,
+          `${prefix}4294967295`,
+          `${prefix}100000`,
+          `${prefix}100001`,
+        ];
         const drawings = [...authored, ...ids].map((id) => ({
           type: "drawing" as const,
           image: { rId: "rId1", id, size: { width: 914_400, height: 914_400 } },
@@ -146,10 +152,10 @@ test("converted lexical drawing ids avoid every authored numeric id and reach a 
         const surfaces = { documentBody: document.package.document };
         normalizeDrawingIds(surfaces);
         const first = drawings.map(({ image }) => image.id);
-        expect(first.slice(0, 2)).toEqual(authored);
+        expect(first.slice(0, authored.length)).toEqual(authored);
         expect(new Set(first.map(Number)).size).toBe(first.length);
         for (const id of first) {
-          expect(Number(id)).toBeGreaterThan(0);
+          expect(Number(id)).toBeGreaterThanOrEqual(0);
           expect(Number(id)).toBeLessThanOrEqual(0xffff_ffff);
         }
         normalizeDrawingIds(surfaces);

@@ -67,7 +67,7 @@ export const drawingXmlWithoutIdentity = (xml: string): string =>
   reassignRawDrawingId({ xml, id: "0" }) ?? xml;
 
 const needsGeneratedId = ({ id }: DrawingWithId): boolean =>
-  id === undefined || !isValidOoxmlNumericId(id, "unsigned32") || Number(id) === 0;
+  id === undefined || !isValidOoxmlNumericId(id, "unsigned32");
 
 export const normalizeDrawingIds = (surfaces: DocxParagraphSurfaces): void => {
   const entries: DrawingIdEntry[] = [];
