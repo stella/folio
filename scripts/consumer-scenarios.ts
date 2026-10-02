@@ -72,6 +72,7 @@ import {
   type FeatureCoverage,
 } from "../test/consumer-scenarios/support/feature-coverage";
 import { buildAndPack, repoRoot } from "./packaged-consumer-lib";
+import { CONSUMER_DEPENDENCIES } from "./consumer-scenario-dependencies";
 
 const scenarioSrc = path.join(repoRoot, "test", "consumer-scenarios");
 
@@ -83,8 +84,6 @@ const PACKAGES = [
   { dir: "cli", name: "@stll/folio-cli" },
 ] as const;
 
-/** Third-party packages a consumer installs next to folio. */
-const CONSUMER_DEPENDENCIES = ["prosemirror-state@^1.4.4", "prosemirror-model@^1.25.9"];
 const TYPECHECK_DEPENDENCIES = ["typescript@^6", "@types/node@^22"];
 
 // ---------------------------------------------------------------------------
