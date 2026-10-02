@@ -540,10 +540,18 @@ const withRunFormattingOverride =
     );
 
 /** `toggleMark` for the document's own counterpart of `type`. */
-export const toggleDocumentMark =
-  (type: MarkType): Command =>
-  (state, dispatch, view) =>
+export const toggleDocumentMark = (type: MarkType): Command => {
+  const command: Command = (state, dispatch, view) =>
     toggleMark(documentMarkType(state, type))(state, dispatch, view);
+  if (!RUN_FORMATTING_MARK_NAMES.has(type.name)) return command;
+  return withCanonicalCommand(command, (state) => {
+    const markType = documentMarkType(state, type);
+    const formatting = marksToTextFormatting([markType.create()]);
+    if (!isMarkActive(state, markType)) return canonicalRunFormatting(state, formatting);
+    const keys = markType.name === "strike" ? ["strike", "doubleStrike"] : Object.keys(formatting);
+    return canonicalRunFormatting(state, Object.fromEntries(keys.map((key) => [key, null])));
+  });
+};
 
 /** UI toggle whose direct-formatting contract explicitly targets both script families. */
 export const toggleMarkForAllScripts = (type: MarkType, property: PairedToggleProperty): Command =>

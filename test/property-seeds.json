@@ -940,5 +940,13 @@
       "note": "Preserve parsed list counter markers on unchanged numbering definitions instead of replacing them with the base template",
       "date": "2026-10-02"
     }
+  ],
+  "packages/core/src/controller/canonicalStructure.test.ts::generated structural sequences preserve text, identities, projection and exact history selections": [
+    {
+      "seed": -1798387597,
+      "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Count expected noChange without changing document or history; preserve new-half source ownership.",
+      "date": "2026-10-02"
+    }
   ]
 }
