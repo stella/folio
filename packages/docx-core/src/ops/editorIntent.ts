@@ -24,8 +24,14 @@ import {
   reservedIdentityKeysIn,
   packageParagraphIds,
 } from "./ids";
-import { compareGaps, defaultInsertionGap, leafSpans, zeroWidthLeavesAt } from "./leaves";
-import { gapAfterInserted } from "./inline";
+import {
+  compareGaps,
+  defaultInsertionGap,
+  isCommentAnchor,
+  leafSpans,
+  zeroWidthLeavesAt,
+} from "./leaves";
+import { deleteBetween, gapAfterInserted } from "./inline";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import {
   appendTrackedDeletion,
@@ -44,6 +50,7 @@ import {
   EMPTY_PROPERTY_SETS,
   SPLIT_HALVES,
   type DocumentOp,
+  type DeleteRangeOp,
   type NewIds,
   type OpStory,
   type RevisionStamp,
@@ -981,15 +988,96 @@ export const compileEditorIntent = (
         // Moving into the selected range is an explicit no-op, including its edges.
         return Result.ok({ ops: [], selection: intent.target });
       }
+      const anchorDeletions: DeleteRangeOp[] = [];
+      for (const { paragraph } of range.value.flat()) {
+        const blockId = paragraph.paraId ?? "";
+        const from =
+          idKey(blockId) === idKey(intent.from.blockId)
+            ? { offset: intent.from.offset, zeroWidthBefore: fromGap }
+            : { offset: 0, zeroWidthBefore: 0 };
+        const to =
+          idKey(blockId) === idKey(intent.to.blockId)
+            ? { offset: intent.to.offset, zeroWidthBefore: toGap }
+            : {
+                offset: paragraphLength(paragraph),
+                zeroWidthBefore: zeroWidthLeavesAt(paragraph.content, paragraphLength(paragraph))
+                  .length,
+              };
+        for (const span of leafSpans(paragraph.content)) {
+          if (
+            !isCommentAnchor(span.node) ||
+            span.ancestors.some(isRemovedRevisionNode) ||
+            compareGaps(span.before, from) < 0 ||
+            compareGaps(span.after, to) > 0
+          )
+            continue;
+          anchorDeletions.push({
+            type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+            from: { story: intent.from.story, blockId, ...span.before },
+            to: { story: intent.from.story, blockId, ...span.after },
+          });
+        }
+      }
+      if (anchorDeletions.length > 0 && mode.type === "suggesting")
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            message: "A tracked move cannot transfer comment anchors.",
+            opType: DOCUMENT_OP_TYPES.DELETE_RANGE,
+          }),
+        );
       const deleted = compileEditorIntent(document, {
         intent: { type: "replaceText", from: intent.from, to: intent.to, text: "" },
         mode,
       });
       if (deleted.isErr()) return deleted;
-      const applied = applyDocumentOps(document, deleted.value.ops);
-      if (applied.isErr()) return Result.err(applied.error);
+      const logicalDeletions =
+        anchorDeletions.length === 0
+          ? deleted.value.ops
+          : [
+              ...deleted.value.ops
+                .filter((op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE)
+                .concat(anchorDeletions)
+                .sort(
+                  (left, right) =>
+                    indexOf(right.from) - indexOf(left.from) ||
+                    compareGaps(
+                      {
+                        offset: right.from.offset,
+                        zeroWidthBefore: right.from.zeroWidthBefore ?? 0,
+                      },
+                      { offset: left.from.offset, zeroWidthBefore: left.from.zeroWidthBefore ?? 0 },
+                    ),
+                ),
+              ...deleted.value.ops.filter((op) => op.type !== DOCUMENT_OP_TYPES.DELETE_RANGE),
+            ];
+      const anchors = new Set(anchorDeletions);
+      const deletionOps: DocumentOp[] = [];
+      let afterDeletion = document;
+      for (const planned of logicalDeletions) {
+        let op = planned;
+        if (planned.type === DOCUMENT_OP_TYPES.DELETE_RANGE && anchors.has(planned)) {
+          const paragraph = paragraphAt(afterDeletion, planned.from);
+          if (paragraph === undefined) panic("A move anchor lost its selected paragraph.");
+          op = {
+            type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+            story: planned.from.story,
+            blockId: planned.from.blockId,
+            expected: paragraph.content,
+            content: deleteBetween(
+              paragraph.content,
+              { offset: planned.from.offset, zeroWidthBefore: planned.from.zeroWidthBefore ?? 0 },
+              { offset: planned.to.offset, zeroWidthBefore: planned.to.zeroWidthBefore ?? 0 },
+            ).content,
+          };
+        }
+        const applied = applyDocumentOps(afterDeletion, [op]);
+        if (applied.isErr()) return Result.err(applied.error);
+        afterDeletion = applied.value.document;
+        deletionOps.push(op);
+      }
       let target = intent.target;
-      for (const op of deleted.value.ops) {
+      for (const op of logicalDeletions) {
         if (
           op.type === DOCUMENT_OP_TYPES.DELETE_RANGE &&
           op.revision === undefined &&
@@ -1036,7 +1124,7 @@ export const compileEditorIntent = (
           }
         }
       }
-      const inserted = compileEditorIntent(applied.value.document, {
+      const inserted = compileEditorIntent(afterDeletion, {
         intent: {
           type: "replaceFragment",
           from: target,
@@ -1045,11 +1133,11 @@ export const compileEditorIntent = (
           openStart: intent.openStart,
           openEnd: intent.openEnd,
         },
-        mode: modeAfterOps(applied.value.document, mode),
+        mode: modeAfterOps(afterDeletion, mode),
         ...(firstBlockId === undefined ? {} : { firstBlockId }),
       });
       if (inserted.isErr()) return inserted;
-      ops = [...deleted.value.ops, ...inserted.value.ops];
+      ops = [...deletionOps, ...inserted.value.ops];
       selection = inserted.value.selection;
       break;
     }

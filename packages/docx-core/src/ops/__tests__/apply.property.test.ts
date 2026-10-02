@@ -46,6 +46,7 @@ import { sameBlockList, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { sameRunFormatting } from "../inline";
+import { compareGaps, isCommentAnchor, leafSpans, zeroWidthLeavesAt } from "../leaves";
 import { packageResourcesOf } from "../packageResources";
 import {
   allocateEditorIntentIds,
@@ -60,6 +61,7 @@ import {
   isInlineContainer,
   isRemovedRevision,
   paragraphLogicalText,
+  paragraphLength,
   runContentWidth,
 } from "../offsets";
 import { applyFormattingPatch } from "../patch";
@@ -1809,6 +1811,155 @@ describe("document operations", () => {
         expect(failed.isErr()).toBe(true);
       }),
       { numRuns: 100 },
+    );
+  });
+  test("generated comment-anchor move sequences preserve marker gaps and refuse tracked transfer atomically", () => {
+    assertProperty(
+      fc.property(
+        fc.array(fc.record({ target: fc.nat(), gap: fc.nat(), tracked: fc.boolean() }), {
+          minLength: 8,
+          maxLength: 16,
+        }),
+        (steps) => {
+          const original = {
+            package: {
+              document: {
+                content: [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    content: [
+                      { type: "run", content: [{ type: "text", text: "a" }] },
+                      { type: "commentRangeStart", id: 7 },
+                      { type: "commentRangeEnd", id: 7 },
+                      { type: "commentReference", id: 7 },
+                      { type: "run", content: [{ type: "text", text: "bcd" }] },
+                    ],
+                  },
+                ],
+                comments: [{ id: 7, author: "Owner", content: [] }],
+              },
+            },
+          } satisfies Document;
+          let document: Document = original;
+          const journal: { before: Document; edit: AppliedDocumentOp }[] = [];
+          const refusals = new Map<DocumentOpRefusalReason, number>();
+          let expectedRefusals = 0;
+          for (const [index, step] of steps.entries()) {
+            const paragraph = storyParagraphs(document.package.document).at(0)?.paragraph;
+            if (!paragraph) panic("Comment move sequence lost its paragraph.");
+            const anchors = leafSpans(paragraph.content).filter(({ node }) =>
+              isCommentAnchor(node),
+            );
+            const start = anchors.at(0);
+            const end = anchors.at(-1);
+            if (!start || !end) panic("Comment move sequence lost its anchors.");
+            let targetOffset = step.target % (paragraphLength(paragraph) + 1);
+            let tracked = step.tracked;
+            if (index === 0) {
+              targetOffset = 0;
+              tracked = false;
+            }
+            if (index === 1) {
+              targetOffset = paragraphLength(paragraph);
+              tracked = true;
+            }
+            const targetGap =
+              step.gap % (zeroWidthLeavesAt(paragraph.content, targetOffset).length + 1);
+            const at = { story: OP_STORIES.MAIN, blockId: "00000001" };
+            const intent = {
+              type: "moveFragment",
+              from: { ...at, ...start.before },
+              to: { ...at, ...end.after },
+              target: { ...at, offset: targetOffset, zeroWidthBefore: targetGap },
+              openStart: 1,
+              openEnd: 1,
+              paragraphs: [
+                {
+                  type: "paragraph",
+                  content: [
+                    { type: "commentRangeStart", id: 7 },
+                    { type: "commentRangeEnd", id: 7 },
+                    { type: "commentReference", id: 7 },
+                  ],
+                },
+              ],
+            } as const satisfies EditorIntent;
+            const allocation = allocateEditorIntentIds(document, intent);
+            const mode = tracked
+              ? ({
+                  type: "suggesting",
+                  revision: {
+                    id: allocation.revisionId,
+                    author: "Property",
+                    date: "2026-10-02T00:00:00Z",
+                  },
+                  newIds: allocation.newIds,
+                } as const)
+              : ({ type: "editing", newIds: allocation.newIds } as const);
+            const before = document;
+            const snapshot = independentCopy(before);
+            const inside =
+              compareGaps(intent.target, start.before) >= 0 &&
+              compareGaps(intent.target, end.after) <= 0;
+            const compiled = compileEditorIntent(document, { intent, mode });
+            if (tracked && !inside) {
+              if (compiled.isOk()) panic("Tracked comment transfer unexpectedly compiled.");
+              refusals.set(compiled.error.reason, (refusals.get(compiled.error.reason) ?? 0) + 1);
+              expectedRefusals += 1;
+              expect(compiled.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+              assertExactModel(document, snapshot);
+            } else {
+              if (compiled.isErr()) throw compiled.error;
+              const edit = applyDocumentOps(document, compiled.value.ops).unwrap();
+              if (inside) expect(compiled.value.ops).toEqual([]);
+              const moved = storyParagraphs(edit.document.package.document).at(0)?.paragraph;
+              if (!moved) panic("Comment move lost its result paragraph.");
+              const text = paragraphLogicalText(paragraph);
+              const remaining = text.slice(0, start.before.offset) + text.slice(end.after.offset);
+              const rebased = targetOffset > end.after.offset ? targetOffset - 1 : targetOffset;
+              expect(paragraphLogicalText(moved)).toBe(
+                inside
+                  ? text
+                  : remaining.slice(0, rebased) +
+                      text.slice(start.before.offset, end.after.offset) +
+                      remaining.slice(rebased),
+              );
+              assertExactModel(
+                leafSpans(moved.content)
+                  .filter(({ node }) => isCommentAnchor(node))
+                  .map(({ node }) => node),
+                [
+                  { type: "commentRangeStart", id: 7 },
+                  { type: "commentRangeEnd", id: 7 },
+                  { type: "commentReference", id: 7 },
+                ],
+              );
+              const undo = applyDocumentOps(
+                edit.document,
+                JSON.parse(JSON.stringify(edit.inverse)),
+              ).unwrap();
+              assertExactModel(undo.document, before);
+              const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
+              assertExactModel(redo.document, edit.document);
+              journal.push({ before, edit });
+              document = redo.document;
+            }
+          }
+          expect([...refusals.keys()]).toEqual([DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE]);
+          expect(refusals.get(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE)).toBe(expectedRefusals);
+          for (const entry of journal.toReversed()) {
+            document = applyDocumentOps(document, entry.edit.inverse).unwrap().document;
+            assertExactModel(document, entry.before);
+          }
+          assertExactModel(document, original);
+          for (const entry of journal) {
+            document = applyDocumentOps(document, entry.edit.ops).unwrap().document;
+            assertExactModel(document, entry.edit.document);
+          }
+        },
+      ),
+      { numRuns: 30 },
     );
   });
   test("plain-text input sequences preserve exact inverse, redo and rejection atomicity", () => {

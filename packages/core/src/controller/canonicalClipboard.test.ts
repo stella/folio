@@ -12,8 +12,10 @@ import type { Document } from "../types/document";
 import { schema } from "../prosemirror/schema";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
+import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import {
   assignDocumentParagraphPropertySourceContract,
+  cloneDocumentWithParagraphPropertySources,
   getParagraphPropertySourceToken,
 } from "../docx/paragraphPropertySource";
 import { prepareCanonicalPaste } from "./canonicalClipboard";
@@ -154,7 +156,8 @@ describe("canonical clipboard", () => {
           const version = session.version;
           const projection = session.projection;
           const selection = state.selection.toJSON();
-          const sourceSnapshot = structuredClone(sourceDocument);
+          const sourceSnapshot = cloneDocumentWithParagraphPropertySources(sourceDocument);
+          assertExactModel(sourceDocument, sourceSnapshot);
           const prepared = prepareCanonicalPaste({ session, state, slice, sourceDocument });
           expect(prepared.isErr()).toBe(true);
           if (prepared.isOk()) throw new TypeError("Foreign story reference unexpectedly pasted.");
@@ -827,7 +830,8 @@ describe("canonical clipboard", () => {
                 after.package.relationships?.get(collisionId),
                 before.package.relationships?.get(collisionId),
               );
-              const exactBeforeSave = structuredClone(after);
+              const exactBeforeSave = cloneDocumentWithParagraphPropertySources(after);
+              assertExactModel(after, exactBeforeSave);
               const sourceBytes =
                 after.originalBuffer === undefined
                   ? undefined
@@ -1144,11 +1148,23 @@ describe("canonical clipboard", () => {
     const styles = session.document.package.styles?.styles;
     const imported = styles?.find((style) => style.styleId === importedId);
     let projected: ProseNode | undefined;
-    state.doc.forEach((paragraph) => {
-      if (paragraph.textContent.includes("foreign styled")) projected = paragraph;
+    let projectedPosition = -1;
+    state.doc.forEach((paragraph, position) => {
+      if (paragraph.textContent.includes("foreign styled")) {
+        projected = paragraph;
+        projectedPosition = position;
+      }
     });
     if (!projected) throw new TypeError("Imported style projection disappeared.");
-    expect(projected.attrs["listMarker"]).toBe("VIII)");
+    expect(projected.attrs["listMarker"]).toBe("%1)");
+    expect(projected.attrs["listNumFmt"]).toBe("upperRoman");
+    expect(projected.attrs["listLevelStarts"]?.at(0)).toBe(8);
+    const rendered = toFlowBlocks(state.doc).find(
+      (block) => block.kind === "paragraph" && block.pmStart === projectedPosition,
+    );
+    if (rendered?.kind !== "paragraph")
+      throw new TypeError("Imported style layout paragraph disappeared.");
+    expect(rendered.attrs?.listMarker).toBe("VIII)");
     expect(imported?.name).toBe("Foreign");
     expect(imported?.rPr?.bold).toBe(true);
     const importedNumbering = imported?.pPr?.numPr;
@@ -1219,7 +1235,7 @@ describe("canonical clipboard", () => {
             beforeSelection: unknown;
             afterSelection: unknown;
           }[] = [];
-          for (const step of steps) {
+          for (const [stepIndex, step] of steps.entries()) {
             const gaps: number[] = [];
             state.doc.forEach((paragraph, offset) => {
               gaps.push(offset + 1);
@@ -1268,6 +1284,12 @@ describe("canonical clipboard", () => {
             if (prepared.isErr()) {
               refusals.set(prepared.error.reason, (refusals.get(prepared.error.reason) ?? 0) + 1);
               // The only generated refusal/no-op is a drop inside its source or an empty move.
+              if (step.kind !== "move" || !(from === to || (target >= from && target <= to))) {
+                Object.assign(prepared.error, {
+                  message: `Clipboard step ${stepIndex} (${step.kind}, from=${from}, to=${to}, target=${target}) refused: ${prepared.error.message}`,
+                });
+                throw prepared.error;
+              }
               expect(step.kind).toBe("move");
               expect(from === to || (target >= from && target <= to)).toBe(true);
               expect(["noChange", "refused"]).toContain(prepared.error.reason);

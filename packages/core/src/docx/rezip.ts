@@ -872,7 +872,7 @@ const materializeEmbeddedMedia = async ({
 
 type ExternalHyperlinkResource =
   | { type: "text"; hyperlink: Hyperlink }
-  | { type: "drawing"; image: Image; drawing: DrawingContent };
+  | { type: "drawing"; image: Image; drawing: Extract<DrawingContent, { rawXmlMode?: never }> };
 
 const collectExternalHyperlinkResources = (blocks: BlockContent[]): ExternalHyperlinkResource[] => {
   const resources: ExternalHyperlinkResource[] = [];

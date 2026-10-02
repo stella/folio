@@ -77,6 +77,13 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
     return true;
   };
 
+  const refuseClipboardGesture = (event: Event, reason: string) => {
+    event.preventDefault();
+    closeGroup();
+    options.refuse(reason);
+    return true;
+  };
+
   const refuseNativeMutation = (view: EditorView) => {
     if (!composition.active && proposal.type !== "refused") {
       options.refuse("Unclassified native text is unavailable in this session.");
@@ -413,13 +420,13 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         beginGesture();
         closeGroup();
         if (composition.active)
-          return refuseEvent(event, "Composition must finish before pasting.");
+          return refuseClipboardGesture(event, "Composition must finish before pasting.");
         return false;
       },
       cut: (view: EditorView, event: ClipboardEvent) => {
         beginGesture();
         if (composition.active)
-          return refuseEvent(event, "Composition must finish before cutting.");
+          return refuseClipboardGesture(event, "Composition must finish before cutting.");
         if (options.cut !== undefined) {
           closeGroup();
           return options.cut(view, event);
@@ -430,7 +437,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         beginGesture();
         closeGroup();
         if (composition.active)
-          return refuseEvent(event, "Composition must finish before dropping.");
+          return refuseClipboardGesture(event, "Composition must finish before dropping.");
         return false;
       },
     },

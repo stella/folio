@@ -1,6 +1,5 @@
 import path from "node:path";
 import { expect, test } from "bun:test";
-import path from "node:path";
 import { applyDocumentOps } from "../apply";
 import type { Document } from "../../model/document";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";

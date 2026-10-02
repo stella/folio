@@ -48,6 +48,7 @@ import {
   type JoinBlocksOp,
   type SetParagraphPropsOp,
   type SetRunPropsOp,
+  type ReplaceInlineOp,
   type SplitBlockOp,
   EMPTY_PROPERTY_SETS,
   type DocumentOp,
@@ -280,7 +281,8 @@ type PlannedReviewOp =
   | JoinBlocksOp
   | SplitBlockOp
   | SetParagraphPropsOp
-  | SetRunPropsOp;
+  | SetRunPropsOp
+  | ReplaceInlineOp;
 
 type TrackedPlanOptions = {
   document: Document;
@@ -306,7 +308,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
   };
   const append = (input: PlannedReviewOp): Result<void, DocumentOpRefusal> => {
     let op: DocumentOp = input;
-    if (input.revision !== undefined) {
+    if (input.type !== DOCUMENT_OP_TYPES.REPLACE_INLINE && input.revision !== undefined) {
       const stampId = stampUsed ? take(1)?.at(0) : revision.id;
       if (stampId === undefined) return outOfIds();
       op = { ...input, revision: { ...revision, id: stampId } };
@@ -322,7 +324,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     });
     const applied = applyDocumentOp(current, op);
     if (applied.isErr()) return Result.err(applied.error);
-    stampUsed ||= input.revision !== undefined && applied.value.revisions.length > 0;
+    stampUsed ||= stampOf(input) !== undefined && applied.value.revisions.length > 0;
     current = applied.value.document;
     ops.push(op);
     return Result.ok(undefined);
