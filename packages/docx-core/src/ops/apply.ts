@@ -58,7 +58,6 @@ import { deleteBlocks } from "./blockDeletion";
 import { insertBlocks } from "./blockInsertion";
 import {
   endsItsContainer,
-  blockListAt,
   captureSectionView,
   type ParagraphLocation,
   replaceParagraphs,
@@ -103,7 +102,6 @@ import {
 } from "./inline";
 import {
   childNodes,
-  leafSpans,
   defaultInsertionGap,
   type Gap,
   type InlineNode,
@@ -126,7 +124,6 @@ import { applyTableOp } from "./tables";
 import { stampedTableRowRevisionIds } from "./tableTracking";
 import {
   namesMarkFormatting,
-  isRemovedRevisionNode,
   paragraphPropertiesOf,
   paragraphPropertyChange,
   reviewFieldsOf,
@@ -1457,25 +1454,9 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   }
   const first: Paragraph = { ...leading, pPrMark: { kind: "del", info: stampInfo(stamp) } };
   let second = trailing;
-  const list = blockListAt(storyBody(document, op.story).content, at.list);
-  let visible = false;
-  for (let index = at.index; index >= 0; index -= 1) {
-    const paragraph = list.at(index);
-    if (paragraph?.type !== "paragraph") break;
-    visible ||= leafSpans(paragraph.content).some(
-      (span) =>
-        span.after.offset > span.before.offset && !span.ancestors.some(isRemovedRevisionNode),
-    );
-    const preceding = list.at(index - 1);
-    if (
-      preceding?.type !== "paragraph" ||
-      (preceding.pPrMark?.kind !== "del" && preceding.pPrMark?.kind !== "moveFrom")
-    )
-      break;
-  }
-  const formatting = visible
-    ? withMarkFormatting(paragraphPropertiesOf(leading.formatting), trailing.formatting)
-    : trailing.formatting;
+  // Primitive direct and tracked joins share physical paragraph semantics.
+  // The editor intent compiler applies accepted-view group formatting.
+  const formatting = joinedFormatting(leading, trailing);
   if (!sameParagraphProperties(formatting, trailing.formatting)) {
     second = withParagraphFormatting(trailing, formatting);
     // Each join is independently rejectable, including over an existing property review.

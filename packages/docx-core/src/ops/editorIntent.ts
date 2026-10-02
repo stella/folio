@@ -5,6 +5,7 @@ import {
   MAX_REVISION_ID,
   type Document,
   type Paragraph,
+  type ParagraphContent,
   type TextFormatting,
 } from "../model/document";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
@@ -15,7 +16,7 @@ import { appendTrackedDeletion, createTrackedPlan, selectedParagraphRuns } from 
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
-import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
+import { isRemovedRevisionNode, paragraphPropertiesOf, reviewFieldsOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
@@ -254,6 +255,13 @@ export const compileEditorIntent = (
         );
       }
       const runProps = authoredFormatting(document, from, to);
+      // Both modes insert the same authored run; source XML attributes belong
+      // to the existing run rather than to newly typed text.
+      const content = (
+        text === ""
+          ? []
+          : [{ type: "run", formatting: runProps, content: [{ type: "text", text }] }]
+      ) satisfies ParagraphContent[];
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
           from,
@@ -265,10 +273,7 @@ export const compileEditorIntent = (
             tail: {
               openStart: 0,
               openEnd: 0,
-              content:
-                text === ""
-                  ? []
-                  : [{ type: "run", formatting: runProps, content: [{ type: "text", text }] }],
+              content,
             },
           },
         });
@@ -330,7 +335,12 @@ export const compileEditorIntent = (
       }
       const at = { ...from, blockId: survivorId };
       if (text !== "")
-        ops.push({ type: DOCUMENT_OP_TYPES.INSERT_TEXT, at, text, runProps, newIds: mode.newIds });
+        ops.push({
+          type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+          at,
+          slice: { openStart: 0, openEnd: 0, content },
+          newIds: mode.newIds,
+        });
       selection = { ...at, offset: from.offset + text.length };
       break;
     }
@@ -421,6 +431,32 @@ export const compileEditorIntent = (
         const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
         const joined = plan.append(join);
         if (joined.isErr()) return Result.err(joined.error);
+        if (ownInsertedMark) {
+          // Cancelling our inserted boundary is physical, but its formatting
+          // effect remains a suggestion on the original trailing paragraph.
+          const before = paragraphAt(document, {
+            story: intent.story,
+            blockId: intent.nextBlockId,
+            offset: 0,
+          });
+          const after = paragraphAt(plan.document(), {
+            story: intent.story,
+            blockId: intent.nextBlockId,
+            offset: 0,
+          });
+          if (!before || !after) panic("An own-mark join lost its trailing paragraph.");
+          const review = reviewFieldsOf(after);
+          delete review.formatting;
+          if (before.formatting !== undefined) review.formatting = before.formatting;
+          const restored = plan.append({
+            type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+            story: intent.story,
+            blockId: intent.nextBlockId,
+            expected: reviewFieldsOf(after),
+            review,
+          });
+          if (restored.isErr()) return Result.err(restored.error);
+        }
         if (!firstGroup || !followingGroup)
           panic("A valid canonical join must belong to paragraph groups.");
         const source =

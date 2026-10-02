@@ -296,6 +296,9 @@ describe("document operations", () => {
           { minLength: 8, maxLength: 24 },
         ),
         (generated, text, inputs) => {
+          const sectionProperties = generated.package.document.content.find(
+            (item) => item.type === "paragraph",
+          )?.sectionProperties;
           const original = normalizeForOps({
             ...generated,
             package: {
@@ -303,31 +306,28 @@ describe("document operations", () => {
               document: {
                 ...generated.package.document,
                 sections: undefined,
-                content: ["00000001", "00000002"].map(
-                  (paraId, index) =>
-                    ({
-                      type: "paragraph",
-                      paraId,
-                      formatting: {
-                        alignment: index === 0 ? "start" : "end",
-                        runProperties: { italic: index === 0 },
-                        runInWithNext: index === 0,
+                content: ["00000001", "00000002"].map((paraId, index) => {
+                  const paragraph = {
+                    type: "paragraph",
+                    paraId,
+                    formatting: {
+                      alignment: index === 0 ? "start" : "end",
+                      runProperties: { italic: index === 0 },
+                      runInWithNext: index === 0,
+                    },
+                    content: [
+                      {
+                        type: "run",
+                        formatting: index === 0 ? { bold: true } : { italic: true },
+                        content: [{ type: "text", text }],
                       },
-                      sectionProperties:
-                        index === 0
-                          ? generated.package.document.content.find(
-                              (item) => item.type === "paragraph",
-                            )?.sectionProperties
-                          : undefined,
-                      content: [
-                        {
-                          type: "run",
-                          formatting: index === 0 ? { bold: true } : { italic: true },
-                          content: [{ type: "text", text }],
-                        },
-                      ],
-                    }) satisfies Paragraph,
-                ),
+                    ],
+                  } satisfies Paragraph;
+                  // Model an absent XML property by omission, as the parser does.
+                  return index === 0 && sectionProperties !== undefined
+                    ? Object.assign(paragraph, { sectionProperties })
+                    : paragraph;
+                }),
               },
             },
           });

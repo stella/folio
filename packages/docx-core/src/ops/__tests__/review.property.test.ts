@@ -51,7 +51,12 @@ import { compareGaps, defaultInsertionGap, type Gap, isCommentAnchor, leafSpans 
 import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { isTrackedWrapper, sameParagraphProperties, stampedRevisionIds } from "../review";
+import {
+  isAddedRevision,
+  isTrackedWrapper,
+  sameParagraphProperties,
+  stampedRevisionIds,
+} from "../review";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -839,7 +844,7 @@ describe("tracked operations and their resolution", () => {
           );
           const mine = span.ancestors.some(
             (ancestor) =>
-              ancestor.type === "insertion" &&
+              isAddedRevision(ancestor) &&
               isTrackedWrapper(ancestor) &&
               ancestor.info.author === op.revision?.author,
           );

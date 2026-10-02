@@ -15,6 +15,7 @@ import * as documentOps from "@stll/docx-core/ops";
 import * as conversion from "../prosemirror/conversion/toProseDoc";
 import { panic } from "better-result";
 import fc from "fast-check";
+import { canonicalReviewBlocks } from "../../../../test/reviewProjection";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { FIRST_ID, fixture, seedArbitrary } from "../../typecheck/ops/reviewGenerators.typecheck";
 
@@ -669,8 +670,9 @@ describe("canonical tracked input", () => {
               resolved.prepareResolve(state, { revisionIds: [...revisions], resolution }).unwrap(),
             );
             const expected = resolution === "accept" ? direct.document : snapshots.at(0);
-            expect(resolved.document.package.document.content).toEqual(
-              expected?.package.document.content,
+            if (expected === undefined) panic("The resolution oracle lost its baseline.");
+            expect(canonicalReviewBlocks(resolved.document.package.document.content)).toEqual(
+              canonicalReviewBlocks(expected.package.document.content),
             );
             state = accept(state, resolved.prepareUndo(state).unwrap());
             expect(resolved.document).toEqual(suggested);
