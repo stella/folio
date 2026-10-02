@@ -13,6 +13,7 @@ import {
   normalizeForOps,
   OP_STORIES,
   paragraphLogicalText,
+  OBJECT_REPLACEMENT_CHARACTER,
   defaultInsertionGap,
   zeroWidthLeavesAt,
   packageParagraphIds,
@@ -201,6 +202,21 @@ const supportsSeed = (document: Document): boolean => {
   );
 };
 
+/** Note labels occupy one model unit regardless of their displayed decimal width. */
+const projectNoteUnits = (node: PMNode): PMNode => {
+  if (node.isText && node.marks.some((mark) => mark.type.name === "footnoteRef"))
+    return node.type.schema.text(OBJECT_REPLACEMENT_CHARACTER, node.marks);
+  if (node.isLeaf) return node;
+  const children: PMNode[] = [];
+  let changed = false;
+  node.forEach((child) => {
+    const projected = projectNoteUnits(child);
+    changed ||= projected !== child;
+    children.push(projected);
+  });
+  return changed ? node.copy(Fragment.fromArray(children)) : node;
+};
+
 const project = (
   document: Document,
   styles: StyleDefinitions | null | undefined,
@@ -210,7 +226,9 @@ const project = (
       const currentStyles = Object.hasOwn(document.package, "styles")
         ? document.package.styles
         : styles;
-      return toProseDoc(document, currentStyles == null ? undefined : { styles: currentStyles });
+      return projectNoteUnits(
+        toProseDoc(document, currentStyles == null ? undefined : { styles: currentStyles }),
+      );
     },
     catch: (cause) =>
       new CanonicalSessionError({

@@ -1105,7 +1105,7 @@ describe("document operations", () => {
         assertExactModel(redo.document, edit.document);
       }
   });
-  test("tracked clipboard retained-tail metadata refuses atomically while newly allocated leading metadata is supported", () => {
+  test("tracked clipboard preserves leading reviews and geometry and refuses combined paragraph marks atomically", () => {
     const original = normalizeForOps({
       package: {
         document: {
@@ -1175,7 +1175,7 @@ describe("document operations", () => {
           },
         });
         assertExactModel(original, snapshot);
-        expect(plan.isOk()).toBe(leading);
+        expect(plan.isOk()).toBe(leading && metadata !== "mark");
         if (plan.isErr()) {
           expect(plan.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
         } else {

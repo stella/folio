@@ -1,6 +1,7 @@
 import { assertExactModel } from "../../../../test/exactModel";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
 import { Fragment, Slice, type Node as ProseNode } from "prosemirror-model";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { paragraphLogicalText } from "@stll/docx-core/ops";
@@ -407,6 +408,165 @@ describe("canonical clipboard", () => {
     );
   });
 
+  test("generated multi-digit note moves preserve owned stories and exact arbitrary-target histories", () => {
+    assertProperty(
+      fc.property(
+        fc.constantFrom("footnote", "endnote"),
+        fc.integer({ min: 1, max: 2147483647 }),
+        fc.array(fc.nat(), { minLength: 8, maxLength: 16 }),
+        (kind, noteId, targets) => {
+          const destination = seed();
+          const first = destination.package.document.content.at(0);
+          if (first?.type !== "paragraph")
+            throw new TypeError("Owned story move fixture disappeared.");
+          first.content = [
+            { type: "run", content: [{ type: "text", text: "a" }] },
+            {
+              type: "run",
+              content: [{ type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id: noteId }],
+            },
+            { type: "run", content: [{ type: "text", text: "b" }] },
+          ];
+          const content = [
+            {
+              type: "paragraph",
+              paraId: "13572468",
+              content: [{ type: "run", content: [{ type: "text", text: "owned story" }] }],
+            },
+          ] satisfies Document["package"]["document"]["content"];
+          switch (kind) {
+            case "footnote":
+              destination.package.footnotes = [{ type: "footnote", id: noteId, content }];
+              break;
+            case "endnote":
+              destination.package.endnotes = [{ type: "endnote", id: noteId, content }];
+              break;
+          }
+          const session = createCanonicalSession(destination).unwrap();
+          let state = EditorState.create({ schema, doc: session.projection.doc });
+
+          const assertOwnedNote = (document: Document) => {
+            const references: { type: string; id: number }[] = [];
+            for (const paragraph of document.package.document.content) {
+              if (paragraph.type !== "paragraph")
+                throw new TypeError("Note move left plain story.");
+              for (const inline of paragraph.content) {
+                if (inline.type !== "run") continue;
+                for (const leaf of inline.content) {
+                  if (leaf.type === "footnoteRef" || leaf.type === "endnoteRef")
+                    references.push({ type: leaf.type, id: leaf.id });
+                }
+              }
+            }
+            assertExactModel(references, [
+              { type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id: noteId },
+            ]);
+          };
+          const original = session.document;
+          assertOwnedNote(original);
+          const journal: { before: Document; after: Document }[] = [];
+          const refusals = new Map<string, number>();
+          let expectedRefusals = 0;
+          for (const targetSeed of targets) {
+            let sourceFrom: number | undefined;
+            let sourceTo: number | undefined;
+            state.doc.descendants((node, position) => {
+              if (node.isText && node.marks.some((mark) => mark.type.name === "footnoteRef")) {
+                if (sourceFrom !== undefined)
+                  throw new TypeError("Owned reference duplicated during move sequence.");
+                const mark = node.marks.find((entry) => entry.type.name === "footnoteRef");
+                expect(mark?.attrs["id"]).toBe(String(noteId));
+                expect(mark?.attrs["noteType"]).toBe(kind);
+                expect(node.text).toBe("\uFFFC");
+                expect(node.nodeSize).toBe(1);
+                sourceFrom = position;
+                sourceTo = position + node.nodeSize;
+              }
+            });
+            if (sourceFrom === undefined || sourceTo === undefined)
+              throw new TypeError("Owned reference disappeared during move sequence.");
+            const gaps: number[] = [];
+            state.doc.forEach((paragraph, offset) => {
+              for (let gap = 0; gap <= paragraph.content.size; gap += 1)
+                gaps.push(offset + 1 + gap);
+            });
+            const target = gaps.at(targetSeed % gaps.length);
+            if (target === undefined) throw new TypeError("Owned reference target disappeared.");
+            state = state.apply(
+              state.tr.setSelection(TextSelection.create(state.doc, sourceFrom, sourceTo)),
+            );
+            const before = session.document;
+            const beforeSelection = state.selection.toJSON();
+            const projection = session.projection;
+            const version = session.version;
+            const slice = state.selection.content();
+            const prepared = prepareCanonicalPaste({ session, state, slice, moveTarget: target });
+            if (prepared.isErr()) {
+              refusals.set(prepared.error.reason, (refusals.get(prepared.error.reason) ?? 0) + 1);
+              expect(target >= sourceFrom && target <= sourceTo).toBe(true);
+              expect(prepared.error.reason).toBe("noChange");
+              expectedRefusals += 1;
+              assertClipboardModel(session.document, before);
+              assertExactModel(state.selection.toJSON(), beforeSelection);
+              expect(session.projection).toBe(projection);
+              expect(session.version).toBe(version);
+              continue;
+            }
+            expect(target < sourceFrom || target > sourceTo).toBe(true);
+            const oracle = state.tr.deleteRange(sourceFrom, sourceTo);
+            const adjusted = oracle.mapping.map(target);
+            oracle.replaceRange(adjusted, adjusted, slice);
+            state = publishCanonicalProjection({ session, state, commit: prepared.value }).unwrap()
+              .state;
+            expect(projectionTexts(state)).toEqual(
+              projectionTexts(EditorState.create({ schema, doc: oracle.doc })),
+            );
+            const after = session.document;
+            assertOwnedNote(after);
+            assertExactModel(after.package.document.comments, original.package.document.comments);
+            assertExactModel(after.package.footnotes, original.package.footnotes);
+            assertExactModel(after.package.endnotes, original.package.endnotes);
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareUndo(state).unwrap(),
+            }).unwrap().state;
+            assertClipboardModel(session.document, before);
+            assertExactModel(state.selection.toJSON(), beforeSelection);
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareRedo(state).unwrap(),
+            }).unwrap().state;
+            assertClipboardModel(session.document, after);
+            journal.push({ before, after });
+          }
+          expect([...refusals.keys()]).toEqual(expectedRefusals === 0 ? [] : ["noChange"]);
+          expect(refusals.get("noChange") ?? 0).toBe(expectedRefusals);
+          for (const entry of journal.toReversed()) {
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareUndo(state).unwrap(),
+            }).unwrap().state;
+            assertClipboardModel(session.document, entry.before);
+          }
+          assertClipboardModel(session.document, original);
+          for (const entry of journal) {
+            state = publishCanonicalProjection({
+              session,
+              state,
+              commit: session.prepareRedo(state).unwrap(),
+            }).unwrap().state;
+            assertClipboardModel(session.document, entry.after);
+            assertOwnedNote(session.document);
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test("generated Strict and Transitional image link caches rebind ids while preserving authored metadata", () => {
     assertProperty(
       fc.property(fc.constantFrom("a", "draw", "alternate"), fc.boolean(), (prefix, strict) => {
@@ -524,129 +684,225 @@ describe("canonical clipboard", () => {
       "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
     const png =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
-    for (const kind of ["text", "image"] as const) {
-      for (const sourceKind of ["modeled", "package", "missing"] as const) {
-        const destination = seed();
-        destination.package.relationships = new Map([
-          [
-            "rId1",
-            {
-              id: "rId1",
-              type: hyperlinkType,
-              target: "https://owned.example.test",
-              targetMode: "External",
-            },
-          ],
-        ]);
-        const sourceDocument = seed();
-        sourceDocument.package.relationships = new Map([
-          [
-            "rId1",
-            {
-              id: "rId1",
-              type: hyperlinkType,
-              target: "https://foreign.example.test",
-              targetMode: "External",
-            },
-          ],
-        ]);
-        const session = createCanonicalSession(destination).unwrap();
-        let state = EditorState.create({ schema, doc: session.projection.doc });
-        const before = session.document;
-        const node =
-          kind === "text"
-            ? schema.text("foreign link", [
-                schema.marks["hyperlink"].create({
-                  href: sourceKind === "modeled" ? "https://foreign.example.test" : "",
-                  rId: "rId1",
-                }),
-              ])
-            : schema.node("image", {
-                src: `data:image/png;base64,${png}`,
-                width: 1,
-                height: 1,
-                hlinkRId: "rId1",
-                ...(sourceKind === "modeled" ? { hlinkHref: "https://foreign.example.test" } : {}),
+    await assertProperty(
+      fc.asyncProperty(
+        fc.array(
+          fc.record({
+            kind: fc.constantFrom("text", "image"),
+            sourceKind: fc.constantFrom("modeled", "package", "missing"),
+            sourceBuffer: fc.boolean(),
+            profile: fc.constantFrom("strict", "transitional"),
+          }),
+          { minLength: 8, maxLength: 16 },
+        ),
+        async (trace) => {
+          let refusalCount = 0;
+          for (const { kind, sourceKind, sourceBuffer, profile } of trace) {
+            let destination = seed();
+            destination.package.relationships = new Map([
+              [
+                "rId1",
+                {
+                  id: "rId1",
+                  type: hyperlinkType,
+                  target: "https://owned.example.test",
+                  targetMode: "External",
+                },
+              ],
+            ]);
+            if (sourceBuffer) {
+              const paragraph = destination.package.document.content.at(0);
+              if (paragraph?.type !== "paragraph")
+                throw new TypeError("Expected hyperlink destination paragraph.");
+              paragraph.content.push({
+                type: "hyperlink",
+                rId: "rId1",
+                href: "https://owned.example.test",
+                children: [{ type: "run", content: [{ type: "text", text: "owned" }] }],
               });
-        const slice = new Slice(Fragment.from(schema.node("paragraph", null, node)), 1, 1);
-        const prepared = prepareCanonicalPaste({
-          session,
-          state,
-          slice,
-          ...(sourceKind === "package" ? { sourceDocument } : {}),
-        });
-        if (sourceKind === "missing") {
-          expect(prepared.isErr()).toBe(true);
-          assertClipboardModel(session.document, before);
-          expect(session.canUndo).toBe(false);
-        } else {
-          state = publishCanonicalProjection({ session, state, commit: prepared.unwrap() }).unwrap()
-            .state;
-          const after = session.document;
-          const foreignRelations = [...(after.package.relationships?.values() ?? [])].filter(
-            (relation) =>
-              relation.type === hyperlinkType && relation.target === "https://foreign.example.test",
-          );
-          expect(foreignRelations).toHaveLength(1);
-          expect(foreignRelations.at(0)?.id).not.toBe("rId1");
-          assertExactModel(
-            after.package.relationships?.get("rId1"),
-            before.package.relationships?.get("rId1"),
-          );
-          const reopened = await parseDocx(await createDocx(after), {
-            preloadFonts: false,
-            detectVariables: false,
-          });
-          expect(
-            [...(reopened.package.relationships?.values() ?? [])].some(
-              (relation) =>
-                relation.type === hyperlinkType &&
-                relation.target === "https://foreign.example.test",
-            ),
-          ).toBe(true);
-          const paragraphs = reopened.package.document.content.filter(
-            (paragraph) => paragraph.type === "paragraph",
-          );
-          if (kind === "text") {
-            expect(
-              paragraphs.some((paragraph) =>
-                paragraph.content.some(
-                  (content) =>
-                    content.type === "hyperlink" && content.href === "https://foreign.example.test",
+              const zip = await JSZip.loadAsync(await createDocx(destination));
+              await Promise.all(
+                Object.values(zip.files)
+                  .filter(
+                    (file) =>
+                      !file.dir && (file.name.endsWith(".xml") || file.name.endsWith(".rels")),
+                  )
+                  .map(async (file) => {
+                    let xml = await file.async("text");
+                    if (profile === "strict") {
+                      xml = xml
+                        .replaceAll(
+                          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+                          "http://purl.oclc.org/ooxml/wordprocessingml/main",
+                        )
+                        .replaceAll(
+                          "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+                          "http://purl.oclc.org/ooxml/officeDocument/relationships",
+                        );
+                    }
+                    if (file.name.endsWith(".rels")) {
+                      xml = xml
+                        .replace("<Relationships xmlns=", "<pkg:Relationships xmlns:pkg=")
+                        .replaceAll("<Relationship ", "<pkg:Relationship ")
+                        .replace("</Relationships>", "</pkg:Relationships>");
+                    }
+                    zip.file(file.name, xml);
+                  }),
+              );
+              destination = await parseDocx(await zip.generateAsync({ type: "arraybuffer" }), {
+                preloadFonts: false,
+                detectVariables: false,
+              });
+            }
+            const collisionId = [...(destination.package.relationships?.values() ?? [])].find(
+              (relation) => relation.target === "https://owned.example.test",
+            )?.id;
+            if (collisionId === undefined)
+              throw new TypeError("Expected owned hyperlink collision.");
+            const sourceDocument = seed();
+            sourceDocument.package.relationships = new Map([
+              [
+                collisionId,
+                {
+                  id: collisionId,
+                  type: hyperlinkType,
+                  target: "https://foreign.example.test",
+                  targetMode: "External",
+                },
+              ],
+            ]);
+            const session = createCanonicalSession(destination).unwrap();
+            let state = EditorState.create({ schema, doc: session.projection.doc });
+            const before = session.document;
+            const node =
+              kind === "text"
+                ? schema.text("foreign link", [
+                    schema.marks["hyperlink"].create({
+                      href: sourceKind === "modeled" ? "https://foreign.example.test" : "",
+                      rId: collisionId,
+                    }),
+                  ])
+                : schema.node("image", {
+                    src: `data:image/png;base64,${png}`,
+                    width: 1,
+                    height: 1,
+                    hlinkRId: collisionId,
+                    hlinkClickSource: {
+                      rId: collisionId,
+                      xml: `<d:hlinkClick xmlns:d="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:link="${profile === "strict" ? "http://purl.oclc.org/ooxml/officeDocument/relationships" : "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}" link:id="${collisionId}" tooltip="Clipboard tooltip" history="0"/>`,
+                    },
+                    ...(sourceKind === "modeled"
+                      ? { hlinkHref: "https://foreign.example.test" }
+                      : {}),
+                  });
+            const slice = new Slice(Fragment.from(schema.node("paragraph", null, node)), 1, 1);
+            const prepared = prepareCanonicalPaste({
+              session,
+              state,
+              slice,
+              ...(sourceKind === "package" ? { sourceDocument } : {}),
+            });
+            if (sourceKind === "missing") {
+              if (prepared.isOk())
+                throw new TypeError("Missing foreign hyperlink source must refuse.");
+              expect(prepared.error.reason).toBe("refused");
+              refusalCount += 1;
+              assertClipboardModel(session.document, before);
+              expect(session.canUndo).toBe(false);
+            } else {
+              state = publishCanonicalProjection({
+                session,
+                state,
+                commit: prepared.unwrap(),
+              }).unwrap().state;
+              const after = session.document;
+              const foreignRelations = [...(after.package.relationships?.values() ?? [])].filter(
+                (relation) =>
+                  relation.type === hyperlinkType &&
+                  relation.target === "https://foreign.example.test",
+              );
+              expect(foreignRelations).toHaveLength(1);
+              expect(foreignRelations.at(0)?.id).not.toBe(collisionId);
+              assertExactModel(
+                after.package.relationships?.get(collisionId),
+                before.package.relationships?.get(collisionId),
+              );
+              const exactBeforeSave = structuredClone(after);
+              const sourceBytes =
+                after.originalBuffer === undefined
+                  ? undefined
+                  : [...new Uint8Array(after.originalBuffer)];
+              const saved = await createDocx(after);
+              assertExactModel(after, exactBeforeSave);
+              if (sourceBytes !== undefined)
+                expect([...new Uint8Array(after.originalBuffer ?? new ArrayBuffer(0))]).toEqual(
+                  sourceBytes,
+                );
+              const reopened = await parseDocx(saved, {
+                preloadFonts: false,
+                detectVariables: false,
+              });
+              expect(
+                [...(reopened.package.relationships?.values() ?? [])].some(
+                  (relation) =>
+                    relation.type === hyperlinkType &&
+                    relation.target === "https://foreign.example.test",
                 ),
-              ),
-            ).toBe(true);
-          } else {
-            expect(
-              paragraphs.some((paragraph) =>
-                paragraph.content.some(
-                  (content) =>
-                    content.type === "run" &&
-                    content.content.some(
-                      (leaf) =>
-                        leaf.type === "drawing" &&
-                        leaf.rawXmlMode === undefined &&
-                        leaf.image.hlinkHref === "https://foreign.example.test",
+              ).toBe(true);
+              const paragraphs = reopened.package.document.content.filter(
+                (paragraph) => paragraph.type === "paragraph",
+              );
+              if (kind === "text") {
+                expect(
+                  paragraphs.some((paragraph) =>
+                    paragraph.content.some(
+                      (content) =>
+                        content.type === "hyperlink" &&
+                        content.href === "https://foreign.example.test",
                     ),
-                ),
-              ),
-            ).toBe(true);
+                  ),
+                ).toBe(true);
+              } else {
+                expect(
+                  paragraphs.some((paragraph) =>
+                    paragraph.content.some(
+                      (content) =>
+                        content.type === "run" &&
+                        content.content.some(
+                          (leaf) =>
+                            leaf.type === "drawing" &&
+                            leaf.rawXmlMode === undefined &&
+                            leaf.image.hlinkHref === "https://foreign.example.test" &&
+                            leaf.image.hlinkClickSource?.xml.includes(
+                              'tooltip="Clipboard tooltip"',
+                            ) === true &&
+                            leaf.image.hlinkClickSource.xml.includes('history="0"'),
+                        ),
+                    ),
+                  ),
+                ).toBe(true);
+              }
+              state = publishCanonicalProjection({
+                session,
+                state,
+                commit: session.prepareUndo(state).unwrap(),
+              }).unwrap().state;
+              assertClipboardModel(session.document, before);
+              state = publishCanonicalProjection({
+                session,
+                state,
+                commit: session.prepareRedo(state).unwrap(),
+              }).unwrap().state;
+              assertClipboardModel(session.document, after);
+            }
           }
-          state = publishCanonicalProjection({
-            session,
-            state,
-            commit: session.prepareUndo(state).unwrap(),
-          }).unwrap().state;
-          assertClipboardModel(session.document, before);
-          state = publishCanonicalProjection({
-            session,
-            state,
-            commit: session.prepareRedo(state).unwrap(),
-          }).unwrap().state;
-          assertClipboardModel(session.document, after);
-        }
-      }
-    }
+          expect(refusalCount).toBe(
+            trace.filter(({ sourceKind }) => sourceKind === "missing").length,
+          );
+        },
+      ),
+      { numRuns: 8 },
+    );
   });
 
   test("divergent paste after undo never reallocates retired paragraph identities", () => {

@@ -4,7 +4,13 @@ import { Result, panic } from "better-result";
 import type { Document, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
 import { idKey } from "./ids";
-import { defaultInsertionGap } from "./leaves";
+import {
+  childNodes,
+  rebuildNode,
+  asParagraphContent,
+  type InlineNode,
+  defaultInsertionGap,
+} from "./leaves";
 import { gapAfterInserted } from "./inline";
 import { appendTrackedDeletion, createTrackedPlan, type PlanTrackedDeletionOptions } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -100,6 +106,60 @@ export const planTrackedReplace = (
   const plan = createTrackedPlan({ document, revision, newIds });
   const deleted = appendTrackedDeletion({ document, options, plan });
   if (deleted.isErr()) return Result.err(deleted.error);
+  if (
+    replacement.tail.content.length > 0 ||
+    replacement.paragraphs.some((paragraph) => paragraph.content.length > 0)
+  ) {
+    const deletionIds = new Set(
+      plan.ops.flatMap((op) =>
+        op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision !== undefined
+          ? [op.revision.id]
+          : [],
+      ),
+    );
+    const deletionBlocks = new Set(
+      plan.ops.flatMap((op) => {
+        if (op.type === DOCUMENT_OP_TYPES.DELETE_RANGE) return [idKey(op.from.blockId)];
+        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) return [idKey(op.nextBlockId)];
+        return [];
+      }),
+    );
+    const breakRemovedSeam = (node: InlineNode): InlineNode => {
+      let next = node;
+      if (
+        node.type === "deletion" &&
+        deletionIds.has(node.info.id) &&
+        node.resolutionJoins !== undefined &&
+        node.resolutionJoins.remove > 0
+      ) {
+        next = Object.assign({}, node, {
+          resolutionJoins: Object.assign({}, node.resolutionJoins, { remove: 0 }),
+        });
+      }
+      const children = childNodes(next);
+      if (children === undefined) return next;
+      const changed = children.map(breakRemovedSeam);
+      return changed.every((child, index) => child === children[index])
+        ? next
+        : rebuildNode(next, changed);
+    };
+    // The new authored payload separates the source's two cut pieces.
+    // Removing this deletion must retain its identity transfers without
+    // joining the payload to the retained suffix.
+    for (const { paragraph } of storyParagraphs(storyBody(plan.document(), from.story))) {
+      if (!deletionBlocks.has(idKey(paragraph.paraId ?? ""))) continue;
+      const content = paragraph.content.map(breakRemovedSeam);
+      if (content.every((node, index) => node === paragraph.content[index])) continue;
+      const patched = plan.append({
+        type: DOCUMENT_OP_TYPES.REPLACE_INLINE,
+        story: from.story,
+        blockId: paragraph.paraId ?? "",
+        expected: paragraph.content,
+        content: asParagraphContent(content),
+      });
+      if (patched.isErr()) return Result.err(patched.error);
+    }
+  }
   // Tracking leaves selected content in place. Every fragment is inserted at
   // its leading boundary; splitting moves the old mark to the original half.
   let at = rangeStartAfterDeletion({
@@ -135,6 +195,7 @@ export const planTrackedReplace = (
       content: _content,
       sectionProperties: _section,
       pPrMark: _mark,
+      propertyChanges: _changes,
       ...newParagraph
     } = paragraph;
     const split = plan.append({

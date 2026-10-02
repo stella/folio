@@ -980,3 +980,125 @@ test("generated provenance-bearing joins restore independent empty transfer meta
     { numRuns: 50 },
   );
 });
+
+// Replacement changes the seam topology after tracked deletion. Preserve
+// source IDs on both sides without joining copied payload to the old suffix.
+test("generated clipboard replacements preserve retained tail lineage and authored seams", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(
+      shapeArbitrary,
+      fc.constantFrom(0 as const, 1 as const),
+      fc.integer({ min: 1, max: 2 }),
+      (shape, openStart, paragraphNumber) => {
+        const original = fixture(Object.assign({}, shape, { priorReview: true }));
+        const unit = shape.token === "😀" ? 2 : 1;
+        const blockId = paragraphNumber === 1 ? "00000001" : "00000002";
+        const run: Run = { type: "run", content: [{ type: "text", text: "paste" }] };
+        if (shape.formatting === "empty") run.formatting = {};
+        if (shape.formatting === "italic") run.formatting = { italic: true };
+        const intent: EditorIntent = {
+          type: "replaceFragment",
+          from: position({ blockId, offset: unit }),
+          to: position({ blockId, offset: 2 * unit }),
+          openStart,
+          openEnd: 1,
+          paragraphs: [{ type: "paragraph", content: [run] }],
+        };
+        const allocation = allocateEditorIntentIds(original, intent);
+        const direct = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "editing",
+          refusals,
+        });
+        const tracked = compile({
+          document: original,
+          intent,
+          allocation,
+          mode: "suggesting",
+          refusals,
+        });
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          }),
+          direct.document,
+        );
+        assertExactModel(
+          resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.REJECT,
+          }),
+          original,
+        );
+      },
+    ),
+    { numRuns: 50 },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});
+
+// The prior range dimensions missed closed whole-paragraph replacement
+// followed by an untouched paragraph. Closed blocks seek a forward caret.
+test("generated closed clipboard tails place the caret at the following text boundary", () => {
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 0, max: 1 }),
+      fc.nat(20),
+      fc.constantFrom(0 as const, 1 as const),
+      fc.integer({ min: 1, max: 3 }),
+      (fromIndex, offset, openStart, count) => {
+        const original = normalizeForOps({
+          package: {
+            document: {
+              content: ["first", "middle", "following"].map((text, index) => ({
+                type: "paragraph",
+                paraId: (index + 1).toString(16).padStart(8, "0"),
+                content: [{ type: "run", content: [{ type: "text", text }] }],
+              })),
+            },
+          },
+        });
+        const intent: EditorIntent = {
+          type: "replaceFragment",
+          from: position({
+            blockId: fromIndex === 0 ? "00000001" : "00000002",
+            offset: offset % (fromIndex === 0 ? 6 : 7),
+          }),
+          to: position({ blockId: "00000002", offset: 6 }),
+          openStart,
+          openEnd: 0,
+          paragraphs: Array.from({ length: count }, () => ({
+            type: "paragraph",
+            content: [{ type: "run", content: [{ type: "text", text: "paste" }] }],
+          })),
+        };
+        const allocation = allocateEditorIntentIds(original, intent);
+        for (const mode of [
+          { type: "editing", newIds: allocation.newIds },
+          {
+            type: "suggesting",
+            newIds: allocation.newIds,
+            revision: { id: allocation.revisionId, author: "Editor" },
+          },
+        ] as const) {
+          const compiled = compileEditorIntent(original, { intent, mode });
+          if (compiled.isErr()) throw compiled.error;
+          assertExactModel(compiled.value.selection, {
+            ...position({ blockId: "00000003", offset: 0 }),
+            zeroWidthBefore: 0,
+          });
+          const applied = applyDocumentOps(original, compiled.value.ops);
+          if (applied.isErr()) throw applied.error;
+          expectInverse(applied.value, original);
+        }
+      },
+    ),
+    { numRuns: 50 },
+  );
+});

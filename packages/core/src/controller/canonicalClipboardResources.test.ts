@@ -1,14 +1,16 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "@stll/docx-core/ops";
 import type { Document, Paragraph } from "../types/document";
 import { assertExactModel } from "../../../../test/exactModel";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import {
   flattenClipboardStyleReferences,
   importClipboardStyles,
 } from "./canonicalClipboardResources";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const fixture = () => {
   const destination = {
@@ -211,7 +213,7 @@ test("imported styles and inline formatting resolve against the source theme bef
   const style = imported.styles?.styles.find((entry) => entry.styleId === "Foo_clipboard2");
   expect(style?.rPr?.fontFamily?.ascii).toBe("Source Serif");
   expect(style?.rPr?.fontFamily?.asciiTheme).toBeUndefined();
-  expect(style?.rPr?.color).toEqual({ rgb: "808080" });
+  expect(style?.rPr?.color).toEqual({ rgb: "7F7F7F" });
   const run = imported.paragraphs.at(0)?.content.at(0);
   if (run?.type !== "run") throw new TypeError("Themed clipboard run disappeared.");
   expect(run.formatting?.fontFamily?.ascii).toBe("Source Serif");
@@ -447,4 +449,72 @@ test("normalized foreign style hints flatten every mark and review reference whi
     assertExactModel(paragraphs, normalized(undefined));
     assertExactModel(destination, destinationBefore);
   }
+});
+
+// Modifiers span all byte values; tint and shade retain opposite channel contributions.
+test("every theme modifier byte imports independent grayscale tint and shade values", () => {
+  assertProperty(
+    fc.property(fc.integer({ min: 0, max: 255 }), (gray) => {
+      const channels = [gray, gray, gray];
+      const hex = (values: readonly number[]) =>
+        values
+          .map((value) => value.toString(16).padStart(2, "0"))
+          .join("")
+          .toUpperCase();
+      const rgb = hex(channels);
+      for (let byte = 0; byte <= 255; byte += 1) {
+        const modifier = byte.toString(16).padStart(2, "0").toUpperCase();
+        const source = {
+          package: {
+            document: { content: [] },
+            theme: { colorScheme: { accent1: rgb } },
+            styles: {
+              styles: [
+                {
+                  styleId: "Foreign",
+                  type: "paragraph",
+                  rPr: { color: { themeColor: "accent1", themeTint: modifier } },
+                },
+              ],
+            },
+          },
+        } satisfies Document;
+        const destination = {
+          package: {
+            document: { content: [] },
+            theme: { colorScheme: { accent1: "123456" } },
+            styles: { styles: [] },
+          },
+        } satisfies Document;
+        const paragraphs = [
+          {
+            type: "paragraph",
+            paraId: "00000001",
+            formatting: { styleId: "Foreign" },
+            content: [
+              {
+                type: "run",
+                formatting: { color: { themeColor: "accent1", themeShade: modifier } },
+                content: [{ type: "text", text: "color" }],
+              },
+            ],
+          },
+        ] satisfies Paragraph[];
+        const before = structuredClone({ source, destination, paragraphs });
+        const imported = importClipboardStyles({ source, destination, paragraphs }).unwrap();
+        const style = imported.styles?.styles.find((entry) => entry.styleId === "Foreign");
+        const run = imported.paragraphs.at(0)?.content.at(0);
+        if (run?.type !== "run") throw new TypeError("Imported modifier run disappeared.");
+        // Grayscale lightness agrees for RGB and Word HSL; compute without the resolver.
+        const tinted = hex(
+          channels.map((channel) => Math.round((channel * byte + 255 * (255 - byte)) / 255)),
+        );
+        const shaded = hex(channels.map((channel) => Math.round((channel * byte) / 255)));
+        expect(style?.rPr?.color).toEqual({ rgb: tinted });
+        expect(run.formatting?.color).toEqual({ rgb: shaded });
+        assertExactModel({ source, destination, paragraphs }, before);
+      }
+    }),
+    { numRuns: 10 },
+  );
 });

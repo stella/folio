@@ -200,7 +200,6 @@
         "expected": {
           "bold": null
         },
-        "propertyReview": "append",
         "undefinedFields": [["patch", "bold"]]
       },
       {
@@ -211,7 +210,6 @@
         "expected": {
           "alignment": null
         },
-        "propertyReview": "append",
         "undefinedFields": [["patch", "alignment"]]
       }
     ]

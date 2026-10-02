@@ -392,11 +392,15 @@ const modeAfterOps = (document: Document, mode: EditorIntentMode): EditorIntentM
   const occupied = new Set(
     packageIdentityKeys(document.package).concat(reservedIdentityKeysIn(document.package)),
   );
+  const revisionIds = mode.newIds.revision?.filter(
+    (id) => !occupied.has(`${IDENTITY_SPACES.REVISION}:${id}`),
+  );
+  const controlIds = mode.newIds.control?.filter(
+    (id) => !occupied.has(`${IDENTITY_SPACES.CONTROL}:${id}`),
+  );
   const newIds = {
-    revision: mode.newIds.revision?.filter(
-      (id) => !occupied.has(`${IDENTITY_SPACES.REVISION}:${id}`),
-    ),
-    control: mode.newIds.control?.filter((id) => !occupied.has(`${IDENTITY_SPACES.CONTROL}:${id}`)),
+    ...(revisionIds === undefined ? {} : { revision: revisionIds }),
+    ...(controlIds === undefined ? {} : { control: controlIds }),
   };
   if (mode.type === "editing") return { type: "editing", newIds };
   if (!occupied.has(`${IDENTITY_SPACES.REVISION}:${mode.revision.id}`))
@@ -405,7 +409,7 @@ const modeAfterOps = (document: Document, mode: EditorIntentMode): EditorIntentM
   return {
     type: "suggesting",
     revision: { ...mode.revision, id },
-    newIds: { ...newIds, revision: newIds.revision?.slice(1) },
+    newIds: { ...newIds, ...(revisionIds === undefined ? {} : { revision: revisionIds.slice(1) }) },
   };
 };
 
@@ -684,6 +688,19 @@ export const compileEditorIntent = (
           }),
         );
       }
+      if (
+        mode.type === "suggesting" &&
+        paragraphs.some((paragraph) => paragraph.pPrMark !== undefined)
+      ) {
+        return Result.err(
+          new DocumentOpRefusal({
+            reason: DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+            message:
+              "A copied paragraph mark cannot coexist with the tracked paste mark in the paragraph's single mark slot.",
+            opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          }),
+        );
+      }
       const tail = paragraphs.at(-1);
       if (
         mode.type === "suggesting" &&
@@ -878,6 +895,33 @@ export const compileEditorIntent = (
                 : { type: "present", value: current.sectionProperties },
             properties: { type: "present", value: paragraph.sectionProperties },
           });
+        }
+      }
+      // A closed paragraph payload ends outside that paragraph. Match the
+      // forward text-selection affinity at its closing boundary when a next
+      // untouched paragraph provides a text position; at document end the
+      // caret remains at the payload's own last text position.
+      if (
+        intent.openEnd === 0 &&
+        endpoint !== undefined &&
+        intent.to.offset === paragraphLength(endpoint)
+      ) {
+        const bodyParagraphs = storyParagraphs(storyBody(document, intent.to.story));
+        const endLocation = bodyParagraphs.find(
+          ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.to.blockId),
+        );
+        const following = bodyParagraphs.find(
+          (location) =>
+            endLocation !== undefined &&
+            sameBlockList(location.list, endLocation.list) &&
+            location.index === endLocation.index + 1,
+        );
+        if (following?.paragraph.paraId !== undefined) {
+          selection = {
+            story: intent.to.story,
+            blockId: following.paragraph.paraId,
+            ...defaultInsertionGap(following.paragraph.content, 0),
+          };
         }
       }
       break;

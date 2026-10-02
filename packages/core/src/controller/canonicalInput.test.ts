@@ -740,16 +740,44 @@ describe("canonical input boundary", () => {
     },
   );
 
-  test.each(["paste", "cut", "drop"] as const)(
-    "%s DOM proposals are refused atomically",
+  test.each(["paste", "drop"] as const)(
+    "%s DOM gestures delegate without changing authority",
     (kind) => {
       const { boundary, view, inputs, refusals } = createRig();
+      const before = view.state;
       const event = new Event(kind, { cancelable: true });
+      expect(boundary.handleDOMEvents[kind](view, event)).toBe(false);
+      expect(event.defaultPrevented).toBe(false);
+      expect(inputs).toEqual([]);
+      expect(refusals).toEqual([]);
+      expect(view.state).toBe(before);
+    },
+  );
+
+  test("cut without its clipboard owner is refused atomically", () => {
+    const { boundary, view, inputs, refusals } = createRig();
+    const before = view.state;
+    const event = new ClipboardEvent("cut", { cancelable: true });
+    expect(boundary.handleDOMEvents.cut(view, event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(inputs).toEqual([]);
+    expect(refusals).toHaveLength(1);
+    expect(view.state).toBe(before);
+  });
+
+  test.each(["paste", "cut", "drop"] as const)(
+    "composition blocks the %s DOM gesture atomically",
+    (kind) => {
+      const { boundary, view, inputs, refusals } = createRig();
+      boundary.handleDOMEvents.compositionstart(view, new CompositionEvent("compositionstart"));
+      const before = view.state;
+      const event = new ClipboardEvent(kind, { cancelable: true });
       expect(boundary.handleDOMEvents[kind](view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
       expect(inputs).toEqual([]);
       expect(refusals).toHaveLength(1);
-      expect(view.state.doc.textContent).toBe("A😀B");
+      expect(boundary.isComposing).toBe(true);
+      expect(view.state).toBe(before);
     },
   );
 

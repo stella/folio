@@ -121,7 +121,19 @@ const bindRetainedIdentities = (
     if (oldRight === undefined || freshRight === undefined) return node;
     const bound = retained.map((entry) => {
       const target = atDepth({ old: oldRight, fresh: freshRight, entry, depth: 0 });
-      return target === undefined ? entry : { depth: entry.depth, source: entry.source, target };
+      const oldOwner = before.at(index);
+      if (oldOwner === undefined) panic("Freshening preserves the deletion source position.");
+      const sourceEntry = { depth: entry.depth, source: entry.source, target: entry.source };
+      const oldChildren = childNodes(oldOwner) ?? [];
+      const freshChildren = childNodes(node) ?? [];
+      let source: readonly IdentitySlot[] | undefined;
+      for (const [childIndex, child] of oldChildren.entries()) {
+        const freshChild = freshChildren.at(childIndex);
+        if (freshChild === undefined) panic("Freshening preserves the deletion child positions.");
+        source = atDepth({ old: child, fresh: freshChild, entry: sourceEntry, depth: 0 });
+        if (source !== undefined) break;
+      }
+      return { depth: entry.depth, source: source ?? entry.source, target: target ?? entry.target };
     });
     return Object.assign({}, node, {
       resolutionJoins: Object.assign({}, joins, { retainedAfter: bound }),

@@ -97,12 +97,10 @@ const importNumbering = ({
   references.push(...(extraIds ?? []));
   if (references.length === 0)
     return Result.ok({ numbering: destination, numIds: new Map<number, number>() });
-  if (
-    source === undefined ||
-    references.some((id) => !source.nums.some(({ numId }) => numId === id))
-  ) {
+  if (source === undefined) return refuse("The clipboard list has no numbering definition.");
+  const sourceDefinitions = source;
+  if (references.some((id) => !sourceDefinitions.nums.some(({ numId }) => numId === id)))
     return refuse("The clipboard list has no numbering definition.");
-  }
   const used = new Set(references);
   const sourceNums = source.nums.filter(({ numId }) => used.has(numId));
   const usedAbstracts = new Set(sourceNums.map(({ abstractNumId }) => abstractNumId));
@@ -189,11 +187,11 @@ const importNumbering = ({
       return refuse("The clipboard numbering definition could not be imported.");
     const imported = { ...instance, numId, abstractNumId };
     for (const override of imported.levelOverrides ?? []) {
-      if (override.level?.pStyle === undefined || styleIds === undefined) continue;
-      const mapped = styleIds.get(override.level.pStyle);
+      if (override.lvl?.pStyle === undefined || styleIds === undefined) continue;
+      const mapped = styleIds.get(override.lvl.pStyle);
       if (mapped === undefined)
         return refuse("A clipboard numbering style dependency could not be imported.");
-      override.level.pStyle = mapped;
+      override.lvl.pStyle = mapped;
     }
     importedNums.push(imported);
   }
@@ -535,7 +533,10 @@ export const prepareCanonicalPaste = ({
             targetMode: "External",
           });
         } else return refuse("Clipboard images require image bytes or an HTTP image URL.");
-        image.rId = relationshipIdOf(id);
+        const relationshipId = relationshipIdOf(id);
+        if (relationshipId === undefined)
+          return refuse("The clipboard image relationship id is invalid.");
+        image.rId = relationshipId;
         // Drawing identities from another package must not claim local ownership.
         delete image.id;
         importedResource = true;
