@@ -5,6 +5,7 @@
  */
 
 import assert from "node:assert/strict";
+import { validateDocxPackage } from "@stll/docx-core";
 
 import { openReviewer } from "./documents.ts";
 import { projectContentPair } from "./identity.ts";
@@ -69,6 +70,12 @@ export const saveAndReopen = async (
   } catch (error) {
     throw new Error(`${context}: toBuffer() threw: ${describeError(error)}`, { cause: error });
   }
+  const validity = await validateDocxPackage(buffer);
+  assert.equal(
+    validity.valid,
+    true,
+    `${context}: saved OOXML invalid: ${validity.valid ? "" : validity.error}`,
+  );
   const bytes = new Uint8Array(buffer);
   let reopened: Reviewer;
   try {
