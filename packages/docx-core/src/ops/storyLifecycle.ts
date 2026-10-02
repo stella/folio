@@ -75,9 +75,11 @@ export const captureStoryParts = (document: Document, owned: StoryParts): StoryP
       : {
           sections: owned.sections.map(({ index, properties, headers, footers }) => {
             const section = body.sections?.at(index);
+            // Missing owned fields must differ from the expected capture and refuse as stale.
+            if (!section) return { index };
             return {
               index,
-              ...(properties === undefined ? {} : { properties: section?.properties }),
+              ...(properties === undefined ? {} : { properties: section.properties }),
               ...(headers === undefined
                 ? {}
                 : { headers: section?.headers ? [...section.headers] : null }),
@@ -491,7 +493,7 @@ export const applyStoryLifecycle = (
       },
     };
   if (next.package.document.sections) {
-    const sections = next.package.document.sections.map((section, index): Section => {
+    const sections = next.package.document.sections.map((section, index) => {
       if (index !== op.sectionIndex) return section;
       const bound = new Map(kind === "header" ? section.headers : section.footers);
       const part = nextParts.get(op.story.rId);

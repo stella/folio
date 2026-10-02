@@ -108,8 +108,9 @@ export const updateEvenAndOddHeaders = (
     ]);
   }
   if (rootEnd < 0) return null;
-  if (flag && spans.length > 0) {
-    spans[0].newXml = flag;
+  const existingFlag = spans.at(0);
+  if (flag && existingFlag) {
+    existingFlag.newXml = flag;
   } else if (flag) {
     const insertAt = firstFollowingChildStart >= 0 ? firstFollowingChildStart : rootEnd;
     spans.push({ start: insertAt, end: insertAt, newXml: flag });

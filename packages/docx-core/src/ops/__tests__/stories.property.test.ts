@@ -6,6 +6,8 @@ import { propertyConfig, propertyTestTimeout } from "../../../../../test/propert
 import type { Document, Paragraph, HeaderFooter, SectionProperties } from "../../model/document";
 import { DEFAULT_TAB_STOP_TWIPS } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
+import { applyStoryLifecycle } from "../storyLifecycle";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { contractViolation, normalizeForOps } from "../contract";
 import { documentStories, findStoryBody, sameStory } from "../stories";
 import {
@@ -324,6 +326,24 @@ describe("all-story operation laws", () => {
       referenceType: "default",
     });
     expect(removed.document.package.headers?.has("rIdShared")).toBe(true);
+    // Existing staleness fixtures changed values but never removed the owned section itself.
+    for (const sections of [undefined, []]) {
+      const body = { ...removed.document.package.document };
+      if (sections === undefined) delete body.sections;
+      else body.sections = sections;
+      const missingSection = {
+        ...removed.document,
+        package: { ...removed.document.package, document: body },
+      };
+      for (const inverse of removed.inverse) {
+        if (inverse.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS)
+          return panic("Header removal must have a lifecycle inverse.");
+        const result = applyStoryLifecycle(missingSection, inverse);
+        expect(result.isErr()).toBe(true);
+        if (result.isErr()) expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STALE);
+      }
+      expect(missingSection.package.document.sections).toEqual(sections);
+    }
     expectExact(removed.document, {
       type: DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
       sectionIndex: 0,

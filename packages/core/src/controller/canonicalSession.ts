@@ -541,10 +541,20 @@ type CachedStoryProjection = {
   projection: CanonicalProjection;
 };
 
-const storyProjectionKey = (story: Exclude<OpStory, typeof OP_STORIES.MAIN>): string =>
-  story.kind === "header" || story.kind === "footer"
-    ? `${story.kind}:${story.rId}`
-    : `${story.kind}:${story.id}`;
+const storyProjectionKey = (story: Exclude<OpStory, typeof OP_STORIES.MAIN>): string => {
+  switch (story.kind) {
+    case "header":
+    case "footer":
+      return `${story.kind}:${story.rId}`;
+    case "footnote":
+    case "endnote":
+      return `${story.kind}:${story.id}`;
+    default: {
+      const unreachable: never = story;
+      return panic(`Unknown canonical story ${unreachable}`);
+    }
+  }
+};
 
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
