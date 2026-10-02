@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { createEmptyDocument } from "../utils/createDocument";
-import type { EditorState } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
+import { EditorState } from "prosemirror-state";
+import { EditorView } from "prosemirror-view";
 
 import {
   createHiddenEditorManager,
@@ -261,6 +261,93 @@ test("a refused canonical activation reports once per loaded document across ret
     expect(reasons).toHaveLength(2);
   } finally {
     manager.destroyView();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test.each([
+  { kind: "header", rId: "rIdHeader1" },
+  { kind: "footer", rId: "rIdFooter1" },
+  { kind: "footnote", id: 12 },
+] as const)("a mode change refuses direct secondary commits and history in %s", (story) => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  const storyHost = document.createElement("div");
+  document.body.append(host, storyHost);
+  const source = createEmptyDocument({ initialText: "Body" });
+  const bodyParagraph = source.package.document.content.at(0);
+  if (bodyParagraph?.type !== "paragraph") panic("Expected body paragraph fixture");
+  bodyParagraph.paraId = "12345678";
+  const content = [
+    {
+      ...bodyParagraph,
+      paraId: "34567890",
+      content: [{ type: "run", content: [{ type: "text", text: "Story" }] }],
+    },
+  ] satisfies typeof source.package.document.content;
+  if (story.kind === "header")
+    source.package.headers = new Map([
+      [story.rId, { type: "header", hdrFtrType: "default", content }],
+    ]);
+  else if (story.kind === "footer")
+    source.package.footers = new Map([
+      [story.rId, { type: "footer", hdrFtrType: "default", content }],
+    ]);
+  else source.package.footnotes = [{ type: "footnote", id: story.id, content }];
+  let mode: "editing" | "suggesting" = "editing";
+  const reasons: string[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getEditingMode: () => mode,
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  let storyView: EditorView | undefined;
+  try {
+    manager.ensureView();
+    const projection = manager.api.getCanonicalStoryProjection(story);
+    if (!projection) panic("Expected secondary projection");
+    storyView = new EditorView(storyHost, { state: EditorState.create({ doc: projection }) });
+    const initialEnd = storyView.state.doc.content.size - 1;
+    expect(
+      manager.api.replaceCanonicalStoryText({
+        view: storyView,
+        story,
+        intent: { from: initialEnd, to: initialEnd, text: "!" },
+      }),
+    ).toBe(true);
+    const accepted = manager.api.getCanonicalDocument();
+    const committedState = storyView.state;
+    expect(committedState.doc.textContent).toBe("Story!");
+    expect(manager.api.canUndo()).toBe(true);
+    mode = "suggesting";
+    const committedEnd = storyView.state.doc.content.size - 1;
+    expect(
+      manager.api.replaceCanonicalStoryText({
+        view: storyView,
+        story,
+        intent: { from: committedEnd, to: committedEnd, text: "untracked" },
+      }),
+    ).toBe(false);
+    expect(
+      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
+    ).toBe(false);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+    expect(storyView.state).toBe(committedState);
+    expect(manager.api.canUndo()).toBe(true);
+    expect(manager.api.canRedo()).toBe(false);
+    expect(reasons).toEqual([
+      "Suggesting is unavailable in the experimental canonical session.",
+      "Suggesting is unavailable in the experimental canonical session.",
+    ]);
+  } finally {
+    storyView?.destroy();
+    manager.destroyView();
+    host.remove();
+    storyHost.remove();
     GlobalRegistrator.unregister();
   }
 });

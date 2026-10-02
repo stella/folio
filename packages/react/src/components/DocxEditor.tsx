@@ -1981,10 +1981,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const api = getCanonicalApi();
         api?.ensureView();
         const canonical = api?.getCanonicalDocument();
-        if (canonical)
-          api?.applyCanonicalOperations([
+        if (
+          !canonical ||
+          !api?.applyCanonicalOperations([
             createCanonicalSectionPropertiesOperation(canonical, { footnotePr, endnotePr }),
-          ]);
+          ])
+        )
+          refuseCanonicalModelEdit("Section property changes could not be applied.");
         return;
       }
       if (!history.state?.package) {
@@ -2006,7 +2009,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       });
     },
-    [history, pushDocument, experimentalSession, getCanonicalApi],
+    [history, pushDocument, experimentalSession, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Handle table action from Toolbar - use ProseMirror commands
@@ -2895,10 +2898,13 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const api = getCanonicalApi();
         api?.ensureView();
         const canonical = api?.getCanonicalDocument();
-        if (canonical)
-          api?.applyCanonicalOperations([
+        if (
+          !canonical ||
+          !api?.applyCanonicalOperations([
             createCanonicalSectionPropertiesOperation(canonical, props),
-          ]);
+          ])
+        )
+          refuseCanonicalModelEdit("Section property changes could not be applied.");
         return;
       }
       if (!history.state || readOnly) {
@@ -2919,7 +2925,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       handleDocumentChange(newDoc);
     },
-    [history.state, readOnly, handleDocumentChange, experimentalSession, getCanonicalApi],
+    [
+      history.state,
+      readOnly,
+      handleDocumentChange,
+      experimentalSession,
+      getCanonicalApi,
+      refuseCanonicalModelEdit,
+    ],
   );
 
   // Ruler drag handlers. Page-margin drags go through the section-properties

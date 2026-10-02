@@ -111,7 +111,9 @@ const lifecycleOwnership = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
       return {
         sectionIndex: op.sectionIndex,
-        sectionKeys: Object.keys(op.patch),
+        sectionKeys: Object.entries(op.patch)
+          .filter(([, value]) => value !== undefined)
+          .map(([key]) => key),
         story: undefined,
         settingsEven: op.patch.evenAndOddHeaders !== undefined,
       };

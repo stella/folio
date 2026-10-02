@@ -125,6 +125,25 @@ const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => (
 });
 
 describe("corpus operation invariants", () => {
+  test("undefined section patches do not own fields and hide foreign changes", () => {
+    const before = documentFixture();
+    const op = {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: { titlePg: undefined, evenAndOddHeaders: true },
+    } as const;
+    const result = applyDocumentOp(before, op).unwrap();
+    const step = { before, op, edit: result };
+    expect(localityStepFailures(step)).toEqual([]);
+    const changed = structuredClone(result.document);
+    const section = changed.package.document.finalSectionProperties;
+    if (section === undefined) throw new Error("Section fixture missing");
+    section.titlePg = true;
+    expect(
+      localityStepFailures({ ...step, edit: { ...result, document: changed } }).length,
+    ).toBeGreaterThan(0);
+  });
+
   test("settings locality covers absent and authored settings without hiding foreign defaults", () => {
     for (const settings of [undefined, { defaultTabStop: 900, mirrorMargins: true }]) {
       for (const evenAndOddHeaders of [true, false, null]) {

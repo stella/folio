@@ -481,7 +481,7 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           };
         }
 
-        if (meta === PACKAGE_CHANGE_META) {
+        if (meta === PACKAGE_CHANGE_META && !tr.docChanged) {
           return { ...prevState, hasUntrackedSourceChanges: true, hasUntrackedChanges: true };
         }
 
@@ -644,6 +644,10 @@ export function createParagraphChangeTrackerPlugin(): Plugin<InternalParagraphCh
           }
         }
 
+        if (meta === PACKAGE_CHANGE_META) {
+          newState.hasUntrackedSourceChanges = true;
+          newState.hasUntrackedChanges = true;
+        }
         return newState;
       },
     },

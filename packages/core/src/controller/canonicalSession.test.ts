@@ -73,6 +73,100 @@ const accept = (state: EditorState, commit: CanonicalCommit) => {
 };
 
 describe("canonical session", () => {
+  test("separator note types, rather than producer-specific ids, govern activation", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      for (const id of [0, 1, 7]) {
+        for (const noteType of ["separator", "continuationSeparator", "normal"] as const) {
+          const document = seed("Body");
+          const content: Paragraph[] = [
+            {
+              type: "paragraph",
+              paraId: "34567890",
+              content: [
+                {
+                  type: "run",
+                  content: [
+                    {
+                      type: "preservedXml",
+                      xml: `<w:${noteType === "continuationSeparator" ? "continuationSeparator" : "separator"} xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>`,
+                      text: "",
+                    },
+                  ],
+                },
+              ],
+            },
+          ];
+          if (kind === "footnote")
+            document.package.footnotes = [{ type: "footnote", id, noteType, content }];
+          else document.package.endnotes = [{ type: "endnote", id, noteType, content }];
+          expect(createCanonicalSession(document).isOk()).toBe(noteType !== "normal");
+        }
+      }
+    }
+  });
+
+  test("secondary typing projects only its changed story and never serves stale cached content", () => {
+    const document = seed("Body");
+    document.package.headers = new Map([
+      [
+        "rIdHeader1",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [
+            {
+              type: "paragraph",
+              paraId: "34567890",
+              content: [{ type: "run", content: [{ type: "text", text: "Header" }] }],
+            },
+          ],
+        },
+      ],
+    ]);
+    const session = createCanonicalSession(document).unwrap();
+    const header = { kind: "header", rId: "rIdHeader1" } as const;
+    const bodySpy = spyOn(conversion, "toProseDoc");
+    const storySpy = spyOn(conversion, "headerFooterToProseDoc");
+    try {
+      const initialProjection = session.projectStory(header).unwrap();
+      expect(session.projectStory(header).unwrap()).toBe(initialProjection);
+      expect(storySpy).toHaveBeenCalledTimes(1);
+      const initialState = EditorState.create({ schema, doc: initialProjection.doc });
+      const body = session.projection;
+      const edit = session
+        .prepareReplace(initialState, { from: 1, to: 1, text: "X", story: header })
+        .unwrap();
+      const state = accept(initialState, edit);
+      expect(edit.bodyProjection).toBe(body);
+      expect(session.projection).toBe(body);
+      expect(bodySpy).not.toHaveBeenCalled();
+      expect(storySpy).toHaveBeenCalledTimes(2);
+      expect(session.projectStory(header).unwrap()).toBe(edit.projection);
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe("XHeader");
+      expect(
+        session
+          .prepareReplace(initialState, { from: 1, to: 1, text: "stale", story: header })
+          .isErr(),
+      ).toBe(true);
+      expect(storySpy).toHaveBeenCalledTimes(2);
+      const mainState = stateFor(session);
+      accept(mainState, session.prepareReplace(mainState, { from: 1, to: 1, text: "Y" }).unwrap());
+      expect(session.projectStory(header).unwrap()).toBe(edit.projection);
+      expect(storySpy).toHaveBeenCalledTimes(2);
+      accept(state, session.prepareUndo(state, header).unwrap());
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe("XHeader");
+      const current = EditorState.create({
+        schema,
+        doc: session.projectStory(header).unwrap().doc,
+      });
+      accept(current, session.prepareUndo(current, header).unwrap());
+      expect(session.projectStory(header).unwrap().doc.textContent).toBe("Header");
+    } finally {
+      bodySpy.mockRestore();
+      storySpy.mockRestore();
+    }
+  });
+
   test("undo can remove the story containing the active editor", () => {
     const session = createCanonicalSession(seed("Body")).unwrap();
     const initial = structuredClone(session.document);

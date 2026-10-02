@@ -1457,15 +1457,23 @@ const {
   reLayout,
   onChange: notifyDocumentChange,
   applySectionProperties: (properties) => {
-    if (props.experimentalSession !== "canonical") return false;
-    const document = getDocument();
-    if (document) {
-      editor.ensureView();
-      editor.applyCanonicalOperations([
+    if (props.experimentalSession !== "canonical") return "unhandled";
+    editor.ensureView();
+    const document = editor.getCanonicalDocument();
+    if (
+      !document ||
+      !editor.applyCanonicalOperations([
         createCanonicalSectionPropertiesOperation(document, properties),
-      ]);
+      ])
+    ) {
+      reportEditorError(
+        new CanonicalSessionRefusalError({
+          message: "Section property changes could not be applied.",
+        }),
+      );
+      return "refused";
     }
-    return true;
+    return "applied";
   },
 });
 

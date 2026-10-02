@@ -450,16 +450,162 @@ describe("all-story operation laws", () => {
       patch: { marginTop: 720 },
     });
     const intervening = applyDocumentOp(changed.document, {
-      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
-      at: { story: { kind: "header", rId: "rIdHeader" }, blockId: "00000002", offset: 0 },
-      text: "Z",
-      runProps: INHERIT_RUN_PROPS,
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: { marginTop: 1440 },
     }).unwrap();
     const stale = applyDocumentOps(intervening.document, changed.inverse);
     expect(stale.isErr()).toBe(true);
+    expect(intervening.document.package.document.finalSectionProperties?.marginTop).toBe(1440);
+
+    const created = expectExact(document, {
+      type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+      sectionIndex: 0,
+      story: { kind: "header", rId: "rIdNew" },
+      referenceType: "default",
+      content: [paragraph("00000006", "new")],
+    });
+    const edited = applyDocumentOp(created.document, {
+      type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+      at: { story: { kind: "header", rId: "rIdNew" }, blockId: "00000006", offset: 0 },
+      text: "Z",
+      runProps: INHERIT_RUN_PROPS,
+    }).unwrap();
+    expect(applyDocumentOps(edited.document, created.inverse).isErr()).toBe(true);
     expect(
-      findStoryBody(intervening.document, { kind: "header", rId: "rIdHeader" })?.content.at(0),
-    ).toEqual(paragraph("00000002", "Zbody"));
+      findStoryBody(edited.document, { kind: "header", rId: "rIdNew" })?.content.at(0),
+    ).toEqual(paragraph("00000006", "Znew"));
+  });
+
+  test("lifecycle inverse preserves intervening edits to unowned body fields and stories", () => {
+    for (const op of [
+      { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { marginTop: 720 } },
+      {
+        type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+        sectionIndex: 0,
+        story: { kind: "header", rId: "rIdNew" },
+        referenceType: "default",
+        content: [paragraph("00000006", "new")],
+      },
+    ] as const satisfies readonly DocumentOp[]) {
+      const document = seedDocument("body");
+      const changed = expectExact(document, op);
+      const edits = [
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+          at: { story: "main", blockId: "00000001", offset: 0 },
+          text: "M",
+          runProps: INHERIT_RUN_PROPS,
+        },
+        {
+          type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+          at: { story: { kind: "footer", rId: "rIdFooter" }, blockId: "00000003", offset: 0 },
+          text: "F",
+          runProps: INHERIT_RUN_PROPS,
+        },
+        ...(op.type === DOCUMENT_OP_TYPES.SET_SECTION_PROPS
+          ? [
+              {
+                type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+                at: { story: { kind: "header", rId: "rIdHeader" }, blockId: "00000002", offset: 0 },
+                text: "H",
+                runProps: INHERIT_RUN_PROPS,
+              } as const,
+            ]
+          : []),
+      ] as const satisfies readonly DocumentOp[];
+      const intervening = applyDocumentOps(changed.document, edits).unwrap();
+      const undone = applyDocumentOps(
+        intervening.document,
+        JSON.parse(JSON.stringify(changed.inverse)),
+      ).unwrap();
+      expect(undone.document).toEqual(applyDocumentOps(document, edits).unwrap().document);
+      expect(undone.document.package.document.content).toBe(
+        intervening.document.package.document.content,
+      );
+      expect(undone.document.package.footers).toBe(intervening.document.package.footers);
+    }
+  });
+
+  test("lifecycle inverse size is independent of unchanged body and secondary-story content", () => {
+    const inverses = [1, 128].map((size) => {
+      const document = seedDocument("body");
+      const content = Array.from({ length: size }, (_, index) =>
+        paragraph((index + 16).toString(16).padStart(8, "0"), "body"),
+      );
+      document.package.document.content = content;
+      document.package.document.sections = [{ properties: {}, content }];
+      const footer = document.package.footers?.get("rIdFooter");
+      if (!footer) return panic("Generated footer must exist.");
+      footer.content = [paragraph("00000003", "footer".repeat(size))];
+      return (
+        [
+          { type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS, sectionIndex: 0, patch: { marginTop: 720 } },
+          {
+            type: DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+            sectionIndex: 0,
+            story: { kind: "header", rId: "rIdNew" },
+            referenceType: "default",
+            content: [paragraph("00000006", "new")],
+          },
+        ] as const satisfies readonly DocumentOp[]
+      ).map((op) => {
+        const edit = applyDocumentOp(document, op).unwrap();
+        expect(edit.document.package.document.content).toBe(content);
+        expect(edit.touched.modified).toEqual([]);
+        for (const inverse of edit.inverse) {
+          if (inverse.type !== DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS)
+            return panic("Lifecycle edits must produce lifecycle inverses.");
+          expect(inverse.parts.body?.content).toBeUndefined();
+          expect(inverse.parts.footers).toBeUndefined();
+          expect(inverse.parts.footnotes).toBeUndefined();
+          expect(inverse.parts.endnotes).toBeUndefined();
+        }
+        return JSON.stringify(edit.inverse);
+      });
+    });
+    expect(inverses.at(0)).toEqual(inverses.at(1));
+  });
+
+  test("removing a reference inside another note preserves its deletion in both note kinds", () => {
+    for (const kind of ["footnote", "endnote"] as const) {
+      const document = seedDocument("body");
+      const holder: Paragraph = {
+        type: "paragraph",
+        paraId: "00000006",
+        content: [
+          {
+            type: "run",
+            formatting: { bold: true },
+            content: [
+              { type: "text", text: "a" },
+              { type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id: 1 },
+              { type: "text", text: "b" },
+            ],
+          },
+        ],
+      };
+      if (kind === "footnote")
+        document.package.footnotes?.push({ type: kind, id: 2, content: [holder] });
+      else document.package.endnotes?.push({ type: kind, id: 2, content: [holder] });
+      const normalized = normalizeForOps(document);
+      const removed = expectExact(normalized, {
+        type: DOCUMENT_OP_TYPES.REMOVE_NOTE,
+        at: { story: { kind, id: 2 }, blockId: "00000006", offset: 1 },
+        story: { kind, id: 1 },
+      });
+      expect(findStoryBody(removed.document, { kind, id: 1 })).toBeUndefined();
+      const retained = findStoryBody(removed.document, { kind, id: 2 })?.content.at(0);
+      if (retained?.type !== "paragraph") return panic("Retained note must hold its paragraph.");
+      const leaves = retained.content.flatMap((inline) =>
+        inline.type === "run" ? inline.content : [],
+      );
+      expect(
+        leaves.filter((leaf) => leaf.type === "footnoteRef" || leaf.type === "endnoteRef"),
+      ).toEqual([]);
+      expect(leaves.map((leaf) => (leaf.type === "text" ? leaf.text : "")).join("")).toBe("ab");
+      expect(removed.document.package.document.content).toBe(normalized.package.document.content);
+    }
   });
 
   test("missing stories and stale note references refuse atomically", () => {

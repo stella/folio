@@ -2020,14 +2020,19 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
           ...removed.value.document,
           package: {
             ...removed.value.document.package,
-            footnotes: document.package.footnotes?.filter((candidate) => candidate.id !== id) ?? [],
+            footnotes:
+              removed.value.document.package.footnotes?.filter(
+                (candidate) => candidate.id !== id,
+              ) ?? [],
           },
         }
       : {
           ...removed.value.document,
           package: {
             ...removed.value.document.package,
-            endnotes: document.package.endnotes?.filter((candidate) => candidate.id !== id) ?? [],
+            endnotes:
+              removed.value.document.package.endnotes?.filter((candidate) => candidate.id !== id) ??
+              [],
           },
         };
   return storyLifecycleEdit(document, next, op);

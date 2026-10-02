@@ -407,7 +407,7 @@ test("Vue canonical stories share history and save headers, first-page footer, n
             createCanonicalSectionPropertiesOperation(current, properties),
           ]),
         ).toBe(true);
-        return true;
+        return "applied";
       },
     });
     controls.handlePageSetupApply({ marginLeft: 720, footnotePr: { numStart: 2 } });

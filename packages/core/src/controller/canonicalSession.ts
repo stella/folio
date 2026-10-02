@@ -56,6 +56,25 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
   }
 };
 
+const operationChangesBodyProjection = (op: DocumentOp): boolean => {
+  switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return true;
+    default: {
+      if ("story" in op) return sameStory(op.story, OP_STORIES.MAIN);
+      if ("at" in op) return sameStory(op.at.story, OP_STORIES.MAIN);
+      if ("from" in op) return sameStory(op.from.story, OP_STORIES.MAIN);
+      const unreachable: never = op;
+      return unreachable;
+    }
+  }
+};
+
 export type CanonicalSelection = { anchor: TextPosition; head: TextPosition };
 export type CanonicalOrigin = "input" | "undo" | "redo";
 export const CANONICAL_PROJECTION_META = "folioCanonicalProjection";
@@ -143,11 +162,49 @@ class CanonicalProjection {
   }
 }
 
+type ChangedStoriesOptions = { document: Document; previous: Document };
+/** Immutable operations retain content identities for every untouched story. */
+const changedStories = ({ document, previous }: ChangedStoriesOptions): OpStory[] => {
+  const stories: OpStory[] = [];
+  if (document.package.document.content !== previous.package.document.content)
+    stories.push(OP_STORIES.MAIN);
+  for (const kind of ["header", "footer"] as const) {
+    const parts = kind === "header" ? document.package.headers : document.package.footers;
+    const prior = kind === "header" ? previous.package.headers : previous.package.footers;
+    if (parts === prior) continue;
+    for (const [rId, body] of parts ?? []) {
+      if (body.content !== prior?.get(rId)?.content) stories.push({ kind, rId });
+    }
+  }
+  for (const kind of ["footnote", "endnote"] as const) {
+    const notes = kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+    const prior = kind === "footnote" ? previous.package.footnotes : previous.package.endnotes;
+    if (notes === prior) continue;
+    const priorById = new Map(prior?.map((note) => [note.id, note]));
+    for (const note of notes ?? []) {
+      const original = priorById.get(note.id);
+      if (note.content !== original?.content || note.noteType !== original?.noteType)
+        stories.push({ kind, id: note.id });
+    }
+  }
+  return stories;
+};
+
 /** Carry private paragraph source captures across immutable story operations. */
-const preservePropertySources = (target: Document, source: Document): void => {
-  for (const story of documentStories(source)) {
+type PreservePropertySourcesOptions = {
+  target: Document;
+  source: Document;
+  stories?: readonly OpStory[];
+};
+const preservePropertySources = ({
+  target,
+  source,
+  stories = documentStories(source),
+}: PreservePropertySourcesOptions): void => {
+  for (const story of stories) {
     const originals = findStoryBody(source, story)?.content ?? [];
     const derived = findStoryBody(target, story)?.content ?? [];
+    if (originals === derived) continue;
     const paragraphs = new Map(
       derived.flatMap((block) =>
         block.type === "paragraph" ? [[block.paraId, block] as const] : [],
@@ -188,16 +245,17 @@ const authoredInputFormatting = ({
   return {};
 };
 
-const supportsSeed = (document: Document): boolean => {
+const supportsSeed = (document: Document, stories = documentStories(document)): boolean => {
   if ((document.package.document.comments?.length ?? 0) > 0) return false;
-  return documentStories(document).every((story) => {
-    if (
-      story !== OP_STORIES.MAIN &&
-      (story.kind === "footnote" || story.kind === "endnote") &&
-      (story.id === -1 || story.id === 0)
-    )
-      return true;
-    const content = findStoryBody(document, story)?.content;
+  return stories.every((story) => {
+    const body = findStoryBody(document, story);
+    if (story !== OP_STORIES.MAIN && (story.kind === "footnote" || story.kind === "endnote")) {
+      const notes =
+        story.kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+      const note = notes?.find(({ id }) => id === story.id);
+      if (note?.noteType !== undefined && note.noteType !== "normal") return true;
+    }
+    const content = body?.content;
     return (
       content !== undefined &&
       content.length > 0 &&
@@ -458,6 +516,7 @@ type StageOptions = {
   selection: CanonicalSelection;
   origin: CanonicalOrigin;
   story?: OpStory;
+  previousProjection?: CanonicalProjection;
   onPublish: (inverse: readonly DocumentOp[], version: number) => void;
 };
 
@@ -476,11 +535,23 @@ type CanonicalReplaceTextInput = {
   time?: number;
 };
 
+type CachedStoryProjection = {
+  content: NonNullable<ReturnType<typeof findStoryBody>>["content"];
+  theme: Document["package"]["theme"];
+  projection: CanonicalProjection;
+};
+
+const storyProjectionKey = (story: Exclude<OpStory, typeof OP_STORIES.MAIN>): string =>
+  story.kind === "header" || story.kind === "footer"
+    ? `${story.kind}:${story.rId}`
+    : `${story.kind}:${story.id}`;
+
 /** Immutable model authority with a journal staged independently of the PM view. */
 class CanonicalSession {
   private currentDocument: Document;
   private currentProjection: CanonicalProjection;
   private currentVersion = 0;
+  private readonly storyProjections = new Map<string, CachedStoryProjection>();
   private currentSelection: CanonicalSelection | null = null;
   private readonly applied: AppliedJournalGroup[] = [];
   private groupingBoundary = 0;
@@ -612,6 +683,7 @@ class CanonicalSession {
     return this.stage({
       state,
       story,
+      previousProjection: projection,
       ops,
       selection: postSelection,
       origin: "input",
@@ -648,9 +720,21 @@ class CanonicalSession {
   }
 
   projectStory(story: OpStory): Result<CanonicalProjection, CanonicalSessionError> {
-    return sameStory(story, OP_STORIES.MAIN)
-      ? Result.ok(this.projection)
-      : project({ document: this.currentDocument, styles: this.styles, story });
+    if (story === OP_STORIES.MAIN) return Result.ok(this.projection);
+    const key = storyProjectionKey(story);
+    const body = findStoryBody(this.currentDocument, story);
+    if (body === undefined) {
+      this.storyProjections.delete(key);
+      return refuse("The canonical story no longer exists.");
+    }
+    const cached = this.storyProjections.get(key);
+    const theme = this.currentDocument.package.theme;
+    if (cached?.content === body.content && cached.theme === theme)
+      return Result.ok(cached.projection);
+    const projected = project({ document: this.currentDocument, styles: this.styles, story });
+    if (projected.isOk())
+      this.storyProjections.set(key, { content: body.content, theme, projection: projected.value });
+    return projected;
   }
 
   prepareOperations(
@@ -746,16 +830,26 @@ class CanonicalSession {
     origin,
     onPublish,
     story = OP_STORIES.MAIN,
+    previousProjection,
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
-    const previous = this.projectStory(story);
+    const previous =
+      previousProjection === undefined ? this.projectStory(story) : Result.ok(previousProjection);
     if (previous.isErr()) return previous;
     const checked = this.checkState(state, previous.value);
     if (checked.isErr()) return checked;
     const applied = applyDocumentOps(this.currentDocument, ops);
     if (applied.isErr()) return refuse(applied.error.message);
-    if (!supportsSeed(applied.value.document))
+    const changed = changedStories({
+      document: applied.value.document,
+      previous: this.currentDocument,
+    });
+    if (!supportsSeed(applied.value.document, changed))
       return refuse("The operations produce unsupported canonical story content.");
-    preservePropertySources(applied.value.document, this.currentDocument);
+    preservePropertySources({
+      target: applied.value.document,
+      source: this.currentDocument,
+      stories: changed,
+    });
     const projectedStory = findStoryBody(applied.value.document, story) ? story : OP_STORIES.MAIN;
     const projected = project({
       document: applied.value.document,
@@ -763,9 +857,12 @@ class CanonicalSession {
       story: projectedStory,
     });
     if (projected.isErr()) return projected;
-    const bodyProjection = sameStory(story, OP_STORIES.MAIN)
-      ? projected
-      : project({ document: applied.value.document, styles: this.styles });
+    const bodyProjection = (() => {
+      if (sameStory(projectedStory, OP_STORIES.MAIN)) return projected;
+      if (ops.some(operationChangesBodyProjection))
+        return project({ document: applied.value.document, styles: this.styles });
+      return Result.ok(this.currentProjection);
+    })();
     if (bodyProjection.isErr()) return bodyProjection;
     const transaction = state.tr;
     if (!transaction.doc.eq(projected.value.doc))
@@ -811,6 +908,15 @@ class CanonicalSession {
         if (!isCanonicalProjectionTransaction(transaction, this)) {
           return refuse("The staged canonical projection was changed after preparation.");
         }
+        if (projectedStory !== OP_STORIES.MAIN) {
+          const body = findStoryBody(applied.value.document, projectedStory);
+          if (body === undefined) panic("A staged story projection lost its source.");
+          this.storyProjections.set(storyProjectionKey(projectedStory), {
+            content: body.content,
+            theme: applied.value.document.package.theme,
+            projection: projected.value,
+          });
+        }
         this.currentSelection = selection;
         this.currentDocument = applied.value.document;
         this.currentProjection = bodyProjection.value;
@@ -835,7 +941,7 @@ export const createCanonicalSession = (
   }
   const owned = cloneDocumentWithParagraphPropertySources(document);
   const normalized = normalizeForOps(owned);
-  preservePropertySources(normalized, owned);
+  preservePropertySources({ target: normalized, source: owned });
   const validated = validateOpsDocument(normalized);
   if (validated.isErr()) return refuse(validated.error.message);
   const projected = project({ document: normalized, styles });

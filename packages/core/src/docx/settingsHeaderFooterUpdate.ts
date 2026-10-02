@@ -1,5 +1,8 @@
 /** Preserve producer settings while updating the document-wide header/footer switch. */
+import { panic } from "better-result";
+
 import { spliceXml } from "./selectiveXmlPatch";
+import { SETTINGS_CHILDREN } from "@stll/docx-core/schema";
 import {
   getChildElements,
   getLocalName,
@@ -10,6 +13,10 @@ import {
 
 const XML_TOKEN =
   /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<(?:"[^"]*"|'[^']*'|[^'">])*>/gu;
+const SETTINGS_CHILD_ORDINALS: ReadonlyMap<string, number> = new Map(
+  SETTINGS_CHILDREN.map((name, index) => [name, index] as const),
+);
+const EVEN_AND_ODD_HEADERS_ORDER = SETTINGS_CHILD_ORDINALS.get("evenAndOddHeaders");
 
 /** Null means the source is malformed or outside the supported namespace profiles. */
 export const updateEvenAndOddHeaders = (
@@ -31,6 +38,10 @@ export const updateEvenAndOddHeaders = (
   let rootEnd = -1;
   let rootOpenEnd = -1;
   let selfClosingRootStart = -1;
+  let firstFollowingChildStart = -1;
+  if (EVEN_AND_ODD_HEADERS_ORDER === undefined) {
+    panic("Generated CT_Settings schema does not define evenAndOddHeaders");
+  }
   for (const token of xml.matchAll(XML_TOKEN)) {
     const tag = token[0];
     if (tag.startsWith("<!") || tag.startsWith("<?")) continue;
@@ -61,11 +72,18 @@ export const updateEvenAndOddHeaders = (
       if (tag.endsWith("/>")) selfClosingRootStart = token.index;
     }
     if (stack.length === 1) {
-      if (children[childIndex]?.name !== name) return null;
+      const child = children[childIndex];
+      if (child?.name !== name) return null;
+      if (
+        firstFollowingChildStart < 0 &&
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
+        (SETTINGS_CHILD_ORDINALS.get(getLocalName(child.name)) ?? -1) > EVEN_AND_ODD_HEADERS_ORDER
+      ) {
+        firstFollowingChildStart = token.index;
+      }
       childStart = token.index;
       if (tag.endsWith("/>")) {
-        const child = children[childIndex++];
-        if (!child) return null;
+        childIndex += 1;
         if (
           getLocalName(child.name) === "evenAndOddHeaders" &&
           WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")
@@ -90,6 +108,11 @@ export const updateEvenAndOddHeaders = (
     ]);
   }
   if (rootEnd < 0) return null;
-  spans.push({ start: rootEnd, end: rootEnd, newXml: flag });
+  if (flag && spans.length > 0) {
+    spans[0].newXml = flag;
+  } else if (flag) {
+    const insertAt = firstFollowingChildStart >= 0 ? firstFollowingChildStart : rootEnd;
+    spans.push({ start: insertAt, end: insertAt, newXml: flag });
+  }
   return spliceXml(xml, spans);
 };

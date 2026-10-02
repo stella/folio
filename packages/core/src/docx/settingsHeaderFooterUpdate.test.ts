@@ -7,6 +7,7 @@ import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
 import { parseSettings } from "./settingsParser";
 import { updateEvenAndOddHeaders } from "./settingsHeaderFooterUpdate";
+import { SETTINGS_CHILDREN } from "@stll/docx-core/schema";
 
 for (const namespace of [
   "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
@@ -72,4 +73,35 @@ test("self-closing settings roots expand through a validated XML splice", () => 
   expect(patched).toContain('producer="kept"');
   const removed = updateEvenAndOddHeaders(patched, undefined) ?? panic("Expected removed flag");
   expect(parseSettings(removed).evenAndOddHeaders).toBeUndefined();
+});
+
+test("evenAndOddHeaders is inserted at its generated CT_Settings sequence position", () => {
+  const targetIndex = SETTINGS_CHILDREN.indexOf("evenAndOddHeaders");
+  const followingChild = SETTINGS_CHILDREN.at(targetIndex + 1);
+  if (targetIndex < 0 || followingChild === undefined) {
+    panic("Expected evenAndOddHeaders to have a following CT_Settings child");
+  }
+
+  for (const namespace of [
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "http://purl.oclc.org/ooxml/wordprocessingml/main",
+  ]) {
+    const xml =
+      `<w:settings xmlns:w="${namespace}">` +
+      `<w:defaultTableStyle/><w:${followingChild}/><w:compat/></w:settings>`;
+    const enabled = updateEvenAndOddHeaders(xml, true) ?? panic("Expected settings patch");
+    const flagAt = enabled.indexOf("evenAndOddHeaders");
+    const followingAt = enabled.indexOf(`<w:${followingChild}`);
+    expect(parseSettings(enabled).evenAndOddHeaders).toBe(true);
+    expect(flagAt).toBeGreaterThan(enabled.indexOf("<w:defaultTableStyle"));
+    expect(flagAt).toBeLessThan(followingAt);
+
+    const disabled =
+      updateEvenAndOddHeaders(enabled, false) ?? panic("Expected existing flag update");
+    expect(parseSettings(disabled).evenAndOddHeaders).toBe(false);
+    expect(disabled.match(/evenAndOddHeaders/gu)).toHaveLength(1);
+    expect(disabled.indexOf("evenAndOddHeaders")).toBeLessThan(
+      disabled.indexOf(`<w:${followingChild}`),
+    );
+  }
 });

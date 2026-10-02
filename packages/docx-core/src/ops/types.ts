@@ -717,18 +717,25 @@ export type SetSectionPropsOp = {
   sectionIndex: number;
   patch: FormattingPatch<SectionProperties>;
 };
-/** JSON-safe fields changed by a lifecycle edit, with exact absent/empty spelling. */
+/** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
 export type StoryParts = {
-  body: Omit<DocumentBody, "sections">;
-  sections?: readonly (Omit<Section, "headers" | "footers"> & {
-    headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
-    footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
-  })[];
-  headers?: readonly (readonly [string, HeaderFooter])[];
-  footers?: readonly (readonly [string, HeaderFooter])[];
-  footnotes?: readonly Footnote[];
-  endnotes?: readonly Endnote[];
-  settings?: DocumentSettings;
+  body?: {
+    [Key in keyof Omit<DocumentBody, "sections">]?: Key extends "content"
+      ? DocumentBody[Key]
+      : Exclude<DocumentBody[Key], undefined> | null;
+  };
+  /** Section contents remain derived from the body's content and are never duplicated. */
+  sections?: readonly {
+    index: number;
+    properties?: Section["properties"];
+    headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+    footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+  }[];
+  headers?: readonly (readonly [string, HeaderFooter])[] | null;
+  footers?: readonly (readonly [string, HeaderFooter])[] | null;
+  footnotes?: readonly Footnote[] | null;
+  endnotes?: readonly Endnote[] | null;
+  settings?: DocumentSettings | null;
 };
 /** Exact stale-checked lifecycle inverse; unrelated package parts stay untouched. */
 export type RestoreStoryPartsOp = {
