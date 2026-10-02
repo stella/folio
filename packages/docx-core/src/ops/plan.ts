@@ -47,6 +47,7 @@ import {
   type InsertContentOp,
   type JoinBlocksOp,
   type SetParagraphPropsOp,
+  type SetRunPropsOp,
   type SplitBlockOp,
   EMPTY_PROPERTY_SETS,
   type DocumentOp,
@@ -90,6 +91,9 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return op;
     default: {
       const unreachable: never = op;
@@ -260,7 +264,8 @@ type PlannedReviewOp =
   | InsertContentOp
   | JoinBlocksOp
   | SplitBlockOp
-  | SetParagraphPropsOp;
+  | SetParagraphPropsOp
+  | SetRunPropsOp;
 
 type TrackedPlanOptions = {
   document: Document;

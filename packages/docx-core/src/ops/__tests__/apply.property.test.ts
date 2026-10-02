@@ -34,7 +34,7 @@ import {
 import { projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { storyParagraphs } from "../blocks";
+import { sameBlockList, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
 import { paragraphIdsIn } from "../ids";
 import { sameRunFormatting } from "../inline";
@@ -54,12 +54,14 @@ import {
   runContentWidth,
 } from "../offsets";
 import { applyFormattingPatch } from "../patch";
+import { allocateEditorIntentIds, compileEditorIntent, type EditorIntent } from "../editorIntent";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpType,
   INHERIT_RUN_PROPS,
   OP_STORIES,
+  REVISION_DECISIONS,
   SPLIT_HALVES,
   REVISION_DECISIONS,
 } from "../types";
@@ -116,6 +118,9 @@ const INVERSE_KINDS = {
   setParagraphReview: ["setParagraphReview"],
   replaceInline: ["replaceInline"],
   resolveRevision: ["replaceInline", "setParagraphReview", "joinBlocks", "replaceBlocks"],
+  createNumberingInstance: ["deleteNumberingInstance"],
+  deleteNumberingInstance: ["createNumberingInstance"],
+  setSectionEndpoint: ["setSectionEndpoint"],
 } as const satisfies Record<DocumentOpType, readonly DocumentOpType[]>;
 
 const paragraphsById = (document: Document): Map<string, Paragraph> =>
@@ -189,6 +194,11 @@ const namedIds = (op: DocumentOp): Set<string> => {
       return new Set([op.blockId, ...paragraphIdsIn(op.expected ?? [])]);
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return new Set([op.blockId, ...paragraphIdsIn([op.expected, op.rows])]);
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+      return new Set();
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+      return new Set(op.endpoint.type === "paragraph" ? [op.endpoint.blockId] : []);
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -665,11 +675,189 @@ describe("document operations", () => {
           }
           expect(batch.value.document).toStrictEqual(current);
           expectRestores(batch.value, original);
+
+          // JSON is the journal wire format; IDs and section/list model state survive both ways.
+          const wireOps = JSON.parse(JSON.stringify(ops)) as DocumentOp[];
+          const wireBatch = applyDocumentOps(independentCopy(document), wireOps);
+          if (wireBatch.isErr()) throw wireBatch.error;
+          expect(wireBatch.value.document).toStrictEqual(current);
+          const wireInverse = JSON.parse(JSON.stringify(wireBatch.value.inverse)) as DocumentOp[];
+          const wireUndo = applyDocumentOps(independentCopy(wireBatch.value.document), wireInverse);
+          if (wireUndo.isErr()) throw wireUndo.error;
+          expect(wireUndo.value.document).toStrictEqual(original);
         },
       ),
       propertyConfig({ numRuns: NUM_RUNS }),
     );
     expectEveryKindApplied(tally, NUM_RUNS);
+  });
+
+  test("generated editor intents agree in direct and accepted tracked mode across structural shapes", () => {
+    const tallies = new Map<EditorIntent["type"], number>();
+    let appliedMultiParagraphFormatting = 0;
+    fc.assert(
+      fc.property(documentArbitrary, (document) => {
+        const paragraphs = storyParagraphs(document.package.document);
+        const first = paragraphs.at(0);
+        const paragraph = first?.paragraph;
+        if (paragraph?.paraId === undefined) return;
+        const allocation = allocateEditorIntentIds(document);
+        const at = { story: OP_STORIES.MAIN, blockId: paragraph.paraId, offset: 0 };
+        const length = paragraphLogicalText(paragraph).length;
+        const intents: EditorIntent[] = [
+          { type: "formatParagraph", at, patch: { alignment: "center", keepNext: true } },
+          {
+            type: "formatRun",
+            from: at,
+            to: { ...at, offset: length },
+            patch: { bold: true, italic: false },
+          },
+          { type: "insertAtom", from: at, to: at, atom: { type: "tab" } },
+          { type: "replaceText", from: at, to: { ...at, offset: length }, text: "edited" },
+          { type: "splitParagraph", at, newBlockId: allocation.newBlockId },
+          {
+            type: "setList",
+            items: [{ at, ilvl: 0 }],
+            target: {
+              type: "new",
+              num: {
+                numId: 1000 + allocation.revisionId,
+                abstractNumId: 2000 + allocation.revisionId,
+              },
+              abstractNum: {
+                abstractNumId: 2000 + allocation.revisionId,
+                levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+              },
+            },
+          },
+        ];
+        if (document.package.numbering?.nums.at(0) !== undefined) {
+          intents.push({
+            type: "setList",
+            items: [{ at, ilvl: 0 }],
+            target: { type: "existing", numId: document.package.numbering.nums[0]!.numId },
+          });
+        }
+        const nextInList = paragraphs.find(
+          ({ list, index }) =>
+            first !== undefined && sameBlockList(first.list, list) && index > first.index,
+        );
+        if (nextInList?.paragraph.paraId !== undefined) {
+          const next = nextInList.paragraph;
+          intents.push({
+            type: "formatRun",
+            from: at,
+            to: {
+              story: OP_STORIES.MAIN,
+              blockId: next.paraId,
+              offset: paragraphLogicalText(next).length,
+            },
+            patch: { underline: { style: "single" } },
+          });
+        }
+        const adjacent = paragraphs.find(
+          ({ list, index }) =>
+            first !== undefined && sameBlockList(first.list, list) && index === first.index + 1,
+        );
+        if (adjacent?.paragraph.paraId !== undefined) {
+          intents.push({
+            type: "joinParagraphs",
+            story: OP_STORIES.MAIN,
+            blockId: paragraph.paraId,
+            nextBlockId: adjacent.paragraph.paraId,
+          });
+        }
+        for (const intent of intents) {
+          const direct = compileEditorIntent(document, {
+            intent,
+            mode: { type: "editing", newIds: allocation.newIds },
+          });
+          const tracked = compileEditorIntent(document, {
+            intent,
+            mode: {
+              type: "suggesting",
+              revision: {
+                id: allocation.revisionId,
+                author: "Property",
+                date: "2026-10-02T00:00:00Z",
+              },
+              newIds: allocation.newIds,
+            },
+          });
+          if (direct.isErr() || tracked.isErr()) continue;
+          const directEdit = applyDocumentOps(document, direct.value.ops);
+          const trackedEdit = applyDocumentOps(document, tracked.value.ops);
+          if (directEdit.isErr()) throw directEdit.error;
+          if (trackedEdit.isErr()) throw trackedEdit.error;
+          let acceptedDocument = trackedEdit.value.document;
+          if (trackedEdit.value.revisions.length > 0) {
+            const accepted = applyDocumentOp(acceptedDocument, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: trackedEdit.value.revisions,
+              decision: REVISION_DECISIONS.ACCEPT,
+            });
+            if (accepted.isErr()) throw accepted.error;
+            acceptedDocument = accepted.value.document;
+            const rejected = applyDocumentOp(trackedEdit.value.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: trackedEdit.value.revisions,
+              decision: REVISION_DECISIONS.REJECT,
+            });
+            if (rejected.isErr()) throw rejected.error;
+            if (intent.type === "setList" && intent.target.type === "new") {
+              const rejectedPackage = Object.fromEntries(
+                Object.entries(rejected.value.document.package).filter(
+                  ([key]) => key !== "numbering",
+                ),
+              );
+              const baselinePackage = Object.fromEntries(
+                Object.entries(document.package).filter(([key]) => key !== "numbering"),
+              );
+              expect(rejectedPackage).toStrictEqual(baselinePackage);
+              expect(rejected.value.document.package.numbering?.nums).toContainEqual(
+                intent.target.num,
+              );
+              if (intent.target.abstractNum !== undefined) {
+                expect(rejected.value.document.package.numbering?.abstractNums).toContainEqual(
+                  intent.target.abstractNum,
+                );
+              }
+            } else {
+              expect(rejected.value.document).toStrictEqual(document);
+            }
+          }
+          expect(acceptedDocument).toStrictEqual(directEdit.value.document);
+          const directUndo = applyDocumentOps(directEdit.value.document, directEdit.value.inverse);
+          const trackedUndo = applyDocumentOps(
+            trackedEdit.value.document,
+            trackedEdit.value.inverse,
+          );
+          if (directUndo.isErr()) throw directUndo.error;
+          if (trackedUndo.isErr()) throw trackedUndo.error;
+          expect(directUndo.value.document).toStrictEqual(document);
+          expect(trackedUndo.value.document).toStrictEqual(document);
+          tallies.set(intent.type, (tallies.get(intent.type) ?? 0) + 1);
+          if (intent.type === "formatRun" && intent.from.blockId !== intent.to.blockId) {
+            appliedMultiParagraphFormatting += 1;
+          }
+        }
+      }),
+      propertyConfig({ numRuns: 100 }),
+    );
+    for (const kind of [
+      "formatParagraph",
+      "formatRun",
+      "insertAtom",
+      "replaceText",
+      "splitParagraph",
+      "joinParagraphs",
+      "setList",
+    ] as const) {
+      expect(tallies.get(kind) ?? 0).toBeGreaterThan(0);
+    }
+    expect(appliedMultiParagraphFormatting).toBeGreaterThan(0);
   });
 
   test("the same operation on equal documents gives equal results", () => {

@@ -120,6 +120,7 @@ import {
 } from "./refusal";
 import { resolveRevision } from "./resolve";
 import { applyRowOp } from "./tableRows";
+import { applyNumberingSectionOp } from "./numberingSections";
 import { applyTableOp } from "./tables";
 import { stampedTableRowRevisionIds } from "./tableTracking";
 import {
@@ -1961,6 +1962,10 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return applyRowOp(document, op);
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
+      return applyNumberingSectionOp(document, op);
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -1993,6 +1998,9 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return undefined;
     default: {
       const unreachable: never = op;

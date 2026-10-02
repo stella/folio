@@ -441,7 +441,7 @@ export type DocxPackage = {
   /** Theme */
   theme?: Theme;
   /** Numbering definitions */
-  numbering?: NumberingDefinitions;
+  numbering?: NumberingDefinitions | undefined;
   /** Font table */
   fontTable?: FontTable;
   /** Footnotes */

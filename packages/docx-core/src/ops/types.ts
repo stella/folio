@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 5: text, formatting and review edits on
+ * Document operations, schema version 6: text, formatting and review edits on
  * the main story, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -38,6 +38,19 @@ import type {
   HeaderFooter,
   HeaderFooterType,
 } from "../model/document";
+import type { AbstractNumbering, NumberingDefinitions, NumberingInstance } from "../model/lists";
+
+/** JSON-safe section metadata; content is derived from the body's canonical blocks. */
+export type SectionViewEntry = {
+  properties: SectionProperties;
+  headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+  footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+};
+
+type SectionViewChange = {
+  expected: readonly SectionViewEntry[];
+  restore: readonly SectionViewEntry[];
+};
 
 /** JSON-safe section metadata; content is derived from the body's canonical blocks. */
 export type SectionViewEntry = {
@@ -54,8 +67,9 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
- * Version 5 adds explicit section-boundary removal/restoration and separately rejectable
- * paragraph-property reviews over an existing revision.
+ * Version 6 adds numbering-instance creation and section-endpoint edits.
+ * Version 5 adds explicit section-boundary removal/restoration and separately
+ * rejectable paragraph-property reviews over an existing revision.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
  * whole-table operations with their exact structural inverse, terminal insertion,
  * and cell-ending paragraph marks on tracked row operations.
@@ -65,7 +79,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 5;
+export const DOCUMENT_OP_SCHEMA_VERSION = 6;
 
 /**
  * The stories an operation can address. Headers, footers, notes and comment
@@ -189,7 +203,7 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
 } as const);
 export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
 
-/** The operation kinds of schema version 5. */
+/** The operation kinds of schema version 6. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
@@ -212,6 +226,9 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   INSERT_ROW: "insertRow",
   DELETE_ROW: "deleteRow",
   SET_TABLE_ROWS: "setTableRows",
+  CREATE_NUMBERING_INSTANCE: "createNumberingInstance",
+  DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
+  SET_SECTION_ENDPOINT: "setSectionEndpoint",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -662,6 +679,44 @@ export type SetTableRowsOp = {
   rows: readonly TableRow[];
 };
 
+/** Whether the package numbering part was omitted, explicitly undefined, or present. */
+export type NumberingPartState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "definitions"; value: NumberingDefinitions };
+
+/** Add a pre-allocated numbering instance and optional abstract definition. */
+export type CreateNumberingInstanceOp = {
+  type: typeof DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE;
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+  expected?: NumberingPartState;
+  restore?: NumberingPartState;
+};
+
+/** Remove the exact instance created by the paired operation. */
+export type DeleteNumberingInstanceOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE;
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+  expected?: NumberingPartState;
+  restore?: NumberingPartState;
+};
+
+/** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */
+export type SectionEndpoint = { type: "paragraph"; blockId: string } | { type: "final" };
+export type ExpectedSectionProperties =
+  | { type: "absent" }
+  | { type: "present"; value: SectionProperties };
+export type SetSectionEndpointOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT;
+  endpoint: SectionEndpoint;
+  expected?: ExpectedSectionProperties;
+  properties?: SectionProperties;
+  expectedSectionMetadata?: readonly SectionViewEntry[] | null;
+  sectionMetadata?: readonly SectionViewEntry[];
+};
+
 /**
  * Insert a table before or after a paragraph. Tracking records each row,
  * cell content and cell-ending paragraph mark. At a container's end,
@@ -706,7 +761,7 @@ export type SetContainerBlocksOp = {
   blocks: readonly BlockContent[];
 };
 
-/** A schema-version-5 document operation. */
+/** A schema-version-6 document operation. */
 export type DocumentOp =
   | DeleteBlocksOp
   | InsertTableOp
@@ -728,7 +783,10 @@ export type DocumentOp =
   | ResolveRevisionOp
   | InsertRowOp
   | DeleteRowOp
-  | SetTableRowsOp;
+  | SetTableRowsOp
+  | CreateNumberingInstanceOp
+  | DeleteNumberingInstanceOp
+  | SetSectionEndpointOp;
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the

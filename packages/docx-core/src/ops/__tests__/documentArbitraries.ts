@@ -28,6 +28,7 @@ import type {
   TextFormatting,
   TrackedRunContent,
 } from "../../model/document";
+import { paragraphNumberingReference } from "../../model/paragraphNumbering";
 import { storyParagraphs } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { IDENTITY_SPACES, packageIdentityKeys, paragraphIdsIn } from "../ids";
@@ -87,6 +88,9 @@ const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting> = fc.recor
     styleId: fc.constantFrom("Heading1", "BodyText"),
     runProperties: textFormattingArbitrary,
     preserved: fc.constant({ children: [{ index: 3, xml: "<w:suppressOverlap/>" }] }),
+    numPr: fc.option(fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })), {
+      nil: undefined,
+    }),
   },
   { requiredKeys: [] },
 );
@@ -526,6 +530,16 @@ const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document 
   return {
     package: {
       document: body,
+      numbering: storyParagraphs(body).some(
+        ({ paragraph }) => paragraph.formatting?.numPr?.kind === "reference",
+      )
+        ? {
+            abstractNums: [
+              { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+            ],
+            nums: [{ numId: 1, abstractNumId: 1 }],
+          }
+        : undefined,
       footnotes: [
         {
           type: "footnote",

@@ -56,6 +56,14 @@ const document: Document = { package: { document: { content: [first, second] } }
 /** Each operation, applied in turn to what the previous one produced. */
 const OPS: readonly DocumentOp[] = [
   {
+    type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+    abstractNum: {
+      abstractNumId: 7,
+      levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }],
+    },
+    num: { numId: 7, abstractNumId: 7 },
+  },
+  {
     type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
     story: OP_STORIES.MAIN,
     at: { type: "before", blockId: "00000001" },
@@ -169,6 +177,11 @@ const OPS: readonly DocumentOp[] = [
     story: OP_STORIES.MAIN,
     revisionIds: [69, 72],
     decision: REVISION_DECISIONS.REJECT,
+  },
+  {
+    type: DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT,
+    endpoint: { type: "paragraph", blockId: "00000002" },
+    properties: { pageWidth: 12_240 },
   },
 ];
 
