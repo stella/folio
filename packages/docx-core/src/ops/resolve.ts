@@ -497,7 +497,11 @@ const joinOps = (
       const record = edgeRecord(content, edge);
       if (isEmptied && record !== undefined) emptied.add(record);
     }
-    const merged = mergedAtSeam(paragraph.content, next.content, emptied);
+    // Rejecting an inserted boundary heals the split records. Accepting a deleted
+    // boundary concatenates authored records, exactly as a depth-zero direct join.
+    const merged = added
+      ? mergedAtSeam(paragraph.content, next.content, emptied)
+      : [...paragraph.content, ...next.content];
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));

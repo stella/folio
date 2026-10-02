@@ -455,7 +455,8 @@ export type SplitBlockOp = {
  * the direct join would give it as a tracked property change. Accepting removes the mark, which
  * leaves the second paragraph with the first's content before its own: what
  * the direct join leaves. A tracked join always leaves the second, so
- * `survivor` must then be absent or `second`.
+ * `survivor` must then be absent or `second`, and `depth` absent or zero: the
+ * paragraph mark cannot record an inline merge depth.
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;

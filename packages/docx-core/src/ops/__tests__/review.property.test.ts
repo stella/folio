@@ -195,12 +195,12 @@ const stampedIds = (document: Document, stamps: readonly RevisionStamp[]): numbe
 };
 
 /**
- * The operation without its stamp: what it does directly. A direct join
- * merges no records, as a tracked one leaves that to resolution, which
- * merges as far as they are alike.
+ * The operation without its stamp: what it does directly. A tracked join
+ * records only a paragraph boundary deletion, so its direct counterpart
+ * preserves the authored inline records.
  */
 const directOf = (op: DocumentOp): DocumentOp => {
-  const direct = op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? { ...op, depth: 0 } : { ...op };
+  const direct = { ...op };
   Reflect.deleteProperty(direct, "revision");
   return direct;
 };
@@ -506,6 +506,10 @@ describe("tracked operations and their resolution", () => {
         );
         const expected = resolved(direct.value.document, extra.direct, REVISION_DECISIONS.ACCEPT);
         expectEquivalent(accepted, expected);
+        // A deleted paragraph boundary preserves exact authored inline segmentation.
+        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
+          expect(accepted).toStrictEqual(expected);
+        }
       }),
       { numRuns: NUM_RUNS },
     );

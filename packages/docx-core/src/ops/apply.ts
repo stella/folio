@@ -1438,6 +1438,13 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   if (!isCount(depth)) {
     return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A join depth is a count.");
   }
+  if (depth !== 0) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A tracked paragraph mark cannot record an inline merge depth.",
+    );
+  }
   if ((op.survivor ?? SPLIT_HALVES.SECOND) !== SPLIT_HALVES.SECOND) {
     return refuse(
       op,
