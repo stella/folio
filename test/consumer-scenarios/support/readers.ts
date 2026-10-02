@@ -386,8 +386,10 @@ export const markdownViews = (
         for (const cell of [...token.header, ...token.rows.flat()]) {
           const text = inlineText(cell.tokens);
           if (text.length === 0) continue;
-          views.push(view(text.trim(), "paragraph", undefined, undefined));
-          nextExpected();
+          const expected = nextExpected();
+          const comparableText =
+            expected.number === BULLET ? text.trim().replace(/^-\s+/u, "") : text.trim();
+          views.push(view(comparableText, "paragraph", undefined, undefined));
         }
         return;
       }
@@ -425,7 +427,9 @@ export const markdownViews = (
 const markdownComparable = (block: BlockView, inTable: boolean): BlockView =>
   inTable
     ? view(
-        block.number === undefined ? block.text : `${block.number} ${block.text}`,
+        block.number === undefined || block.number === BULLET
+          ? block.text
+          : `${block.number} ${block.text}`,
         "paragraph",
         undefined,
         undefined,

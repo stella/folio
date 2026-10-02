@@ -84,7 +84,10 @@ const listGlyphDocument = async (): Promise<Uint8Array> => {
   return packDocument(document);
 };
 
-const numberedTableDocument = async (): Promise<Uint8Array> => {
+const numberedTableDocument = async (
+  format: "decimal" | "bullet" = "decimal",
+  rendering: "gfm" | "html" = "gfm",
+): Promise<Uint8Array> => {
   const document = fromMarkdown(
     "## Terms\n\n| Service | Value |\n| --- | --- |\n| Term | Included |",
   );
@@ -97,8 +100,8 @@ const numberedTableDocument = async (): Promise<Uint8Array> => {
       {
         ilvl: 0,
         start: 3,
-        numFmt: "decimal",
-        lvlText: "%1.",
+        numFmt: format,
+        lvlText: format === "bullet" ? "o" : "%1.",
         suffix: "space",
         pPr: { indentLeft: 0, indentFirstLine: 0 },
       },
@@ -111,7 +114,11 @@ const numberedTableDocument = async (): Promise<Uint8Array> => {
   );
   const cell = table?.rows.at(1)?.cells.at(0);
   const paragraph = cell?.content.find((block): block is Paragraph => block.type === "paragraph");
-  if (!paragraph) throw new Error("Numbered table cell fixture is missing");
+  if (!paragraph || !cell || !table) throw new Error("Numbered table cell fixture is missing");
+  if (rendering === "html") {
+    cell.formatting = { ...cell.formatting, gridSpan: 2 };
+    table.rows.at(1)?.cells.splice(1, 1);
+  }
   paragraph.formatting = {
     ...paragraph.formatting,
     numPr: paragraphNumberingFromSlots({ numId, ilvl: 0 }),
@@ -173,6 +180,32 @@ test("keeps a numbered table cell label in the Markdown comparison", async () =>
   );
   assert.notDeepEqual(mutated, views.getContentAsMarkdown);
   await assertReadersAgree(bytes, "numbered table cell reader fixture");
+});
+
+test("normalizes bullet table cells in GFM and HTML without hiding changed text", async () => {
+  for (const rendering of ["gfm", "html"] as const) {
+    const bytes = await numberedTableDocument("bullet", rendering);
+    const views = await readAll(bytes);
+    assert.ok(
+      views.getContent.some(({ text, number }) => text === "Term" && number === "(bullet)"),
+    );
+    assert.ok(views.markdown.some(({ text }) => text === "Term"));
+    assert.deepEqual(views.markdown, views.getContentAsMarkdown);
+    assert.notDeepEqual(
+      views.markdown.map((block) =>
+        block.text === "Term" ? { ...block, text: "Changed" } : block,
+      ),
+      views.getContentAsMarkdown,
+    );
+    await assertReadersAgree(bytes, `${rendering} bullet table cell reader fixture`);
+  }
+  const expected = [{ text: "Term", kind: "listItem" as const, number: "(bullet)" }];
+  assert.deepEqual(markdownViews("| - Term |\n| --- |", expected), paragraphs(["Term"]));
+  assert.notDeepEqual(markdownViews("| - Changed |\n| --- |", expected), paragraphs(["Term"]));
+  assert.deepEqual(
+    markdownViews("| - Literal prose |\n| --- |", paragraphs(["- Literal prose"])),
+    paragraphs(["- Literal prose"]),
+  );
 });
 
 test("keeps ordinary list reader agreement", async () => {
