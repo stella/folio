@@ -545,7 +545,7 @@ for (const seed of config.seeds) {
         });
         logFailureMarker(marker);
         writeFailureRecord(
-          "test-results/browser-fuzz-failures",
+          "fuzz-artifacts/browser/findings",
           failureRecord(marker, failure, { flow: trace }),
         );
       }
