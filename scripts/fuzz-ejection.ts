@@ -1,38 +1,48 @@
 #!/usr/bin/env bun
 /**
- * Tell a merge group's fuzz failure that was already on its base from one the
- * group brought in, by replaying the group's failing seeds on the base.
+ * Tell a merge group's fuzz failure that was already on main from one the
+ * group brought in, by replaying the group's failing seeds on main.
  *
- *   replay  In a checkout of the base commit, rerun the consumer scenarios
+ *   replay  In a checkout of the main commit, rerun the consumer scenarios
  *           under the seed the group's run derived from its commit, and each
  *           failed property under its seed and counterexample path; write one
- *           log per replay. Runs the base's code, so it holds no write token.
+ *           log per replay. Runs main's code, so it holds no write token.
  *   report  Compare the fingerprints the group's logs failed with to the ones
- *           the base replays failed with. Pre-existing ones get their issue
+ *           the main replays failed with. Pre-existing ones get their issue
  *           (scripts/fuzz-failure-issues.ts); when every failure was
  *           pre-existing the pull request is labelled for another queue run.
  *           Prints one `FOLIO_QUEUE_EJECTION {json}` line either way.
  *
  * Usage:
  *   bun scripts/fuzz-ejection.ts replay --queue-logs <dir> --group-sha <sha>
- *     --base <checkout> --out <dir>
+ *     --base <checkout> --base-sha <sha> --out <dir>
  *   bun scripts/fuzz-ejection.ts report --queue-logs <dir> --base-logs <dir>
  *     --group-sha <sha> --base-sha <sha> [--pr <n>] [--run-url <url>] [--dry-run]
  */
 
 import { $ } from "bun";
+import { TaggedError } from "better-result";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 import { hash32 } from "../test/commit-seed";
 import { extractFailureMarkers } from "./failure-fingerprints";
-import { type Context, type Filed, fileFindings, readFindings } from "./fuzz-failure-issues";
+import { type Context, type Finding, fileFindings, readFindings } from "./fuzz-failure-issues";
+import type { IssueStore } from "./fuzz-issue-classes";
 
 export const LABEL = {
   name: "queue-ejection-pre-existing",
   color: "fbca04",
-  description: "Ejected from the merge queue by a failure its base already had",
+  description: "Ejected from the merge queue by a failure reproduced on main",
 };
 
 const SHA = /^[0-9a-f]{40}$/u;
@@ -114,11 +124,44 @@ export const packageOf = (file: string): { dir: string; file: string } => {
 // replay
 // ---------------------------------------------------------------------------
 
+export class ReplayVerificationError extends TaggedError("ReplayVerificationError")<{
+  message: string;
+}> {}
+
+export type ReplayOutcome =
+  | { status: "passed"; fingerprints: string[] }
+  | { status: "failed"; fingerprints: string[] }
+  | { status: "unavailable"; message: string };
+export type ReplayAttempt = { requested: string[]; outcome: ReplayOutcome };
+
+/** A setup failure or a zero-test run is not evidence that main passed. */
+export const replayOutcome = ({
+  output,
+  exitCode,
+  error,
+}: {
+  output: string;
+  exitCode: number | null;
+  error?: string;
+}): ReplayOutcome => {
+  const text = stripVTControlCharacters(output);
+  const ranTests =
+    /^\s*(?:ℹ\s*)?(?:pass|fail)\s+[1-9]\d*\b/mu.test(text) ||
+    /^\s*[1-9]\d*\s+(?:pass|fail)\b/mu.test(text);
+  if (error || exitCode === null || !ranTests) {
+    return { status: "unavailable", message: error ?? "Replay did not execute tests" };
+  }
+  const fingerprints = extractFailureMarkers(text).map((marker) => marker.fingerprint);
+  if (exitCode === 0 && fingerprints.length === 0) return { status: "passed", fingerprints };
+  if (exitCode !== 0 && fingerprints.length > 0) return { status: "failed", fingerprints };
+  return { status: "unavailable", message: "Replay exit status and failure evidence disagree" };
+};
+
 const run = (
   command: string,
   args: string[],
   { cwd, env, log }: { cwd: string; env: Record<string, string>; log: string },
-): void => {
+): ReplayOutcome => {
   console.log(`→ ${[command, ...args].join(" ")} (in ${cwd})`);
   const result = spawnSync(command, args, {
     cwd,
@@ -132,21 +175,34 @@ const run = (
   console.log(
     `  exit ${String(result.status)}; ${String(extractFailureMarkers(output).length)} failure line(s)`,
   );
+  const outcome = replayOutcome({
+    output,
+    exitCode: result.status,
+    ...(result.error && { error: result.error.message }),
+  });
+  if (outcome.status === "unavailable")
+    throw new ReplayVerificationError({ message: outcome.message });
+  return outcome;
 };
 
 const replay = (options: Options): void => {
-  if (!SHA.test(options.groupSha)) throw new Error("--group-sha must be a commit sha");
+  if (!SHA.test(options.groupSha) || !SHA.test(options.baseSha)) {
+    throw new ReplayVerificationError({ message: "Replay requires group and main commit shas" });
+  }
   mkdirSync(options.out, { recursive: true });
   const logs = logsIn(options.queueLogs).map((file) => readFileSync(file, "utf8"));
   const markers = logs.flatMap((log) => extractFailureMarkers(log));
-  if (markers.some((marker) => marker.repro.includes("consumer-scenarios.ts"))) {
+  const attempts: ReplayAttempt[] = [];
+  const consumers = markers.filter((marker) => marker.repro.includes("consumer-scenarios.ts"));
+  if (consumers.length > 0) {
     // The group's run seeded its fuzz flows from the group commit; the base
     // replays the same flows under that seed, with the same defaults.
-    run("bun", ["scripts/consumer-scenarios.ts"], {
+    const outcome = run("bun", ["scripts/consumer-scenarios.ts"], {
       cwd: options.base,
       env: { FOLIO_SCENARIO_SEED: String(consumerSeed(options.groupSha)) },
       log: path.join(options.out, "base-consumer-scenarios.log"),
     });
+    attempts.push({ requested: consumers.map((marker) => marker.fingerprint), outcome });
   }
   const seen = new Set<string>();
   logs.flatMap(propertyReplays).forEach((property, index) => {
@@ -154,7 +210,7 @@ const replay = (options: Options): void => {
     if (seen.has(key)) return;
     seen.add(key);
     const { dir, file } = packageOf(property.file);
-    run("bun", ["test", file, "-t", titlePattern(property.title)], {
+    const outcome = run("bun", ["test", file, "-t", titlePattern(property.title)], {
       cwd: path.join(options.base, dir),
       env: {
         CI: "true",
@@ -164,7 +220,25 @@ const replay = (options: Options): void => {
       },
       log: path.join(options.out, `base-property-${String(index)}.log`),
     });
+    attempts.push({
+      requested: markers
+        .filter(
+          (marker) =>
+            marker.test === `${property.file}::${property.title}` && marker.seed === property.seed,
+        )
+        .map((marker) => marker.fingerprint),
+      outcome,
+    });
   });
+  verifyReplayAttempts(readFindings(logsIn(options.queueLogs), []), attempts);
+  writeFileSync(
+    path.join(options.out, "replay-complete.json"),
+    JSON.stringify({
+      group: options.groupSha,
+      main: options.baseSha,
+      attempts,
+    }),
+  );
 };
 
 // ---------------------------------------------------------------------------
@@ -188,7 +262,7 @@ export type Ejection = {
   }[];
 };
 
-/** Which of the group's failures the base replays failed with too. */
+/** Which of the group's failures the main replays failed with too. */
 export const judge = (
   group: readonly { fingerprint: string; test: string }[],
   base: ReadonlySet<string>,
@@ -207,46 +281,144 @@ export const judge = (
   return { verdict, requeue: verdict === "pre-existing", fingerprints };
 };
 
+/** Validate every replay before any issue-store access, including mixed failures. */
+export const verifyReplayAttempts = (
+  findings: readonly Finding[],
+  attempts: readonly ReplayAttempt[],
+): void => {
+  const covered = new Set<string>();
+  for (const { requested, outcome } of attempts) {
+    if (outcome.status === "unavailable")
+      throw new ReplayVerificationError({ message: outcome.message });
+    if ((outcome.status === "failed") !== outcome.fingerprints.length > 0) {
+      throw new ReplayVerificationError({
+        message: "Replay outcome lacks matching execution evidence",
+      });
+    }
+    for (const fingerprint of requested) covered.add(fingerprint);
+  }
+  if (findings.some(({ record }) => !covered.has(record.marker.fingerprint))) {
+    throw new ReplayVerificationError({
+      message: "A merge-group finding has no completed main replay",
+    });
+  }
+};
+
+const judgeMainFindings = (findings: readonly Finding[], attempts: readonly ReplayAttempt[]) => {
+  verifyReplayAttempts(findings, attempts);
+  const reproduced = new Set(
+    attempts.flatMap(({ outcome }) => (outcome.status === "failed" ? outcome.fingerprints : [])),
+  );
+  return judge(
+    findings.map(({ record }) => record.marker),
+    reproduced,
+  );
+};
+
+type FileMainFindingsOptions = {
+  findings: Finding[];
+  attempts: ReplayAttempt[];
+  context: Context;
+  root: string;
+  store?: IssueStore;
+};
+export const fileMainFindings = async ({
+  findings,
+  attempts,
+  context,
+  root,
+  store,
+}: FileMainFindingsOptions) => {
+  const judged = judgeMainFindings(findings, attempts);
+  const reproduced = new Set(
+    attempts.flatMap(({ outcome }) => (outcome.status === "failed" ? outcome.fingerprints : [])),
+  );
+  const confirmed = findings.filter(({ record }) => reproduced.has(record.marker.fingerprint));
+  if (confirmed.length > 0) {
+    const filed = await fileFindings({
+      findings: confirmed,
+      context,
+      root,
+      ...(store && { store }),
+    });
+    for (const entry of judged.fingerprints) {
+      entry.issue =
+        filed.find(({ fingerprint }) => fingerprint === entry.fingerprint)?.issue ?? null;
+    }
+  }
+  return judged;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+const fingerprintsOf = (value: unknown): value is string[] =>
+  Array.isArray(value) &&
+  value.every((item) => typeof item === "string" && /^[0-9a-f]{16}$/u.test(item));
+
+export const readReplayAttempts = (options: {
+  baseLogs: string;
+  groupSha: string;
+  baseSha: string;
+}): ReplayAttempt[] => {
+  const file = path.join(options.baseLogs, "replay-complete.json");
+  if (!existsSync(file))
+    throw new ReplayVerificationError({ message: "Main replay did not complete" });
+  const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+  if (
+    !isRecord(value) ||
+    value["group"] !== options.groupSha ||
+    value["main"] !== options.baseSha ||
+    !Array.isArray(value["attempts"])
+  ) {
+    throw new ReplayVerificationError({ message: "Main replay evidence does not match this run" });
+  }
+  return value["attempts"].map((attempt: unknown) => {
+    if (
+      !isRecord(attempt) ||
+      !fingerprintsOf(attempt["requested"]) ||
+      !isRecord(attempt["outcome"])
+    ) {
+      throw new ReplayVerificationError({ message: "Malformed main replay evidence" });
+    }
+    const { status, fingerprints, message } = attempt["outcome"];
+    const requested = attempt["requested"];
+    if (status === "unavailable" && typeof message === "string")
+      return { requested, outcome: { status, message } };
+    if ((status === "passed" || status === "failed") && fingerprintsOf(fingerprints))
+      return { requested, outcome: { status, fingerprints } };
+    throw new ReplayVerificationError({ message: "Malformed main replay outcome" });
+  });
+};
+
 const report = async (options: Options): Promise<void> => {
   if (!SHA.test(options.groupSha) || !SHA.test(options.baseSha)) {
-    throw new Error("--group-sha and --base-sha must be commit shas");
+    throw new ReplayVerificationError({
+      message: "--group-sha and --base-sha must be commit shas",
+    });
   }
   const findings = readFindings(logsIn(options.queueLogs), []);
-  const base = new Set(
-    logsIn(options.baseLogs).flatMap((file) =>
-      extractFailureMarkers(readFileSync(file, "utf8")).map((marker) => marker.fingerprint),
-    ),
-  );
-  const judged = judge(
-    findings.map(({ record }) => record.marker),
-    base,
-  );
+  const attempts = readReplayAttempts(options);
+  const context: Context = {
+    runUrl: options.runUrl,
+    sha: options.baseSha,
+    source: "a merge queue run, reproduced on main",
+    date: new Date().toISOString().slice(0, 10),
+  };
+  const judged = options.dryRun
+    ? judgeMainFindings(findings, attempts)
+    : await fileMainFindings({
+        findings,
+        attempts,
+        context,
+        root: path.resolve(import.meta.dir, ".."),
+      });
   const ejection: Ejection = {
     pr: options.pr,
     group: options.groupSha,
     base: options.baseSha,
     ...judged,
   };
-  // A group that merged (report-only fuzz) brought every failure to main.
-  const toFile = options.merged
-    ? findings
-    : findings.filter(({ record }) => base.has(record.marker.fingerprint));
-  if (!options.dryRun && toFile.length > 0) {
-    const context: Context = {
-      runUrl: options.runUrl,
-      sha: options.merged ? options.groupSha : options.baseSha,
-      source: options.merged
-        ? "a merge queue run that merged (fuzz report-only)"
-        : "a merge queue run, and again on its base",
-      date: new Date().toISOString().slice(0, 10),
-    };
-    const filed: Filed[] = await fileFindings(toFile, context, path.resolve(import.meta.dir, ".."));
-    for (const entry of ejection.fingerprints) {
-      entry.issue =
-        filed.find(({ fingerprint }) => fingerprint === entry.fingerprint)?.issue ?? null;
-    }
-  }
-  if (!options.dryRun && !options.merged && ejection.requeue && options.pr !== null) {
+  if (!options.dryRun && ejection.requeue && options.pr !== null) {
     await $`gh label create ${LABEL.name} --color ${LABEL.color} --description ${LABEL.description} --force`
       .quiet()
       .nothrow();
@@ -262,7 +434,7 @@ const report = async (options: Options): Promise<void> => {
         "",
         ...ejection.fingerprints.map(
           (entry) =>
-            `- \`${entry.fingerprint}\` ${entry.test}: ${entry.reproducedOnBase ? "fails on the base too" : "passes on the base"}${entry.issue === null ? "" : ` (${entry.issue})`}`,
+            `- \`${entry.fingerprint}\` ${entry.test}: ${entry.reproducedOnBase ? "reproduces on main" : `not reproduced on main; attributed to ejected PR ${ejection.pr === null ? "(unknown)" : `#${ejection.pr}`}`}${entry.issue === null ? "" : ` (${entry.issue})`}`,
         ),
         "",
         "```",
@@ -287,8 +459,6 @@ type Options = {
   pr: number | null;
   runUrl: string | null;
   dryRun: boolean;
-  /** The group passed and merged: file every failure, label nothing. */
-  merged: boolean;
 };
 
 const parseArgs = (argv: readonly string[]): Options => {
@@ -303,7 +473,6 @@ const parseArgs = (argv: readonly string[]): Options => {
     pr: null,
     runUrl: null,
     dryRun: false,
-    merged: false,
   };
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -319,7 +488,6 @@ const parseArgs = (argv: readonly string[]): Options => {
       options.pr = /^\d+$/u.test(pr) ? Number(pr) : null;
     } else if (arg === "--run-url") options.runUrl = value() || null;
     else if (arg === "--dry-run") options.dryRun = true;
-    else if (arg === "--merged") options.merged = true;
     else throw new Error(`Unknown argument ${String(arg)}`);
   }
   return options;
