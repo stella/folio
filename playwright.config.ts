@@ -51,11 +51,16 @@ export default defineConfig({
     { name: "measure-parity", testMatch: /measure(?:-backend)?-parity\.spec\.ts/u },
     // Report-only second-engine evidence. These never join a gating lane: the
     // nightly webkit workflow runs `webkit-layout-parity` and records
-    // differences, and `engine-layout-record` rewrites the Chromium baseline
-    // when FOLIO_ENGINE_PARITY_RECORD=1.
+    // differences. `engine-layout-record` writes the Chromium reference that
+    // the same job's WebKit run compares against.
     {
       name: "webkit-layout-parity",
-      testMatch: /(?:measure-backend-parity|engine-layout-parity)\.spec\.ts/u,
+      testMatch: /engine-layout-parity\.spec\.ts/u,
+      use: { browserName: "webkit" },
+    },
+    {
+      name: "webkit-measure-backend",
+      testMatch: /measure-backend-parity\.spec\.ts/u,
       use: { browserName: "webkit" },
     },
     { name: "engine-layout-record", testMatch: /engine-layout-parity\.spec\.ts/u },

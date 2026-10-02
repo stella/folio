@@ -30,7 +30,7 @@ test("second-engine specs run only in the report-only projects", () => {
   ]);
   expect(matching("measure-backend-parity.spec.ts").toSorted()).toEqual([
     "measure-parity",
-    "webkit-layout-parity",
+    "webkit-measure-backend",
   ]);
   for (const file of specs.slice(2)) {
     expect(matching(file)).not.toContain("webkit-layout-parity");
@@ -53,8 +53,14 @@ test("the WebKit workflow is nightly, on macOS, read-only and never files issues
   const job = requireRecord(jobs["webkit-layout-parity"]);
   expect(job["runs-on"]).toBe("macos-latest");
   expect(job["permissions"]).toEqual({ contents: "read" });
-  expect(source).toContain("--project=webkit-layout-parity");
-  expect(source).toContain("playwright install webkit");
+  for (const project of [
+    "engine-layout-record",
+    "webkit-layout-parity",
+    "webkit-measure-backend",
+  ]) {
+    expect(source).toContain(`--project=${project}`);
+  }
+  expect(source).toContain("playwright install chromium webkit");
   expect(source).not.toContain("issues:");
   expect(JSON.stringify(readFileSync(".github/workflows/ci.yml", "utf8"))).not.toContain(
     "webkit-layout-parity",

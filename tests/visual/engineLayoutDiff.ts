@@ -137,12 +137,7 @@ export const diffRecords = (expected: DocumentRecord, actual: DocumentRecord): D
 };
 
 /** One markdown table row per document, for the run summary. */
-export const summarizeDocument = (
-  fixture: string,
-  differences: readonly Difference[],
-  status: "compared" | "unrecorded",
-): string => {
-  if (status === "unrecorded") return `| ${fixture} | no baseline recorded | - |`;
+export const summarizeDocument = (fixture: string, differences: readonly Difference[]): string => {
   const kinds = new Map<string, number>();
   for (const { kind } of differences) kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
   const detail =

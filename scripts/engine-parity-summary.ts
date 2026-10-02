@@ -17,9 +17,7 @@ const LAYOUT_SPEC = "engine-layout-parity.spec.ts";
 type DocumentReport = {
   fixture: string;
   engine: string;
-  status: "compared" | "unrecorded";
   pageCount: { expected: number | null; actual: number };
-  unrenderedPages: number[];
   differences: Difference[];
   fonts: { expected: unknown; actual: { stack: string; weight: string; loaded: boolean }[] };
 };
@@ -101,15 +99,14 @@ if (documents.length < documentTests.length) {
 }
 if (kerning === null) harnessErrors.push("kerning probe wrote no output");
 
-const backendFailures = tests.filter(
-  (test) =>
-    !test.file.endsWith(LAYOUT_SPEC) && test.status !== "passed" && test.status !== "skipped",
-);
+// Outcome of the measure-backend spec step, which runs as-is under the second
+// engine with its assertions intact: "failure" is a finding, not a harness error.
+const backendOutcome = process.env["BACKEND_OUTCOME"] ?? "unknown";
 const differences = documents.flatMap((doc) => doc.differences);
 
 writeFileSync(
   path.join(outDir, "report.json"),
-  `${JSON.stringify({ differences, documents, kerning, backendFailures, harnessErrors }, null, 2)}\n`,
+  `${JSON.stringify({ differences, documents, kerning, backendOutcome, harnessErrors }, null, 2)}\n`,
 );
 
 const lines = [
@@ -119,7 +116,7 @@ const lines = [
   "",
   "| Document | Differences | Kinds |",
   "| --- | --- | --- |",
-  ...documents.map((doc) => summarizeDocument(doc.fixture, doc.differences, doc.status)),
+  ...documents.map((doc) => summarizeDocument(doc.fixture, doc.differences)),
   "",
   "## Resolved fonts",
   "",
@@ -141,9 +138,9 @@ const lines = [
   "",
   "## Measure backend parity under this engine",
   "",
-  backendFailures.length === 0
-    ? "- no failing assertions"
-    : backendFailures.map((test) => `- ${test.title}: ${test.status}`).join("\n"),
+  backendOutcome === "failure"
+    ? "- assertion failed under second engine"
+    : `- step outcome: ${backendOutcome}`,
   "",
   ...(harnessErrors.length > 0
     ? ["## Harness errors", "", ...harnessErrors.map((e) => `- ${e}`), ""]

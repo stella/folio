@@ -5,15 +5,15 @@
  * browser's canvas `measureText`. A different engine can therefore break a line
  * in a different place. This spec records, per fixture document, the page
  * count and for every painted line its first and last word and its measured
- * width, then compares that against the record taken under Chromium and
- * committed in `engine-layout-parity-baseline/`.
+ * width. Under Chromium it writes the reference record into
+ * `FOLIO_ENGINE_PARITY_REFERENCE` (default `engine-parity-ref`); under any other
+ * engine it reads that record, taken on the same machine, and compares.
  *
  * It is report-only. A difference never fails a test: each document writes a
  * JSON file with its structured differences into `FOLIO_ENGINE_PARITY_OUT`
- * (default `engine-parity-out`), and a test fails only when the harness cannot
- * load or read the document.
- *
- * Set `FOLIO_ENGINE_PARITY_RECORD=1` under Chromium to (re)write the baseline.
+ * (default `engine-parity-out`). A test fails only on a harness problem: a
+ * document that does not load, a page that never paints, a document with no
+ * lines, or a missing reference file.
  *
  * It also records whether `ctx.fontKerning = "none"` changes `measureText`
  * under the running engine, since measurement and paint then disagree on
@@ -32,9 +32,10 @@ import {
   type PageRecord,
 } from "./engineLayoutDiff";
 
-const BASELINE_DIR = path.resolve("tests", "visual", "engine-layout-parity-baseline");
+const REFERENCE_DIR = path.resolve(
+  process.env["FOLIO_ENGINE_PARITY_REFERENCE"] ?? "engine-parity-ref",
+);
 const OUT_DIR = path.resolve(process.env["FOLIO_ENGINE_PARITY_OUT"] ?? "engine-parity-out");
-const RECORD = process.env["FOLIO_ENGINE_PARITY_RECORD"] === "1";
 
 /**
  * Served by the playground from `tests/visual/fixtures`. Chosen to cover plain
@@ -124,10 +125,10 @@ async function recordDocument(page: Page, fixture: string): Promise<DocumentReco
   return { fixture, pages, fonts: [...fonts.values()] };
 }
 
-const readBaseline = (fixture: string): DocumentRecord | null => {
-  const file = path.join(BASELINE_DIR, `${fixture}.json`);
-  if (!fs.existsSync(file)) return null;
-  // SAFETY: the file is written only by this spec's record mode.
+const readReference = (fixture: string): DocumentRecord => {
+  const file = path.join(REFERENCE_DIR, `${fixture}.json`);
+  if (!fs.existsSync(file)) throw new Error(`reference record missing: ${file}`);
+  // SAFETY: the file is written only by this spec under the reference engine.
   return JSON.parse(fs.readFileSync(file, "utf8")) as DocumentRecord;
 };
 
@@ -142,24 +143,24 @@ test.describe("layout under this engine vs the Chromium record", () => {
       test.setTimeout(240_000);
       await openFixture(page, fixture);
       const actual = await recordDocument(page, fixture);
+      // Zero pages, a page that never painted, or no lines at all is a broken
+      // harness, never "no differences".
       expect(actual.pages.length).toBeGreaterThan(0);
+      expect(actual.pages.flatMap((p, i) => (p.rendered ? [] : [i + 1]))).toEqual([]);
+      expect(actual.pages.reduce((sum, p) => sum + p.lines.length, 0)).toBeGreaterThan(0);
 
-      if (RECORD) {
-        expect(browserName).toBe("chromium");
-        writeJson(BASELINE_DIR, `${fixture}.json`, actual);
+      if (browserName === "chromium") {
+        writeJson(REFERENCE_DIR, `${fixture}.json`, actual);
         return;
       }
 
-      const expected = readBaseline(fixture);
-      const differences = expected === null ? [] : diffRecords(expected, actual);
+      const expected = readReference(fixture);
       writeJson(OUT_DIR, `${fixture}.json`, {
         fixture,
         engine: browserName,
-        status: expected === null ? "unrecorded" : "compared",
-        pageCount: { expected: expected?.pages.length ?? null, actual: actual.pages.length },
-        unrenderedPages: actual.pages.flatMap((p, i) => (p.rendered ? [] : [i + 1])),
-        differences,
-        fonts: { expected: expected?.fonts ?? null, actual: actual.fonts },
+        pageCount: { expected: expected.pages.length, actual: actual.pages.length },
+        differences: diffRecords(expected, actual),
+        fonts: { expected: expected.fonts, actual: actual.fonts },
       });
     });
   }
@@ -191,7 +192,11 @@ test.describe("layout under this engine vs the Chromium record", () => {
       }
       return rows;
     });
-    writeJson(OUT_DIR, "_kerning.json", { engine: browserName, text: "kerning pairs", result });
+    writeJson(browserName === "chromium" ? REFERENCE_DIR : OUT_DIR, "_kerning.json", {
+      engine: browserName,
+      text: "kerning pairs",
+      result,
+    });
     expect(result.length).toBeGreaterThan(0);
   });
 });

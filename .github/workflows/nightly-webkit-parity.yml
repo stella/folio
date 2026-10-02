@@ -31,21 +31,37 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Install Playwright WebKit
-        run: bunx playwright install webkit
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium webkit
 
-      # Differences from the Chromium record are data, not failures: the run
-      # never fails on them. The summary step below fails only on harness
-      # problems (no results, runner errors, a document that could not load).
-      - name: Run WebKit layout parity
+      # The Chromium reference is recorded in this job, on this machine, so the
+      # comparison does not mix in machine or font differences. Any failure here
+      # or in the WebKit layout step is a harness error and fails the job.
+      - name: Record Chromium reference
         env:
+          FOLIO_ENGINE_PARITY_REFERENCE: engine-parity-ref
+        run: bunx playwright test --project=engine-layout-record --workers=1 --output=engine-parity-ref/playwright
+
+      # Differences from the reference are data, not failures: the spec exits
+      # green on them and writes findings JSON.
+      - name: Run WebKit layout comparison
+        env:
+          FOLIO_ENGINE_PARITY_REFERENCE: engine-parity-ref
           FOLIO_ENGINE_PARITY_OUT: engine-parity-out
           PLAYWRIGHT_JSON_OUTPUT_NAME: engine-parity-out/results.json
-        run: |
-          mkdir -p engine-parity-out
-          bunx playwright test --project=webkit-layout-parity --workers=1 --reporter=list,json --output=engine-parity-out/playwright || true
+        run: bunx playwright test --project=webkit-layout-parity --workers=1 --reporter=list,json --output=engine-parity-out/playwright
+
+      # Runs as-is under WebKit with its assertions intact; a failure is a
+      # finding ("assertion failed under second engine"), not a harness error.
+      - name: Run measure-backend spec under WebKit
+        id: backend
+        continue-on-error: true
+        run: bunx playwright test --project=webkit-measure-backend --workers=1 --output=engine-parity-ref/playwright-backend
 
       - name: Summarize
+        if: always()
+        env:
+          BACKEND_OUTCOME: ${{ steps.backend.outcome }}
         run: bun scripts/engine-parity-summary.ts engine-parity-out/results.json engine-parity-out
 
       - name: Publish summary
