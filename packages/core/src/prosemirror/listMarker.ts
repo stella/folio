@@ -330,15 +330,14 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
 
   if (attrs.listIsBullet) {
     state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
+    if (foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate == null) {
+      return attrs.listMarker ?? null;
+    }
     const marker = convertBulletToUnicode(
-      foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate != null
-        ? attrs.listMarkerTemplate
-        : (attrs.listMarker ?? markerTemplate ?? ""),
+      attrs.listMarkerTemplate ?? attrs.listMarker ?? "",
       bulletMarkerFontName(attrs.listMarkerFormatting),
     );
-    return foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate != null
-      ? `${marker}\t${foldedMarkerSuffix}`
-      : marker;
+    return foldedMarkerSuffix === undefined ? marker : `${marker}\t${foldedMarkerSuffix}`;
   }
 
   const firstInstanceEncounter = !state.counters.has(numId);
