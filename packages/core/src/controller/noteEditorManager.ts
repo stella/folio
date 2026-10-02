@@ -9,7 +9,7 @@ import { EditorView, type DirectEditorProps } from "prosemirror-view";
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
-import { footnoteToProseDoc } from "../prosemirror/conversion/toProseDoc";
+import { footnoteToProseDoc, type ToProseDocOptions } from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -98,16 +98,8 @@ const resolveNote = (document: Document | null, story: NoteStoryKey): NoteStory 
   return notes?.find(({ id }) => id === story.noteId) ?? null;
 };
 
-const noteToProseDocument = (
-  note: NoteStory,
-  styles: StyleDefinitions | null | undefined,
-  theme: Theme | null | undefined,
-) => {
-  const options: { styles?: StyleDefinitions; theme?: Theme | null } = {};
-  if (styles) options.styles = styles;
-  if (theme !== undefined) options.theme = theme;
-  return footnoteToProseDoc(note.content, options);
-};
+const noteToProseDocument = (note: NoteStory, options: ToProseDocOptions) =>
+  footnoteToProseDoc(note.content, options);
 
 const buildInitialState = (
   document: PMNode,
@@ -162,6 +154,11 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
+    const proseOptions: ToProseDocOptions = {
+      ...(styles ? { styles } : {}),
+      ...(theme !== undefined ? { theme } : {}),
+      ...(numbering !== undefined ? { numbering } : {}),
+    };
     const externalPlugins = deps.getPlugins?.() ?? EMPTY_PLUGINS;
     const wanted = new Map(
       enumerateDocumentNoteStories(document).map((story) => [storyMapKey(story), story] as const),
@@ -181,7 +178,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       const existing = mounted.get(key);
       if (existing) {
         if (existing.mountNode.parentElement !== host) host.append(existing.mountNode);
-        const nextProseDocument = noteToProseDocument(note, styles, theme);
+        const nextProseDocument = noteToProseDocument(note, proseOptions);
         const contextIsCurrent =
           existing.appliedStyles === styles &&
           existing.appliedTheme === theme &&
@@ -224,7 +221,7 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       mountNode.dataset["noteKind"] = storyKey.kind;
       mountNode.dataset["noteId"] = String(storyKey.noteId);
       host.append(mountNode);
-      const proseDocument = noteToProseDocument(note, styles, theme);
+      const proseDocument = noteToProseDocument(note, proseOptions);
       const view = (deps.createView ?? createEditorView)(mountNode, {
         state: buildInitialState(proseDocument, styles, numbering, manager, externalPlugins),
         dispatchTransaction(transaction) {

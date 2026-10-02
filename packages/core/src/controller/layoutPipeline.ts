@@ -702,6 +702,9 @@ function runLayoutPipelineMeasured<THfPMs>(
         );
       return {
         ...(flowOpts.styles ? { styles: flowOpts.styles } : {}),
+        ...(document?.package.numbering === undefined
+          ? {}
+          : { numbering: document.package.numbering }),
         ...(flowOpts.defaultSize === undefined ? {} : { defaultSize: flowOpts.defaultSize }),
         ...(_theme !== undefined ? { theme: _theme } : {}),
         fontAlternates,
@@ -936,6 +939,9 @@ function runLayoutPipelineMeasured<THfPMs>(
       }
       if (_theme !== undefined) {
         noteOptions.theme = _theme;
+      }
+      if (document?.package.numbering !== undefined) {
+        noteOptions.numbering = document.package.numbering;
       }
       noteOptions.fontAlternates = fontAlternates;
       if (defaultTabStop !== undefined) {

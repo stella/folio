@@ -103,6 +103,7 @@ const restoredNote = <TNote extends Footnote | Endnote>(
   const doc = footnoteToProseDoc(note.content, {
     ...(styles !== undefined && { styles }),
     ...(theme !== undefined && { theme }),
+    ...(numbering !== undefined && { numbering }),
   });
   const revisions = noteDeletionRevisions(doc, reference);
   if (revisions.length === 0) return note;
@@ -219,10 +220,11 @@ const deletedNote = <TNote extends Footnote | Endnote>(
   document: Document,
   reference: Mark,
 ): TNote => {
-  const { styles, theme } = document.package;
+  const { styles, theme, numbering } = document.package;
   const doc = footnoteToProseDoc(note.content, {
     ...(styles !== undefined && { styles }),
     ...(theme !== undefined && { theme }),
+    ...(numbering !== undefined && { numbering }),
   });
   const transform = deleteNoteWithReference(new Transform(doc), reference);
   if (!transform.docChanged) return note;

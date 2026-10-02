@@ -587,6 +587,7 @@ describe("canonical session", () => {
     const run = paragraph.content.at(0);
     if (run?.type !== "run") panic("The formatting fixture needs a run.");
     run.formatting = {
+      styleId: "SourceStyle",
       bold: true,
       boldCs: false,
       noProof: true,
@@ -600,7 +601,14 @@ describe("canonical session", () => {
       const original = session.document;
       const italic = schema.marks.italic?.create() ?? panic("Italic mark is unavailable.");
       const bold = schema.marks.bold ?? panic("Bold mark is unavailable.");
-      state = state.apply(state.tr.addStoredMark(italic).removeStoredMark(bold));
+      const characterStyle =
+        schema.marks.characterStyle ?? panic("Character style mark is unavailable.");
+      state = state.apply(
+        state.tr
+          .addStoredMark(italic)
+          .removeStoredMark(bold)
+          .addStoredMark(characterStyle.create({ styleId: "DestinationStyle" })),
+      );
       state = accept(state, session.prepareReplace(state, { from: 1, to: 1, text: "X" }).unwrap());
       const authored = session.document.package.document.content.at(0);
       if (authored?.type !== "paragraph") panic("Stored-mark input lost its paragraph.");
@@ -614,6 +622,7 @@ describe("canonical session", () => {
       );
       if (inserted?.type !== "run") panic("Stored-mark input lost its authored run.");
       expect(inserted.formatting).toStrictEqual({
+        styleId: "DestinationStyle",
         boldCs: false,
         noProof: true,
         italic: true,
