@@ -441,7 +441,10 @@ describe("a failure seen across fixtures and modes", () => {
     expect(fake.issues).toHaveLength(21);
     for (const issue of fake.issues) {
       expect(issue.state).toBe("open");
-      if (!canonical.includes(issue.number)) expect(issue.body).toBe(before.get(issue.number));
+      if (!canonical.includes(issue.number)) {
+        expect(before.has(issue.number)).toBe(true);
+        expect(issue.body).toBe(before.get(issue.number) ?? null);
+      }
     }
     expect(new Set(result.map(({ issue }) => issue))).toEqual(
       new Set(canonical.map((number) => `#${number}`)),
