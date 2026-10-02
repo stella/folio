@@ -16,6 +16,7 @@ type ConsumerAcceptance = {
   reportSeed: number;
   title: string;
   flow: FlowFile;
+  causeMessage?: string;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -43,7 +44,7 @@ const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
       throw new TypeError("known failure acceptance metadata has an unknown type");
     }
     const { fingerprint, issueOrPr, firstSeen } = candidate;
-    const { issue, primary, reportSeed, title, flow: flowValue } = metadata;
+    const { issue, primary, reportSeed, title, flow: flowValue, causeMessage } = metadata;
     if (
       typeof fingerprint !== "string" ||
       typeof issueOrPr !== "string" ||
@@ -51,7 +52,8 @@ const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
       typeof issue !== "number" ||
       typeof primary !== "string" ||
       typeof reportSeed !== "number" ||
-      typeof title !== "string"
+      typeof title !== "string" ||
+      (causeMessage !== undefined && typeof causeMessage !== "string")
     ) {
       throw new TypeError("known failure acceptance entry is malformed");
     }
@@ -70,6 +72,7 @@ const readAcceptanceEntries = (value: unknown): ConsumerAcceptance[] => {
       reportSeed,
       title,
       flow: parseFlowFile(flowValue),
+      ...(causeMessage === undefined ? {} : { causeMessage }),
     });
   }
   return acceptanceEntries;
@@ -83,7 +86,15 @@ assert.equal(
   "each parked consumer fingerprint must have exactly one acceptance replay",
 );
 
-for (const { fingerprint, issue, primary, reportSeed, title, flow } of acceptanceEntries) {
+for (const {
+  fingerprint,
+  issue,
+  primary,
+  reportSeed,
+  title,
+  flow,
+  causeMessage,
+} of acceptanceEntries) {
   const testName = `consumer flow ${flow.fixture} / ${flow.mode}`;
   test(`known failure #${issue} ${fingerprint} (reported seed ${reportSeed}): ${title}`, async () => {
     let failure: unknown;
@@ -97,6 +108,15 @@ for (const { fingerprint, issue, primary, reportSeed, title, flow } of acceptanc
       failure instanceof FlowError,
       `#${issue} acceptance replay failed outside the flow: ${String(failure)}`,
     );
+    if (causeMessage !== undefined) {
+      let cause: Error = failure;
+      const seen = new Set<Error>([cause]);
+      while (cause.cause instanceof Error && !seen.has(cause.cause)) {
+        cause = cause.cause;
+        seen.add(cause);
+      }
+      assert.equal(cause.message, causeMessage, `#${issue} exact failure cause changed`);
+    }
 
     const marker = failureMarker({
       test: testName,
