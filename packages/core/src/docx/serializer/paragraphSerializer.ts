@@ -10,6 +10,10 @@
  * - Runs, hyperlinks, bookmarks, fields as child elements
  */
 
+import {
+  serializeResolutionJoins,
+  ReviewResolutionProvenanceError,
+} from "../reviewResolutionProvenance";
 import type {
   Paragraph,
   ParagraphContent,
@@ -841,7 +845,20 @@ function serializeTrackedChange(
   tag: "ins" | "del" | "moveFrom" | "moveTo",
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): string {
-  const attrs = serializeTrackedChangeAttributes(change.info);
+  if (
+    change.resolutionJoins !== undefined &&
+    change.content.some((item) => item.type === "hyperlink")
+  ) {
+    throw new ReviewResolutionProvenanceError({
+      attribute: "resolutionJoins",
+      reason: "unrepresentable",
+      message:
+        "Tracked-resolution provenance cannot be repartitioned across serialized hyperlinks.",
+    });
+  }
+  const attrs =
+    serializeTrackedChangeAttributes(change.info) +
+    serializeResolutionJoins(change.resolutionJoins);
 
   const disposition: InlineTextDisposition =
     tag === "del" || tag === "moveFrom" ? "removed" : "kept";

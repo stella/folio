@@ -18,6 +18,7 @@
  * - Text content: w:t
  */
 
+import { parseBoundaryJoins } from "./reviewResolutionProvenance";
 import type {
   Run,
   RunContent,
@@ -667,6 +668,8 @@ function parseRunPropertyChanges(
       type: "runPropertyChange",
       info: parsePropertyChangeInfo(changeElement),
     };
+    const boundaryJoins = parseBoundaryJoins(changeElement);
+    if (boundaryJoins !== undefined) change.boundaryJoins = boundaryJoins;
     const previousFormatting = parseRunProperties(
       previousRPr,
       theme,

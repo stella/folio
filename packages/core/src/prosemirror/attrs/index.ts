@@ -1,4 +1,5 @@
 import { panic } from "better-result";
+import { isResolutionJoins } from "../../docx/reviewResolutionProvenance";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { isSafePreservedChildXml, isWithinPreservedMarkupBudget } from "@stll/docx-core/schema";
 
@@ -1653,7 +1654,8 @@ export const isTrackedRevisionAncestorArray = (
       (ancestor["initials"] === undefined || typeof ancestor["initials"] === "string") &&
       typeof ancestor["outerWrapperCount"] === "number" &&
       Number.isSafeInteger(ancestor["outerWrapperCount"]) &&
-      ancestor["outerWrapperCount"] >= 0,
+      ancestor["outerWrapperCount"] >= 0 &&
+      (ancestor["resolutionJoins"] === undefined || isResolutionJoins(ancestor["resolutionJoins"])),
   );
 
 export const readTrackedChangeMarkAttrs = (
@@ -1682,6 +1684,17 @@ export const readTrackedChangeMarkAttrs = (
     });
   }
   const ancestors = attrs["_docxRevisionAncestors"];
+  const resolutionJoins = attrs["_docxResolutionJoins"];
+  if (
+    resolutionJoins !== undefined &&
+    resolutionJoins !== null &&
+    !isResolutionJoins(resolutionJoins)
+  ) {
+    issues.push({
+      path: `${mark.type.name}.attrs._docxResolutionJoins`,
+      message: "Expected valid tracked-resolution provenance.",
+    });
+  }
   if (ancestors !== undefined && ancestors !== null && !isTrackedRevisionAncestorArray(ancestors)) {
     issues.push({
       path: `${mark.type.name}.attrs._docxRevisionAncestors`,

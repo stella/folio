@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { deepStrictEqual, notDeepStrictEqual } from "node:assert/strict";
 import fc from "fast-check";
 
-import { assertProperty, propertyConfig } from "../../../../../test/property-testing";
+import { assertProperty } from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOp, applyDocumentOpEnvelope, applyDocumentOps } from "../apply";
 import { paragraphLogicalText } from "../offsets";
@@ -298,7 +298,7 @@ test("generated multi-step transported operations keep exact immediate undo and 
         }
       },
     ),
-    propertyConfig({ numRuns: 100 }),
+    { numRuns: 100 },
   );
 });
 
@@ -435,7 +435,7 @@ test("generated property patches preserve omitted, owned undefined and concrete 
         }
       },
     ),
-    propertyConfig({ numRuns: 100 }),
+    { numRuns: 100 },
   );
 });
 

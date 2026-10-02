@@ -11,6 +11,7 @@
  */
 
 import { panic } from "better-result";
+import { serializeBoundaryJoins } from "../reviewResolutionProvenance";
 import type {
   Run,
   RunContent,
@@ -117,7 +118,7 @@ function serializeRunPropertyChange(change: RunPropertyChange): string {
   // is its author, date and id, and a change that set every property the run
   // now has had nothing of its own before.
   const previousRPrXml = serializeTextFormatting(change.previousFormatting) || "<w:rPr/>";
-  return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}>${previousRPrXml}</w:rPrChange>`;
+  return `<w:rPrChange ${serializeTrackedChangeAttributes(change.info)}${serializeBoundaryJoins(change.boundaryJoins)}>${previousRPrXml}</w:rPrChange>`;
 }
 
 function serializeRunProperties(

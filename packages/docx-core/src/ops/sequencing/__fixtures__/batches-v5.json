@@ -1,6 +1,6 @@
 [
   {
-    "schema": 7,
+    "schema": 5,
     "opId": "01JTESTBATCH000000000000001",
     "actor": "actor-1",
     "baseRev": 0,
@@ -12,7 +12,7 @@
           "blockId": "00000001",
           "offset": 0
         },
-        "text": "A😀",
+        "text": "A\ud83d\ude00",
         "runProps": "inherit"
       },
       {
@@ -149,7 +149,7 @@
     ]
   },
   {
-    "schema": 7,
+    "schema": 5,
     "opId": "01JTESTBATCH000000000000002",
     "actor": "actor-2",
     "baseRev": 1,
@@ -179,43 +179,7 @@
     ]
   },
   {
-    "schema": 7,
-    "opId": "01JTESTBATCH000000000000004",
-    "actor": "actor-1",
-    "baseRev": 0,
-    "ops": [
-      {
-        "type": "setRunProps",
-        "from": {
-          "story": "main",
-          "blockId": "00000001",
-          "offset": 0
-        },
-        "to": {
-          "story": "main",
-          "blockId": "00000001",
-          "offset": 1
-        },
-        "patch": {},
-        "expected": {
-          "bold": null
-        },
-        "undefinedFields": [["patch", "bold"]]
-      },
-      {
-        "type": "setParagraphProps",
-        "story": "main",
-        "blockId": "00000001",
-        "patch": {},
-        "expected": {
-          "alignment": null
-        },
-        "undefinedFields": [["patch", "alignment"]]
-      }
-    ]
-  },
-  {
-    "schema": 7,
+    "schema": 5,
     "opId": "01JTESTBATCH000000000000003",
     "actor": "actor-1",
     "baseRev": 2,

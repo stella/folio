@@ -1,3 +1,4 @@
+import path from "node:path";
 import { expect, test } from "bun:test";
 import { applyDocumentOps } from "../apply";
 import type { Document } from "../../model/document";
@@ -28,7 +29,7 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    new URL(`./__fixtures__/batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`, import.meta.url),
+    path.join(import.meta.dir, "__fixtures__", `batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`),
   ).json();
   expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
   const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
@@ -207,4 +208,50 @@ test("actual text inverses normalize absent optional fields and remain decodable
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toEqual(document);
   }
+});
+
+test("sequencing refuses unsupported property-review and section-boundary payloads", () => {
+  const operations = [
+    {
+      type: "setRunProps",
+      from: { story: "main", blockId: "00000001", offset: 0 },
+      to: { story: "main", blockId: "00000001", offset: 1 },
+      patch: {},
+      propertyReview: "append",
+    },
+    {
+      type: "setParagraphProps",
+      story: "main",
+      blockId: "00000001",
+      patch: {},
+      propertyReview: "append",
+    },
+    {
+      type: "splitBlock",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      newBlockId: "00000002",
+      firstSectionProperties: {},
+    },
+    {
+      type: "splitBlock",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      newBlockId: "00000002",
+      sectionView: { expected: [], restore: [] },
+    },
+    {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionBoundary: "remove",
+    },
+    {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionView: { expected: [], restore: [] },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
 });

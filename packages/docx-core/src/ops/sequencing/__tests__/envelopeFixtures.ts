@@ -1,5 +1,5 @@
 import path from "node:path";
-import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, PROPERTY_REVIEW_POLICIES } from "../../types";
+import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES } from "../../types";
 import { captureDocumentOp } from "../../wire";
 import type { DocumentBatch, SequencedBatch } from "../envelope";
 
@@ -94,7 +94,6 @@ export const envelopeFixtures = [
         to: at(1),
         patch: { bold: undefined },
         expected: { bold: null },
-        propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
       }),
       captureDocumentOp({
         type: "setParagraphProps",
@@ -102,7 +101,6 @@ export const envelopeFixtures = [
         blockId: "00000001",
         patch: { alignment: undefined },
         expected: { alignment: null },
-        propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
       }),
     ],
   },

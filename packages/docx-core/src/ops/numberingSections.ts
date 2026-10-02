@@ -1,6 +1,11 @@
 import { Result } from "better-result";
 
-import { MAX_REVISION_ID, type Document, type SectionProperties } from "../model/document";
+import {
+  MAX_REVISION_ID,
+  type Document,
+  type DocumentBody,
+  type Paragraph,
+} from "../model/document";
 import {
   captureSectionViewState,
   rebuildSections,
@@ -261,10 +266,8 @@ const applyDeleteNumberingInstance = (document: Document, op: DeleteNumberingIns
   );
 };
 
-type SectionPropertiesRecord = {
-  sectionProperties?: SectionProperties;
-  finalSectionProperties?: SectionProperties;
-};
+type SectionPropertiesRecord = Pick<Paragraph, "sectionProperties"> &
+  Pick<DocumentBody, "finalSectionProperties">;
 
 type CaptureSectionPropertiesOptions = {
   record: SectionPropertiesRecord;

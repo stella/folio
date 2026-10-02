@@ -10,6 +10,8 @@
  * exactly.
  */
 
+import { panic } from "better-result";
+
 import { MAX_REVISION_ID, type Paragraph, type Deletion } from "../model/document";
 import { IDENTITY_SPACES, type IdentitySlot, slotKey } from "./ids";
 import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "./leaves";
@@ -124,6 +126,149 @@ const bindRetainedIdentities = (
     return Object.assign({}, node, {
       resolutionJoins: Object.assign({}, joins, { retainedAfter: bound }),
     });
+  });
+};
+
+type CutPair = { old: InlineNode; fresh: InlineNode };
+
+/** A cut shares the original hints object; independent wrappers never do. */
+type BindCutRetainedIdentitiesOptions = {
+  before: readonly Paragraph[];
+  after: readonly Paragraph[];
+};
+const bindCutRetainedIdentities = ({
+  before,
+  after,
+}: BindCutRetainedIdentitiesOptions): Paragraph[] => {
+  const groups = new Map<NonNullable<Deletion["resolutionJoins"]>, CutPair[]>();
+  type PairedNodesOptions = { oldNodes: readonly InlineNode[]; freshNodes: readonly InlineNode[] };
+  const collect = ({ oldNodes, freshNodes }: PairedNodesOptions): void => {
+    for (const [index, old] of oldNodes.entries()) {
+      const fresh = freshNodes.at(index);
+      if (fresh === undefined) panic("Freshening preserves every source record position.");
+      if (
+        (old.type === "deletion" || old.type === "moveFrom") &&
+        old.resolutionJoins?.retainedAfter !== undefined
+      ) {
+        const pieces = groups.get(old.resolutionJoins) ?? [];
+        pieces.push({ old, fresh });
+        groups.set(old.resolutionJoins, pieces);
+      }
+      collect({ oldNodes: childNodes(old) ?? [], freshNodes: childNodes(fresh) ?? [] });
+    }
+  };
+  for (const [index, old] of before.entries()) {
+    const fresh = after.at(index);
+    if (fresh === undefined) panic("Freshening preserves every source paragraph position.");
+    collect({ oldNodes: old.content, freshNodes: fresh.content });
+  }
+  type PairedSlots = { depth: number; old: IdentitySlot[]; fresh: IdentitySlot[] };
+  const slotsIn = (pair: CutPair): PairedSlots[] => {
+    const slots: PairedSlots[] = [];
+    type VisitOptions = PairedNodesOptions & { depth: number };
+    const visit = ({ oldNodes, freshNodes, depth }: VisitOptions): void => {
+      for (const [index, old] of oldNodes.entries()) {
+        const fresh = freshNodes.at(index);
+        if (fresh === undefined) panic("Freshening preserves every source record position.");
+        const oldSlots = identitySlots(old);
+        if (oldSlots.length > 0) slots.push({ depth, old: oldSlots, fresh: identitySlots(fresh) });
+        visit({
+          oldNodes: childNodes(old) ?? [],
+          freshNodes: childNodes(fresh) ?? [],
+          depth: depth + 1,
+        });
+      }
+    };
+    visit({
+      oldNodes: childNodes(pair.old) ?? [],
+      freshNodes: childNodes(pair.fresh) ?? [],
+      depth: 0,
+    });
+    return slots;
+  };
+  const replacements = new Map<InlineNode, InlineNode>();
+  for (const [joins, pieces] of groups) {
+    if (pieces.length < 2) continue;
+    for (const [index, piece] of pieces.entries()) {
+      const fresh = piece.fresh;
+      if (fresh.type !== "deletion" && fresh.type !== "moveFrom") continue;
+      const sources = slotsIn(piece);
+      const next = pieces.at(index + 1);
+      const retained: RetainedIdentity[] = [];
+      if (next !== undefined) {
+        const targets = slotsIn(next);
+        // Every identified record duplicated by this exact cut transfers its
+        // identity to the next piece, including newly introduced inner seams.
+        for (const source of sources) {
+          const target = targets.find(
+            (candidate) =>
+              candidate.depth === source.depth &&
+              candidate.old.some((slot) =>
+                source.old.some((own) => slotKey(own) === slotKey(slot)),
+              ),
+          );
+          if (target === undefined) continue;
+          const sourceIds: IdentitySlot[] = [];
+          const targetIds: IdentitySlot[] = [];
+          for (const [slotIndex, slot] of source.old.entries()) {
+            const targetIndex = target.old.findIndex((other) => slotKey(slot) === slotKey(other));
+            if (targetIndex < 0) continue;
+            const sourceId = source.fresh.at(slotIndex);
+            const targetId = target.fresh.at(targetIndex);
+            if (sourceId === undefined || targetId === undefined)
+              panic("Freshening preserves the identity slot layout of each source record.");
+            sourceIds.push(sourceId);
+            targetIds.push(targetId);
+          }
+          if (sourceIds.length > 0)
+            retained.push({ depth: source.depth, source: sourceIds, target: targetIds });
+        }
+      } else {
+        for (const entry of fresh.resolutionJoins?.retainedAfter ?? joins.retainedAfter ?? []) {
+          const source = sources.find(
+            (candidate) =>
+              candidate.depth === entry.depth &&
+              entry.source.every((slot) =>
+                candidate.old.some((own) => slotKey(own) === slotKey(slot)),
+              ),
+          );
+          if (source === undefined) continue;
+          const rebound = entry.source.map(
+            (slot) =>
+              source.fresh.at(source.old.findIndex((own) => slotKey(own) === slotKey(slot))) ??
+              panic("Freshening preserves every matched source identity slot."),
+          );
+          retained.push({ depth: entry.depth, source: rebound, target: entry.target });
+        }
+      }
+      replacements.set(
+        fresh,
+        Object.assign({}, fresh, {
+          resolutionJoins: Object.assign({}, fresh.resolutionJoins ?? joins, {
+            retainedAfter: retained,
+          }),
+        }),
+      );
+    }
+  }
+  const rewrite = (nodes: readonly InlineNode[]): readonly InlineNode[] => {
+    let changed = false;
+    const out: InlineNode[] = [];
+    for (const node of nodes) {
+      const own = replacements.get(node) ?? node;
+      const children = childNodes(own);
+      const rewritten = children === undefined ? children : rewrite(children);
+      const result = rewritten === children ? own : rebuildNode(own, rewritten ?? []);
+      changed ||= result !== node;
+      out.push(result);
+    }
+    return changed ? out : nodes;
+  };
+  return after.map((paragraph) => {
+    const content = rewrite(paragraph.content);
+    return content === paragraph.content
+      ? paragraph
+      : Object.assign({}, paragraph, { content: asParagraphContent(content) });
   });
 };
 
@@ -275,5 +420,7 @@ export const freshenIdentities = ({
   if (missing > 0) {
     return { kind: "needsIds", missing };
   }
-  return invalid === undefined ? { kind: "fresh", paragraphs } : { kind: "invalidId", id: invalid };
+  return invalid === undefined
+    ? { kind: "fresh", paragraphs: bindCutRetainedIdentities({ before: after, after: paragraphs }) }
+    : { kind: "invalidId", id: invalid };
 };

@@ -26,7 +26,12 @@ import {
 } from "./ids";
 import { leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
-import { appendTrackedDeletion, createTrackedPlan, selectedParagraphRuns } from "./plan";
+import {
+  appendTrackedDeletion,
+  createTrackedPlan,
+  selectedParagraphRuns,
+  replacementDeletionSegments,
+} from "./plan";
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
@@ -586,24 +591,37 @@ export const compileEditorIntent = (
           if (!last) panic("A selected paragraph run must contain its survivor.");
           for (const { paragraph: item } of run.toReversed()) {
             const blockId = item.paraId ?? "";
-            ops.push({
-              type: DOCUMENT_OP_TYPES.DELETE_RANGE,
-              ...allocationFields,
-              from:
-                idKey(blockId) === idKey(from.blockId)
-                  ? from
-                  : { story: from.story, blockId, offset: 0, zeroWidthBefore: 0 },
-              to:
-                idKey(blockId) === idKey(to.blockId)
-                  ? to
-                  : {
-                      story: from.story,
-                      blockId,
-                      offset: paragraphLength(item),
-                      zeroWidthBefore: zeroWidthLeavesAt(item.content, paragraphLength(item))
-                        .length,
-                    },
+            const start =
+              idKey(blockId) === idKey(from.blockId)
+                ? from
+                : { story: from.story, blockId, offset: 0, zeroWidthBefore: 0 };
+            const end =
+              idKey(blockId) === idKey(to.blockId)
+                ? to
+                : {
+                    story: from.story,
+                    blockId,
+                    offset: paragraphLength(item),
+                    zeroWidthBefore: zeroWidthLeavesAt(item.content, paragraphLength(item)).length,
+                  };
+            const segments = replacementDeletionSegments({
+              spans: leafSpans(item.content),
+              from: {
+                offset: start.offset,
+                zeroWidthBefore:
+                  start.zeroWidthBefore ?? zeroWidthLeavesAt(item.content, start.offset).length,
+              },
+              to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
+              mode: { type: "editing" },
             });
+            for (const segment of segments.toReversed()) {
+              ops.push({
+                type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+                ...allocationFields,
+                from: { story: from.story, blockId, ...segment.from },
+                to: { story: from.story, blockId, ...segment.to },
+              });
+            }
           }
           for (const { paragraph: item } of run.slice(0, -1).toReversed()) {
             ops.push({

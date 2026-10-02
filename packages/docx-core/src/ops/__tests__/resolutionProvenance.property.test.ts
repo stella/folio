@@ -2,6 +2,7 @@ import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 
+import { assertExactModel } from "../../../../../test/exactModel";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, ParagraphContent, Run } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
@@ -523,4 +524,126 @@ test("malformed journal resolution provenance refuses atomically", () => {
       expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
     expect(input).toStrictEqual(before);
   }
+});
+
+// The original range property never split an already pending deletion.
+// Rebinding must follow its exact cut pieces across paragraph boundaries.
+test("generated pending deletion splits preserve resolution order and exact histories", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(shapeArbitrary, (shape) => {
+      const original = fixture(Object.assign({}, shape, { priorReview: true }));
+      const unit = shape.token === "😀" ? 2 : 1;
+      const first = compile({
+        document: original,
+        mode: "suggesting",
+        refusals,
+        intent: {
+          type: "replaceText",
+          from: position({ offset: 0 }),
+          to: position({ offset: 2 * unit }),
+          text: "",
+        },
+      });
+      const second = compile({
+        document: first.document,
+        mode: "suggesting",
+        refusals,
+        intent: { type: "splitParagraph", at: position({ offset: unit }), newBlockId: "00000003" },
+      });
+      const third = compile({
+        document: second.document,
+        mode: "suggesting",
+        refusals,
+        intent: {
+          type: "replaceText",
+          from: position({ offset: 0 }),
+          to: position({ offset: 0 }),
+          text: "x",
+        },
+      });
+      const ids = [...first.revisions, ...second.revisions, ...third.revisions];
+      for (const decision of [REVISION_DECISIONS.ACCEPT, REVISION_DECISIONS.REJECT]) {
+        const together = resolve({ document: third.document, revisionIds: ids, decision });
+        let separately = third.document;
+        for (const revisionIds of [first.revisions, second.revisions, third.revisions])
+          separately = resolve({ document: separately, revisionIds, decision });
+        assertExactModel(separately, together);
+      }
+    }),
+    { numRuns: 25 },
+  );
+  expect([...refusals]).toStrictEqual([]);
+});
+
+// Comment anchors are deliberately retained by replacement in either mode.
+// Atom width remains physical, including references between selected text.
+test("generated comment-bearing replacements share the planned anchor policy", () => {
+  const refusals = new Map<DocumentOpRefusalReason, number>();
+  assertProperty(
+    fc.property(fc.integer({ min: 0, max: 3 }), fc.integer({ min: 0, max: 3 }), (before, after) => {
+      const content: ParagraphContent[] = [];
+      if (before > 0)
+        content.push({ type: "run", content: [{ type: "text", text: "a".repeat(before) }] });
+      content.push(
+        { type: "commentRangeStart", id: 7 },
+        { type: "commentReference", id: 7 },
+        { type: "commentRangeEnd", id: 7 },
+      );
+      if (after > 0)
+        content.push({ type: "run", content: [{ type: "text", text: "b".repeat(after) }] });
+      const original = normalizeForOps({
+        package: {
+          document: {
+            content: [{ type: "paragraph", paraId: "00000001", content }],
+            comments: [
+              {
+                id: 7,
+                author: "Earlier",
+                content: [{ type: "paragraph", paraId: "7FFFFFF0", content: [] }],
+              },
+            ],
+          },
+        },
+      });
+      const intent: EditorIntent = {
+        type: "replaceText",
+        from: position({ offset: 0 }),
+        to: position({ offset: before + 1 + after }),
+        text: "edited",
+      };
+      const allocation = allocateEditorIntentIds(original, intent);
+      const direct = compile({ document: original, intent, allocation, mode: "editing", refusals });
+      const tracked = compile({
+        document: original,
+        intent,
+        allocation,
+        mode: "suggesting",
+        refusals,
+      });
+      assertExactModel(
+        resolve({
+          document: tracked.document,
+          revisionIds: tracked.revisions,
+          decision: REVISION_DECISIONS.ACCEPT,
+        }),
+        direct.document,
+      );
+      assertExactModel(
+        resolve({
+          document: tracked.document,
+          revisionIds: tracked.revisions,
+          decision: REVISION_DECISIONS.REJECT,
+        }),
+        original,
+      );
+      const paragraph = direct.document.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") panic("The replacement must retain its paragraph.");
+      expect(paragraph.content.filter((node) => node.type.startsWith("comment"))).toStrictEqual(
+        content.filter((node) => node.type.startsWith("comment")),
+      );
+    }),
+    { numRuns: 25 },
+  );
+  expect([...refusals]).toStrictEqual([]);
 });

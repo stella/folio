@@ -180,6 +180,31 @@ const bypassingSites = (file: string, sourceText: string): string[] => {
   return sites;
 };
 
+/** Nested configuration evaluates the pinned-seed guard before its assertion helper. */
+const nestedConfigurationSites = (file: string, sourceText: string): string[] => {
+  const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
+  const sites: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && callsAssertHelper(node)) {
+      let params = node.arguments.at(1);
+      while (params !== undefined && ts.isParenthesizedExpression(params))
+        params = params.expression;
+      if (
+        params !== undefined &&
+        ts.isCallExpression(params) &&
+        ts.isIdentifier(params.expression) &&
+        params.expression.text === RUN_COUNT_HELPER
+      ) {
+        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        sites.push(`${file}:${String(line + 1)}`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return sites;
+};
+
 const scanRepository = (): BudgetRequiringSite[] =>
   testFiles().flatMap((file) => {
     const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
@@ -254,6 +279,47 @@ describe("property test budgets", () => {
       return sourceText.includes("fc.") ? bypassingSites(file, sourceText) : [];
     });
     expect(bypassing).toEqual([]);
+  });
+
+  test("detects nested assertion configuration while accepting raw options and fast-check drivers", () => {
+    for (const helper of ASSERT_HELPERS) {
+      for (const config of [
+        "propertyConfig()",
+        "propertyConfig({ numRuns: 100 })",
+        "(propertyConfig())",
+      ]) {
+        expect(nestedConfigurationSites("probe.ts", `${helper}(property, ${config});`)).toEqual([
+          "probe.ts:1",
+        ]);
+      }
+      expect(
+        nestedConfigurationSites(
+          "probe.ts",
+          `${helper}(property);\n${helper}(property, {});\n${helper}(property, { numRuns: 100 });`,
+        ),
+      ).toEqual([]);
+    }
+    expect(
+      nestedConfigurationSites(
+        "probe.ts",
+        "fc.assert(property, propertyConfig({ numRuns: 100 }));\nfc.check(property, propertyConfig());",
+      ),
+    ).toEqual([]);
+    expect(
+      nestedConfigurationSites(
+        "probe.ts",
+        '// assertProperty(property, propertyConfig());\nconst example = "assertPinnedProperty(property, propertyConfig())";',
+      ),
+    ).toEqual([]);
+  });
+
+  test("assertion helpers take raw options so pinned seeds replay before configuration", () => {
+    const nested = testFiles().flatMap((file) => {
+      const sourceText = ts.sys.readFile(path.join(REPO_ROOT, file));
+      if (sourceText === undefined) panic(`Cannot read ${file}.`);
+      return nestedConfigurationSites(file, sourceText);
+    });
+    expect(nested).toEqual([]);
   });
 
   test("every budget-requiring site declares propertyTestTimeout", () => {

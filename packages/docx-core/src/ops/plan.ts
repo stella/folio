@@ -208,14 +208,27 @@ const earlierGap = (left: Gap, right: Gap): Gap => (compareGaps(left, right) <= 
  * deleted content, which it leaves alone, and one holding nothing else is
  * dropped.
  */
-const segmentsOf = (spans: readonly LeafSpan[], from: Gap, to: Gap, author: string): Segment[] => {
+type ReplacementDeletionSegmentsOptions = {
+  spans: readonly LeafSpan[];
+  from: Gap;
+  to: Gap;
+  mode: { type: "editing" } | { type: "suggesting"; author: string };
+};
+
+export const replacementDeletionSegments = ({
+  spans,
+  from,
+  to,
+  mode,
+}: ReplacementDeletionSegmentsOptions): Segment[] => {
   const out: Segment[] = [];
   let open: Segment | undefined;
   for (const span of spans) {
     const start = laterGap(span.before, from);
     const end = earlierGap(span.after, to);
     if (compareGaps(start, end) >= 0) continue;
-    const plan = leafPlan(span, author);
+    let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
+    if (mode.type === "suggesting") plan = leafPlan(span, mode.author);
     if (plan === "anchor") {
       open = undefined;
       continue;
@@ -444,15 +457,15 @@ export const appendTrackedDeletion = ({
     });
     if (check.isErr()) return Result.err(check.error);
     const content = paragraph.content;
-    const segments = segmentsOf(
-      leafSpans(content),
-      {
+    const segments = replacementDeletionSegments({
+      spans: leafSpans(content),
+      from: {
         offset: start.offset,
         zeroWidthBefore: start.zeroWidthBefore ?? zeroWidthLeavesAt(content, start.offset).length,
       },
-      { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
-      revision.author,
-    );
+      to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
+      mode: { type: "suggesting", author: revision.author },
+    });
     ranges.push({ paragraph, at, segments });
   }
   // Direct simulation gives the surviving paragraph's authored properties,

@@ -5,7 +5,6 @@ import { isOpStory } from "./address";
 import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
-  PROPERTY_REVIEW_POLICIES,
   type DocumentOp,
   type DocumentOpType,
   type SplitHalf,
@@ -254,7 +253,7 @@ const operationFields = {
     joinEnd: optional(natural),
     newIds,
     revision,
-    propertyReview: optional(literal(PROPERTY_REVIEW_POLICIES.APPEND)),
+    propertyReview: absent,
   } satisfies OperationFields<"setRunProps">,
   setParagraphProps: {
     type: literal("setParagraphProps"),
@@ -264,7 +263,7 @@ const operationFields = {
     expected: optional(paragraphPatch),
     whenEmpty,
     revision,
-    propertyReview: optional(literal(PROPERTY_REVIEW_POLICIES.APPEND)),
+    propertyReview: absent,
   } satisfies OperationFields<"setParagraphProps">,
   splitBlock: {
     type: literal("splitBlock"),
@@ -273,6 +272,8 @@ const operationFields = {
     newHalf: half,
     newParagraph: absent,
     firstMark: absent,
+    firstSectionProperties: absent,
+    sectionView: absent,
     newIds,
     revision,
   } satisfies OperationFields<"splitBlock">,
@@ -285,6 +286,8 @@ const operationFields = {
     survivor: half,
     expectedRetired: absent,
     expectedSurvivor: absent,
+    sectionBoundary: absent,
+    sectionView: absent,
     newIds,
     revision,
   } satisfies OperationFields<"joinBlocks">,

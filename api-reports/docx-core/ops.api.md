@@ -71,6 +71,21 @@ export type BlockInsertionPoint = {
     blockId: string;
 };
 
+// @public (undocumented)
+export type CompiledEditorIntent = {
+    ops: DocumentOp[];
+    selection: TextPosition;
+};
+
+// @public
+export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
+
+// @public (undocumented)
+export type CompileEditorIntentOptions = {
+    intent: EditorIntent;
+    mode: EditorIntentMode;
+};
+
 // @public
 export const captureDocumentOp: (op: DocumentOp) => DocumentOp;
 
