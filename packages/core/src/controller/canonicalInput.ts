@@ -4,12 +4,21 @@ import type { EditorView } from "prosemirror-view";
 import { ReplaceStep } from "prosemirror-transform";
 
 import { handleEditorBeforeInput } from "../prosemirror/textInput";
+import { createCanonicalComposition } from "./canonicalComposition";
 import { deletionRange } from "./canonicalSession";
 
-type ReplaceTextInput = { from: number; to: number; text: string };
+type ReplaceTextInput = {
+  from: number;
+  to: number;
+  text: string;
+  semantic?: "typing" | "deleteBackward" | "deleteForward" | "composition";
+};
 
 type CanonicalInputOptions = {
   replace: (input: ReplaceTextInput) => void;
+  breakUndoGroup?: () => void;
+  beginComposition?: () => boolean;
+  endComposition?: () => void;
   undo: () => boolean;
   redo: () => boolean;
   refuse: (reason: string) => void;
@@ -17,14 +26,24 @@ type CanonicalInputOptions = {
 
 type NativeProposal =
   | { type: "idle" }
-  | { type: "composition"; phase: "active" | "ended" }
   | { type: "refused" }
   | { type: "replacement"; state: EditorState; input: ReplaceTextInput };
 
 /** Native changes require a preceding, classified input event at the same state. */
 export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => {
+  const composition = createCanonicalComposition({
+    begin: () => options.beginComposition?.() ?? true,
+    end: () => options.endComposition?.(),
+    replace: options.replace,
+    refuse: options.refuse,
+  });
   let proposal: NativeProposal = { type: "idle" };
   let authorizedInput: { view: EditorView; state: EditorState } | null = null;
+  const beginGesture = () => {
+    proposal = { type: "idle" };
+    authorizedInput = null;
+  };
+  const closeGroup = () => options.breakUndoGroup?.();
   const repaint = (view: EditorView) => {
     queueMicrotask(() => {
       if (!view.isDestroyed) view.updateState(view.state);
@@ -32,13 +51,14 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
   };
   const refuseEvent = (event: Event, reason: string) => {
     event.preventDefault();
-    if (proposal.type !== "composition" && proposal.type !== "refused") options.refuse(reason);
-    if (proposal.type !== "composition") proposal = { type: "refused" };
+    closeGroup();
+    if (!composition.active && proposal.type !== "refused") options.refuse(reason);
+    if (!composition.active) proposal = { type: "refused" };
     return true;
   };
 
   const refuseNativeMutation = (view: EditorView) => {
-    if (proposal.type !== "composition" && proposal.type !== "refused") {
+    if (!composition.active && proposal.type !== "refused") {
       options.refuse("Unclassified native text is unavailable in this session.");
       proposal = { type: "refused" };
     }
@@ -78,11 +98,17 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
     reset: () => {
       proposal = { type: "idle" };
       authorizedInput = null;
+      composition.reset();
     },
+    get isComposing() {
+      return composition.active;
+    },
+    acceptComposition: composition.accept,
     handleTextInput: (view: EditorView, from: number, to: number, text: string) => {
+      if (composition.active) return false;
       const pending = proposal;
       if (authorizedInput?.view === view && authorizedInput.state === view.state) {
-        options.replace({ from, to, text });
+        options.replace({ from, to, text, semantic: "typing" });
         return true;
       }
       if (
@@ -100,7 +126,22 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       return true;
     },
     handleKeyDown: (view: EditorView, event: KeyboardEvent) => {
+      beginGesture();
+      if (composition.active) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          composition.cancel(view);
+          return true;
+        }
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault();
+          return true;
+        }
+        return false;
+      }
       const modifier = event.metaKey || event.ctrlKey;
+      if (modifier || event.altKey || /^(?:Arrow|Home$|End$|Page|Escape$|Tab$)/u.test(event.key))
+        closeGroup();
       if (modifier && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) options.redo();
@@ -130,60 +171,80 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       }
       if (event.key !== "Backspace" && event.key !== "Delete") return false;
       event.preventDefault();
-      if (proposal.type === "composition" && proposal.phase === "ended" && !view.composing) {
-        proposal = { type: "idle" };
-        repaint(view);
-      }
-      if (modifier || event.altKey || view.composing || proposal.type === "composition") {
-        if (proposal.type !== "composition")
+      if (modifier || event.altKey || view.composing || composition.active) {
+        closeGroup();
+        if (!composition.active)
           options.refuse("Only plain character deletion is available in this session.");
         return true;
       }
       const range = deletionRange(view.state, event.key === "Backspace" ? "backward" : "forward");
-      if (range.isErr()) options.refuse(range.error.message);
-      else options.replace({ ...range.value, text: "" });
+      if (range.isErr()) {
+        closeGroup();
+        options.refuse(range.error.message);
+      } else
+        options.replace({
+          ...range.value,
+          text: "",
+          semantic: event.key === "Backspace" ? "deleteBackward" : "deleteForward",
+        });
       return true;
     },
     handleDOMEvents: {
-      compositionstart: (_view: EditorView, event: Event) => {
-        if (proposal.type !== "composition")
-          options.refuse("Composition is unavailable in the experimental canonical session.");
-        proposal = { type: "composition", phase: "active" };
-        event.preventDefault();
-        return true;
+      compositionstart: (view: EditorView) => {
+        beginGesture();
+        composition.start(view);
+        return false;
       },
       compositionend: (view: EditorView) => {
-        if (proposal.type === "composition") proposal = { type: "composition", phase: "ended" };
-        const composition = proposal;
-        queueMicrotask(() => {
-          if (view.isDestroyed || proposal !== composition) return;
-          view.updateState(view.state);
-        });
+        composition.ended(view);
+        return false;
+      },
+      mousedown: (view: EditorView) => {
+        composition.recover(view);
+        beginGesture();
+        closeGroup();
         return false;
       },
       blur: (view: EditorView) => {
-        proposal = { type: "idle" };
+        composition.recover(view);
+        beginGesture();
+        closeGroup();
         repaint(view);
         return false;
       },
       beforeinput: (view: EditorView, event: InputEvent) => {
+        beginGesture();
         if (
-          view.composing ||
           event.isComposing ||
           event.inputType === "insertCompositionText" ||
           event.inputType === "insertFromComposition" ||
           event.inputType === "deleteCompositionText" ||
           event.inputType === "deleteByComposition"
         ) {
-          return refuseEvent(event, "Composition is unavailable in this session.");
+          if (composition.active) {
+            composition.authorizeNative(view);
+            return false;
+          }
+          return refuseEvent(event, "Composition has no captured canonical baseline.");
         }
         // A new, non-composition event recovers an IME missing compositionend.
-        if (proposal.type === "composition") {
+        if (composition.active) {
+          composition.recover(view);
           proposal = { type: "idle" };
-          repaint(view);
         }
         if (event.inputType === "insertText" || event.inputType === "insertReplacementText") {
           if (event.cancelable) {
+            if (view.composing && event.inputType === "insertText" && event.data !== null) {
+              event.preventDefault();
+              proposal = { type: "idle" };
+              options.replace({
+                from: view.state.selection.from,
+                to: view.state.selection.to,
+                text: event.data,
+                semantic: "typing",
+              });
+              return true;
+            }
             proposal = { type: "idle" };
             authorizedInput = { view, state: view.state };
             try {
@@ -203,6 +264,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
               from: view.state.selection.from,
               to: view.state.selection.to,
               text: event.data,
+              semantic: "typing",
             },
           };
           return false;
@@ -216,7 +278,14 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
             event.inputType === "deleteContentBackward" ? "backward" : "forward",
           );
           if (range.isErr()) return refuseEvent(event, range.error.message);
-          const input = { ...range.value, text: "" };
+          const input = {
+            ...range.value,
+            text: "",
+            semantic:
+              event.inputType === "deleteContentBackward"
+                ? ("deleteBackward" as const)
+                : ("deleteForward" as const),
+          };
           if (event.cancelable) {
             event.preventDefault();
             options.replace(input);
@@ -235,20 +304,30 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
       },
       // A native DOM proposal is valid only until this event's observer flush.
       input: (view: EditorView) => {
+        if (composition.active) {
+          composition.flushed(view);
+          return false;
+        }
         const pending = proposal;
         queueMicrotask(() => {
           if (view.isDestroyed) return;
           view.updateState(view.state);
-          if (proposal === pending && pending.type !== "composition") proposal = { type: "idle" };
+          if (proposal === pending && !composition.active) proposal = { type: "idle" };
         });
         return false;
       },
-      paste: (_view: EditorView, event: Event) =>
-        refuseEvent(event, "Paste is unavailable in this session."),
-      cut: (_view: EditorView, event: Event) =>
-        refuseEvent(event, "Cut is unavailable in this session."),
-      drop: (_view: EditorView, event: Event) =>
-        refuseEvent(event, "Drop is unavailable in this session."),
+      paste: (_view: EditorView, event: Event) => {
+        beginGesture();
+        return refuseEvent(event, "Paste is unavailable in this session.");
+      },
+      cut: (_view: EditorView, event: Event) => {
+        beginGesture();
+        return refuseEvent(event, "Cut is unavailable in this session.");
+      },
+      drop: (_view: EditorView, event: Event) => {
+        beginGesture();
+        return refuseEvent(event, "Drop is unavailable in this session.");
+      },
     },
     /** Returns a classified intent only; the proposed PM document is never authoritative. */
     takeNativeProposal,
