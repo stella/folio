@@ -12,8 +12,8 @@
 
 import { paragraphNumberingReferenceId } from "@stll/docx-core/model";
 import { Fragment, type Mark, type Node as PMNode, Slice } from "prosemirror-model";
-import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
-import { AttrStep } from "prosemirror-transform";
+import { type EditorState, Plugin, PluginKey, type Transaction } from "prosemirror-state";
+import { AttrStep, ReplaceAroundStep, ReplaceStep, type Step } from "prosemirror-transform";
 
 import {
   cachedListNumberText,
@@ -26,6 +26,7 @@ import {
 } from "../docx/foldedListNumberFields";
 import type { FoldedListNumber } from "../types/document";
 import { SUGGESTION_BYPASS_META } from "./plugins/suggestionMode";
+import { type PositionQuery, sweepPositions } from "./positionSweep";
 import { RUN_IDENTITY_MARK_NAME } from "./runIdentity";
 
 const PRESERVED_XML = "preservedXml";
@@ -180,43 +181,172 @@ const normalizeParagraph = (tr: Transaction, paragraph: PMNode, position: number
 
 type Range = { from: number; to: number };
 
-/**
- * Where `transactions` changed the document, in the positions of the document
- * they left. A step that replaces content says so in its map; a step that
- * sets one node's attribute has an empty map and says where in `pos`. Steps
- * that only add or remove marks change neither content nor a marker.
- */
-const changedRanges = (transactions: readonly Transaction[]): Range[] => {
-  const ranges: Range[] = [];
-  for (const [index, transaction] of transactions.entries()) {
-    const later = transactions.slice(index + 1);
-    const toFinal = (position: number, assoc: number, step: number): number => {
-      let mapped = transaction.mapping.slice(step + 1).map(position, assoc);
-      for (const after of later) {
-        mapped = after.mapping.map(mapped, assoc);
-      }
-      return mapped;
-    };
-    for (const [step, made] of transaction.steps.entries()) {
-      if (made instanceof AttrStep) {
-        const at = toFinal(made.pos, 1, step);
-        ranges.push({ from: at, to: at + 1 });
-        continue;
-      }
-      made.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-        ranges.push({ from: toFinal(newStart, -1, step), to: toFinal(newEnd, 1, step) });
-      });
+/** A paragraph the fold has something to say about: it holds a capture, or its marker shows one. */
+const concernsFold = (paragraph: PMNode): boolean => {
+  const marker: unknown = paragraph.attrs["listMarker"];
+  return (typeof marker === "string" && marker.includes("\t")) || holdsCapture(paragraph);
+};
+
+const fragmentConcernsFold = (fragment: Fragment): boolean => {
+  let found = false;
+  fragment.descendants((node) => {
+    if (found) {
+      return false;
     }
-  }
-  return ranges;
+    if (node.type.name === "paragraph") {
+      found = concernsFold(node);
+    } else if (foldedListNumberOfNode(node) !== undefined) {
+      found = true;
+    }
+    return !found;
+  });
+  return found;
 };
 
 /**
- * The paragraphs a change can have taken out of the form the fold allows:
- * those the changed ranges touch, and the one on either side of each range,
- * since a join or a split changes the paragraph next to where it lands.
+ * Whether a step can bring the fold something to do into a document that had
+ * nothing: a capture, or a paragraph whose marker shows one. Only what the
+ * step inserts is read, never its map.
  */
-const paragraphsNear = (doc: PMNode, ranges: readonly Range[]): Map<number, PMNode> => {
+const stepConcernsFold = (step: Step): boolean => {
+  if (step instanceof ReplaceStep || step instanceof ReplaceAroundStep) {
+    return fragmentConcernsFold(step.slice.content);
+  }
+  if (step instanceof AttrStep) {
+    return (
+      step.attr === "foldedListNumber" ||
+      (step.attr === "listMarker" && typeof step.value === "string" && step.value.includes("\t"))
+    );
+  }
+  return false;
+};
+
+const concerning = new WeakMap<Transaction, boolean>();
+
+const transactionConcernsFold = (transaction: Transaction): boolean => {
+  const known = concerning.get(transaction);
+  if (known !== undefined) {
+    return known;
+  }
+  const found = transaction.steps.some(stepConcernsFold);
+  concerning.set(transaction, found);
+  return found;
+};
+
+/** Sorted ranges with the overlapping and the touching ones made one. */
+const coalesced = (ranges: readonly Range[]): Range[] => {
+  const merged: Range[] = [];
+  for (const range of ranges.toSorted((a, b) => a.from - b.from)) {
+    const last = merged.at(-1);
+    if (last && range.from <= last.to) {
+      last.to = Math.max(last.to, range.to);
+    } else {
+      merged.push({ ...range });
+    }
+  }
+  return merged;
+};
+
+/** Whether `range` meets any of `sorted`, which do not overlap. */
+const meets = (sorted: readonly Range[], range: Range): boolean => {
+  let low = 0;
+  let high = sorted.length - 1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = sorted[middle];
+    if (!candidate || candidate.to < range.from) {
+      low = middle + 1;
+    } else if (candidate.from > range.to) {
+      high = middle - 1;
+    } else {
+      return true;
+    }
+  }
+  return false;
+};
+
+type Reach = {
+  /** Where to look, in the document the transactions left: coalesced, in order. */
+  ranges: Range[];
+  /** Paragraphs known to concern the fold that no change came near, where they now start. */
+  carried: number[];
+};
+
+/**
+ * Where `transactions` can have changed what the fold decides, given the
+ * paragraphs that concerned it before them (`known`, by start, in `before`).
+ *
+ * Those are the known paragraphs a change touched, with the room they had so
+ * that both halves of a split and the whole of a join are covered, and
+ * whatever a step that inserts a capture or a marker put in. Every position is
+ * carried through the step maps in one sweep, so the cost grows with the
+ * steps plus the known paragraphs, not with their product.
+ */
+const reachOf = (
+  before: PMNode,
+  known: readonly number[],
+  transactions: readonly Transaction[],
+): Reach => {
+  const queries: PositionQuery[] = [];
+  // Two queries per changed range, then two per known paragraph.
+  const inserts: boolean[] = [];
+  let offset = 0;
+  for (const transaction of transactions) {
+    for (const [index, step] of transaction.steps.entries()) {
+      const from = offset + index + 1;
+      const concerns = stepConcernsFold(step);
+      if (step instanceof AttrStep) {
+        queries.push({ pos: step.pos, assoc: -1, from }, { pos: step.pos + 1, assoc: 1, from });
+        inserts.push(concerns);
+        continue;
+      }
+      step.getMap().forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+        queries.push({ pos: newStart, assoc: -1, from }, { pos: newEnd, assoc: 1, from });
+        inserts.push(concerns);
+      });
+    }
+    offset += transaction.steps.length;
+  }
+  const changes = inserts.length;
+  for (const start of known) {
+    const paragraph = before.nodeAt(start);
+    const end = start + (paragraph?.nodeSize ?? 0);
+    queries.push({ pos: start, assoc: -1, from: 0 }, { pos: end, assoc: 1, from: 0 });
+  }
+
+  const swept = sweepPositions(
+    transactions.map((transaction) => transaction.mapping),
+    queries,
+  );
+  const rangeAt = (index: number): Range => ({
+    from: swept[index * 2]?.pos ?? 0,
+    to: swept[index * 2 + 1]?.pos ?? 0,
+  });
+
+  const changed: Range[] = [];
+  const ranges: Range[] = [];
+  for (let index = 0; index < changes; index += 1) {
+    const range = rangeAt(index);
+    changed.push(range);
+    if (inserts[index]) {
+      ranges.push(range);
+    }
+  }
+  const touched = coalesced(changed);
+  const carried: number[] = [];
+  for (let index = 0; index < known.length; index += 1) {
+    const extent = rangeAt(changes + index);
+    if (meets(touched, extent)) {
+      ranges.push(extent);
+    } else {
+      carried.push(extent.from);
+    }
+  }
+  return { ranges: coalesced(ranges), carried };
+};
+
+/** The paragraphs standing in or beside `ranges`, by start, in order. */
+const paragraphsIn = (doc: PMNode, ranges: readonly Range[]): Map<number, PMNode> => {
   const paragraphs = new Map<number, PMNode>();
   const size = doc.content.size;
   for (const { from, to } of ranges) {
@@ -232,34 +362,47 @@ const paragraphsNear = (doc: PMNode, ranges: readonly Range[]): Map<number, PMNo
   return paragraphs;
 };
 
-/**
- * A transaction that brings the paragraphs of `state` to the form the fold
- * allows, or nothing when they already have it. With `transactions`, only the
- * paragraphs they changed, and the neighbours of each change, are looked at;
- * without, every paragraph is.
- */
-export const normalizeFoldedListNumbers = (
-  state: EditorState,
-  transactions?: readonly Transaction[],
-): Transaction | null => {
+const everyParagraph = (doc: PMNode): Map<number, PMNode> => {
   const paragraphs = new Map<number, PMNode>();
-  if (transactions) {
-    for (const [position, node] of paragraphsNear(state.doc, changedRanges(transactions))) {
+  doc.descendants((node, position) => {
+    if (node.type.name === "paragraph") {
       paragraphs.set(position, node);
     }
-  } else {
-    state.doc.descendants((node, position) => {
-      if (node.type.name === "paragraph") {
-        paragraphs.set(position, node);
-      }
-      return true;
-    });
-  }
+    return true;
+  });
+  return paragraphs;
+};
 
+/** The paragraphs of the document that concern the fold, by start, in order. */
+type FoldState = { paragraphs: readonly number[] };
+
+const concerningStarts = (paragraphs: ReadonlyMap<number, PMNode>): number[] => {
+  const starts: number[] = [];
+  for (const [position, node] of paragraphs) {
+    if (concernsFold(node)) {
+      starts.push(position);
+    }
+  }
+  return starts;
+};
+
+const foldedListNumberKey = new PluginKey<FoldState>("foldedListNumber");
+
+export type FoldedListNumberPassOptions = {
+  /** Called once for every paragraph the pass looks at. */
+  onParagraphVisit?: () => void;
+};
+
+const normalizeParagraphs = (
+  state: EditorState,
+  paragraphs: ReadonlyMap<number, PMNode>,
+  { onParagraphVisit }: FoldedListNumberPassOptions,
+): Transaction | null => {
   const tr = state.tr;
   for (const position of [...paragraphs.keys()].toSorted((a, b) => a - b)) {
     const node = paragraphs.get(position);
     if (node) {
+      onParagraphVisit?.();
       normalizeParagraph(tr, node, position);
     }
   }
@@ -267,15 +410,55 @@ export const normalizeFoldedListNumbers = (
   return tr.docChanged ? tr.setMeta(SUGGESTION_BYPASS_META, true) : null;
 };
 
-/** Keeps every capture hidden only where a marker shows it, after each change. */
-export const foldedListNumberPlugin = (): Plugin =>
-  new Plugin({
-    appendTransaction(transactions, _oldState, newState) {
+/**
+ * A transaction that brings every paragraph of `state` to the form the fold
+ * allows, or nothing when they already have it.
+ */
+export const normalizeFoldedListNumbers = (
+  state: EditorState,
+  options: FoldedListNumberPassOptions = {},
+): Transaction | null => normalizeParagraphs(state, everyParagraph(state.doc), options);
+
+/**
+ * Keeps every capture hidden only where a marker shows it, after each change.
+ *
+ * Its state is the paragraphs that concern the fold at all. While there are
+ * none and a transaction inserts none, the pass does nothing and reads no
+ * step map. Otherwise it looks only at those paragraphs a change touched and
+ * at what the transaction inserted.
+ */
+export const foldedListNumberPlugin = (options: FoldedListNumberPassOptions = {}): Plugin =>
+  new Plugin<FoldState>({
+    key: foldedListNumberKey,
+    state: {
+      init: (_config, state) => ({
+        paragraphs: concerningStarts(everyParagraph(state.doc)),
+      }),
+      apply(transaction, value) {
+        if (!transaction.docChanged) {
+          return value;
+        }
+        if (value.paragraphs.length === 0 && !transactionConcernsFold(transaction)) {
+          return value;
+        }
+        const reach = reachOf(transaction.before, value.paragraphs, [transaction]);
+        const found = concerningStarts(paragraphsIn(transaction.doc, reach.ranges));
+        return {
+          paragraphs: [...new Set([...reach.carried, ...found])].toSorted((a, b) => a - b),
+        };
+      },
+    },
+    appendTransaction(transactions, oldState, newState) {
       const changes = transactions.filter(({ docChanged }) => docChanged);
       if (changes.length === 0) {
         return null;
       }
-      return normalizeFoldedListNumbers(newState, transactions);
+      const known = foldedListNumberKey.getState(oldState)?.paragraphs ?? [];
+      if (known.length === 0 && !changes.some(transactionConcernsFold)) {
+        return null;
+      }
+      const reach = reachOf(oldState.doc, known, transactions);
+      return normalizeParagraphs(newState, paragraphsIn(newState.doc, reach.ranges), options);
     },
   });
 

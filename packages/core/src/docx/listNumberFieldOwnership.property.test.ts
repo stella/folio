@@ -15,11 +15,16 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import { EditorState, type Transaction } from "prosemirror-state";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { unfoldPastedListNumberFields } from "../prosemirror/foldedListNumber";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  foldedListNumberPlugin,
+  unfoldPastedListNumberFields,
+} from "../prosemirror/foldedListNumber";
+import { schema } from "../prosemirror/schema";
 import {
   bodyParagraphs,
   editorState,
@@ -31,6 +36,7 @@ import {
   liveFoldFaults,
   openDocx,
   type ParagraphSpec,
+  positionOfText,
 } from "./__tests__/listNumberFieldFixture";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 
@@ -238,4 +244,85 @@ describe("the LISTNUM fields of a document under splits, joins, typing and paste
     },
     propertyTestTimeout(120_000),
   );
+});
+
+/**
+ * The pass runs after every transaction of every document, so what it costs a
+ * document it has nothing to do in is the cost that counts. It is stated here
+ * as the paragraphs it looks at, which no machine's speed changes.
+ */
+describe("the paragraphs the editor's pass looks at", () => {
+  const PARAGRAPHS = 2000;
+
+  const plainParagraphs = (): PMNode[] =>
+    Array.from({ length: PARAGRAPHS }, (_, index) =>
+      schema.node("paragraph", null, [schema.text(`Clause ${index} of the agreement`)]),
+    );
+
+  /** One word replaced in every other plain paragraph, back to front, in one transaction. */
+  const replaceInEveryOther = (state: EditorState): Transaction => {
+    const starts: number[] = [];
+    let plain = 0;
+    // oxlint-disable-next-line unicorn/no-array-for-each -- ProseMirror Node.forEach
+    state.doc.forEach((node, position) => {
+      if (!node.textContent.startsWith("Clause")) {
+        return;
+      }
+      if (plain % 2 === 0) {
+        starts.push(position);
+      }
+      plain += 1;
+    });
+    const tr = state.tr;
+    for (const start of starts.toReversed()) {
+      tr.insertText("Section", start + 1, start + 1 + "Clause".length);
+    }
+    return tr;
+  };
+
+  const counted = (doc: PMNode): { state: EditorState; visits: () => number } => {
+    let visits = 0;
+    const plugin = foldedListNumberPlugin({
+      onParagraphVisit: () => {
+        visits += 1;
+      },
+    });
+    return { state: EditorState.create({ doc, plugins: [plugin] }), visits: () => visits };
+  };
+
+  test("none, for a thousand steps over a document that holds no field", () => {
+    const { state, visits } = counted(schema.node("doc", null, plainParagraphs()));
+    const tr = replaceInEveryOther(state);
+    expect(tr.steps).toHaveLength(PARAGRAPHS / 2);
+
+    const next = state.apply(tr);
+
+    expect(next.doc.firstChild?.textContent.startsWith("Section")).toBe(true);
+    expect(visits()).toBe(0);
+  });
+
+  test("a handful, when one paragraph among them holds a field", async () => {
+    const paraId = SPECS[1]?.paraId ?? "";
+    const parsed = await openDocx(await listNumberFieldDocx(SPECS.slice(1, 2)));
+    const folded = toProseDoc(parsed).firstChild;
+    if (!folded || foldedCaptureNodes(folded).length === 0) {
+      throw new Error("The fixture opens with a paragraph whose marker hides a field");
+    }
+    const { state, visits } = counted(schema.node("doc", null, [folded, ...plainParagraphs()]));
+
+    // A thousand steps, none of them in the paragraph that holds the field.
+    state.apply(replaceInEveryOther(state));
+    expect(visits()).toBe(0);
+
+    // The same thousand, and one more in that paragraph.
+    const tr = replaceInEveryOther(state);
+    const edited = state.apply(
+      tr.insertText("!", positionOfText(state.doc, paraId, "second body") + 1),
+    );
+
+    expect(tr.steps).toHaveLength(PARAGRAPHS / 2 + 1);
+    expect(visits()).toBeGreaterThanOrEqual(1);
+    expect(visits()).toBeLessThanOrEqual(3);
+    expect(liveFoldFaults(edited.doc)).toEqual([]);
+  });
 });
