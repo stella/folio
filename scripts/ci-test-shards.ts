@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-// Longest-first scheduling uses recorded CI timings; discovery assigns new files
-// immediately. Run in each owning workspace to retain bunfig and CLI preloads.
+// Refresh ci-test-timings.json from per-file group spans in a successful full-suite log.
+// Keep millisecond durations above one second; unmeasured files still run.
 import { panic } from "better-result";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -101,6 +101,7 @@ if (import.meta.main) {
   if (!assigned) panic("Test shard unavailable");
   const selectedSuites =
     depth === "full" ? suites : [{ cwd: ".", preloads: [], files: focusedTests }];
+  let exitCode = 0;
   for (const { cwd, preloads, files } of selectedSuites) {
     const selected = files.filter((file) => assigned.has(file));
     if (selected.length === 0) continue;
@@ -114,6 +115,7 @@ if (import.meta.main) {
       ],
       { cwd: path.join(REPO_ROOT, cwd), stdout: "inherit", stderr: "inherit" },
     );
-    if (result.exitCode !== 0) process.exit(result.exitCode);
+    if (result.exitCode !== 0) exitCode = 1;
   }
+  process.exit(exitCode);
 }
