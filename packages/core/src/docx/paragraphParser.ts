@@ -47,7 +47,7 @@ import {
 } from "./bookmarkParser";
 import { parseMarkupRangeMarker, parseMoveBookmarkMarker } from "./markupRangeMarker";
 import { parseFieldType } from "./fieldParser";
-import { foldListNumberFields, isTabOnlyRun } from "./foldedListNumberFields";
+import { foldListNumberFields, isListNumberField, isTabOnlyRun } from "./foldedListNumberFields";
 import { type FieldState, fieldStateOf, parseFieldState } from "./fieldState";
 import {
   HYPERLINK_CHILD_HANDLERS,
@@ -1164,6 +1164,9 @@ type ComplexFieldScan = {
   // The `w:r` elements read since the `begin`, in source order, or null once
   // one of them holds something the model also keeps as an item of its own.
   complexFieldSourceRuns: XmlElement[] | null;
+  // Whether the walk has closed a list-number field: only then can a tab be
+  // the tab that follows one.
+  listNumberFieldRead: boolean;
   afterSeparator: boolean;
   complexFieldState: FieldState;
   complexFieldDataXml: string | undefined;
@@ -1619,8 +1622,10 @@ const PARAGRAPH_CONTENT_HANDLERS = {
           complexField.formatting = scan.complexFieldFormatting;
         }
 
-        if (scan.complexFieldSourceRuns !== null) {
+        // Only a list-number field is ever folded, so only its markup is kept.
+        if (scan.complexFieldSourceRuns !== null && isListNumberField(complexField)) {
           fieldSourceElements.set(complexField, scan.complexFieldSourceRuns);
+          scan.listNumberFieldRead = true;
         }
         contents.push(complexField);
         if (commentReferenceId !== null) {
@@ -1666,7 +1671,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       // with no field: the same capture keeps it.
       if (hasRunPayload({ run, runElement, rels, media })) {
         const kept = withOrphanFieldCharsPreserved(run, runElement);
-        if (isTabOnlyRun(kept) && trackedContext !== "deletion") {
+        if (scan.listNumberFieldRead && isTabOnlyRun(kept) && trackedContext !== "deletion") {
           tabRunSources.set(kept, runElement);
         }
         contents.push(kept);
@@ -1921,6 +1926,7 @@ function parseParagraphContents(
     complexFieldResultRuns: [],
     complexFieldOpenRuns: [],
     complexFieldSourceRuns: null,
+    listNumberFieldRead: false,
     afterSeparator: false,
     complexFieldState: {},
     complexFieldDataXml: undefined,
@@ -2209,7 +2215,10 @@ export function parseParagraph(
         // line 1 begins at the same column as the wrapped lines below.
         // The fold reads the content as parsed, before runs are merged: the
         // captures are keyed to the runs the walk produced.
-        const fold = foldListNumberFields(rawContent, sourceMarkupOf);
+        // Most paragraphs hold no field at all, and so nothing to fold.
+        const fold = rawContent.some((item) => item.type === "complexField")
+          ? foldListNumberFields(rawContent, sourceMarkupOf)
+          : { content: rawContent, cached: [], fieldCount: 0 };
         // A bullet's marker is its glyph alone, and a marker with no text of
         // its own has nothing to show a field after: neither hides one.
         const markerShowsFields =

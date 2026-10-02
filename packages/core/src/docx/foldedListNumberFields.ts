@@ -42,7 +42,8 @@ const ZERO_WIDTH_TYPES: ReadonlySet<ParagraphContent["type"]> = new Set([
 const isZeroWidth = (content: ParagraphContent): boolean =>
   ZERO_WIDTH_TYPES.has(content.type) || (content.type === "preservedInline" && content.text === "");
 
-const isListNumberField = (content: ParagraphContent): content is ComplexField =>
+/** Whether `content` is a `LISTNUM` field, by its parsed type or its instruction. */
+export const isListNumberField = (content: ParagraphContent): content is ComplexField =>
   content.type === "complexField" &&
   (content.fieldType === "LISTNUM" ||
     content.instruction.trim().toUpperCase().startsWith("LISTNUM"));
