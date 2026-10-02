@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "tracked-changes",
+  "seed": 694344420,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 2326510342,
+      "operations": [
+        {
+          "type": "deleteTableRow",
+          "blockId": "32DB9FAD"
+        }
+      ]
+    },
+    {
+      "action": "core batch",
+      "seed": 541151985,
+      "operations": [
+        {
+          "type": "insertTableColumn",
+          "blockId": "2DDB97CE",
+          "position": "after",
+          "cellTexts": ["Column cell 1", "Column cell 2", "Column cell 3"]
+        }
+      ]
+    }
+  ],
+  "origin": "shrunk from swap+reseed+splice of 388f552a3c69a4bc",
+  "title": "PINNED #1415, reported seed 1576446861: consumer flow stories / tracked-changes: saved block text differs from the requested result"
+}

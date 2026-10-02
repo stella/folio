@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "stories",
+  "mode": "suggested",
+  "seed": 1576447001,
+  "steps": [
+    {
+      "action": "suggest_changes",
+      "seed": 248834464,
+      "operations": [
+        {
+          "type": "insertAfterBlock",
+          "blockId": "32DB9FAD",
+          "text": "Goods buyer payment invoice period supplier buyer term.",
+          "styleId": "Heading2"
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "28DB8FEF"
+        }
+      ]
+    }
+  ],
+  "title": "PINNED #1408, reported seed 1576447001: consumer flow stories / suggested: tracked acceptance differs from direct editing"
+}
