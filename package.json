@@ -132,6 +132,7 @@
     "test:visual": "bunx playwright test",
     "test:interactions": "bun scripts/check-browser-input-coverage.ts && bunx playwright test --project=interactions",
     "test:measure-parity": "bunx playwright test --project=measure-parity",
+    "test:engine-layout:record": "FOLIO_ENGINE_PARITY_RECORD=1 bunx playwright test --project=engine-layout-record --workers=1",
     "test:differential": "cd packages/core && bun test src/docx/__tests__/differential.test.ts",
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",

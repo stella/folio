@@ -49,6 +49,16 @@ export default defineConfig({
     // the same layout pass, so unlike the screenshot baselines it cannot go
     // flaky on cross-machine font rendering, and it is safe to gate CI on.
     { name: "measure-parity", testMatch: /measure(?:-backend)?-parity\.spec\.ts/u },
+    // Report-only second-engine evidence. These never join a gating lane: the
+    // nightly webkit workflow runs `webkit-layout-parity` and records
+    // differences, and `engine-layout-record` rewrites the Chromium baseline
+    // when FOLIO_ENGINE_PARITY_RECORD=1.
+    {
+      name: "webkit-layout-parity",
+      testMatch: /(?:measure-backend-parity|engine-layout-parity)\.spec\.ts/u,
+      use: { browserName: "webkit" },
+    },
+    { name: "engine-layout-record", testMatch: /engine-layout-parity\.spec\.ts/u },
     { name: "rendering", testMatch: /rendering\.spec\.ts/u },
     { name: "performance", testMatch: /editing-performance\.spec\.ts/u },
     {
