@@ -17,6 +17,7 @@ jobs:
       contents: read
     outputs:
       findings: ${{ steps.fuzz.outcome == 'failure' }}
+      host_api_findings: ${{ steps.host-api.outcome == 'failure' }}
       interleaving_findings: ${{ steps.interleaving.outcome == 'failure' }}
 
     steps:
@@ -39,7 +40,30 @@ jobs:
             /etc/apt/sources.list.d/microsoft-prod.sources
           bunx playwright install --with-deps chromium
 
+      - name: Host API flow fuzz
+        id: host-api
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          mkdir -p fuzz-artifacts/host-api
+          bunx playwright test --project=parity-fuzzer tests/parity/host-api-flow.spec.ts --workers=1 --output=fuzz-playwright/host-api 2>&1 | tee fuzz-artifacts/host-api/host-api-fuzz.log
+        env:
+          CI: "true"
+          PROPERTY_TEST_SEED_SALT: host-api-${{ github.run_id }}
+
+      - name: Keep host API findings
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: host-api-fuzz
+          path: |
+            fuzz-artifacts/host-api
+            fuzz-playwright/host-api
+          retention-days: 14
+
       - name: Run nightly browser fuzzer
+        if: always()
         id: fuzz
         timeout-minutes: 35
         continue-on-error: true
@@ -168,3 +192,36 @@ jobs:
           bun scripts/fuzz-failure-issues.ts
           --log fuzz-results/fuzz-artifacts/interleaving/interleaving.log --records fuzz-results/fuzz-artifacts/interleaving/findings
           --source "AI and human revision interleaving" --run-url "${RUN_URL}" --sha "${GITHUB_SHA}"
+
+  report-host-api:
+    name: File host API findings
+    needs: browser-input-fuzzer
+    if: always() && github.ref == 'refs/heads/main' && needs.browser-input-fuzzer.outputs.host_api_findings == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: fuzz-failure-issues
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: "package.json"
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: host-api-fuzz
+          path: fuzz-results
+      - name: Open or update findings
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: >-
+          bun scripts/fuzz-failure-issues.ts --log fuzz-results/fuzz-artifacts/host-api/host-api-fuzz.log
+          --run-url "$RUN_URL"
+          --sha "$GITHUB_SHA" --source host-api-fuzz

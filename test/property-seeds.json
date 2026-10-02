@@ -180,6 +180,12 @@
   ],
   "packages/core/src/ai-edits/tableOperations.property.test.ts::keep every value, agree across modes and readers, and reject cleanly": [
     {
+      "seed": -2143597683,
+      "path": "590:0:0:0:4:3:3:3:3:11:4:4:5:7:4:6:6:13:13:16:14:12:12:12:12:14:13:13:13:14:12:14:14:18:14:14:16:15:15:17:15:15:17:15:17:18",
+      "note": "Disjoint vertical merges in a nested table collectively emptied a row: direct applied both while tracked refused the second.",
+      "date": "2026-10-02"
+    },
+    {
       "seed": -1930932135,
       "note": "#1159: tracked final paragraphs and batched rows",
       "date": "2026-09-28"

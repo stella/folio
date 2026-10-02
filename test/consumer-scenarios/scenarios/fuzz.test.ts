@@ -55,6 +55,7 @@ const relationRepro = [
   "FOLIO_SCENARIO_RELATIONS",
   "FOLIO_SCENARIO_RELATIONS_DEPTH",
   "FOLIO_SCENARIO_SWARM",
+  "FOLIO_SCENARIO_FEATURE_WEIGHTS",
 ]
   .flatMap((name) => {
     const value = process.env[name];

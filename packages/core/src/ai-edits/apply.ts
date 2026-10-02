@@ -3739,6 +3739,7 @@ const applyFolioAIEditOperationsInternal = ({
       operationId: item.operation.id,
       target: getTableMutationPlanTarget(item),
     })),
+    view.state.doc,
   );
   skipped.push(...tablePlan.skipped);
   const executableResolved = tablePlan.executable;
