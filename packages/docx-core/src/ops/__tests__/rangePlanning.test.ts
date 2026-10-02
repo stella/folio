@@ -1,6 +1,8 @@
 import { panic } from "better-result";
 import { expect, test } from "bun:test";
 
+import { canonicalReviewBlocks } from "../../../../../test/reviewProjection";
+
 import type { BlockContent, Document, Paragraph, ParagraphContent } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { endsItsContainer, storyParagraphs } from "../blocks";
@@ -57,6 +59,17 @@ const resolve = (applied: AppliedDocumentOp, decision: RevisionDecision) => {
 };
 const paragraphs = (document: Document) =>
   storyParagraphs(document.package.document).map(({ paragraph: block }) => block);
+// Review may merge equivalent runs; inverse assertions retain the authored structure.
+const reviewDocument = (document: Document): Document => ({
+  ...document,
+  package: {
+    ...document.package,
+    document: {
+      ...document.package.document,
+      content: canonicalReviewBlocks(document.package.document.content),
+    },
+  },
+});
 const expectUndo = (applied: AppliedDocumentOp, original: Document) =>
   expect(apply(applied.document, applied.inverse).document).toStrictEqual(original);
 
@@ -287,7 +300,7 @@ test.each(["body", "cell"] as const)(
         const tracked = apply(document, planned.value);
         const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
         const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
-        expect(accepted.document).toStrictEqual(direct.document);
+        expect(reviewDocument(accepted.document)).toStrictEqual(reviewDocument(direct.document));
         expect(rejected.document).toStrictEqual(document);
         expect(tracked.revisions.every((id) => id !== 7 && id !== 8)).toBe(true);
         expectUndo(tracked, document);
@@ -339,7 +352,7 @@ test("tracked range deletion across section boundaries preserves section facts a
     const tracked = apply(document, planned.value);
     const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
     const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
-    expect(accepted.document).toStrictEqual(direct.document);
+    expect(reviewDocument(accepted.document)).toStrictEqual(reviewDocument(direct.document));
     expect(rejected.document).toStrictEqual(document);
     expect(paragraphs(tracked.document).map(({ sectionProperties }) => sectionProperties)).toEqual([
       first.sectionProperties,
@@ -514,7 +527,7 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
     const suggested = apply(document, trackedOps);
     const accepted = resolve(suggested, REVISION_DECISIONS.ACCEPT);
     const rejected = resolve(suggested, REVISION_DECISIONS.REJECT);
-    expect(accepted.document).toStrictEqual(direct);
+    expect(reviewDocument(accepted.document)).toStrictEqual(reviewDocument(direct));
     expect(rejected.document).toStrictEqual(document);
     expectUndo(suggested, document);
     expectUndo(accepted, suggested.document);

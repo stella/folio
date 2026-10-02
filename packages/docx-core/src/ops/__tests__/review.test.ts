@@ -8,6 +8,8 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { canonicalReviewBlocks } from "../../../../../test/reviewProjection";
+
 import type {
   BlockContent,
   Document,
@@ -1091,9 +1093,12 @@ describe("section-aware tracked editor joins", () => {
       newIds: { revision: [2, 3] },
     });
     expect(blocks(tracked.document).at(0)?.sectionProperties).toEqual({ pageWidth: 10000 });
-    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT))).toEqual(
-      blocks(direct.document),
-    );
+    // Review equivalence permits merged runs; applied() checks exact inverse structure.
+    expect(
+      canonicalReviewBlocks(
+        blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT)),
+      ),
+    ).toStrictEqual(canonicalReviewBlocks(blocks(direct.document)));
     expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.REJECT))).toEqual(
       blocks(document),
     );
