@@ -15,17 +15,14 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode } from "prosemirror-model";
-import { EditorState } from "prosemirror-state";
+import type { EditorState } from "prosemirror-state";
 
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
-import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import {
-  foldedListNumberPlugin,
-  unfoldPastedListNumberFields,
-} from "../prosemirror/foldedListNumber";
+import { unfoldPastedListNumberFields } from "../prosemirror/foldedListNumber";
 import {
   bodyParagraphs,
+  editorState,
   fieldResultsInFile,
   fieldResultsShown,
   foldedCaptureNodes,
@@ -185,10 +182,7 @@ describe("the LISTNUM fields of a document under splits, joins, typing and paste
     "no field is hidden unless a marker shows it, and none is hidden twice or lost",
     async () => {
       const parsed = await openDocx(await listNumberFieldDocx(SPECS));
-      const opened = EditorState.create({
-        doc: toProseDoc(parsed),
-        plugins: [foldedListNumberPlugin()],
-      });
+      const opened = editorState(parsed);
       const original = captureMarkup(opened.doc);
       // The field behind "one " and the field behind "two " are on the line.
       expect(original).toHaveLength(4);
@@ -225,7 +219,20 @@ describe("the LISTNUM fields of a document under splits, joins, typing and paste
         {
           numRuns: 150,
           // Text typed at the very start of a paragraph whose marker shows a field.
-          examples: [[[{ kind: "type", at: { paragraph: 0, offset: 0 } }]]],
+          examples: [
+            [[{ kind: "type", at: { paragraph: 0, offset: 0 } }]],
+            // A whole paragraph copied and pasted ahead of itself.
+            [
+              [
+                {
+                  kind: "paste",
+                  from: { paragraph: 0, offset: 0 },
+                  to: { paragraph: 0.25, offset: 0 },
+                  at: { paragraph: 0, offset: 0 },
+                },
+              ],
+            ],
+          ],
         },
       );
     },

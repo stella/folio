@@ -8,6 +8,7 @@ import JSZip from "jszip";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 
+import { createHarnessState } from "../../__tests__/editorHarness";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 import type { ComplexField, Document, Paragraph } from "../../types/document";
@@ -421,6 +422,14 @@ export const liveFoldFaults = (doc: PMNode): string[] => {
   });
   return faults;
 };
+
+/**
+ * The state a mounted editor holds for `document`, every plugin included: the
+ * one that gives a split or pasted paragraph an identity of its own, without
+ * which a copy cannot be told from its original, and the fold's own pass.
+ */
+export const editorState = (document: Document): EditorState =>
+  createHarnessState(document, "editing", [], "document");
 
 export const openDocx = (buffer: ArrayBuffer): Promise<Document> =>
   parseDocx(buffer, { preloadFonts: false, detectVariables: false });
