@@ -251,7 +251,7 @@ for (const seed of config.seeds) {
         });
         logFailureMarker(marker);
         const artifact = writeFailureRecord(
-          process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "test-results/fuzz-failures",
+          process.env["FOLIO_FUZZ_FAILURES_DIR"] ?? "fuzz-artifacts/canonical/findings",
           failureRecord(marker, failure, { flow }),
         );
         await info.attach("canonical-failure-record", {
