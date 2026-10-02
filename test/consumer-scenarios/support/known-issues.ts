@@ -16,8 +16,6 @@ export const OPEN_ISSUES = {} as const;
  * repro in the scenario that pins it.
  */
 export const FINDINGS = {
-  SUGGESTED_NOTE_EDIT_SAVE_THROWS:
-    "after a save that dropped a suggested format change in a footnote, a second suggested edit of that footnote plus any suggested body edit makes toBuffer() throw",
   INSERT_AFTER_PENDING_MERGE:
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
@@ -58,7 +56,6 @@ export const KNOWN_FAILING_FLOWS: readonly {
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
-  SUGGESTED_NOTE_EDIT_SAVE_THROWS: /Cannot serialize changed footnote paragraphs/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
 };
