@@ -19,12 +19,14 @@
  */
 
 import assert from "node:assert/strict";
+import { paragraphNumberingFromSlots } from "@stll/folio-core/docx";
 
 import {
   FOLIO_DOCUMENT_OPERATION_TYPES,
   type FolioDocumentOperationType,
   type FolioDocumentStoryHandle,
   inspectDocumentStylesFromDocx,
+  parseDocx,
 } from "@stll/folio-core/server";
 
 import { recordFeatureHit, recordHit, type StepKind } from "./coverage.ts";
@@ -50,6 +52,142 @@ import {
 } from "./targets.ts";
 
 type Reviewer = Awaited<ReturnType<typeof openReviewer>>;
+type ParsedDocument = Awaited<ReturnType<typeof parseDocx>>;
+type ParsedBlock = ParsedDocument["package"]["document"]["content"][number];
+type ParsedInline = Extract<ParsedBlock, { type: "paragraph" }>["content"][number];
+type Numbering = NonNullable<Extract<ParsedBlock, { type: "paragraph" }>["formatting"]>["numPr"];
+type NumberingFacts = {
+  styles: Map<string, Numbering>;
+  direct: Map<string, Numbering>;
+};
+
+/** Fold stated slots independently of the engine's numbering resolver. */
+const numberingOver = (base: Numbering, stated: Numbering): Numbering => {
+  if (stated === undefined) return base;
+  switch (stated.kind) {
+    case "none":
+      return stated;
+    case "reference":
+      return { ...stated, ilvl: stated.ilvl ?? (base?.kind === "none" ? undefined : base?.ilvl) };
+    case "levelOnly":
+      if (base?.kind === "reference") return { ...base, ilvl: stated.ilvl };
+      return base?.kind === "none" ? base : stated;
+    default: {
+      const unhandled: never = stated;
+      throw new Error(`Unhandled numbering ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
+
+/** Package definitions and direct provenance, never an effective reader sample. */
+const numberingFactsFromDocument = (document: ParsedDocument): NumberingFacts => {
+  const definitions = new Map(
+    (document.package.styles?.styles ?? []).map((style) => [style.styleId, style]),
+  );
+  const styles = new Map<string, Numbering>();
+  const resolve = (id: string, path = new Set<string>()): Numbering => {
+    if (styles.has(id)) return styles.get(id);
+    if (path.has(id)) throw new Error(`Cyclic style inheritance at ${id}`);
+    path.add(id);
+    const style = definitions.get(id);
+    const value = numberingOver(
+      style?.basedOn ? resolve(style.basedOn, path) : undefined,
+      style?.pPr?.numPr,
+    );
+    styles.set(id, value);
+    return value;
+  };
+  for (const id of definitions.keys()) resolve(id);
+  const direct = new Map<string, Numbering>();
+  const visitInline = (node: ParsedInline): void => {
+    switch (node.type) {
+      case "run":
+        for (const content of node.content) {
+          if (content.type === "shape" && content.shape.textBody)
+            visit(content.shape.textBody.content);
+        }
+        break;
+      case "hyperlink":
+        for (const child of node.children) visitInline(child);
+        break;
+      case "complexField":
+        for (const run of [...node.fieldCode, ...node.fieldResult]) visitInline(run);
+        break;
+      case "simpleField":
+      case "insertion":
+      case "deletion":
+      case "moveFrom":
+      case "moveTo":
+      case "inlineSdt":
+      case "inlineWrapper":
+        for (const child of node.content) visitInline(child);
+        break;
+      case "bookmarkStart":
+      case "bookmarkEnd":
+      case "commentRangeStart":
+      case "commentRangeEnd":
+      case "commentReference":
+      case "moveFromRangeStart":
+      case "moveFromRangeEnd":
+      case "moveToRangeStart":
+      case "moveToRangeEnd":
+      case "mathEquation":
+      case "preservedInline":
+        break;
+      default: {
+        const unhandled: never = node;
+        throw new Error(`Unhandled inline ${JSON.stringify(unhandled)}`);
+      }
+    }
+  };
+  const visit = (blocks: readonly ParsedBlock[]): void => {
+    for (const block of blocks) {
+      switch (block.type) {
+        case "paragraph": {
+          for (const content of block.content) visitInline(content);
+          if (block.paraId === undefined) break;
+          const { numPr, numPrFromStyle } = block.formatting ?? {};
+          let override: Numbering;
+          if (numPrFromStyle === undefined) override = numPr;
+          else if (
+            numPr?.kind === "reference" &&
+            numPrFromStyle.kind !== "none" &&
+            numPr.ilvl !== numPrFromStyle.ilvl
+          )
+            override = { kind: "levelOnly", ilvl: numPr.ilvl ?? 0 };
+          direct.set(block.paraId, override);
+          break;
+        }
+        case "table":
+          for (const row of block.rows) for (const cell of row.cells) visit(cell.content);
+          break;
+        case "blockSdt":
+        case "blockCustomXml":
+          visit(block.content);
+          break;
+        case "preservedBlock":
+        case "bookmarkStart":
+        case "bookmarkEnd":
+          break;
+        default: {
+          const unhandled: never = block;
+          throw new Error(`Unhandled block ${JSON.stringify(unhandled)}`);
+        }
+      }
+    }
+  };
+  visit(document.package.document.content);
+  for (const parts of [document.package.headers, document.package.footers]) {
+    for (const part of parts?.values() ?? []) visit(part.content);
+  }
+  for (const parts of [document.package.footnotes, document.package.endnotes]) {
+    for (const part of parts ?? []) visit(part.content);
+  }
+  return { styles, direct };
+};
+
+export const numberingFactsOf = async (bytes: Uint8Array): Promise<NumberingFacts> =>
+  numberingFactsFromDocument(await parseDocx(toArrayBuffer(bytes), { preloadFonts: false }));
 
 type TableLocation = {
   outerTableIndex: number;
@@ -180,6 +318,7 @@ export type Model = {
   tableGaps: string[];
   /** Existing paragraphs reveal style-derived kind, levels and effective run formatting. */
   styleExamples: Map<string, Row>;
+  numberingFacts?: NumberingFacts;
   /** Text of the live blocks an operation can name, before the batch. */
   liveTextById: ReadonlyMap<string, string>;
   /** Live blocks explicitly deleted by applied operations, including pending joins. */
@@ -317,6 +456,28 @@ const hasMergedCells = (model: Model, tableIndex: number): boolean =>
 const paragraphsOf = (text: string): string[] =>
   text.split(/\r\n|\r|\n/u).filter((line) => line.length > 0);
 
+const requestedStyleNumbering = (model: Model, styleId: string | null, row?: Row): Numbering => {
+  const facts = model.numberingFacts;
+  const style = styleId === null ? undefined : facts?.styles.get(styleId);
+  if (!row) return style;
+  let direct: Numbering;
+  if (facts) {
+    assert.ok(facts.direct.has(row.id), `Numbering provenance missing for ${row.id}`);
+    direct = facts.direct.get(row.id);
+  } else if (row.listReference) {
+    direct = paragraphNumberingFromSlots({
+      numId: row.listReference.numId,
+      ilvl: row.listReference.level,
+    });
+  }
+  return numberingOver(style, direct);
+};
+
+const numberingFields = (model: Model, styleId: string | null, row?: Row): Fields => {
+  const numbering = requestedStyleNumbering(model, styleId, row);
+  return { listLevel: numbering?.kind === "reference" ? (numbering.ilvl ?? 0) : undefined };
+};
+
 /**
  * The fields a style id asks for on `pre` (absent: a new block, formatted
  * like `inherited`, the block it was inserted beside). A style may number its
@@ -343,11 +504,17 @@ const styleFields = (
   else if (styleExample && pre?.headingLevel === undefined) {
     headingLevel = styleExample.headingLevel;
   } else if (heading && plain) headingLevel = Number(heading);
+  const numberedFields = numberingFields(model, styleId, pre ?? inherited);
+  // A sample's list classification may come from its own direct numbering.
+  let exampleKind = styleExample?.kind;
+  if (exampleKind === "listItem" && numberedFields.listLevel === undefined) {
+    exampleKind = "paragraph";
+  }
   return {
     styleId: styleId ?? undefined,
-    kind: stated ? ANY : (styleExample?.kind ?? (heading ? "heading" : ANY)),
+    kind: stated ? ANY : (exampleKind ?? (heading ? "heading" : ANY)),
     headingLevel,
-    listLevel: example && pre?.listReference === undefined ? example.listLevel : ANY,
+    ...numberedFields,
   };
 };
 
@@ -368,6 +535,19 @@ const paragraphRequest = (
   if ("styleId" in request) {
     const styleId = request["styleId"] as string | null;
     Object.assign(fields, styleFields(model, styleId, pre, inherited));
+    const numbering = requestedStyleNumbering(model, styleId, pre ?? inherited);
+    if (!("numbering" in request)) {
+      checks.push((row) => {
+        if (numbering?.kind === "reference") {
+          return row.listReference?.numId === numbering.numId
+            ? null
+            : `style/direct numbering ${numbering.numId} was lost or changed`;
+        }
+        return row.listReference === undefined
+          ? null
+          : "the requested style introduced unexpected numbering";
+      });
+    }
     const example = styleId === null ? undefined : model.styleExamples.get(styleId);
     if (
       model.mode !== "suggested" &&
@@ -409,7 +589,7 @@ const paragraphRequest = (
   }
   if ("numbering" in request) {
     const numbering = request["numbering"] as Record<string, unknown> | null;
-    const preKind = pre?.kind;
+    const preKind = pre?.kind ?? inherited?.kind;
     if (numbering === null) {
       fields.listLevel = undefined;
       checks.push((row) =>
@@ -421,7 +601,7 @@ const paragraphRequest = (
     } else if (numbering["start"] === "new") {
       const kind = numbering["kind"];
       fields.listLevel = typeof numbering["level"] === "number" ? numbering["level"] : 0;
-      if (pre && preKind !== "heading") fields.kind = "listItem";
+      if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
       const used = new Set(
         model.rows.flatMap((row) => (row.pre?.listReference ? [row.pre.listReference.numId] : [])),
       );
@@ -438,7 +618,7 @@ const paragraphRequest = (
     } else {
       const reference = { numId: numbering["numId"], level: numbering["level"] };
       fields.listLevel = reference.level as number;
-      if (pre && preKind !== "heading") fields.kind = "listItem";
+      if ((pre ?? inherited) && preKind !== "heading") fields.kind = "listItem";
       checks.push((row) =>
         row.listReference?.numId === reference.numId && row.listReference?.level === reference.level
           ? null
@@ -507,7 +687,9 @@ const insertBlock =
   (model, operation) => {
     const named = target(model, operation["blockId"], { adjacent: true });
     const anchor = insertionAnchor(model, named, position);
-    const { fields, checks } = paragraphRequest(model, operation, undefined, named.pre);
+    const inherited = operation["inheritFormatting"] === false ? undefined : named.pre;
+    const { fields: requested, checks } = paragraphRequest(model, operation, undefined, inherited);
+    const fields = { ...(inherited ? fieldsOf(inherited) : {}), ...requested };
     const scope = operation["formattingScope"] ?? "firstParagraph";
     const texts =
       operation["lineBreakMode"] === "inline"
@@ -1098,6 +1280,10 @@ export type Pre = {
   rows: Row[];
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
+  /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
+  numberingSource:
+    | { type: "package"; bytes: Uint8Array }
+    | { type: "live"; document: ParsedDocument };
   comments: Comment[];
   links: LinkSnapshot;
   liveComments: Comment[];
@@ -1195,6 +1381,7 @@ export const capture = async (
       live,
       rows,
       liveRows: rows,
+      numberingSource: { type: "live", document: reviewer.toDocument() },
       comments: liveComments,
       liveComments,
       links: captureLinks(reviewer),
@@ -1208,6 +1395,7 @@ export const capture = async (
     live,
     rows: accepted.rows,
     liveRows: rowsOf(reviewer, story),
+    numberingSource: { type: "package", bytes: accepted.bytes },
     comments: accepted.comments,
     links: accepted.links,
     liveComments,
@@ -1303,6 +1491,34 @@ export const assertRequestedOutcome = async (
     return [];
   }
   const model = modelOf(pre.rows, pre.liveRows);
+  if (
+    outcome.applied.some(
+      (operation) =>
+        "styleId" in operation ||
+        [
+          "properties",
+          "firstParagraphProperties",
+          "secondParagraphProperties",
+          "mergedParagraphProperties",
+        ].some((key) => {
+          const properties = operation[key];
+          return properties !== null && typeof properties === "object" && "styleId" in properties;
+        }),
+    )
+  ) {
+    switch (pre.numberingSource.type) {
+      case "package":
+        model.numberingFacts = await numberingFactsOf(pre.numberingSource.bytes);
+        break;
+      case "live":
+        model.numberingFacts = numberingFactsFromDocument(pre.numberingSource.document);
+        break;
+      default: {
+        const unhandled: never = pre.numberingSource;
+        throw new Error(`Unhandled numbering source ${JSON.stringify(unhandled)}`);
+      }
+    }
+  }
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
   for (const operation of outcome.applied) expectOperation(model, operation);
