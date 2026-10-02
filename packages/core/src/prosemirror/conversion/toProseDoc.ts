@@ -693,6 +693,7 @@ function convertBlockCustomXml(
 
 const listRenderingDefinition = ({
   marker: _marker,
+  foldedMarkerSuffix: _foldedSuffix,
   implicitChildLevelAdvances: _advances,
   markerSecondSlotOffsetTwips: _secondSlot,
   ...definition

@@ -2255,7 +2255,8 @@ export function parseParagraph(
         }
         if (foldedMarkerSuffix.length > 0) {
           paragraph.content = filteredContent;
-          listRendering.marker = `${listRendering.marker}\t${foldedMarkerSuffix.join(" ")}`;
+          listRendering.foldedMarkerSuffix = foldedMarkerSuffix.join(" ");
+          listRendering.marker = `${listRendering.marker}\t${listRendering.foldedMarkerSuffix}`;
           const nextLevel = numbering.getLevel(numId, ilvl + 1);
           if (
             nextLevel?.pPr?.hangingIndent === true &&

@@ -243,6 +243,8 @@ export type ParagraphAttrs = {
    * next marker letter.
    */
   listImplicitChildLevelAdvances?: number;
+  /** Cached inline LISTNUM display text appended after the resolved list template. */
+  listFoldedMarkerSuffix?: string;
   /**
    * When the marker text contains a TAB separator, this column offset (in
    * twips) is where the slot after the tab should land — used to align an
@@ -462,6 +464,7 @@ export type ParagraphPropertyChangeAttrs = Omit<
         | "listMarkerSuffix"
         | "listMarkerAllCaps"
         | "listImplicitChildLevelAdvances"
+        | "listFoldedMarkerSuffix"
         | "listMarkerSecondSlotOffsetTwips"
         | "listLevelNumFmts"
         | "listLevelStarts"

@@ -73,6 +73,7 @@ export const CLEARED_LIST_RENDERING_ATTRS = Object.freeze({
   listMarkerSuffix: null,
   listMarkerAllCaps: null,
   listImplicitChildLevelAdvances: null,
+  listFoldedMarkerSuffix: null,
   listMarkerSecondSlotOffsetTwips: null,
   listLevelNumFmts: null,
   listLevelStarts: null,
@@ -142,6 +143,9 @@ function previousListAttrs(attrs: ParagraphAttrs): ParagraphAttrs | null {
     ...(previous.listMarker !== undefined ? { listMarker: previous.listMarker } : {}),
     ...(previous.listMarkerTemplate !== undefined
       ? { listMarkerTemplate: previous.listMarkerTemplate }
+      : {}),
+    ...(previous.listFoldedMarkerSuffix !== undefined
+      ? { listFoldedMarkerSuffix: previous.listFoldedMarkerSuffix }
       : {}),
     ...(previous.listMarkerHidden !== undefined
       ? { listMarkerHidden: previous.listMarkerHidden }
@@ -301,6 +305,7 @@ function formatNumberedMarker(counters: number[], level: number): string {
 
 export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState): string | null {
   const markerTemplate = attrs.listMarkerTemplate ?? attrs.listMarker;
+  const foldedMarkerSuffix = attrs.listFoldedMarkerSuffix ?? undefined;
   const level = paragraphNumberingLevel(attrs.numPr) ?? 0;
   if (!Number.isInteger(level) || level < 0 || level > MAX_LIST_LEVEL) {
     return null;
@@ -325,10 +330,15 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
 
   if (attrs.listIsBullet) {
     state.previousList = { abstractNumId: null, fromStyle: false, numId: null };
-    return convertBulletToUnicode(
-      attrs.listMarker ?? markerTemplate ?? "",
+    const marker = convertBulletToUnicode(
+      foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate !== undefined
+        ? attrs.listMarkerTemplate
+        : (attrs.listMarker ?? markerTemplate ?? ""),
       bulletMarkerFontName(attrs.listMarkerFormatting),
     );
+    return foldedMarkerSuffix !== undefined && attrs.listMarkerTemplate !== undefined
+      ? `${marker}\t${foldedMarkerSuffix}`
+      : marker;
   }
 
   const firstInstanceEncounter = !state.counters.has(numId);
@@ -420,12 +430,13 @@ export function advanceListMarker(attrs: ParagraphAttrs, state: ListCounterState
   const levelFormats =
     attrs.listLevelNumFmts ?? (attrs.listNumFmt ? [attrs.listNumFmt] : undefined);
   if (markerTemplate?.includes("%")) {
-    return resolveListTemplate({
+    const marker = resolveListTemplate({
       template: markerTemplate,
       counters,
       levelFormats,
       forceDecimal: attrs.listIsLegal,
     });
+    return foldedMarkerSuffix === undefined ? marker : `${marker}\t${foldedMarkerSuffix}`;
   }
   if (attrs.listMarker) {
     return attrs.listMarker;
