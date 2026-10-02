@@ -500,6 +500,20 @@ export const fileConformanceReport = async ({
       message: "Standing conformance result boundaries are incomplete.",
     });
   }
+  // Compare reporter-owned metadata so owner notes cannot change run ordering.
+  const previousReport = start < 0 ? "" : original.slice(start, end);
+  const previousRun = previousReport
+    .match(/^Latest run: https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/mu)
+    ?.at(1);
+  const incomingRun = context.runUrl
+    ?.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/actions\/runs\/(\d+)$/u)
+    ?.at(1);
+  if (
+    previousRun !== undefined &&
+    incomingRun !== undefined &&
+    BigInt(incomingRun) < BigInt(previousRun)
+  )
+    return;
   const body =
     start < 0
       ? `${original}\n\n${report}`

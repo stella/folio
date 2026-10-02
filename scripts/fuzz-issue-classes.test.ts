@@ -210,6 +210,34 @@ describe("class issue filing", () => {
     expect(fake.edits).toEqual([20]);
   });
 
+  test("split legacy aliases retain every issue regardless of record order", async () => {
+    for (const reverse of [false, true]) {
+      const first = finding(1, "expect(received).toEqual(expected)");
+      const second = finding(2, "expect(received).toEqual(expected)");
+      expect(second.record.marker.fingerprint).toBe(first.record.marker.fingerprint);
+      first.record.marker.primary = "0123456789abcdef";
+      const human = {
+        ...legacy(),
+        title: "Revision acceptance: accepted tracked batches differ from direct batches",
+        body: '<!-- fuzz-failure-state {"fingerprint":"0123456789abcdef"} -->',
+      };
+      const fake = fakeStore([human]);
+      const records = [first.record, second.record];
+      const combined = {
+        record: first.record,
+        seeds: [1, 2],
+        records: reverse ? records.toReversed() : records,
+      } satisfies Finding;
+      const result = await report(fake, [combined]);
+      expect(new Set(result.map(({ issue }) => issue))).toEqual(new Set(["#20", "#21"]));
+      expect(
+        result.every(({ fingerprint }) => fingerprint === first.record.marker.fingerprint),
+      ).toBe(true);
+      expect(fake.created).toEqual([21]);
+      expect(fake.edits).toEqual([20]);
+    }
+  });
+
   test("replay text cannot terminate hidden state and split an idempotent class", async () => {
     const fake = fakeStore();
     const item = finding(1);

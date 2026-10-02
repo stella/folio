@@ -181,7 +181,7 @@ export const fileClasses = async ({
   maxNewIssues = MAX_NEW_ISSUES,
 }: FileClassesOptions): Promise<Filed[]> => {
   const run = context.runUrl ?? `${context.source}:${context.sha ?? context.date}`;
-  const filed = new Map<string, string | null>();
+  const filed = new Map<string, Set<string | null>>();
   const groups = new Map<string, ClassGroup>();
   const hasUntracked = findings.some(
     ({ record: { marker } }) =>
@@ -193,7 +193,7 @@ export const fileClasses = async ({
     const tracked =
       known.get(fingerprint) ?? known.get(finding.record.marker.primary ?? fingerprint);
     if (tracked !== undefined) {
-      filed.set(fingerprint, tracked);
+      filed.set(fingerprint, new Set([tracked]));
       continue;
     }
     for (const record of finding.records) {
@@ -306,8 +306,13 @@ export const fileClasses = async ({
       issues.push(issue);
       created += 1;
     }
-    for (const fingerprint of fingerprints)
-      filed.set(fingerprint, issue === undefined ? null : `#${issue.number}`);
+    for (const fingerprint of fingerprints) {
+      const references = filed.get(fingerprint) ?? new Set<string | null>();
+      references.add(issue === undefined ? null : `#${issue.number}`);
+      filed.set(fingerprint, references);
+    }
   }
-  return [...filed].map(([fingerprint, issue]) => ({ fingerprint, issue }));
+  return [...filed].flatMap(([fingerprint, references]) =>
+    [...references].map((issue) => ({ fingerprint, issue })),
+  );
 };

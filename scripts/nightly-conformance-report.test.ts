@@ -131,6 +131,26 @@ test("marker matches anywhere in the body independently of the title", async () 
   expect(issues.at(0)?.state).toBe("closed");
 });
 
+test("out-of-order runs never replace or reopen newer evidence", async () => {
+  for (const state of ["open", "closed"] as const) {
+    for (const olderRun of ["12345678900", "9999999999"]) {
+      const failures = [unparsedFailure("conformance")];
+      const body = `<!-- standing-conformance -->\n\n${conformanceReportBody(failures, context)}`;
+      const { store, writes, issues } = fakeStore([
+        { number: 1404, title: "Tracker", body, state, closedAt: null },
+      ]);
+      await fileConformanceReport({
+        failures: [],
+        context: { ...context, runUrl: `https://github.com/stella/folio/actions/runs/${olderRun}` },
+        store,
+      });
+      expect(writes).toEqual([]);
+      expect(issues.at(0)?.body).toBe(body);
+      expect(issues.at(0)?.state).toBe(state);
+    }
+  }
+});
+
 test("missing or ambiguous standing markers never create or update an issue", async () => {
   for (const count of [0, 2]) {
     const { store, writes } = fakeStore(
