@@ -131,7 +131,7 @@ const HTML_CELL_INLINE_TAGS = new Set([
 ]);
 
 const inlineTokens = (token: Token) => {
-  if (token.tokens === undefined) {
+  if (!("tokens" in token) || token.tokens === undefined) {
     throw new Error(`Markdown token ${token.type} is missing inline tokens`);
   }
   return token.tokens;
