@@ -330,14 +330,18 @@ test("canonical structural and formatting hooks survive save and reopen", async 
   }
 });
 
-test("canonical structural gestures and toolbar operations preserve each intermediate history state", async ({ page }) => {
+test("canonical structural gestures and toolbar operations preserve each intermediate history state", async ({
+  page,
+}) => {
   test.setTimeout(90_000);
   const source = [...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "ab" })))];
   for (const port of [reactPort, vuePort]) {
     await page.goto(`http://localhost:${port}/?session=canonical`);
     await page.waitForSelector(".layout-page");
     const reload = async () => {
-      expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(true);
+      expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
+        true,
+      );
       await select(page, 2);
     };
     const undoExactly = async (before: Awaited<ReturnType<typeof snapshot>>) => {
@@ -364,9 +368,14 @@ test("canonical structural gestures and toolbar operations preserve each interme
       expect(inserted?.document?.package.document.content).toHaveLength(1);
       const paragraph = inserted?.document?.package.document.content.at(0);
       if (paragraph?.type !== "paragraph") throw new TypeError("Expected break paragraph.");
-      const breaks = paragraph.content.flatMap((run) => run.type === "run" ? run.content.filter((leaf) => leaf.type === "break") : []);
+      const breaks = paragraph.content.flatMap((run) =>
+        run.type === "run" ? run.content.filter((leaf) => leaf.type === "break") : [],
+      );
       expect(breaks).toHaveLength(1);
-      expect(breaks.at(0)).toMatchObject({ type: "break", breakType: shortcut === "Shift+Enter" ? "textWrapping" : "page" });
+      expect(breaks.at(0)).toMatchObject({
+        type: "break",
+        breakType: shortcut === "Shift+Enter" ? "textWrapping" : "page",
+      });
       await undoExactly(before);
     }
 
@@ -388,7 +397,10 @@ test("canonical structural gestures and toolbar operations preserve each interme
     const beforeToolbar = await snapshot(page);
     await page.getByRole("button", { name: "Bold", exact: true }).click();
     const bold = (await snapshot(page))?.document?.package.document.content.at(0);
-    expect(bold?.type === "paragraph" && bold.content.some((run) => run.type === "run" && run.formatting?.bold)).toBe(true);
+    expect(
+      bold?.type === "paragraph" &&
+        bold.content.some((run) => run.type === "run" && run.formatting?.bold),
+    ).toBe(true);
     await undoExactly(beforeToolbar);
 
     await reload();
@@ -399,14 +411,20 @@ test("canonical structural gestures and toolbar operations preserve each interme
     const nested = await snapshot(page);
     await page.keyboard.press("Shift+Tab");
     const outdented = (await snapshot(page))?.document?.package.document.content.at(0);
-    expect(outdented?.type === "paragraph" && outdented.formatting?.numPr?.kind === "reference" && (outdented.formatting.numPr.ilvl ?? 0)).toBe(0);
+    expect(
+      outdented?.type === "paragraph" &&
+        outdented.formatting?.numPr?.kind === "reference" &&
+        (outdented.formatting.numPr.ilvl ?? 0),
+    ).toBe(0);
     await undoExactly(nested);
     await page.keyboard.type("item");
     await select(page, 1);
     const beforeListBackspace = await snapshot(page);
     await page.keyboard.press("Backspace");
     const removed = (await snapshot(page))?.document?.package.document.content.at(0);
-    expect(removed?.type === "paragraph" && removed.formatting?.numPr?.kind === "reference").toBe(false);
+    expect(removed?.type === "paragraph" && removed.formatting?.numPr?.kind === "reference").toBe(
+      false,
+    );
     await undoExactly(beforeListBackspace);
 
     await reload();
