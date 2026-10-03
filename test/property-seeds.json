@@ -755,5 +755,10 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "test/consumer-scenarios/scenarios/formatting-oracle.property.test.ts::range formatting composes with restyling without permitting direct formatting leaks": [
+    {
+      "seed": 18568444
+    }
   ]
 }
