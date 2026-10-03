@@ -16,6 +16,8 @@
  */
 
 import { computed, ref, type ComputedRef, type Ref } from "vue";
+import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import type { EditorView } from "prosemirror-view";
 import type { Comment } from "@stll/folio-core/types/content";
 import type { Document } from "@stll/folio-core/types/document";
@@ -34,6 +36,7 @@ import {
 export type UseCommentManagementOptions = {
   editorView: Ref<EditorView | null>;
   getDocument: () => Document | null;
+  editor?: FolioEditor;
   author: () => string;
   /** Reader for the controlled `comments` prop (undefined => uncontrolled). */
   commentsProp: () => Comment[] | undefined;
@@ -173,6 +176,10 @@ export function useCommentManagement(
   function resolveChangeById(revisionId: number, accept: boolean): void {
     const view = options.editorView.value;
     if (!view) return;
+    if (options.editor?.getCanonicalDocument()) {
+      options.editor.resolveCanonicalRevisions([revisionId], accept ? "accept" : "reject");
+      return;
+    }
     // Revision-scoped: acceptAIEditRevision/rejectAIEditRevision both locate
     // the range for this specific revisionId AND thread it through as the
     // match set, so only marks/structural changes carrying this id resolve.
@@ -195,13 +202,23 @@ export function useCommentManagement(
   function handleAcceptChange(from: number, to: number): void {
     const view = options.editorView.value;
     if (!view) return;
-    acceptChange(from, to)(view.state, view.dispatch);
+    if (
+      resolveCanonicalReviewRange({ editor: options.editor, from, to, resolution: "accept" }) ===
+      null
+    ) {
+      acceptChange(from, to)(view.state, view.dispatch);
+    }
   }
 
   function handleRejectChange(from: number, to: number): void {
     const view = options.editorView.value;
     if (!view) return;
-    rejectChange(from, to)(view.state, view.dispatch);
+    if (
+      resolveCanonicalReviewRange({ editor: options.editor, from, to, resolution: "reject" }) ===
+      null
+    ) {
+      rejectChange(from, to)(view.state, view.dispatch);
+    }
   }
 
   return {

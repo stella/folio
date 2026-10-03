@@ -1,5 +1,5 @@
 /** Tracked replacement fragments share deletion's validation and physical-id pool. */
-import { Result } from "better-result";
+import { Result, panic } from "better-result";
 
 import type { Document, Paragraph } from "../model/document";
 import { storyBody, storyParagraphs } from "./blocks";
@@ -8,7 +8,47 @@ import { defaultInsertionGap } from "./leaves";
 import { gapAfterInserted } from "./inline";
 import { appendTrackedDeletion, createTrackedPlan, type PlanTrackedDeletionOptions } from "./plan";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
-import { DOCUMENT_OP_TYPES, SPLIT_HALVES, type DocumentOp, type InlineSlice } from "./types";
+import {
+  DOCUMENT_OP_TYPES,
+  SPLIT_HALVES,
+  type DocumentOp,
+  type InlineSlice,
+  type TextPosition,
+} from "./types";
+
+type RangeStartAfterDeletionOptions = {
+  before: Document;
+  after: Document;
+  from: TextPosition;
+  to: TextPosition;
+};
+
+/** Own inserted marks can be cancelled, moving the prefix to its next live paragraph. */
+export const rangeStartAfterDeletion = ({
+  before,
+  after,
+  from,
+  to,
+}: RangeStartAfterDeletionOptions): TextPosition => {
+  const original = storyParagraphs(storyBody(before, from.story));
+  const first = original.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
+  );
+  const last = original.findIndex(
+    ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(to.blockId),
+  );
+  const live = new Set(
+    storyParagraphs(storyBody(after, from.story)).map(({ paragraph }) =>
+      idKey(paragraph.paraId ?? ""),
+    ),
+  );
+  const retained = original
+    .slice(first, last + 1)
+    .find(({ paragraph }) => live.has(idKey(paragraph.paraId ?? "")));
+  if (retained === undefined)
+    panic("A successful range deletion must retain a selected paragraph.");
+  return { ...from, blockId: retained.paragraph.paraId ?? from.blockId };
+};
 
 /**
  * A range replacement fragment: newly identified paragraphs before its last
@@ -59,11 +99,17 @@ export const planTrackedReplace = (
   if (deleted.isErr()) return Result.err(deleted.error);
   // Tracking leaves selected content in place. Every fragment is inserted at
   // its leading boundary; splitting moves the old mark to the original half.
-  let at = from;
+  let at = rangeStartAfterDeletion({
+    before: document,
+    after: plan.document(),
+    from,
+    to: options.to,
+  });
   for (const paragraph of replacement.paragraphs) {
+    const sourceBlockId = at.blockId;
     const source = storyParagraphs(storyBody(plan.document(), from.story)).find(
       ({ paragraph: sourceParagraph }) =>
-        idKey(sourceParagraph.paraId ?? "") === idKey(from.blockId),
+        idKey(sourceParagraph.paraId ?? "") === idKey(sourceBlockId),
     );
     if (source === undefined) return refuse("The replacement's source paragraph does not exist.");
     const gap =
@@ -97,7 +143,7 @@ export const planTrackedReplace = (
       revision,
     });
     if (split.isErr()) return Result.err(split.error);
-    at = { story: from.story, blockId: from.blockId, offset: 0, zeroWidthBefore: 0 };
+    at = { story: from.story, blockId: at.blockId, offset: 0, zeroWidthBefore: 0 };
   }
   if (replacement.tail.content.length > 0) {
     const inserted = plan.append({

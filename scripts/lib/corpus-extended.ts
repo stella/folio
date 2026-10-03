@@ -17,6 +17,7 @@ import { Result, panic } from "better-result";
 import { classifyCorpusFile } from "./corpus-classify";
 import {
   type CorpusInvariantInput,
+  type CorpusInvariantOutcome,
   type ExtendedCorpusInvariant,
   EXTENDED_CORPUS_INVARIANTS,
   isZeroFailure,
@@ -63,7 +64,7 @@ const INVARIANT_RUNNERS = {
   [EXTENDED_CORPUS_INVARIANTS.pipelineTotality]: runPipelineTotalityInvariant,
 } as const satisfies Record<
   RunnableInvariant,
-  (input: CorpusInvariantInput) => Promise<{ failures: CorpusFailure[]; timings: StageTimings }>
+  (input: CorpusInvariantInput) => Promise<CorpusInvariantOutcome>
 >;
 
 /** Cheapest first, so a budget that runs out costs the least evidence. */

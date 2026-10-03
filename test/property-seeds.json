@@ -1,4 +1,12 @@
 {
+  "packages/core/src/docx/joinSeamSaveFixedPoint.property.test.ts::equivalent nested formatting spellings merge and undo restores their exact records": [
+    {
+      "seed": -348453513,
+      "path": "0:0:0:0",
+      "note": "Build run-format fixtures through operations to retain consistent body section projections",
+      "date": "2026-10-03"
+    }
+  ],
   "packages/core/src/controller/canonicalUndoGrouping.test.ts::generated intent sequences restore every group exactly without projection adjacency": [
     {
       "seed": -755367587,
@@ -298,13 +306,13 @@
     {
       "seed": -1487704601,
       "path": "31:0:0:0:0:0:0:0:0:1:0:0:1:1:1:1:1:1:1:3:3:5:6:7:9:9:12",
-      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:\u2026, which counted the two example scenarios)",
+      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:…, which counted the two example scenarios)",
       "date": "2026-09-29"
     },
     {
       "seed": -315487089,
       "path": "14:4:5:3:14:14:14:4:13:14:14:14:14:5:4:2:5:5:5:3:4:4:4:4:2:2:2:2:5:3:9:38:38:39:42:54:44:55:55:62:70:71:72:72:102:104:110:119:124:125:139:167:167:181:47:194:205:190:204:204:204:205:226:208:210:207:209:208:207:209:208:208:207:207:207:210:209:208:208:208:207:211:207:207:208:210:212:209",
-      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:\u2026, which counted the two example scenarios)",
+      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:…, which counted the two example scenarios)",
       "date": "2026-09-30"
     }
   ],
@@ -320,6 +328,24 @@
       "path": "2789:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:4:7:8:7:8:8:8:8:8:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:13:39:0:5:38:32:31:33:32:31:33:31:31:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
       "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
       "date": "2026-09-30"
+    },
+    {
+      "seed": -618669412,
+      "path": "681:0:0:0:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:4:5:4:5:5:5:5:6:5:5:5:5:5:5:7:7:7:7:8:9:8:9:8:8:8:8:8:8:8:8:8:9:8:9:9:8:10:8:11:9:12:9:12:9:8:8:8:8:8:15:31:38:31:31:31:31:31:31:31:31:31:31:31:32:31:31:32:31:31:33:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
+      "note": "Accepting a tracked join must preserve the trailing paragraph formatting.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1428670990,
+      "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1013725445,
+      "path": "7:0:0:0:0:0:0:1:0:2:2:2:2:2:3:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:34:34:34:34:34:34:34:39:41:43:41:2:40:40:40:40:35:36:34:34:34:34:34:34:34:34:34:34:34:34:34:36:34:34:34:34:34:34:34:34",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::a planned tracked deletion removes only the author's own insertions": [
@@ -334,6 +360,12 @@
       "path": "708:0:0:0:0:0:0:1:5:4:4:4:4:6:6:7:8:8:8:8:8:11:10:10:11:12:13:13:13:13:14:14:18:16:16:16:16:16:16:16:16:17:16:17:42:42:42:42:42:42:42:42:42:42:42:1:2:2:3:3:32:30:31:29:29:29:30:29:29:29:35:29:30:29:32:32:32:32:32:32:32:32:32:33:33:33:33:33:33:33:33:33:33:33:33:33",
       "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
       "date": "2026-09-30"
+    },
+    {
+      "seed": 1316760003,
+      "path": "362:0:0:0:0:0:0:5:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4:5:4:4:6:4:4:8:4:5:5:4:4:6:6:4:15:7:9:8:7:9:8:7:7:9:7:7:7:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Own moveTo content is an added revision just like insertion.",
+      "date": "2026-10-02"
     }
   ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::L3: resolving a run's revisions at once equals resolving each operation's in turn": [
@@ -510,11 +542,15 @@
       "date": "2026-09-30"
     }
   ],
-  "packages/docx-core/src/ops/__tests__/rangePlanning.property.test.ts::cross-paragraph deletion and replacement plans satisfy generated review laws": [
+  "test/canonical-session.fuzz.ts::canonical property flows preserve projection, exact history and saved content": [
     {
-      "seed": 1580815063,
-      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
-      "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
+      "seed": -347416988,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": -965049575,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
       "date": "2026-10-01"
     }
   ],
@@ -621,16 +657,37 @@
       "date": "2026-10-02"
     }
   ],
-  "test/canonical-session.fuzz.ts::canonical property flows preserve projection, exact history and saved content": [
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
     {
-      "seed": -347416988,
-      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "seed": 1364722648,
+      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists",
       "date": "2026-10-01"
     },
     {
-      "seed": -965049575,
-      "note": "Canonical generated fixtures require paragraph identities before serialization",
-      "date": "2026-10-01"
+      "seed": 1364722648,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0",
+      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1364722648,
+      "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
+    }
+  ],
+  "packages/core/src/controller/canonicalSession.test.ts::generated replacements lower tracked batches and resolution shares exact inverse history": [
+    {
+      "seed": 1520856127,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:4:0:0:0:0:1",
+      "note": "Direct and tracked text input must insert the same authored run without copying source run XML attributes.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1572780071,
+      "path": "2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:2:3:0:0:0:0:0:1:0:0:4:1:1:2",
+      "note": "Review equivalence canonicalizes adjacent equivalent runs while exact undo retains authored structure.",
+      "date": "2026-10-02"
     }
   ],
   "packages/core/src/controller/canonicalSession.test.ts::canonical input sequences keep the projection, inverse history and refusal atomic": [
@@ -647,6 +704,22 @@
       "path": "0:1:0:0:1:2:2",
       "note": "Interleaved shards must preserve deterministic file-cost ordering in the family census",
       "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::an operation's inverse restores the document exactly": [
+    {
+      "seed": 684444476,
+      "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
+      "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/rangePlanning.property.test.ts::cross-paragraph deletion and replacement plans satisfy generated review laws": [
+    {
+      "seed": 1580815063,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
+      "date": "2026-10-01"
     }
   ]
 }

@@ -190,3 +190,47 @@ test("tracked deletion refuses existing inline review and missing physical ids",
   });
   expect(missing.isErr() && missing.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.NEEDS_NEW_IDS);
 });
+
+test.each(["body", "cell"] as const)(
+  "terminal deletion folds a pending paragraph review without replacing its original baseline in a %s",
+  (container) => {
+    const pending = {
+      type: "paragraphPropertyChange" as const,
+      info: { id: 7, author: "Original author" },
+      previousFormatting: { alignment: "start" as const },
+    };
+    const content = [
+      { ...paragraph("00000001", "kept"), formatting: { alignment: "center" } },
+      {
+        ...paragraph("00000002", "deleted"),
+        formatting: { alignment: "end" },
+        propertyChanges: [pending],
+      },
+    ] satisfies Paragraph[];
+    const original = documentOf(container === "body" ? content : [cell(content)]);
+    const tracked = apply(original, deletion(["00000002"]));
+    const survivor = storyParagraphs(tracked.document.package.document).at(-1)?.paragraph;
+    expect(survivor?.formatting).toEqual({ alignment: "center" });
+    expect(survivor?.propertyChanges).toEqual([
+      {
+        ...pending,
+        info: { id: 7, author: "Reviewer", date: "2026-02-03T04:05:06Z" },
+      },
+    ]);
+    const rejected = apply(tracked.document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [7],
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    expect(
+      storyParagraphs(rejected.document.package.document).at(-1)?.paragraph.formatting,
+    ).toEqual({ alignment: "start" });
+    expect(applyDocumentOps(tracked.document, tracked.inverse).unwrap().document).toStrictEqual(
+      original,
+    );
+    expect(applyDocumentOps(rejected.document, rejected.inverse).unwrap().document).toStrictEqual(
+      tracked.document,
+    );
+  },
+);

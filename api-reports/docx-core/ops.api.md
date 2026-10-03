@@ -63,6 +63,9 @@ export type BlockInsertionPoint = {
 };
 
 // @public
+export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
+
+// @public
 export const createClient: (document: Document_2) => {
     enqueue: (batch: DocumentBatch) => Result<DocumentBatch, BatchRejection>;
     nextSubmission: () => DocumentBatch | undefined;
@@ -73,6 +76,16 @@ export const createClient: (document: Document_2) => {
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
     readonly notices: readonly ClientNotice[];
+};
+
+// @public
+export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+    revisionId: number;
+    newBlockId: string;
+    newIds: {
+        revision: number[];
+        control: number[];
+    };
 };
 
 // @public
@@ -237,6 +250,38 @@ export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP
 export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
+export type EditorIntent = {
+    type: "replaceText";
+    from: TextPosition;
+    to: TextPosition;
+    text: string;
+} | (SplitParagraphIntent & {
+    newBlockId: string;
+}) | {
+    type: "joinParagraphs";
+    story: OpStory;
+    blockId: string;
+    nextBlockId: string;
+};
+
+// @public
+export type EditorIntentMode = {
+    type: "editing";
+    newIds?: NewIds;
+} | {
+    type: "suggesting";
+    revision: RevisionStamp;
+    newIds: NewIds;
+};
+
+// @public
+export const editorParagraphGroups: (document: Document_2, story: OpStory) => {
+    blockId: string;
+    paragraphs: Paragraph[];
+    text: string;
+}[];
+
+// @public
 export const EMPTY_PROPERTY_SETS: Readonly<{
     readonly OMIT: "omit";
     readonly KEEP: "keep";
@@ -247,6 +292,9 @@ export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_P
 
 // @public (undocumented)
 export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
+
+// @public
+export function formattingEquals(a: ComparedTextFormatting | undefined, b: ComparedTextFormatting | undefined): boolean;
 
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null; };
@@ -324,6 +372,9 @@ export type InsertTextOp = {
 };
 
 // @public
+export function isTextOnlyRun(run: Run): boolean;
+
+// @public
 export type JoinBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
     story: OpStory;
@@ -333,6 +384,8 @@ export type JoinBlocksOp = {
     survivor?: SplitHalf;
     expectedRetired?: SplitParagraphFields;
     expectedSurvivor?: ParagraphReviewFields;
+    sectionBoundary?: typeof SECTION_BOUNDARY_POLICIES.REMOVE;
+    sectionView?: SectionViewChange;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
@@ -346,6 +399,9 @@ export type JoinInlineOp = {
 
 // @public
 export const MAX_BATCH_WIRE_BYTES: number;
+
+// @public
+export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
 
 // @public
 export type NewIds = {
@@ -396,7 +452,13 @@ export type ParagraphReviewFields = {
 };
 
 // @public
+export const paragraphVisibleText: (paragraph: Paragraph) => string;
+
+// @public
 export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRejection>;
+
+// @public
+export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
 
 // @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
@@ -441,6 +503,8 @@ export type ReplaceBlocksOp = {
     story: OpStory;
     expected: readonly Paragraph[];
     blocks: readonly Paragraph[];
+    sectionBoundaries?: typeof SECTION_BOUNDARY_POLICIES.REPLACE;
+    sectionView?: SectionViewChange;
 };
 
 // @public
@@ -489,6 +553,9 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public
+export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;
 
 // @public (undocumented)
 export const sameStory: (left: OpStory, right: OpStory) => boolean;
@@ -575,6 +642,8 @@ export type SplitBlockOp = {
     newHalf?: SplitHalf;
     newParagraph?: SplitParagraphFields;
     firstMark?: ParagraphMarkChange;
+    firstSectionProperties?: SectionProperties;
+    sectionView?: SectionViewChange;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };

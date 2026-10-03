@@ -924,8 +924,9 @@ export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): Docum
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
       // Mostly a paragraph whose mark carries no change: a tracked join refuses the others.
       const unmarked = seed.first % 4 === 0 ? undefined : unmarkedJoin(document, seed);
-      // A tracked join always leaves the second paragraph.
-      const join = { ...op, ...unmarked, ...ids, revision };
+      // A tracked join records only a boundary deletion and leaves the second paragraph.
+      // Positive merge depths are covered by the refusal invariant, not successful-op laws.
+      const join = { ...op, ...unmarked, ...ids, depth: 0, revision };
       Reflect.deleteProperty(join, "survivor");
       return join;
     }

@@ -1100,6 +1100,7 @@ const trackedChanges = computed<TrackedChangeEntry[]>(() => trackedChangesResult
 // wired to core's comment ops. `onCommentsChange` fans out to the host prop and
 // the Vue-idiomatic `comments-change` emit.
 const commentManagement = useCommentManagement({
+  editor,
   editorView,
   getDocument,
   author: () => props.author,

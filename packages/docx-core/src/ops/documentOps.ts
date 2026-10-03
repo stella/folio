@@ -9,6 +9,16 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  */
 
 export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
+export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
+export {
+  compileEditorIntent,
+  createEditorIntentIdAllocator,
+  paragraphVisibleText,
+  physicalOffsetAtVisibleOffset,
+  editorParagraphGroups,
+  type EditorIntent,
+  type EditorIntentMode,
+} from "./editorIntent";
 export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
 export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
 export { planTrackedReplace, type PlanTrackedReplaceOptions } from "./rangeReplacement";

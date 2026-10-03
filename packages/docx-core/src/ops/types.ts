@@ -44,9 +44,22 @@ import type {
   Section,
 } from "../model/document";
 
+/** JSON-safe section metadata; content is derived from the body's canonical blocks. */
+export type SectionViewEntry = {
+  properties: SectionProperties;
+  headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+  footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+};
+
+type SectionViewChange = {
+  expected: readonly SectionViewEntry[];
+  restore: readonly SectionViewEntry[];
+};
+
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 5 adds explicit section-boundary removal/restoration.
  * Version 5 adds header/footer/note story addresses and exact lifecycle operations.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
  * whole-table operations with their exact structural inverse, terminal insertion,
@@ -175,6 +188,12 @@ export type SplitParagraphFields = Omit<
   Paragraph,
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
+
+/** Explicit structural and review policies for editor intent compilation. */
+export const SECTION_BOUNDARY_POLICIES = Object.freeze({
+  REMOVE: "remove",
+  REPLACE: "replace",
+} as const);
 
 /** The operation kinds of schema version 5. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
@@ -351,7 +370,8 @@ export type SetRunPropsOp = {
  *
  * With `revision`, the paragraph records a tracked property change
  * (`w:pPrChange`) whose previous formatting is its own property set before
- * the patch, or keeps the one it already carries. A property change holds
+ * the patch, or folds into the one it already carries: its original baseline and
+ * id stay, and its author/date become the latest stamp. A property change holds
  * paragraph properties only, not the paragraph mark's run properties, so a
  * tracked patch of {@link PARAGRAPH_MARK_FORMATTING_KEYS} is refused.
  */
@@ -418,6 +438,9 @@ export type SplitBlockOp = {
   newHalf?: SplitHalf;
   newParagraph?: SplitParagraphFields;
   firstMark?: ParagraphMarkChange;
+  /** Exact inverse restoration of a removed section boundary on the first half. */
+  firstSectionProperties?: SectionProperties;
+  sectionView?: SectionViewChange;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };
@@ -429,8 +452,9 @@ export type SplitBlockOp = {
  * run properties, section break, tracked change and the pending property
  * changes. It keeps the identity and own fields of the
  * `survivor` half, by default the second, and the other's id is retired.
- * `depth` merges that many levels of the records meeting at the join, as
- * {@link JoinInlineOp} does.
+ * An absent or zero `depth` merges the two plain runs at the seam when the
+ * parser would merge them. A positive `depth` merges that many levels of the
+ * records meeting at the join, as {@link JoinInlineOp} does.
  *
  * `expectedRetired` states the own fields of the paragraph the join retires,
  * and `expectedSurvivor` the review fields of the one it keeps, which the
@@ -443,7 +467,8 @@ export type SplitBlockOp = {
  * the direct join would give it as a tracked property change. Accepting removes the mark, which
  * leaves the second paragraph with the first's content before its own: what
  * the direct join leaves. A tracked join always leaves the second, so
- * `survivor` must then be absent or `second`.
+ * `survivor` must then be absent or `second`, and `depth` absent or zero: the
+ * paragraph mark cannot record an inline merge depth.
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
@@ -454,6 +479,9 @@ export type JoinBlocksOp = {
   survivor?: SplitHalf;
   expectedRetired?: SplitParagraphFields;
   expectedSurvivor?: ParagraphReviewFields;
+  /** Explicitly remove the first paragraph's section boundary with its mark. */
+  sectionBoundary?: typeof SECTION_BOUNDARY_POLICIES.REMOVE;
+  sectionView?: SectionViewChange;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };
@@ -516,6 +544,9 @@ export type ReplaceBlocksOp = {
   story: OpStory;
   expected: readonly Paragraph[];
   blocks: readonly Paragraph[];
+  /** Exact structural replacement may intentionally change section boundaries. */
+  sectionBoundaries?: typeof SECTION_BOUNDARY_POLICIES.REPLACE;
+  sectionView?: SectionViewChange;
 };
 
 /**
