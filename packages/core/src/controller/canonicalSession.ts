@@ -646,6 +646,7 @@ class CanonicalSession {
       this.allocatedBlockIds.add(blockId.toUpperCase());
     this.advanceBlockId();
     this.styles = styles == null ? styles : structuredClone(styles);
+    this.rememberSources(document);
   }
 
   setMode(mode: CanonicalSessionMode): void {
@@ -740,6 +741,13 @@ class CanonicalSession {
             );
       return paragraph !== undefined && hasIdentity(paragraph);
     });
+  }
+
+  private rememberSources(document: Document): void {
+    for (const block of document.package.document.content) {
+      if (block.type === "paragraph" && block.paraId !== undefined)
+        this.sourceOwners.set(block.paraId, block);
+    }
   }
 
   get document(): Document {
