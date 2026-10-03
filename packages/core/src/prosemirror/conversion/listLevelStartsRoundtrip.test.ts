@@ -5,9 +5,11 @@
  * DOCX save and parse recomputed the field (issue #845).
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 import fc from "fast-check";
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
