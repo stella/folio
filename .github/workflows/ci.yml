@@ -232,6 +232,9 @@ jobs:
       - name: Dependency audit
         run: bun run audit
 
+      - name: Static source guards
+        run: bun run test:source-guards
+
       - name: Lint
         run: bun run lint
 
