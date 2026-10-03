@@ -7,6 +7,7 @@ import { assertExactModel } from "../../../../../test/exactModel";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, ParagraphContent, Run } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
+import { storyBody, storyParagraphs } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { planTrackedReplace } from "../rangeReplacement";
 import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "../leaves";
@@ -105,6 +106,25 @@ const lengthOf = (document: Document, blockId = "00000001"): number => {
   );
   if (paragraph?.type !== "paragraph") panic("The fixture must contain its paragraph.");
   return paragraphLogicalText(paragraph).length;
+};
+
+const authoredHyperlinkBookmarkNames = (document: Document): string[][] => {
+  const names: string[][] = [];
+  const visit = (nodes: readonly ParagraphContent[]): void => {
+    for (const node of nodes) {
+      if (node.type === "hyperlink") {
+        names.push(
+          node.children
+            .filter((child) => child.type === "bookmarkStart")
+            .map((child) => child.name),
+        );
+      }
+      if (isInlineContainer(node)) visit(childrenOf(node));
+    }
+  };
+  for (const { paragraph } of storyParagraphs(storyBody(document, OP_STORIES.MAIN)))
+    visit(paragraph.content);
+  return names;
 };
 
 const expectInverse = (applied: AppliedDocumentOp, original: Document): void => {
@@ -260,6 +280,103 @@ test("generated same-author insertion bursts preserve exact authored seams", () 
     { numRuns: 50 },
   );
   expect([...refusals]).toStrictEqual([]);
+});
+
+test("generated replacement preserves authored hyperlink cuts after emptying an unselected wrapper", () => {
+  assertProperty(
+    fc.property(fc.constantFrom("edited", "revised"), (replacementText) => {
+      for (const wrapper of ["insertion", "moveTo"] as const) {
+        for (const location of ["body", "table"] as const) {
+          const oldWrapper = {
+            type: wrapper,
+            info: { id: 1, author: "Earlier" },
+            content: [
+              {
+                type: "mathEquation" as const,
+                display: "inline" as const,
+                ommlXml: "<m:oMath><m:r><m:t>x</m:t></m:r></m:oMath>",
+                plainText: "x",
+              },
+            ],
+          };
+          const paragraph = {
+            type: "paragraph" as const,
+            paraId: "00000001",
+            content: [
+              {
+                type: "hyperlink" as const,
+                anchor: "same-target",
+                children: [{ type: "bookmarkStart" as const, id: 1, name: "left" }],
+              },
+              oldWrapper,
+              {
+                type: "hyperlink" as const,
+                anchor: "same-target",
+                children: [
+                  { type: "bookmarkStart" as const, id: 2, name: "right" },
+                  { type: "run" as const, content: [{ type: "text" as const, text: "tail" }] },
+                ],
+              },
+            ],
+          };
+          const content =
+            location === "body"
+              ? [paragraph]
+              : [
+                  {
+                    type: "table" as const,
+                    rows: [
+                      {
+                        type: "tableRow" as const,
+                        cells: [{ type: "tableCell" as const, content: [paragraph] }],
+                      },
+                    ],
+                  },
+                ];
+          const original = normalizeForOps({ package: { document: { content } } });
+          const intent = {
+            type: "replaceText",
+            from: position({ offset: 0 }),
+            to: position({ offset: 1 }),
+            text: replacementText,
+          } as const satisfies EditorIntent;
+          const allocation = allocateEditorIntentIds(original, intent);
+          const refusals = new Map<DocumentOpRefusalReason, number>();
+          const direct = compile({
+            document: original,
+            intent,
+            mode: "editing",
+            allocation,
+            refusals,
+          });
+          const tracked = compile({
+            document: original,
+            intent,
+            mode: "suggesting",
+            allocation,
+            refusals,
+          });
+          const accepted = resolve({
+            document: tracked.document,
+            revisionIds: tracked.revisions,
+            decision: REVISION_DECISIONS.ACCEPT,
+          });
+          expect(authoredHyperlinkBookmarkNames(accepted)).toStrictEqual([["left"], ["right"]]);
+          expect(authoredHyperlinkBookmarkNames(direct.document)).toStrictEqual([
+            ["left"],
+            ["right"],
+          ]);
+          assertFreshIdentityEquivalent({
+            actual: accepted,
+            expected: direct.document,
+            original,
+            allocated: allocation.newIds,
+          });
+        }
+      }
+    }),
+    { numRuns: 20 },
+  );
 });
 
 test("generated deletion cuts accept and reject at the recorded wrapper depth", () => {
