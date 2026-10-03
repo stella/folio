@@ -128,6 +128,36 @@ describe("CI plan", () => {
     );
   });
 
+  test("PR source guards retain their required scans without a depth condition", () => {
+    const root = JSON.parse(readFileSync(path.join(REPO_ROOT, "package.json"), "utf8"));
+    const command = root.scripts["test:source-guards"];
+    expect(command.startsWith("bun test ")).toBe(true);
+    const guards = command.slice("bun test ".length).split(/\s+/u);
+    const required = [
+      "scripts/property-test-budgets.test.ts",
+      "scripts/rust-boundaries.test.ts",
+      "scripts/on-off-element-writer.test.ts",
+      "scripts/on-off-spelling.test.ts",
+      "scripts/consumer-scenario-dependencies.test.ts",
+      "scripts/adapter-layout-timing.test.ts",
+      "scripts/specification-sources.test.ts",
+      "scripts/ci-plan.test.ts",
+    ];
+    expect(new Set(guards).size).toBe(guards.length);
+    const discovered = new Set(discoverTestSuites().flatMap(({ files }) => files));
+    for (const file of guards) expect(discovered.has(file)).toBe(true);
+    for (const file of required) expect(guards).toContain(file);
+    const steps = jobs["lint"]?.steps;
+    if (!Array.isArray(steps)) throw new TypeError("Missing source guard steps");
+    const guardSteps = steps.filter(
+      (step) => isRecord(step) && step["run"] === "bun run test:source-guards",
+    );
+    expect(guardSteps).toEqual([
+      { name: "Static source guards", run: "bun run test:source-guards" },
+    ]);
+    expect(jobs["lint"]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
+  });
+
   test("discovery includes new nested test files under every command root", () => {
     const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-shards-"));
     try {
