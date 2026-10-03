@@ -55,12 +55,13 @@ const PINNED_PARA_IDS = new WeakMap<Uint8Array, ReadonlySet<string>>();
  * The paraIds the model behind `bytes` carried, rather than ids
  * `ensureParaIds` minted from the serialized bytes (a note separator) or a
  * reviewer edit minted while the fixture was built. `bytes` must be the
- * object `packDocument` or a fixture returned.
+ * object `packFixture` or a fixture returned (a reviewer-built fixture
+ * carries the ids of the fixture it opened).
  */
 export const pinnedParaIdsOf = (bytes: Uint8Array): ReadonlySet<string> => {
   const pinned = PINNED_PARA_IDS.get(bytes);
   if (pinned === undefined) {
-    throw new TypeError("pinnedParaIdsOf: these bytes did not come from packDocument or a fixture");
+    throw new TypeError("pinnedParaIdsOf: these bytes are not a fixture packFixture returned");
   }
   return pinned;
 };
@@ -113,14 +114,23 @@ const pinParaIds = (source: FolioDocument): { document: FolioDocument; pinned: S
 };
 
 /**
- * `createDocx` + `ensureParaIds`, the recipe the published README gives,
- * on a copy of `source` whose story paragraphs carry pinned paraIds (see
- * `pinParaIds`), so `ensureParaIds` mints only the note separators the
- * serializer adds. `pinnedParaIdsOf` answers for the returned bytes.
+ * `createDocx` + `ensureParaIds`, the recipe the published README gives:
+ * `ensureParaIds` mints every paraId. For an ad-hoc document; a fixture a
+ * flow can name blocks of goes through `packFixture`.
  */
-export const packDocument = async (source: FolioDocument): Promise<Uint8Array> => {
+export const packDocument = async (document: FolioDocument): Promise<Uint8Array> =>
+  (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
+
+/**
+ * `packDocument` on a copy of `source` whose story paragraphs carry pinned
+ * paraIds (see `pinParaIds`), so `ensureParaIds` mints only the note
+ * separators the serializer adds; `pinnedParaIdsOf` answers for the
+ * returned bytes. Positional ids repeat across fixtures, so two unrelated
+ * fixtures share paraIds: never compare or merge them by paragraph identity.
+ */
+export const packFixture = async (source: FolioDocument): Promise<Uint8Array> => {
   const { document, pinned } = pinParaIds(source);
-  const bytes = (await ensureParaIds(new Uint8Array(await createDocx(document)))).docx;
+  const bytes = await packDocument(document);
   PINNED_PARA_IDS.set(bytes, pinned);
   return bytes;
 };
@@ -195,11 +205,11 @@ const PLAIN_MARKDOWN = [
 ].join("\n\n");
 
 /** Headings and paragraphs; no numbering part at all. */
-export const plainDocument = (): Promise<Uint8Array> => packDocument(fromMarkdown(PLAIN_MARKDOWN));
+export const plainDocument = (): Promise<Uint8Array> => packFixture(fromMarkdown(PLAIN_MARKDOWN));
 
 /** A bulleted, a numbered and a nested list (the Markdown numbering part). */
 export const listDocument = (): Promise<Uint8Array> =>
-  packDocument(
+  packFixture(
     fromMarkdown(
       [
         "# Delivery Terms",
@@ -244,7 +254,7 @@ export const styleNumberedDocument = (): Promise<Uint8Array> => {
   heading2.pPr = { ...heading2.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 0 }) };
   const heading3 = findStyle(document, "Heading3");
   heading3.pPr = { ...heading3.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 1 }) };
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** A clause numbered by a direct `w:numPr` next to plain body text. */
@@ -265,7 +275,7 @@ export const directNumberedDocument = (): Promise<Uint8Array> => {
       numPr: paragraphNumberingFromSlots({ numId: 7, ilvl: 0 }),
     };
   }
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** One decimal definition that no paragraph uses (instance 901, #1103). */
@@ -280,7 +290,7 @@ export const UNUSED_NUMBERING: Numbering = {
 export const unusedNumberingDocument = (): Promise<Uint8Array> => {
   const document = fromMarkdown(PLAIN_MARKDOWN);
   document.package.numbering = structuredClone(UNUSED_NUMBERING);
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** A Markdown table between paragraphs, and a built table with a header row. */
@@ -303,7 +313,7 @@ export const tableDocument = (): Promise<Uint8Array> => {
     }),
     paragraph("Schedules may change by agreement."),
   );
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** A footnote and an endnote referenced from body paragraphs. */
@@ -321,7 +331,7 @@ export const notesDocument = (): Promise<Uint8Array> => {
     ]),
     paragraph([run("Warranty terms apply."), endnote(document, "See the warranty schedule.")]),
   );
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /** Open comments, a reply and a resolved thread, saved through the reviewer. */
@@ -396,7 +406,7 @@ export const EMOJI_TEXTS = [
 
 /** Paragraphs whose words sit next to surrogate pairs. */
 export const emojiDocument = (): Promise<Uint8Array> =>
-  packDocument(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
+  packFixture(fromMarkdown(["# Emoji", ...EMOJI_TEXTS].join("\n\n")));
 
 /** A table whose first column merges vertically through its last two rows. */
 export const mergedTableDocument = (): Promise<Uint8Array> => {
@@ -411,7 +421,7 @@ export const mergedTableDocument = (): Promise<Uint8Array> => {
     }),
     paragraph("After the table."),
   );
-  return packDocument(document);
+  return packFixture(document);
 };
 
 type HeaderFooterKind = "default" | "first" | "even";
@@ -541,7 +551,7 @@ export const storiesDocument = (): Promise<Uint8Array> => {
     ...pkg.document.finalSectionProperties,
     ...references,
   };
-  return packDocument(document);
+  return packFixture(document);
 };
 
 /**
