@@ -1,6 +1,7 @@
 /** Package byte and scope laws extend the corpus oracle to every operation kind in unit CI. */
 import { expect, test } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
 import { TaggedError } from "better-result";
 import { assertKnownProperty, assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
@@ -16,6 +17,7 @@ import {
   serializedLocalityStepFailures,
 } from "./lib/corpus-invariants/op-locality";
 import {
+  generateOpSequence,
   exactOpModel,
   sameOpModel,
   serializeOpDocument,
@@ -156,4 +158,32 @@ test(
     else await assertProperty(property, { numRuns: examples.length + 135, examples });
   },
   propertyTestTimeout(120_000),
+);
+
+test(
+  "operation sequence generation retains the parsed package control",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        packageDocumentArbitrary,
+        fc.integer({ min: 0, max: 0x7fffffff }),
+        fc.constantFrom(" ", "\n", "\r\n", "\t"),
+        async (document, seed, whitespace) => {
+          const zip = await JSZip.loadAsync(await createDocx(document));
+          const xml = await zip.file("word/document.xml")?.async("text");
+          if (!xml) throw new TypeError("Missing document part");
+          expect(xml).toContain("<w:pPr>");
+          zip.file("word/document.xml", xml.replaceAll("<w:pPr>", `<w:pPr>${whitespace}`));
+          const bytes = await zip.generateAsync({ type: "arraybuffer" });
+          const parsed = normalizeForOps(await parseDocx(bytes, { preloadFonts: false }));
+          const control = await serializedOpParts(parsed);
+          const sequence = generateOpSequence(parsed, seed);
+          const initial = await serializedOpParts(sequence.original);
+          expect(initial).toEqual(control);
+        },
+      ),
+      { numRuns: 12 },
+    );
+  },
+  propertyTestTimeout(60_000),
 );

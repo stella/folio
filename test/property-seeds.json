@@ -755,5 +755,13 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "scripts/package-operation-laws.test.ts::operation sequence generation retains the parsed package control": [
+    {
+      "seed": 1138888773,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Sequence controls retain parsed paragraph-property captures across clone and composed inverse",
+      "date": "2026-10-03"
+    }
   ]
 }
