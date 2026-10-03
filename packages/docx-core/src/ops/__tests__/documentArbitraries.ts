@@ -768,8 +768,10 @@ export const opForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp =
       let fresh = seed.fresh;
       while (used.has(toHexId(fresh))) fresh += 1;
       // One split in three names the new half instead of taking the default.
-      const halves = [SPLIT_HALVES.FIRST, SPLIT_HALVES.SECOND] as const;
-      const newHalf = seed.depth % 3 === 0 ? { newHalf: halves[seed.first % 2] } : {};
+      const newHalf =
+        seed.depth % 3 === 0
+          ? { newHalf: seed.first % 2 === 0 ? SPLIT_HALVES.FIRST : SPLIT_HALVES.SECOND }
+          : {};
       return seed.newParagraph === undefined
         ? { type: kind, at, newBlockId: toHexId(fresh), ...newHalf, ...ids }
         : {

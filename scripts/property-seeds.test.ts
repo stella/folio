@@ -9,9 +9,11 @@ import fc from "fast-check";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
+import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { commitSeed, hash32 } from "../test/commit-seed";
 import { parseFailureRecord } from "./fuzz-failure-issues";
 import {
+  assertKnownProperty,
   assertPinnedProperty,
   assertProperty,
   enclosingTitles,
@@ -349,6 +351,220 @@ describe("pinned regression seeds", () => {
     expect(() => propertyConfig()).toThrow(/only replay through assertProperty/);
   });
 
+  const recordedFailure = (title: string, failure: unknown) => ({
+    family: "T1",
+    fingerprint: failureMarker({ test: `${FILE}::${title}`, seed: 101, repro: "", failure })
+      .fingerprint,
+  });
+
+  test("expected seed fails if its bug is fixed", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({
+      [`${FILE}::expected seed fails if its bug is fixed`]: [
+        {
+          ...entry(101),
+          expectedFailure: recordedFailure(
+            "expected seed fails if its bug is fixed",
+            new Error("known bug"),
+          ),
+        },
+      ],
+    });
+    expect(() => assertProperty(fc.property(fc.nat(), () => true))).toThrow(
+      /remove expectedFailure/,
+    );
+  });
+
+  test("expected seed accepts only its recorded fingerprint", () => {
+    withEnv({});
+    overridePinnedSeedsForTesting({
+      [`${FILE}::expected seed accepts only its recorded fingerprint`]: [
+        {
+          ...entry(101),
+          expectedFailure: recordedFailure(
+            "expected seed accepts only its recorded fingerprint",
+            new Error("known bug"),
+          ),
+        },
+      ],
+    });
+    expect(() =>
+      assertProperty(
+        fc.property(fc.nat(), () => {
+          throw new Error("different bug");
+        }),
+      ),
+    ).toThrow(/different bug/);
+  });
+
+  test("matching expected seed runs once and the generated pass stays independent", () => {
+    withEnv({ PROPERTY_TEST_NUM_RUNS_FACTOR: "3" });
+    const title = "matching expected seed runs once and the generated pass stays independent";
+    const arb = fc.nat();
+    const replayValue = fc.sample(arb, { seed: 101, numRuns: 1 }).at(0);
+    overridePinnedSeedsForTesting({
+      [`${FILE}::${title}`]: [
+        { ...entry(101), expectedFailure: recordedFailure(title, new Error("known bug")) },
+      ],
+    });
+    let replays = 0;
+    let generated = 0;
+    assertProperty(
+      fc.property(arb, (value) => {
+        if (value === replayValue) {
+          replays += 1;
+          throw new Error("known bug");
+        }
+        generated += 1;
+      }),
+      { seed: 5, numRuns: 2, examples: [[-1]], reporter: () => {} },
+    );
+    expect(replays).toBe(1);
+    expect(generated).toBe(6);
+  });
+
+  test("expected seed does not excuse a failing generated pass", () => {
+    withEnv({});
+    const title = "expected seed does not excuse a failing generated pass";
+    overridePinnedSeedsForTesting({
+      [`${FILE}::${title}`]: [
+        { ...entry(101), expectedFailure: recordedFailure(title, new Error("known bug")) },
+      ],
+    });
+    expect(() =>
+      assertProperty(
+        fc.property(fc.constant(1), () => {
+          throw new Error("known bug");
+        }),
+        { seed: 5, numRuns: 1 },
+      ),
+    ).toThrow(/Property failed/);
+  });
+
+  test("async expected seed cannot bypass its ratchet with a reporter", async () => {
+    withEnv({});
+    const title = "async expected seed cannot bypass its ratchet with a reporter";
+    overridePinnedSeedsForTesting({
+      [`${FILE}::${title}`]: [
+        { ...entry(101), expectedFailure: recordedFailure(title, new Error("known bug")) },
+      ],
+    });
+    await expect(
+      assertProperty(
+        fc.asyncProperty(fc.nat(), async () => true),
+        {
+          asyncReporter: async () => {},
+        },
+      ),
+    ).rejects.toThrow(/remove expectedFailure/);
+  });
+
+  test("known kind fails when one recorded cause is fixed", () => {
+    withEnv({});
+    const title = "known kind fails when one recorded cause is fixed";
+    const bug = new Error("first cause");
+    expect(() =>
+      assertKnownProperty(
+        fc.property(fc.constant(1), () => {
+          throw bug;
+        }),
+        [recordedFailure(title, bug), recordedFailure(title, new Error("fixed cause"))],
+        { numRuns: 2 },
+      ),
+    ).toThrow(/fixed: set this kind to holds/);
+  });
+
+  test("known kind requires witnesses for every cause and propagates new failures", () => {
+    withEnv({});
+    const title = "known kind requires witnesses for every cause and propagates new failures";
+    const first = new Error("first cause");
+    const second = new Error("second cause");
+    const expected = [recordedFailure(title, first), recordedFailure(title, second)];
+    assertKnownProperty(
+      fc.property(fc.integer(), (value) => {
+        throw value === 1 ? first : second;
+      }),
+      expected,
+      { numRuns: 2, examples: [[1], [2]] },
+    );
+    expect(() =>
+      assertKnownProperty(
+        fc.property(fc.constant(1), () => {
+          throw new Error("unexpected cause");
+        }),
+        expected,
+        { numRuns: 1, reporter: () => {} },
+      ),
+    ).toThrow(/Property failed/);
+  });
+
+  test("known fingerprint assigned to another kind cannot suppress its failure", () => {
+    withEnv({});
+    const title = "known fingerprint assigned to another kind cannot suppress its failure";
+    const bug = new Error("shared symptom");
+    expect(() =>
+      assertKnownProperty(
+        fc.property(fc.constantFrom("holds", "known"), () => {
+          throw bug;
+        }),
+        [{ ...recordedFailure(title, bug), matches: ([kind]) => kind === "known" }],
+        { numRuns: 1, examples: [["holds"]] },
+      ),
+    ).toThrow(/Property failed/);
+  });
+
+  test("shared fingerprint requires a witness for each declared owner", () => {
+    withEnv({});
+    const title = "shared fingerprint requires a witness for each declared owner";
+    const bug = new Error("shared symptom");
+    expect(() =>
+      assertKnownProperty(
+        fc.property(fc.constantFrom("first", "second"), () => {
+          throw bug;
+        }),
+        [
+          { ...recordedFailure(title, bug), matches: ([kind]) => kind === "first" },
+          { ...recordedFailure(title, bug), matches: ([kind]) => kind === "second" },
+        ],
+        { numRuns: 1, examples: [["first"]] },
+      ),
+    ).toThrow(/fixed: set this kind to holds/);
+    assertKnownProperty(
+      fc.property(fc.constantFrom("first", "second"), () => {
+        throw bug;
+      }),
+      [
+        { ...recordedFailure(title, bug), matches: ([kind]) => kind === "first" },
+        { ...recordedFailure(title, bug), matches: ([kind]) => kind === "second" },
+      ],
+      { numRuns: 2, examples: [["first"], ["second"]] },
+    );
+  });
+
+  test("async known property executes hooks and requires a generated witness", async () => {
+    withEnv({});
+    const title = "async known property executes hooks and requires a generated witness";
+    let before = 0;
+    let after = 0;
+    const bug = new Error("known bug");
+    await assertKnownProperty(
+      fc
+        .asyncProperty(fc.constant(1), async () => {
+          throw bug;
+        })
+        .beforeEach(() => {
+          before += 1;
+        })
+        .afterEach(() => {
+          after += 1;
+        }),
+      [recordedFailure(title, bug)],
+      { numRuns: 2 },
+    );
+    expect(before).toBe(2);
+    expect(after).toBe(2);
+  });
+
   test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through a registry driver`, () => {
     const problems: string[] = [];
     for (const [key, entries] of Object.entries(readPinnedSeeds())) {
@@ -361,7 +577,7 @@ describe("pinned regression seeds", () => {
         continue;
       }
       const sites = lines.flatMap((text, index) =>
-        /\bassert(?:Pinned)?Property\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text)
+        /\bassert(?:Pinned|Known)?Property\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text)
           ? [index + 1]
           : [],
       );
@@ -374,6 +590,15 @@ describe("pinned regression seeds", () => {
         }
         if (pinned.path !== undefined && !/^\d+(?::\d+)*$/.test(pinned.path)) {
           problems.push(`${key}: path ${JSON.stringify(pinned.path)} is not a fast-check path`);
+        }
+        if (
+          pinned.expectedFailure !== undefined &&
+          (!/^T[1-7]$/.test(pinned.expectedFailure.family) ||
+            !/^[0-9a-f]{16}$/.test(pinned.expectedFailure.fingerprint))
+        ) {
+          problems.push(
+            `${key}: expectedFailure needs a train family and a normalized fingerprint`,
+          );
         }
         if (pinned.note.trim() === "" || !/^\d{4}-\d{2}-\d{2}$/.test(pinned.date)) {
           problems.push(`${key}: every entry needs a note and a YYYY-MM-DD date`);
