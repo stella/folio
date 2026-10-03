@@ -2579,6 +2579,21 @@
       "fingerprint": "3031f8841bda4736",
       "issueOrPr": "#1466",
       "firstSeen": "2026-10-02"
+    },
+    {
+      "fingerprint": "e68150e96eeb66e8",
+      "issueOrPr": "#1415",
+      "firstSeen": "2026-10-03"
+    },
+    {
+      "fingerprint": "5ddae0fde1b3a75b",
+      "issueOrPr": "#1415",
+      "firstSeen": "2026-10-03"
+    },
+    {
+      "fingerprint": "ae64d24bcde21275",
+      "issueOrPr": "#1415",
+      "firstSeen": "2026-10-03"
     }
   ]
 }

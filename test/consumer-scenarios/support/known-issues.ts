@@ -24,6 +24,8 @@ export const FINDINGS = {
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
     "a tracked deletion of a footnote's reference paragraph, then a tracked paragraph inserted into that footnote: rejecting every change leaves the inserted paragraph behind, empty",
+  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
+    "#1415: a batch merges a block with the next and deletes that next block; the legacy path applies the batch in reverse, so the merge joins the block after the deleted one, where the oracle expects the separator with nothing joined",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -56,7 +58,10 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [{ seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" }];
+}[] = [
+  { seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" },
+  { seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
@@ -65,6 +70,9 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
   REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
     /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
+  // A batch with both operations, whose expected block ends in the merge's separator.
+  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
+    /not what was asked \((?=[^)]*mergeBlockWithNext)(?=[^)]*deleteBlock)[^)]*\):\n\s*block texts differ:\n\s*expected \[[^\n]* ","/u,
 };
 
 /**
@@ -72,6 +80,7 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
  * finding; they run as expected failures there.
  */
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
+  "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
   "suggested-note-delete-and-heading-insert.json":
     "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
 };
