@@ -457,7 +457,8 @@ export type OpSequence = {
 
 /** A schedule covers every family; the file seed varies positions, modes and order. */
 export const generateOpSequence = (document: Document, seed: number): OpSequence => {
-  const original = structuredClone(document);
+  // Operations preserve their input; cloning would erase parsed source ownership.
+  const original = document;
   const originalModel = exactOpModel(original);
   const originalXml = serializeOpDocument(original);
   const choose = randomFor(seed);

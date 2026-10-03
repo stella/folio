@@ -210,6 +210,7 @@ describe("corpus operation invariants", () => {
       const foldedReviewFamilies = new Set<string>();
       for (let seed = 0; seed < 64; seed += 1) {
         const sequence = generateOpSequence(document, seed);
+        expect(sequence.original).toBe(document);
         expect(sequence.steps.length).toBeGreaterThan(0);
         expect(sequence.mutations).toEqual([]);
         for (const { before, op, edit } of sequence.steps) {
