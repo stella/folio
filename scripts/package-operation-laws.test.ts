@@ -108,6 +108,27 @@ const assertPackageOperationLaws = async ({
   const originalModel = exactOpModel(before);
   const originalXml = serializeOpDocument(before);
   const control = await serializedOpParts(before);
+  if (kind === "joinBlocks" || kind === "setParagraphProps") {
+    // Anchor the inverse control to authored bytes, so losing captures before
+    // the baseline cannot make both sides agree on an already damaged package.
+    const source = await JSZip.loadAsync(bytes);
+    for (const part of source.file(/^word\/(?:document|header[^/]*|footer[^/]*)\.xml$/u)) {
+      const xml = await part.async("text");
+      // The XML parser normalizes CR and CRLF before capturing paragraph XML.
+      const capturedPrefix = xml
+        .replace(/\r\n?/gu, "\n")
+        .match(/<w:pPr>\s+/u)
+        ?.at(0);
+      if (capturedPrefix === undefined)
+        throw new OperationPackageLawError({
+          message: "Authored paragraph whitespace is missing.",
+        });
+      const saved = control.get(part.name);
+      if (saved === undefined)
+        throw new OperationPackageLawError({ message: `The baseline lost ${part.name}.` });
+      expect(new TextDecoder().decode(saved).replace(/\r\n?/gu, "\n")).toContain(capturedPrefix);
+    }
+  }
   const applied = applyDocumentOps(before, [generated.op]);
   if (applied.isErr())
     throw new OperationPackageLawError({
@@ -185,17 +206,41 @@ test(
 test(
   "paragraph property package inverses retain authored stories",
   async () => {
+    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
-        packageDocumentArbitrary,
+        captureDocumentArbitrary,
         opSeedArbitrary,
         fc.constantFrom(...GENERATED_PACKAGE_STORIES),
         async (document, seed, story) => {
+          cases += 1;
           await assertPackageOperationLaws({ kind: "setParagraphProps", document, seed, story });
         },
       ),
       { numRuns: 100 },
     );
+    expect(cases).toBeGreaterThan(0);
+  },
+  propertyTestTimeout(60_000),
+);
+
+test(
+  "join package inverses retain authored stories",
+  async () => {
+    let cases = 0;
+    await assertProperty(
+      fc.asyncProperty(
+        captureDocumentArbitrary,
+        opSeedArbitrary,
+        fc.constantFrom(...GENERATED_PACKAGE_STORIES),
+        async (document, seed, story) => {
+          cases += 1;
+          await assertPackageOperationLaws({ kind: "joinBlocks", document, seed, story });
+        },
+      ),
+      { numRuns: 100 },
+    );
+    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );
@@ -203,12 +248,14 @@ test(
 test(
   "operation sequence generation retains the parsed package control",
   async () => {
+    let cases = 0;
     await assertProperty(
       fc.asyncProperty(
         captureDocumentArbitrary,
         fc.integer({ min: 0, max: 0x7fffffff }),
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
+          cases += 1;
           const zip = await JSZip.loadAsync(await createDocx(document));
           const xml = await zip.file("word/document.xml")?.async("text");
           if (!xml) throw new TypeError("Missing document part");
@@ -239,6 +286,7 @@ test(
       ),
       { numRuns: 12 },
     );
+    expect(cases).toBeGreaterThan(0);
   },
   propertyTestTimeout(60_000),
 );
