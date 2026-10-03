@@ -304,10 +304,8 @@ export const fileClasses = async ({
         evidence: [
           record.error,
           record.marker.diff ?? "",
-          record.flow === undefined ? "" : JSON.stringify(record.flow),
-        ]
-          .join("\n")
-          .slice(0, 600),
+          record.flow === undefined ? "" : JSON.stringify(record.flow).slice(0, 600),
+        ].join("\n"),
         firstSeenRun: run,
       });
     }

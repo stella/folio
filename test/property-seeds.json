@@ -755,5 +755,13 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "scripts/fuzz-failure-formatting.property.test.ts::failure identity and diff shape are invariant under ANSI decoration": [
+    {
+      "seed": -749827279,
+      "path": "0:0:0",
+      "note": "Terminal styling cannot affect failure identities or comparison shapes",
+      "date": "2026-10-03"
+    }
   ]
 }
