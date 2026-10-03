@@ -21,6 +21,7 @@
     "../tests/visual/canonical-browser-acceptances.interactions.spec.ts",
     "canonical-browser-acceptances.test.ts",
     "../tests/visual/browserPaintedTargets.ts",
-    "painter-target-commit.property.test.ts"
+    "painter-target-commit.property.test.ts",
+    "../tests/visual/canonicalBrowserInputDriver.ts"
   ]
 }

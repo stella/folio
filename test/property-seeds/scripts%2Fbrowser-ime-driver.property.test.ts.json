@@ -1,0 +1,9 @@
+{
+  "generated IME lifecycles deliver every update and exactly their declared completion": [
+    {
+      "seed": 11,
+      "note": "Replay the browser IME action seed against the shared lifecycle driver",
+      "date": "2026-10-03"
+    }
+  ]
+}
