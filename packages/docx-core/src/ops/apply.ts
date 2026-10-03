@@ -1269,7 +1269,7 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
     );
   }
   const formatting = patchedSet(paragraph.formatting, op.patch, op.whenEmpty);
-  if (structurallyEqual(formatting ?? {}, paragraph.formatting ?? {})) {
+  if (structurallyEqual(formatting, paragraph.formatting)) {
     return unchanged(document);
   }
   if (revision !== undefined) {
