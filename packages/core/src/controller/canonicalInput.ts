@@ -244,8 +244,13 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         }
         // A new, non-composition event recovers an IME missing compositionend.
         if (composition.active) {
+          const refusedNativeCommit = composition.status === "refused" && view.composing;
           composition.recover(view);
           proposal = { type: "idle" };
+          if (refusedNativeCommit) {
+            event.preventDefault();
+            return true;
+          }
         }
         if (event.inputType === "insertText" || event.inputType === "insertReplacementText") {
           if (event.cancelable) {

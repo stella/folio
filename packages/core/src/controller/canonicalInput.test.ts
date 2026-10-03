@@ -454,9 +454,61 @@ describe("canonical input boundary", () => {
       expect(view.state).toBe(baseline);
       expect(inputs).toEqual([]);
       expect(refusals).toHaveLength(1);
+      expect(boundary.isComposing).toBe(true);
+      // A later native flush of the refused gesture must not become a new edit.
+      view.dispatch(view.state.tr.insertText("late", 2, 4).setMeta("composition", 1));
+      expect(view.state).toBe(baseline);
+      expect(inputs).toEqual([]);
+      expect(refusals).toHaveLength(1);
+      boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
       expect(boundary.isComposing).toBe(false);
     },
   );
+
+  test("generated cross-paragraph compositions lower one exact replacement or cancel", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 0, max: 4 }),
+        fc.integer({ min: 1, max: 4 }),
+        fc.array(fc.constantFrom("契", "約", "😀", "alpha"), { minLength: 1, maxLength: 4 }),
+        fc.boolean(),
+        async (start, end, updates, cancel) => {
+          const { boundary, view, inputs, refusals, compositionTransitions } = createRig();
+          const doc = schema.node("doc", null, [
+            schema.node("paragraph", null, schema.text("Alpha")),
+            schema.node("paragraph", null, schema.text("Beta")),
+          ]);
+          const from = 1 + start;
+          const to = 8 + end;
+          view.updateState(
+            EditorState.create({ doc, selection: TextSelection.create(doc, from, to) }),
+          );
+          const baseline = view.state;
+          boundary.handleDOMEvents.compositionstart(view);
+          let width = to - from;
+          for (const text of updates) {
+            view.dispatch(
+              view.state.tr.insertText(text, from, from + width).setMeta("composition", 1),
+            );
+            width = text.length;
+          }
+          if (cancel) boundary.handleKeyDown(view, new KeyboardEvent("keydown", { key: "Escape" }));
+          else boundary.handleDOMEvents.compositionend(view);
+          await new Promise<void>((resolve) => setTimeout(resolve, 40));
+          expect(inputs).toEqual(
+            cancel ? [] : [{ from, to, text: updates.at(-1), semantic: "composition" }],
+          );
+          expect(view.state).toBe(baseline);
+          expect(refusals).toEqual([]);
+          expect(compositionTransitions).toEqual(["begin", "end"]);
+          view.destroy();
+          views.splice(views.indexOf(view), 1);
+          view.dom.parentElement?.remove();
+        },
+      ),
+      { numRuns: 50 },
+    );
+  });
 
   test("generated composition event traces lower one final replacement or cancel", async () => {
     await assertProperty(
