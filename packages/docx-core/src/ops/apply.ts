@@ -70,7 +70,11 @@ import {
   storyParagraphs,
 } from "./blocks";
 import { captureDocumentOp, restoreDocumentOp } from "./wire";
-import { meetsContract, validateOpsDocument } from "./contract";
+import {
+  hasMultipleParagraphPropertyChanges,
+  meetsContract,
+  validateOpsDocument,
+} from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
@@ -138,6 +142,7 @@ import { stampedTableRowRevisionIds } from "./tableTracking";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
+  foldedParagraphPropertyChange,
   paragraphPropertyChange,
   reviewFieldsOf,
   sameMarkFormatting,
@@ -154,7 +159,6 @@ import {
   DOCUMENT_OP_TYPES,
   DOCUMENT_OP_SCHEMA_VERSION,
   SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   type AddNoteOp,
   type RemoveNoteOp,
   type DeleteRangeOp,
@@ -1265,16 +1269,9 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
   }
   if (revision !== undefined) {
     const next = withParagraphFormatting(paragraph, formatting);
-    // A paragraph already carrying a property change keeps it, and the formatting it started from.
-    if (
-      (paragraph.propertyChanges?.length ?? 0) === 0 ||
-      op.propertyReview === PROPERTY_REVIEW_POLICIES.APPEND
-    ) {
-      next.propertyChanges = [
-        ...(paragraph.propertyChanges ?? []),
-        paragraphPropertyChange(stampInfo(revision), paragraph.formatting),
-      ];
-    }
+    next.propertyChanges = [
+      foldedParagraphPropertyChange({ paragraph, formatting, stamp: revision }),
+    ];
     return editOne(
       {
         document,
@@ -1409,11 +1406,12 @@ const trackSplit = ({
     );
   }
   first.pPrMark = { kind: "ins", info: stampInfo(stamp), resolutionJoin };
-  if (
-    !sameParagraphProperties(made.formatting, paragraph.formatting) &&
-    (made.propertyChanges?.length ?? 0) === 0
-  ) {
-    made.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), paragraph.formatting)];
+  if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
+    made.propertyChanges = [
+      madeSecond
+        ? foldedParagraphPropertyChange({ paragraph, formatting: made.formatting, stamp })
+        : paragraphPropertyChange(stampInfo(stamp), paragraph.formatting),
+    ];
   }
   return undefined;
 };
@@ -1604,10 +1602,8 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   const formatting = joinedFormatting(leading, trailing);
   if (!sameParagraphProperties(formatting, trailing.formatting)) {
     second = withParagraphFormatting(trailing, formatting);
-    // Each join is independently rejectable, including over an existing property review.
     second.propertyChanges = [
-      ...(trailing.propertyChanges ?? []),
-      paragraphPropertyChange(stampInfo(stamp), trailing.formatting),
+      foldedParagraphPropertyChange({ paragraph: trailing, formatting, stamp }),
     ];
   }
   const committed = commit({
@@ -2375,7 +2371,27 @@ const recordedRevisions = (
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = new Set(packageIdentityKeys(before.package));
-  const revisions = stampedRevisionIds(paragraphs, stamp, known);
+  const priorParagraphChanges = new Map(
+    documentStories(before)
+      .flatMap((story) => storyParagraphs(storyBody(before, story)))
+      .flatMap(({ paragraph }) =>
+        (paragraph.propertyChanges ?? []).map(({ info }) => [info.id, info] as const),
+      ),
+  );
+  const revisions = paragraphs.flatMap((paragraph) => {
+    const folded = (paragraph.propertyChanges ?? []).flatMap(({ info }) => {
+      const prior = priorParagraphChanges.get(info.id);
+      // A fold attributes the existing physical review to this edit without allocating an id.
+      return prior !== undefined &&
+        !structurallyEqual(info, prior) &&
+        info.author === stamp.author &&
+        info.date === stamp.date &&
+        info.initials === stamp.initials
+        ? [info.id]
+        : [];
+    });
+    return folded.concat(stampedRevisionIds([paragraph], stamp, known));
+  });
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
     ...documentStories(edit.document)
@@ -2485,6 +2501,16 @@ export const applyDocumentOp = (
           panic("A section edit produced a non-structural inverse.");
       }
     }
+  }
+  // Check all operation outputs before trusting them, including caller-supplied block/review records.
+  if (hasMultipleParagraphPropertyChanges(edit.document)) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A paragraph cannot carry more than one property change.",
+      ),
+    );
   }
   meetsContract(edit.document);
   return Result.ok({

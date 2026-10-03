@@ -228,7 +228,7 @@ test("planner refuses unordered ranges", () => {
 });
 
 test.each(["body", "cell"] as const)(
-  "new range suggestions preserve existing property reviews in a %s",
+  "new range suggestions fold paragraph reviews to their original baseline in a %s",
   (container) => {
     for (const start of [0, 2]) {
       for (const reviewed of ["leading", "trailing", "both"] as const) {
@@ -285,10 +285,51 @@ test.each(["body", "cell"] as const)(
         });
         if (planned.isErr()) throw planned.error;
         const tracked = apply(document, planned.value);
-        const accepted = resolve(tracked, REVISION_DECISIONS.ACCEPT);
-        const rejected = resolve(tracked, REVISION_DECISIONS.REJECT);
-        expect(accepted.document).toStrictEqual(direct.document);
-        expect(rejected.document).toStrictEqual(document);
+        const foldedIds = paragraphs(tracked.document).flatMap((block) =>
+          (block.propertyChanges ?? [])
+            .filter(
+              ({ info }) =>
+                info.id === 8 && info.author === revision.author && info.date === revision.date,
+            )
+            .map(({ info }) => info.id),
+        );
+        expect(foldedIds).toEqual(reviewed !== "leading" ? [8] : []);
+        const resolveAffected = (
+          source: Document,
+          resolution: { decision: RevisionDecision; ids: readonly number[] },
+        ) =>
+          apply(source, [
+            {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: resolution.ids,
+              decision: resolution.decision,
+            },
+          ]);
+        const accepted = resolveAffected(tracked.document, {
+          decision: REVISION_DECISIONS.ACCEPT,
+          ids: [...tracked.revisions, ...foldedIds],
+        });
+        const rejected = resolveAffected(tracked.document, {
+          decision: REVISION_DECISIONS.REJECT,
+          ids: [...tracked.revisions, ...foldedIds],
+        });
+        expect(accepted.document).toStrictEqual(
+          resolveAffected(direct.document, { decision: REVISION_DECISIONS.ACCEPT, ids: foldedIds })
+            .document,
+        );
+        expect(rejected.document).toStrictEqual(
+          resolveAffected(document, { decision: REVISION_DECISIONS.REJECT, ids: foldedIds })
+            .document,
+        );
+        for (const block of paragraphs(tracked.document)) {
+          expect(block.propertyChanges?.length ?? 0).toBeLessThanOrEqual(1);
+          for (const change of block.propertyChanges ?? []) {
+            expect(change.previousFormatting).toEqual({
+              alignment: change.info.id === 7 || change.info.id === 8 ? "start" : "end",
+            });
+          }
+        }
         expect(tracked.revisions.every((id) => id !== 7 && id !== 8)).toBe(true);
         expectUndo(tracked, document);
         expectUndo(accepted, tracked.document);

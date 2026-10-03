@@ -220,7 +220,6 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REMOVE: "remove",
   REPLACE: "replace",
 } as const);
-export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
 
 /** The operation kinds of schema version 7. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
@@ -404,7 +403,8 @@ export type SetRunPropsOp = {
  *
  * With `revision`, the paragraph records a tracked property change
  * (`w:pPrChange`) whose previous formatting is its own property set before
- * the patch, or keeps the one it already carries. A property change holds
+ * the patch, or folds into the one it already carries: its original baseline and
+ * id stay, and its author/date become the latest stamp. A property change holds
  * paragraph properties only, not the paragraph mark's run properties, so a
  * tracked patch of {@link PARAGRAPH_MARK_FORMATTING_KEYS} is refused.
  */
@@ -416,8 +416,6 @@ export type SetParagraphPropsOp = {
   whenEmpty?: EmptyPropertySet;
   expected?: ParagraphPropsPatch;
   revision?: RevisionStamp;
-  /** A new action over an existing review records the current properties separately. */
-  propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 /**

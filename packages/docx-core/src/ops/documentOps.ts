@@ -25,11 +25,8 @@ export {
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
-  physicalPositionAtEditorOffset,
   type EditorIntent,
   type EditorIntentMode,
-  type CompileEditorIntentOptions,
-  type CompiledEditorIntent,
 } from "./editorIntent";
 export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
 export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
@@ -57,8 +54,6 @@ export {
 } from "./refusal";
 export {
   DOCUMENT_OP_SCHEMA_VERSION,
-  SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_TYPES,
   EMPTY_PROPERTY_SETS,
   INHERIT_RUN_PROPS,

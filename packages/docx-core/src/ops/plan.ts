@@ -37,7 +37,6 @@ import {
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   type DeleteRangeOp,
   type InsertContentOp,
   type JoinBlocksOp,
@@ -636,7 +635,6 @@ export const appendTrackedDeletion = ({
         ? EMPTY_PROPERTY_SETS.OMIT
         : EMPTY_PROPERTY_SETS.KEEP,
     revision,
-    propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
   });
 };
 

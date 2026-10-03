@@ -403,6 +403,7 @@ const paragraphNodeSpec: NodeSpec = {
     listMarkerSuffix: { default: null },
     listMarkerAllCaps: { default: null },
     listImplicitChildLevelAdvances: { default: null },
+    listFoldedMarkerSuffix: { default: undefined },
     listMarkerSecondSlotOffsetTwips: { default: null },
     listLevelNumFmts: { default: null },
     listLevelStarts: { default: null },

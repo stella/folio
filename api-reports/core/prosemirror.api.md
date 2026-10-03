@@ -417,6 +417,7 @@ export type ParagraphAttrs = {
     listMarkerSuffix?: "tab" | "space" | "nothing";
     listMarkerAllCaps?: boolean;
     listImplicitChildLevelAdvances?: number;
+    listFoldedMarkerSuffix?: string;
     listMarkerSecondSlotOffsetTwips?: number;
     listLevelNumFmts?: import__stll_docx_core_model.CounterFormat[];
     listLevelStarts?: number[];

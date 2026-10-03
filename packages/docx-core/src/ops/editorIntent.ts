@@ -51,7 +51,6 @@ import { runsMergeable } from "./runMerge";
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   EMPTY_PROPERTY_SETS,
   SPLIT_HALVES,
   type DocumentOp,
@@ -122,13 +121,13 @@ export type EditorIntentMode =
   | { type: "editing"; newIds?: NewIds }
   | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds };
 
-export type CompileEditorIntentOptions = {
+type CompileEditorIntentOptions = {
   intent: EditorIntent;
   mode: EditorIntentMode;
   /** Lowest candidate for compiler-owned pasted block IDs, including retired session IDs. */
   firstBlockId?: number;
 };
-export type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
+type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
 
 /** A split's paragraph identity is allocated with its other fresh identities. */
 type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
@@ -1679,7 +1678,6 @@ export const compileEditorIntent = (
                 ? EMPTY_PROPERTY_SETS.OMIT
                 : EMPTY_PROPERTY_SETS.KEEP,
             revision: mode.revision,
-            propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
           });
           if (patched.isErr()) return Result.err(patched.error);
         }
