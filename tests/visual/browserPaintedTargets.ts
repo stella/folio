@@ -4,7 +4,7 @@ import {
   clickToPositionDom,
 } from "../../packages/core/src/layout-bridge/dom/clickToPositionDom";
 import { resolvePainterTarget } from "./painterTargetCommit";
-import type { BrowserDragTarget } from "./browserInputTrace";
+import type { BrowserDragTarget } from "./browserDragTarget";
 
 type PaintedTargetEditor = {
   getEditorRef: () => { getView: () => { state: EditorState } | null } | null;

@@ -1,6 +1,6 @@
 import { TextSelection } from "prosemirror-state";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
-import type { BrowserDragTarget } from "../visual/browserInputTrace";
+import type { BrowserDragTarget } from "../visual/browserDragTarget";
 import { canonicalTextSelection } from "./canonicalTextSelection";
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
