@@ -210,13 +210,19 @@ const namespaceBindings = fc.record({
   idPrefix: fc.constantFrom("w14", "ids", "ext"),
   mcPrefix: fc.constantFrom("mc", "compat"),
   extensionBinding: fc.constantFrom("root", "nested", "foreign"),
-  mainPart: fc.constantFrom("word/document.xml", "word/document2.xml", "parts/main.xml"),
+  mainPart: fc.constantFrom(
+    "word/document.xml",
+    "word/document2.xml",
+    "parts/main.xml",
+    "word/my document.xml",
+    "parts/článek_日本.xml",
+  ),
   relationshipProfile: fc.constantFrom(
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
     "http://purl.oclc.org/ooxml/officeDocument/relationships",
   ),
   relationshipPrefix: fc.constantFrom("", "pkg"),
-  targetSpelling: fc.constantFrom("relative", "absolute", "dot"),
+  targetSpelling: fc.constantFrom("relative", "absolute", "dot", "encoded"),
   paragraphCount: fc.integer({ min: 1, max: 6 }),
   quote: fc.constantFrom('"', "'"),
 });
@@ -286,9 +292,12 @@ test(
           const fallback = `<local:Fallback xmlns:local="${MC_URI}"><actual:p xmlns:actual="${namespace}" xmlns:kept="${W14_URI}" kept:paraId="FEED0001"/></local:Fallback>`;
           const repeated = Array.from({ length: paragraphCount }, () => `<${q("p")} />`).join("");
           const xml = `<${q("document")} ${rootDeclaration} ${rootIdDeclaration} xmlns:${mcPrefix}="${MC_URI}" ${mcPrefix}:Ignorable=""><${q("body")}>${repeated}<scope ${nestedWordDeclaration} ${nestedIdDeclaration} xmlns:${mcPrefix}="urn:foreign:compat"><actual:p xmlns:actual="${namespace}" xmlns:old="${W14_URI}" ${existingPrefix}:paraId = ${quote}FEED0001${quote} ${existingPrefix}:textId="00000000"/><actual:p xmlns:actual="${namespace}" xmlns:other="${namespace}"><other:r><other:t>Unchanged</other:t></other:r></actual:p>${foreign}${fallback}</scope><${q("p")}/></${q("body")}></${q("document")}>`;
-          const target = { relative: mainPart, absolute: `/${mainPart}`, dot: `./${mainPart}` }[
-            targetSpelling
-          ];
+          const target = {
+            relative: mainPart,
+            absolute: `/${mainPart}`,
+            dot: `./${mainPart}`,
+            encoded: mainPart.split("/").map(encodeURIComponent).join("/"),
+          }[targetSpelling];
           const rel = qualified(relationshipPrefix, "Relationship");
           const rels = qualified(relationshipPrefix, "Relationships");
           const relDeclaration =
@@ -356,3 +365,18 @@ for (const malformed of [
     ).rejects.toThrow(EnsureParaIdsError);
   });
 }
+
+test("a missing officeDocument target is refused at the attribute boundary", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "_rels/.rels",
+    `<Relationships xmlns="${PACKAGE_REL_URI}"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/></Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `<w:document xmlns:w="${W_URI}"><w:body><w:p/></w:body></w:document>`,
+  );
+  await expect(
+    ensureParaIds(await zip.generateAsync({ type: "uint8array" })),
+  ).rejects.toBeInstanceOf(EnsureParaIdsError);
+});

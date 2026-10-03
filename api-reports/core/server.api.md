@@ -262,6 +262,7 @@ export const ensureParaIds: (docx: Uint8Array | ArrayBuffer, options?: EnsurePar
 // @public
 export class EnsureParaIdsError extends EnsureParaIdsError_base<{
     message: string;
+    reason: (typeof ENSURE_PARA_IDS_REASONS)[keyof typeof ENSURE_PARA_IDS_REASONS];
     cause?: unknown;
 }> {}
 
