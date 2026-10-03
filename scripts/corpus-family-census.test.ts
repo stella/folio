@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
 import { CORPUS_EVIDENCE, type CorpusFileId } from "./lib/corpus-census";
 import {
@@ -19,6 +19,8 @@ import {
   type CorpusFailure,
   failureFromAssertion,
 } from "./lib/corpus-signature";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const REPORT_ONLY_DIGEST = "r".repeat(64);
 
