@@ -365,3 +365,18 @@ for (const malformed of [
     ).rejects.toThrow(EnsureParaIdsError);
   });
 }
+
+test("a missing officeDocument target is refused at the attribute boundary", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "_rels/.rels",
+    `<Relationships xmlns="${PACKAGE_REL_URI}"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/></Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `<w:document xmlns:w="${W_URI}"><w:body><w:p/></w:body></w:document>`,
+  );
+  await expect(
+    ensureParaIds(await zip.generateAsync({ type: "uint8array" })),
+  ).rejects.toBeInstanceOf(EnsureParaIdsError);
+});

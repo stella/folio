@@ -441,7 +441,7 @@ const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
     throw createEnsureParaIdsError("Package must have one internal officeDocument relationship");
   const target = getAttribute(document, null, "Target");
   const partPath =
-    target === undefined ? undefined : resolvePackageRelationshipTarget(target, "_rels/.rels");
+    target === null ? undefined : resolvePackageRelationshipTarget(target, "_rels/.rels");
   if (partPath === undefined) throw createEnsureParaIdsError("Invalid officeDocument target");
   const name = entries.find((entry) => entry.toLowerCase() === partPath);
   if (name === undefined) throw createEnsureParaIdsError("officeDocument part not found");
