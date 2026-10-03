@@ -66,6 +66,11 @@ export type FileCost = {
   producer: string;
 };
 
+const compareFileCosts = (left: FileCost, right: FileCost): number =>
+  `${left.file.sourceId}/${left.file.path}/${left.file.sha256}`.localeCompare(
+    `${right.file.sourceId}/${right.file.path}/${right.file.sha256}`,
+  );
+
 export type FamilyCensus = {
   schemaVersion: 1;
   lockDigest: string;
@@ -209,7 +214,11 @@ export class FamilyCensusBuilder {
   }
 
   build(): FamilyCensus {
-    return { ...this.#census, signatures: sortSignatures([...this.#bySignature.values()]) };
+    return {
+      ...this.#census,
+      costs: this.#census.costs.toSorted(compareFileCosts),
+      signatures: sortSignatures([...this.#bySignature.values()]),
+    };
   }
 }
 
@@ -269,6 +278,7 @@ export const mergeFamilyCensuses = (censuses: readonly FamilyCensus[]): FamilyCe
       );
     }
   }
+  merged.costs.sort(compareFileCosts);
   merged.signatures = sortSignatures([...bySignature.values()]);
   return merged;
 };
