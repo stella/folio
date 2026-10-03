@@ -20,7 +20,7 @@
 
 import JSZip from "jszip";
 
-import { paragraphNumberingFromSlots } from "@stll/docx-core/model";
+import { paragraphNumberingReference } from "@stll/docx-core/model";
 
 import { ensureParaIds } from "../docx/ensureParaIds";
 import { createDocx } from "../docx/rezip";
@@ -284,7 +284,7 @@ const styleNumberedHeadings = (markdown: string): Document => {
   if (!heading2) {
     throw new Error("fromMarkdown produced no Heading2 style");
   }
-  heading2.pPr = { ...heading2.pPr, numPr: paragraphNumberingFromSlots({ numId: 5, ilvl: 0 }) };
+  heading2.pPr = { ...heading2.pPr, numPr: paragraphNumberingReference({ numId: 5, ilvl: 0 }) };
   return model;
 };
 
@@ -461,7 +461,7 @@ export const DOCUMENT_SHAPES: readonly DocumentShape[] = [
       target.formatting = {
         ...target.formatting,
         outlineLevel: { kind: "heading", level: 0 },
-        numPr: paragraphNumberingFromSlots({ numId: 3, ilvl: 0 }),
+        numPr: paragraphNumberingReference({ numId: 3, ilvl: 0 }),
       };
       return fromModel(model);
     },

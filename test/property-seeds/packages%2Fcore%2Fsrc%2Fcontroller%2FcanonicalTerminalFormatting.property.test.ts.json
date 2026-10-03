@@ -1,0 +1,9 @@
+{
+  "canonical tracked terminal deletion preserves the preceding formatting request": [
+    {
+      "seed": 18568319,
+      "note": "Tracked terminal deletion after a preceding paragraph alignment request keeps that alignment on acceptance (consumer seed 18568218, run 101)",
+      "date": "2026-10-03"
+    }
+  ]
+}

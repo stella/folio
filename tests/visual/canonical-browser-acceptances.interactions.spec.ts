@@ -3,6 +3,7 @@ import { createCanonicalSession } from "../../packages/core/src/controller/canon
 import { shapeArrayBuffer } from "../../packages/core/src/__tests__/documentShapes";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
+import type { BrowserInputAction } from "./browserInputTrace";
 import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 import { canonicalBrowserAcceptances } from "./canonical-browser-acceptance-traces";
 import { createMissingOpBurndown } from "../../test/canonical-missing-ops";
@@ -16,8 +17,11 @@ const snapshot = async (page: Page) => {
   expect(value?.projectionMatchesCanonical).toBe(true);
   expect(value?.projectionJSON).toEqual(value?.canonicalProjectionJSON);
   if (!value?.document) throw new TypeError("Canonical document unavailable");
-  return value;
+  return { ...value, document: value.document };
 };
+const isHistoryAction = ({ kind }: BrowserInputAction) =>
+  kind === "undo" || kind === "redo" || kind === "historyBurst";
+
 const drainErrors = (page: Page) =>
   page.evaluate(() => globalThis.__folioCanonicalFuzzErrors?.splice(0) ?? []);
 
@@ -61,9 +65,10 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       await drainErrors(page);
       for (const action of trace.actions) {
         if (action.kind === "selectionDrag" || action.kind === "dragCellDelete") {
+          const structuralTarget = action.kind === "selectionDrag" ? action.target : "table";
           const selected = await page.evaluate(
             (target) => globalThis.__folioCanonical?.selectStructuralTarget(target),
-            action.kind === "selectionDrag" ? action.target : "table",
+            structuralTarget,
           );
           expect(selected).not.toBeNull();
           expect((await snapshot(page)).selectionJSON).toEqual(selected);
@@ -91,9 +96,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
           expect(after.selectionJSON).toEqual(before.selectionJSON);
         }
         if (
-          action.kind !== "undo" &&
-          action.kind !== "redo" &&
-          action.kind !== "historyBurst" &&
+          !isHistoryAction(action) &&
           JSON.stringify(after.document) !== JSON.stringify(before.document)
         ) {
           await page.keyboard.press(`${MODIFIER}+z`);
