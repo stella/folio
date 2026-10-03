@@ -49,6 +49,18 @@
       "path": "15:1:0:3:2:3:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:12:7:19:22:46:46:46:46:46:46:46:46:46:46:46:48:46:46:46:46:46:46:46:46:46:46:46:46:46:46",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1426848857,
+      "path": "379:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:6:0:19:0:3:10:5:3:4:5:3:3:3:4:5:3:4:4:4:4:3:3:3:3:3:3:3:3:3:3:3:3:3:5:3:3:3:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4",
+      "note": "Shared review projection must treat optional undefined formatting fields as absent",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 487359569,
+      "path": "1983:0:0:0:0:0:0:0:0:2:1:2:2:2:2:2:2:2:4:15:14:15:14:14:14:14:16:16:16:16:16:16:16:17:17:17:17:17:17:17:17:17:18:18:15:0:13:13:13:13:13:13:13:13:13:16:13:13:13:13:13:27:17:16:11:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:27:24:24:26:26:26:26:26",
+      "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/ops/__tests__/reviewRoundTrip.property.test.ts::L8: ${kind} survives editor save and reopen": [
@@ -302,13 +314,13 @@
     {
       "seed": -1487704601,
       "path": "31:0:0:0:0:0:0:0:0:1:0:0:1:1:1:1:1:1:1:3:3:5:6:7:9:9:12",
-      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:…, which counted the two example scenarios)",
+      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:\u2026, which counted the two example scenarios)",
       "date": "2026-09-29"
     },
     {
       "seed": -315487089,
       "path": "14:4:5:3:14:14:14:4:13:14:14:14:14:5:4:2:5:5:5:3:4:4:4:4:2:2:2:2:5:3:9:38:38:39:42:54:44:55:55:62:70:71:72:72:102:104:110:119:124:125:139:167:167:181:47:194:205:190:204:204:204:205:226:208:210:207:209:208:207:209:208:208:207:207:207:210:209:208:208:208:207:211:207:207:208:210:212:209",
-      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:…, which counted the two example scenarios)",
+      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:\u2026, which counted the two example scenarios)",
       "date": "2026-09-30"
     }
   ],
@@ -344,6 +356,36 @@
       "path": "6:4:5:4:4:4:4:4:9:8:8:8:9:8:8:8:8:8:9:10:12:12:11:11:14:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:18:19:7:0:6:6:8:9:6:5:5:9:7:5:7:7:7:7:7:7:7:7:7:7:9:7:7:7:7:7:7:7:7:7:7",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1158783253,
+      "path": "474:0:0:0:0:0:0:5:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:3:3:3:3:3:3:3:3:4:2:4:3:4:4:3:3:5:3:3:3:4:5:4:4:3:3:3:5:3:3:3:3:3:3:5:6:3:3:11:10:3:7:7:7:7:8:10:7:9:7:8:7:11:7:7:7:7:7:7:8:8:7:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -1097168474,
+      "path": "2789:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:4:7:8:7:8:8:8:8:8:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:13:39:0:5:38:32:31:33:32:31:33:31:31:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
+      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -618669412,
+      "path": "681:0:0:0:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:4:5:4:5:5:5:5:6:5:5:5:5:5:5:7:7:7:7:8:9:8:9:8:8:8:8:8:8:8:8:8:9:8:9:9:8:10:8:11:9:12:9:12:9:8:8:8:8:8:15:31:38:31:31:31:31:31:31:31:31:31:31:31:32:31:31:32:31:31:33:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
+      "note": "Accepting a tracked join must preserve the trailing paragraph formatting.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1428670990,
+      "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1013725445,
+      "path": "7:0:0:0:0:0:0:1:0:2:2:2:2:2:3:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:34:34:34:34:34:34:34:39:41:43:41:2:40:40:40:40:35:36:34:34:34:34:34:34:34:34:34:34:34:34:34:36:34:34:34:34:34:34:34:34",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::a planned tracked deletion removes only the author's own insertions": [
@@ -360,6 +402,24 @@
     {
       "seed": 1316760003,
       "note": "Own moveTo content is an added revision just like insertion.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1491020740,
+      "path": "196:2:1:1:1:3:3:3:7:8:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:10:11:12:10:15:11:10:11:13:11:11:5:9:10:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9",
+      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 35362653,
+      "path": "708:0:0:0:0:0:0:1:5:4:4:4:4:6:6:7:8:8:8:8:8:11:10:10:11:12:13:13:13:13:14:14:18:16:16:16:16:16:16:16:16:17:16:17:42:42:42:42:42:42:42:42:42:42:42:1:2:2:3:3:32:30:31:29:29:29:30:29:29:29:35:29:30:29:32:32:32:32:32:32:32:32:32:33:33:33:33:33:33:33:33:33:33:33:33:33",
+      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1316760003,
+      "path": "362:0:0:0:0:0:0:5:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4:5:4:4:6:4:4:8:4:5:5:4:4:6:6:4:15:7:9:8:7:9:8:7:7:9:7:7:7:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Own moveTo content is an added revision just like insertion.",
       "date": "2026-10-02"
     }
   ],
@@ -408,6 +468,24 @@
       "path": "355:0:0:0:0:0:0:0:3:4:6:6:6:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:10:7:7:35:33:34:34:33:33:34:33:33:33:34:35:36:33:33:33:33:34:37:38:36:34:39:34:34:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:77:77:74:74:74:74:75:74:74:74:77:78:74:74:74:75:88:79:75:86:86:86:86:86:86:86:86:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87",
       "note": "Preserve resolution provenance through ordered run review resolution.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1171708191,
+      "path": "992:6:4:4:8:9:10:10:10:10:10:10:12:15:16:16:16:17:16:16:16:16:17:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:40:21:21:21:26:43:38:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:45:38:32:32:32:33:32:32:59:59:59:59:59:59:59:59:59:59:59:59:59:59:59:59:59:62:62:62:62:62:68:89:90:89:90:10:44:20:64:71:64:87:80:99:99:99:99:99:99:99:99:99:100:100:100:100:100:100:100:100:100:100:100:100:100:100:100:100:65:62:62:64:63:62:62:62:34:63:64:65:66:63:65:71:69:69:75:69:69:72:70:69:69:69:70:71:70:70:70:69:69:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:74:70:83:81:82:86:88:35:64:68:72:62:61:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62",
+      "note": "accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1710333384,
+      "path": "832:1:0:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:4:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:6:22:11:6:6:6:9:32:13:12:12:11:11:11:11:11:11:11:11:11:11:11:11:12:12:11:11:12:11:11:12:14:12:13:13:12:12:13:12:12:12:12:13:12:12:12:12:12:12:12:12:12:13:12:13:13:13:13:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14",
+      "note": "a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1719811078,
+      "path": "30:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:17:6:9:6:12:12:17:17:12:15:14:13:12:21:13:12:12:12:12:12:12:15:35:13:15:15:15:15:15:15:15:15:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16",
+      "note": "resolution of an emptied bidi wrapper containing a comment reference folds it into its matching neighbour",
+      "date": "2026-09-30"
     }
   ],
   "packages/core/src/prosemirror/commands/comments.bulk.test.ts::matches the legacy small-document semantics across generated nested revisions": [
@@ -585,6 +663,18 @@
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1364722648,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0",
+      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1364722648,
+      "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
     }
   ],
   "packages/core/src/controller/canonicalSession.test.ts::generated replacements lower tracked batches and resolution shares exact inverse history": [
@@ -1448,6 +1538,48 @@
       "path": "2:2",
       "note": "Generate nested bidi wrappers over runs, preserving valid nested container shapes.",
       "date": "2026-10-03"
+    }
+  ],
+  "scripts/package-operation-laws.test.ts::every operation preserves package inverse and declared scope laws": [
+    {
+      "seed": 327444275,
+      "path": "9:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "Package inverse retains modeled records but changes captured footer serialization after a join.",
+      "date": "2026-10-03",
+      "expectedFailure": {
+        "family": "T4",
+        "fingerprint": "20c2d3fdbf109520"
+      }
+    },
+    {
+      "seed": -392419793,
+      "path": "13:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
+      "date": "2026-10-03",
+      "expectedFailure": {
+        "family": "T4",
+        "fingerprint": "af2bdcaabf37424e"
+      }
+    },
+    {
+      "seed": -392419793,
+      "path": "41:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml",
+      "date": "2026-10-03",
+      "expectedFailure": {
+        "family": "T4",
+        "fingerprint": "7bda296807167052"
+      }
+    },
+    {
+      "seed": 1192899088,
+      "path": "14:1:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml",
+      "date": "2026-10-03",
+      "expectedFailure": {
+        "family": "T4",
+        "fingerprint": "95820d436833c3fd"
+      }
     }
   ]
 }
