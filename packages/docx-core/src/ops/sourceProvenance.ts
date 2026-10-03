@@ -1,3 +1,4 @@
+import { documentStories, storyBody } from "./stories";
 import type { Document } from "../model/document";
 
 const sourceReplayBrand = Symbol("SourceReplayToken");
@@ -16,11 +17,11 @@ const freezeGraph = (root: unknown): void => {
       value === null ||
       typeof value !== "object" ||
       frozenGraphs.has(value) ||
+      value instanceof Map ||
+      value instanceof Set ||
       ArrayBuffer.isView(value) ||
       value instanceof ArrayBuffer ||
-      (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer) ||
-      value instanceof Map ||
-      value instanceof Set
+      (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer)
     ) {
       continue;
     }
@@ -31,11 +32,13 @@ const freezeGraph = (root: unknown): void => {
 };
 
 const freezeSourceReplayGraphs = (document: Document): void => {
-  if (typeof process === "undefined" || process.env["NODE_ENV"] === "production") return;
   const { package: pkg } = document;
-  freezeGraph(pkg.document.content);
-  freezeGraph(pkg.document.background);
-  freezeGraph(pkg.document.finalSectionProperties);
+  for (const story of documentStories(document)) {
+    const body = storyBody(document, story);
+    freezeGraph(body.content);
+    freezeGraph(body.background);
+    freezeGraph(body.finalSectionProperties);
+  }
   freezeGraph(pkg.styles);
   freezeGraph(pkg.theme);
 };

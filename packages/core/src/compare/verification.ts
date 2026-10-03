@@ -492,6 +492,7 @@ const CONTENT_OWNERSHIP = {
   symbol: [],
   footnoteRef: [],
   endnoteRef: [],
+  noteMarker: [],
   fieldChar: [],
   instrText: [],
   softHyphen: [],

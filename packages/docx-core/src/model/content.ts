@@ -2789,7 +2789,7 @@ export type DocumentBackground = {
  */
 type DocumentBodySource = {
   /** Original part reference; replay authority is private and identity-bound. */
-  xml: string;
+  readonly xml: string;
 };
 
 export type DocumentBody = {

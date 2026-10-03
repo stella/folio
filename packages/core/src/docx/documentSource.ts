@@ -26,23 +26,32 @@ class DocumentSourceReplayError extends TaggedError("DocumentSourceReplayError")
   message: string;
 }> {}
 
-type SourceGroup = {
+/** Read-only source-owned model graphs; binary transport is managed separately. */
+export type SourceReplayGraph<Value> = Value extends ArrayBufferLike | ArrayBufferView
+  ? Value
+  : Value extends (...args: never[]) => unknown
+    ? Value
+    : Value extends object
+      ? { readonly [Key in keyof Value]: SourceReplayGraph<Value[Key]> }
+      : Value;
+
+type SourceGroup = Readonly<{
   source: SourcePart;
   start: number;
   end: number;
-  content: readonly BlockContent[];
+  content: SourceReplayGraph<readonly BlockContent[]>;
   repair: "required" | "none";
-};
+}>;
 
-type SourcePart = {
+type SourcePart = Readonly<{
   xml: string;
-  content: readonly BlockContent[];
-  background: DocumentBody["background"];
-  finalSectionProperties: DocumentBody["finalSectionProperties"];
+  content: SourceReplayGraph<readonly BlockContent[]>;
+  background: SourceReplayGraph<DocumentBody["background"]>;
+  finalSectionProperties: SourceReplayGraph<DocumentBody["finalSectionProperties"]>;
   repair: "required" | "none";
-};
+}>;
 
-const blockSources = new WeakMap<BlockContent, SourceGroup>();
+const blockSources = new WeakMap<object, SourceGroup>();
 const bodySources = new WeakMap<DocumentBody, SourcePart>();
 const tokenSources = new WeakMap<SourceReplayToken, SourcePart>();
 const validatedSources = new WeakSet<SourcePart>();

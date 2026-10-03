@@ -26,6 +26,67 @@ const fixture = () => {
 };
 
 describe("source replay provenance", () => {
+  for (const environment of ["production", "browser"] as const) {
+    test(`${environment} source graphs reject in-place edits`, () => {
+      const descriptor = Object.getOwnPropertyDescriptor(globalThis, "process");
+      const previousEnvironment = process.env.NODE_ENV;
+      const { document, first, text } = fixture();
+      try {
+        if (environment === "production") process.env.NODE_ENV = "production";
+        else if (!Reflect.deleteProperty(globalThis, "process"))
+          throw new TypeError("Browser fixture requires a configurable process global");
+        registerSourceReplayDocument(document);
+        expect(() => Object.assign(text, { text: "lost edit" })).toThrow();
+        expect(() => first.content.push({ type: "run", content: [] })).toThrow();
+        expect(Object.isFrozen(document.package.document.content)).toBe(true);
+      } finally {
+        if (descriptor) Object.defineProperty(globalThis, "process", descriptor);
+        if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = previousEnvironment;
+      }
+    });
+  }
+
+  test("every package story freezes its descendants", () => {
+    const main = fixture();
+    const header = {
+      ...fixture().document.package.document,
+      type: "header",
+      hdrFtrType: "default",
+    } as const;
+    const footer = {
+      ...fixture().document.package.document,
+      type: "footer",
+      hdrFtrType: "default",
+    } as const;
+    const footnote = { ...fixture().document.package.document, type: "footnote" as const, id: 1 };
+    const endnote = { ...fixture().document.package.document, type: "endnote" as const, id: 2 };
+    const document = {
+      package: {
+        document: main.document.package.document,
+        headers: new Map([["rId1", header]]),
+        footers: new Map([["rId2", footer]]),
+        footnotes: [footnote],
+        endnotes: [endnote],
+      },
+    } satisfies Document;
+    registerSourceReplayDocument(document);
+    for (const body of [document.package.document, header, footer, footnote, endnote]) {
+      expect(Object.isFrozen(body.content)).toBe(true);
+      expect(() => body.content.push(main.first)).toThrow();
+      expect(Object.isFrozen(body)).toBe(false);
+    }
+  });
+
+  test("cyclic source graphs terminate and reject mutation", () => {
+    const { document, first } = fixture();
+    const extensions = { owner: first, value: "original" };
+    Object.assign(first, { extensions });
+    registerSourceReplayDocument(document);
+    expect(() => Object.assign(extensions, { value: "lost edit" })).toThrow();
+    expect(extensions.owner).toBe(first);
+  });
+
   test("identity belongs to the registered document, not its copied fields", () => {
     const { document } = fixture();
     const token = registerSourceReplayDocument(document);
