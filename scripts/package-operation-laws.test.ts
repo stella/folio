@@ -55,11 +55,17 @@ const knownFailures = (disposition: OperationLawDisposition, kind: string) => {
   }));
 };
 
-const unexpectedFailure = (
-  kind: keyof typeof OPERATION_LAW_DISPOSITIONS,
-  failures: readonly string[],
-) => {
-  const expected = knownFailures(OPERATION_LAW_DISPOSITIONS[kind], kind);
+type UnexpectedFailureOptions = {
+  kind: keyof typeof OPERATION_LAW_DISPOSITIONS;
+  failures: readonly string[];
+  disposition?: OperationLawDisposition;
+};
+const unexpectedFailure = ({
+  kind,
+  failures,
+  disposition = OPERATION_LAW_DISPOSITIONS[kind],
+}: UnexpectedFailureOptions) => {
+  const expected = knownFailures(disposition, kind);
   return failures.find((message) => {
     const marker = failureMarker({
       test: LAW_KEY,
@@ -75,8 +81,14 @@ test("a recorded inverse symptom cannot hide a new scope violation", () => {
   const inverse =
     "joinBlocks inverse changed the original serialized package parts: word/header1.xml";
   const scope = "joinBlocks changed unrelated serialized part: word/comments.xml";
-  expect(unexpectedFailure("joinBlocks", [inverse, scope])).toBe(scope);
-  expect(unexpectedFailure("insertText", [inverse])).toBe(inverse);
+  expect(
+    unexpectedFailure({
+      kind: "joinBlocks",
+      failures: [inverse, scope],
+      disposition: { knownIssue: "T4", fingerprint: "af2bdcaabf37424e" },
+    }),
+  ).toBe(scope);
+  expect(unexpectedFailure({ kind: "insertText", failures: [inverse] })).toBe(inverse);
 });
 
 const assertPackageOperationLaws = async ({
@@ -127,7 +139,7 @@ const assertPackageOperationLaws = async ({
   );
   if (failures.length > 0)
     throw new OperationPackageLawError({
-      message: unexpectedFailure(kind, failures) ?? failures.join("\n"),
+      message: unexpectedFailure({ kind, failures }) ?? failures.join("\n"),
     });
 };
 

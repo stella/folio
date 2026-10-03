@@ -30,10 +30,7 @@ export const OPERATION_LAW_DISPOSITIONS = {
   setRunProps: "holds",
   setParagraphProps: "holds",
   splitBlock: "holds",
-  joinBlocks: [
-    { knownIssue: "T4", fingerprint: "20c2d3fdbf109520" },
-    { knownIssue: "T4", fingerprint: "af2bdcaabf37424e" },
-  ],
+  joinBlocks: "holds",
   replaceBlocks: "holds",
   setParagraphReview: "holds",
   replaceInline: "holds",

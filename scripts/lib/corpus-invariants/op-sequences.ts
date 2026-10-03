@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 /** Reproducible, bounded operation sequences over seeded corpus models. */
 import { isDeepStrictEqual } from "node:util";
 import type { Document, Paragraph } from "../../../packages/docx-core/src/model/document";
@@ -60,7 +61,10 @@ export const serializeOpDocument = (document: Document): string => serializeDocu
 
 /** ZIP metadata/compression is transport; compare all uncompressed part bytes. */
 export const serializedOpParts = async (document: Document): Promise<Map<string, Uint8Array>> => {
-  const saved = await repackDocx(document, { updateModifiedDate: false });
+  const saved = await repackDocx(document, {
+    updateModifiedDate: false,
+    onDiagnostic: ({ type, part }) => panic(`${type}: ${part}`),
+  });
   const raw = await unzipDocx(saved, { extractAllXml: true });
   return new Map(
     await Promise.all(

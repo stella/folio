@@ -1,3 +1,4 @@
+import { driveBrowserIme } from "./browserImeDriver";
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
 import { validateDocxPackage } from "../../packages/docx-core/src/validate/docx";
@@ -230,33 +231,9 @@ const drive = async (page: Page, action: BrowserInputAction) => {
     case "pasteMultiBlock":
       await paste(page, action);
       return;
-    case "imeReplacement": {
-      const cdp = await page.context().newCDPSession(page);
-      try {
-        for (const text of action.updates) {
-          await cdp.send("Input.imeSetComposition", {
-            text,
-            // CDP offsets count UTF-16 code units, including surrogate pairs.
-            selectionStart: text.length,
-            selectionEnd: text.length,
-          });
-        }
-        if (action.completion === "commit") {
-          const text = action.updates.at(-1);
-          if (text === undefined) throw new Error("IME lifecycle has no updates");
-          await cdp.send("Input.insertText", { text });
-        } else {
-          await cdp.send("Input.imeSetComposition", {
-            text: "",
-            selectionStart: 0,
-            selectionEnd: 0,
-          });
-        }
-      } finally {
-        await cdp.detach();
-      }
+    case "imeReplacement":
+      await driveBrowserIme(page, action);
       return;
-    }
     case "cut":
       await page.keyboard.press(`${MODIFIER}+x`);
       return;

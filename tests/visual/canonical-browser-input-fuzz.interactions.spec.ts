@@ -14,11 +14,8 @@ import {
   shellQuote,
   writeFailureRecord,
 } from "../../test/consumer-scenarios/support/failure-fingerprints";
-import {
-  commonActionArbitraries,
-  parseBrowserInputTraceConfig,
-  type BrowserInputAction,
-} from "./browserInputTrace";
+import { commonActionArbitraries, parseBrowserInputTraceConfig } from "./browserInputTrace";
+import { driveCanonicalBrowserInput } from "./canonicalBrowserInputDriver";
 import type {} from "../parity/canonicalBridge";
 import type {} from "../parity/canonicalFuzzErrors";
 
@@ -45,65 +42,6 @@ const drainErrors = (page: Page) =>
     if (!errors) throw new TypeError("Canonical error sink unavailable");
     return errors.splice(0);
   });
-const drive = async (page: Page, action: BrowserInputAction) => {
-  switch (action.kind) {
-    case "typing":
-      await page.keyboard.insertText(action.text);
-      return;
-    case "enter":
-      await page.keyboard.press("Enter");
-      return;
-    case "backspace":
-      await page.keyboard.press("Backspace");
-      return;
-    case "delete":
-      await page.keyboard.press("Delete");
-      return;
-    case "undo":
-      await page.keyboard.press(`${MODIFIER}+z`);
-      return;
-    case "redo":
-      await page.keyboard.press(`${MODIFIER}+Shift+z`);
-      return;
-    case "cut":
-      await page.keyboard.press(`${MODIFIER}+x`);
-      return;
-    case "imeReplacement": {
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send("Input.imeSetComposition", {
-        text: action.text,
-        selectionStart: action.text.length,
-        selectionEnd: action.text.length,
-      });
-      await cdp.send("Input.insertText", { text: action.text });
-      await cdp.detach();
-      return;
-    }
-    case "pastePlain":
-    case "pasteHtml":
-    case "pasteWordHtml":
-    case "pasteListHtml":
-    case "pasteTable":
-    case "pasteMultiBlock":
-      await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-      await page.evaluate(async ({ plain, html }) => {
-        const parts: Record<string, Blob> = {
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        };
-        if (html) parts["text/html"] = new Blob([html], { type: "text/html" });
-        await navigator.clipboard.write([new ClipboardItem(parts)]);
-      }, action);
-      await page.keyboard.press(`${MODIFIER}+v`);
-      return;
-    case "dragCellDelete":
-    case "selectionDrag":
-      throw new TypeError("Structural selections require a structural seed");
-    default: {
-      const unreachable: never = action;
-      return unreachable;
-    }
-  }
-};
 
 for (const seed of config.seeds) {
   test(`canonical seed ${seed}: projection, exact history and save/reopen`, async ({
@@ -132,7 +70,7 @@ for (const seed of config.seeds) {
         await snapshot(page);
         for (const action of actions) {
           const before = await snapshot(page);
-          await drive(page, action);
+          await driveCanonicalBrowserInput(page, action);
           const after = await snapshot(page);
           const errors = await drainErrors(page);
           for (const error of errors) {
