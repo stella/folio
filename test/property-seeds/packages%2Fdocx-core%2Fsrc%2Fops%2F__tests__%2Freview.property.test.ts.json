@@ -297,47 +297,32 @@
   "a planned tracked deletion removes only the author's own insertions": [
     {
       "seed": 1491020740,
-      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "path": "0",
+      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; former path 196:2:1:1:1:3:3:3:7:8:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:10:11:12:10:15:11:10:11:13:11:11:5:9:10:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9 no longer replays against generator with own-undefined fields; retain root case",
       "date": "2026-09-30"
     },
     {
       "seed": 35362653,
-      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "path": "0",
+      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units; former path 708:0:0:0:0:0:0:1:5:4:4:4:4:6:6:7:8:8:8:8:8:11:10:10:11:12:13:13:13:13:14:14:18:16:16:16:16:16:16:16:16:17:16:17:42:42:42:42:42:42:42:42:42:42:42:1:2:2:3:3:32:30:31:29:29:29:30:29:29:29:35:29:30:29:32:32:32:32:32:32:32:33:33:33:33:33:33:33:33:33:33:33:33 no longer replays against generator with own-undefined fields; retain root case",
       "date": "2026-09-30"
     },
     {
       "seed": 1316760003,
-      "note": "Own moveTo content is an added revision just like insertion.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
-      "date": "2026-10-02"
-    },
-    {
-      "seed": 1491020740,
-      "path": "196:2:1:1:1:3:3:3:7:8:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:10:11:12:10:15:11:10:11:13:11:11:5:9:10:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9",
-      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 35362653,
-      "path": "708:0:0:0:0:0:0:1:5:4:4:4:4:6:6:7:8:8:8:8:8:11:10:10:11:12:13:13:13:13:14:14:18:16:16:16:16:16:16:16:16:17:16:17:42:42:42:42:42:42:42:42:42:42:42:1:2:2:3:3:32:30:31:29:29:29:30:29:29:29:35:29:30:29:32:32:32:32:32:32:32:32:32:33:33:33:33:33:33:33:33:33:33:33:33:33",
-      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 1316760003,
-      "path": "362:0:0:0:0:0:0:5:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4:5:4:4:6:4:4:8:4:5:5:4:4:6:6:4:15:7:9:8:7:9:8:7:7:9:7:7:7:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
-      "note": "Own moveTo content is an added revision just like insertion.",
+      "path": "0",
+      "note": "Own moveTo content is an added revision just like insertion.; former path 362:0:0:0:0:0:0:5:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4:5:4:4:6:4:4:8:4:5:5:4:4:6:6:4:15:7:9:8:7:9:8:7:7:9:7:7:7:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10 no longer replays against generator with own-undefined fields; retain root case",
       "date": "2026-10-02"
     },
     {
       "seed": -1134318769,
-      "path": "1:0:0:0:0:0:0:0:0:0:0:0:2:1:2:2:2:2:4:4:4:4:4:4:4:6:6:6:6:6:6:6:6:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:13:13:15:14:12:15:15:17:18:18:19:18:18:18:18:18:18:18:18:18:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:24:19:7:0:9:0:16:8:8:8:8:8:8:12:8:14:4:19:10:10:18:13:10:10:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12",
-      "note": "Planned edits retain fresh identities used to split existing review records while reporting only newly allocated operation revisions.",
+      "path": "0",
+      "note": "Planned edits retain fresh identities used to split existing review records while reporting only newly allocated operation revisions.; former path 1:0:0:0:0:0:0:0:0:0:0:0:2:1:2:2:2:2:4:4:4:4:4:4:4:6:6:6:6:6:6:6:6:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:13:13:15:14:12:15:15:17:18:18:19:18:18:18:18:18:18:18:18:18:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:24:19:7:0:9:0:16:8:8:8:8:8:8:12:8:14:4:19:10:10:18:13:10:10:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12 no longer replays against the current review generator; retain this seed at path 0",
       "date": "2026-10-03"
     },
     {
       "seed": -703835533,
-      "path": "1:1:6:9:9:9:9:9:11:11:11:11:11:14:15:16:16:16:17:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:31:2:2:25:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12",
-      "note": "Planned edits retain fresh identities used to split existing review records while reporting only newly allocated operation revisions.",
+      "path": "0",
+      "note": "Planned edits retain fresh identities used to split existing review records while reporting only newly allocated operation revisions.; former path 1:1:6:9:9:9:9:9:11:11:11:11:11:14:15:16:16:16:17:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:31:2:2:25:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12 no longer replays against the current review generator; retain this seed at path 0",
       "date": "2026-10-03"
     }
   ],
