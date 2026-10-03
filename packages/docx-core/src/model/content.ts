@@ -1638,8 +1638,12 @@ export type TrackedRunContent =
   | PreservedInline
   | TrackedRunChange;
 
+export const INSERTION_SEAM_POLICIES = { MERGE_PLAIN_RUNS: "merge-plain-runs" } as const;
+
 /** Operation-created seams only; source OOXML has no such provenance. */
 type TrackedResolutionJoins = {
+  /** Editor text acceptance joins only the inserted payload's plain-run seams. */
+  acceptance?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
   /** Exact join depths when the wrapper is retained and unwrapped. */
   before: number;
   after: number;

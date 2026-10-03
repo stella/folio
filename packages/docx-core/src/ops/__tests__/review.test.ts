@@ -18,7 +18,6 @@ import type {
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { contractViolation, normalizeForOps } from "../contract";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
-import { mergeAtSeam } from "../resolve";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import {
   DOCUMENT_OP_TYPES,
@@ -131,6 +130,7 @@ describe("tracked text", () => {
         {
           type: "insertion",
           info: { id: 1, author: "Reviewer", date: DATE },
+          resolutionJoins: { before: 2, after: 0, remove: 0 },
           content: [run(" world")],
         },
       ]),
@@ -193,17 +193,19 @@ describe("tracked text", () => {
     const [only] = blocks(tracked.document);
     expect(only?.type === "paragraph" && only.content).toEqual([
       { ...theirs, content: [run("a")] },
-      { type: "insertion", info: { id: 6, author: "Reviewer", date: DATE }, content: [run("x")] },
+      {
+        type: "insertion",
+        info: { id: 6, author: "Reviewer", date: DATE },
+        resolutionJoins: { before: 3, after: 3, remove: 3 },
+        content: [run("x")],
+      },
       { ...theirs, info: { ...theirs.info, id: 7 }, content: [run("b")] },
     ]);
     expect(resolved(tracked.document, [6], REVISION_DECISIONS.REJECT)).toStrictEqual(document);
   });
 
-  // The L1 generator found an accepted insertion whose hyperlink merged into
-  // the next one while the seam inside was left unmerged. Resolution merges
-  // the seam inside the records it merges as it merges the outer one: the
-  // inserted wrapper held nothing before, so it stays, as it does directly.
-  test("accepting an insertion merges the seams inside the records it merges", () => {
+  // A closed insertion keeps the authored hyperlink seam through acceptance.
+  test("accepting a closed insertion preserves its hyperlink seam", () => {
     const wrapper = (content: ParagraphContent[]): ParagraphContent => ({
       type: "inlineWrapper",
       kind: "bidi",
@@ -226,13 +228,9 @@ describe("tracked text", () => {
     const tracked = applied(document, op);
     const direct = applied(document, directly(op));
     const accepted = resolved(tracked.document, tracked.revisions, REVISION_DECISIONS.ACCEPT);
-    const merged = link([wrapper([]), wrapper([run("a")])]);
-    expect(blocks(accepted)).toEqual([paragraph("00000001", [merged])]);
-    // Directly, the inserted hyperlink stands beside the other; merged, they agree.
-    const [only] = blocks(direct.document);
-    const [first, second] = only?.type === "paragraph" ? only.content : [];
-    expect(first).toEqual(link([wrapper([])]));
-    expect(second !== undefined && mergeAtSeam(link([wrapper([])]), second)).toEqual([merged]);
+    const expected = [paragraph("00000001", [link([wrapper([])]), link([wrapper([run("a")])])])];
+    expect(blocks(accepted)).toEqual(expected);
+    expect(blocks(direct.document)).toStrictEqual(blocks(accepted));
   });
 
   test("a tracked insertion inside a deletion is refused", () => {
@@ -296,11 +294,28 @@ describe("tracked text", () => {
         {
           type: "insertion",
           info: { id: 5, author: "Other" },
-          content: [{ type: "deletion", info: info(10), content: [run("a")] }],
+          content: [
+            {
+              type: "deletion",
+              info: info(10),
+              resolutionJoins: { before: 0, after: 0, remove: 0 },
+              content: [run("a")],
+            },
+          ],
         },
-        { type: "deletion", info: info(11), content: [run("b")] },
+        {
+          type: "deletion",
+          info: info(11),
+          resolutionJoins: { before: 0, after: 0, remove: 0 },
+          content: [run("b")],
+        },
         { type: "deletion", info: { id: 6, author: "Other" }, content: [run("c")] },
-        { type: "deletion", info: info(12), content: [control] },
+        {
+          type: "deletion",
+          info: info(12),
+          resolutionJoins: { before: 0, after: 0, remove: 0 },
+          content: [control],
+        },
       ]),
     ]);
     expect(tracked.revisions).toEqual([10, 11, 12]);
@@ -334,17 +349,23 @@ describe("tracked text", () => {
     // The own insertion goes directly; the rest is tracked in two pieces around the anchor.
     expect(
       plan.value.map((op) => op.type === DOCUMENT_OP_TYPES.DELETE_RANGE && op.revision?.id),
-    ).toEqual([undefined, 9, 20]);
+    ).toEqual([undefined, 9, 22]);
     const after = applyDocumentOps(document, plan.value);
     if (after.isErr()) throw after.error;
     expect(blocks(after.value.document)).toEqual([
       paragraph("00000001", [
         run("a"),
-        { type: "deletion", info: { id: 20, author: "Reviewer", date: DATE }, content: [run("b")] },
+        {
+          type: "deletion",
+          info: { id: 22, author: "Reviewer", date: DATE },
+          resolutionJoins: { before: 2, after: 0, remove: 0 },
+          content: [run("b")],
+        },
         { type: "commentRangeStart", id: 1 },
         {
           type: "deletion",
           info: { id: 9, author: "Reviewer", date: DATE },
+          resolutionJoins: { before: 0, after: 0, remove: 0 },
           content: [run("cd", { bold: true })],
         },
       ]),
@@ -392,14 +413,19 @@ describe("C8: tracked formatting is recorded, not applied directly", () => {
           type: "run",
           formatting: { italic: true, bold: true },
           propertyChanges: [
-            { type: "runPropertyChange", info: info(1), previousFormatting: { italic: true } },
+            {
+              type: "runPropertyChange",
+              info: info(1),
+              boundaryJoins: ["before"],
+              previousFormatting: { italic: true },
+            },
           ],
           content: [{ type: "text", text: "b" }],
         },
         {
           type: "run",
           formatting: { bold: true },
-          propertyChanges: [{ type: "runPropertyChange", info: info(2) }],
+          propertyChanges: [{ type: "runPropertyChange", info: info(2), boundaryJoins: ["after"] }],
           content: [{ type: "text", text: "c" }],
         },
         run("d"),
@@ -506,7 +532,11 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     expect(blocks(tracked.document)).toEqual([
       paragraph("00000002", [run("Hello")], {
         formatting: { styleId: "Heading1" },
-        pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
+        pPrMark: {
+          kind: "ins",
+          info: { id: 1, author: "Reviewer", date: DATE },
+          resolutionJoin: 0,
+        },
       }),
       { ...source, content: [run("World", { bold: true })] },
       paragraph("00000009", [run("next")]),
@@ -541,7 +571,11 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     expect(blocks(tracked.document)).toEqual([
       {
         ...source,
-        pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
+        pPrMark: {
+          kind: "ins",
+          info: { id: 1, author: "Reviewer", date: DATE },
+          resolutionJoin: 0,
+        },
       },
       paragraph("00000002", [], {
         propertyChanges: [{ ...pending, info: { id: 7, author: "Reviewer", date: DATE } }],
@@ -698,7 +732,11 @@ describe("C6: a tracked split's new paragraph has exactly the direct split's fie
           previousFormatting: { styleId: "Heading1", spaceBefore: 120 },
         },
       ],
-      pPrMark: { kind: "ins", info: { id: 2, author: "Reviewer", date: DATE } },
+      pPrMark: {
+        kind: "ins",
+        info: { id: 2, author: "Reviewer", date: DATE },
+        resolutionJoin: 2,
+      },
     });
     expect(trackedSecond).toEqual(directSecond);
   });
@@ -971,11 +1009,26 @@ describe("an empty content control is content: resolution never merges it away",
     });
     expect(blocks(removed.document)).toEqual([
       paragraph("00000001", [
-        wrapper([{ type: "deletion", info: later(1, 10), content: [run("a")] }]),
+        wrapper([
+          {
+            type: "deletion",
+            info: later(1, 10),
+            resolutionJoins: { before: 0, after: 2, remove: 0 },
+            content: [run("a")],
+          },
+        ]),
         {
           type: "insertion",
           info: later(2, 11),
-          content: [{ type: "deletion", info: later(3, 12), content: [run("x")] }],
+          resolutionJoins: { before: 0, after: 0, remove: 1 },
+          content: [
+            {
+              type: "deletion",
+              info: later(3, 12),
+              resolutionJoins: { before: 0, after: 0, remove: 0 },
+              content: [run("x")],
+            },
+          ],
         },
         wrapper([run("b")]),
       ]),
@@ -1013,12 +1066,21 @@ describe("an empty content control is content: resolution never merges it away",
       revision: { ...stamp(2), date: "2026-05-06T07:08:10Z" },
       newIds: { revision: [3], control: [7] },
     });
-    const typing3 = { ...typing, info: stamp(3), content: [run("x")] };
+    const typing3 = {
+      ...typing,
+      resolutionJoins: { before: 0, after: 2, remove: 0 },
+      info: stamp(3),
+      content: [run("x")],
+    };
     expect(blocks(pasted.document)).toEqual([
       paragraph("00000001", [
         control(1, [
-          { ...typing, content: [run("x")] },
-          { ...typing, info: { ...stamp(2), date: "2026-05-06T07:08:10Z" } },
+          { ...typing, resolutionJoins: { before: 0, after: 2, remove: 0 }, content: [run("x")] },
+          {
+            ...typing,
+            resolutionJoins: { before: 3, after: 0, remove: 3 },
+            info: { ...stamp(2), date: "2026-05-06T07:08:10Z" },
+          },
         ]),
         control(7, [typing3, run("ab")]),
       ]),

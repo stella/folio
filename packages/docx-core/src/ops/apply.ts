@@ -50,6 +50,7 @@ import { panic, Result } from "better-result";
 
 import {
   type Document,
+  type Insertion,
   MAX_REVISION_ID,
   type Paragraph,
   type ParagraphContent,
@@ -156,6 +157,7 @@ import {
 } from "./review";
 import {
   DOCUMENT_OP_TYPES,
+  PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_SCHEMA_VERSION,
   SECTION_BOUNDARY_POLICIES,
   type AddNoteOp,
@@ -608,6 +610,7 @@ const wrappedContent = (
     kind: WrapKind;
     stamp: RevisionStamp;
     resolutionJoin?: number;
+    acceptance?: NonNullable<Insertion["resolutionJoins"]>["acceptance"];
   },
 ): Wrapped => {
   const wrapped = wrapTracked(options);
@@ -657,6 +660,9 @@ const inserted = (options: InsertedOptions): Applied => {
       kind: WRAP_KINDS.INSERTION,
       stamp: revision,
       resolutionJoin: inverse.join + spanningRecords(content, [start, end], 0, 2).length,
+      ...(op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT && op.seamPolicy !== undefined
+        ? { acceptance: op.seamPolicy }
+        : {}),
     });
     if (wrapped.isErr()) {
       return Result.err(wrapped.error);

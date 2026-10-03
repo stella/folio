@@ -66,6 +66,7 @@ export const rangeStartAfterDeletion = ({
  * fragment, and section-bearing paragraphs, are unsupported.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+  seamPolicy?: Extract<DocumentOp, { type: "insertContent" }>["seamPolicy"];
   replacement: {
     paragraphs: readonly Paragraph[];
     tail: InlineSlice;
@@ -157,6 +158,7 @@ export const planTrackedReplace = (
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at,
       slice: replacement.tail,
+      ...(options.seamPolicy === undefined ? {} : { seamPolicy: options.seamPolicy }),
       revision,
     });
     if (inserted.isErr()) return Result.err(inserted.error);

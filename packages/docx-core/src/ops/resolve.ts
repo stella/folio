@@ -11,6 +11,8 @@
  * marks ends in the paragraph after the last.
  */
 
+import { INSERTION_SEAM_POLICIES } from "../model/content";
+import { runsMergeable } from "./runMerge";
 import { panic, Result } from "better-result";
 
 import { MAX_REVISION_ID } from "../model/document";
@@ -531,6 +533,7 @@ type ResolvedList = { nodes: InlineNode[]; changed: boolean; edges?: CutEdges };
 const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): ResolvedList => {
   const out: InlineNode[] = [];
   const seams: number[] = [];
+  const plainSeams = new Set<number>();
   const exactSeams = new Map<number, number>();
   const sourceEdges = new Map<number, number>();
   const pending = [...nodes];
@@ -565,7 +568,7 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           pending.splice(index + 1, pending.length - index - 1, ...prepared.slice(prefixLength));
         }
         if (node.resolutionJoins === undefined) seams.push(out.length);
-        else recordExactSeam(out.length, node.resolutionJoins.remove);
+        else recordSourceSeam(out.length, node.resolutionJoins.remove);
         continue;
       }
       if (node.resolutionJoins === undefined) seams.push(out.length);
@@ -584,6 +587,13 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
           resolution.acceptedClosed.first.add(first);
         if (node.resolutionJoins.before === 0 && last !== undefined)
           resolution.acceptedClosed.last.add(last);
+      }
+      if (
+        resolution.decision === REVISION_DECISIONS.ACCEPT &&
+        node.resolutionJoins?.acceptance === INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS
+      ) {
+        plainSeams.add(out.length);
+        plainSeams.add(out.length + content.length);
       }
       out.push(...content);
       if (resolved.edges?.last !== undefined) recordSourceSeam(out.length, resolved.edges.last);
@@ -707,6 +717,12 @@ const resolveList = (nodes: readonly InlineNode[], resolution: Resolution): Reso
   const lastDepth = sourceEdges.get(out.length);
   if (firstDepth !== undefined) edges.first = firstDepth;
   if (lastDepth !== undefined) edges.last = lastDepth;
+  for (const seam of plainSeams) {
+    const left = out.at(seam - 1);
+    const right = out.at(seam);
+    if (seam > 0 && left?.type === "run" && right?.type === "run" && runsMergeable(left, right))
+      seams.push(seam);
+  }
   const merges = new Set(seams);
   for (const seam of [...new Set([...seams, ...exactSeams.keys(), ...folds])].toSorted(
     (left, right) => right - left,
@@ -899,6 +915,7 @@ const deferSplitSeam = ({
     sameOwnFields(last, first)
   ) {
     const inner = deferSplitSeam({ left: lastChildren, right: firstChildren, depth: depth - 1 });
+    if (inner.left === lastChildren && inner.right === firstChildren) return { left, right };
     return {
       left: [...left.slice(0, -1), rebuildNode(last, inner.left)],
       right: [rebuildNode(first, inner.right), ...right.slice(1)],
@@ -1190,6 +1207,9 @@ export const resolveRevision = (
       (node) =>
         validRetainedIdentities(node) &&
         (!isTrackedWrapper(node) ||
+          node.resolutionJoins?.acceptance === undefined ||
+          node.resolutionJoins.acceptance === INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS) &&
+        (!isTrackedWrapper(node) ||
           node.resolutionJoins?.deferredRemove === undefined ||
           node.resolutionJoins.deferredRemove.every((group) =>
             group.blockers.every((id) => blockerIds.has(id)),
@@ -1261,7 +1281,28 @@ export const resolveRevision = (
             resolution,
           })
         : undefined;
-    let depth = mark.resolutionJoin;
+    let leadingCut =
+      next?.type === "paragraph" ? (resolvedCutEdges.get(idKey(next.paraId ?? ""))?.first ?? 0) : 0;
+    const following = blockListAt(body.content, location.list);
+    for (let index = location.index + 1; index < following.length; index += 1) {
+      const candidate = following.at(index);
+      if (candidate?.type !== "paragraph") break;
+      leadingCut = Math.max(
+        leadingCut,
+        resolvedCutEdges.get(idKey(candidate.paraId ?? ""))?.first ?? 0,
+      );
+      if (
+        (resolvedContents.get(idKey(candidate.paraId ?? ""))?.length ?? 0) !== 0 ||
+        candidate.pPrMark === undefined ||
+        !markWasAdded(candidate.pPrMark.kind)
+      )
+        break;
+    }
+    let depth = Math.max(
+      mark.resolutionJoin,
+      resolvedCutEdges.get(idKey(paragraph.paraId ?? ""))?.last ?? 0,
+      leadingCut,
+    );
     if (trailing !== undefined) depth = Math.min(depth, trailing);
     if (leading !== undefined) depth = Math.min(depth, leading);
     if (depth !== mark.resolutionJoin) retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
@@ -1274,7 +1315,7 @@ export const resolveRevision = (
     const added = mark !== undefined && markWasAdded(mark.kind);
     const keepsBreak = markResolved && added === (op.decision === REVISION_DECISIONS.ACCEPT);
     if (markResolved && !keepsBreak) {
-      let depth = mark.resolutionJoin;
+      let depth = retiredCutDepths.get(idKey(paraId)) ?? mark.resolutionJoin;
       if (added && depth !== undefined && op.decision === REVISION_DECISIONS.REJECT) {
         const next = blockListAt(body.content, location.list).at(location.index + 1);
         // A deletion can have cut the source run before a later paragraph

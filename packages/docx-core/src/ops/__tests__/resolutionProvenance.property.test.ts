@@ -1,5 +1,6 @@
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
+import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
 import { panic } from "better-result";
 
 import { assertExactModel } from "../../../../../test/exactModel";
@@ -59,12 +60,12 @@ const fixture = ({ token, count, wrapper, formatting, priorReview }: Shape): Doc
   let content: ParagraphContent[] = runs;
   if (wrapper === "link") content = [{ type: "hyperlink", anchor: "target", children: runs }];
   if (wrapper === "control")
-    content = [{ type: "inlineSdt", properties: { id: 100 }, content: runs }];
+    content = [{ type: "inlineSdt", properties: { id: 100, sdtType: "richText" }, content: runs }];
   if (wrapper === "nested") {
     content = [
       {
         type: "inlineSdt",
-        properties: { id: 100 },
+        properties: { id: 100, sdtType: "richText" },
         content: [{ type: "hyperlink", anchor: "target", children: runs }],
       },
     ];
@@ -684,10 +685,14 @@ test("generated nested replacements preserve reviewed source seams in every reso
             revisionIds: tracked.revisions,
             decision,
           });
-          assertExactModel(
-            together,
-            decision === REVISION_DECISIONS.ACCEPT ? direct.document : original,
-          );
+          if (decision === REVISION_DECISIONS.ACCEPT) {
+            assertFreshIdentityEquivalent({
+              actual: together,
+              expected: direct.document,
+              original,
+              allocated: allocation.newIds,
+            });
+          } else assertExactModel(together, original);
           for (const order of [tracked.revisions, tracked.revisions.toReversed()]) {
             let separately = trackedDocument;
             for (const id of order)
