@@ -1,5 +1,6 @@
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
+import fc from "fast-check";
 import type {
   BlockContent,
   Document,
@@ -19,6 +20,7 @@ import {
   GENERATED_OP_KINDS,
   opForStory,
   opSeedArbitrary,
+  textFormattingArbitrary,
   type OpSeed,
 } from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 
@@ -36,8 +38,10 @@ const paragraph = (id: string, text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-/** Every draw carries all editable stories and balanced, package-wide identities. */
-export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => {
+type PackageDocumentSeed = Pick<OpSeed, "first" | "formatting" | "inherit" | "text">;
+
+/** Only these four inputs determine package content; operation-only dimensions do not. */
+const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
   let nextParagraph = 1;
   const named = (text: string): Paragraph =>
     paragraph((nextParagraph++).toString(16).toUpperCase().padStart(8, "0"), text);
@@ -180,7 +184,22 @@ export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => 
       },
     },
   });
-});
+};
+
+/** Every draw carries all editable stories and balanced, package-wide identities. */
+export const packageDocumentArbitrary = opSeedArbitrary.map(packageDocumentFromSeed);
+
+/** Capture replay has no dependency on operation-only generator dimensions. */
+export const captureDocumentArbitrary = fc
+  .record({
+    first: fc.nat(),
+    formatting: textFormattingArbitrary,
+    inherit: fc.boolean(),
+    text: fc
+      .array(fc.constantFrom("x", "y", "ü", "😀"), { minLength: 1, maxLength: 3 })
+      .map((parts) => parts.join("")),
+  })
+  .map(packageDocumentFromSeed);
 
 type CaseArgs = { document: Document; seed: OpSeed; story: OpStory };
 type GeneratedCase = { document: Document; op: DocumentOp };
