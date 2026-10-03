@@ -116,10 +116,12 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
       if (!saved) throw new TypeError("Canonical save unavailable");
       expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
-      const reopened = await parseDocx(new Uint8Array(saved), {
-        preloadFonts: false,
-        detectVariables: false,
-      });
+      const reopened = structuredClone(
+        await parseDocx(new Uint8Array(saved), {
+          preloadFonts: false,
+          detectVariables: false,
+        }),
+      );
       expect(reopened.package.document.content).toEqual(final.document.package.document.content);
       await info.attach("canonical-missing-ops", {
         body: JSON.stringify({ seed, mode, missing: missing.rows() }),
