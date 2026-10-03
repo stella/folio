@@ -32,6 +32,7 @@ import {
   propertyConfig,
   propertyTestTimeout,
 } from "../../../../../test/property-testing";
+import { assertFreshIdentityEquivalent } from "./freshIdentityOracle";
 import { projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
@@ -86,7 +87,10 @@ const expectCompactIntentIds = (document: Document, ops: readonly DocumentOp[]):
         .map(({ paragraph }) => paragraph);
       const identities = new Set(identityKeysIn(records));
       for (const id of op.newIds.revision ?? [])
-        expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(true);
+        expect(
+          identities.has(`${IDENTITY_SPACES.REVISION}:${id}`),
+          JSON.stringify({ id, op, identities: [...identities] }),
+        ).toBe(true);
       for (const id of op.newIds.control ?? [])
         expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(true);
     }
@@ -1112,12 +1116,43 @@ describe("document operations", () => {
           const trackedEdit = applyDocumentOps(document, tracked.value.ops);
           if (directEdit.isErr()) throw directEdit.error;
           if (trackedEdit.isErr()) throw trackedEdit.error;
+          const originalChanges = storyParagraphs(document.package.document).flatMap(
+            ({ paragraph: sourceParagraph }) => sourceParagraph.propertyChanges ?? [],
+          );
+          const foldedIds = storyParagraphs(trackedEdit.value.document.package.document).flatMap(
+            ({ paragraph: editedParagraph }) =>
+              (editedParagraph.propertyChanges ?? []).flatMap((change) => {
+                const previous = originalChanges.find(({ info }) => info.id === change.info.id);
+                if (previous === undefined || change.info.author !== "Property") return [];
+                expect(["joinParagraphs", "formatParagraph", "setList"]).toContain(intent.type);
+                expect(change.previousFormatting).toStrictEqual(previous.previousFormatting);
+                expect(change.info).toStrictEqual({
+                  ...previous.info,
+                  author: "Property",
+                  date: "2026-10-02T00:00:00Z",
+                });
+                expect(trackedEdit.value.revisions).not.toContain(change.info.id);
+                return [change.info.id];
+              }),
+          );
+          const resolveFolded = (
+            source: Document,
+            decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+          ) =>
+            foldedIds.length === 0
+              ? source
+              : applyDocumentOp(source, {
+                  type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                  story: OP_STORIES.MAIN,
+                  revisionIds: foldedIds,
+                  decision,
+                }).unwrap().document;
           let acceptedDocument = trackedEdit.value.document;
-          if (trackedEdit.value.revisions.length > 0) {
+          if (trackedEdit.value.revisions.length > 0 || foldedIds.length > 0) {
             const accepted = applyDocumentOp(acceptedDocument, {
               type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
               story: OP_STORIES.MAIN,
-              revisionIds: trackedEdit.value.revisions,
+              revisionIds: [...trackedEdit.value.revisions, ...foldedIds],
               decision: REVISION_DECISIONS.ACCEPT,
             });
             if (accepted.isErr()) throw accepted.error;
@@ -1125,7 +1160,7 @@ describe("document operations", () => {
             const rejected = applyDocumentOp(trackedEdit.value.document, {
               type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
               story: OP_STORIES.MAIN,
-              revisionIds: trackedEdit.value.revisions,
+              revisionIds: [...trackedEdit.value.revisions, ...foldedIds],
               decision: REVISION_DECISIONS.REJECT,
             });
             if (rejected.isErr()) throw rejected.error;
@@ -1136,7 +1171,9 @@ describe("document operations", () => {
                 ),
               );
               const baselinePackage = Object.fromEntries(
-                Object.entries(document.package).filter(([key]) => key !== "numbering"),
+                Object.entries(resolveFolded(document, REVISION_DECISIONS.REJECT).package).filter(
+                  ([key]) => key !== "numbering",
+                ),
               );
               assertExactModel(rejectedPackage, baselinePackage);
               expect(rejected.value.document.package.numbering?.nums).toContainEqual(
@@ -1148,10 +1185,18 @@ describe("document operations", () => {
                 );
               }
             } else {
-              assertExactModel(rejected.value.document, document);
+              assertExactModel(
+                rejected.value.document,
+                resolveFolded(document, REVISION_DECISIONS.REJECT),
+              );
             }
           }
-          assertExactModel(acceptedDocument, directEdit.value.document);
+          assertFreshIdentityEquivalent({
+            actual: acceptedDocument,
+            expected: resolveFolded(directEdit.value.document, REVISION_DECISIONS.ACCEPT),
+            original: document,
+            allocated: allocation.newIds,
+          });
           const directUndo = applyDocumentOps(directEdit.value.document, directEdit.value.inverse);
           const trackedUndo = applyDocumentOps(
             trackedEdit.value.document,

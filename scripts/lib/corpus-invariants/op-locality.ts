@@ -133,6 +133,27 @@ const lifecycleOwnership = (op: DocumentOp) => {
 
 type WithoutOwnedRecordsOptions = { document: Document; original: Document; op: DocumentOp };
 const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOptions): Document => {
+  if (op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE) {
+    const out = structuredClone(document);
+    if (out.package.numbering !== undefined) {
+      out.package.numbering.nums = out.package.numbering.nums.filter(
+        ({ numId }) => numId !== op.num.numId,
+      );
+      if (op.abstractNum !== undefined)
+        out.package.numbering.abstractNums = out.package.numbering.abstractNums.filter(
+          ({ abstractNumId }) => abstractNumId !== op.abstractNum?.abstractNumId,
+        );
+      if (
+        original.package.numbering === undefined &&
+        out.package.numbering.nums.length === 0 &&
+        out.package.numbering.abstractNums.length === 0
+      ) {
+        if (Object.hasOwn(original.package, "numbering")) out.package.numbering = undefined;
+        else delete out.package.numbering;
+      }
+    }
+    return out;
+  }
   const ownership = lifecycleOwnership(op);
   if (!ownership) return document;
   const out = structuredClone(document);
@@ -289,6 +310,10 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
   for (const { op } of sequence.steps) {
+    if (op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE) {
+      lifecycle = true;
+      ownedRelationshipTypes.add(RELATIONSHIP_TYPES.numbering);
+    }
     const ownership = lifecycleOwnership(op);
     if (!ownership) continue;
     lifecycle = true;

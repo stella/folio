@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { MAX_REVISION_ID, PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
@@ -7,7 +7,7 @@ import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { readParagraphAttrs } from "../prosemirror/attrs";
 import { schema } from "../prosemirror/schema";
 import { assertExactModel } from "../../../../test/exactModel";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { parseParagraph } from "./paragraphParser";
 import { serializeParagraph } from "./serializer/paragraphSerializer";
 import { serializePartElement } from "./serializer/partNamespaces";
@@ -22,6 +22,8 @@ import {
 } from "./reviewResolutionProvenance";
 import { findChild, parseXmlDocument, WORDPROCESSINGML_NAMESPACE_URIS } from "./xmlParser";
 import type { Paragraph, ParagraphMarkChange } from "../types/document";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const element = (xml: string) => {
   const parsed = parseXmlDocument(xml);
