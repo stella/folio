@@ -8,7 +8,14 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  * sequencer apply operations with one implementation.
  */
 
-export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
+export { captureDocumentOp } from "./wire";
+export { combineEdits } from "./edits";
+export {
+  applyDocumentOpEnvelope,
+  applyDocumentOp,
+  applyDocumentOps,
+  type AppliedDocumentOp,
+} from "./apply";
 export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
 export {
   compileEditorIntent,
@@ -46,6 +53,7 @@ export {
 export {
   DOCUMENT_OP_SCHEMA_VERSION,
   DOCUMENT_OP_TYPES,
+  PROPERTY_REVIEW_POLICIES,
   EMPTY_PROPERTY_SETS,
   INHERIT_RUN_PROPS,
   OP_STORIES,
@@ -62,8 +70,10 @@ export {
   type SetSectionPropsOp,
   type RestoreStoryPartsOp,
   type BlockInsertionPoint,
+  type CreateNumberingInstanceOp,
   type InsertBlocksOp,
   type DeleteBlocksOp,
+  type DeleteNumberingInstanceOp,
   type InsertTableOp,
   type DeleteTableOp,
   type SetContainerBlocksOp,
@@ -82,6 +92,7 @@ export {
   type JoinBlocksOp,
   type JoinInlineOp,
   type NewIds,
+  type NumberingPartState,
   type OpStory,
   type ParagraphPropsPatch,
   type ParagraphReviewFields,
@@ -95,6 +106,12 @@ export {
   type SetParagraphReviewOp,
   type SetRunPropsOp,
   type SetTableRowsOp,
+  type SectionPropertiesState,
+  type SectionMapState,
+  type SectionViewEntry,
+  type SectionViewState,
+  type SectionEndpoint,
+  type SetSectionEndpointOp,
   type SplitBlockOp,
   type SplitHalf,
   type SplitInlineOp,
@@ -102,3 +119,5 @@ export {
   type TextPosition,
   type TouchedBlocks,
 } from "./types";
+
+export { packageParagraphIds } from "./ids";

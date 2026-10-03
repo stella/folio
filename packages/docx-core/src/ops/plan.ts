@@ -41,6 +41,7 @@ import {
   type InsertContentOp,
   type JoinBlocksOp,
   type SetParagraphPropsOp,
+  type SetRunPropsOp,
   type SplitBlockOp,
   EMPTY_PROPERTY_SETS,
   type DocumentOp,
@@ -91,6 +92,9 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return op;
     default: {
       const unreachable: never = op;
@@ -237,14 +241,28 @@ const earlierGap = (left: Gap, right: Gap): Gap => (compareGaps(left, right) <= 
  * deleted content, which it leaves alone, and one holding nothing else is
  * dropped.
  */
-const segmentsOf = (spans: readonly LeafSpan[], from: Gap, to: Gap, author: string): Segment[] => {
+type ReplacementDeletionSegmentsOptions = {
+  spans: readonly LeafSpan[];
+  from: Gap;
+  to: Gap;
+  mode: { type: "editing" } | { type: "suggesting"; author: string };
+};
+
+export const replacementDeletionSegments = ({
+  spans,
+  from,
+  to,
+  mode,
+}: ReplacementDeletionSegmentsOptions): Segment[] => {
   const out: Segment[] = [];
   let open: Segment | undefined;
   for (const span of spans) {
     const start = laterGap(span.before, from);
     const end = earlierGap(span.after, to);
     if (compareGaps(start, end) >= 0) continue;
-    const plan = leafPlan(span, author);
+    let plan: LeafPlan = isCommentAnchor(span.node) ? "anchor" : "direct";
+    if (mode.type === "suggesting") plan = leafPlan(span, mode.author);
+    else if (span.ancestors.some(isRemovedRevisionNode)) plan = "untouched";
     if (plan === "anchor") {
       open = undefined;
       continue;
@@ -293,7 +311,8 @@ type PlannedReviewOp =
   | InsertContentOp
   | JoinBlocksOp
   | SplitBlockOp
-  | SetParagraphPropsOp;
+  | SetParagraphPropsOp
+  | SetRunPropsOp;
 
 type TrackedPlanOptions = {
   document: Document;
@@ -308,11 +327,12 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     (id) => !used.has(id) && id !== revision.id,
   );
   let taken = 0;
+  let remaining = pool.length;
   let stampUsed = false;
   let current = document;
   const ops: DocumentOp[] = [];
   const take = (count: number) => {
-    if (taken + count > pool.length) return undefined;
+    if (taken + count > remaining) return undefined;
     const ids = pool.slice(taken, taken + count);
     taken += count;
     return ids;
@@ -320,8 +340,14 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
   const append = (input: PlannedReviewOp): Result<void, DocumentOpRefusal> => {
     let op: DocumentOp = input;
     if (input.revision !== undefined) {
-      const stampId = stampUsed ? take(1)?.at(0) : revision.id;
-      if (stampId === undefined) return outOfIds();
+      // Source cuts consume the caller's pool in the same order as editing.
+      // Additional mode-owned stamps use its other end and cannot displace them.
+      let stampId = revision.id;
+      if (stampUsed) {
+        if (remaining <= taken) return outOfIds();
+        remaining -= 1;
+        stampId = pool.at(remaining) ?? panic("A reserved stamp has an allocated pool entry.");
+      }
       op = { ...input, revision: { ...revision, id: stampId } };
     }
     const demand = revisionIdDemand(current, op);
@@ -340,6 +366,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     const story = (() => {
       switch (input.type) {
         case DOCUMENT_OP_TYPES.DELETE_RANGE:
+        case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
           return input.from.story;
         case DOCUMENT_OP_TYPES.INSERT_CONTENT:
         case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
@@ -490,15 +517,15 @@ export const appendTrackedDeletion = ({
     });
     if (check.isErr()) return Result.err(check.error);
     const content = paragraph.content;
-    const segments = segmentsOf(
-      leafSpans(content),
-      {
+    const segments = replacementDeletionSegments({
+      spans: leafSpans(content),
+      from: {
         offset: start.offset,
         zeroWidthBefore: start.zeroWidthBefore ?? zeroWidthLeavesAt(content, start.offset).length,
       },
-      { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
-      revision.author,
-    );
+      to: { offset: end.offset, zeroWidthBefore: end.zeroWidthBefore ?? 0 },
+      mode: { type: "suggesting", author: revision.author },
+    });
     ranges.push({ paragraph, at, segments });
   }
   // Direct simulation gives the surviving paragraph's authored properties,

@@ -1,0 +1,199 @@
+{
+  "generated compound intents reserve source IDs before additional action stamps": [
+    {
+      "seed": -137924357,
+      "path": "2:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 173165399,
+      "path": "0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 478126124,
+      "path": "2:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated deletion cuts accept and reject at the recorded wrapper depth": [
+    {
+      "seed": -1058721059,
+      "path": "4:0:0:1:1:1",
+      "date": "2026-10-02",
+      "note": "Preserve own property presence and authored run boundaries through generated multi-step edits and exact inverses."
+    },
+    {
+      "seed": 1703506436,
+      "path": "18:0:0:1:4",
+      "date": "2026-10-02",
+      "note": "Preserve exact identity provenance through tracked resolution and editor serialization."
+    },
+    {
+      "seed": 1010476761,
+      "path": "2:0:1:3:7:0",
+      "date": "2026-10-02",
+      "note": "Preserve exact prior review identities and marker affinity through generated structural editing and resolution."
+    },
+    {
+      "seed": 1308229487,
+      "path": "3:0:1:4:5:3:4:4",
+      "date": "2026-10-02",
+      "note": "Preserve exact prior review identities and marker affinity through generated structural editing and resolution."
+    },
+    {
+      "seed": -800536905,
+      "path": "10:0:1:6",
+      "date": "2026-10-02",
+      "note": "Preserve exact imported review identities and structural editing equivalence through generated direct and tracked resolution."
+    },
+    {
+      "seed": 1010476761,
+      "path": "2:0:1:3:7:2:0:0:2:1:1:1:2:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated later property rejection retains earlier cut provenance": [
+    {
+      "seed": 1820773325,
+      "path": "2:0:0:0",
+      "date": "2026-10-02",
+      "note": "Preserve own property presence and authored run boundaries through generated multi-step edits and exact inverses."
+    },
+    {
+      "seed": 1820773325,
+      "path": "2:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated nested replacements preserve reviewed source seams in every resolution order": [
+    {
+      "seed": -1408566367,
+      "path": "0:0:0:0:0:0:1:0:0:0:1:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -239249692,
+      "path": "0:0:0:0:1:0:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 341854196,
+      "path": "1:0:0:0:0:0:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 920771850,
+      "path": "0:1:0:0:0:0:1:0:0:0:0:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 423924683,
+      "path": "42:0:0:0:1:6",
+      "note": "Merge surviving text leaves within the recorded maximum cut depth after wrapper removal.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated paragraph cut depths preserve authored wrappers and deferred split seams": [
+    {
+      "seed": 802608016,
+      "note": "Exercise pending source insertions split before later intervening insertions across wrapper depths.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 802608016,
+      "path": "2",
+      "note": "Preserve original cut closures while joining accepted editor payload seams.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated pending deletion splits preserve resolution order and exact histories": [
+    {
+      "seed": -1046473253,
+      "path": "0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
+    }
+  ],
+  "generated replacements preserve input affinity around zero-width leaves": [
+    {
+      "seed": -2001295604,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1236713541,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -992172216,
+      "path": "1:0:1:0:2:1:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -200735029,
+      "path": "0:1:3:2:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 464543571,
+      "path": "3:6:0:1:5:3:2",
+      "note": "Replay the observed source-seam or revision allocation failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated retained source identities survive a later pending formatting action": [
+    {
+      "seed": -547730310,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 767755419,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1876835879,
+      "path": "0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated same-author insertion bursts preserve exact authored seams": [
+    {
+      "seed": 2064493567,
+      "path": "1:0:0:0:2:2:2:2:3:3:2:3",
+      "date": "2026-10-02",
+      "note": "Preserve own property presence and authored run boundaries through generated multi-step edits and exact inverses."
+    },
+    {
+      "seed": 2064493567,
+      "path": "1:0:0:0:2:2:2:2:3:3:2:3:0:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1152846089,
+      "path": "0:0:1:1:1:1:1:1:1",
+      "note": "Replay the observed source-seam or revision allocation failure.",
+      "date": "2026-10-03"
+    }
+  ]
+}

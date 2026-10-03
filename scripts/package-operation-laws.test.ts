@@ -180,6 +180,24 @@ test(
 );
 
 test(
+  "paragraph property package inverses retain authored stories",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        packageDocumentArbitrary,
+        opSeedArbitrary,
+        fc.constantFrom(...GENERATED_PACKAGE_STORIES),
+        async (document, seed, story) => {
+          await assertPackageOperationLaws({ kind: "setParagraphProps", document, seed, story });
+        },
+      ),
+      { numRuns: 100 },
+    );
+  },
+  propertyTestTimeout(60_000),
+);
+
+test(
   "operation sequence generation retains the parsed package control",
   async () => {
     await assertProperty(

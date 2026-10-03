@@ -1409,7 +1409,7 @@ export class FolioContentInlinePresentationProjectionError extends FolioContentI
 }> {}
 
 // @public
-export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
+export type FolioContentLineSpacingRule = NonNullable<import__stll_docx_core_model.ParagraphFormatting["lineSpacingRule"]>;
 
 // @public
 export type FolioContentParagraphAlignment = import__stll_docx_core_model.ParagraphAlignment;
@@ -1429,14 +1429,7 @@ export type FolioContentParagraphFormattingPatch = {
 export type FolioContentParagraphKind = "heading" | "listItem" | "paragraph";
 
 // @public
-export type FolioContentParagraphSpacing = {
-    spaceBefore?: number;
-    spaceAfter?: number;
-    lineSpacing?: number;
-    lineSpacingRule?: FolioContentLineSpacingRule;
-    beforeAutospacing?: boolean;
-    afterAutospacing?: boolean;
-};
+export type FolioContentParagraphSpacing = Pick<import__stll_docx_core_model.ParagraphFormatting, "spaceBefore" | "spaceAfter" | "lineSpacing" | "lineSpacingRule" | "beforeAutospacing" | "afterAutospacing">;
 
 // @public (undocumented)
 export type FolioContentRun = {

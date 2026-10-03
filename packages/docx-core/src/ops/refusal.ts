@@ -7,6 +7,8 @@ import type { DocumentOpType } from "./types";
  * document it was applied to is returned as it was.
  */
 export const DOCUMENT_OP_REFUSAL_REASONS = Object.freeze({
+  /** The journal envelope uses a schema this reader does not implement. */
+  UNSUPPORTED_SCHEMA: "unsupportedSchema",
   /** No paragraph in the story carries the id. */
   BLOCK_NOT_FOUND: "blockNotFound",
   /** An offset is not an integer from `0` to the paragraph's length, or a range runs backwards. */
@@ -99,5 +101,5 @@ export type DocumentOpRefusalReason =
 export class DocumentOpRefusal extends TaggedError("DocumentOpRefusal")<{
   message: string;
   reason: DocumentOpRefusalReason;
-  opType: DocumentOpType;
+  opType: DocumentOpType | undefined;
 }> {}

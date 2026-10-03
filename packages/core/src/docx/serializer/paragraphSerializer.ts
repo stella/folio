@@ -10,6 +10,12 @@
  * - Runs, hyperlinks, bookmarks, fields as child elements
  */
 
+import {
+  serializeResolutionJoins,
+  serializeParagraphMarkResolutionJoin,
+  paragraphMarkResolutionJoinAttributes,
+  ReviewResolutionProvenanceError,
+} from "../reviewResolutionProvenance";
 import { serializeEmptyMarkProperties } from "../paragraphMarkPropertyPresence";
 
 import type {
@@ -87,7 +93,7 @@ import { escapeXmlAttribute, escapeXmlText } from "@stll/docx-core";
  */
 function serializeParagraphMarkChange(mark: ParagraphMarkChange): string {
   const attrs = serializeTrackedChangeAttributes(mark.info);
-  return `<w:${mark.kind} ${attrs}/>`;
+  return `<w:${mark.kind} ${attrs}${serializeParagraphMarkResolutionJoin(mark)}/>`;
 }
 
 type SerializeParagraphFormattingOptions = {
@@ -381,7 +387,10 @@ const withParagraphMarkChange = (sourceXml: string, mark: ParagraphMarkChange): 
   if (!root || root.type !== "element") {
     panic("A validated paragraph-property capture could not be parsed for composition");
   }
-  const attributes = trackedChangeAttributeRecord(mark.info);
+  const attributes = {
+    ...trackedChangeAttributeRecord(mark.info),
+    ...paragraphMarkResolutionJoinAttributes(mark),
+  };
   const markElement = cloneElement(root, {
     name: `w:${mark.kind}`,
     attributes,
@@ -873,7 +882,20 @@ function serializeTrackedChange(
   tag: "ins" | "del" | "moveFrom" | "moveTo",
   change: Insertion | Deletion | MoveFrom | MoveTo,
 ): string {
-  const attrs = serializeTrackedChangeAttributes(change.info);
+  if (
+    change.resolutionJoins !== undefined &&
+    change.content.some((item) => item.type === "hyperlink")
+  ) {
+    throw new ReviewResolutionProvenanceError({
+      attribute: "resolutionJoins",
+      reason: "unrepresentable",
+      message:
+        "Tracked-resolution provenance cannot be repartitioned across serialized hyperlinks.",
+    });
+  }
+  const attrs =
+    serializeTrackedChangeAttributes(change.info) +
+    serializeResolutionJoins(change.resolutionJoins);
 
   const disposition: InlineTextDisposition =
     tag === "del" || tag === "moveFrom" ? "removed" : "kept";

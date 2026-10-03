@@ -1638,11 +1638,34 @@ export type TrackedRunContent =
   | PreservedInline
   | TrackedRunChange;
 
+export const INSERTION_SEAM_POLICIES = { MERGE_PLAIN_RUNS: "merge-plain-runs" } as const;
+
+/** Operation-created seams only; source OOXML has no such provenance. */
+type TrackedResolutionJoins = {
+  /** Editor text acceptance joins only the inserted payload's plain-run seams. */
+  acceptance?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
+  /** Exact join depths when the wrapper is retained and unwrapped. */
+  before: number;
+  after: number;
+  /** Exact join depth when the wrapper is removed. */
+  remove: number;
+  /** A split seam survives only while all intervening insertions await rejection. */
+  deferredRemove?: readonly { depth: number; blockers: readonly number[] }[];
+  /** Source identities handed to the retained suffix when a deleted prefix goes. */
+  retainedAfter?: readonly {
+    depth: number;
+    source: readonly { space: "revision" | "control"; id: number }[];
+    target: readonly { space: "revision" | "control"; id: number }[];
+  }[];
+};
+
 /**
  * Insertion wrapper (w:ins) — runs inserted by tracked changes
  */
 export type Insertion = {
   type: "insertion";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Inserted content */
@@ -1654,6 +1677,8 @@ export type Insertion = {
  */
 export type Deletion = {
   type: "deletion";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Deleted content */
@@ -1665,6 +1690,8 @@ export type Deletion = {
  */
 export type MoveFrom = {
   type: "moveFrom";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Moved content */
@@ -1676,6 +1703,8 @@ export type MoveFrom = {
  */
 export type MoveTo = {
   type: "moveTo";
+  /** In-memory cut provenance; imported OOXML wrappers omit this field. */
+  resolutionJoins?: TrackedResolutionJoins;
   /** Tracked change metadata */
   info: TrackedChangeInfo;
   /** Moved content */
@@ -1790,6 +1819,8 @@ export type TrackedRunChange = Insertion | Deletion | MoveFrom | MoveTo;
  */
 export type RunPropertyChange = {
   type: "runPropertyChange";
+  /** Cuts created by this action; omitted on imported OOXML records. */
+  boundaryJoins?: readonly ("before" | "after")[];
   /** Tracked change metadata */
   info: PropertyChangeInfo;
   /** Run properties before the tracked change */
@@ -2242,6 +2273,8 @@ export type ParagraphMarkChangeKind = (typeof PARAGRAPH_MARK_CHANGE_KINDS)[numbe
 export type ParagraphMarkChange = {
   kind: ParagraphMarkChangeKind;
   info: TrackedChangeInfo;
+  /** Exact source-cut depth for rejection; absent in ordinary imported revisions. */
+  resolutionJoin?: number | undefined;
 };
 
 export const REVIEW_CARRIERS = {
@@ -2273,7 +2306,7 @@ export type Paragraph = {
   /** Word's cached layout says this paragraph started on a new rendered page. */
   renderedPageBreakBefore?: boolean;
   /** Section properties (if this paragraph ends a section) */
-  sectionProperties?: SectionProperties;
+  sectionProperties?: SectionProperties | undefined;
   /**
    * Attributes `w:p` carried that this record has no field for.
    *
@@ -2753,9 +2786,9 @@ export type Section = {
   /** Content in this section */
   content: BlockContent[];
   /** Headers for this section */
-  headers?: Map<HeaderFooterType, HeaderFooter>;
+  headers?: Map<HeaderFooterType, HeaderFooter> | undefined;
   /** Footers for this section */
-  footers?: Map<HeaderFooterType, HeaderFooter>;
+  footers?: Map<HeaderFooterType, HeaderFooter> | undefined;
 };
 
 /**
@@ -2793,9 +2826,9 @@ export type DocumentBody = {
   /** All content (paragraphs, tables) */
   content: BlockContent[];
   /** Sections (derived from sectPr in paragraphs and final sectPr) */
-  sections?: Section[];
+  sections?: Section[] | undefined;
   /** Final section properties (from body's sectPr) */
-  finalSectionProperties?: SectionProperties;
+  finalSectionProperties?: SectionProperties | undefined;
   /** Comments from comments.xml */
   comments?: Comment[];
 };

@@ -1,7 +1,9 @@
+import { cloneModel } from "../modelClone";
 import { Result, TaggedError } from "better-result";
 import type { ParagraphFormatting, TextFormatting } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
 import { isOpStory } from "./address";
+import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
   type DocumentOp,
@@ -58,8 +60,12 @@ export class BatchRejection extends TaggedError("BatchRejection")<{
 
 type Validator = (value: unknown) => boolean;
 type Fields = Readonly<Record<string, Validator>>;
-type OperationFields = {
-  [Op in DocumentOp as Op["type"]]: { [Key in keyof Op]-?: Validator };
+type CommonOperationFields = Pick<DocumentOp, "undefinedFields">;
+type OperationFields<Type extends DocumentOpType> = {
+  [Key in Exclude<
+    keyof Extract<DocumentOp, { type: Type }>,
+    keyof CommonOperationFields
+  >]-?: Validator;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -88,6 +94,9 @@ const array =
   (check: Validator): Validator =>
   (value) =>
     Array.isArray(value) && value.every(check);
+const commonOperationFields = {
+  undefinedFields: optional(array(array(nonemptyString))),
+} satisfies Record<keyof CommonOperationFields, Validator>;
 const object =
   (fields: Fields): Validator =>
   (value) =>
@@ -224,7 +233,7 @@ const operationFields = {
     runProps: (value) => value === "inherit" || runProps(value),
     newIds,
     revision,
-  } satisfies OperationFields["insertText"],
+  } satisfies OperationFields<"insertText">,
   deleteRange: {
     type: literal("deleteRange"),
     from: position,
@@ -233,7 +242,7 @@ const operationFields = {
     expected: optional(slice),
     newIds,
     revision,
-  } satisfies OperationFields["deleteRange"],
+  } satisfies OperationFields<"deleteRange">,
   setRunProps: {
     type: literal("setRunProps"),
     from: position,
@@ -245,7 +254,8 @@ const operationFields = {
     joinEnd: optional(natural),
     newIds,
     revision,
-  } satisfies OperationFields["setRunProps"],
+    propertyReview: absent,
+  } satisfies OperationFields<"setRunProps">,
   setParagraphProps: {
     type: literal("setParagraphProps"),
     story: isOpStory,
@@ -254,7 +264,7 @@ const operationFields = {
     expected: optional(paragraphPatch),
     whenEmpty,
     revision,
-  } satisfies OperationFields["setParagraphProps"],
+  } satisfies OperationFields<"setParagraphProps">,
   splitBlock: {
     type: literal("splitBlock"),
     at: position,
@@ -266,7 +276,7 @@ const operationFields = {
     sectionView: absent,
     newIds,
     revision,
-  } satisfies OperationFields["splitBlock"],
+  } satisfies OperationFields<"splitBlock">,
   joinBlocks: {
     type: literal("joinBlocks"),
     story: isOpStory,
@@ -280,7 +290,7 @@ const operationFields = {
     sectionView: absent,
     newIds,
     revision,
-  } satisfies OperationFields["joinBlocks"],
+  } satisfies OperationFields<"joinBlocks">,
   insertBlocks: {
     type: literal("insertBlocks"),
     story: isOpStory,
@@ -288,27 +298,28 @@ const operationFields = {
     blocks: array(paragraph),
     newIds,
     revision,
-  } satisfies OperationFields["insertBlocks"],
+  } satisfies OperationFields<"insertBlocks">,
   deleteBlocks: {
     type: literal("deleteBlocks"),
     story: isOpStory,
     blockIds: array(blockId),
     newIds,
     revision,
-  } satisfies OperationFields["deleteBlocks"],
+  } satisfies OperationFields<"deleteBlocks">,
   resolveRevision: {
     type: literal("resolveRevision"),
     story: isOpStory,
     revisionIds: array(natural),
     decision: literal("accept", "reject"),
-  } satisfies OperationFields["resolveRevision"],
+  } satisfies OperationFields<"resolveRevision">,
   insertContent: {
     type: literal("insertContent"),
     at: position,
     slice,
     newIds,
     revision,
-  } satisfies OperationFields["insertContent"],
+    seamPolicy: absent,
+  } satisfies OperationFields<"insertContent">,
   splitInline: undefined,
   joinInline: undefined,
   replaceBlocks: undefined,
@@ -320,6 +331,9 @@ const operationFields = {
   insertRow: undefined,
   deleteRow: undefined,
   setTableRows: undefined,
+  createNumberingInstance: undefined,
+  deleteNumberingInstance: undefined,
+  setSectionEndpoint: undefined,
   addNote: undefined,
   createHeaderFooter: undefined,
   removeHeaderFooter: undefined,
@@ -338,7 +352,11 @@ const isDocumentOp = (value: unknown): value is DocumentOp => {
   if (!isRecord(value) || typeof value["type"] !== "string") return false;
   const entry = Object.entries(operationFields).find(([type]) => type === value["type"]);
   const fields = entry?.at(1);
-  return typeof fields === "object" && fields !== null && object(fields)(value);
+  return (
+    typeof fields === "object" &&
+    fields !== null &&
+    object({ ...fields, ...commonOperationFields })(value)
+  );
 };
 
 /** Bound recursion and refuse values except JSON data and absent object fields. */
@@ -432,7 +450,9 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
       }),
     );
   }
-  const normalized = Result.try((): unknown => JSON.parse(encoded.value));
+  // The decoder also admits typed in-process batches. JSON normalization here
+  // would erase their own undefined fields before the wire boundary captures them.
+  const normalized = Result.try((): unknown => cloneModel(value));
   if (normalized.isErr() || !isRecord(normalized.value)) {
     return Result.err(
       new BatchRejection({
@@ -441,7 +461,17 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
       }),
     );
   }
-  return decodeDocumentBatch(normalized.value);
+  const decoded = decodeDocumentBatch(normalized.value);
+  if (decoded.isErr()) return decoded;
+  if (new TextEncoder().encode(JSON.stringify(decoded.value)).byteLength > MAX_BATCH_WIRE_BYTES) {
+    return Result.err(
+      new BatchRejection({
+        reason: BATCH_REJECTION_REASONS.INVALID_BATCH,
+        message: "Captured batch exceeds its JSON wire size limit",
+      }),
+    );
+  }
+  return decoded;
 };
 
 const decodeDocumentBatch = (
@@ -500,7 +530,23 @@ const decodeDocumentBatch = (
       );
     }
   }
-  return Result.ok(value);
+  const ops: DocumentOp[] = [];
+  for (const op of value.ops) {
+    const restored = restoreDocumentOp(op);
+    if (restored.isErr() || !isDocumentOp(restored.value)) {
+      return Result.err(
+        new BatchRejection({
+          reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+          message: restored.isErr()
+            ? restored.error.message
+            : "Restored operation is outside the supported wire payload",
+          opType: op.type,
+        }),
+      );
+    }
+    ops.push(captureDocumentOp(restored.value));
+  }
+  return Result.ok({ ...value, ops });
 };
 
 const isSequencedBatch = (value: DocumentBatch): value is SequencedBatch =>

@@ -15,6 +15,7 @@ import {
   type SequencedOpEffect,
 } from "./envelope";
 import { sameStory } from "./address";
+import { captureDocumentOp, restoreDocumentOp } from "../wire";
 
 type TransformOptions = { order?: "before" | "after" };
 
@@ -44,6 +45,9 @@ const operationStory = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return op.story;
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
     case DOCUMENT_OP_TYPES.ADD_NOTE:
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -104,17 +108,17 @@ type PairOptions = {
   effect: SequencedOpEffect | undefined;
   order: "before" | "after";
 };
-const transformOp = ({
+const transformRestoredOp = ({
   op,
   over,
   effect,
   order,
 }: PairOptions): Result<readonly DocumentOp[], BatchRejection> => {
-  const localStory = operationStory(op);
-  const remoteStory = operationStory(over);
-  if (localStory === undefined || remoteStory === undefined)
-    return refusal(op, over, "Story lifecycle changes have no supported sequencing transform.");
-  if (!sameStory(localStory, remoteStory)) return Result.ok([op]);
+  const story = operationStory(op);
+  const overStory = operationStory(over);
+  if (story === undefined || overStory === undefined)
+    return refusal(op, over, "Numbering and section metadata require an exclusive edit.");
+  if (!sameStory(story, overStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
   if (effect?.type === "touchedBlocks" && op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) {
     const addressed = targets(op);
@@ -426,6 +430,30 @@ const transformOp = ({
   return Result.ok([{ ...op, from: adjustedFrom, to }]);
 };
 
+const restoreForTransform = (op: DocumentOp): Result<DocumentOp, BatchRejection> => {
+  const restored = restoreDocumentOp(op);
+  if (restored.isErr()) {
+    return Result.err(
+      new BatchRejection({
+        reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+        message: restored.error.message,
+        opType: op.type,
+      }),
+    );
+  }
+  return Result.ok(restored.value);
+};
+
+const transformOp = (options: PairOptions): Result<readonly DocumentOp[], BatchRejection> => {
+  const op = restoreForTransform(options.op);
+  if (op.isErr()) return op;
+  const over = restoreForTransform(options.over);
+  if (over.isErr()) return over;
+  const transformed = transformRestoredOp({ ...options, op: op.value, over: over.value });
+  if (transformed.isErr()) return transformed;
+  return Result.ok(transformed.value.map(captureDocumentOp));
+};
+
 /** Rebase an atomic batch over an ordered journal tail. */
 export const transformBatch = (
   batch: DocumentBatch,
@@ -479,7 +507,6 @@ export const transformBatch = (
         // operation. Move the foreign operation into that coordinate space.
         const reciprocal: DocumentOp[] = [];
         for (const remoteOp of remote) {
-          const localStory = operationStory(op);
           const mapped = transformOp({
             op: remoteOp,
             over: op,
@@ -488,12 +515,13 @@ export const transformBatch = (
           });
           if (mapped.isErr()) return mapped;
           reciprocal.push(...mapped.value);
+          const story = operationStory(op);
           if (
             remoteOp.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
             !remoteOp.revision &&
             remoteEffect?.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
-            localStory !== undefined &&
-            sameStory(localStory, remoteOp.story)
+            story !== undefined &&
+            sameStory(story, remoteOp.story)
           ) {
             if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT && op.at.blockId === remoteOp.blockId) {
               remoteEffect = {
@@ -520,5 +548,11 @@ export const transformBatch = (
     }
   }
   const last = over.at(-1);
-  return Result.ok({ ...batch, baseRev: last?.revision ?? batch.baseRev, ops });
+  const captured: DocumentOp[] = [];
+  for (const op of ops) {
+    const restored = restoreForTransform(op);
+    if (restored.isErr()) return restored;
+    captured.push(captureDocumentOp(restored.value));
+  }
+  return Result.ok({ ...batch, baseRev: last?.revision ?? batch.baseRev, ops: captured });
 };

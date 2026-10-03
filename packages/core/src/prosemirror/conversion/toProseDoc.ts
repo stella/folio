@@ -1302,6 +1302,7 @@ function convertTrackedChange(
     initials: change.info.initials ?? null,
     moveKind,
     _docxOuterWrapperCount: wrappedBy.length,
+    _docxResolutionJoins: change.resolutionJoins ?? null,
     ...(markType === "deletion" ? { _historicalFormatting: true } : {}),
   });
 
@@ -1313,6 +1314,7 @@ function convertTrackedChange(
     ...(change.info.utcDate ? { utcDate: change.info.utcDate.value } : {}),
     ...(change.info.initials ? { initials: change.info.initials } : {}),
     outerWrapperCount: wrappedBy.length,
+    ...(change.resolutionJoins === undefined ? {} : { resolutionJoins: change.resolutionJoins }),
   };
   return nodes.map((node) => withTrackedRunMark(node, mark, ancestor));
 }

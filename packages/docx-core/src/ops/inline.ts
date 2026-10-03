@@ -8,7 +8,13 @@
 
 import { panic } from "better-result";
 
-import type { ParagraphContent, Run, RunContent, TextFormatting } from "../model/document";
+import type {
+  ParagraphContent,
+  Run,
+  RunContent,
+  RunPropertyChange,
+  TextFormatting,
+} from "../model/document";
 import { structurallyEqual } from "./equality";
 import {
   asParagraphContent,
@@ -124,12 +130,19 @@ export const insertSliceAt = (
   slice: InlineSlice,
 ): ParagraphContent[] | undefined => {
   const [before = [], after = []] = partitionContent(items, [at]);
-  const withStart = mergeLists(before, slice.content, slice.openStart);
+  const withStart = mergeLists(before, slice.content, slice.openStart, {
+    mode: "exact",
+    fields: "source",
+  });
   // An open end continues the record it meets, so that record's ids stand.
   const whole =
     withStart === undefined
       ? undefined
-      : mergeLists(withStart, after, slice.openEnd, { mode: "exact", identity: "second" });
+      : mergeLists(withStart, after, slice.openEnd, {
+          mode: "exact",
+          identity: "second",
+          fields: "source",
+        });
   return whole === undefined ? undefined : asParagraphContent(whole);
 };
 
@@ -495,15 +508,33 @@ export const insertTextInContent = (
 // ---------------------------------------------------------------------------
 
 /** A run a patch changed, given what else the patch records on it, from the run it was. */
-export type RunDecoration = (patched: Run, previous: Run) => Run;
+type RunBoundaryJoin = NonNullable<RunPropertyChange["boundaryJoins"]>[number];
 
-const patchRunsIn = (
-  nodes: readonly InlineNode[],
-  patch: RunPropsPatch,
-  whenEmpty: EmptyPropertySet | undefined,
-  prior: Map<Run, TextFormatting | undefined>,
-  decorate: RunDecoration | undefined,
-): InlineNode[] => {
+type RunDecorationOptions = {
+  patched: Run;
+  previous: Run;
+  boundaryJoins: readonly RunBoundaryJoin[];
+};
+
+export type RunDecoration = (options: RunDecorationOptions) => Run;
+
+type PatchRunsInOptions = {
+  nodes: readonly InlineNode[];
+  patch: RunPropsPatch;
+  whenEmpty: EmptyPropertySet | undefined;
+  prior: Map<Run, TextFormatting | undefined>;
+  decorate: RunDecoration | undefined;
+  boundaries: ReadonlyMap<Run, readonly RunBoundaryJoin[]>;
+};
+
+const patchRunsIn = ({
+  nodes,
+  patch,
+  whenEmpty,
+  prior,
+  decorate,
+  boundaries,
+}: PatchRunsInOptions): InlineNode[] => {
   const out: InlineNode[] = [];
   for (const node of nodes) {
     if (node.type === "run") {
@@ -513,14 +544,19 @@ const patchRunsIn = (
         continue;
       }
       const patchedRun = withRunFormatting(node, formatting);
-      const run = decorate === undefined ? patchedRun : decorate(patchedRun, node);
+      const boundaryJoins = boundaries.get(node);
+      if (boundaryJoins === undefined) panic("A changed run has no boundary provenance.");
+      const run =
+        decorate === undefined
+          ? patchedRun
+          : decorate({ patched: patchedRun, previous: node, boundaryJoins });
       prior.set(run, node.formatting);
       out.push(run);
       continue;
     }
     if (isParagraphContent(node) && isInlineContainer(node)) {
       const children = childrenOf(node);
-      const next = patchRunsIn(children, patch, whenEmpty, prior, decorate);
+      const next = patchRunsIn({ nodes: children, patch, whenEmpty, prior, decorate, boundaries });
       const same = next.every((child, index) => child === children[index]);
       out.push(same ? node : withChildren(node, asParagraphContent(next)));
       continue;
@@ -580,7 +616,27 @@ export const patchRunsBetween = (
   const gaps = [from, to];
   const [before = [], middle = [], after = []] = partitionContent(items, gaps);
   const prior = new Map<Run, TextFormatting | undefined>();
-  const patchedMiddle = patchRunsIn(middle, patch, whenEmpty, prior, decorate);
+  const middleRuns: Run[] = [];
+  collectRuns(middle, middleRuns);
+  const cutsBefore = spanningRecords(items, gaps, 0, 1).some((node) => node.type === "run");
+  const cutsAfter = spanningRecords(items, gaps, 1, 2).some((node) => node.type === "run");
+  const firstRun = middleRuns.at(0);
+  const lastRun = middleRuns.at(-1);
+  const boundaries = new Map<Run, readonly RunBoundaryJoin[]>();
+  for (const run of middleRuns) {
+    const joins: RunBoundaryJoin[] = [];
+    if (cutsBefore && run === firstRun) joins.push("before");
+    if (cutsAfter && run === lastRun) joins.push("after");
+    boundaries.set(run, joins);
+  }
+  const patchedMiddle = patchRunsIn({
+    nodes: middle,
+    patch,
+    whenEmpty,
+    prior,
+    decorate,
+    boundaries,
+  });
   if (prior.size === 0) {
     return undefined;
   }

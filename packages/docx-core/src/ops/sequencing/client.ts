@@ -4,6 +4,7 @@ import type { Document } from "../../model/document";
 import { validateOpsDocument } from "../contract";
 import { equalForStaleness } from "../equality";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
+import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import { applyBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
@@ -87,6 +88,7 @@ export const createClient = (document: Document) => {
     if (validated.isErr()) {
       return validated;
     }
+    batch = validated.value;
     if (batch.revision !== undefined || batch.baseRev !== headRev || localIds.has(batch.opId)) {
       return Result.err(
         new BatchRejection({
@@ -106,11 +108,24 @@ export const createClient = (document: Document) => {
     }
     const normalizedOps: DocumentOp[] = [];
     for (const [index, op] of validated.value.ops.entries()) {
+      const restored = restoreDocumentOp(op);
+      if (restored.isErr()) {
+        return Result.err(
+          new BatchRejection({
+            reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+            message: restored.error.message,
+          }),
+        );
+      }
+      const admitted = restored.value;
       const effect = applied.value.effects.at(index);
       normalizedOps.push(
-        op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK && effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
-          ? { ...op, newHalf: effect.newHalf }
-          : op,
+        captureDocumentOp(
+          admitted.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK &&
+            effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
+            ? { ...admitted, newHalf: effect.newHalf }
+            : admitted,
+        ),
       );
     }
     const normalized = { ...validated.value, ops: normalizedOps };

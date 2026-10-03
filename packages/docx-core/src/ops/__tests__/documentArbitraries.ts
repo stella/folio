@@ -28,6 +28,8 @@ import type {
   TextFormatting,
   TrackedRunContent,
 } from "../../model/document";
+import { paragraphNumberingReference } from "../../model/paragraphNumbering";
+import { captureDocumentOp } from "../wire";
 import { storyParagraphs, storyBody } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { IDENTITY_SPACES, packageIdentityKeys, paragraphIdsIn } from "../ids";
@@ -88,6 +90,9 @@ const paragraphFormattingArbitrary: fc.Arbitrary<ParagraphFormatting> = fc.recor
     styleId: fc.constantFrom("Heading1", "BodyText"),
     runProperties: textFormattingArbitrary,
     preserved: fc.constant({ children: [{ index: 3, xml: "<w:suppressOverlap/>" }] }),
+    numPr: fc.option(fc.constant(paragraphNumberingReference({ numId: 1, ilvl: 0 })), {
+      nil: undefined,
+    }),
   },
   { requiredKeys: [] },
 );
@@ -504,8 +509,8 @@ const documentArbitraryIn = (mode: DocumentMode): fc.Arbitrary<Document> =>
 /**
  * A synthetic document around blocks. Half share their records between the
  * body and its section view, as the parser builds them; half hold an
- * independently built copy in the view, as a document read back from JSON
- * does. Paragraphs in a comment and a note share the id space.
+ * independently built, structurally equal copy in the view. Paragraphs in a
+ * comment and a note share the id space.
  */
 const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document => {
   const content = normalizeForOps({ package: { document: { content: blocks } } }).package.document
@@ -527,6 +532,16 @@ const documentFrom = (blocks: BlockContent[], shareSections: boolean): Document 
   return {
     package: {
       document: body,
+      numbering: storyParagraphs(body).some(
+        ({ paragraph }) => paragraph.formatting?.numPr?.kind === "reference",
+      )
+        ? {
+            abstractNums: [
+              { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+            ],
+            nums: [{ numId: 1, abstractNumId: 1 }],
+          }
+        : undefined,
       footnotes: [
         {
           type: "footnote",
@@ -553,9 +568,9 @@ export const reviewDocumentArbitrary: fc.Arbitrary<Document> = documentArbitrary
 
 /** A structurally equal copy that shares no record with its source. */
 export const independentCopy = <Value>(value: Value): Value => {
-  // SAFETY: JSON round-trips the plain data these fixtures are made of.
-  const copy = JSON.parse(JSON.stringify(value)) as Value;
-  return copy;
+  // Retain own undefined properties without sharing records with the source.
+  // The generator separately exercises shared and detached section views.
+  return structuredClone(value);
 };
 
 /** Random numbers an operation is drawn from once the document it targets is known. */
@@ -666,8 +681,17 @@ export const GENERATED_OP_KINDS: readonly DocumentOpType[] = OP_KINDS;
  * join across a section break, a slice whose open ends do not fit) exercise
  * refusals.
  */
+export const opFor = (document: Document, seed: OpSeed): DocumentOp =>
+  captureDocumentOp(rawOpFor(document, seed));
+
+const rawOpFor = (document: Document, seed: OpSeed): DocumentOp =>
+  opForStory({ document, seed, story: OP_STORIES.MAIN });
+
 type StoryOpArgs = { document: Document; seed: OpSeed; story: OpStory };
-export const opForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
+export const opForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp =>
+  captureDocumentOp(rawOpForStory({ document, seed, story }));
+
+const rawOpForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
   const paragraphs = storyParagraphs(storyBody(document, story));
   const target = paragraphs[seed.block % paragraphs.length];
   if (target === undefined) {
@@ -833,9 +857,6 @@ export const opForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp =
   }
 };
 
-export const opFor = (document: Document, seed: OpSeed): DocumentOp =>
-  opForStory({ document, seed, story: OP_STORIES.MAIN });
-
 const TRACKED_OP_KINDS = [
   DOCUMENT_OP_TYPES.INSERT_TEXT,
   DOCUMENT_OP_TYPES.INSERT_CONTENT,
@@ -907,10 +928,13 @@ const unmarkedJoin = (
  * and new ids for the records it creates past the first (one operation in
  * five names none, exercising the refusal).
  */
-export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): DocumentOp => {
+export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): DocumentOp =>
+  captureDocumentOp(rawTrackedOpFor(document, seed, index));
+
+const rawTrackedOpFor = (document: Document, seed: OpSeed, index: number): DocumentOp => {
   const kind =
     TRACKED_OP_KINDS[seed.kind % TRACKED_OP_KINDS.length] ?? DOCUMENT_OP_TYPES.INSERT_TEXT;
-  const op = opFor(document, { ...seed, kind: OP_KINDS.indexOf(kind) });
+  const op = rawOpFor(document, { ...seed, kind: OP_KINDS.indexOf(kind) });
   const revision = stampFor(document, seed, index);
   const pool = (base: number, length: number) =>
     Array.from({ length }, (_, offset) => base + (seed.fresh % 100_000) * 8 + offset);

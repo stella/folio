@@ -8,6 +8,7 @@ import {
   identityKeysIn,
   idKey,
   packageIdentityKeys,
+  reservedIdentityKeysIn,
   packageParagraphIds,
   paragraphIdsIn,
 } from "./ids";
@@ -75,7 +76,7 @@ export const createCensusReader = () => {
     let keys = paragraphKeys.get(paragraph);
     if (keys === undefined) {
       keys = {
-        identities: identityKeysIn(paragraph),
+        identities: identityKeysIn(paragraph).concat(reservedIdentityKeysIn(paragraph)),
         paragraphs: paragraphIdsIn(paragraph).map(idKey),
       };
       paragraphKeys.set(paragraph, keys);
@@ -117,7 +118,9 @@ export const createCensusReader = () => {
         adjustCounts({ counts: paragraphs, keys: keys.paragraphs, delta });
       }
     } else {
-      identities = countKeys(packageIdentityKeys(document.package));
+      identities = countKeys(
+        packageIdentityKeys(document.package).concat(reservedIdentityKeysIn(document.package)),
+      );
       paragraphs = countKeys(packageParagraphIds(document.package).map(idKey));
     }
     const version = { document, identities, paragraphs, census: censusOf(identities, paragraphs) };

@@ -1,0 +1,16 @@
+{
+  "alike merges consume surviving text within the maximum source depth": [
+    {
+      "seed": 914656760,
+      "path": "0:1:1",
+      "note": "Use production-shaped runs inside generated hyperlink branches; test maximum surviving cut depth.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 354032385,
+      "path": "2:2",
+      "note": "Generate nested bidi wrappers over runs, preserving valid nested container shapes.",
+      "date": "2026-10-03"
+    }
+  ]
+}

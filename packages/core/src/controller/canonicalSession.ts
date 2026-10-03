@@ -50,6 +50,9 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return true;
     default: {
       if ("story" in op) return !sameStory(op.story, OP_STORIES.MAIN);
@@ -69,6 +72,9 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.REMOVE_NOTE:
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return true;
     default: {
       if ("story" in op) return sameStory(op.story, OP_STORIES.MAIN);
@@ -776,11 +782,19 @@ class CanonicalSession {
     const story = (() => {
       switch (intent.type) {
         case "replaceText":
+        case "formatRun":
+        case "insertAtom":
           return intent.from.story;
         case "splitParagraph":
+        case "formatParagraph":
           return intent.at.story;
         case "joinParagraphs":
           return intent.story;
+        case "setList": {
+          const first = intent.items.at(0);
+          if (first === undefined) panic("A list input must address a paragraph.");
+          return first.at.story;
+        }
         default: {
           const unreachable: never = intent;
           return panic(`Unknown canonical intent ${unreachable}`);
