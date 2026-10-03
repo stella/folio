@@ -7,6 +7,14 @@
  * of one unsharded run over the same files.
  */
 
+import {
+  emptyDeclaredRefusalCounts,
+  countDeclaredRefusals,
+  mergeDeclaredRefusalCounts,
+  renderDeclaredRefusals,
+  type DeclaredRefusalCounts,
+} from "./corpus-declared-refusals";
+import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import { NOT_A_DOCX_REASONS, type NotADocxReason } from "./corpus-classify";
 import { isGatingFailure, isZeroFailure } from "./corpus-invariants/contract";
 import {
@@ -33,9 +41,22 @@ import {
  * either kind by forgetting a check somewhere.
  */
 export type CorpusFileResult =
-  | { kind: "complete"; failures: readonly CorpusFailure[] }
-  | { kind: "truncated"; failures: readonly CorpusFailure[]; stage: string }
-  | { kind: "report-only"; failures: readonly CorpusFailure[] }
+  | {
+      kind: "complete";
+      failures: readonly CorpusFailure[];
+      declaredRefusals: readonly CorpusDeclaredRefusal[];
+    }
+  | {
+      kind: "truncated";
+      failures: readonly CorpusFailure[];
+      declaredRefusals: readonly CorpusDeclaredRefusal[];
+      stage: string;
+    }
+  | {
+      kind: "report-only";
+      failures: readonly CorpusFailure[];
+      declaredRefusals: readonly CorpusDeclaredRefusal[];
+    }
   | { kind: "not-a-docx"; reason: NotADocxReason };
 
 /** Whether a file's findings may reach a baseline, or only the report. */
@@ -108,6 +129,8 @@ export type CorpusCensus = {
   notADocxByReason: Record<NotADocxReason, number>;
   /** Up to three files per reason, so a classification can be audited without rerunning. */
   notADocxExamples: Record<NotADocxReason, CorpusFileId[]>;
+  declaredRefusals: DeclaredRefusalCounts;
+  declaredRefusedFiles: number;
   passed: number;
   failedFiles: number;
   /** Files whose run stopped at a budget, so they carry no gating evidence. */
@@ -140,6 +163,8 @@ export const emptyCensus = (lockDigest: string, reportOnlyDigest: string): Corpu
   notADocx: 0,
   notADocxByReason: emptyReasonRecord(() => 0),
   notADocxExamples: emptyReasonRecord<CorpusFileId[]>(() => []),
+  declaredRefusals: emptyDeclaredRefusalCounts(),
+  declaredRefusedFiles: 0,
   passed: 0,
   failedFiles: 0,
   truncated: 0,
@@ -194,6 +219,10 @@ export class CensusBuilder {
    * whether its findings gate.
    */
   add(file: CorpusFileId, result: CorpusFileResult): void {
+    if (result.kind !== "not-a-docx") {
+      countDeclaredRefusals(this.#census.declaredRefusals, result.declaredRefusals);
+      if (result.declaredRefusals.length > 0) this.#census.declaredRefusedFiles += 1;
+    }
     switch (result.kind) {
       case "not-a-docx": {
         this.addNotADocx(file, result.reason);
@@ -219,7 +248,9 @@ export class CensusBuilder {
         return;
       }
       case "complete": {
-        this.addChecked(file, result.failures);
+        this.addChecked(file, result.failures, {
+          verdict: result.declaredRefusals.length > 0 ? "declared-refusal" : "evaluated",
+        });
         return;
       }
       default: {
@@ -231,13 +262,16 @@ export class CensusBuilder {
   addChecked(
     file: CorpusFileId,
     failures: readonly CorpusFailure[],
-    { counted = true }: { counted?: boolean } = {},
+    {
+      counted = true,
+      verdict = "evaluated",
+    }: { counted?: boolean; verdict?: "evaluated" | "declared-refusal" } = {},
   ): void {
     if (counted) {
       this.#census.files += 1;
     }
     if (failures.length === 0) {
-      if (counted) {
+      if (counted && verdict === "evaluated") {
         this.#census.passed += 1;
       }
       return;
@@ -282,6 +316,8 @@ export const mergeCensuses = (censuses: readonly CorpusCensus[]): CorpusCensus =
   const merged = emptyCensus(first.lockDigest, first.reportOnlyDigest);
   const bySignature = new Map<string, CensusSignature>();
   for (const census of censuses) {
+    mergeDeclaredRefusalCounts(merged.declaredRefusals, census.declaredRefusals);
+    merged.declaredRefusedFiles += census.declaredRefusedFiles;
     merged.files += census.files;
     merged.duplicates += census.duplicates;
     merged.notADocx += census.notADocx;
@@ -337,6 +373,8 @@ export const renderCensus = (census: CorpusCensus, topSignatures: number): strin
     )
       .map((reason) => `${reason} ${census.notADocxByReason[reason]}`)
       .join(", ")}`,
+    `  declared-refused files ${census.declaredRefusedFiles}`,
+    ...renderDeclaredRefusals(census.declaredRefusals),
     `  passed ${census.passed}, failed ${census.failedFiles}, truncated ${census.truncated}, report-only ${census.reportOnly}, signatures ${census.signatures.length}`,
   ];
   for (const signature of census.signatures.slice(0, topSignatures)) {

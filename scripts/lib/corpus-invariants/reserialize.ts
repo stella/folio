@@ -29,7 +29,7 @@ import { Result } from "better-result";
 import { failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -163,7 +163,7 @@ const differencesSurvivingPlainRepack = async (parsed: Document): Promise<Readon
 
 export const runReserializeInvariant = async ({
   parsed,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
 
   const stripped = await timeStage(timings, "strip-captures", () =>
@@ -171,6 +171,7 @@ export const runReserializeInvariant = async ({
   );
   if (stripped.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, stripped.error)],
       timings,
     };
@@ -181,6 +182,7 @@ export const runReserializeInvariant = async ({
   );
   if (forced.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, forced.error)],
       timings,
     };
@@ -191,6 +193,7 @@ export const runReserializeInvariant = async ({
   );
   if (reparsed.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.reserialize, reparsed.error)],
       timings,
     };
@@ -200,13 +203,14 @@ export const runReserializeInvariant = async ({
     describePackageDifferences(parsed, reparsed.value),
   );
   if (differences.messages.length === 0 && differences.omitted === 0) {
-    return { failures: [], timings };
+    return { status: "evaluated", failures: [], timings };
   }
 
   const alsoWithoutStripping = await timeStage(timings, "control-save", () =>
     differencesSurvivingPlainRepack(parsed),
   );
   return {
+    status: "evaluated",
     failures: differenceFailures(
       EXTENDED_CORPUS_INVARIANTS.reserialize,
       differences,

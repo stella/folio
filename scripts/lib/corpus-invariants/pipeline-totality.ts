@@ -43,7 +43,7 @@ import {
 } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   type StageTimings,
   timeStage,
@@ -223,7 +223,7 @@ const failureFromStageError = (stage: string, cause: unknown): CorpusFailure => 
 export const runPipelineStages = async (
   stages: readonly PipelineStage[],
   input: CorpusInvariantInput,
-): Promise<CorpusInvariantOutcome> => {
+): Promise<CorpusEvaluatedOutcome> => {
   const timings: StageTimings = {};
   const failures: CorpusFailure[] = [];
   const context: PipelineContext = { input, laidOut: null };
@@ -245,9 +245,9 @@ export const runPipelineStages = async (
     }
   }
 
-  return { failures, timings };
+  return { status: "evaluated", failures, timings };
 };
 
 export const runPipelineTotalityInvariant = (
   input: CorpusInvariantInput,
-): Promise<CorpusInvariantOutcome> => runPipelineStages(PIPELINE_STAGE_TABLE, input);
+): Promise<CorpusEvaluatedOutcome> => runPipelineStages(PIPELINE_STAGE_TABLE, input);

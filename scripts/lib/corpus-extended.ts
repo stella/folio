@@ -11,11 +11,13 @@
  * counted a skipped invariant as a pass would shrink under load.
  */
 
-import { Result } from "better-result";
+import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
+import { Result, panic } from "better-result";
 
 import { classifyCorpusFile } from "./corpus-classify";
 import {
   type CorpusInvariantInput,
+  type CorpusInvariantOutcome,
   type ExtendedCorpusInvariant,
   EXTENDED_CORPUS_INVARIANTS,
   isZeroFailure,
@@ -62,7 +64,7 @@ const INVARIANT_RUNNERS = {
   [EXTENDED_CORPUS_INVARIANTS.pipelineTotality]: runPipelineTotalityInvariant,
 } as const satisfies Record<
   RunnableInvariant,
-  (input: CorpusInvariantInput) => Promise<{ failures: CorpusFailure[]; timings: StageTimings }>
+  (input: CorpusInvariantInput) => Promise<CorpusInvariantOutcome>
 >;
 
 /** Cheapest first, so a budget that runs out costs the least evidence. */
@@ -97,6 +99,7 @@ export type ExtendedChecksOptions = Omit<CorpusInvariantInput, "budgetMs"> & {
 export type ExtendedChecksResult = {
   producer: CorpusProducer;
   failures: CorpusFailure[];
+  declaredRefusals: CorpusDeclaredRefusal[];
   /** `<invariant>.<stage>` to milliseconds, for the performance census. */
   timings: StageTimings;
   /** The invariant the file budget ran out before, when it did. */
@@ -119,6 +122,7 @@ export const runExtendedChecks = async ({
     catch: (cause: unknown) => cause,
   });
   const failures: CorpusFailure[] = [];
+  const declaredRefusals: CorpusDeclaredRefusal[] = [];
   const timings: StageTimings = {};
   const input: CorpusInvariantInput = {
     bytes,
@@ -164,7 +168,20 @@ export const runExtendedChecks = async ({
       failures.push(failureFromError(invariant, outcome.error));
       continue;
     }
-    failures.push(...outcome.value.failures);
+    switch (outcome.value.status) {
+      case "evaluated":
+        failures.push(...outcome.value.failures);
+        break;
+      case "declared-refusal":
+        if (outcome.value.refusal.invariant !== invariant)
+          panic("Refusal invariant does not match its runner");
+        declaredRefusals.push(outcome.value.refusal);
+        break;
+      default: {
+        const unexpected: never = outcome.value;
+        panic(`Unknown invariant outcome: ${unexpected}`);
+      }
+    }
     for (const [stage, ms] of Object.entries(outcome.value.timings)) {
       timings[`${invariant}.${stage}`] = ms;
     }
@@ -184,6 +201,7 @@ export const runExtendedChecks = async ({
       ? { family: PRODUCER_FAMILIES.unknown, label: PRODUCER_FAMILIES.unknown }
       : producer.value,
     failures,
+    declaredRefusals,
     timings,
     ...(truncatedAt === undefined ? {} : { truncatedAt }),
   };

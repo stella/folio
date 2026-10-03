@@ -158,10 +158,34 @@ export type CorpusInvariantInput = {
 /** Wall time per named stage, in milliseconds, for the performance census. */
 export type StageTimings = Record<string, number>;
 
-export type CorpusInvariantOutcome = {
+export type CorpusEvaluatedOutcome = {
+  status: "evaluated";
   failures: CorpusFailure[];
   timings: StageTimings;
 };
+
+export const DECLARED_REFUSAL_REASONS = { SIGNED_PACKAGE: "signed-package" } as const;
+export type DeclaredRefusalReason =
+  (typeof DECLARED_REFUSAL_REASONS)[keyof typeof DECLARED_REFUSAL_REASONS];
+
+/** Only operation invariants can decline signature-invalidating normalization. */
+export const DECLARED_REFUSAL_INVARIANTS = {
+  opInverse: EXTENDED_CORPUS_INVARIANTS.opInverse,
+  opLocality: EXTENDED_CORPUS_INVARIANTS.opLocality,
+} as const;
+export type DeclaredRefusalInvariant =
+  (typeof DECLARED_REFUSAL_INVARIANTS)[keyof typeof DECLARED_REFUSAL_INVARIANTS];
+export type CorpusDeclaredRefusal = {
+  invariant: DeclaredRefusalInvariant;
+  reason: DeclaredRefusalReason;
+};
+export type CorpusInvariantOutcome =
+  | CorpusEvaluatedOutcome
+  | {
+      status: "declared-refusal";
+      refusal: CorpusDeclaredRefusal;
+      timings: StageTimings;
+    };
 
 export type CorpusInvariantModule = {
   invariant: ExtendedCorpusInvariant;

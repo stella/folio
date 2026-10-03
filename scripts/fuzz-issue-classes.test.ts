@@ -615,3 +615,17 @@ describe("the cap on new issues", () => {
     expect(new Set(fake.issues.map(({ title }) => title)).size).toBe(7);
   });
 });
+
+test("issue evidence preserves comparison details beyond the former row cutoff", async () => {
+  const fake = fakeStore();
+  const item = finding(
+    11,
+    "expect(received).toEqual(expected)\n" +
+      "context\n".repeat(100) +
+      "- Expected field: before\n+ Received field: after",
+  );
+  await report(fake, [item]);
+  const body = fake.issues.at(0)?.body;
+  expect(body).toContain("- Expected field: before");
+  expect(body).toContain("+ Received field: after");
+});

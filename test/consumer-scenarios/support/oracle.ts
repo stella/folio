@@ -590,12 +590,24 @@ const paragraphRequest = (
       !pre?.previewRuns?.some((run) => run.directFormatting !== undefined)
     ) {
       for (const property of ["bold", "italic", "underline"] as const) {
-        const flags = formattingAt(example, property) ?? Array(example.text.length).fill(false);
+        const flags =
+          formattingAt({ row: example, property }) ?? Array(example.text.length).fill(false);
         if (!flags.every((flag) => flag === flags[0])) continue;
         const expected = flags[0] === true;
         checks.push((row) => {
-          const actual = formattingAt(row, property) ?? Array(row.text.length).fill(false);
-          return actual.every((flag) => flag === expected)
+          const actual = formattingAt({ row, property }) ?? Array(row.text.length).fill(false);
+          return actual.every(
+            (flag, offset) =>
+              flag === expected ||
+              model.rows.some(
+                (entry) =>
+                  entry.pre === pre &&
+                  entry.formats.some(
+                    (format) =>
+                      format.property === property && offset >= format.start && offset < format.end,
+                  ),
+              ),
+          )
             ? null
             : `effective ${property} differs from style ${styleId}`;
         });
@@ -1088,12 +1100,25 @@ const materialize = (model: Model): Expected[] => {
 const visible = <T extends { text: string }>(rows: readonly T[]): T[] =>
   rows.filter((row) => row.text.length > 0);
 
-const formattingAt = (row: Row, property: "bold" | "italic" | "underline"): boolean[] | null => {
+type FormattingAtOptions = {
+  row: Row;
+  property: "bold" | "italic" | "underline";
+  source?: "effective" | "direct";
+};
+
+const formattingAt = ({
+  row,
+  property,
+  source = "effective",
+}: FormattingAtOptions): (boolean | undefined)[] | null => {
   const runs = row.previewRuns;
   if (!runs || runs.map((run) => run.text).join("") !== row.text) return null;
-  return runs.flatMap((run) =>
-    Array.from({ length: run.text.length }, () => run[property] === true),
-  );
+  return runs.flatMap((run) => {
+    const direct = run.directFormatting?.[property];
+    const directFlag = typeof direct === "boolean" ? direct : undefined;
+    const flag = source === "effective" ? run[property] === true : directFlag;
+    return Array.from({ length: run.text.length }, () => flag);
+  });
 };
 
 /** Compare `actual` with what `model` expects; every mismatch, as text. */
@@ -1116,7 +1141,7 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
       const actualValue = row[key as keyof Row];
       if (JSON.stringify(actualValue) !== JSON.stringify(value)) {
         problems.push(
-          `"${row.text}": ${key} is ${JSON.stringify(actualValue)}, expected ${JSON.stringify(value)}`,
+          `"${row.text}": ${key} is ${JSON.stringify(actualValue)}, expected ${JSON.stringify(value)}\n    before ${JSON.stringify(entry.pre)}\n    after ${JSON.stringify(row)}`,
         );
       }
     }
@@ -1125,27 +1150,35 @@ export const compareWithModel = (model: Model, actual: readonly Row[]): string[]
       if (problem !== null) problems.push(`"${row.text}": ${problem}`);
     }
     for (const format of entry.formats) {
-      const flags = formattingAt(row, format.property);
+      const flags = formattingAt({ row, property: format.property });
       if (flags === null) continue;
-      const missing = flags.slice(format.start, format.end).some((flag) => !flag);
+      const restyled = entry.fields.styleId !== entry.pre?.styleId;
+      const requestedFlags = restyled
+        ? formattingAt({ row, property: format.property, source: "direct" })
+        : flags;
+      const missing = requestedFlags?.slice(format.start, format.end).some((flag) => flag !== true);
       if (missing) {
         problems.push(
           `"${row.text}": [${format.start}, ${format.end}) is not all ${format.property}`,
         );
       }
-      // Outside the range, every character keeps what it had.
-      const before = entry.pre && formattingAt(entry.pre, format.property);
+      // A restyle may change inherited values; the range must still preserve direct provenance.
+      const source = restyled ? "direct" : "effective";
+      const outsideFlags = formattingAt({ row, property: format.property, source });
+      const before =
+        entry.pre && formattingAt({ row: entry.pre, property: format.property, source });
       const inside = (offset: number) =>
         entry.formats.some(
           (other) =>
             other.property === format.property && offset >= other.start && offset < other.end,
         );
-      const changed = before
-        ? flags.findIndex((flag, offset) => !inside(offset) && flag !== before[offset])
-        : -1;
+      const changed =
+        before && outsideFlags
+          ? outsideFlags.findIndex((flag, offset) => !inside(offset) && flag !== before[offset])
+          : -1;
       if (changed !== -1) {
         problems.push(
-          `"${row.text}": ${format.property} changed at ${changed}, outside what was asked`,
+          `"${row.text}": ${format.property} changed at ${changed}, outside what was asked\n    before runs ${JSON.stringify(entry.pre?.previewRuns)}\n    after runs ${JSON.stringify(row.previewRuns)}`,
         );
       }
     }
