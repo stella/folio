@@ -104,15 +104,37 @@ test("GitHub REST and CLI issue identities validate before filing", () => {
       closed_at: "2026-10-01",
       state_reason: "not_planned",
     }),
-  ).toEqual({ ...fields, state: "closed", closedAt: "2026-10-01", stateReason: "not_planned" });
-  expect(
-    parseIssueResponse({
+  ).toEqual({
+    ...fields,
+    state: "closed",
+    closedAt: "2026-10-01",
+    disposition: { type: "superseded" },
+  });
+  // REST spells close reasons in lower case, the CLI's GraphQL fields in upper case.
+  const dispositionOf = (stateReason: unknown) => {
+    const issue = parseIssueResponse({
       ...fields,
       state: "CLOSED",
       closedAt: "2026-10-01",
-      stateReason: "NOT_PLANNED",
-    }).stateReason,
-  ).toBe("NOT_PLANNED");
+      stateReason,
+    });
+    return issue.state === "closed" ? issue.disposition.type : null;
+  };
+  expect(dispositionOf("NOT_PLANNED")).toBe("superseded");
+  expect(dispositionOf("COMPLETED")).toBe("fixed");
+  expect(dispositionOf("completed")).toBe("fixed");
+  expect(dispositionOf("DUPLICATE")).toBe("duplicate");
+  // Issues closed before GitHub recorded close reasons were closed as done.
+  expect(dispositionOf(null)).toBe("fixed");
+  expect(dispositionOf("")).toBe("fixed");
+  // A close reason the reporter does not know fails instead of reopening by default.
+  expect(() => dispositionOf("reopened")).toThrow("Unknown close reason");
+  expect(() => dispositionOf("wontfix")).toThrow("Unknown close reason");
+  expect(() => dispositionOf(3)).toThrow("Unknown close reason");
+  // An open issue's close reason ("reopened") does not apply.
+  expect(
+    parseIssueResponse({ ...fields, state: "open", closed_at: null, state_reason: "reopened" }),
+  ).toEqual({ ...fields, state: "open", closedAt: null });
   expect(parseCommentPages([[{ body: "Duplicate of #7" }], [{ body: "later" }]])).toEqual([
     "Duplicate of #7",
     "later",

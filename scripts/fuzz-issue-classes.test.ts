@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import {
   failureMarker,
   failureRecord,
@@ -6,6 +8,8 @@ import {
 import { failureClass, normalizeFailureMessage } from "./fuzz-failure-class";
 import type { Context, Finding } from "./fuzz-failure-issues";
 import {
+  type ClosedIssue,
+  type ClosedIssueDisposition,
   duplicateTarget,
   fileClasses,
   type Issue,
@@ -39,6 +43,7 @@ const fakeStore = (initial: Issue[] = []) => {
   const issues = initial.map((issue) => ({ ...issue }));
   const edits: number[] = [];
   const reopens: number[] = [];
+  const comments: { number: number; comment: string }[] = [];
   const created: number[] = [];
   const requireIssue = (number: number) => {
     const issue = issues.find((candidate) => candidate.number === number);
@@ -58,27 +63,34 @@ const fakeStore = (initial: Issue[] = []) => {
       requireIssue(number).body = body;
       edits.push(number);
     },
-    reopen: async (number: number) => {
+    reopen: async (number: number, comment: string) => {
       const issue = requireIssue(number);
-      issue.state = "open";
-      issue.closedAt = null;
+      const { title, body } = issue;
+      issues[issues.indexOf(issue)] = { number, title, body, state: "open", closedAt: null };
       reopens.push(number);
+      comments.push({ number, comment });
     },
   } satisfies IssueStore;
-  return { store, issues, edits, reopens, created };
+  return { store, issues, edits, reopens, comments, created };
 };
+
+const FIXED = { type: "fixed" } as const satisfies ClosedIssueDisposition;
+const SUPERSEDED = { type: "superseded" } as const satisfies ClosedIssueDisposition;
 
 const report = (fake: ReturnType<typeof fakeStore>, findings: Finding[], runContext = context) =>
   fileClasses({ findings, context: runContext, store: fake.store, known: new Map() });
 
-const legacy = (closedAt: string | null = null): Issue => ({
-  number: 20,
-  title:
-    "Fuzz failure [0123456789abcdef]: consumer flow lists / direct: listLevel is 3, expected 2",
-  body: "Legacy failure details",
-  state: closedAt === null ? "open" : "closed",
-  closedAt,
-});
+const legacy = (closedAt: string | null = null): Issue => {
+  const fields = {
+    number: 20,
+    title:
+      "Fuzz failure [0123456789abcdef]: consumer flow lists / direct: listLevel is 3, expected 2",
+    body: "Legacy failure details",
+  };
+  return closedAt === null
+    ? { ...fields, state: "open", closedAt }
+    : { ...fields, state: "closed", closedAt, disposition: FIXED };
+};
 
 describe("class issue filing", () => {
   test("same class retains every seed/path/replay and counts distinct runs", async () => {
@@ -131,6 +143,13 @@ describe("class issue filing", () => {
     const fake = fakeStore([legacy("2026-09-18T12:00:01Z")]);
     await report(fake, [finding(1)]);
     expect(fake.reopens).toEqual([20]);
+    expect(fake.comments.at(0)?.comment).toBe(
+      [
+        `Reopening: this class recurred in ${context.runUrl}.`,
+        "",
+        `Recurring fingerprints: \`${finding(1).record.marker.fingerprint}\``,
+      ].join("\n"),
+    );
     expect(fake.created).toEqual([]);
     expect(fake.issues.at(0)?.body).toContain("Regressed:");
     expect(fake.issues.at(0)?.body).toContain("Legacy failure details");
@@ -475,20 +494,18 @@ describe("a class issue closed as a duplicate", () => {
     "tracked-changes",
     "Numbering provenance missing for <id>",
   ];
-  const duplicate = (overrides: Partial<Issue> = {}): Issue => ({
+  const duplicate = (overrides: Partial<ClosedIssue> = {}): ClosedIssue => ({
     number: 1454,
     title: NUMBERING,
     body: oldMarker(signature),
     state: "closed",
     closedAt: "2026-10-02T09:00:00Z",
-    stateReason: "not_planned",
+    disposition: SUPERSEDED,
     duplicateOf: 1300,
     ...overrides,
   });
-  const target = (overrides: Partial<Issue> = {}): Issue => ({
-    ...openIssue(1300, "Paragraph numbering is lost after a delete", "Human notes"),
-    ...overrides,
-  });
+  const target = (body = "Human notes"): Issue =>
+    openIssue(1300, "Paragraph numbering is lost after a delete", body);
 
   test("reports to the issue it duplicates instead of reopening", async () => {
     const fake = fakeStore([target(), duplicate()]);
@@ -504,12 +521,12 @@ describe("a class issue closed as a duplicate", () => {
     expect(writes(fake)).toBe(1);
   });
 
-  test("follows a chain of duplicates and survives a loop", async () => {
+  test("follows a chain of duplicates; a loop keeps its issue closed", async () => {
     const chain = fakeStore([
       target(),
       duplicate(),
-      duplicate({ number: 1457, duplicateOf: 1454, stateReason: "NOT_PLANNED" }),
-      duplicate({ number: 1461, duplicateOf: 1457, stateReason: "duplicate" }),
+      duplicate({ number: 1457, duplicateOf: 1454 }),
+      duplicate({ number: 1461, duplicateOf: 1457, disposition: { type: "duplicate" } }),
     ]);
     await report(chain, [numberingFinding()]);
     expect(chain.edits).toEqual([1300]);
@@ -521,29 +538,44 @@ describe("a class issue closed as a duplicate", () => {
       duplicate({ number: 1457, duplicateOf: 1454 }),
     ]);
     await report(loop, [numberingFinding()]);
-    expect(loop.reopens).toHaveLength(1);
+    expect(loop.reopens).toEqual([]);
+    expect(loop.edits).toHaveLength(1);
     expect(loop.created).toEqual([]);
   });
 
-  test("only a not-planned closure with a duplicate comment redirects", async () => {
-    for (const closed of [
-      duplicate({ duplicateOf: null }),
-      duplicate({ stateReason: "completed" }),
-      duplicate({ stateReason: null }),
-    ]) {
-      const fake = fakeStore([target(), closed]);
-      const result = await report(fake, [numberingFinding()]);
-      expect(result.map(({ issue }) => issue)).toEqual(["#1454"]);
-      expect(fake.reopens).toEqual([1454]);
-      expect(fake.edits).toEqual([1454]);
-      expect(fake.created).toEqual([]);
-      expect(bodyOf(fake, 1300)).toBe("Human notes");
+  test("an unfixed closure with no duplicate target keeps rows and stays closed", async () => {
+    const dispositions = [SUPERSEDED, { type: "duplicate" }] as const;
+    for (const disposition of dispositions) {
+      for (const closedAt of ["2026-10-02T09:00:00Z", "2026-01-01T00:00:00Z"]) {
+        const fake = fakeStore([target(), duplicate({ duplicateOf: null, disposition, closedAt })]);
+        const result = await report(fake, [numberingFinding()]);
+        expect(result.map(({ issue }) => issue)).toEqual(["#1454"]);
+        expect(fake.reopens).toEqual([]);
+        expect(fake.created).toEqual([]);
+        expect(fake.edits).toEqual([1454]);
+        expect(fake.issues.find(({ number }) => number === 1454)?.state).toBe("closed");
+        expect(rowCount(bodyOf(fake, 1454))).toBe(1);
+        expect(bodyOf(fake, 1454)).toContain("do not reopen it");
+        expect(bodyOf(fake, 1300)).toBe("Human notes");
+        await report(fake, [numberingFinding()]);
+        expect(writes(fake)).toBe(1);
+      }
     }
+  });
+
+  test("a fixed closure reopens, even with a duplicate comment", async () => {
+    const fake = fakeStore([target(), duplicate({ disposition: FIXED })]);
+    const result = await report(fake, [numberingFinding()]);
+    expect(result.map(({ issue }) => issue)).toEqual(["#1454"]);
+    expect(fake.reopens).toEqual([1454]);
+    expect(fake.edits).toEqual([1454]);
+    expect(fake.created).toEqual([]);
+    expect(bodyOf(fake, 1300)).toBe("Human notes");
   });
 
   test("a target it cannot write to is pointed at and nothing is written", async () => {
     const other = `<!-- fuzz-class: ${failureClass("consumer flow plain / direct", "no comment").key} -->`;
-    for (const issues of [[duplicate()], [target({ body: other }), duplicate()]]) {
+    for (const issues of [[duplicate()], [target(other), duplicate()]]) {
       const fake = fakeStore(issues);
       const result = await report(fake, [numberingFinding()]);
       expect(result.map(({ issue }) => issue)).toEqual(["#1300"]);
@@ -553,7 +585,7 @@ describe("a class issue closed as a duplicate", () => {
 
   test("a target closed long ago gets a linked new issue; the duplicate stays closed", async () => {
     const fake = fakeStore([
-      target({ state: "closed", closedAt: "2026-08-01T00:00:00Z", stateReason: "completed" }),
+      { ...target(), state: "closed", closedAt: "2026-08-01T00:00:00Z", disposition: FIXED },
       duplicate(),
     ]);
     await report(fake, [numberingFinding()]);
@@ -628,4 +660,143 @@ test("issue evidence preserves comparison details beyond the former row cutoff",
   const body = fake.issues.at(0)?.body;
   expect(body).toContain("- Expected field: before");
   expect(body).toContain("+ Received field: after");
+});
+
+describe("close reasons decide what a recurring class does", () => {
+  const MESSAGES = [
+    "listLevel is 3, expected 2",
+    "Numbering provenance missing for 4f2a",
+    "Cannot repack invalid DOCX document model",
+  ] as const;
+  const FIXTURES = ["lists", "plain", "tables"] as const;
+  const MODES = ["direct", "tracked-changes"] as const;
+  /** Numbers of legacy-path class issues that nightly runs reopened. */
+  const CLASS_ISSUES = [1379, 1384, 1385] as const;
+  const FOREIGN_ISSUE = 1300;
+  const DISPOSITIONS = [
+    { type: "fixed" },
+    { type: "superseded" },
+    { type: "duplicate" },
+  ] as const satisfies readonly ClosedIssueDisposition[];
+  const HOUR_MS = 60 * 60 * 1_000;
+  const runContext = {
+    ...context,
+    runUrl: "https://github.com/stella/folio/actions/runs/18203344512",
+    date: "2026-10-03T06:00:00Z",
+  } satisfies Context;
+
+  const findingArbitrary = fc.record({
+    message: fc.constantFrom(...MESSAGES),
+    fixture: fc.constantFrom(...FIXTURES),
+    mode: fc.constantFrom(...MODES),
+    seed: fc.integer({ min: 0, max: 2 ** 31 - 1 }),
+    registered: fc.boolean(),
+  });
+  const issueArbitrary = fc.option(
+    fc.oneof(
+      fc.constant({ state: "open" } as const),
+      fc.record({
+        state: fc.constant("closed" as const),
+        disposition: fc.constantFrom(...DISPOSITIONS),
+        ageHours: fc.integer({ min: 0, max: 30 * 24 }),
+        duplicateOf: fc.option(fc.constantFrom(...CLASS_ISSUES, FOREIGN_ISSUE)),
+      }),
+    ),
+  );
+
+  test(
+    "superseded classes stay closed, reopens are explained, registered fingerprints write nothing",
+    async () => {
+      await assertProperty(
+        fc.asyncProperty(
+          fc.uniqueArray(findingArbitrary, {
+            minLength: 1,
+            maxLength: 8,
+            selector: ({ message, fixture, mode }) => `${message}\0${fixture}\0${mode}`,
+          }),
+          fc.tuple(issueArbitrary, issueArbitrary, issueArbitrary),
+          async (generated, issueShapes) => {
+            const findings = generated.map(({ message, fixture, mode, seed }) =>
+              failing({ test: `consumer flow ${fixture} / ${mode}`, message }, seed),
+            );
+            const known = new Map(
+              generated.flatMap(({ registered }, index) => {
+                const fingerprint = findings.at(index)?.record.marker.fingerprint;
+                return registered && fingerprint !== undefined
+                  ? [[fingerprint, `#${1500 + index}`] as const]
+                  : [];
+              }),
+            );
+            const unregistered = findings.filter(
+              ({ record }) => !known.has(record.marker.fingerprint),
+            );
+            const unregisteredFingerprints = new Set(
+              unregistered.map(({ record }) => record.marker.fingerprint),
+            );
+            const issues = issueShapes.flatMap((shape, index): Issue[] => {
+              if (shape === null) return [];
+              const message = MESSAGES[index] ?? MESSAGES[0];
+              const sample = failing({ test: "consumer flow lists / direct", message }, 1);
+              const { marker } = sample.record;
+              const key = escaped(failureClass(marker.test, marker.assertion).key);
+              const fields = {
+                number: CLASS_ISSUES[index] ?? CLASS_ISSUES[0],
+                title: `Consumer flow: ${message}`,
+                body: `Owner notes\n<!-- fuzz-class: ${key} -->`,
+              };
+              if (shape.state === "open") return [{ ...fields, state: "open", closedAt: null }];
+              const closedAt = Date.parse(runContext.date) - shape.ageHours * HOUR_MS;
+              return [
+                {
+                  ...fields,
+                  state: "closed",
+                  closedAt: new Date(closedAt).toISOString(),
+                  disposition: shape.disposition,
+                  duplicateOf: shape.duplicateOf,
+                },
+              ];
+            });
+
+            const full = fakeStore(issues);
+            await fileClasses({ findings, context: runContext, store: full.store, known });
+
+            // (1) A class closed without a fix is never reopened.
+            for (const issue of issues) {
+              if (issue.state === "open" || issue.disposition.type === "fixed") continue;
+              expect(full.reopens).not.toContain(issue.number);
+              expect(full.issues.find(({ number }) => number === issue.number)?.state).toBe(
+                "closed",
+              );
+            }
+            // (2) Every reopen comments with the run and unregistered fingerprints.
+            expect(full.comments.map(({ number }) => number)).toEqual(full.reopens);
+            for (const { comment } of full.comments) {
+              expect(comment).toContain(runContext.runUrl);
+              const named = [...comment.matchAll(/`([0-9a-f]{16})`/gu)].map((match) => match[1]);
+              expect(named.length).toBeGreaterThan(0);
+              for (const fingerprint of named) {
+                expect(unregisteredFingerprints.has(fingerprint ?? "")).toBe(true);
+              }
+            }
+            // (3) Registered fingerprints change nothing: filing only the
+            // unregistered findings writes exactly the same.
+            const twin = fakeStore(issues);
+            await fileClasses({
+              findings: unregistered,
+              context: runContext,
+              store: twin.store,
+              known,
+            });
+            expect(full.reopens).toEqual(twin.reopens);
+            expect(full.comments).toEqual(twin.comments);
+            expect(full.created).toEqual(twin.created);
+            expect(full.edits).toEqual(twin.edits);
+            expect(snapshot(full)).toBe(snapshot(twin));
+            if (unregistered.length === 0) expect(writes(full)).toBe(0);
+          },
+        ),
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
 });

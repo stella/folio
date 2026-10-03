@@ -1,4 +1,4 @@
-import { Result, TaggedError } from "better-result";
+import { panic, Result, TaggedError } from "better-result";
 import {
   classOfTitle,
   failureClass,
@@ -7,23 +7,37 @@ import {
 } from "./fuzz-failure-class";
 import type { Context, Filed, Finding } from "./fuzz-failure-issues";
 
-export type Issue = {
+/**
+ * Why a closed issue was closed, from GitHub's close reason. A `fixed` class
+ * reopens when it recurs; a `superseded` (not planned) or `duplicate` one
+ * never does.
+ */
+export type ClosedIssueDisposition =
+  | { type: "fixed" }
+  | { type: "superseded" }
+  | { type: "duplicate" };
+
+type IssueFields = {
   number: number;
   title: string;
-  state: "open" | "closed";
   body: string | null;
-  closedAt: string | null;
-  /** Why a closed issue was closed, as GitHub reports it. */
-  stateReason?: string | null;
-  /** The issue a "Duplicate of #N" comment names, for one closed as a duplicate. */
+  /** The issue a "Duplicate of #N" comment names, for one closed without a fix. */
   duplicateOf?: number | null;
 };
+export type OpenIssue = IssueFields & { state: "open"; closedAt: null };
+export type ClosedIssue = IssueFields & {
+  state: "closed";
+  closedAt: string | null;
+  disposition: ClosedIssueDisposition;
+};
+export type Issue = OpenIssue | ClosedIssue;
 
 export type IssueStore = {
   list: () => Promise<Issue[]>;
   create: (title: string, body: string) => Promise<Issue>;
   edit: (number: number, body: string) => Promise<void>;
-  reopen: (number: number) => Promise<void>;
+  /** Reopen with a comment saying why; a reopen is never silent. */
+  reopen: (number: number, comment: string) => Promise<void>;
 };
 
 /** A run found more new classes than the reporter may open issues for. */
@@ -126,9 +140,25 @@ const latestClosed = (issues: readonly Issue[]): Issue | undefined =>
     )
     .at(0);
 
-/** Closed as not planned (or as a duplicate): the closures a duplicate comment redirects. */
-export const closedAsDuplicate = ({ state, stateReason }: Issue): boolean =>
-  state === "closed" && /^(?:not_planned|duplicate)$/iu.test(stateReason ?? "");
+/**
+ * Closed without a fix (superseded or duplicate): the closures a duplicate
+ * comment redirects, and that a recurrence never reopens.
+ */
+export const closedWithoutFix = (issue: Issue): boolean => {
+  if (issue.state === "open") return false;
+  const { disposition } = issue;
+  switch (disposition.type) {
+    case "fixed":
+      return false;
+    case "superseded":
+    case "duplicate":
+      return true;
+    default: {
+      const unhandled: never = disposition;
+      return panic(`Unhandled closed issue disposition ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
 
 /** The issue the last "Duplicate of #N" comment names. */
 export const duplicateTarget = (comments: readonly string[]): number | null => {
@@ -146,7 +176,7 @@ export const duplicateTarget = (comments: readonly string[]): number | null => {
 const duplicateEnd = (issue: Issue, byNumber: ReadonlyMap<number, Issue>): Issue | number => {
   const seen = new Set<number>();
   let current = issue;
-  while (closedAsDuplicate(current) && typeof current.duplicateOf === "number") {
+  while (closedWithoutFix(current) && typeof current.duplicateOf === "number") {
     seen.add(current.number);
     if (seen.has(current.duplicateOf)) break;
     const next = byNumber.get(current.duplicateOf);
@@ -251,6 +281,49 @@ const classBody = ({ signature, state, note, legacyReport }: ClassBodyOptions): 
   ].join("\n");
 };
 
+/** What a recurring class does with the issue it reports to. */
+type Recurrence =
+  /** Open a new issue, linked to an earlier fixed one when there is one. */
+  | { type: "create"; previous: ClosedIssue | null }
+  /** Add rows to the open issue. */
+  | { type: "update"; issue: OpenIssue }
+  /** A class fixed recently came back: reopen it, with a comment. */
+  | { type: "reopen"; issue: ClosedIssue }
+  /** Closed without a fix: keep the evidence, keep it closed. */
+  | { type: "record"; issue: ClosedIssue };
+
+const recurrenceOf = (issue: Issue | undefined, date: string): Recurrence => {
+  if (issue === undefined) return { type: "create", previous: null };
+  if (issue.state === "open") return { type: "update", issue };
+  const { disposition } = issue;
+  switch (disposition.type) {
+    case "superseded":
+    case "duplicate":
+      return { type: "record", issue };
+    case "fixed": {
+      const age = Date.parse(date) - Date.parse(issue.closedAt ?? "");
+      return age >= 0 && age < REOPEN_WINDOW_MS
+        ? { type: "reopen", issue }
+        : { type: "create", previous: issue };
+    }
+    default: {
+      const unhandled: never = disposition;
+      return panic(`Unhandled closed issue disposition ${JSON.stringify(unhandled)}`);
+    }
+  }
+};
+
+const RECORDED_NOTE = "Closed without a fix; recurrences are recorded here and do not reopen it.";
+
+/** Why an issue reopens: the run that saw its class again, and which fingerprints. */
+type ReopenCommentOptions = { run: string; fingerprints: readonly [string, ...string[]] };
+export const reopenComment = ({ run, fingerprints }: ReopenCommentOptions): string =>
+  [
+    `Reopening: this class recurred in ${run}.`,
+    "",
+    `Recurring fingerprints: ${fingerprints.map((fingerprint) => `\`${fingerprint}\``).join(", ")}`,
+  ].join("\n");
+
 type FileClassesOptions = {
   findings: readonly Finding[];
   context: Context;
@@ -325,19 +398,15 @@ export const fileClasses = async ({
       file(fingerprints, previous);
       continue;
     }
-    const recent =
-      previous?.state === "closed" &&
-      previous.closedAt !== null &&
-      Date.parse(context.date) - Date.parse(previous.closedAt) >= 0 &&
-      Date.parse(context.date) - Date.parse(previous.closedAt) < REOPEN_WINDOW_MS;
-    const reuse = previous !== undefined && (previous.state === "open" || recent);
-    const previousState = reuse ? readClassState(previous.body, signature.key) : null;
+    const recurrence = recurrenceOf(previous, context.date);
+    const reused = recurrence.type === "create" ? null : recurrence.issue;
+    const previousState = reused === null ? null : readClassState(reused.body, signature.key);
     let legacyReport: string | null = null;
-    if (reuse) {
-      if (previousState === null) legacyReport = previous.body;
+    if (reused !== null) {
+      if (previousState === null) legacyReport = reused.body;
       else
         legacyReport =
-          previous.body
+          reused.body
             ?.match(/<details><summary>Legacy report<\/summary>\n\n([\s\S]*?)\n\n<\/details>/u)
             ?.at(1) ?? null;
     }
@@ -363,15 +432,33 @@ export const fileClasses = async ({
       state.seeds.push(row);
       changed = true;
     }
-    const oldNote = previous?.body
+    const oldNote = reused?.body
       ?.split("\n")
       .find((line) => line.startsWith("Regressed:") || line.startsWith("Previous occurrence:"));
-    let note: string | null = null;
-    if (recent) note = `Regressed: this class recurred in ${run}.`;
-    else if (reuse) note = oldNote ?? null;
-    else if (previous !== undefined) note = `Previous occurrence: #${previous.number}.`;
+    let note: string | null;
+    switch (recurrence.type) {
+      case "create":
+        note =
+          recurrence.previous === null
+            ? null
+            : `Previous occurrence: #${recurrence.previous.number}.`;
+        break;
+      case "update":
+        note = oldNote ?? null;
+        break;
+      case "reopen":
+        note = `Regressed: this class recurred in ${run}.`;
+        break;
+      case "record":
+        note = RECORDED_NOTE;
+        break;
+      default: {
+        const unhandled: never = recurrence;
+        return panic(`Unhandled class recurrence ${JSON.stringify(unhandled)}`);
+      }
+    }
     const body = classBody({ signature, state, note, legacyReport });
-    if (!reuse) {
+    if (recurrence.type === "create") {
       const { title } = signature;
       pending.push({
         title: title.length > 240 ? `${title.slice(0, 239)}…` : title,
@@ -380,16 +467,30 @@ export const fileClasses = async ({
       });
       continue;
     }
-    if (recent) {
-      await store.reopen(previous.number);
-      previous.state = "open";
-      previous.closedAt = null;
+    const { issue } = recurrence;
+    if (recurrence.type === "reopen") {
+      const [first, ...rest] = [...new Set(rows.map((row) => row.fingerprint))].toSorted();
+      if (first === undefined) return panic(`Failure class ${signature.key} has no rows`);
+      await store.reopen(issue.number, reopenComment({ run, fingerprints: [first, ...rest] }));
+      const index = issues.indexOf(issue);
+      if (index < 0) return panic(`Issue #${issue.number} is not in the listed issues`);
+      issues[index] = {
+        number: issue.number,
+        title: issue.title,
+        body,
+        state: "open",
+        closedAt: null,
+        duplicateOf: issue.duplicateOf ?? null,
+      };
+      await store.edit(issue.number, body);
+    } else if (
+      changed ||
+      (recurrence.type === "record" && issue.body?.includes(RECORDED_NOTE) !== true)
+    ) {
+      issue.body = body;
+      await store.edit(issue.number, body);
     }
-    if (changed || recent) {
-      previous.body = body;
-      await store.edit(previous.number, body);
-    }
-    file(fingerprints, previous.number);
+    file(fingerprints, issue.number);
   }
   // Existing issues are updated above whatever happens here. A run that would
   // open more issues than the cap opens none and fails instead.
