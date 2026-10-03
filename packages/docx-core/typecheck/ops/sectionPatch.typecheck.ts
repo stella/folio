@@ -1,9 +1,15 @@
 import type { SetSectionPropsOp } from "../../src/ops/types";
 
-// Omission leaves a property untouched; null clears it. Undefined is not a wire value.
+// Omission is untouched; null removes a key; explicit undefined owns the key.
 const OMITTED = { evenAndOddHeaders: true } as const satisfies SetSectionPropsOp["patch"];
 const CLEARED = { titlePg: null } as const satisfies SetSectionPropsOp["patch"];
-// @ts-expect-error undefined cannot cross the JSON operation boundary
-const UNDEFINED: SetSectionPropsOp["patch"] = { titlePg: undefined };
+const OWNED_UNDEFINED = { titlePg: undefined } as const satisfies SetSectionPropsOp["patch"];
+// @ts-expect-error a section flag cannot contain a number
+const INVALID: SetSectionPropsOp["patch"] = { titlePg: 0 };
 
-export type SectionPatchProof = [typeof OMITTED, typeof CLEARED, typeof UNDEFINED];
+export type SectionPatchProof = [
+  typeof OMITTED,
+  typeof CLEARED,
+  typeof OWNED_UNDEFINED,
+  typeof INVALID,
+];

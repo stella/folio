@@ -178,5 +178,37 @@ export const identityKeysIn = (value: unknown): string[] => {
 /** The field holding the stack of content controls a table row or cell sits inside. */
 const CONTENT_CONTROL_STACK = "contentControls";
 
+/** Pending cut references reserve IDs without becoming physical model identities. */
+export const reservedIdentityKeysIn = (value: unknown): string[] => {
+  const out: string[] = [];
+  walk(value, (entries, heldBy) => {
+    if (heldBy === "deferredRemove") {
+      const blockers = fieldOf(entries, "blockers");
+      if (Array.isArray(blockers)) {
+        for (const id of blockers) {
+          if (typeof id === "number") out.push(slotKey({ space: IDENTITY_SPACES.REVISION, id }));
+        }
+      }
+      return;
+    }
+    if (heldBy !== "retainedAfter") return;
+    for (const field of ["source", "target"]) {
+      const slots = fieldOf(entries, field);
+      if (!Array.isArray(slots)) continue;
+      for (const slot of slots) {
+        if (typeof slot !== "object" || slot === null || !("space" in slot) || !("id" in slot))
+          continue;
+        if (
+          (slot.space === IDENTITY_SPACES.REVISION || slot.space === IDENTITY_SPACES.CONTROL) &&
+          typeof slot.id === "number"
+        ) {
+          out.push(slotKey({ space: slot.space, id: slot.id }));
+        }
+      }
+    }
+  });
+  return out;
+};
+
 /** Every revision and content-control id of a package, each story walked once. */
 export const packageIdentityKeys = (pkg: DocxPackage): string[] => identityKeysIn(storiesOf(pkg));

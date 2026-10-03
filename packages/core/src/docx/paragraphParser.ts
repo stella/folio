@@ -130,7 +130,13 @@ import { hasAttributeAnySpelling } from "./strictNames";
 import { scanRunForTextBoxDrawings } from "./textBoxParser";
 import { parsePropertyChangeInfo, parseTrackedChangeInfo } from "./trackedChangeInfo";
 
-const FOLIO_REVIEW_HISTORY_NAMESPACE = "urn:stella:folio:review-history:1";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
+import {
+  parseResolutionJoins,
+  parseParagraphMarkResolutionJoin,
+  ReviewResolutionProvenanceError,
+} from "./reviewResolutionProvenance";
+
 const FOLIO_REVIEW_HISTORY_NAMESPACES: ReadonlySet<string> = new Set([
   FOLIO_REVIEW_HISTORY_NAMESPACE,
 ]);
@@ -405,7 +411,11 @@ function parseParagraphMarkChange(pPr: XmlElement | null): ParagraphMarkChange |
   for (const kind of PARAGRAPH_MARK_CHANGE_KINDS) {
     const element = findChildByNamespaceUri(rPr, WORDPROCESSINGML_NAMESPACE_URIS, kind);
     if (element) {
-      return { kind, info: parseTrackedChangeInfo(element) };
+      return {
+        kind,
+        info: parseTrackedChangeInfo(element),
+        ...parseParagraphMarkResolutionJoin(element),
+      };
     }
   }
   return undefined;
@@ -415,6 +425,7 @@ type PushTrackedChangeWrapperParams = {
   contents: ParagraphContent[];
   type: TrackedChangeWrapperType;
   info: TrackedChangeInfo;
+  resolutionJoins?: TrackedRunChange["resolutionJoins"];
   content: readonly TrackedRunChange["content"][number][];
   preserveEmpty?: boolean;
 };
@@ -423,35 +434,38 @@ function pushTrackedChangeWrapper({
   contents,
   type,
   info,
+  resolutionJoins,
   content,
   preserveEmpty = false,
 }: PushTrackedChangeWrapperParams): void {
   if (content.length === 0 && !preserveEmpty) {
     return;
   }
+  const provenance = resolutionJoins === undefined ? {} : { resolutionJoins };
 
   if (type === "insertion") {
-    contents.push({ type: "insertion", info, content: [...content] });
+    contents.push({ type: "insertion", info, content: [...content], ...provenance });
     return;
   }
 
   if (type === "deletion") {
-    contents.push({ type: "deletion", info, content: [...content] });
+    contents.push({ type: "deletion", info, content: [...content], ...provenance });
     return;
   }
 
   if (type === "moveFrom") {
-    contents.push({ type: "moveFrom", info, content: [...content] });
+    contents.push({ type: "moveFrom", info, content: [...content], ...provenance });
     return;
   }
 
-  contents.push({ type: "moveTo", info, content: [...content] });
+  contents.push({ type: "moveTo", info, content: [...content], ...provenance });
 }
 
 type PushTrackedChangeSegmentsParams = {
   contents: ParagraphContent[];
   type: TrackedChangeWrapperType;
   info: TrackedChangeInfo;
+  resolutionJoins?: TrackedRunChange["resolutionJoins"];
   parsedContent: readonly ParagraphContent[];
 };
 
@@ -459,13 +473,25 @@ function pushTrackedChangeSegments({
   contents,
   type,
   info,
+  resolutionJoins,
   parsedContent,
 }: PushTrackedChangeSegmentsParams): void {
+  if (
+    resolutionJoins !== undefined &&
+    parsedContent.some((item) => !isTrackedChangeWrapperChild(item))
+  ) {
+    throw new ReviewResolutionProvenanceError({
+      attribute: "resolutionJoins",
+      reason: "invalid",
+      message: "Tracked-resolution provenance cannot bind a fragmented imported wrapper.",
+    });
+  }
   if (!parsedContent.some(isTrackedChangeWrapperChild)) {
     pushTrackedChangeWrapper({
       contents,
       type,
       info,
+      resolutionJoins,
       content: [],
       preserveEmpty: true,
     });
@@ -481,12 +507,12 @@ function pushTrackedChangeSegments({
       continue;
     }
 
-    pushTrackedChangeWrapper({ contents, type, info, content: segment });
+    pushTrackedChangeWrapper({ contents, type, info, resolutionJoins, content: segment });
     segment.length = 0;
     contents.push(content);
   }
 
-  pushTrackedChangeWrapper({ contents, type, info, content: segment });
+  pushTrackedChangeWrapper({ contents, type, info, resolutionJoins, content: segment });
 }
 
 type PushInlineSdtSegmentsParams = {
@@ -1827,6 +1853,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       contents,
       type: "insertion",
       info: insInfo,
+      resolutionJoins: parseResolutionJoins(child),
       parsedContent: insContent,
     });
   },
@@ -1849,6 +1876,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       contents,
       type: "deletion",
       info: delInfo,
+      resolutionJoins: parseResolutionJoins(child),
       parsedContent: delContent,
     });
   },
@@ -1870,6 +1898,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       contents,
       type: "moveFrom",
       info: moveFromInfo,
+      resolutionJoins: parseResolutionJoins(child),
       parsedContent: moveFromContent,
     });
   },
@@ -1891,6 +1920,7 @@ const PARAGRAPH_CONTENT_HANDLERS = {
       contents,
       type: "moveTo",
       info: moveToInfo,
+      resolutionJoins: parseResolutionJoins(child),
       parsedContent: moveToContent,
     });
   },

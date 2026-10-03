@@ -85,8 +85,8 @@ export type DocumentBackgroundDrawing = {
 export type DocumentBody = {
     background?: DocumentBackground;
     content: BlockContent[];
-    sections?: Section[];
-    finalSectionProperties?: SectionProperties;
+    sections?: Section[] | undefined;
+    finalSectionProperties?: SectionProperties | undefined;
     comments?: Comment_2[];
 };
 
@@ -118,7 +118,7 @@ export type DocxPackage = {
     settings?: DocumentSettings;
     styles?: StyleDefinitions;
     theme?: Theme;
-    numbering?: NumberingDefinitions;
+    numbering?: NumberingDefinitions | undefined;
     fontTable?: FontTable;
     footnotes?: Footnote[];
     endnotes?: Endnote[];
@@ -271,7 +271,7 @@ export type Paragraph = {
     content: ParagraphContent[];
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
-    sectionProperties?: SectionProperties;
+    sectionProperties?: SectionProperties | undefined;
     preservedAttributes?: PreservedAttribute[];
 };
 

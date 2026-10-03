@@ -15,7 +15,7 @@
           "range": {
             "type": "textRange",
             "story": "main",
-            "blockId": "61778922",
+            "blockId": "7C1310D5",
             "startOffset": 5,
             "endOffset": 9,
             "selectedTextHash": "hykoz7o"
@@ -30,7 +30,7 @@
       "operations": [
         {
           "type": "insertBeforeBlock",
-          "blockId": "3CCF9CD4",
+          "blockId": "5A6296E3",
           "text": "Clause delivery invoice notice delivery delivery delivery."
         }
       ]
@@ -49,7 +49,7 @@
       "operations": [
         {
           "type": "deleteTableRow",
-          "blockId": "2BDB94A8"
+          "blockId": "30314F0F"
         }
       ]
     },
@@ -59,17 +59,17 @@
       "operations": [
         {
           "type": "insertBeforeBlock",
-          "blockId": "2BDB94A8",
+          "blockId": "30314F0F",
           "text": "Invoice warranty supplier term agreement invoice supplier."
         },
         {
           "type": "insertBeforeBlock",
-          "blockId": "30DB9C87",
+          "blockId": "353156EE",
           "text": "Period buyer goods invoice."
         },
         {
           "type": "insertTableRow",
-          "blockId": "31DB9E1A",
+          "blockId": "32315235",
           "position": "after",
           "cellTexts": ["Row cell 1", "Row cell 2"]
         }

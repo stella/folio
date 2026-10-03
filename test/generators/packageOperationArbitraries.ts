@@ -1,5 +1,6 @@
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
+import fc from "fast-check";
 import type {
   BlockContent,
   Document,
@@ -19,6 +20,7 @@ import {
   GENERATED_OP_KINDS,
   opForStory,
   opSeedArbitrary,
+  textFormattingArbitrary,
   type OpSeed,
 } from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 
@@ -36,8 +38,10 @@ const paragraph = (id: string, text: string): Paragraph => ({
   content: [{ type: "run", content: [{ type: "text", text }] }],
 });
 
-/** Every draw carries all editable stories and balanced, package-wide identities. */
-export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => {
+type PackageDocumentSeed = Pick<OpSeed, "first" | "formatting" | "inherit" | "text">;
+
+/** Only these four inputs determine package content; operation-only dimensions do not. */
+const packageDocumentFromSeed = (seed: PackageDocumentSeed): Document => {
   let nextParagraph = 1;
   const named = (text: string): Paragraph =>
     paragraph((nextParagraph++).toString(16).toUpperCase().padStart(8, "0"), text);
@@ -166,6 +170,12 @@ export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => 
       footers: new Map([["rIdFooter", footer]]),
       footnotes: [footnote],
       endnotes: [endnote],
+      numbering: {
+        abstractNums: [
+          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        ],
+        nums: [{ numId: 1, abstractNumId: 1 }],
+      },
       settings: { defaultTabStop: 720 },
       properties: {
         title: "operation fixture",
@@ -174,7 +184,22 @@ export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => 
       },
     },
   });
-});
+};
+
+/** Every draw carries all editable stories and balanced, package-wide identities. */
+export const packageDocumentArbitrary = opSeedArbitrary.map(packageDocumentFromSeed);
+
+/** Capture replay has no dependency on operation-only generator dimensions. */
+export const captureDocumentArbitrary = fc
+  .record({
+    first: fc.nat(),
+    formatting: textFormattingArbitrary,
+    inherit: fc.boolean(),
+    text: fc
+      .array(fc.constantFrom("x", "y", "ü", "😀"), { minLength: 1, maxLength: 3 })
+      .map((parts) => parts.join("")),
+  })
+  .map(packageDocumentFromSeed);
 
 type CaseArgs = { document: Document; seed: OpSeed; story: OpStory };
 type GeneratedCase = { document: Document; op: DocumentOp };
@@ -232,6 +257,21 @@ const inverseCase = (
 };
 
 /** Total by the actual op union, rather than a separately maintained kind list. */
+const numberingCreation = ({ document }: CaseArgs) => {
+  let numId = 1;
+  while (document.package.numbering?.nums.some((num) => num.numId === numId)) numId += 1;
+  let abstractNumId = 1;
+  while (
+    document.package.numbering?.abstractNums.some((num) => num.abstractNumId === abstractNumId)
+  )
+    abstractNumId += 1;
+  return {
+    type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+    num: { numId, abstractNumId },
+    abstractNum: { abstractNumId, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+  } satisfies DocumentOp;
+};
+
 export const PACKAGE_OP_CASES = {
   insertText: direct("insertText"),
   insertContent: direct("insertContent"),
@@ -486,6 +526,26 @@ export const PACKAGE_OP_CASES = {
       type: "setSectionProps",
       sectionIndex: 0,
       patch: { pageWidth: 13000 + (args.seed.first % 100) },
+    },
+  }),
+  createNumberingInstance: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: numberingCreation(args),
+  }),
+  deleteNumberingInstance: (args: CaseArgs): GeneratedCase =>
+    inverseCase(args, numberingCreation(args), "deleteNumberingInstance"),
+  setSectionEndpoint: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "setSectionEndpoint",
+      endpoint: { type: "final" },
+      properties: {
+        type: "present",
+        value: {
+          ...args.document.package.document.finalSectionProperties,
+          pageWidth: 13000 + (args.seed.first % 100),
+        },
+      },
     },
   }),
   restoreStoryParts: (args: CaseArgs): GeneratedCase =>

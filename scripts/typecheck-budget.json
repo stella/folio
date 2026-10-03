@@ -1,51 +1,51 @@
 {
   "docx-core": {
-    "types": 37433,
-    "instantiations": 46807
+    "types": 33575,
+    "instantiations": 52107
   },
   "core": {
-    "types": 207276,
-    "instantiations": 208506
+    "types": 203233,
+    "instantiations": 212178
   },
   "react": {
-    "types": 224304,
-    "instantiations": 403490
+    "types": 220429,
+    "instantiations": 407828
   },
   "agents": {
-    "types": 153742,
-    "instantiations": 169362
+    "types": 149910,
+    "instantiations": 173863
   },
   "cli": {
-    "types": 198859,
-    "instantiations": 262858
+    "types": 195030,
+    "instantiations": 267371
   },
   "editor-web": {
-    "types": 220602,
-    "instantiations": 301539
+    "types": 216727,
+    "instantiations": 305877
   },
   "vue": {
-    "types": 239791,
-    "instantiations": 965360
+    "types": 240445,
+    "instantiations": 971562
   },
   "nuxt": {
-    "types": 168092,
-    "instantiations": 210313
+    "types": 168760,
+    "instantiations": 214843
   },
   "playground": {
-    "types": 225055,
-    "instantiations": 307739
+    "types": 221180,
+    "instantiations": 312077
   },
   "playground-vue": {
-    "types": 247646,
-    "instantiations": 973405
+    "types": 248297,
+    "instantiations": 979533
   },
   "parity": {
-    "types": 138674,
-    "instantiations": 163344
+    "types": 139324,
+    "instantiations": 167879
   },
   "reserved-values": {
-    "types": 7605,
-    "instantiations": 9483
+    "types": 7644,
+    "instantiations": 9548
   },
   "container-contract": {
     "types": 175,

@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "kind": "collisions",
+  "generation": "targeted",
+  "fixture": "lists",
+  "mode": "direct",
+  "seed": 2146507783,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 243424473,
+      "operations": [
+        {
+          "type": "mergeBlockWithNext",
+          "blockId": "0D88C56A",
+          "separator": " "
+        },
+        {
+          "type": "deleteBlock",
+          "blockId": "1688D395"
+        }
+      ]
+    }
+  ],
+  "swarm": [
+    "replaceRange",
+    "commentOnRange",
+    "deleteBlock",
+    "splitBlock",
+    "mergeBlockWithNext",
+    "commentOnBlock",
+    "deleteTable"
+  ],
+  "origin": "shrunk from collisions flow seed 2146507783",
+  "title": "PINNED #1415, reported seed 2146507783: a merge with the next block, which the same batch deletes, joins the block after it"
+}

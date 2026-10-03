@@ -114,7 +114,7 @@ describe("an undo that no longer applies", () => {
         },
       ],
     });
-    expect(reasonOf(relaidOut, split.inverse)).toBeUndefined();
+    expect(reasonOf(relaidOut.unwrap(), split.inverse)).toBeUndefined();
   });
 });
 

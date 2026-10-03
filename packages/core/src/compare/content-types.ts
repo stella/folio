@@ -1,4 +1,4 @@
-import type { OutlineLevel, ParagraphAlignment } from "../types/document";
+import type { OutlineLevel, ParagraphAlignment, ParagraphFormatting } from "../types/document";
 
 /** How callers expect a block identifier to behave across document revisions. */
 export type FolioContentIdStability = "stable" | "positional";
@@ -92,15 +92,13 @@ export type FolioContentTableLocation = {
 export type FolioContentParagraphAlignment = ParagraphAlignment;
 
 /** Line-height interpretation understood by the neutral comparison model. */
-export type FolioContentLineSpacingRule = "auto" | "exact" | "atLeast";
+export type FolioContentLineSpacingRule = NonNullable<ParagraphFormatting["lineSpacingRule"]>;
 
 /** The complete modeled attribute set of direct paragraph indentation. */
-export type FolioContentParagraphIndentation = {
-  indentLeft?: number;
-  indentRight?: number;
-  indentFirstLine?: number;
-  hangingIndent?: boolean;
-};
+export type FolioContentParagraphIndentation = Pick<
+  ParagraphFormatting,
+  "indentLeft" | "indentRight" | "indentFirstLine" | "hangingIndent"
+>;
 
 /** A concrete numbering instance and its zero-based level. */
 export type FolioContentListReference = { numId: number; level: number };
@@ -109,14 +107,15 @@ export type FolioContentListReference = { numId: number; level: number };
  * The complete modeled attribute set of direct paragraph spacing. Optional
  * fields distinguish an absent attribute from an explicit zero or false value.
  */
-export type FolioContentParagraphSpacing = {
-  spaceBefore?: number;
-  spaceAfter?: number;
-  lineSpacing?: number;
-  lineSpacingRule?: FolioContentLineSpacingRule;
-  beforeAutospacing?: boolean;
-  afterAutospacing?: boolean;
-};
+export type FolioContentParagraphSpacing = Pick<
+  ParagraphFormatting,
+  | "spaceBefore"
+  | "spaceAfter"
+  | "lineSpacing"
+  | "lineSpacingRule"
+  | "beforeAutospacing"
+  | "afterAutospacing"
+>;
 
 /** A representation-neutral block in one ordered document story. */
 export type FolioContentBlock<Kind extends string = string> = {

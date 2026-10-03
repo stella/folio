@@ -1,3 +1,4 @@
+import path from "node:path";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
@@ -40,7 +41,7 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    new URL(`./__fixtures__/batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`, import.meta.url),
+    path.join(import.meta.dir, "__fixtures__", `batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`),
   ).json();
   expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
   const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
@@ -67,6 +68,11 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+    const refused = validateDocumentBatch({ ...fixture, schema });
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
+  }
   for (const batch of [
     null,
     [],
@@ -323,8 +329,15 @@ test("actual text inverses normalize absent optional fields and remain decodable
   }
 });
 
-test("sequencing refuses unsupported paragraph-review and section-boundary payloads", () => {
+test("sequencing refuses unsupported property-review and section-boundary payloads", () => {
   const operations = [
+    {
+      type: "setRunProps",
+      from: { story: "main", blockId: "00000001", offset: 0 },
+      to: { story: "main", blockId: "00000001", offset: 1 },
+      patch: {},
+      propertyReview: "append",
+    },
     {
       type: "setParagraphProps",
       story: "main",
@@ -362,18 +375,25 @@ test("sequencing refuses unsupported paragraph-review and section-boundary paylo
   for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
 });
 
-// Historical versions normalize only their envelope; unsupported operation shapes still refuse.
-test("previous schemas normalize supported batches and refuse unsupported shapes", () => {
-  for (const schema of [4, 5]) {
+test("older batch schemas and persisted batches are refused structurally", async () => {
+  for (const schema of [1, 2, 3, 4, 5, 6, 7]) {
     const source = { ...fixture, schema };
     const snapshot = structuredClone(source);
     const result = validateDocumentBatch(source);
-    if (result.isErr()) throw result.error;
-    expect(result.value).toStrictEqual(fixture);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr())
+      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
     expect(source).toStrictEqual(snapshot);
-    const invalid = validateDocumentBatch({ ...source, ops: [{ type: "unknown" }] });
-    if (invalid.isOk()) throw new Error("Unknown legacy operation must refuse.");
-    expect(invalid.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
+  }
+  const batches: unknown = await Bun.file(
+    path.join(import.meta.dir, "__fixtures__", "batches-v5.json"),
+  ).json();
+  if (!Array.isArray(batches)) throw new Error("Historical batch fixture must be an array.");
+  for (const source of batches) {
+    const result = validateDocumentBatch(source);
+    expect(result.isErr()).toBe(true);
+    if (result.isErr())
+      expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
   }
 });
 
@@ -395,27 +415,4 @@ test("every table family refuses explicitly and mixed text/table batches apply n
     }
   }
   expect([...exercised].toSorted()).toEqual(Object.keys(TABLE_EXCLUSIVE_OP_TYPES).toSorted());
-});
-
-test("genuine schema 5 persisted batches normalize without rewriting their operations", async () => {
-  const batches: unknown = await Bun.file(
-    new URL("./__fixtures__/batches-v5.json", import.meta.url),
-  ).json();
-  if (!Array.isArray(batches)) throw new Error("Historical batch fixture must be an array.");
-  for (const batch of batches) {
-    const source: unknown = batch;
-    if (
-      typeof source !== "object" ||
-      source === null ||
-      !("schema" in source) ||
-      !("ops" in source)
-    )
-      throw new Error("Malformed historical batch fixture.");
-    expect(source.schema).toBe(5);
-    const result = validateDocumentBatch(source);
-    if (result.isErr()) throw result.error;
-    expect(result.value.schema).toBe(DOCUMENT_OP_SCHEMA_VERSION);
-    expect(result.value.ops).toStrictEqual(source.ops);
-    expect(result.value).toStrictEqual({ ...source, schema: DOCUMENT_OP_SCHEMA_VERSION });
-  }
 });

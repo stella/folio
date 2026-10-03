@@ -22,6 +22,18 @@ export const FINDINGS = {
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
+  REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
+    "a tracked deletion of a footnote's reference paragraph, then a tracked paragraph inserted into that footnote: rejecting every change leaves the inserted paragraph behind, empty",
+  BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
+    "#1356 (closed, still reproduces): in suggested mode, a batch applies insertBeforeBlock on a table-cell paragraph whose row has a pending suggested deletion, which the same operation alone refuses (pendingDeletion)",
+  DELETED_REFERENCE_NOTES_STAY_LISTED:
+    "#1357 (closed, still reproduces): after a direct deletion of the paragraph holding a footnote and an endnote reference, the reviewer still lists both notes, which the saved package no longer has",
+  COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
+    "#1408 (closed, still reproduces): a suggested paragraph inserted after a table cell's paragraph and a suggested deletion of the paragraph holding a comment's range end: accepted, the comment's anchored text takes in the inserted paragraph, which direct editing leaves out",
+  COLUMN_CELL_IN_ROW_PENDING_DELETION:
+    "#1415: insertTableColumn on a table whose header row has a pending tracked deletion: the oracle expects the new column's cell in that row to be listed, the reader leaves it out with the row",
+  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
+    "#1415: a batch merges a block with the next and deletes that next block; the legacy path applies the batch in reverse, so the merge joins the block after the deleted one, where the oracle expects the separator with nothing joined",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -54,14 +66,55 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [{ seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" }];
+}[] = [
+  { seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" },
+  { seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TERMINAL_DELETE_BATCH_FORMATTING: /directAlignment is undefined, expected "center"/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
+  REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
+    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
+  BATCH_INSERT_BEFORE_ROW_PENDING_DELETION:
+    /\[batchSequential\] the batch \(suggested: [^)]*\) leaves otherwise than its operations one at a time:\n\s*op-\d+ refused one at a time: pendingDeletion/u,
+  // The saving reviewer (expected, `-`) lists a note the reopened package lacks.
+  DELETED_REFERENCE_NOTES_STAY_LISTED:
+    /the reopened package shows something else than the reviewer that saved it[\s\S]*?\n\s*- +'\[(?:footnote|endnote) #\d+\]/u,
+  COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT:
+    /\[directTracked\] the flow's batches replayed tracked and accepted read otherwise than replayed direct[^\n]*\n\s*\{"type":"main"\}: \.comments\[\d+\]: /u,
+  // The expected texts list the new cell; the reader's do not.
+  COLUMN_CELL_IN_ROW_PENDING_DELETION:
+    /not what was asked \(insertTableColumn\):\n\s*block texts differ:\n\s*expected \[[^\n]*"Column cell 1"[^\n]*\n\s*got +\[(?![^\n]*"Column cell 1")/u,
+  // A batch with both operations, whose expected block ends in the merge's separator.
+  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
+    /not what was asked \((?=[^)]*mergeBlockWithNext)(?=[^)]*deleteBlock)[^)]*\):\n\s*block texts differ:\n\s*expected \[[^\n]* ","/u,
 };
+
+/**
+ * Checked-in flow files (scenarios/flow-corpus.test.ts) that reproduce a
+ * finding; they run as expected failures there.
+ */
+export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
+  "batch-after-table-row-delete.json": "BATCH_INSERT_BEFORE_ROW_PENDING_DELETION",
+  "deleted-endnote-reopen.json": "DELETED_REFERENCE_NOTES_STAY_LISTED",
+  "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
+  "suggested-note-delete-and-heading-insert.json":
+    "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
+  "suggested-story-insert-and-delete.json": "COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT",
+  "tracked-story-row-delete-and-column-insert.json": "COLUMN_CELL_IN_ROW_PENDING_DELETION",
+};
+
+/**
+ * Checked-in flow files with steps that apply nothing (support/fuzz.ts
+ * `vacuousSteps`), and those steps; each replays exactly this vacuous until
+ * its steps are re-pinned, when its entry goes. A pinned fixture block id is
+ * a paragraph id minted from a hash of the fixture's document.xml, so a
+ * change to how the fixture serializes detaches every flow on it.
+ */
+export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {};
 
 /**
  * requested-outcome.test.ts collisions (fixture / mode / collision) that

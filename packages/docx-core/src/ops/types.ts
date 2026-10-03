@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 6: text, formatting and review edits on
+ * Document operations, schema version 8: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -16,14 +16,17 @@
  * removes, the values a patch replaced, the fields of a paragraph it merges
  * away) and is refused as stale when that has changed.
  *
- * Wire format. An operation is plain data and survives `JSON.stringify` and
- * `JSON.parse` unchanged; it is journaled inside a {@link DocumentOpEnvelope}
- * that names this schema. Operations embed model records (`Paragraph`,
+ * Wire format. Author operations enter JSON through {@link toOpEnvelope} or
+ * `captureDocumentOp`, which record own undefined property presence. Applied
+ * inverses already carry this metadata. The envelope names the schema. Operations embed model records (`Paragraph`,
  * `ParagraphContent`, property sets) as they stand in this schema version, so
  * those record shapes are part of the wire format too: changing one changes
  * what a journaled operation means, and needs a new schema version and a
  * migration of the journaled operations.
  */
+
+import { INSERTION_SEAM_POLICIES } from "../model/content";
+import { captureDocumentOp } from "./wire";
 
 import type {
   Paragraph,
@@ -47,13 +50,26 @@ import type {
   DocumentSettings,
   Section,
 } from "../model/document";
+import type { AbstractNumbering, NumberingDefinitions, NumberingInstance } from "../model/lists";
 
-/** JSON-safe section metadata; content is derived from the body's canonical blocks. */
+/** JSON-safe map presence, including an explicitly undefined section map. */
+export type SectionMapState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "entries"; value: readonly (readonly [HeaderFooterType, HeaderFooter])[] };
+
+/** Section content is derived from the body's canonical blocks. */
 export type SectionViewEntry = {
   properties: SectionProperties;
-  headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
-  footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[];
+  headers: SectionMapState;
+  footers: SectionMapState;
 };
+
+/** Exact presence and metadata of the derived section view. */
+export type SectionViewState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "sections"; value: readonly SectionViewEntry[] };
 
 type SectionViewChange = {
   expected: readonly SectionViewEntry[];
@@ -63,8 +79,17 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
- * Version 6 adds semantic table edits and exact whole-table restoration.
- * Version 5 adds explicit section-boundary removal/restoration.
+ * Version 8 adds semantic table edits and exact whole-table restoration.
+ * Version 7 adds lossless own-undefined operation snapshot presence and
+ * explicit revision-boundary provenance. An explicit undefined patch value now
+ * sets an own undefined field; null removes it and an absent key is untouched.
+ * Older envelopes receive a structured
+ * unsupportedSchema refusal; no older deployed journal clients are supported.
+ * Version 6 extends PR6 schema 5 with numbering-instance creation, section-endpoint
+ * edits and JSON-safe exact section-map/view presence. Older envelopes receive an
+ * unsupportedSchema refusal; no older deployed journal clients are supported.
+ * Version 5 adds explicit section-boundary removal/restoration and separately
+ * rejectable paragraph-property reviews over an existing revision.
  * Version 5 adds header/footer/note story addresses and exact lifecycle operations.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
  * whole-table operations with their exact structural inverse, terminal insertion,
@@ -75,7 +100,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 6;
+export const DOCUMENT_OP_SCHEMA_VERSION = 8;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -109,11 +134,11 @@ export type TextPosition = {
 };
 
 /**
- * Per-key change to a property set: a value sets the key, `null` clears it,
- * and a key the patch leaves out is untouched.
+ * Per-key change: a value, including explicit undefined, sets an owned key;
+ * null removes the key, and an omitted key is untouched.
  */
 export type FormattingPatch<Formatting> = {
-  readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null;
+  readonly [Key in keyof Formatting]?: Formatting[Key] | null | undefined;
 };
 
 /** A change to a run property set (`w:rPr`). */
@@ -200,7 +225,7 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REPLACE: "replace",
 } as const);
 
-/** The operation kinds of schema version 6. */
+/** The operation kinds of schema version 8. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   CREATE_HEADER_FOOTER: "createHeaderFooter",
   REMOVE_HEADER_FOOTER: "removeHeaderFooter",
@@ -238,6 +263,9 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   SET_ROW_PROPS: "setRowProps",
   SET_TABLE_PROPS: "setTableProps",
   SET_TABLE: "setTable",
+  CREATE_NUMBERING_INSTANCE: "createNumberingInstance",
+  DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance",
+  SET_SECTION_ENDPOINT: "setSectionEndpoint",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -286,6 +314,7 @@ export type InsertContentOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
   at: TextPosition;
   slice: InlineSlice;
+  seamPolicy?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };
@@ -346,6 +375,9 @@ export type JoinInlineOp = {
   depth: number;
 };
 
+/** Whether a tracked run patch appends an independently rejectable review. */
+export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
+
 /**
  * Patch the run properties of every run between two positions of one
  * paragraph, splitting runs at the range ends. A run the patch does not change
@@ -363,6 +395,8 @@ export type JoinInlineOp = {
  * set before the patch. A run already carrying one keeps it, and with it the
  * formatting it started from. A tracked patch joins nothing, so `joinStart`
  * and `joinEnd` must be absent.
+ * `propertyReview: "append"` records a separately rejectable action over
+ * existing review, preserving the current formatting as that action's baseline.
  */
 export type SetRunPropsOp = {
   type: typeof DOCUMENT_OP_TYPES.SET_RUN_PROPS;
@@ -375,6 +409,7 @@ export type SetRunPropsOp = {
   joinEnd?: number;
   newIds?: NewIds;
   revision?: RevisionStamp;
+  propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 /**
@@ -689,6 +724,45 @@ export type SetTableRowsOp = {
   rows: readonly TableRow[];
 };
 
+/** Whether the package numbering part was omitted, explicitly undefined, or present. */
+export type NumberingPartState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "definitions"; value: NumberingDefinitions };
+
+/** Add a pre-allocated numbering instance and optional abstract definition. */
+export type CreateNumberingInstanceOp = {
+  type: typeof DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE;
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+  expected?: NumberingPartState;
+  restore?: NumberingPartState;
+};
+
+/** Remove the exact instance created by the paired operation. */
+export type DeleteNumberingInstanceOp = {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE;
+  num: NumberingInstance;
+  abstractNum?: AbstractNumbering;
+  expected?: NumberingPartState;
+  restore?: NumberingPartState;
+};
+
+/** A section endpoint is either a paragraph's sectPr or the body's final sectPr. */
+export type SectionEndpoint = { type: "paragraph"; blockId: string } | { type: "final" };
+export type SectionPropertiesState =
+  | { type: "omitted" }
+  | { type: "undefined" }
+  | { type: "present"; value: SectionProperties };
+export type SetSectionEndpointOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT;
+  endpoint: SectionEndpoint;
+  expected?: SectionPropertiesState;
+  properties: SectionPropertiesState;
+  expectedSectionMetadata?: SectionViewState;
+  sectionMetadata?: SectionViewState;
+};
+
 /**
  * Insert a table before or after a paragraph. Tracking records each row,
  * cell content and cell-ending paragraph mark. At a container's end,
@@ -865,8 +939,8 @@ export type TableIntentOperation = {
   >;
 }[TableEditOp["type"]];
 
-/** A schema-version-6 document operation. */
-export type DocumentOp =
+/** A schema-version-8 document operation. */
+export type DocumentOp = (
   | CreateHeaderFooterOp
   | RemoveHeaderFooterOp
   | AddNoteOp
@@ -895,7 +969,14 @@ export type DocumentOp =
   | DeleteRowOp
   | SetTableRowsOp
   | TableEditOp
-  | SetTableOp;
+  | SetTableOp
+  | CreateNumberingInstanceOp
+  | DeleteNumberingInstanceOp
+  | SetSectionEndpointOp
+) & {
+  /** Own undefined fields recorded by the operation capture boundary. */
+  undefinedFields?: readonly (readonly string[])[];
+};
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the
@@ -910,7 +991,7 @@ export type DocumentOpEnvelope = {
 /** An operation in the envelope it is journaled and sent in. */
 export const toOpEnvelope = (op: DocumentOp): DocumentOpEnvelope => ({
   schema: DOCUMENT_OP_SCHEMA_VERSION,
-  op,
+  op: captureDocumentOp(op),
 });
 
 /** The blocks an operation changed, by id. */

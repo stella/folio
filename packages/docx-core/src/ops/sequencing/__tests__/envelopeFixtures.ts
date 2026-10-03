@@ -1,4 +1,6 @@
+import path from "node:path";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES } from "../../types";
+import { captureDocumentOp } from "../../wire";
 import type { DocumentBatch, SequencedBatch } from "../envelope";
 
 const at = (offset: number) => ({ story: OP_STORIES.MAIN, blockId: "00000001", offset });
@@ -80,6 +82,28 @@ export const envelopeFixtures = [
       },
     ],
   },
+  {
+    schema: DOCUMENT_OP_SCHEMA_VERSION,
+    opId: "01JTESTBATCH000000000000004",
+    actor: "actor-1",
+    baseRev: 0,
+    ops: [
+      captureDocumentOp({
+        type: "setRunProps",
+        from: at(0),
+        to: at(1),
+        patch: { bold: undefined },
+        expected: { bold: null },
+      }),
+      captureDocumentOp({
+        type: "setParagraphProps",
+        story: OP_STORIES.MAIN,
+        blockId: "00000001",
+        patch: { alignment: undefined },
+        expected: { alignment: null },
+      }),
+    ],
+  },
 ] as const satisfies readonly DocumentBatch[];
 
 export const sequencedFixture = {
@@ -101,3 +125,10 @@ export const sequencedFixture = {
     { type: "touchedBlocks", blockIds: ["00000001"] },
   ],
 } as const satisfies SequencedBatch;
+
+if (import.meta.main) {
+  await Bun.write(
+    path.join(import.meta.dir, "../__fixtures__", `batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`),
+    `${JSON.stringify([...envelopeFixtures, sequencedFixture], null, 2)}\n`,
+  );
+}

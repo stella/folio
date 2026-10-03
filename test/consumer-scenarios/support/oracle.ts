@@ -243,14 +243,30 @@ const save = async (reviewer: Reviewer): Promise<Uint8Array> =>
   new Uint8Array(await reviewer.toBuffer());
 
 /**
+ * Whether a story is still in a document. A note goes with its reference:
+ * accepting the deletion of the text that holds the reference removes the
+ * note, whatever it holds by then.
+ */
+type StoryPresence = "present" | "removed";
+
+type ResolvedState = {
+  rows: Row[];
+  story: StoryPresence;
+  bytes: Uint8Array;
+  comments: Comment[];
+  links: LinkSnapshot;
+};
+
+/**
  * `bytes` opened, every change resolved one way, saved and reopened: the
- * blocks a reader is left with, and the saved package.
+ * blocks a reader is left with, whether the story is still there, and the
+ * saved package.
  */
 export const resolvedState = async (
   bytes: Uint8Array,
   resolution: "accept" | "reject",
   story: Story = MAIN,
-): Promise<{ rows: Row[]; bytes: Uint8Array; comments: Comment[]; links: LinkSnapshot }> => {
+): Promise<ResolvedState> => {
   const reviewer = await openReviewer(bytes);
   if (resolution === "accept") reviewer.acceptAll();
   else reviewer.rejectAll();
@@ -258,6 +274,7 @@ export const resolvedState = async (
   const reopened = await openReviewer(saved);
   return {
     rows: rowsOf(reopened, story),
+    story: reopened.readStory(story) === null ? "removed" : "present",
     bytes: saved,
     comments: commentsOf(reopened),
     links: captureLinks(reopened),
@@ -336,6 +353,12 @@ export type Model = {
   unmodelled: string[];
   /** Blocks that are paragraphs of a text box drawn in the block before them. */
   inTextBox?: ReadonlySet<string>;
+  /**
+   * The story in the resolved pre-state. A removed one (a note whose
+   * reference's deletion is pending) stays removed once accepted: nothing
+   * an operation puts in it survives.
+   */
+  story: StoryPresence;
 };
 
 const fieldsOf = (row: Row): Fields => {
@@ -379,6 +402,7 @@ export const modelOf = (rows: readonly Row[], live: readonly Row[] = rows): Mode
     styles: new Set(),
     comments: [],
     unmodelled: [],
+    story: "present",
   };
   const known = new Set(rows.map((row) => row.id));
   const indexOf = (id: string | undefined): number =>
@@ -700,18 +724,27 @@ const untouchedText = (row: ModelRow): boolean =>
 type Expect = (model: Model, operation: Operation) => void;
 
 /**
- * A text box's paragraphs belong to the paragraph it is drawn in, which a
- * reader lists just before them: a block inserted after that paragraph
- * follows them.
+ * The paragraphs of the text boxes drawn in `row`, which a reader lists just
+ * after it; none for a paragraph inside a text box.
  */
-const pastTextBoxes = (model: Model, row: ModelRow): ModelRow => {
-  const boxed = (candidate: ModelRow | undefined) =>
-    candidate?.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
-  if (boxed(row)) return row;
-  let index = model.rows.indexOf(row);
-  while (boxed(model.rows[index + 1])) index += 1;
-  return model.rows[index] ?? row;
+const textBoxRowsOf = (model: Model, row: ModelRow): ModelRow[] => {
+  const boxed = (candidate: ModelRow): boolean =>
+    candidate.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
+  if (boxed(row)) return [];
+  const rows: ModelRow[] = [];
+  for (const candidate of model.rows.slice(model.rows.indexOf(row) + 1)) {
+    if (!boxed(candidate)) break;
+    rows.push(candidate);
+  }
+  return rows;
 };
+
+/**
+ * A text box's paragraphs belong to the paragraph it is drawn in: a block
+ * inserted after that paragraph follows them.
+ */
+const pastTextBoxes = (model: Model, row: ModelRow): ModelRow =>
+  textBoxRowsOf(model, row).at(-1) ?? row;
 
 /**
  * Where a block inserted next to `row` goes: next to the row itself, or, for
@@ -830,7 +863,12 @@ export const EXPECTATIONS = {
     addComment(model, operation);
   },
   deleteBlock: (model, operation) => {
-    target(model, operation["blockId"]).removed = true;
+    const row = target(model, operation["blockId"]);
+    row.removed = true;
+    // The text boxes drawn in the paragraph go with it once the deletion
+    // resolves; the suggested live view still lists their paragraphs.
+    if (model.mode === "suggested") return;
+    for (const boxed of textBoxRowsOf(model, row)) boxed.removed = true;
   },
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);
@@ -1052,6 +1090,7 @@ const applyEdits = (text: string, edits: readonly TextEdit[], splits: ModelRow["
 };
 
 const materialize = (model: Model): Expected[] => {
+  if (model.story === "removed") return [];
   const out: Expected[] = [];
   let joinNext: string | undefined;
   const push = (entry: Expected) => {
@@ -1345,6 +1384,8 @@ export type Pre = {
   mode: Mode;
   live: string;
   rows: Row[];
+  /** Whether the story of `rows` is in that state. */
+  resolvedStory: StoryPresence;
   /** The reviewer's own blocks, when `rows` are another view of them. */
   liveRows: Row[];
   /** Immutable pre-state; suggestions have not entered saved package bytes yet. */
@@ -1447,6 +1488,7 @@ export const capture = async (
       mode,
       live,
       rows,
+      resolvedStory: "present",
       liveRows: rows,
       numberingSource: { type: "live", document: reviewer.toDocument() },
       comments: liveComments,
@@ -1461,6 +1503,7 @@ export const capture = async (
     mode,
     live,
     rows: accepted.rows,
+    resolvedStory: accepted.story,
     liveRows: rowsOf(reviewer, story),
     numberingSource: { type: "package", bytes: accepted.bytes },
     comments: accepted.comments,
@@ -1588,6 +1631,7 @@ export const assertRequestedOutcome = async (
   }
   model.inTextBox = pre.targets.inTextBox;
   model.mode = pre.mode;
+  model.story = pre.resolvedStory;
   for (const operation of outcome.applied) expectOperation(model, operation);
   // An operation the oracle cannot model changes the document in a way it
   // cannot predict; the rest of the batch is not compared either.

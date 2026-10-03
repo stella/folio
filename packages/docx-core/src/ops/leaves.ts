@@ -324,6 +324,8 @@ export const sameOwnFields = (left: InlineNode, right: InlineNode): boolean =>
  */
 export type MergeRule = {
   mode: "exact" | "asFarAsAlike";
+  /** An explicit open end continues the source wrapper's private cut facts. */
+  fields?: "source";
   onMerge?: (left: InlineNode, right: InlineNode, level: number) => void;
   /**
    * Whose ids a merged record keeps: the first's (the default), or the
@@ -333,6 +335,20 @@ export type MergeRule = {
 };
 
 export const EXACT_MERGE: MergeRule = Object.freeze({ mode: "exact" });
+
+const withoutResolutionJoins = (node: InlineNode): InlineNode => {
+  switch (node.type) {
+    case "insertion":
+    case "deletion":
+    case "moveFrom":
+    case "moveTo": {
+      const { resolutionJoins: _joins, ...authored } = node;
+      return authored;
+    }
+    default:
+      return node;
+  }
+};
 
 const mergeNode = (
   left: InlineNode,
@@ -347,11 +363,17 @@ const mergeNode = (
     return undefined;
   }
   if (left.type === "text" && right.type === "text") {
-    return depth === 1 ? { ...left, text: left.text + right.text } : undefined;
+    return depth === 1 || rule.mode === "asFarAsAlike"
+      ? { ...left, text: left.text + right.text }
+      : undefined;
   }
   const leftChildren = childNodes(left);
   const rightChildren = childNodes(right);
-  if (leftChildren === undefined || rightChildren === undefined || !sameOwnFields(left, right)) {
+  const alike =
+    rule.fields === "source"
+      ? sameOwnFields(withoutResolutionJoins(left), withoutResolutionJoins(right))
+      : sameOwnFields(left, right);
+  if (leftChildren === undefined || rightChildren === undefined || !alike) {
     return undefined;
   }
   rule.onMerge?.(left, right, level);
@@ -359,7 +381,10 @@ const mergeNode = (
   if (children === undefined) {
     return undefined;
   }
-  const merged = rebuildNode(left, children);
+  const merged = rebuildNode(
+    rule.fields === "source" && rule.identity === "second" ? right : left,
+    children,
+  );
   return rule.identity === "second"
     ? withInlineIdentity(
         merged,

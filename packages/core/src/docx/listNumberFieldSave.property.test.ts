@@ -1099,7 +1099,7 @@ const FIXTURES: readonly Pinned[] = [
   },
   {
     path: "tests/visual/fixtures/docx-editor-demo.docx",
-    projection: { length: 445_121 },
+    projection: { length: 445_289 },
     saved: {
       digest: "6bac5af14f8a58ea6627768ea747a8fc8ec69ce3e3edae1c41d720de84f81dee",
       length: 59_324,

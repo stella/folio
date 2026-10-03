@@ -27,6 +27,8 @@ import { operationPackageBytes } from "./lib/corpus-invariants/package-fixtures"
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { normalizeForOps } from "../packages/docx-core/src/ops/contract";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { visitDocxParagraphs } from "../packages/core/src/docx/paragraphTraversal";
 import { applyDocumentOps } from "../packages/docx-core/src/ops/apply";
 import { DOCUMENT_OP_TYPES } from "../packages/docx-core/src/ops/types";
 import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
@@ -36,6 +38,7 @@ import {
   GENERATED_PACKAGE_OP_KINDS,
   GENERATED_PACKAGE_STORIES,
   packageDocumentArbitrary,
+  captureDocumentArbitrary,
 } from "../test/generators/packageOperationArbitraries";
 
 class OperationPackageLawError extends TaggedError("OperationPackageLawError")<{
@@ -180,11 +183,29 @@ test(
 );
 
 test(
-  "operation sequence generation retains the parsed package control",
+  "paragraph property package inverses retain authored stories",
   async () => {
     await assertProperty(
       fc.asyncProperty(
         packageDocumentArbitrary,
+        opSeedArbitrary,
+        fc.constantFrom(...GENERATED_PACKAGE_STORIES),
+        async (document, seed, story) => {
+          await assertPackageOperationLaws({ kind: "setParagraphProps", document, seed, story });
+        },
+      ),
+      { numRuns: 100 },
+    );
+  },
+  propertyTestTimeout(60_000),
+);
+
+test(
+  "operation sequence generation retains the parsed package control",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        captureDocumentArbitrary,
         fc.integer({ min: 0, max: 0x7fffffff }),
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
@@ -199,6 +220,21 @@ test(
           const sequence = generateOpSequence(parsed, seed);
           const initial = await serializedOpParts(sequence.original);
           expect(initial).toEqual(control);
+          const withoutCaptures = cloneDocumentWithParagraphPropertySources(sequence.original);
+          let removed = 0;
+          visitDocxParagraphs({ documentBody: withoutCaptures.package.document }, (paragraph) => {
+            for (const key of Object.getOwnPropertySymbols(paragraph)) {
+              if (key.description !== "paragraphPropertyCapture") continue;
+              expect(Reflect.deleteProperty(paragraph, key)).toBe(true);
+              removed++;
+            }
+          });
+          expect(removed).toBeGreaterThan(0);
+          expect(structuredClone(withoutCaptures.package.document.content)).toStrictEqual(
+            structuredClone(sequence.original.package.document.content),
+          );
+          const mutated = await serializedOpParts(withoutCaptures);
+          expect(mutated.get("word/document.xml")).not.toEqual(control.get("word/document.xml"));
         },
       ),
       { numRuns: 12 },

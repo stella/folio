@@ -60,7 +60,7 @@ describe("numeric OOXML identifier writer guard", () => {
           );
         },
       ),
-      propertyConfig({ numRuns: 100 }),
+      { numRuns: 100 },
     );
   });
 

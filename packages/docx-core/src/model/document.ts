@@ -50,6 +50,8 @@ export {
   type ResolvedParagraphNumbering,
 } from "./paragraphNumbering";
 
+export { isNumberingLevel } from "./numberingLevel";
+
 // `w:outlineLvl`: the union, its constructors, and the one reader over a
 // stated value.
 export {
@@ -446,7 +448,7 @@ export type DocxPackage = {
   /** Theme */
   theme?: Theme;
   /** Numbering definitions */
-  numbering?: NumberingDefinitions;
+  numbering?: NumberingDefinitions | undefined;
   /** Font table */
   fontTable?: FontTable;
   /** Footnotes */

@@ -7,7 +7,7 @@
  * on the path to it, so every other block is `===` to its input.
  */
 
-import { panic } from "better-result";
+import { panic, Result, TaggedError } from "better-result";
 
 import type {
   BlockContent,
@@ -20,7 +20,13 @@ import type {
   Section,
 } from "../model/document";
 import { structurallyEqual } from "./equality";
-import type { OpStory, SectionViewEntry } from "./types";
+import { DOCUMENT_OP_REFUSAL_REASONS } from "./refusal";
+import {
+  type OpStory,
+  type SectionViewEntry,
+  type SectionMapState,
+  type SectionViewState,
+} from "./types";
 import { storyBody, replaceStoryBody } from "./stories";
 
 export { storyBody } from "./stories";
@@ -274,32 +280,110 @@ const deriveSections = (content: readonly BlockContent[], previous: Section[]): 
   return changed ? out : previous;
 };
 
-/** Capture only section metadata, with Maps represented as JSON-safe entries. */
+/** A section edit that cannot preserve the canonical section contract. */
+export class SectionViewError extends TaggedError("SectionViewError")<{
+  message: string;
+  reason:
+    | typeof DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY
+    | typeof DOCUMENT_OP_REFUSAL_REASONS.STALE;
+}> {}
+
+const sectionFailure = (message: string) =>
+  Result.err(
+    new SectionViewError({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.SECTION_BOUNDARY,
+      message,
+    }),
+  );
+
+const sectionMapState = (section: Section, key: "headers" | "footers"): SectionMapState => {
+  if (!Object.hasOwn(section, key)) return { type: "omitted" };
+  const value = section[key];
+  return value === undefined ? { type: "undefined" } : { type: "entries", value: [...value] };
+};
+
+/** Capture only section metadata, with explicit JSON-safe map presence. */
 export const captureSectionView = (sections: readonly Section[]): SectionViewEntry[] =>
-  sections.map(({ properties, headers, footers }) => ({
-    properties,
-    ...(headers !== undefined && { headers: [...headers] }),
-    ...(footers !== undefined && { footers: [...footers] }),
+  sections.map((section) => ({
+    properties: section.properties,
+    headers: sectionMapState(section, "headers"),
+    footers: sectionMapState(section, "footers"),
   }));
 
-const restoreSectionView = (
+export const captureSectionViewState = (body: DocumentBody): SectionViewState => {
+  if (!Object.hasOwn(body, "sections")) return { type: "omitted" };
+  return body.sections === undefined
+    ? { type: "undefined" }
+    : { type: "sections", value: captureSectionView(body.sections) };
+};
+
+const restoreSectionMap = (
+  section: Section,
+  key: "headers" | "footers",
+  state: SectionMapState,
+): void => {
+  switch (state.type) {
+    case "omitted":
+      return;
+    case "undefined":
+      section[key] = undefined;
+      return;
+    case "entries":
+      section[key] = new Map(state.value);
+      return;
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
+};
+
+export const restoreSectionView = (
   content: readonly BlockContent[],
   snapshots: readonly SectionViewEntry[],
-): Section[] => {
+): Result<Section[], SectionViewError> => {
   const groups = sectionGroups(content);
-  if (groups.length !== snapshots.length) {
-    return panic("The section snapshot does not match the restored section boundaries.");
-  }
-  return snapshots.map(({ properties, headers, footers }, index) => {
+  if (groups.length !== snapshots.length)
+    return Result.err(
+      new SectionViewError({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.STALE,
+        message: "The section snapshot does not match the restored section boundaries.",
+      }),
+    );
+  const sections: Section[] = [];
+  for (const [index, snapshot] of snapshots.entries()) {
     const group = groups.at(index);
-    if (group === undefined) return panic("The restored section lost its block group.");
-    return {
-      properties,
-      content: group,
-      ...(headers !== undefined && { headers: new Map(headers) }),
-      ...(footers !== undefined && { footers: new Map(footers) }),
-    };
-  });
+    if (group === undefined) return sectionFailure("The restored section lost its block group.");
+    const section: Section = { properties: snapshot.properties, content: group };
+    restoreSectionMap(section, "headers", snapshot.headers);
+    restoreSectionMap(section, "footers", snapshot.footers);
+    sections.push(section);
+  }
+  return Result.ok(sections);
+};
+
+export const restoreSectionViewState = (
+  body: DocumentBody,
+  state: SectionViewState,
+): Result<DocumentBody, SectionViewError> => {
+  const next = { ...body };
+  delete next.sections;
+  switch (state.type) {
+    case "omitted":
+      return Result.ok(next);
+    case "undefined":
+      return Result.ok({ ...next, sections: undefined });
+    case "sections": {
+      const restored = restoreSectionView(body.content, state.value);
+      if (restored.isErr()) return restored;
+      next.sections = restored.value;
+      return Result.ok(next);
+    }
+    default: {
+      const unreachable: never = state;
+      return unreachable;
+    }
+  }
 };
 
 type SectionPartsOptions = {
@@ -308,14 +392,15 @@ type SectionPartsOptions = {
 };
 
 const sectionParts = ({ references, parts }: SectionPartsOptions) => {
-  if (references === undefined || references.length === 0) return undefined;
+  if (references === undefined || references.length === 0) return Result.ok(undefined);
   const resolved = new Map<HeaderFooterType, HeaderFooter>();
   for (const { type, rId } of references) {
     const part = parts?.get(rId);
-    if (part === undefined) return panic(`A section reference names unavailable part ${rId}.`);
+    if (part === undefined)
+      return sectionFailure(`A section reference names unavailable part ${rId}.`);
     resolved.set(type, part);
   }
-  return resolved;
+  return Result.ok(resolved);
 };
 
 type RebuildSectionsOptions = {
@@ -325,23 +410,30 @@ type RebuildSectionsOptions = {
 };
 
 /** A boundary keeps its section metadata when earlier section boundaries change. */
-const rebuildSections = ({ document, content, previous }: RebuildSectionsOptions): Section[] => {
+export const rebuildSections = ({
+  document,
+  content,
+  previous,
+}: RebuildSectionsOptions): Result<Section[], SectionViewError> => {
   const body = document.package.document;
   const previousGroups = sectionGroups(body.content);
   const sectionsByBoundary = new Map<string, Section>();
   let finalSection: Section | undefined;
   for (const [index, group] of previousGroups.entries()) {
     const section = previous.at(index);
-    if (section === undefined) return panic("The previous section lost its block group.");
+    if (section === undefined) return sectionFailure("The previous section lost its block group.");
     const boundary = group.at(-1);
     if (boundary?.type === "paragraph" && boundary.sectionProperties !== undefined) {
-      if (boundary.paraId === undefined) return panic("A section boundary has no paragraph id.");
+      if (boundary.paraId === undefined)
+        return sectionFailure("A section boundary has no paragraph id.");
       sectionsByBoundary.set(boundary.paraId, section);
     } else {
       finalSection = section;
     }
   }
-  return sectionGroups(content).map((group) => {
+  const sections: Section[] = [];
+  const nextGroups = sectionGroups(content);
+  for (const [index, group] of nextGroups.entries()) {
     const boundary = group.at(-1);
     const stated = boundary?.type === "paragraph" ? boundary.sectionProperties : undefined;
     let matching = finalSection;
@@ -350,26 +442,46 @@ const rebuildSections = ({ document, content, previous }: RebuildSectionsOptions
       if (boundary.paraId !== undefined) matching = sectionsByBoundary.get(boundary.paraId);
     }
     const properties = stated ?? body.finalSectionProperties ?? finalSection?.properties;
-    if (properties === undefined) return panic("A rebuilt section has no canonical properties.");
+    // A split can move an existing endpoint to a fresh paragraph without changing its section.
+    if (matching === undefined && nextGroups.length === previousGroups.length)
+      matching = previous.at(index);
+    if (properties === undefined)
+      return sectionFailure("A rebuilt section has no canonical properties.");
     if (matching !== undefined && structurallyEqual(matching.properties, properties)) {
-      const section: Section = { properties, content: group };
-      if (matching.headers !== undefined) section.headers = matching.headers;
-      if (matching.footers !== undefined) section.footers = matching.footers;
-      return section;
+      const same =
+        group.length === matching.content.length &&
+        group.every((block, position) => block === matching.content[position]);
+      sections.push(same ? matching : { ...matching, properties, content: group });
+      continue;
     }
-    const headers = sectionParts({
-      references: properties.headerReferences,
-      parts: document.package.headers,
-    });
-    const footers = sectionParts({
-      references: properties.footerReferences,
-      parts: document.package.footers,
-    });
-    const section: Section = { properties, content: group };
-    if (headers !== undefined) section.headers = headers;
-    if (footers !== undefined) section.footers = footers;
-    return section;
-  });
+    const section: Section = { ...matching, properties, content: group };
+    if (
+      matching === undefined ||
+      !structurallyEqual(matching.properties.headerReferences, properties.headerReferences)
+    ) {
+      const headers = sectionParts({
+        references: properties.headerReferences,
+        parts: document.package.headers,
+      });
+      if (headers.isErr()) return headers;
+      delete section.headers;
+      if (headers.value !== undefined) section.headers = headers.value;
+    }
+    if (
+      matching === undefined ||
+      !structurallyEqual(matching.properties.footerReferences, properties.footerReferences)
+    ) {
+      const footers = sectionParts({
+        references: properties.footerReferences,
+        parts: document.package.footers,
+      });
+      if (footers.isErr()) return footers;
+      delete section.footers;
+      if (footers.value !== undefined) section.footers = footers.value;
+    }
+    sections.push(section);
+  }
+  return Result.ok(sections);
 };
 
 /**
@@ -441,7 +553,7 @@ export const replaceParagraphs = ({
   count,
   replacement,
   restoreSections,
-}: ReplaceParagraphsOptions): Document => {
+}: ReplaceParagraphsOptions): Result<Document, SectionViewError> => {
   const body = storyBody(document, story);
   const content = updateBlockList(body.content, at.list, (blocks) => {
     const out = [...blocks];
@@ -450,12 +562,15 @@ export const replaceParagraphs = ({
   });
   const nextBody: DocumentBody = { ...body, content };
   if (restoreSections !== undefined) {
-    nextBody.sections = restoreSectionView(content, restoreSections);
+    const restored = restoreSectionView(content, restoreSections);
+    if (restored.isErr()) return restored;
+    nextBody.sections = restored.value;
   } else if (body.sections !== undefined) {
-    nextBody.sections =
-      sectionGroups(content).length === body.sections.length
-        ? deriveSections(content, body.sections)
-        : rebuildSections({ document, content, previous: body.sections });
+    const rebuilt = rebuildSections({ document, content, previous: body.sections });
+    if (rebuilt.isErr()) return rebuilt;
+    nextBody.sections = rebuilt.value;
   }
-  return replaceStoryBody({ document, story, body: nextBody });
+  if (!sectionsInStep(nextBody))
+    return sectionFailure("The restored section metadata conflicts with its canonical boundaries.");
+  return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
 };

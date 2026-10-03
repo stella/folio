@@ -1,0 +1,10 @@
+{
+  "generated property patches preserve omitted, owned undefined and concrete values through every inverse": [
+    {
+      "seed": 1820694143,
+      "path": "1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1",
+      "date": "2026-10-02",
+      "note": "Preserve own property presence and authored run boundaries through generated multi-step edits and exact inverses."
+    }
+  ]
+}

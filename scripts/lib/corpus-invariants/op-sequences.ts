@@ -118,6 +118,9 @@ export const OP_GENERATOR_ROLES = {
   [DOCUMENT_OP_TYPES.ADD_NOTE]: "generated",
   [DOCUMENT_OP_TYPES.REMOVE_NOTE]: "generated",
   [DOCUMENT_OP_TYPES.SET_SECTION_PROPS]: "generated",
+  [DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE]: "generated",
+  [DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE]: "inverse",
+  [DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT]: "inverse",
   [DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS]: "inverse",
   [DOCUMENT_OP_TYPES.INSERT_TEXT]: "generated",
   [DOCUMENT_OP_TYPES.INSERT_CONTENT]: "generated",
@@ -379,6 +382,20 @@ const candidate = ({
       );
       const selected = references.at(choose(references.length));
       return selected ? { type: DOCUMENT_OP_TYPES.REMOVE_NOTE, ...selected } : undefined;
+    }
+    case "createNumberingInstance": {
+      let numId = 1;
+      while (document.package.numbering?.nums.some((num) => num.numId === numId)) numId += 1;
+      let abstractNumId = 1;
+      while (
+        document.package.numbering?.abstractNums.some((num) => num.abstractNumId === abstractNumId)
+      )
+        abstractNumId += 1;
+      return {
+        type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+        num: { numId, abstractNumId },
+        abstractNum: { abstractNumId, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+      };
     }
     case "setSectionProps": {
       const sectionIndex = choose(sectionCount);

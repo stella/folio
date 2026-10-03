@@ -204,6 +204,7 @@ export const DEFAULT_TAB_STOP_TWIPS = 720;
 // @public
 export type Deletion = {
     type: "deletion";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -246,8 +247,8 @@ export type DocumentBackgroundDrawing = {
 export type DocumentBody = {
     background?: DocumentBackground;
     content: BlockContent[];
-    sections?: Section[];
-    finalSectionProperties?: SectionProperties;
+    sections?: Section[] | undefined;
+    finalSectionProperties?: SectionProperties | undefined;
     comments?: Comment_2[];
 };
 
@@ -300,7 +301,7 @@ export type DocxPackage = {
     settings?: DocumentSettings;
     styles?: StyleDefinitions;
     theme?: Theme;
-    numbering?: NumberingDefinitions;
+    numbering?: NumberingDefinitions | undefined;
     fontTable?: FontTable;
     footnotes?: Footnote[];
     endnotes?: Endnote[];
@@ -705,6 +706,7 @@ export type InlineWrapper = {
 // @public
 export type Insertion = {
     type: "insertion";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -723,6 +725,9 @@ export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
 
 // @public
 export const isBorderStyle: (value: string) => value is BorderStyle;
+
+// @public
+export const isNumberingLevel: (value: number) => boolean;
 
 // @public
 export const isNumberingReference: (numId: number | undefined) => numId is number;
@@ -861,6 +866,7 @@ export type MoveBookmarkMarker = BookmarkRangeMarker & {
 // @public
 export type MoveFrom = {
     type: "moveFrom";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -878,6 +884,7 @@ export type MoveFromRangeStart = {
 // @public
 export type MoveTo = {
     type: "moveTo";
+    resolutionJoins?: TrackedResolutionJoins;
     info: TrackedChangeInfo;
     content: TrackedRunContent[];
 };
@@ -983,7 +990,7 @@ export type Paragraph = {
     content: ParagraphContent[];
     listRendering?: ListRendering;
     renderedPageBreakBefore?: boolean;
-    sectionProperties?: SectionProperties;
+    sectionProperties?: SectionProperties | undefined;
     preservedAttributes?: PreservedAttribute[];
 };
 
@@ -1000,7 +1007,7 @@ export type ParagraphAlignment = "start" | "center" | "end" | "both" | "mediumKa
 export type ParagraphContent = Run | Hyperlink | BookmarkStart | BookmarkEnd | SimpleField | ComplexField | InlineSdt | CommentRangeStart | CommentRangeEnd | CommentReference | Insertion | Deletion | MoveFrom | MoveTo | MoveFromRangeStart | MoveFromRangeEnd | MoveToRangeStart | MoveToRangeEnd | InlineWrapper | MathEquation | PreservedInline;
 
 // @public (undocumented)
-export type ParagraphFormatting = {
+export type ParagraphFormatting = OwnFieldPresence<{
     alignment?: ParagraphAlignment;
     bidi?: boolean;
     kinsoku?: boolean;
@@ -1061,12 +1068,13 @@ export type ParagraphFormatting = {
     runProperties?: TextFormatting;
     runInWithNext?: boolean;
     preserved?: PreservedMarkup;
-};
+}>;
 
 // @public
 export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
+    resolutionJoin?: number | undefined;
 };
 
 // @public
@@ -1351,6 +1359,7 @@ export type RunContent = TextContent | TabContent | BreakContent | SymbolContent
 // @public
 export type RunPropertyChange = {
     type: "runPropertyChange";
+    boundaryJoins?: readonly ("before" | "after")[];
     info: PropertyChangeInfo;
     previousFormatting?: TextFormatting;
     currentFormatting?: TextFormatting;
@@ -1425,8 +1434,8 @@ export type SdtType = "richText" | "plainText" | "date" | "dropdown" | "comboBox
 export type Section = {
     properties: SectionProperties;
     content: BlockContent[];
-    headers?: Map<HeaderFooterType, HeaderFooter>;
-    footers?: Map<HeaderFooterType, HeaderFooter>;
+    headers?: Map<HeaderFooterType, HeaderFooter> | undefined;
+    footers?: Map<HeaderFooterType, HeaderFooter> | undefined;
 };
 
 // @public
@@ -2014,7 +2023,7 @@ export type TextDirectionFlow = "tb" | "rl" | "lr" | "tbV" | "rlV" | "lrV";
 export type TextEffect = "none" | "blinkBackground" | "lights" | "antsBlack" | "antsRed" | "shimmer" | "sparkle";
 
 // @public
-export type TextFormatting = {
+export type TextFormatting = OwnFieldPresence<{
     bold?: boolean;
     boldCs?: boolean;
     italic?: boolean;
@@ -2065,7 +2074,7 @@ export type TextFormatting = {
     cs?: boolean;
     styleId?: string;
     preserved?: PreservedMarkup;
-};
+}>;
 
 // @public (undocumented)
 export type TextWatermark = {

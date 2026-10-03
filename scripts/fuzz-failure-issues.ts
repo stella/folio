@@ -5,8 +5,11 @@
  * Reads failure markers and minimized replay records. The class signature
  * groups a failure across fixtures and modes; fingerprints identify replay
  * cases in its seed table. Repeated runs are idempotent. An open issue of the
- * class always takes the rows. Recent closed classes reopen; older recurrences
- * link a new issue; one closed as a duplicate stands for the issue it names.
+ * class always takes the rows. A class closed as completed reopens, with a
+ * comment naming the run and fingerprints, when it recurs within 14 days;
+ * older recurrences link a new issue. One closed as not planned or as a
+ * duplicate never reopens: it stands for the issue a "Duplicate of #N"
+ * comment names, or else takes the new rows while it stays closed.
  * Known fingerprints remain tracked in their registry. A run that would open
  * more issues than the per-run cap opens none and exits non-zero.
  *
@@ -29,7 +32,8 @@ import type {
 } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { extractFailureMarkers, parseKnownFailures } from "./failure-fingerprints";
 import {
-  closedAsDuplicate,
+  type ClosedIssueDisposition,
+  closedWithoutFix,
   duplicateTarget,
   fileClasses,
   type Issue,
@@ -190,6 +194,31 @@ const writeBody = (body: string): string => {
 
 class IssueResponseError extends TaggedError("IssueResponseError")<{ message: string }> {}
 
+/** GitHub's close reasons (REST `state_reason`, GraphQL `stateReason`) a closed issue can carry. */
+const CLOSE_REASONS = {
+  completed: { type: "fixed" },
+  not_planned: { type: "superseded" },
+  duplicate: { type: "duplicate" },
+} as const satisfies Record<string, ClosedIssueDisposition>;
+
+const isCloseReason = (reason: string): reason is keyof typeof CLOSE_REASONS =>
+  Object.hasOwn(CLOSE_REASONS, reason);
+
+/** A closed issue's disposition; a close reason this reporter does not know fails. */
+const closedIssueDisposition = (stateReason: unknown): ClosedIssueDisposition => {
+  // Issues closed before GitHub recorded close reasons carry none: they were closed as done.
+  if (stateReason === null || stateReason === undefined || stateReason === "") {
+    return CLOSE_REASONS.completed;
+  }
+  const reason = typeof stateReason === "string" ? stateReason.toLowerCase() : null;
+  if (reason === null || !isCloseReason(reason)) {
+    throw new IssueResponseError({
+      message: `Unknown close reason ${JSON.stringify(stateReason)} on a closed issue`,
+    });
+  }
+  return CLOSE_REASONS[reason];
+};
+
 /** Reject malformed API responses before they can affect matching or writes. */
 export const parseIssueResponse = (value: unknown): Issue => {
   if (!isRecord(value)) throw new IssueResponseError({ message: "Invalid GitHub issue response" });
@@ -209,14 +238,8 @@ export const parseIssueResponse = (value: unknown): Issue => {
     (closedAt !== null && typeof closedAt !== "string")
   )
     throw new IssueResponseError({ message: "Invalid GitHub issue fields" });
-  return {
-    number,
-    title,
-    body,
-    state,
-    closedAt,
-    ...(typeof stateReason === "string" && stateReason !== "" ? { stateReason } : {}),
-  };
+  if (state === "open") return { number, title, body, state, closedAt: null };
+  return { number, title, body, state, closedAt, disposition: closedIssueDisposition(stateReason) };
 };
 
 /** The bodies of an issue's comments, from paginated GitHub responses. */
@@ -274,7 +297,7 @@ export const fileFindings = ({
         const pages: unknown = JSON.parse(await $`gh api --paginate --slurp ${endpoint}`.text());
         const issues = parseIssuePages(pages);
         for (const issue of issues) {
-          if (!closedAsDuplicate(issue)) continue;
+          if (!closedWithoutFix(issue)) continue;
           const comments = `repos/{owner}/{repo}/issues/${String(issue.number)}/comments?per_page=100`;
           const commentPages: unknown = JSON.parse(
             await $`gh api --paginate --slurp ${comments}`.text(),
@@ -289,14 +312,16 @@ export const fileFindings = ({
           await $`gh issue create --title ${title} --label ${LABEL.name} --body-file ${writeBody(body)}`.text()
         ).trim();
         return parseIssueResponse(
-          JSON.parse(await $`gh issue view ${url} --json number,title,state,body,closedAt`.text()),
+          JSON.parse(
+            await $`gh issue view ${url} --json number,title,state,body,closedAt,stateReason`.text(),
+          ),
         );
       },
       edit: async (number, body) => {
         await $`gh issue edit ${number} --body-file ${writeBody(body)}`.quiet();
       },
-      reopen: async (number) => {
-        await $`gh issue reopen ${number}`.quiet();
+      reopen: async (number, comment) => {
+        await $`gh issue reopen ${number} --comment ${comment}`.quiet();
       },
     },
   });

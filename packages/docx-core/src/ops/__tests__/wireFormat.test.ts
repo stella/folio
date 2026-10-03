@@ -5,22 +5,20 @@
  * JSON is pinned: one envelope per operation kind and per inverse, produced
  * from a fixed document. A change to an operation's fields, or to a model
  * record an operation embeds, shows up here as a diff of the fixture; it
- * needs a new schema version and a migration, not an updated fixture.
+ * needs a new schema version and a migration, not an updated released fixture.
+ * The fixture for an unreleased schema records that cutover's final contract;
+ * schema 8 includes table editing variants in the current operation contract.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
 
 import { expect, test } from "bun:test";
+import type { Document } from "../../model/document";
+import { paragraphLogicalText } from "../offsets";
+import { applyDocumentOpEnvelope } from "../apply";
 import type { Paragraph } from "../../model/document";
 import { DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_TYPES } from "../types";
 import { envelopes, wireFixturePath } from "./wireFixtures";
-import {
-  BATCH_REJECTION_REASONS,
-  BATCH_WIRE_OP_TYPES,
-  TABLE_EXCLUSIVE_OP_TYPES,
-  validateDocumentBatch,
-} from "../sequencing/envelope";
-import { envelopeFixtures } from "../sequencing/__tests__/envelopeFixtures";
 
 /** Paragraph reviews have one OOXML record; run-property review arrays have a separate contract. */
 const expectParagraphReviewCardinality = (value: unknown): void => {
@@ -171,93 +169,33 @@ test("semantic table wire fixtures exercise geometry, ids, patches and tracked p
   }
 });
 
-test("historical wire journal shapes read through schemas 4 and 5 and classify every refusal", async () => {
-  const journal: unknown = await Bun.file(
+test("older envelopes are refused structurally and current envelopes apply", async () => {
+  const document: Document = {
+    package: { document: { content: [{ type: "paragraph", paraId: "00000001", content: [] }] } },
+  };
+  const op = {
+    type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+    at: { story: "main", blockId: "00000001", offset: 0 },
+    text: "x",
+    runProps: "inherit",
+  } as const;
+  // Older operation schemas are refused after the schema-8 cutover.
+  const older: unknown = await Bun.file(
     new URL("./__fixtures__/ops-v4.json", import.meta.url),
   ).json();
-  if (!Array.isArray(journal)) throw new Error("Historical fixture must be an envelope array.");
-  const supported = new Set(BATCH_WIRE_OP_TYPES);
-  const observed = {
-    supported: new Set<string>(),
-    unsupportedPayload: new Set<string>(),
-    exclusive: new Set<string>(),
-    unsupported: new Set<string>(),
-  };
-  let processed = 0;
-  for (const entry of journal) {
-    const envelope: unknown = entry;
-    if (
-      typeof envelope !== "object" ||
-      envelope === null ||
-      !("schema" in envelope) ||
-      !("op" in envelope)
-    )
-      throw new Error("Malformed historical envelope.");
-    expect(envelope.schema).toBe(4);
-    const op = envelope.op;
-    if (typeof op !== "object" || op === null || !("type" in op) || typeof op.type !== "string")
-      throw new Error("Historical operation needs a discriminator.");
-    const kind = Object.values(DOCUMENT_OP_TYPES).find((type) => type === op.type);
-    if (!kind) throw new Error(`Historical fixture contains an unknown operation ${op.type}.`);
-    const result = validateDocumentBatch({ ...envelopeFixtures[0], schema: 5, ops: [op] });
-    const fromSchema4 = validateDocumentBatch({
-      ...envelopeFixtures[0],
-      schema: envelope.schema,
-      ops: [op],
-    });
-    if (result.isOk()) {
-      if (fromSchema4.isErr()) throw fromSchema4.error;
-      expect(fromSchema4.value).toStrictEqual(result.value);
-    } else {
-      if (fromSchema4.isOk()) throw new Error("Historical schema classification must agree.");
-      expect(fromSchema4.error.reason).toBe(result.error.reason);
-    }
-    if (supported.has(kind)) {
-      if (result.isErr()) {
-        // Old journals include optional shapes outside the sequenced decoder contract.
-        expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
-        observed.unsupportedPayload.add(kind);
-      } else {
-        expect(result.value.schema).toBe(DOCUMENT_OP_SCHEMA_VERSION);
-        expect(result.value.ops).toStrictEqual([op]);
-        observed.supported.add(kind);
-      }
-    } else {
-      if (result.isOk()) throw new Error(`Unsupported historical operation ${kind} must refuse.`);
-      if (Object.hasOwn(TABLE_EXCLUSIVE_OP_TYPES, kind)) {
-        expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.TABLE_REQUIRES_EXCLUSIVE_EDIT);
-        observed.exclusive.add(kind);
-      } else {
-        expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.INVALID_OPERATION);
-        observed.unsupported.add(kind);
-      }
-    }
-    processed++;
+  expect(Array.isArray(older)).toBe(true);
+  for (const schema of [1, 2, 3, 4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+    const refused = applyDocumentOpEnvelope(document, { schema, op });
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
+    expect(document.package.document.content.at(0)?.content).toEqual([]);
   }
-  expect(processed).toBe(journal.length);
-  expect([...new Set([...observed.supported, ...observed.unsupportedPayload])].toSorted()).toEqual(
-    [...BATCH_WIRE_OP_TYPES].toSorted(),
-  );
-  expect([...observed.unsupportedPayload].toSorted()).toEqual(
-    ["insertContent", "joinBlocks", "splitBlock", "deleteRange", "setRunProps"].toSorted(),
-  );
-  expect([...observed.exclusive].toSorted()).toEqual(
-    [
-      "insertTable",
-      "deleteTable",
-      "insertRow",
-      "deleteRow",
-      "setTableRows",
-      "setContainerBlocks",
-    ].toSorted(),
-  );
-  expect([...observed.unsupported].toSorted()).toEqual(
-    [
-      "joinInline",
-      "replaceBlocks",
-      "replaceInline",
-      "setParagraphReview",
-      "splitInline",
-    ].toSorted(),
-  );
+  const current = applyDocumentOpEnvelope(document, {
+    schema: DOCUMENT_OP_SCHEMA_VERSION,
+    op,
+  }).unwrap();
+  const paragraph = current.document.package.document.content.at(0);
+  expect(paragraph?.type).toBe("paragraph");
+  if (paragraph?.type === "paragraph") expect(paragraphLogicalText(paragraph)).toBe("x");
+  expect(current.inverse.length).toBe(1);
 });

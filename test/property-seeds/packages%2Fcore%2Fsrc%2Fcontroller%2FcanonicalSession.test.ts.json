@@ -31,6 +31,11 @@
       "path": "8:0:1:0:0:0:0:0:1:0:0:0:0:5:0:2:7:4:0:4:0:3:0:4:3:0:0:0:0:0",
       "note": "Planned edits retain fresh identities used to split existing review records while reporting only newly allocated operation revisions.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 11,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
     }
   ]
 }

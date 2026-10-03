@@ -266,7 +266,7 @@ export const PARAGRAPH_NUMBERING_RESERVED = {
   ilvl: readerOwned({
     slot: "w:ilvl@val",
     sentinel: "9",
-    reader: RESERVED_VALUE_READERS.paragraphProperties,
+    reader: RESERVED_VALUE_READERS.numberingLevel,
     evidence: "ilvl-outside-zero-to-eight-names-no-level",
   }),
 } satisfies Record<

@@ -94,7 +94,8 @@ export const createCanonicalComposition = (options: CompositionOptions) => {
     timer = setTimeout(() => finish(view, true), COMPOSITION_FLUSH_DELAY_MS);
   };
   return {
-    get status() {
+    // Keep declaration emission tied to the authored union, not inferred member order.
+    get status(): CompositionState["type"] {
       return state.type;
     },
     get active() {

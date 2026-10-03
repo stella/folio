@@ -1,3 +1,7 @@
+import {
+  isResolutionJoins,
+  isParagraphMarkResolutionJoin,
+} from "../../docx/reviewResolutionProvenance";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { isSafePreservedChildXml, isWithinPreservedMarkupBudget } from "@stll/docx-core/schema";
 
@@ -369,6 +373,17 @@ const readParagraphAttrsUncached = (node: PMNode): ReadProseMirrorAttrsResult<Pa
   const issues: ProseMirrorAttrIssue[] = [];
   expectNodeType(node, "paragraph", issues);
 
+  const paragraphMark = attrs["pPrMark"];
+  if (
+    isRecord(paragraphMark) &&
+    paragraphMark["resolutionJoin"] !== undefined &&
+    !isParagraphMarkResolutionJoin(paragraphMark["resolutionJoin"])
+  ) {
+    issues.push({
+      path: "paragraph.attrs.pPrMark.resolutionJoin",
+      message: "Expected a non-negative bounded paragraph cut depth.",
+    });
+  }
   optionalString(attrs, "paraId", "paragraph.attrs.paraId", issues);
   optionalString(
     attrs,
@@ -1669,7 +1684,8 @@ export const isTrackedRevisionAncestorArray = (
       (ancestor["initials"] === undefined || typeof ancestor["initials"] === "string") &&
       typeof ancestor["outerWrapperCount"] === "number" &&
       Number.isSafeInteger(ancestor["outerWrapperCount"]) &&
-      ancestor["outerWrapperCount"] >= 0,
+      ancestor["outerWrapperCount"] >= 0 &&
+      (ancestor["resolutionJoins"] === undefined || isResolutionJoins(ancestor["resolutionJoins"])),
   );
 
 export const readTrackedChangeMarkAttrs = (
@@ -1698,6 +1714,17 @@ export const readTrackedChangeMarkAttrs = (
     });
   }
   const ancestors = attrs["_docxRevisionAncestors"];
+  const resolutionJoins = attrs["_docxResolutionJoins"];
+  if (
+    resolutionJoins !== undefined &&
+    resolutionJoins !== null &&
+    !isResolutionJoins(resolutionJoins)
+  ) {
+    issues.push({
+      path: `${mark.type.name}.attrs._docxResolutionJoins`,
+      message: "Expected valid tracked-resolution provenance.",
+    });
+  }
   if (ancestors !== undefined && ancestors !== null && !isTrackedRevisionAncestorArray(ancestors)) {
     issues.push({
       path: `${mark.type.name}.attrs._docxRevisionAncestors`,
