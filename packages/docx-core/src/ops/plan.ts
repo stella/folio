@@ -1,3 +1,4 @@
+import { findStoryBody, sameStory, storyBody } from "./stories";
 /**
  * Pure planning around tracked operations: how many new revision ids an
  * operation takes, and the operations a tracked deletion of a range is made
@@ -7,14 +8,8 @@
 import { Result, panic } from "better-result";
 
 import { type Document, MAX_REVISION_ID } from "../model/document";
-import { applyDocumentOp, stampOf } from "./apply";
-import {
-  blockListAt,
-  sameBlockList,
-  storyBody,
-  storyParagraphs,
-  type ParagraphLocation,
-} from "./blocks";
+import { applyDocumentOp, stampOf, type AppliedDocumentOp } from "./apply";
+import { blockListAt, sameBlockList, storyParagraphs, type ParagraphLocation } from "./blocks";
 import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
@@ -42,7 +37,6 @@ import {
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   type DeleteRangeOp,
   type InsertContentOp,
   type JoinBlocksOp,
@@ -51,6 +45,7 @@ import {
   EMPTY_PROPERTY_SETS,
   type DocumentOp,
   type NewIds,
+  type OpStory,
   type RevisionStamp,
   type TextPosition,
 } from "./types";
@@ -90,6 +85,12 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return { ...op, newIds };
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
@@ -105,6 +106,41 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
       return unreachable;
     }
   }
+};
+
+/** Filter operation pools while retaining absent identity spaces. */
+export const filterNewIds = (
+  op: DocumentOp,
+  keep: (space: IdentitySpace, id: number) => boolean,
+): DocumentOp => {
+  if (!("newIds" in op) || op.newIds === undefined) return op;
+  const { revision, control } = op.newIds;
+  const newIds: NewIds = {};
+  if (revision !== undefined)
+    newIds.revision = revision.filter((id) => keep(IDENTITY_SPACES.REVISION, id));
+  if (control !== undefined)
+    newIds.control = control.filter((id) => keep(IDENTITY_SPACES.CONTROL, id));
+  return withNewIds(op, newIds);
+};
+
+type TrimAppliedNewIdsOptions = {
+  op: DocumentOp;
+  applied: AppliedDocumentOp;
+  story: OpStory;
+};
+
+/** Keep only supplied ids that the successful operation put in changed paragraphs. */
+export const trimAppliedNewIds = ({ op, applied, story }: TrimAppliedNewIdsOptions): DocumentOp => {
+  if (!("newIds" in op) || op.newIds === undefined) return op;
+  const touched = new Set([...applied.touched.modified, ...applied.touched.inserted].map(idKey));
+  const paragraphs = storyParagraphs(storyBody(applied.document, story))
+    .map(({ paragraph }) => paragraph)
+    .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
+  const identities = new Set(identityKeysIn(paragraphs));
+  const revisions = new Set(applied.revisions);
+  return filterNewIds(op, (space, id) =>
+    space === IDENTITY_SPACES.REVISION ? revisions.has(id) : identities.has(`${space}:${id}`),
+  );
 };
 
 /** The largest id count {@link revisionIdDemand} searches before giving up. */
@@ -313,7 +349,23 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     if (applied.isErr()) return Result.err(applied.error);
     stampUsed ||= input.revision !== undefined && applied.value.revisions.length > 0;
     current = applied.value.document;
-    ops.push(op);
+    const story = (() => {
+      switch (input.type) {
+        case DOCUMENT_OP_TYPES.DELETE_RANGE:
+          return input.from.story;
+        case DOCUMENT_OP_TYPES.INSERT_CONTENT:
+        case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
+          return input.at.story;
+        case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+        case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+          return input.story;
+        default: {
+          const unreachable: never = input;
+          return unreachable;
+        }
+      }
+    })();
+    ops.push(trimAppliedNewIds({ op, applied: applied.value, story }));
     return Result.ok(undefined);
   };
   return { append, document: () => current, ops };
@@ -329,7 +381,7 @@ export const selectedParagraphRuns = (
 ): Result<ParagraphLocation[][], DocumentOpRefusal> => {
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: DOCUMENT_OP_TYPES.DELETE_RANGE }));
-  if (from.story !== to.story)
+  if (!sameStory(from.story, to.story))
     return refuse(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE, "A text range stays in one story.");
   const locations = storyParagraphs(storyBody(document, from.story));
   const first = locations.findIndex(
@@ -406,7 +458,9 @@ export const appendTrackedDeletion = ({
     }
     return Result.ok(undefined);
   }
-  const body = storyBody(document, from.story);
+  const body = findStoryBody(document, from.story);
+  if (!body)
+    return refuse(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "The story does not exist.");
   const paragraphs = storyParagraphs(body);
   const first = paragraphs.find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),
@@ -562,7 +616,6 @@ export const appendTrackedDeletion = ({
         ? EMPTY_PROPERTY_SETS.OMIT
         : EMPTY_PROPERTY_SETS.KEEP,
     revision,
-    propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
   });
 };
 

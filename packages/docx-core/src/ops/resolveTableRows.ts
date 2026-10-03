@@ -187,7 +187,7 @@ const propertyTable = ({
       else next.formatting = properties.formatting;
     }
   }
-  if (selectedTableSnapshot !== undefined) {
+  if (reject && selectedTableSnapshot !== undefined && !properties.restoreFormatting) {
     if (selectedTableSnapshot.previousFormatting === undefined) delete next.formatting;
     else next.formatting = selectedTableSnapshot.previousFormatting;
   }
@@ -196,7 +196,11 @@ const propertyTable = ({
     if (formatting?.gridChange?.id === gridSnapshot.id) {
       const withoutGrid = { ...formatting };
       delete withoutGrid.gridChange;
-      if (Object.keys(withoutGrid).length === 0 && selectedTableSnapshot === undefined) {
+      if (
+        Object.keys(withoutGrid).length === 0 &&
+        (selectedTableSnapshot === undefined ||
+          selectedTableSnapshot.previousFormatting === undefined)
+      ) {
         delete next.formatting;
       } else {
         next.formatting = withoutGrid;

@@ -293,6 +293,88 @@ test("block deletion satisfies L1–L7, exact id demand and stale inverses", () 
   );
 });
 
+test("terminal deletion folds existing property reviews with stable identity and exact inverses", () => {
+  assertProperty(
+    fc.property(
+      fc.constantFrom("body", "cell", "sdt", "customXml"),
+      fc.constantFrom("start", "end", "center"),
+      fc.option(fc.constantFrom("start", "end", "center"), { nil: undefined }),
+      fc.string({ unit: fc.constantFrom("a", "ž", "😀"), maxLength: 12 }),
+      (container, previousAlignment, baselineAlignment, text) => {
+        const currentAlignment = previousAlignment === "end" ? "center" : "end";
+        const pending = {
+          type: "paragraphPropertyChange",
+          info: { id: 7, author: "Original reviewer", initials: "OR" },
+          ...(baselineAlignment === undefined
+            ? {}
+            : { previousFormatting: { alignment: baselineAlignment } }),
+        } as const;
+        const document = {
+          package: {
+            document: {
+              content: wrap(
+                [
+                  {
+                    type: "paragraph",
+                    paraId: "00000001",
+                    formatting: { alignment: previousAlignment },
+                    content: [{ type: "run", content: [{ type: "text", text: "kept" }] }],
+                  },
+                  {
+                    type: "paragraph",
+                    paraId: "00000002",
+                    formatting: { alignment: currentAlignment },
+                    propertyChanges: [pending],
+                    content:
+                      text === "" ? [] : [{ type: "run", content: [{ type: "text", text }] }],
+                  },
+                ],
+                container,
+              ),
+            },
+          },
+        } satisfies Document;
+        const original = structuredClone(document);
+        const op = {
+          type: DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+          story: OP_STORIES.MAIN,
+          blockIds: ["00000002"],
+          revision: { id: 100, author: "Latest reviewer", date: "2026-02-03T04:05:06Z" },
+          newIds: { revision: [101, 102] },
+        } as const satisfies DeleteBlocksOp;
+        const tracked = apply(document, op);
+        const survivor = paragraphsOf(tracked.document).at(-1);
+        expect(tracked.revisions).not.toContain(7);
+        expect(survivor?.formatting).toEqual({ alignment: previousAlignment });
+        expect(survivor?.propertyChanges).toEqual([
+          { ...pending, info: { id: 7, author: "Latest reviewer", date: "2026-02-03T04:05:06Z" } },
+        ]);
+        expectInverse(tracked, document);
+        expectLocality(document, tracked);
+        expectFinalMarks(tracked.document);
+        for (const decision of Object.values(REVISION_DECISIONS)) {
+          const resolved = apply(tracked.document, {
+            type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+            story: OP_STORIES.MAIN,
+            revisionIds: [7],
+            decision,
+          });
+          const reviewed = paragraphsOf(resolved.document).at(-1);
+          expect(reviewed?.propertyChanges).toBeUndefined();
+          const baseline =
+            baselineAlignment === undefined ? undefined : { alignment: baselineAlignment };
+          expect(reviewed?.formatting).toEqual(
+            decision === REVISION_DECISIONS.ACCEPT ? { alignment: previousAlignment } : baseline,
+          );
+          expectInverse(resolved, tracked.document);
+        }
+        expect(document).toStrictEqual(original);
+      },
+    ),
+    { numRuns: 100 },
+  );
+});
+
 test("independent deletion sequences satisfy batch acceptance, rejection and inverse laws", () => {
   assertProperty(
     fc.property(

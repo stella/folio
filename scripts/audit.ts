@@ -42,6 +42,19 @@ const EXPIRING_IGNORES: readonly ExpiringIgnore[] = [
     parent: "listhen",
     expires: "2026-11-01",
   },
+  {
+    // 2026-10-03: braces <=3.0.3 exhausts the stack on deeply nested
+    // patterns. It reaches the tree only through development tooling
+    // (@tailwindcss/cli, nuxt and @nuxt/module-builder -> @parcel/watcher ->
+    // micromatch). No published package depends on it, and folio never
+    // expands untrusted patterns. No patched braces exists yet. Tracked in
+    // #1484.
+    advisory: "GHSA-vfj7-8cjw-p6xm",
+    packageName: "braces",
+    vulnerableThrough: "3.0.3",
+    parent: "micromatch",
+    expires: "2026-11-01",
+  },
 ];
 
 const compareVersions = (left: string, right: string): number => {

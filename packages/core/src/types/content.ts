@@ -25,6 +25,7 @@ export type {
   Field,
   FieldCharContent,
   FieldType,
+  FoldedListNumber,
   FooterReference,
   Footnote,
   FootnotePosition,

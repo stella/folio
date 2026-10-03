@@ -28,7 +28,7 @@ import type {
   TextFormatting,
   TrackedRunContent,
 } from "../../model/document";
-import { storyParagraphs } from "../blocks";
+import { storyParagraphs, storyBody } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { IDENTITY_SPACES, packageIdentityKeys, paragraphIdsIn } from "../ids";
 import { deleteBetween } from "../inline";
@@ -38,6 +38,7 @@ import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
   type DocumentOpType,
+  type OpStory,
   INHERIT_RUN_PROPS,
   OP_STORIES,
   type ParagraphPropsPatch,
@@ -665,8 +666,9 @@ export const GENERATED_OP_KINDS: readonly DocumentOpType[] = OP_KINDS;
  * join across a section break, a slice whose open ends do not fit) exercise
  * refusals.
  */
-export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
-  const paragraphs = storyParagraphs(document.package.document);
+type StoryOpArgs = { document: Document; seed: OpSeed; story: OpStory };
+export const opForStory = ({ document, seed, story }: StoryOpArgs): DocumentOp => {
+  const paragraphs = storyParagraphs(storyBody(document, story));
   const target = paragraphs[seed.block % paragraphs.length];
   if (target === undefined) {
     throw new Error("A synthetic document always has a paragraph.");
@@ -675,7 +677,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
   const blockId = paragraph.paraId ?? "";
   const length = paragraphLength(paragraph);
   const position = (offset: number, zeroWidth: number | undefined): TextPosition => {
-    const base = { story: OP_STORIES.MAIN, blockId, offset };
+    const base = { story, blockId, offset };
     if (zeroWidth === undefined) {
       return base;
     }
@@ -751,7 +753,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       if (seed.inherit && end !== undefined) {
         return {
           type: kind,
-          at: { story: OP_STORIES.MAIN, blockId, ...end.after },
+          at: { story, blockId, ...end.after },
           depth: (seed.depth % 2) + 1,
         };
       }
@@ -760,7 +762,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
     case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
       return { type: kind, from, to, patch: seed.runPatch, ...ids };
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
-      return { type: kind, story: OP_STORIES.MAIN, blockId, patch: seed.paragraphPatch };
+      return { type: kind, story, blockId, patch: seed.paragraphPatch };
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
       const used = new Set(paragraphIdsIn(document.package));
       let fresh = seed.fresh;
@@ -796,7 +798,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
       // Sometimes two paragraphs become one, which may move a section break.
       const expected =
         seed.inherit && follower !== undefined ? [paragraph, follower.paragraph] : [paragraph];
-      return { type: kind, story: OP_STORIES.MAIN, expected, blocks: [replacement] };
+      return { type: kind, story, expected, blocks: [replacement] };
     }
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
       const followerOf = (location: (typeof paragraphs)[number]) =>
@@ -814,7 +816,7 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
           : followerOf(leading);
       return {
         type: kind,
-        story: OP_STORIES.MAIN,
+        story,
         blockId: (leading ?? target).paragraph.paraId ?? "",
         nextBlockId: trailing?.paragraph.paraId ?? "",
         depth: seed.depth % 3,
@@ -828,6 +830,9 @@ export const opFor = (document: Document, seed: OpSeed): DocumentOp => {
     }
   }
 };
+
+export const opFor = (document: Document, seed: OpSeed): DocumentOp =>
+  opForStory({ document, seed, story: OP_STORIES.MAIN });
 
 const TRACKED_OP_KINDS = [
   DOCUMENT_OP_TYPES.INSERT_TEXT,
@@ -919,8 +924,9 @@ export const trackedOpFor = (document: Document, seed: OpSeed, index = 0): Docum
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS: {
       // Mostly a paragraph whose mark carries no change: a tracked join refuses the others.
       const unmarked = seed.first % 4 === 0 ? undefined : unmarkedJoin(document, seed);
-      // A tracked join always leaves the second paragraph.
-      const join = { ...op, ...unmarked, ...ids, revision };
+      // A tracked join records only a boundary deletion and leaves the second paragraph.
+      // Positive merge depths are covered by the refusal invariant, not successful-op laws.
+      const join = { ...op, ...unmarked, ...ids, depth: 0, revision };
       Reflect.deleteProperty(join, "survivor");
       return join;
     }

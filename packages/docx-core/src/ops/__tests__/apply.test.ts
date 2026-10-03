@@ -356,7 +356,7 @@ describe("splitBlock and joinBlocks", () => {
         type: "paragraph",
         paraId: "00000001",
         formatting: { alignment: "center", runProperties: { italic: true } },
-        content: [run("ab"), run("cd")],
+        content: [run("abcd")],
       },
     ]);
     expect(undone(keptFirst.document, keptFirst.inverse)).toEqual(document);

@@ -1,4 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 import type { Document, Paragraph, Table } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
@@ -495,4 +500,51 @@ describe("tracked table edits", () => {
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
     );
   });
+});
+
+test("imported grid and table property histories resolve with the selected baseline and exact inverse", () => {
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 10, max: 10000 }),
+      fc.integer({ min: 10, max: 10000 }),
+      fc.integer({ min: 10, max: 10000 }),
+      fc.boolean(),
+      fc.boolean(),
+      (originalWidth, intermediateWidth, currentWidth, reject, selectBoth) => {
+        const table = tableOf();
+        table.formatting = {
+          width: currentWidth,
+          gridChange: { id: 503, columnWidths: [510, 610, 710] },
+        };
+        table.propertyChanges = [
+          {
+            type: "tablePropertyChange",
+            info: revision(501),
+            previousFormatting: { width: originalWidth },
+          },
+          {
+            type: "tablePropertyChange",
+            info: revision(502),
+            previousFormatting: { width: intermediateWidth },
+          },
+        ];
+        const before = documentOf(table);
+        const result = resolved(
+          before,
+          selectBoth ? [501, 502, 503] : [502, 503],
+          reject ? REVISION_DECISIONS.REJECT : REVISION_DECISIONS.ACCEPT,
+        );
+        const after = tableIn(result.document);
+        let expectedWidth = currentWidth;
+        if (reject) expectedWidth = selectBoth ? originalWidth : intermediateWidth;
+        expect(after.formatting?.width).toBe(expectedWidth);
+        expect(after.formatting?.gridChange).toBeUndefined();
+        expect(after.columnWidths).toEqual(reject ? [510, 610, 710] : [500, 600, 700]);
+        expect(after.propertyChanges?.map(({ info }) => info.id) ?? []).toEqual(
+          selectBoth ? [] : [501],
+        );
+        exact(applyDocumentOps(result.document, result.inverse).unwrap().document, before);
+      },
+    ),
+  );
 });

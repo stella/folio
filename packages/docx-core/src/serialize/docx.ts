@@ -402,6 +402,8 @@ const serializeRunContent = (content: RunContent): string => {
       return "<w:lastRenderedPageBreak/>";
     case "symbol":
       return `<w:sym w:font="${escapeXmlAttribute(content.font)}" w:char="${escapeXmlAttribute(content.char)}"/>`;
+    case "noteMarker":
+      return content.kind === "footnote" ? "<w:footnoteRef/>" : "<w:endnoteRef/>";
     case "footnoteRef":
       return `<w:footnoteReference w:id="${content.id}"/>`;
     case "endnoteRef":

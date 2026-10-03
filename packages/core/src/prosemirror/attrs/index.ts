@@ -1,4 +1,3 @@
-import { panic } from "better-result";
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { isSafePreservedChildXml, isWithinPreservedMarkupBudget } from "@stll/docx-core/schema";
 
@@ -36,6 +35,7 @@ import {
 } from "../../types/documentEnumValues";
 import { DRAWING_ANCHOR_FLAG_KEYS } from "../../docx/drawingAnchor";
 import { isSerializablePreservedAttribute } from "../../docx/attributeRemainder";
+import { isFoldedListNumber } from "../../docx/foldedListNumberFields";
 import { GRAPHIC_FRAME_LOCK_KEYS } from "../../docx/graphicFrameLocks";
 import { paragraphNumberingFromAttrValue } from "../numberingAttr";
 import { outlineLevelFromAttrValue } from "../outlineLevelAttr";
@@ -96,14 +96,21 @@ import {
   TRACKED_CHANGE_PROVENANCE_VALUES,
 } from "../schema/marks";
 
-export type ProseMirrorAttrIssue = {
-  readonly path: string;
-  readonly message: string;
-};
+import {
+  attrsRecord,
+  attrsResult,
+  expectAttrs,
+  expectCachedNodeAttrs,
+  expectNodeType,
+  isRecord,
+  type ProseMirrorAttrIssue,
+  type ReadProseMirrorAttrsResult,
+} from "../../internal/prosemirrorAttrBoundary";
 
-export type ReadProseMirrorAttrsResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; issues: readonly ProseMirrorAttrIssue[] };
+export type {
+  ProseMirrorAttrIssue,
+  ReadProseMirrorAttrsResult,
+} from "../../internal/prosemirrorAttrBoundary";
 
 const RUN_FORMATTING_VALUE_PROPERTY_SET: ReadonlySet<string> = new Set(
   RUN_FORMATTING_VALUE_PROPERTIES,
@@ -663,6 +670,13 @@ export const readPreservedXmlAttrs = (
 
   requiredString(attrs, "xml", "preservedXml.attrs.xml", issues);
   requiredString(attrs, "text", "preservedXml.attrs.text", issues);
+  const folded = attrs["foldedListNumber"];
+  if (folded !== undefined && folded !== null && !isFoldedListNumber(folded)) {
+    issues.push({
+      path: "preservedXml.attrs.foldedListNumber",
+      message: "Expected a folded list-number field or tab.",
+    });
+  }
   // The level decides whether the save path writes the markup inside a `w:r`.
   // A value the schema does not name is not a default to fall back on: it
   // would put a paragraph child in a run, which Word reports as unreadable.
@@ -1034,6 +1048,8 @@ const isFieldCodeContent = (value: unknown): boolean => {
     case "footnoteRef":
     case "endnoteRef":
       return typeof value["id"] === "number";
+    case "noteMarker":
+      return value["kind"] === "footnote" || value["kind"] === "endnote";
     case "drawing":
       return isRecord(value["image"]);
     case "shape":
@@ -2259,81 +2275,6 @@ export const mergeTableCellAttrs = (
   return { ...merged, _authoredWidth: { value: merged.width, type: merged.widthType ?? "dxa" } };
 };
 
-const attrsRecord = (attrs: unknown): Record<string, unknown> => {
-  if (isRecord(attrs)) {
-    return attrs;
-  }
-
-  return {};
-};
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === "object" && !Array.isArray(value);
-
-const attrsResult = <T>(
-  attrs: Record<string, unknown>,
-  issues: ProseMirrorAttrIssue[],
-): ReadProseMirrorAttrsResult<T> => {
-  if (issues.length > 0) {
-    return { ok: false, issues };
-  }
-
-  let normalizedAttrs: T | undefined;
-  return {
-    ok: true,
-    get value(): T {
-      if (normalizedAttrs !== undefined) {
-        return normalizedAttrs;
-      }
-
-      const presentAttrs: Record<string, unknown> = {};
-      for (const key in attrs) {
-        if (!Object.hasOwn(attrs, key)) {
-          continue;
-        }
-        const value = attrs[key];
-        if (value !== null) {
-          presentAttrs[key] = value;
-        }
-      }
-
-      // SAFETY: this module is the ProseMirror FFI boundary. The checks above
-      // validate the attrs this code relies on before exposing the typed shape,
-      // and null ProseMirror defaults are normalized to absent optional fields.
-      normalizedAttrs = presentAttrs as T;
-      return normalizedAttrs;
-    },
-    set value(value: T) {
-      normalizedAttrs = value;
-    },
-  };
-};
-
-const expectAttrs = <T>(result: ReadProseMirrorAttrsResult<T>, label: string): T => {
-  if (result.ok) {
-    return result.value;
-  }
-
-  const details = result.issues.map((issue) => `${issue.path}: ${issue.message}`).join("\n");
-  panic(`Invalid ProseMirror ${label}:\n${details}`);
-};
-
-function expectCachedNodeAttrs<T extends object>(
-  node: PMNode,
-  cache: WeakMap<PMNode, T>,
-  reader: (node: PMNode) => ReadProseMirrorAttrsResult<T>,
-  label: string,
-): T {
-  const cached = cache.get(node);
-  if (cached) {
-    return cached;
-  }
-
-  const value = expectAttrs(reader(node), label);
-  cache.set(node, value);
-  return value;
-}
-
 function expectCachedMarkAttrs<T extends object>(
   mark: Mark,
   cache: WeakMap<Mark, T>,
@@ -2349,15 +2290,6 @@ function expectCachedMarkAttrs<T extends object>(
   cache.set(mark, value);
   return value;
 }
-
-const expectNodeType = (node: PMNode, expected: string, issues: ProseMirrorAttrIssue[]): void => {
-  if (node.type.name !== expected) {
-    issues.push({
-      path: "node.type.name",
-      message: `Expected ${expected}, got ${node.type.name}.`,
-    });
-  }
-};
 
 const expectNodeTypeOneOf = (
   node: PMNode,

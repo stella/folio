@@ -4,7 +4,11 @@ import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { BlockContent, Document, Paragraph, Table, TableCell } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
-import { compileEditorIntent, type TableIntentOperation } from "../editorIntent";
+import {
+  allocateEditorIntentIds,
+  compileEditorIntent,
+  type TableIntentOperation,
+} from "../editorIntent";
 import { contractViolation } from "../contract";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, OP_STORIES, toOpEnvelope, type DocumentOp } from "../types";
@@ -594,7 +598,6 @@ describe("semantic table edit properties", () => {
                   type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
                   column,
                   width: 850,
-                  newBlockIds: idsForInsert(before, column, 0x20000 + step * 32),
                 };
                 break;
               case 5:
@@ -619,20 +622,22 @@ describe("semantic table edit properties", () => {
                 operation = trailingInsert();
             }
             const intent = { type: "table", operation } as const;
+            const allocation = allocateEditorIntentIds(document, intent);
             const revision = {
-              id: 0x50000 + step * 128,
+              id: allocation.revisionId,
               author: "Reviewer",
               date: "2026-10-02T10:00:00Z",
             };
-            const editing = compileEditorIntent(document, { intent, mode: { type: "editing" } });
+            const editing = compileEditorIntent(document, {
+              intent,
+              mode: { type: "editing", newIds: allocation.newIds },
+            });
             const suggesting = compileEditorIntent(document, {
               intent,
               mode: {
                 type: "suggesting",
                 revision,
-                newIds: {
-                  revision: Array.from({ length: 100 }, (_, offset) => revision.id + offset + 1),
-                },
+                newIds: allocation.newIds,
               },
             });
             if (editing.isErr()) throw editing.error;
@@ -644,6 +649,18 @@ describe("semantic table edit properties", () => {
             if (!directOp || !trackedOp) throw new Error("Compiler must emit one table operation.");
             const direct = applied(document, directOp);
             const tracked = applied(document, trackedOp);
+            if ("newIds" in directOp) {
+              expect(directOp.newIds?.revision ?? []).toEqual([]);
+              expect(directOp.newIds?.control ?? []).toEqual([]);
+            }
+            if ("newIds" in trackedOp) {
+              expect((trackedOp.newIds?.revision ?? []).toSorted((a, b) => a - b)).toEqual(
+                tracked.revisions
+                  .filter((revisionId) => revisionId !== revision.id)
+                  .toSorted((a, b) => a - b),
+              );
+              expect(trackedOp.newIds?.control ?? []).toEqual([]);
+            }
             // Physical model serialization is an additional oracle, separate from operation-envelope serialization.
             exact(JSON.parse(JSON.stringify(document)), document);
             exact(JSON.parse(JSON.stringify(tracked.document)), tracked.document);

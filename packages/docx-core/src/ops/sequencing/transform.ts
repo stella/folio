@@ -53,6 +53,13 @@ const operationStory = (op: DocumentOp) => {
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE:
       return op.story;
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+      return undefined;
     default: {
       const exhaustive: never = op;
       void exhaustive;
@@ -112,7 +119,11 @@ const transformOp = ({
   effect,
   order,
 }: PairOptions): Result<readonly DocumentOp[], BatchRejection> => {
-  if (!sameStory(operationStory(op), operationStory(over))) return Result.ok([op]);
+  const localStory = operationStory(op);
+  const remoteStory = operationStory(over);
+  if (localStory === undefined || remoteStory === undefined)
+    return refusal(op, over, "Story lifecycle changes have no supported sequencing transform.");
+  if (!sameStory(localStory, remoteStory)) return Result.ok([op]);
   if (independent(op, over)) return Result.ok([op]);
   if (effect?.type === "touchedBlocks" && op.type !== DOCUMENT_OP_TYPES.RESOLVE_REVISION) {
     const addressed = targets(op);
@@ -477,6 +488,7 @@ export const transformBatch = (
         // operation. Move the foreign operation into that coordinate space.
         const reciprocal: DocumentOp[] = [];
         for (const remoteOp of remote) {
+          const localStory = operationStory(op);
           const mapped = transformOp({
             op: remoteOp,
             over: op,
@@ -489,7 +501,8 @@ export const transformBatch = (
             remoteOp.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
             !remoteOp.revision &&
             remoteEffect?.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS &&
-            sameStory(operationStory(op), remoteOp.story)
+            localStory !== undefined &&
+            sameStory(localStory, remoteOp.story)
           ) {
             if (op.type === DOCUMENT_OP_TYPES.INSERT_TEXT && op.at.blockId === remoteOp.blockId) {
               remoteEffect = {

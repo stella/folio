@@ -54,6 +54,7 @@ import { RenderedPageBreakExtension } from "./nodes/RenderedPageBreakExtension";
 import { SdtExtension } from "./nodes/SdtExtension";
 import { ShapeExtension } from "./nodes/ShapeExtension";
 import { PreservedBlockExtension } from "./nodes/PreservedBlockExtension";
+import { NoteMarkerExtension } from "./nodes/NoteMarkerExtension";
 import { PreservedXmlExtension } from "./nodes/PreservedXmlExtension";
 import { SymbolExtension } from "./nodes/SymbolExtension";
 import { TabExtension } from "./nodes/TabExtension";
@@ -125,6 +126,7 @@ export function createStarterKit(options: StarterKitOptions = {}): AnyExtension[
   add("tab", TabExtension());
   add("symbol", SymbolExtension());
   add("preservedXml", PreservedXmlExtension());
+  add("noteMarker", NoteMarkerExtension());
   add("image", ImageExtension());
   add("textBox", TextBoxExtension());
   add("textBoxAnchor", TextBoxAnchorExtension({ getInternalClipboardToken }));

@@ -1,5 +1,8 @@
+import { propertyTestTimeout } from "../test/property-testing";
+import { createDocx } from "@stll/folio-core/docx/rezip";
 import { describe, expect, test } from "bun:test";
 import type { BlockContent, Document, Paragraph } from "../packages/docx-core/src/model/document";
+import { DEFAULT_TAB_STOP_TWIPS } from "../packages/docx-core/src/model/document";
 import {
   applyDocumentOp,
   applyDocumentOps,
@@ -12,15 +15,23 @@ import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/bod
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../packages/docx-core/src/ops/refusal";
 
+import { documentStories, storyBody } from "../packages/docx-core/src/ops/stories";
+import { storyParagraphs } from "../packages/docx-core/src/ops/blocks";
+
 import type { CorpusInvariantInput } from "./lib/corpus-invariants/contract";
 import { inverseSequenceFailures, runOpInverseInvariant } from "./lib/corpus-invariants/op-inverse";
-import { localityStepFailures, runOpLocalityInvariant } from "./lib/corpus-invariants/op-locality";
+import {
+  localityStepFailures,
+  runOpLocalityInvariant,
+  serializedLocalityFailures,
+} from "./lib/corpus-invariants/op-locality";
 import {
   generateOpSequence,
   OP_SEQUENCE_FAMILIES,
   OP_GENERATOR_ROLES,
   prepareOpDocument,
   sameOpModel,
+  serializedOpParts,
   seedFromBytes,
 } from "./lib/corpus-invariants/op-sequences";
 
@@ -127,61 +138,209 @@ const inputFor = async (buffer: ArrayBuffer): Promise<CorpusInvariantInput> => (
 });
 
 describe("corpus operation invariants", () => {
-  test("seeded sequences cover every declared family and preserve exact inverse/locality", () => {
-    const document = documentFixture();
-    const snapshot = structuredClone(document);
-    const exercised = new Set<string>();
-    const structuralFamilies = [
-      DOCUMENT_OP_TYPES.DELETE_BLOCKS,
-      DOCUMENT_OP_TYPES.INSERT_TABLE,
-      DOCUMENT_OP_TYPES.DELETE_TABLE,
-      DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
-      DOCUMENT_OP_TYPES.INSERT_COLUMN,
-      DOCUMENT_OP_TYPES.DELETE_COLUMN,
-      DOCUMENT_OP_TYPES.MERGE_CELLS,
-      DOCUMENT_OP_TYPES.SPLIT_CELL,
-      DOCUMENT_OP_TYPES.SET_TABLE_GRID,
-      DOCUMENT_OP_TYPES.SET_CELL_PROPS,
-      DOCUMENT_OP_TYPES.SET_ROW_PROPS,
-      DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
-    ];
-    const checkedStructuralFamilies = new Set<string>();
-    for (let seed = 0; seed < 64; seed += 1) {
-      const sequence = generateOpSequence(document, seed);
-      expect(sequence.steps.length).toBeGreaterThan(0);
-      expect(sequence.mutations).toEqual([]);
-      const failures = inverseSequenceFailures(sequence);
-      expect(failures, `sequence seed ${seed}`).toEqual([]);
-      for (const step of sequence.steps) {
-        exercised.add(step.op.type);
-        if (
-          structuralFamilies.some((type) => type === step.op.type) &&
-          !sameOpModel(step.before, step.edit.document)
-        ) {
-          expect(step.edit.inverse.length).toBeGreaterThan(0);
-          expect(
-            inverseSequenceFailures({
-              ...sequence,
-              steps: [{ ...step, edit: { ...step.edit, inverse: [] } }],
-            }).length,
-          ).toBeGreaterThan(0);
-          checkedStructuralFamilies.add(step.op.type);
-        }
-        expect(localityStepFailures(step)).toEqual([]);
-      }
-      const replay = generateOpSequence(document, seed);
-      expect(sameOpModel(sequence, replay)).toBe(true);
-    }
-    expect([...checkedStructuralFamilies].sort()).toEqual([...structuralFamilies].sort());
-    expect([...exercised].sort()).toEqual([...OP_SEQUENCE_FAMILIES].sort());
+  test("omitted section patches do not own fields or hide foreign changes", () => {
+    const before = documentFixture();
+    const op = {
+      type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+      sectionIndex: 0,
+      patch: { evenAndOddHeaders: true },
+    } as const;
+    const result = applyDocumentOp(before, op).unwrap();
+    const step = { before, op, edit: result };
+    expect(localityStepFailures(step)).toEqual([]);
+    const changed = structuredClone(result.document);
+    const section = changed.package.document.finalSectionProperties;
+    if (section === undefined) throw new Error("Section fixture missing");
+    section.titlePg = true;
     expect(
-      Object.entries(OP_GENERATOR_ROLES)
-        .filter(([, role]) => role === "generated")
-        .map(([type]) => type)
-        .sort(),
-    ).toEqual([...OP_SEQUENCE_FAMILIES].sort());
-    expect(Object.keys(OP_GENERATOR_ROLES).sort()).toEqual(Object.values(DOCUMENT_OP_TYPES).sort());
-    expect(sameOpModel(document, snapshot)).toBe(true);
+      localityStepFailures({ ...step, edit: { ...result, document: changed } }).length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("settings locality covers absent and authored settings without hiding foreign defaults", () => {
+    for (const settings of [undefined, { defaultTabStop: 900, mirrorMargins: true }]) {
+      for (const evenAndOddHeaders of [true, false, null]) {
+        const before = documentFixture();
+        if (settings !== undefined) before.package.settings = settings;
+        const op = {
+          type: DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+          sectionIndex: 0,
+          patch: { evenAndOddHeaders },
+        } as const;
+        const result = applyDocumentOp(before, op);
+        if (result.isErr()) throw result.error;
+        const step = { before, op, edit: result.value };
+        expect(localityStepFailures(step)).toEqual([]);
+        const changed = structuredClone(result.value.document);
+        changed.package.settings = {
+          ...(changed.package.settings ?? { defaultTabStop: DEFAULT_TAB_STOP_TWIPS }),
+          defaultTabStop: 123,
+        };
+        expect(
+          localityStepFailures({ ...step, edit: { ...step.edit, document: changed } }).length,
+        ).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  test.each(["plain", "pending"] as const)(
+    "seeded sequences cover every declared family and preserve exact inverse/locality (%s)",
+    (reviewState) => {
+      const document = documentFixture();
+      if (reviewState === "pending") {
+        let revisionId = 9100;
+        for (const story of documentStories(document)) {
+          for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+            // Adjacent pending paragraphs must differ so a join exercises property folding.
+            paragraph.formatting = { alignment: revisionId % 2 === 0 ? "end" : "center" };
+            paragraph.propertyChanges = [
+              {
+                type: "paragraphPropertyChange",
+                info: { id: revisionId, author: "Fixture" },
+                previousFormatting: { alignment: "start" },
+              },
+            ];
+            revisionId += 1;
+          }
+        }
+      }
+      const snapshot = structuredClone(document);
+      const exercised = new Set<string>();
+      const structuralFamilies = [
+        DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+        DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+        DOCUMENT_OP_TYPES.ADD_NOTE,
+        DOCUMENT_OP_TYPES.REMOVE_NOTE,
+        DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+        DOCUMENT_OP_TYPES.DELETE_BLOCKS,
+        DOCUMENT_OP_TYPES.INSERT_TABLE,
+        DOCUMENT_OP_TYPES.DELETE_TABLE,
+        DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
+        DOCUMENT_OP_TYPES.INSERT_COLUMN,
+        DOCUMENT_OP_TYPES.DELETE_COLUMN,
+        DOCUMENT_OP_TYPES.MERGE_CELLS,
+        DOCUMENT_OP_TYPES.SPLIT_CELL,
+        DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+        DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+        DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+        DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+      ];
+      const checkedStructuralFamilies = new Set<string>();
+      const foldedReviewFamilies = new Set<string>();
+      for (let seed = 0; seed < 64; seed += 1) {
+        const sequence = generateOpSequence(document, seed);
+        expect(sequence.steps.length).toBeGreaterThan(0);
+        expect(sequence.mutations).toEqual([]);
+        for (const { before, op, edit } of sequence.steps) {
+          if (
+            (op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS ||
+              op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) &&
+            op.revision !== undefined
+          ) {
+            const blockId = op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? op.nextBlockId : op.blockId;
+            const previous = storyParagraphs(storyBody(before, op.story)).find(
+              ({ paragraph }) => paragraph.paraId === blockId,
+            )?.paragraph;
+            const next = storyParagraphs(storyBody(edit.document, op.story)).find(
+              ({ paragraph }) => paragraph.paraId === blockId,
+            )?.paragraph;
+            const review = previous?.propertyChanges?.at(0);
+            const folded = next?.propertyChanges?.at(0);
+            if (
+              review !== undefined &&
+              folded !== undefined &&
+              !sameOpModel(previous?.formatting, next?.formatting)
+            ) {
+              expect(folded.info.id).toBe(review.info.id);
+              expect(folded.previousFormatting).toEqual(review.previousFormatting);
+              expect(folded.info.author).toBe(op.revision.author);
+              expect(folded.info.date).toBe(op.revision.date);
+              foldedReviewFamilies.add(op.type);
+            }
+          }
+          for (const story of documentStories(edit.document)) {
+            for (const { paragraph } of storyParagraphs(storyBody(edit.document, story))) {
+              expect(
+                paragraph.propertyChanges?.length ?? 0,
+                `sequence seed ${seed}, ${op.type}, paragraph ${paragraph.paraId}`,
+              ).toBeLessThanOrEqual(1);
+            }
+          }
+        }
+        const failures = inverseSequenceFailures(sequence);
+        expect(failures, `sequence seed ${seed}`).toEqual([]);
+        for (const step of sequence.steps) {
+          exercised.add(step.op.type);
+          if (
+            structuralFamilies.some((type) => type === step.op.type) &&
+            !sameOpModel(step.before, step.edit.document)
+          ) {
+            expect(step.edit.inverse.length).toBeGreaterThan(0);
+            expect(
+              inverseSequenceFailures({
+                ...sequence,
+                steps: [{ ...step, edit: { ...step.edit, inverse: [] } }],
+              }).length,
+            ).toBeGreaterThan(0);
+            checkedStructuralFamilies.add(step.op.type);
+          }
+          expect(localityStepFailures(step)).toEqual([]);
+        }
+        const replay = generateOpSequence(document, seed);
+        expect(sameOpModel(sequence, replay)).toBe(true);
+      }
+      expect([...checkedStructuralFamilies].sort()).toEqual([...structuralFamilies].sort());
+      expect([...exercised].sort()).toEqual([...OP_SEQUENCE_FAMILIES].sort());
+      expect(
+        Object.entries(OP_GENERATOR_ROLES)
+          .filter(([, role]) => role === "generated")
+          .map(([type]) => type)
+          .sort(),
+      ).toEqual([...OP_SEQUENCE_FAMILIES].sort());
+      expect(Object.keys(OP_GENERATOR_ROLES).sort()).toEqual(
+        Object.values(DOCUMENT_OP_TYPES).sort(),
+      );
+      if (reviewState === "pending") {
+        expect([...foldedReviewFamilies].sort()).toEqual(
+          [DOCUMENT_OP_TYPES.JOIN_BLOCKS, DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS].sort(),
+        );
+      }
+      expect(sameOpModel(document, snapshot)).toBe(true);
+    },
+    propertyTestTimeout(30_000),
+  );
+
+  test("lifecycle locality permits declared story parts and rejects unrelated model and ZIP changes", async () => {
+    const buffer = await createDocx(documentFixture());
+    const document = await prepareOpDocument(await inputFor(buffer));
+    const sequence = generateOpSequence(document, 0);
+    const lifecycle = sequence.steps.find(
+      ({ op }) =>
+        op.type === DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER ||
+        op.type === DOCUMENT_OP_TYPES.ADD_NOTE ||
+        op.type === DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+    );
+    if (!lifecycle) throw new Error("The seeded schedule must execute a lifecycle operation.");
+    const changed = structuredClone(lifecycle.edit.document);
+    changed.package.properties = { ...changed.package.properties, title: "foreign change" };
+    expect(
+      localityStepFailures({ ...lifecycle, edit: { ...lifecycle.edit, document: changed } }).length,
+    ).toBeGreaterThan(0);
+    const control = await serializedOpParts(sequence.original);
+    const edited = await serializedOpParts(sequence.document);
+    expect(
+      serializedLocalityFailures({ sequence, control, edited, documentPart: "word/document.xml" }),
+    ).toEqual([]);
+    const corrupt = new Map(edited);
+    corrupt.set("word/styles.xml", new TextEncoder().encode("foreign style change"));
+    expect(
+      serializedLocalityFailures({
+        sequence,
+        control,
+        edited: corrupt,
+        documentPart: "word/document.xml",
+      }),
+    ).toContain("sequence changed unrelated serialized part: word/styles.xml");
   });
 
   test("semantic families record bounded explicit refusals on initially table-free documents", () => {

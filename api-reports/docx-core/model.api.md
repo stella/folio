@@ -199,6 +199,9 @@ export const COUNTER_FORMATS: readonly ["decimal", "upperRoman", "lowerRoman", "
 export type CounterFormat = (typeof COUNTER_FORMATS)[number];
 
 // @public
+export const DEFAULT_TAB_STOP_TWIPS = 720;
+
+// @public
 export type Deletion = {
     type: "deletion";
     info: TrackedChangeInfo;
@@ -434,6 +437,15 @@ export type FloatingTableProperties = {
     bottomFromText?: number;
     leftFromText?: number;
     rightFromText?: number;
+};
+
+// @public
+export type FoldedListNumber = {
+    kind: "field";
+    field: ComplexField;
+} | {
+    kind: "tab";
+    run: Run;
 };
 
 // @public
@@ -904,6 +916,12 @@ export type NonVisualDrawingNames = {
 export function normalizeRevisionId(id: number): number;
 
 // @public
+export type NoteMarkerContent = {
+    type: "noteMarker";
+    kind: "footnote" | "endnote";
+};
+
+// @public
 export type NoteNumberRestart = "continuous" | "eachSect" | "eachPage";
 
 // @public
@@ -1204,6 +1222,7 @@ export type PreservedInline = {
     type: "preservedInline";
     xml: string;
     text: string;
+    foldedListNumber?: FoldedListNumber;
 };
 
 // @public
@@ -1327,7 +1346,7 @@ export type Run = {
 };
 
 // @public
-export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
+export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | NoteMarkerContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
 
 // @public
 export type RunPropertyChange = {

@@ -196,6 +196,34 @@ export const paragraphPropertyChange = (
   return change;
 };
 
+type FoldParagraphPropertyChangeOptions = {
+  paragraph: Paragraph;
+  formatting: ParagraphFormatting | undefined;
+  stamp: RevisionStamp;
+};
+
+/** Fold paragraph formatting into one review, retaining its id and original baseline. */
+export const foldedParagraphPropertyChange = ({
+  paragraph,
+  formatting,
+  stamp,
+}: FoldParagraphPropertyChangeOptions): ParagraphPropertyChange => {
+  const existing = paragraph.propertyChanges?.at(0);
+  if (existing === undefined)
+    return paragraphPropertyChange(stampInfo(stamp), paragraph.formatting);
+  const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
+  if (stamp.initials === undefined) delete info.initials;
+  // A companion date belongs to the previous attribution, not the new stamp.
+  delete info.utcDate;
+  const change = { ...existing, info };
+  // Parsed reviews carry this derived convenience field; keep it tied to live properties.
+  if (existing.currentFormatting !== undefined) {
+    if (formatting === undefined) delete change.currentFormatting;
+    else change.currentFormatting = formatting;
+  }
+  return change;
+};
+
 /** The review fields a paragraph states, each only when present. */
 export const reviewFieldsOf = (paragraph: Paragraph): ParagraphReviewFields => {
   const fields: ParagraphReviewFields = {};

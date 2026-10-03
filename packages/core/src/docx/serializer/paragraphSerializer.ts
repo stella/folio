@@ -10,8 +10,11 @@
  * - Runs, hyperlinks, bookmarks, fields as child elements
  */
 
+import { serializeEmptyMarkProperties } from "../paragraphMarkPropertyPresence";
+
 import type {
   Paragraph,
+  PreservedInline,
   ParagraphContent,
   ParagraphFormatting,
   ParagraphMarkChange,
@@ -664,6 +667,35 @@ function serializeComplexField(field: ComplexField): string {
   return parts.join("");
 }
 
+class UnrepresentableTrackedCaptureError extends TaggedError("UnrepresentableTrackedCaptureError")<{
+  message: string;
+}> {}
+
+/**
+ * Preserved markup inside a removal. Markup captured from a removal already
+ * spells its text as deleted text. Markup captured outside one and put under
+ * a removal afterwards does not: plain runs are respelled here, as a deleted
+ * run is. A folded list-number capture that cannot be respelled is refused,
+ * rather than written as live text inside the removal.
+ */
+function serializeRemovedPreservedInline(item: PreservedInline): string {
+  if (!/<w:(?:t|instrText)[\s>]/u.test(item.xml)) {
+    return item.xml;
+  }
+  const plainRuns =
+    /^<w:r[\s>]/u.test(item.xml) &&
+    !/<w:(?:drawing|pict|object)\b|<mc:AlternateContent\b/u.test(item.xml);
+  if (plainRuns) {
+    return rewriteRunTextAsDeleted(item.xml);
+  }
+  if (item.foldedListNumber) {
+    throw new UnrepresentableTrackedCaptureError({
+      message: "A folded list-number field holds markup that cannot be written as deleted content.",
+    });
+  }
+  return item.xml;
+}
+
 class UnrepresentableTrackedSimpleFieldError extends TaggedError(
   "UnrepresentableTrackedSimpleFieldError",
 )<{ message: string; contentType: SimpleField["content"][number]["type"] }> {}
@@ -887,7 +919,7 @@ function serializeTrackedChange(
       // `w:ins` is markup the reviewer no longer accepts or rejects with the
       // change.
       case "preservedInline":
-        return item.xml;
+        return disposition === "removed" ? serializeRemovedPreservedInline(item) : item.xml;
       // Transparent wrappers stay where the author put them, inside the
       // revision, and carry its disposition down to the runs they hold.
       case "inlineWrapper":
@@ -1103,6 +1135,8 @@ export function serializeParagraph(paragraph: Paragraph): string {
   if (paragraph.reviewCarrier) {
     attrs.push(`folio:reviewCarrier="${paragraph.reviewCarrier}"`);
   }
+  const emptyMarkProperties = serializeEmptyMarkProperties(paragraph);
+  if (emptyMarkProperties !== undefined) attrs.push(emptyMarkProperties);
   const written = serializePreservedAttributes(attrs, paragraph.preservedAttributes);
   const attrsStr = written.length > 0 ? ` ${written.join(" ")}` : "";
 

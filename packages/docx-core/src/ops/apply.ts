@@ -1,3 +1,6 @@
+import { noteContentWithAutomaticMark } from "./noteMarks";
+import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
+import { documentStories, findStoryBody, sameStory } from "./stories";
 /**
  * Apply a document operation and record its exact inverse.
  *
@@ -22,9 +25,9 @@
  * | `joinInline`        | `splitInline`                                             |
  * | `setRunProps`       | `setRunProps` per stretch of prior values, joining cuts   |
  * | `setParagraphProps` | `setParagraphProps` with the prior values                 |
- * | `splitBlock`        | `joinBlocks`, then the kept half's review fields         |
+ * | `splitBlock`        | `joinBlocks`, then authored content and review fields    |
  * | `joinBlocks`        | `splitBlock` with the retired paragraph's fields, then  |
- * |                     | the survivor's review fields                              |
+ * |                     | authored content and the survivor's review fields         |
  * | `insertBlocks`      | an anchored `replaceBlocks`                              |
  * | `replaceBlocks`     | `replaceBlocks`                                           |
  * | `setParagraphReview`| `setParagraphReview`                                      |
@@ -65,7 +68,11 @@ import {
   storyBody,
   storyParagraphs,
 } from "./blocks";
-import { meetsContract, validateOpsDocument } from "./contract";
+import {
+  hasMultipleParagraphPropertyChanges,
+  meetsContract,
+  validateOpsDocument,
+} from "./contract";
 import { combineEdits, type DocumentEdit } from "./edits";
 import { equalForStaleness, structurallyEqual } from "./equality";
 import { freshenIdentities } from "./identity";
@@ -94,6 +101,7 @@ import {
   type Joined,
   joinAt,
   joinContent,
+  joinParagraphSeam,
   namesIds,
   patchedSet,
   patchRunsBetween,
@@ -101,6 +109,7 @@ import {
   splitAt,
 } from "./inline";
 import {
+  leafSpans,
   childNodes,
   defaultInsertionGap,
   type Gap,
@@ -127,6 +136,7 @@ import { applyTableEdit } from "./tableEdits";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
+  foldedParagraphPropertyChange,
   paragraphPropertyChange,
   reviewFieldsOf,
   sameMarkFormatting,
@@ -142,7 +152,8 @@ import {
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
+  type AddNoteOp,
+  type RemoveNoteOp,
   type DeleteRangeOp,
   type DocumentOp,
   type InsertContentOp,
@@ -174,10 +185,9 @@ export type AppliedDocumentOp = {
   inverse: readonly DocumentOp[];
   touched: TouchedBlocks;
   /**
-   * The revision ids of the tracked changes the operation recorded, in
-   * document order: its stamp's id and the new ids its other records took.
-   * Empty for a direct operation, and for a tracked one that merged into a
-   * change carrying the same stamp.
+   * Newly allocated tracked revision ids, in document order: its stamp's
+   * id and the new ids its other records took. Existing ids retained by a
+   * folded or continued review are excluded; a direct operation reports none.
    */
   revisions: readonly number[];
 };
@@ -346,7 +356,7 @@ const locateRange = (
   from: TextPosition,
   to: TextPosition,
 ): Result<LocatedRange, DocumentOpRefusal> => {
-  if (from.story !== to.story || idKey(from.blockId) !== idKey(to.blockId)) {
+  if (!sameStory(from.story, to.story) || idKey(from.blockId) !== idKey(to.blockId)) {
     return Result.err(
       refusal(
         op,
@@ -1150,16 +1160,9 @@ const setParagraphProps = (document: Document, op: SetParagraphPropsOp): Applied
   }
   if (revision !== undefined) {
     const next = withParagraphFormatting(paragraph, formatting);
-    // A paragraph already carrying a property change keeps it, and the formatting it started from.
-    if (
-      (paragraph.propertyChanges?.length ?? 0) === 0 ||
-      op.propertyReview === PROPERTY_REVIEW_POLICIES.APPEND
-    ) {
-      next.propertyChanges = [
-        ...(paragraph.propertyChanges ?? []),
-        paragraphPropertyChange(stampInfo(revision), paragraph.formatting),
-      ];
-    }
+    next.propertyChanges = [
+      foldedParagraphPropertyChange({ paragraph, formatting, stamp: revision }),
+    ];
     return editOne(
       {
         document,
@@ -1292,11 +1295,12 @@ const trackSplit = ({
     );
   }
   first.pPrMark = { kind: "ins", info: stampInfo(stamp) };
-  if (
-    !sameParagraphProperties(made.formatting, paragraph.formatting) &&
-    (made.propertyChanges?.length ?? 0) === 0
-  ) {
-    made.propertyChanges = [paragraphPropertyChange(stampInfo(stamp), paragraph.formatting)];
+  if (!sameParagraphProperties(made.formatting, paragraph.formatting)) {
+    made.propertyChanges = [
+      madeSecond
+        ? foldedParagraphPropertyChange({ paragraph, formatting: made.formatting, stamp })
+        : paragraphPropertyChange(stampInfo(stamp), paragraph.formatting),
+    ];
   }
   return undefined;
 };
@@ -1393,6 +1397,10 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
   const kept = newHalf === SPLIT_HALVES.FIRST ? placedSecond : placedFirst;
   const madePlaced = newHalf === SPLIT_HALVES.FIRST ? placedFirst : placedSecond;
   const keptId = paragraph.paraId ?? op.at.blockId;
+  const inverseContent =
+    cut.through.length === 0
+      ? joinParagraphSeam(placedFirst.content, placedSecond.content)
+      : paragraph.content;
   return Result.ok({
     document: committed.value.document,
     inverse: [
@@ -1409,6 +1417,9 @@ const splitBlock = (document: Document, op: SplitBlockOp): Applied => {
           ? {}
           : { sectionBoundary: SECTION_BOUNDARY_POLICIES.REMOVE }),
       },
+      ...(structurallyEqual(inverseContent, paragraph.content)
+        ? []
+        : [contentRestoring(op.at.story, { ...kept, content: inverseContent }, paragraph)]),
       ...reviewSetting(
         op.at.story,
         kept.paraId ?? keptId,
@@ -1440,6 +1451,13 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   if (!isCount(depth)) {
     return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH, "A join depth is a count.");
   }
+  if (depth !== 0) {
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
+      "A tracked paragraph mark cannot record an inline merge depth.",
+    );
+  }
   if ((op.survivor ?? SPLIT_HALVES.SECOND) !== SPLIT_HALVES.SECOND) {
     return refuse(
       op,
@@ -1461,10 +1479,8 @@ const trackJoin = ({ document, op, stamp, at, leading, trailing }: TrackJoinOpti
   const formatting = joinedFormatting(leading, trailing);
   if (!sameParagraphProperties(formatting, trailing.formatting)) {
     second = withParagraphFormatting(trailing, formatting);
-    // Each join is independently rejectable, including over an existing property review.
     second.propertyChanges = [
-      ...(trailing.propertyChanges ?? []),
-      paragraphPropertyChange(stampInfo(stamp), trailing.formatting),
+      foldedParagraphPropertyChange({ paragraph: trailing, formatting, stamp }),
     ];
   }
   const committed = commit({
@@ -1627,6 +1643,26 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
     delete splitReview.pPrMark;
     if (leading.pPrMark !== undefined) splitReview.pPrMark = leading.pPrMark;
   }
+  const contentInverse = [];
+  if (
+    depth === 0 &&
+    merged.value.content.length < leading.content.length + trailing.content.length
+  ) {
+    const restoredContent = cutAt(merged.value.content, {
+      offset: length,
+      zeroWidthBefore: zeroWidthLeavesAt(leading.content, length).length,
+    });
+    if (!structurallyEqual(restoredContent.before, leading.content)) {
+      contentInverse.push(
+        contentRestoring(op.story, { ...leading, content: restoredContent.before }, leading),
+      );
+    }
+    if (!structurallyEqual(restoredContent.after, trailing.content)) {
+      contentInverse.push(
+        contentRestoring(op.story, { ...trailing, content: restoredContent.after }, trailing),
+      );
+    }
+  }
   const committed = commit({
     document,
     op,
@@ -1643,6 +1679,7 @@ const joinBlocks = (document: Document, op: JoinBlocksOp): Applied => {
     document: committed.value.document,
     inverse: [
       split,
+      ...contentInverse,
       ...reviewSetting(op.story, survivor.paraId ?? "", splitReview, reviewFieldsOf(survivor)),
     ],
     touched: committed.value.touched,
@@ -1923,8 +1960,158 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
   });
 };
 
+const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => {
+  const kind = op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.type : op.story.kind;
+  const id = op.type === DOCUMENT_OP_TYPES.ADD_NOTE ? op.note.id : op.story.id;
+  if (!Number.isInteger(id) || id <= 0)
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.INVALID_NEW_ID,
+      "A normal note needs a positive integer id.",
+    );
+  const collection = kind === "footnote" ? document.package.footnotes : document.package.endnotes;
+  if (op.type === DOCUMENT_OP_TYPES.ADD_NOTE) {
+    if (collection?.some((note) => note.id === id))
+      return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.ID_COLLISION, "The note id is already used.");
+    if (op.note.noteType !== undefined && op.note.noteType !== "normal")
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A reference can only create a normal note.",
+      );
+    if (op.note.content.length === 0)
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
+        "A note needs an addressable paragraph.",
+      );
+    const note = structuredClone(op.note);
+    const paragraphs = storyParagraphs({ content: note.content });
+    const markers = paragraphs
+      .flatMap(({ paragraph }) => leafSpans(paragraph.content))
+      .filter(({ node }) => node.type === "noteMarker");
+    if (
+      markers.length > 1 ||
+      markers.some(({ node }) => node.type === "noteMarker" && node.kind !== kind)
+    )
+      return refuse(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A note needs one matching automatic reference mark.",
+      );
+    note.content = noteContentWithAutomaticMark({ note, customMark: false });
+    const withNote: Document =
+      note.type === "footnote"
+        ? {
+            ...document,
+            package: {
+              ...document.package,
+              footnotes: [...(document.package.footnotes ?? []), note],
+            },
+          }
+        : {
+            ...document,
+            package: {
+              ...document.package,
+              endnotes: [...(document.package.endnotes ?? []), note],
+            },
+          };
+    const valid = validateOpsDocument(withNote);
+    if (valid.isErr()) return refuse(op, valid.error.reason, valid.error.message);
+    const reference = insertContent(withNote, {
+      type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
+      at: op.at,
+      slice: {
+        content: [
+          {
+            type: "run",
+            content: [{ type: kind === "footnote" ? "footnoteRef" : "endnoteRef", id }],
+          },
+        ],
+        openStart: 0,
+        openEnd: 0,
+      },
+    });
+    if (reference.isErr()) return reference;
+    return storyLifecycleEdit(document, reference.value.document, op);
+  }
+  const note = collection?.find((candidate) => candidate.id === id);
+  if (!note)
+    return refuse(op, DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "The note does not exist.");
+  const located = locateRange(document, op, op.at, { ...op.at, offset: op.at.offset + 1 });
+  if (located.isErr()) return Result.err(located.error);
+  const matching = leafSpans(located.value.location.paragraph.content).some(
+    ({ node, before, after }) =>
+      before.offset === op.at.offset &&
+      after.offset === op.at.offset + 1 &&
+      ((kind === "footnote" && node.type === "footnoteRef") ||
+        (kind === "endnote" && node.type === "endnoteRef")) &&
+      node.id === id,
+  );
+  if (!matching)
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "The position does not name the note reference.",
+    );
+  const removed = deleteRange(document, {
+    type: DOCUMENT_OP_TYPES.DELETE_RANGE,
+    from: op.at,
+    to: { ...op.at, offset: op.at.offset + 1 },
+  });
+  if (removed.isErr()) return removed;
+  const stillReferenced = documentStories(removed.value.document).some((story) => {
+    if (typeof story !== "string" && story.kind === kind && "id" in story && story.id === id)
+      return false;
+    return storyParagraphs(storyBody(removed.value.document, story)).some(({ paragraph }) =>
+      leafSpans(paragraph.content).some(
+        ({ node }) =>
+          ((kind === "footnote" && node.type === "footnoteRef") ||
+            (kind === "endnote" && node.type === "endnoteRef")) &&
+          node.id === id,
+      ),
+    );
+  });
+  if (stillReferenced)
+    return refuse(
+      op,
+      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      "Another reference still owns this note.",
+    );
+  const next =
+    kind === "footnote"
+      ? {
+          ...removed.value.document,
+          package: {
+            ...removed.value.document.package,
+            footnotes:
+              removed.value.document.package.footnotes?.filter(
+                (candidate) => candidate.id !== id,
+              ) ?? [],
+          },
+        }
+      : {
+          ...removed.value.document,
+          package: {
+            ...removed.value.document.package,
+            endnotes:
+              removed.value.document.package.endnotes?.filter((candidate) => candidate.id !== id) ??
+              [],
+          },
+        };
+  return storyLifecycleEdit(document, next, op);
+};
+
 const dispatch = (document: Document, op: DocumentOp): Applied => {
   switch (op.type) {
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return applyStoryLifecycle(document, op);
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+      return editNote(document, op);
     case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
       return deleteBlocks({ document, op, applyOps: applyDocumentOps });
     case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
@@ -2005,6 +2192,12 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
     case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return op.revision;
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.SPLIT_INLINE:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
@@ -2022,21 +2215,28 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   }
 };
 
-/** The revision ids a tracked operation's records took. */
+/** Newly allocated revision ids; folding changes an existing record in place. */
 const recordedRevisions = (
   before: Document,
   edit: DocumentEdit,
   stamp: RevisionStamp,
 ): number[] => {
   const touched = new Set([...edit.touched.modified, ...edit.touched.inserted].map(idKey));
-  const paragraphs = storyParagraphs(edit.document.package.document)
+  const paragraphs = documentStories(edit.document)
+    .flatMap((story) => storyParagraphs(storyBody(edit.document, story)))
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = new Set(packageIdentityKeys(before.package));
-  const revisions = stampedRevisionIds(paragraphs, stamp, known);
+  const revisions = paragraphs.flatMap((paragraph) =>
+    stampedRevisionIds([paragraph], stamp, known),
+  );
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
-    ...stampedTableRevisionIds({ blocks: edit.document.package.document.content, stamp, known }),
+    ...documentStories(edit.document)
+      .map((story) =>
+        stampedTableRevisionIds({ blocks: storyBody(edit.document, story).content, stamp, known }),
+      )
+      .flat(),
   );
   return revisions;
 };
@@ -2062,6 +2262,25 @@ export const applyDocumentOp = (
   }
   const malformedTable = tableEditBoundaryRefusal(op);
   if (malformedTable !== undefined) return Result.err(malformedTable);
+  const addressed = (() => {
+    if ("at" in op && typeof op.at === "object" && "story" in op.at) return op.at.story;
+    if ("from" in op) return op.from.story;
+    if ("story" in op) return op.story;
+    return undefined;
+  })();
+  if (
+    addressed !== undefined &&
+    op.type !== DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER &&
+    !findStoryBody(document, addressed)
+  ) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND,
+        "The addressed story does not exist.",
+      ),
+    );
+  }
   const stamp = stampOf(op);
   const badStamp = stamp === undefined ? undefined : stampRefusal(document, op, stamp);
   if (badStamp !== undefined) {
@@ -2097,6 +2316,16 @@ export const applyDocumentOp = (
           panic("A section edit produced a non-structural inverse.");
       }
     }
+  }
+  // Check all operation outputs before trusting them, including caller-supplied block/review records.
+  if (hasMultipleParagraphPropertyChanges(edit.document)) {
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A paragraph cannot carry more than one property change.",
+      ),
+    );
   }
   meetsContract(edit.document);
   return Result.ok({

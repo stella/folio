@@ -7,14 +7,11 @@
 import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
-// @public
-export const allocateEditorIntentIds: (document: Document_2) => {
-    revisionId: number;
-    newBlockId: string;
-    newIds: {
-        revision: number[];
-        control: number[];
-    };
+// @public (undocumented)
+export type AddNoteOp = {
+    type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
+    at: TextPosition;
+    note: Footnote | Endnote;
 };
 
 // @public
@@ -39,6 +36,7 @@ export const BATCH_REJECTION_REASONS: {
     readonly CONFLICT: "conflict";
     readonly STALE_BASE: "staleBase";
     readonly INVALID_OPERATION: "invalidOperation";
+    readonly TABLE_REQUIRES_EXCLUSIVE_EDIT: "tableRequiresExclusiveEdit";
 };
 
 // @public (undocumented)
@@ -65,20 +63,8 @@ export type BlockInsertionPoint = {
     blockId: string;
 };
 
-// @public (undocumented)
-export type CompiledEditorIntent = {
-    ops: DocumentOp[];
-    selection: TextPosition;
-};
-
 // @public
 export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
-
-// @public (undocumented)
-export type CompileEditorIntentOptions = {
-    intent: EditorIntent;
-    mode: EditorIntentMode;
-};
 
 // @public
 export const createClient: (document: Document_2) => {
@@ -91,6 +77,25 @@ export const createClient: (document: Document_2) => {
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
     readonly notices: readonly ClientNotice[];
+};
+
+// @public
+export const createEditorIntentIdAllocator: () => (document: Document_2, intent: EditorIntentAllocation) => {
+    revisionId: number;
+    newBlockId: string;
+    newIds: {
+        revision: number[];
+        control: number[];
+    };
+};
+
+// @public
+export type CreateHeaderFooterOp = {
+    type: typeof DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER;
+    sectionIndex: number;
+    story: HeaderFooterStory;
+    referenceType: HeaderFooterType;
+    content: BlockContent[];
 };
 
 // @public
@@ -108,6 +113,12 @@ export type DeleteBlocksOp = {
     blockIds: readonly string[];
     revision?: RevisionStamp;
     newIds?: NewIds;
+};
+
+// @public (undocumented)
+export type DeleteColumnOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.DELETE_COLUMN;
+    column: number;
 };
 
 // @public
@@ -144,6 +155,10 @@ export type DeleteTableOp = {
 // @public
 export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
     readonly BLOCK_NOT_FOUND: "blockNotFound";
+    readonly INVALID_OPERATION: "invalidOperation";
+    readonly TABLE_ROW_EMPTY: "tableRowEmpty";
+    readonly NO_CHANGE: "noChange";
+    readonly DEPENDENT_RECORDS: "dependentRecords";
     readonly INVALID_OFFSET: "invalidOffset";
     readonly CROSS_BLOCK_RANGE: "crossBlockRange";
     readonly SPLITS_SURROGATE_PAIR: "splitsSurrogatePair";
@@ -171,10 +186,16 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 5;
+export const DOCUMENT_OP_SCHEMA_VERSION = 6;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
+    readonly CREATE_HEADER_FOOTER: "createHeaderFooter";
+    readonly REMOVE_HEADER_FOOTER: "removeHeaderFooter";
+    readonly ADD_NOTE: "addNote";
+    readonly REMOVE_NOTE: "removeNote";
+    readonly SET_SECTION_PROPS: "setSectionProps";
+    readonly RESTORE_STORY_PARTS: "restoreStoryParts";
     readonly DELETE_BLOCKS: "deleteBlocks";
     readonly INSERT_BLOCKS: "insertBlocks";
     readonly INSERT_TEXT: "insertText";
@@ -196,6 +217,19 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly INSERT_ROW: "insertRow";
     readonly DELETE_ROW: "deleteRow";
     readonly SET_TABLE_ROWS: "setTableRows";
+    readonly INSERT_COLUMN: "insertColumn";
+    readonly DELETE_COLUMN: "deleteColumn";
+    readonly MERGE_CELLS: "mergeCells";
+    readonly SPLIT_CELL: "splitCell";
+    readonly SET_TABLE_GRID: "setTableGrid";
+    readonly SET_CELL_PROPS: "setCellProps";
+    readonly SET_ROW_PROPS: "setRowProps";
+    readonly SET_TABLE_PROPS: "setTableProps";
+    readonly SET_TABLE: "setTable";
+    readonly FIRST: "first";
+    readonly SECOND: "second";
+    readonly ACCEPT: "accept";
+    readonly REJECT: "reject";
 }>;
 
 // @public
@@ -209,7 +243,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
+export type DocumentOp = CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | TableEditOp | SetTableOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -236,18 +270,21 @@ export class DocumentOpsContractError extends DocumentOpsContractError_base<{
 // @public
 export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
 
+// @public (undocumented)
+export const documentStories: (document: Document_2) => OpStory[];
+
 // @public
 export type EditorIntent = {
+    type: "table";
+    operation: TableIntentOperation;
+} | {
     type: "replaceText";
     from: TextPosition;
     to: TextPosition;
     text: string;
-} | {
-    type: "splitParagraph";
-    at: TextPosition;
-    to?: TextPosition;
+} | (SplitParagraphIntent & {
     newBlockId: string;
-} | {
+}) | {
     type: "joinParagraphs";
     story: OpStory;
     blockId: string;
@@ -280,8 +317,20 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
 
+// @public (undocumented)
+export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
+
+// @public
+export function formattingEquals(a: ComparedTextFormatting | undefined, b: ComparedTextFormatting | undefined): boolean;
+
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null; };
+
+// @public
+export type HeaderFooterStory = {
+    kind: "header" | "footer";
+    rId: string;
+};
 
 // @public
 export const INHERIT_RUN_PROPS = "inherit";
@@ -301,6 +350,14 @@ export type InsertBlocksOp = {
     blocks: readonly Paragraph[];
     revision?: RevisionStamp;
     newIds?: NewIds;
+};
+
+// @public (undocumented)
+export type InsertColumnOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
+    column: number;
+    width: number;
+    newBlockIds: readonly string[];
 };
 
 // @public
@@ -350,6 +407,9 @@ export type InsertTextOp = {
 };
 
 // @public
+export function isTextOnlyRun(run: Run): boolean;
+
+// @public
 export type JoinBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
     story: OpStory;
@@ -376,6 +436,19 @@ export type JoinInlineOp = {
 export const MAX_BATCH_WIRE_BYTES: number;
 
 // @public
+export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
+
+// @public (undocumented)
+export type MergeCellsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.MERGE_CELLS;
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+    newBlockIds: readonly string[];
+};
+
+// @public
 export type NewIds = {
     revision?: readonly number[];
     control?: readonly number[];
@@ -383,6 +456,15 @@ export type NewIds = {
 
 // @public
 export const normalizeForOps: (document: Document_2) => Document_2;
+
+// @public (undocumented)
+export type NoteStory = {
+    kind: "footnote" | "endnote";
+    id: number;
+};
+
+// @public (undocumented)
+export const noteUsesCustomMark: (document: Document_2, note: Footnote | Endnote) => boolean;
 
 // @public
 export const OBJECT_REPLACEMENT_CHARACTER = "￼";
@@ -392,8 +474,8 @@ export const OP_STORIES: Readonly<{
     readonly MAIN: "main";
 }>;
 
-// @public
-export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
+// @public (undocumented)
+export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 
 // @public
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
@@ -424,9 +506,6 @@ export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRe
 export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
 
 // @public
-export const physicalPositionAtEditorOffset: (document: Document_2, at: TextPosition) => TextPosition;
-
-// @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
 
 // @public
@@ -449,9 +528,19 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
 };
 
 // @public (undocumented)
-export const PROPERTY_REVIEW_POLICIES: Readonly<{
-    readonly APPEND: "append";
-}>;
+export type RemoveHeaderFooterOp = {
+    type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
+    sectionIndex: number;
+    story: HeaderFooterStory;
+    referenceType: HeaderFooterType;
+};
+
+// @public (undocumented)
+export type RemoveNoteOp = {
+    type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
+    at: TextPosition;
+    story: NoteStory;
+};
 
 // @public
 export type ReplaceBlocksOp = {
@@ -481,6 +570,13 @@ export type ResolveRevisionOp = {
 };
 
 // @public
+export type RestoreStoryPartsOp = {
+    type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
+    expected: StoryParts;
+    parts: StoryParts;
+};
+
+// @public
 export const REVISION_DECISIONS: Readonly<{
     readonly ACCEPT: "accept";
     readonly REJECT: "reject";
@@ -504,15 +600,24 @@ export type RevisionStamp = {
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
 
 // @public
-export const SECTION_BOUNDARY_POLICIES: Readonly<{
-    readonly REMOVE: "remove";
-    readonly REPLACE: "replace";
-}>;
+export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;
+
+// @public (undocumented)
+export const sameStory: (left: OpStory, right: OpStory) => boolean;
+
+// @public (undocumented)
+export const sectionPropertiesAt: (document: Document_2, sectionIndex: number) => SectionProperties | undefined;
 
 // @public (undocumented)
 export type SequencedBatch = DocumentBatch & {
     revision: number;
     effects?: readonly SequencedOpEffect[];
+};
+
+// @public (undocumented)
+export type SetCellPropsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_CELL_PROPS;
+    patch: FormattingPatch<TableCellFormatting>;
 };
 
 // @public
@@ -533,7 +638,6 @@ export type SetParagraphPropsOp = {
     whenEmpty?: EmptyPropertySet;
     expected?: ParagraphPropsPatch;
     revision?: RevisionStamp;
-    propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 // @public
@@ -543,6 +647,12 @@ export type SetParagraphReviewOp = {
     blockId: string;
     expected: ParagraphReviewFields;
     review: ParagraphReviewFields;
+};
+
+// @public (undocumented)
+export type SetRowPropsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_ROW_PROPS;
+    patch: FormattingPatch<TableRowFormatting>;
 };
 
 // @public
@@ -559,6 +669,34 @@ export type SetRunPropsOp = {
     revision?: RevisionStamp;
 };
 
+// @public (undocumented)
+export type SetSectionPropsOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;
+    sectionIndex: number;
+    patch: FormattingPatch<SectionProperties>;
+};
+
+// @public (undocumented)
+export type SetTableGridOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE_GRID;
+    columnWidths: readonly number[];
+};
+
+// @public (undocumented)
+export type SetTableOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE;
+    story: OpStory;
+    blockId: string;
+    expected: Table;
+    table: Table;
+};
+
+// @public (undocumented)
+export type SetTablePropsOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SET_TABLE_PROPS;
+    patch: FormattingPatch<TableFormatting>;
+};
+
 // @public
 export type SetTableRowsOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
@@ -566,6 +704,12 @@ export type SetTableRowsOp = {
     blockId: string;
     expected: readonly TableRow[];
     rows: readonly TableRow[];
+};
+
+// @public (undocumented)
+export type SplitCellOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
+    newBlockIds: readonly string[];
 };
 
 // @public
@@ -601,6 +745,19 @@ export type SplitInlineOp = {
 
 // @public
 export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content" | "sectionProperties" | "pPrMark">;
+
+// @public (undocumented)
+export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
+
+// @public (undocumented)
+export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
+
+// @public (undocumented)
+export type TableIntentOperation = {
+    [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {
+        type: Kind;
+    }>, "revision" | "newIds" | "newBlockIds">;
+}[TableEditOp["type"]];
 
 // @public
 export type TextPosition = {

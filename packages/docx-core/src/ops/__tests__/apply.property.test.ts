@@ -6,8 +6,8 @@
  *    back a document structurally equal to the input, every unmodelled and
  *    captured field included, and so does the inverse after a JSON
  *    round-trip: it holds data, not references. Applying the inverse's own
- *    inverse redoes the operation. No inverse but a replacement's is a
- *    whole-paragraph replacement.
+ *    inverse redoes the operation. Structural inverses restore authored run
+ *    boundaries when the parser's seam merge would lose them.
  * 2. **Sequences.** For a random sequence of operations, the inverses applied
  *    in reverse order restore the input exactly; a batch of the same
  *    operations gives the same document, and its inverse restores the input.
@@ -34,9 +34,9 @@ import {
 import { projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { storyParagraphs } from "../blocks";
+import { storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
+import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import { sameRunFormatting } from "../inline";
 import {
   allocateEditorIntentIds,
@@ -45,7 +45,6 @@ import {
   physicalPositionAtEditorOffset,
   type EditorIntent,
 } from "../editorIntent";
-import { identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import {
   childrenOf,
   isInlineContainer,
@@ -74,6 +73,25 @@ import {
 
 setDefaultTimeout(propertyTestTimeout(240_000));
 
+const expectCompactIntentIds = (document: Document, ops: readonly DocumentOp[]): void => {
+  let current = document;
+  for (const op of ops) {
+    const applied = applyDocumentOp(current, op).unwrap();
+    if ("newIds" in op && op.newIds !== undefined) {
+      const changed = new Set([...applied.touched.modified, ...applied.touched.inserted]);
+      const records = storyParagraphs(storyBody(applied.document, OP_STORIES.MAIN))
+        .filter(({ paragraph }) => changed.has(paragraph.paraId ?? ""))
+        .map(({ paragraph }) => paragraph);
+      const identities = new Set(identityKeysIn(records));
+      for (const id of op.newIds.revision ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(true);
+      for (const id of op.newIds.control ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(true);
+    }
+    current = applied.document;
+  }
+};
+
 const NUM_RUNS = 10_000;
 
 type Tally = Map<DocumentOpType | "refused", number>;
@@ -100,9 +118,24 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
  * What each operation's inverse is made of: the table in `apply.ts`. Every
  * inverse is one operation, except a run patch's, which restores one stretch
  * of prior values per operation, and a split's or join's, which may give the
- * paragraph keeping its id its own review fields back.
+ * paragraph keeping its id its own review fields back and restore authored
+ * content that the plain-run seam merge would otherwise coalesce.
  */
 const INVERSE_KINDS = {
+  createHeaderFooter: ["restoreStoryParts"],
+  removeHeaderFooter: ["restoreStoryParts"],
+  addNote: ["restoreStoryParts"],
+  removeNote: ["restoreStoryParts"],
+  setSectionProps: ["restoreStoryParts"],
+  restoreStoryParts: ["restoreStoryParts"],
+  deleteBlocks: ["insertBlocks", "replaceBlocks", "replaceInline", "setParagraphReview"],
+  insertBlocks: ["replaceBlocks"],
+  insertTable: ["setContainerBlocks"],
+  deleteTable: ["setContainerBlocks", "replaceInline", "setParagraphReview"],
+  setContainerBlocks: ["setContainerBlocks"],
+  insertRow: ["setTableRows"],
+  deleteRow: ["setTableRows", "replaceInline", "setParagraphReview"],
+  setTableRows: ["setTableRows"],
   insertText: ["deleteRange"],
   insertContent: ["deleteRange"],
   deleteRange: ["insertContent"],
@@ -110,8 +143,8 @@ const INVERSE_KINDS = {
   joinInline: ["splitInline"],
   setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
-  splitBlock: ["joinBlocks", "setParagraphReview"],
-  joinBlocks: ["splitBlock", "setParagraphReview"],
+  splitBlock: ["joinBlocks", "replaceInline", "setParagraphReview"],
+  joinBlocks: ["splitBlock", "replaceInline", "setParagraphReview"],
   replaceBlocks: ["replaceBlocks"],
   setParagraphReview: ["setParagraphReview"],
   replaceInline: ["replaceInline"],
@@ -189,6 +222,13 @@ const namedIds = (op: DocumentOp): Set<string> => {
       return new Set([op.blockId, ...paragraphIdsIn(op.expected ?? [])]);
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return new Set([op.blockId, ...paragraphIdsIn([op.expected, op.rows])]);
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return new Set();
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -351,7 +391,6 @@ describe("document operations", () => {
             const head = gaps.at(input.head % gaps.length) ?? 0;
             const blockId = source.paraId ?? "";
             const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
-            const ids = allocateEditorIntentIds(tracked);
             let intent: EditorIntent;
             let suggested: EditorIntent;
             if (input.kind === "split") {
@@ -359,7 +398,7 @@ describe("document operations", () => {
                 type: "splitParagraph",
                 at: position(Math.min(anchor, head)),
                 to: position(Math.max(anchor, head)),
-                newBlockId: ids.newBlockId,
+                newBlockId: "00000003",
               };
               suggested = {
                 ...intent,
@@ -405,6 +444,11 @@ describe("document operations", () => {
                 to: physicalPositionAtEditorOffset(tracked, position(to)),
               };
             }
+            const ids = allocateEditorIntentIds(tracked, suggested);
+            if (intent.type === "splitParagraph" && suggested.type === "splitParagraph") {
+              intent = { ...intent, newBlockId: ids.newBlockId };
+              suggested = { ...suggested, newBlockId: ids.newBlockId };
+            }
             const editPlan = compileEditorIntent(direct, { intent, mode: { type: "editing" } });
             const trackedPlan = compileEditorIntent(tracked, {
               intent: suggested,
@@ -416,6 +460,8 @@ describe("document operations", () => {
             });
             if (editPlan.isErr()) throw editPlan.error;
             if (trackedPlan.isErr()) throw trackedPlan.error;
+            expectCompactIntentIds(direct, editPlan.value.ops);
+            expectCompactIntentIds(tracked, trackedPlan.value.ops);
             const edited = applyDocumentOps(direct, editPlan.value.ops);
             const suggestedEdit = applyDocumentOps(tracked, trackedPlan.value.ops);
             if (edited.isErr()) throw edited.error;
@@ -603,7 +649,7 @@ describe("document operations", () => {
 
   test("an operation's inverse restores the document exactly", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const original = structuredClone(document);
@@ -619,17 +665,30 @@ describe("document operations", () => {
         for (const inverse of applied.value.inverse) {
           expect(allowed).toContain(inverse.type);
         }
-        if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
-          // A split or join gives the paragraph that keeps its id its own properties back too.
-          expect(applied.value.inverse.length).toBeLessThanOrEqual(
-            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK || op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
-              ? 2
-              : 1,
+        if (
+          op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ||
+          op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+        ) {
+          // One structural inverse, at most one review restoration, and at most
+          // one content restoration per original paragraph; no duplicate targets.
+          const restoring = applied.value.inverse.filter(
+            (inverse) => inverse.type === DOCUMENT_OP_TYPES.REPLACE_INLINE,
           );
+          const review = applied.value.inverse.filter(
+            (inverse) => inverse.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          );
+          expect(new Set(restoring.map(({ blockId }) => blockId)).size).toBe(restoring.length);
+          expect(restoring.length).toBeLessThanOrEqual(
+            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ? 1 : 2,
+          );
+          expect(review.length).toBeLessThanOrEqual(1);
+          expect(applied.value.inverse.length - restoring.length - review.length).toBe(1);
+        } else if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+          expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -891,6 +950,12 @@ describe("document operations", () => {
             );
             break;
           }
+          case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+          case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+          case DOCUMENT_OP_TYPES.ADD_NOTE:
+          case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+          case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+          case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
           case DOCUMENT_OP_TYPES.DELETE_BLOCKS:
           case DOCUMENT_OP_TYPES.INSERT_BLOCKS:
           case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:

@@ -1,6 +1,6 @@
 /**
  * Document operations, schema version 6: text, formatting and review edits on
- * the main story, direct or tracked.
+ * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
  * offset)`, where `blockId` is the paragraph's `w14:paraId` and `offset` counts
@@ -31,7 +31,6 @@ import type {
   ParagraphFormatting,
   ParagraphMarkChange,
   ParagraphPropertyChange,
-  SectionProperties,
   TextFormatting,
   TableRow,
   TableCellFormatting,
@@ -39,8 +38,14 @@ import type {
   TableFormatting,
   Table,
   BlockContent,
-  HeaderFooter,
   HeaderFooterType,
+  HeaderFooter,
+  Footnote,
+  Endnote,
+  SectionProperties,
+  DocumentBody,
+  DocumentSettings,
+  Section,
 } from "../model/document";
 
 /** JSON-safe section metadata; content is derived from the body's canonical blocks. */
@@ -59,8 +64,8 @@ type SectionViewChange = {
  * The operation schema this module reads and writes.
  *
  * Version 6 adds semantic table edits and exact whole-table restoration.
- * Version 5 adds explicit section-boundary removal/restoration and separately rejectable
- * paragraph-property reviews over an existing revision.
+ * Version 5 adds explicit section-boundary removal/restoration.
+ * Version 5 adds header/footer/note story addresses and exact lifecycle operations.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
  * whole-table operations with their exact structural inverse, terminal insertion,
  * and cell-ending paragraph marks on tracked row operations.
@@ -73,13 +78,15 @@ type SectionViewChange = {
 export const DOCUMENT_OP_SCHEMA_VERSION = 6;
 
 /**
- * The stories an operation can address. Headers, footers, notes and comment
- * bodies are stories too; this version addresses the main story only.
+ * The main story has a fixed address; other editable parts use their stable
+ * relationship id or note id. Comment bodies are not yet editable stories.
  */
 export const OP_STORIES = Object.freeze({ MAIN: "main" } as const);
 
-/** One of {@link OP_STORIES}. */
-export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
+/** The stable identity of an independently editable package story. */
+export type HeaderFooterStory = { kind: "header" | "footer"; rId: string };
+export type NoteStory = { kind: "footnote" | "endnote"; id: number };
+export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 
 /**
  * A point in one paragraph's logical offset space.
@@ -192,10 +199,15 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REMOVE: "remove",
   REPLACE: "replace",
 } as const);
-export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
 
 /** The operation kinds of schema version 6. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  CREATE_HEADER_FOOTER: "createHeaderFooter",
+  REMOVE_HEADER_FOOTER: "removeHeaderFooter",
+  ADD_NOTE: "addNote",
+  REMOVE_NOTE: "removeNote",
+  SET_SECTION_PROPS: "setSectionProps",
+  RESTORE_STORY_PARTS: "restoreStoryParts",
   DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
   INSERT_TEXT: "insertText",
@@ -372,7 +384,8 @@ export type SetRunPropsOp = {
  *
  * With `revision`, the paragraph records a tracked property change
  * (`w:pPrChange`) whose previous formatting is its own property set before
- * the patch, or keeps the one it already carries. A property change holds
+ * the patch, or folds into the one it already carries: its original baseline and
+ * id stay, and its author/date become the latest stamp. A property change holds
  * paragraph properties only, not the paragraph mark's run properties, so a
  * tracked patch of {@link PARAGRAPH_MARK_FORMATTING_KEYS} is refused.
  */
@@ -384,8 +397,6 @@ export type SetParagraphPropsOp = {
   whenEmpty?: EmptyPropertySet;
   expected?: ParagraphPropsPatch;
   revision?: RevisionStamp;
-  /** A new action over an existing review records the current properties separately. */
-  propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 /**
@@ -455,8 +466,9 @@ export type SplitBlockOp = {
  * run properties, section break, tracked change and the pending property
  * changes. It keeps the identity and own fields of the
  * `survivor` half, by default the second, and the other's id is retired.
- * `depth` merges that many levels of the records meeting at the join, as
- * {@link JoinInlineOp} does.
+ * An absent or zero `depth` merges the two plain runs at the seam when the
+ * parser would merge them. A positive `depth` merges that many levels of the
+ * records meeting at the join, as {@link JoinInlineOp} does.
  *
  * `expectedRetired` states the own fields of the paragraph the join retires,
  * and `expectedSurvivor` the review fields of the one it keeps, which the
@@ -469,7 +481,8 @@ export type SplitBlockOp = {
  * the direct join would give it as a tracked property change. Accepting removes the mark, which
  * leaves the second paragraph with the first's content before its own: what
  * the direct join leaves. A tracked join always leaves the second, so
- * `survivor` must then be absent or `second`.
+ * `survivor` must then be absent or `second`, and `depth` absent or zero: the
+ * paragraph mark cannot record an inline merge depth.
  */
 export type JoinBlocksOp = {
   type: typeof DOCUMENT_OP_TYPES.JOIN_BLOCKS;
@@ -720,6 +733,62 @@ export type SetContainerBlocksOp = {
   blocks: readonly BlockContent[];
 };
 
+/** Create a deterministically identified part and bind it to one section variant. */
+export type CreateHeaderFooterOp = {
+  type: typeof DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER;
+  sectionIndex: number;
+  story: HeaderFooterStory;
+  referenceType: HeaderFooterType;
+  content: BlockContent[];
+};
+export type RemoveHeaderFooterOp = {
+  type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
+  sectionIndex: number;
+  story: HeaderFooterStory;
+  referenceType: HeaderFooterType;
+};
+export type AddNoteOp = {
+  type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
+  at: TextPosition;
+  note: Footnote | Endnote;
+};
+export type RemoveNoteOp = {
+  type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
+  at: TextPosition;
+  story: NoteStory;
+};
+export type SetSectionPropsOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;
+  sectionIndex: number;
+  patch: FormattingPatch<SectionProperties>;
+};
+/** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
+export type StoryParts = {
+  body?: {
+    [Key in keyof Omit<DocumentBody, "sections">]?: Key extends "content"
+      ? DocumentBody[Key]
+      : Exclude<DocumentBody[Key], undefined> | null;
+  };
+  /** Section contents remain derived from the body's content and are never duplicated. */
+  sections?: readonly {
+    index: number;
+    properties?: Section["properties"];
+    headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+    footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+  }[];
+  headers?: readonly (readonly [string, HeaderFooter])[] | null;
+  footers?: readonly (readonly [string, HeaderFooter])[] | null;
+  footnotes?: readonly Footnote[] | null;
+  endnotes?: readonly Endnote[] | null;
+  settings?: DocumentSettings | null;
+};
+/** Exact stale-checked lifecycle inverse; unrelated package parts stay untouched. */
+export type RestoreStoryPartsOp = {
+  type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
+  expected: StoryParts;
+  parts: StoryParts;
+};
+
 /** A paragraph selects its innermost table; columns are logical grid slots. */
 type TableEditTarget = {
   story: OpStory;
@@ -798,6 +867,12 @@ export type TableIntentOperation = {
 
 /** A schema-version-6 document operation. */
 export type DocumentOp =
+  | CreateHeaderFooterOp
+  | RemoveHeaderFooterOp
+  | AddNoteOp
+  | RemoveNoteOp
+  | SetSectionPropsOp
+  | RestoreStoryPartsOp
   | DeleteBlocksOp
   | InsertTableOp
   | DeleteTableOp

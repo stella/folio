@@ -368,10 +368,12 @@ describe("table edit review fixes", () => {
     expect(rectangularTable.rows.at(0)?.cells.at(0)?.content).toEqual([
       paragraph(200, "a"),
       paragraph(201, "b"),
-    ]);
-    expect(rectangularTable.rows.at(1)?.cells.at(0)?.content).toEqual([
       paragraph(202, "c"),
       paragraph(203, "d"),
+    ]);
+    const continuationId = rectangularOp.newBlockIds.at(0);
+    expect(rectangularTable.rows.at(1)?.cells.at(0)?.content).toEqual([
+      { type: "paragraph", paraId: continuationId, content: [] },
     ]);
     expect(rectangularTable.rows.at(0)?.cells.at(0)?.formatting?.gridSpan).toBe(2);
     expect(rectangularTable.rows.at(1)?.cells.at(0)?.formatting?.gridSpan).toBe(2);

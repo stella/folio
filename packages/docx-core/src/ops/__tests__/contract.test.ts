@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Document, Paragraph, Run } from "../../model/document";
+import type { BlockContent, Document, Paragraph, Run } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps, validateOpsDocument } from "../contract";
+import { documentStories, storyBody } from "../stories";
+import { storyParagraphs } from "../blocks";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, INHERIT_RUN_PROPS, OP_STORIES } from "../types";
 
@@ -242,4 +244,97 @@ describe("the section view", () => {
     const undone = applyDocumentOps(edited.value.document, edited.value.inverse);
     expect(undone.isOk() ? undone.value.document : undefined).toEqual(document);
   });
+});
+
+test("paragraph property cardinality is enforced for seeds and operation outputs in every story", () => {
+  const nested = (block: Paragraph): BlockContent => ({
+    type: "blockSdt",
+    properties: { sdtType: "richText" },
+    content: [
+      {
+        type: "table",
+        rows: [
+          {
+            type: "tableRow",
+            cells: [
+              {
+                type: "tableCell",
+                content: [
+                  {
+                    type: "blockCustomXml",
+                    openingXml: '<w:customXml w:element="record" w:uri="urn:fixture">',
+                    closingXml: "</w:customXml>",
+                    content: [block],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const makeDocument = () =>
+    ({
+      package: {
+        document: { content: [nested(paragraph("00000001", "main"))] },
+        headers: new Map([
+          [
+            "rIdHeader",
+            {
+              type: "header",
+              hdrFtrType: "default",
+              content: [nested(paragraph("00000002", "header"))],
+            },
+          ],
+        ]),
+        footers: new Map([
+          [
+            "rIdFooter",
+            {
+              type: "footer",
+              hdrFtrType: "default",
+              content: [nested(paragraph("00000003", "footer"))],
+            },
+          ],
+        ]),
+        footnotes: [
+          { type: "footnote", id: 1, content: [nested(paragraph("00000004", "footnote"))] },
+        ],
+        endnotes: [{ type: "endnote", id: 2, content: [nested(paragraph("00000005", "endnote"))] }],
+      },
+    }) satisfies Document;
+  const propertyChanges = [101, 102].map((id) => ({
+    type: "paragraphPropertyChange" as const,
+    info: { id, author: "Reviewer" },
+  }));
+  for (const story of documentStories(makeDocument())) {
+    const document = makeDocument();
+    const target = storyParagraphs(storyBody(document, story)).at(0)?.paragraph;
+    if (target?.paraId === undefined) throw new Error("Missing story fixture paragraph");
+    const badSeed = structuredClone(document);
+    const badParagraph = storyParagraphs(storyBody(badSeed, story)).at(0)?.paragraph;
+    if (badParagraph === undefined) throw new Error("Missing story fixture paragraph");
+    badParagraph.propertyChanges = propertyChanges;
+    expect(validateOpsDocument(badSeed).isErr()).toBe(true);
+    const operations = [
+      {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+        story,
+        blockId: target.paraId,
+        expected: {},
+        review: { propertyChanges },
+      },
+      {
+        type: DOCUMENT_OP_TYPES.INSERT_BLOCKS,
+        story,
+        at: { type: "before", blockId: target.paraId },
+        blocks: [{ ...paragraph("00000006", "inserted"), propertyChanges }],
+      },
+    ] as const satisfies readonly DocumentOp[];
+    for (const op of operations) {
+      expect(reasonOf(document, op)).toBe(DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH);
+    }
+    expect(document).toEqual(makeDocument());
+  }
 });

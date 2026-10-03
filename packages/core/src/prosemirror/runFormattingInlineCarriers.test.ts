@@ -23,6 +23,7 @@ describe("run-formatting inline carrier contract", () => {
       image: "not-a-run",
       math: "not-a-run",
       moveRangeBoundary: "not-a-run",
+      noteMarker: "note-marker-run",
       pageBreakRun: "page-break-carrier",
       preservedXml: "preserved-xml-run",
       rangeAnchor: "not-a-run",
@@ -41,6 +42,7 @@ describe("run-formatting inline carrier contract", () => {
     ["tab-run", () => schema.node("tab")],
     ["break-run", () => schema.node("hardBreak")],
     ["page-break-carrier", () => schema.node("pageBreakRun")],
+    ["note-marker-run", () => schema.node("noteMarker", { kind: "footnote" })],
     ["symbol-run", () => schema.node("symbol", { font: "Wingdings", char: "F06F" })],
     [
       "field-run",

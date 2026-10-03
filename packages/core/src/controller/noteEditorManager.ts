@@ -1,11 +1,14 @@
 /** Framework-neutral lifecycle owner for editable footnote and endnote stories. */
 
-import { EditorState } from "prosemirror-state";
+import { OP_STORIES } from "@stll/docx-core/ops";
+import { EditorState, TextSelection } from "prosemirror-state";
 import type { EditorState as EditorStateT } from "prosemirror-state";
 import type { Plugin } from "prosemirror-state";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorView, type DirectEditorProps } from "prosemirror-view";
 
+import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
+import { visitDocxParagraphs, visitParagraphRuns } from "../docx/paragraphTraversal";
 import { isSeparatorEndnote, isSeparatorFootnote } from "../docx/footnoteParser";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
@@ -19,6 +22,8 @@ import { createDocumentNumberingPlugin } from "../prosemirror/plugins/documentNu
 import { schema } from "../prosemirror/schema";
 import type {
   BlockContent,
+  Run,
+  Paragraph,
   Document,
   Endnote,
   Footnote,
@@ -27,6 +32,9 @@ import type {
   Theme,
 } from "../types/document";
 import type { NoteStoryKey } from "../types/editor-story";
+
+import { createCanonicalStoryEditor } from "./canonicalStoryEditor";
+import type { HiddenEditorApi } from "./hiddenEditorApi";
 
 export type { NoteStoryKey } from "../types/editor-story";
 export type NoteStoryKind = NoteStoryKey["kind"];
@@ -40,6 +48,9 @@ export type NoteEditorTransaction = NoteStoryKey & {
 export type NoteEditorManagerDeps = {
   createView?: ((mountNode: HTMLElement, props: DirectEditorProps) => EditorView) | undefined;
   getDocument: () => Document | null;
+  getCanonicalApi?: (() => HiddenEditorApi | null) | undefined;
+  getExperimentalSession?: (() => "canonical" | undefined) | undefined;
+  onSessionRefusal?: ((reason: string) => void) | undefined;
   getHost: () => HTMLElement | null;
   getPlugins?: (() => Plugin[]) | undefined;
   getStyles: () => StyleDefinitions | null | undefined;
@@ -132,6 +143,37 @@ const buildInitialState = (
   );
 };
 
+type PreserveNoteMarkersOptions = { source: BlockContent[]; projected: BlockContent[] };
+
+/** Automatic note marks have no PM width; retain their authored runs on default writeback. */
+const preserveNoteMarkers = ({ source, projected }: PreserveNoteMarkersOptions): BlockContent[] => {
+  const marks: Run[] = [];
+  visitDocxParagraphs({ documentBody: { content: source } }, (paragraph) =>
+    visitParagraphRuns(paragraph, (run) => {
+      const content = run.content.filter((child) => child.type === "noteMarker");
+      if (content.length > 0) marks.push({ ...run, content });
+    }),
+  );
+  if (marks.length === 0) return projected;
+  let hasMarker = false;
+  visitDocxParagraphs({ documentBody: { content: projected } }, (paragraph) =>
+    visitParagraphRuns(paragraph, (run) => {
+      if (run.content.some((child) => child.type === "noteMarker")) hasMarker = true;
+    }),
+  );
+  if (hasMarker) return projected;
+  const owned = cloneDocumentWithParagraphPropertySources({
+    package: { document: { content: projected } },
+  }).package.document.content;
+  const paragraphs: Paragraph[] = [];
+  visitDocxParagraphs({ documentBody: { content: owned } }, (paragraph) => {
+    paragraphs.push(paragraph);
+  });
+  const first = paragraphs.at(0);
+  if (first) first.content.unshift(...marks);
+  return owned;
+};
+
 export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditorManager => {
   const mounted = new Map<string, MountedView>();
   let active: NoteStoryKey | null = null;
@@ -158,7 +200,16 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
   const sync = (): void => {
     const host = deps.getHost();
     if (!host) return;
-    const document = deps.getDocument();
+    // Pending IME input owns its view until the shared session commits.
+    if (
+      deps.getExperimentalSession?.() === "canonical" &&
+      !deps.getCanonicalApi?.()?.getCanonicalStoryProjection(OP_STORIES.MAIN)
+    )
+      return;
+    const document =
+      deps.getExperimentalSession?.() === "canonical"
+        ? (deps.getCanonicalApi?.()?.getCanonicalDocument() ?? deps.getDocument())
+        : deps.getDocument();
     const styles = deps.getStyles();
     const theme = deps.getTheme();
     const numbering = document?.package.numbering;
@@ -181,6 +232,38 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       const existing = mounted.get(key);
       if (existing) {
         if (existing.mountNode.parentElement !== host) host.append(existing.mountNode);
+        if (deps.getExperimentalSession?.() === "canonical") {
+          const projected = deps
+            .getCanonicalApi?.()
+            ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId });
+          if (projected && !existing.view.state.doc.eq(projected)) {
+            const transaction = existing.view.state.tr.replaceWith(
+              0,
+              existing.view.state.doc.content.size,
+              projected.content,
+            );
+            const restored = deps
+              .getCanonicalApi?.()
+              ?.getCanonicalStorySelection({ kind: storyKey.kind, id: storyKey.noteId });
+            const anchor = Math.min(existing.view.state.selection.anchor, projected.content.size);
+            transaction.setSelection(
+              restored
+                ? TextSelection.create(transaction.doc, restored.anchor, restored.head)
+                : TextSelection.near(transaction.doc.resolve(anchor)),
+            );
+            transaction.setMeta("addToHistory", false);
+            existing.view.updateState(existing.view.state.apply(transaction));
+          }
+          existing.appliedNote = note;
+          existing.appliedContent = note.content;
+          existing.appliedProseDocument = existing.view.state.doc;
+          existing.appliedStyles = styles;
+          existing.appliedTheme = theme;
+          existing.appliedNumbering = numbering;
+          existing.appliedPlugins = externalPlugins;
+          existing.dirty = false;
+          continue;
+        }
         const nextProseDocument = noteToProseDocument(note, styles, theme);
         const contextIsCurrent =
           existing.appliedStyles === styles &&
@@ -225,9 +308,39 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
       mountNode.dataset["noteId"] = String(storyKey.noteId);
       host.append(mountNode);
       const proseDocument = noteToProseDocument(note, styles, theme);
+      const canonical = createCanonicalStoryEditor({
+        story: { kind: storyKey.kind, id: storyKey.noteId },
+        getView: () => view,
+        getApi: () => deps.getCanonicalApi?.() ?? null,
+        enabled: () => deps.getExperimentalSession?.() === "canonical",
+        onRefusal: deps.onSessionRefusal,
+        onSelectionChange: () =>
+          deps.onTransaction?.({ ...storyKey, view, docChanged: false, selectionChanged: true }),
+      });
+      const canonicalProjection =
+        deps.getExperimentalSession?.() === "canonical"
+          ? deps
+              .getCanonicalApi?.()
+              ?.getCanonicalStoryProjection({ kind: storyKey.kind, id: storyKey.noteId })
+          : null;
+      if (deps.getExperimentalSession?.() === "canonical" && !canonicalProjection) {
+        manager.destroy();
+        mountNode.remove();
+        continue;
+      }
       const view = (deps.createView ?? createEditorView)(mountNode, {
-        state: buildInitialState(proseDocument, styles, numbering, manager, externalPlugins),
+        ...canonical.props,
+        state: canonicalProjection
+          ? EditorState.create({
+              doc: canonicalProjection,
+              plugins: [
+                createDocumentStylesPlugin(styles),
+                createDocumentNumberingPlugin(numbering),
+              ],
+            })
+          : buildInitialState(proseDocument, styles, numbering, manager, externalPlugins),
         dispatchTransaction(transaction) {
+          if (canonical.dispatch(transaction)) return;
           view.updateState(view.state.apply(transaction));
           const mountedStory = mounted.get(key);
           if (mountedStory && transaction.docChanged) mountedStory.dirty = true;
@@ -274,6 +387,8 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
     getView: (story) => mounted.get(storyMapKey(story))?.view ?? null,
     listStories: () => enumerateDocumentNoteStories(deps.getDocument()),
     snapshotDocument: (document) => {
+      if (deps.getExperimentalSession?.() === "canonical")
+        return deps.getCanonicalApi?.()?.getCanonicalDocument() ?? document;
       let footnotes = document.package.footnotes;
       let endnotes = document.package.endnotes;
       let footnotesChanged = false;
@@ -295,7 +410,10 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
           }
           const updated: Footnote = {
             ...current,
-            content: proseDocToBlocks(lists.doc, current.content, document.package.styles),
+            content: preserveNoteMarkers({
+              source: current.content,
+              projected: proseDocToBlocks(lists.doc, current.content, document.package.styles),
+            }),
           };
           footnotes[index] = updated;
           story.appliedNote = updated;
@@ -317,7 +435,10 @@ export const createNoteEditorManager = (deps: NoteEditorManagerDeps): NoteEditor
         }
         const updated: Endnote = {
           ...current,
-          content: proseDocToBlocks(lists.doc, current.content, document.package.styles),
+          content: preserveNoteMarkers({
+            source: current.content,
+            projected: proseDocToBlocks(lists.doc, current.content, document.package.styles),
+          }),
         };
         endnotes[index] = updated;
         story.appliedNote = updated;

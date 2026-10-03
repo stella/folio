@@ -1,3 +1,6 @@
+export { noteUsesCustomMark } from "./noteMarks";
+export { sectionPropertiesAt } from "./storyLifecycle";
+export { storyBody, findStoryBody, documentStories, sameStory } from "./stories";
 /**
  * `@stll/docx-core/ops`: document operations over the typed model.
  *
@@ -6,18 +9,16 @@
  */
 
 export { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "./apply";
+export { formattingEquals, isTextOnlyRun, runsMergeable, mergeRunContent } from "./runMerge";
 export {
   compileEditorIntent,
-  allocateEditorIntentIds,
+  createEditorIntentIdAllocator,
   paragraphVisibleText,
   physicalOffsetAtVisibleOffset,
   editorParagraphGroups,
-  physicalPositionAtEditorOffset,
   type EditorIntent,
   type TableIntentOperation,
   type EditorIntentMode,
-  type CompileEditorIntentOptions,
-  type CompiledEditorIntent,
 } from "./editorIntent";
 export { DocumentOpsContractError, normalizeForOps, validateOpsDocument } from "./contract";
 export { OBJECT_REPLACEMENT_CHARACTER, paragraphLength, paragraphLogicalText } from "./offsets";
@@ -45,8 +46,6 @@ export {
 } from "./refusal";
 export {
   DOCUMENT_OP_SCHEMA_VERSION,
-  SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   DOCUMENT_OP_TYPES,
   EMPTY_PROPERTY_SETS,
   INHERIT_RUN_PROPS,
@@ -55,6 +54,14 @@ export {
   REVISION_DECISIONS,
   SPLIT_HALVES,
   toOpEnvelope,
+  type HeaderFooterStory,
+  type NoteStory,
+  type CreateHeaderFooterOp,
+  type RemoveHeaderFooterOp,
+  type AddNoteOp,
+  type RemoveNoteOp,
+  type SetSectionPropsOp,
+  type RestoreStoryPartsOp,
   type BlockInsertionPoint,
   type InsertBlocksOp,
   type DeleteBlocksOp,
