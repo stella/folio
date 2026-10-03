@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import type { BlockContent } from "../types/document";
@@ -29,9 +30,45 @@ const isBlockKind = (type: string): type is BlockContent["type"] =>
   Object.hasOwn(BLOCK_ELEMENT_NAMES, type);
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+type ReplayBlock =
+  | {
+      type: Exclude<
+        BlockContent["type"],
+        "blockSdt" | "blockCustomXml" | "table" | "preservedBlock"
+      >;
+    }
+  | { type: "blockSdt" | "blockCustomXml"; content: unknown[] }
+  | { type: "table"; rows: unknown[] }
+  | { type: "preservedBlock"; xml: string };
+const isReplayBlock = (value: unknown): value is ReplayBlock => {
+  if (
+    !record(value) ||
+    !("type" in value) ||
+    typeof value.type !== "string" ||
+    !isBlockKind(value.type)
+  )
+    return false;
+  switch (value.type) {
+    case "blockSdt":
+    case "blockCustomXml":
+      return "content" in value && Array.isArray(value.content);
+    case "table":
+      return "rows" in value && Array.isArray(value.rows);
+    case "preservedBlock":
+      return "xml" in value && typeof value.xml === "string";
+    case "paragraph":
+    case "bookmarkStart":
+    case "bookmarkEnd":
+      return true;
+    default: {
+      const unexpected: never = value.type;
+      panic(`Unknown replay block kind: ${unexpected}`);
+    }
+  }
+};
 type ModelMatchOptions = { value: unknown; element: XmlElement; mode: "source" | "generated" };
 const modelMatchesElement = ({ value, element, mode }: ModelMatchOptions): boolean => {
-  if (!record(value) || typeof value.type !== "string" || !isBlockKind(value.type)) return false;
+  if (!isReplayBlock(value)) return false;
   // The parser projects a supported AlternateContent branch as one block;
   // source cardinality and the trusted baseline preserve its outer carrier.
   if (
@@ -47,7 +84,7 @@ const modelMatchesElement = ({ value, element, mode }: ModelMatchOptions): boole
       getLocalName(element.name) === name &&
       WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
     );
-  if (typeof value.xml !== "string") return false;
+  if (value.type !== "preservedBlock") return false;
   const parsed = parseStreamingXmlWithSourceRanges(value.xml, element.namespaceScope);
   if (parsed.status !== "parsed") return false;
   const roots = getChildElements(parsed.value);
@@ -272,7 +309,7 @@ const replayBlocks = (
     if (identity !== undefined) addCandidate({ map: identities, key: identity, index });
   }
   const used = new Set<number>();
-  const fragments = [];
+  const fragments: string[] = [];
   for (const [index, block] of currentContent.entries()) {
     const fingerprint = canonicalJson(block);
     const identity = paragraphIdentity(block);
@@ -287,11 +324,11 @@ const replayBlocks = (
       !used.has(index)
     ) {
       const baseline = baselineContent[index];
-      if (record(baseline) && baseline.type === block.type) originalIndex = index;
+      if (isReplayBlock(baseline) && baseline.type === block.type) originalIndex = index;
     }
     if (originalIndex !== undefined) used.add(originalIndex);
     const original = originalIndex === undefined ? undefined : source.blocks[originalIndex];
-    if (original && fingerprints[originalIndex] === fingerprint) {
+    if (originalIndex !== undefined && original && fingerprints[originalIndex] === fingerprint) {
       fragments.push(sourceXml.slice(original.start, original.end));
       continue;
     }
@@ -379,7 +416,7 @@ const replayNestedBlock = ({
   current,
   generatedRoot,
 }: NestedBlockOptions): string | null => {
-  if (!record(baseline) || baseline.type !== current.type) return null;
+  if (!isReplayBlock(baseline) || baseline.type !== current.type) return null;
   const sourceRange = getXmlSourceRange(sourceElement);
   if (!sourceRange) return null;
   const splices: XmlSplice[] = [];
@@ -417,7 +454,7 @@ const replayNestedBlock = ({
     case "blockSdt":
     case "blockCustomXml": {
       if (
-        !Array.isArray(baseline.content) ||
+        (baseline.type !== "blockSdt" && baseline.type !== "blockCustomXml") ||
         canonicalJson(withoutChildren(baseline, "content")) !==
           canonicalJson(withoutChildren(current, "content"))
       )
@@ -443,7 +480,7 @@ const replayNestedBlock = ({
     }
     case "table": {
       if (
-        !Array.isArray(baseline.rows) ||
+        baseline.type !== "table" ||
         baseline.rows.length !== current.rows.length ||
         canonicalJson(withoutChildren(baseline, "rows")) !==
           canonicalJson(withoutChildren(current, "rows"))
@@ -459,6 +496,7 @@ const replayNestedBlock = ({
         const generatedRow = generatedRows[rowIndex];
         if (
           !record(beforeRow) ||
+          !("cells" in beforeRow) ||
           !Array.isArray(beforeRow.cells) ||
           beforeRow.cells.length !== row.cells.length ||
           canonicalJson(withoutChildren(beforeRow, "cells")) !==
@@ -477,6 +515,7 @@ const replayNestedBlock = ({
           const generatedCell = generatedCells[cellIndex];
           if (
             !record(beforeCell) ||
+            !("content" in beforeCell) ||
             !Array.isArray(beforeCell.content) ||
             canonicalJson(withoutChildren(beforeCell, "content")) !==
               canonicalJson(withoutChildren(cell, "content")) ||
