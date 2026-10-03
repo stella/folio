@@ -756,7 +756,7 @@ function convertParagraph(
         cached !== undefined &&
         canonicalJson(listRenderingDefinition(cached)) ===
           canonicalJson(listRenderingDefinition(rendering)) &&
-        ((cached.implicitChildLevelAdvances ?? 0) === 0 ||
+        (cached.markerSecondSlotOffsetTwips === undefined ||
           cached.markerSecondSlotOffsetTwips === nextSlotOffset);
       Object.assign(
         attrs,
