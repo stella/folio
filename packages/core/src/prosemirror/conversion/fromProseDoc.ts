@@ -479,6 +479,11 @@ const validateParagraphPropertySourceTokens = (
       case "authored":
       case "capture-only":
         return;
+      case "missing-token":
+        throw sourceValidationError(
+          "invalid_token",
+          "A source-bound paragraph is missing its paragraph-property token.",
+        );
       case "invalid":
         throw sourceValidationError("invalid_token", "The source paragraph identity is invalid.");
       case "durable":

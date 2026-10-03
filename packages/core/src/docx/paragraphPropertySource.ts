@@ -34,6 +34,8 @@ type ParagraphPropertyCapture = Readonly<{
   owner: Paragraph;
 }>;
 const paragraphPropertyCaptures = new WeakMap<object, ParagraphPropertyCapture>();
+type ParagraphSourceRecordKind = "durable" | "capture-only";
+const paragraphSourceRecordKinds = new WeakMap<Paragraph, ParagraphSourceRecordKind>();
 
 // Opaque handles follow immutable model operations without giving copies a
 // durable paragraph identity. JSON and structuredClone omit this private symbol.
@@ -252,6 +254,12 @@ export const paragraphPropertySourceMatchesEmission = (
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
   const capture = captureForParagraph(source);
   if (capture) attachParagraphCapture(target, capture);
+  const kind =
+    paragraphPropertySourceTokens.has(source) ||
+    paragraphSourceRecordKinds.get(source) === "durable"
+      ? "durable"
+      : "capture-only";
+  if (!paragraphSourceRecordKinds.has(target)) paragraphSourceRecordKinds.set(target, kind);
 };
 
 const copyParagraphCaptureForTransport = (target: Paragraph, source: Paragraph): void => {
@@ -290,6 +298,7 @@ export const assignDocumentParagraphPropertySourceContract = (
   visitDocumentStoryParagraphs(document.package.document.content, (paragraph) => {
     const token = tokenForOrdinal(contract, ordinal);
     paragraphPropertySourceTokens.set(paragraph, token);
+    paragraphSourceRecordKinds.set(paragraph, "durable");
     sources.set(token, paragraph);
     ordinal += 1;
   });
@@ -367,6 +376,7 @@ type ParagraphSourceIdentity =
   | { type: "durable"; token: string }
   | { type: "capture-only" }
   | { type: "authored" }
+  | { type: "missing-token" }
   | { type: "invalid" };
 
 /** Byte captures can follow derivations; only explicit copies carry durable tokens. */
@@ -378,11 +388,17 @@ export const inspectParagraphSourceIdentity = (
   if (!binding) return { type: "invalid" };
   const capture = captureForParagraph(paragraph);
   if (Object.hasOwn(paragraph, paragraphPropertyCapture) && !capture) return { type: "invalid" };
-  if (capture && !binding.sourceOwners.has(capture.owner)) return { type: "invalid" };
   const token = getParagraphPropertySourceToken(paragraph);
-  if (token !== undefined) return { type: "durable", token };
-  if (binding.sourceOwners.has(paragraph)) return { type: "invalid" };
-  return capture ? { type: "capture-only" } : { type: "authored" };
+  if (token !== undefined) {
+    if (capture && !binding.sourceOwners.has(capture.owner)) return { type: "invalid" };
+    return { type: "durable", token };
+  }
+  const kind = paragraphSourceRecordKinds.get(paragraph);
+  if (kind === "durable" || binding.sourceOwners.has(paragraph)) return { type: "missing-token" };
+  if (!capture) return { type: "authored" };
+  if (kind === "capture-only" || binding.sourceOwners.has(capture.owner))
+    return { type: "capture-only" };
+  return { type: "invalid" };
 };
 
 type ParagraphCloneOverrides = Omit<Partial<Paragraph>, "type">;
@@ -1152,8 +1168,10 @@ export const restoreTableCellsWithParagraphPropertySources = (
     }
     switch (sourceEntry.binding.type) {
       case "authored":
+        paragraphSourceRecordKinds.set(target, "capture-only");
         break;
       case "source":
+        paragraphSourceRecordKinds.set(target, "durable");
         paragraphPropertySourceTokens.set(target, sourceEntry.binding.token);
         break;
       default: {
@@ -1428,6 +1446,9 @@ export const linkParagraphPropertySourceCandidate = (target: Paragraph, source: 
   const token = source.attrs[PROSE_PARAGRAPH_SOURCE_TOKEN_ATTR];
   if (typeof token === "string") {
     paragraphPropertySourceTokens.set(target, token);
+    paragraphSourceRecordKinds.set(target, "durable");
+  } else {
+    paragraphSourceRecordKinds.set(target, "capture-only");
   }
   const sourceOwner = proseParagraphSourceOwners.get(source);
   if (sourceOwner) {

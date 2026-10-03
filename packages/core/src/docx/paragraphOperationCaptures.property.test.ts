@@ -9,6 +9,7 @@ import {
 } from "../../../../scripts/lib/corpus-invariants/op-sequences";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { createDocx } from "./rezip";
+import { copyParagraphPropertyCapture } from "./paragraphPropertySource";
 import { parseDocx } from "./parser";
 import { createEmptyDocument } from "../utils/createDocument";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -83,6 +84,25 @@ test(
             package: { ...source.package, document: { ...source.package.document, content } },
           };
           const rebuilt = updateDocumentContent(document, toProseDoc(document));
+          const repeated = updateDocumentContent(rebuilt, toProseDoc(rebuilt));
+          expect(structuredClone(repeated.package.document.content)).toStrictEqual(
+            structuredClone(rebuilt.package.document.content),
+          );
+          for (const paragraph of source.package.document.content) {
+            if (paragraph.type !== "paragraph") throw new TypeError("Expected a source paragraph");
+            const detached = { ...paragraph };
+            copyParagraphPropertyCapture(detached, paragraph);
+            const invalid = {
+              ...source,
+              package: {
+                ...source.package,
+                document: { ...source.package.document, content: [detached] },
+              },
+            };
+            expect(() => updateDocumentContent(invalid, toProseDoc(source))).toThrow(
+              "A source-bound paragraph is missing its paragraph-property token.",
+            );
+          }
           const reopened = await parseDocx(await createDocx(rebuilt), {
             preloadFonts: false,
             detectVariables: false,

@@ -146,8 +146,8 @@ test.each(["absent", "empty", "bold"] as const)(
         const after = applyDocumentOps(reopened, [resolution]);
         if (before.isErr()) throw before.error;
         if (after.isErr()) throw after.error;
-        expect(after.value.document.package.document.content).toStrictEqual(
-          before.value.document.package.document.content,
+        expect(structuredClone(after.value.document.package.document.content)).toStrictEqual(
+          structuredClone(before.value.document.package.document.content),
         );
         expect(getTrackedChangeStatsFromDoc(toProseDoc(after.value.document)).ids).toEqual([]);
       }
