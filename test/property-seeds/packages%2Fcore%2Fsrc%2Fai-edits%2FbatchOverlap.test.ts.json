@@ -1,0 +1,40 @@
+{
+  "refuses each conflict and applies the rest as one at a time would": [
+    {
+      "seed": -440111207,
+      "path": "136:9:8:8",
+      "note": "#1128: formatting a last paragraph the batch deletes and inserts after",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 19,
+      "path": "35",
+      "note": "#1128: oracle for a tracked merge into a run of deleted blocks",
+      "date": "2026-09-27"
+    },
+    {
+      "seed": 2057617557,
+      "path": "308:1:4",
+      "note": "formatting a last paragraph the batch deletes and inserts before (path at factor 5)",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": 1166263764,
+      "path": "281:2:5:5:8:8:8",
+      "note": "tracked insertion before, formatting and deletion of the last block",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": 699625871,
+      "path": "585:5:6:0:3",
+      "note": "#1221: deleting the last block carries its predecessor's properties from before the batch set them",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": 252563079,
+      "path": "588:3",
+      "note": "A tracked merge must account for the final break retired by a later deletion (path at factor 5).",
+      "date": "2026-09-30"
+    }
+  ]
+}

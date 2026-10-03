@@ -1,0 +1,26 @@
+{
+  "L8: ${kind} survives editor save and reopen": [
+    {
+      "seed": 221877490,
+      "path": "0:0:0:0:0:0:0",
+      "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
+      "date": "2026-09-30"
+    }
+  ],
+  "L8: deletion inside another insertion keeps both wrapper ids": [
+    {
+      "seed": -1245202278,
+      "path": "0:0:0:0:0:0:0:0:0:0",
+      "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
+      "date": "2026-09-30"
+    }
+  ],
+  "L9: ${kind} reports model and editor resolution differences": [
+    {
+      "seed": 998410889,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "Review fixtures must serialize their own section model rather than repack an unrelated source buffer",
+      "date": "2026-09-30"
+    }
+  ]
+}

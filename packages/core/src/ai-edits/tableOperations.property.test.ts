@@ -508,7 +508,7 @@ describe("table operations on merged tables", () => {
     "keep every value, agree across modes and readers, and reject cleanly",
     async () => {
       // The seeds this property once failed on replay first, from
-      // test/property-seeds.json.
+      // test/property-seeds/.
       await assertProperty(fc.asyncProperty(documentArbitrary, batchArbitrary, checkCase), {
         numRuns: 150,
       });
