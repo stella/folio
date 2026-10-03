@@ -168,17 +168,8 @@ const assertPackageOperationLaws = async ({
 };
 
 test(
-  "every operation preserves package inverse and declared scope laws",
+  "every declared operation and story pair preserves package laws",
   async () => {
-    expect(new Set(GENERATED_PACKAGE_OP_KINDS)).toEqual(new Set(Object.values(DOCUMENT_OP_TYPES)));
-    const property = fc.asyncProperty(
-      fc.constantFrom(...GENERATED_PACKAGE_OP_KINDS),
-      packageDocumentArbitrary,
-      opSeedArbitrary,
-      fc.constantFrom(...GENERATED_PACKAGE_STORIES),
-      async (kind, document, seed, story) =>
-        assertPackageOperationLaws({ kind, document, seed, story }),
-    );
     const fixture = fc.sample(packageDocumentArbitrary, { seed: 1336, numRuns: 1 }).at(0);
     const operationSeed = fc.sample(opSeedArbitrary, { seed: 1339, numRuns: 1 }).at(0);
     if (!fixture || !operationSeed)
@@ -193,12 +184,40 @@ test(
         ],
       ),
     );
+    const exercised = new Set<string>();
+    for (const [kind, document, seed, story] of examples) {
+      await assertPackageOperationLaws({ kind, document, seed, story });
+      exercised.add(JSON.stringify([kind, story]));
+    }
+    expect(exercised).toEqual(
+      new Set(
+        GENERATED_PACKAGE_OP_KINDS.flatMap((kind) =>
+          GENERATED_PACKAGE_STORIES.map((story) => JSON.stringify([kind, story])),
+        ),
+      ),
+    );
+    expect(exercised.size).toBeGreaterThan(0);
+  },
+  propertyTestTimeout(120_000),
+);
+
+test(
+  "every operation preserves package inverse and declared scope laws",
+  async () => {
+    expect(new Set(GENERATED_PACKAGE_OP_KINDS)).toEqual(new Set(Object.values(DOCUMENT_OP_TYPES)));
+    const property = fc.asyncProperty(
+      fc.constantFrom(...GENERATED_PACKAGE_OP_KINDS),
+      packageDocumentArbitrary,
+      opSeedArbitrary,
+      fc.constantFrom(...GENERATED_PACKAGE_STORIES),
+      async (kind, document, seed, story) =>
+        assertPackageOperationLaws({ kind, document, seed, story }),
+    );
     const expected = Object.entries(OPERATION_LAW_DISPOSITIONS).flatMap(([kind, disposition]) =>
       knownFailures(disposition, kind),
     );
-    if (expected.length > 0)
-      await assertKnownProperty(property, expected, { numRuns: examples.length + 135, examples });
-    else await assertProperty(property, { numRuns: examples.length + 135, examples });
+    if (expected.length > 0) await assertKnownProperty(property, expected, { numRuns: 135 });
+    else await assertProperty(property, { numRuns: 135 });
   },
   propertyTestTimeout(120_000),
 );
