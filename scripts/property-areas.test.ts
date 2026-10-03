@@ -1,3 +1,4 @@
+import { seedFileFor } from "../test/seed-registry";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -138,9 +139,10 @@ describe("property areas", () => {
 
   test("a change to the pinned seeds reruns the files they name", () => {
     expect(
-      selectPropertyFiles(["test/property-seeds.json"], ALL, [
-        "packages/core/src/ai-edits/batchOverlap.test.ts",
-      ]).map((f) => f.file),
+      selectPropertyFiles(
+        [seedFileFor("packages/core/src/ai-edits/batchOverlap.test.ts")],
+        ALL,
+      ).map((f) => f.file),
     ).toEqual(["packages/core/src/ai-edits/batchOverlap.test.ts"]);
     expect(selectPropertyFiles(["README.md"], ALL)).toEqual([]);
   });

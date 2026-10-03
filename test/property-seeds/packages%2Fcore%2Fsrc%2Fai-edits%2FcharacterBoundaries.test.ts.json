@@ -1,0 +1,9 @@
+{
+  "changes no text beyond what it names, and cuts no character": [
+    {
+      "seed": 702376610,
+      "note": "A multi-id replacement must not cross ids reserved by earlier batches after rollover; replay the whole sequence because realm allocation retains state. Failure path: 71.",
+      "date": "2026-10-01"
+    }
+  ]
+}

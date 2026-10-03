@@ -1,4 +1,7 @@
 import fc from "fast-check";
+import { PROPERTY_SEEDS_FILE, readSeedRegistry, seedFileFor } from "./seed-registry";
+
+export { PROPERTY_SEEDS_FILE, seedFileFor } from "./seed-registry";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,9 +45,10 @@ import {
  *     counterexample of the property running under that seed. A property that
  *     pins its own `seed` keeps it.
  *
- *  4. Pinned regression seeds. test/property-seeds.json maps
- *     `<repo-relative file>::<test title as written>` to seeds (with an
- *     optional counterexample path) that once failed. `assertProperty`
+ *  4. Pinned regression seeds. Each test/property-seeds/ file maps
+ *     test titles to seeds. Readers join `<repo-relative file>::<test title>`
+ *     for lookup. Entries carry seeds and optional counterexample paths that
+ *     once failed. `assertProperty`
  *     replays each of them before the property's generated runs, in every
  *     environment; `propertyConfig` refuses a property that has pinned seeds
  *     but is not asserted through `assertProperty`.
@@ -63,7 +67,6 @@ const MAX_REPORTED_COUNTEREXAMPLE = 4_000;
 
 const SELF = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SELF), "..");
-export const PROPERTY_SEEDS_FILE = "test/property-seeds.json";
 
 const readNumRunsFactor = (raw: string | undefined): number => {
   if (raw === undefined) {
@@ -212,7 +215,7 @@ type PropertyIdentity = {
   site: CallSite | undefined;
   /** The enclosing test's title as written, when one could be read. */
   title: string | undefined;
-  /** `<file>::<title>`, the property-seeds.json key. */
+  /** `<file>::<title>`, the joined seed-registry key. */
   key: string | undefined;
 };
 
@@ -248,24 +251,17 @@ export type PinnedSeed = {
 
 let pinnedSeeds: Record<string, readonly PinnedSeed[]> | undefined;
 
-/** test/property-seeds.json, keyed `<file>::<test title>`; `$`-keys are comments. */
+/** Joined per-file registry, keyed `<file>::<test title>`. */
 export const readPinnedSeeds = (): Record<string, readonly PinnedSeed[]> => {
   if (pinnedSeeds === undefined) {
-    const parsed = JSON.parse(
-      readFileSync(path.join(REPO_ROOT, PROPERTY_SEEDS_FILE), "utf8"),
-    ) as Record<string, unknown>;
-    pinnedSeeds = Object.fromEntries(
-      Object.entries(parsed).filter(
-        (entry): entry is [string, PinnedSeed[]] => !entry[0].startsWith("$"),
-      ),
-    );
+    pinnedSeeds = readSeedRegistry();
   }
   return pinnedSeeds;
 };
 
 let pinnedSeedsOverride: Record<string, readonly PinnedSeed[]> | undefined;
 
-/** Stand in for test/property-seeds.json (this module's own tests); `undefined` restores it. */
+/** Stand in for test/property-seeds/ (this module's own tests); `undefined` restores it. */
 export const overridePinnedSeedsForTesting = (
   seeds: Record<string, readonly PinnedSeed[]> | undefined,
 ): void => {
@@ -340,12 +336,13 @@ const errorText = (error: unknown): string => {
 
 /**
  * A reporter that throws what fast-check would, plus the replay line and, for
- * a property with no pinned entry for this seed, the property-seeds.json entry
+ * a property with no pinned entry for this seed, the per-file seed entry
  * that would pin it. Under CI it also logs one machine-readable line.
  */
 const replayReporter =
   <Ts>(identity: PropertyIdentity, pinned: PinnedSeed | undefined) =>
   (details: fc.RunDetails<Ts>): void => {
+    const registryFile = identity.site ? seedFileFor(identity.site.file) : PROPERTY_SEEDS_FILE;
     const health = classifyFuzzRun(details);
     reportFuzzHealth(health);
     if (health.status === "infrastructure") {
@@ -355,7 +352,7 @@ const replayReporter =
     if (!details.failed) {
       if (expected !== undefined) {
         throw new Error(
-          `${expected.family} no longer reproduces: pinned seed ${String(pinned?.seed)} passes; remove expectedFailure from ${PROPERTY_SEEDS_FILE}.`,
+          `${expected.family} no longer reproduces: pinned seed ${String(pinned?.seed)} passes; remove expectedFailure from ${registryFile}.`,
         );
       }
       return;
@@ -380,13 +377,13 @@ const replayReporter =
     const lines = [fc.defaultReportMessage(details) ?? "Property failed", ""];
     if (pinned !== undefined) {
       lines.push(
-        `Pinned regression seed ${String(pinned.seed)} from ${PROPERTY_SEEDS_FILE} failed again (${pinned.note}).`,
+        `Pinned regression seed ${String(pinned.seed)} from ${registryFile} failed again (${pinned.note}).`,
       );
     }
     lines.push(`Replay: ${replay}`);
     if (pinned === undefined && identity.key !== undefined) {
       lines.push(
-        `Pin: add ${JSON.stringify(entry)} (with a note and date) under ${JSON.stringify(identity.key)} in ${PROPERTY_SEEDS_FILE}`,
+        `Pin: add ${JSON.stringify(entry)} (with a note and date) under ${JSON.stringify(identity.title)} in ${registryFile}`,
       );
     }
     if (isCi()) {
@@ -517,7 +514,7 @@ const configFor = <Ts>(
 
 /**
  * `fc.assert(property, propertyConfig(params))`, after first replaying every
- * seed test/property-seeds.json pins for the calling test.
+ * seed test/property-seeds/ pins for the calling test.
  */
 export function assertProperty<Ts>(
   property: fc.IAsyncProperty<Ts>,
