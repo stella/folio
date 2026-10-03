@@ -418,15 +418,34 @@ export const PACKAGE_OP_CASES = {
       content: [freshParagraph(args)],
     },
   }),
-  removeHeaderFooter: (args: CaseArgs): GeneratedCase => ({
-    document: args.document,
-    op: {
-      type: "removeHeaderFooter",
+  removeHeaderFooter: (args: CaseArgs): GeneratedCase => {
+    if (args.seed.first % 2 !== 0)
+      return {
+        document: args.document,
+        op: {
+          type: "removeHeaderFooter",
+          sectionIndex: 0,
+          story: { kind: "header", rId: "rIdHeader" },
+          referenceType: "default",
+        },
+      };
+    const created = applyDocumentOp(args.document, {
+      type: "createHeaderFooter",
       sectionIndex: 0,
-      story: { kind: "header", rId: "rIdHeader" },
-      referenceType: "default",
-    },
-  }),
+      story: { kind: "footer", rId: "rIdGenerated" },
+      referenceType: "first",
+      content: [freshParagraph(args)],
+    }).unwrap().document;
+    return {
+      document: created,
+      op: {
+        type: "removeHeaderFooter",
+        sectionIndex: 0,
+        story: { kind: "footer", rId: "rIdGenerated" },
+        referenceType: "first",
+      },
+    };
+  },
   addNote: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
     op: {

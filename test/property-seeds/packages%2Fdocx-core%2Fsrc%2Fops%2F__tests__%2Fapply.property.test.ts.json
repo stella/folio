@@ -1,0 +1,29 @@
+{
+  "an operation's inverse restores the document exactly": [
+    {
+      "seed": 684444476,
+      "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
+      "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
+      "date": "2026-10-03"
+    }
+  ],
+  "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
+    {
+      "seed": 1364722648,
+      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": 1364722648,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0",
+      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1364722648,
+      "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
+    }
+  ]
+}

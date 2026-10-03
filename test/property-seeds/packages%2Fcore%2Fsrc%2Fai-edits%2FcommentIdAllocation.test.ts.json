@@ -1,0 +1,14 @@
+{
+  "comment and revision batches avoid loaded IDs and retain IDs on round-trip": [
+    {
+      "seed": 1641782380,
+      "note": "Loaded maximum IDs must wrap without crossing previously reserved comment or revision IDs; replay the whole sequence because realm allocation retains state. Failure path: 3.",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": 1447742509,
+      "note": "Shared revision batches need a free contiguous interval after loaded ids shorten the high tail; replay the whole sequence because realm allocation retains state. Failure path: 13:0:0.",
+      "date": "2026-10-01"
+    }
+  ]
+}
