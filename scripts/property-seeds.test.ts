@@ -1,12 +1,20 @@
+import { tmpdir } from "node:os";
+import {
+  joinPinnedSeeds,
+  parseSeedTitles,
+  readSeedRegistry,
+  splitPinnedSeeds,
+  testFileForSeedFile,
+} from "../test/seed-registry";
 /**
  * The property-test seed discipline (test/property-testing.ts): per-commit
  * seeds under CI, a replay line on every failure, and the pinned regression
- * seeds in test/property-seeds.json replayed first.
+ * seeds in test/property-seeds/ replayed first.
  */
 
 import { afterEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import fc from "fast-check";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { failureMarker } from "../test/consumer-scenarios/support/failure-fingerprints";
@@ -19,6 +27,7 @@ import {
   enclosingTitles,
   overridePinnedSeedsForTesting,
   PROPERTY_SEEDS_FILE,
+  seedFileFor,
   propertyConfig,
   propertyTestTimeout,
   readPinnedSeeds,
@@ -28,6 +37,52 @@ import {
 setDefaultTimeout(propertyTestTimeout(5_000));
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");
+const registryDriverProblems = (
+  registry: ReturnType<typeof readPinnedSeeds>,
+  readSource = (file: string) => readFileSync(path.join(REPO_ROOT, file), "utf8"),
+): string[] => {
+  const problems: string[] = [];
+  for (const [key, entries] of Object.entries(registry)) {
+    const separator = key.indexOf("::");
+    const file = key.slice(0, separator);
+    const title = key.slice(separator + 2);
+    let lines: string[] = [];
+    try {
+      lines = readSource(file).split("\n");
+    } catch {
+      problems.push(`${key}: no such file`);
+      continue;
+    }
+    const sites = lines.flatMap((text, index) =>
+      /\bassert(?:Pinned|Known)?Property\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text)
+        ? [index + 1]
+        : [],
+    );
+    if (!sites.some((line) => enclosingTitles(lines, line).at(-1) === title)) {
+      problems.push(`${key}: no registry driver call inside a test with that title`);
+    }
+    for (const pinned of entries) {
+      if (!Number.isInteger(pinned.seed) || (pinned.seed | 0) !== pinned.seed) {
+        problems.push(`${key}: seed ${String(pinned.seed)} is not a 32-bit integer`);
+      }
+      if (pinned.path !== undefined && !/^\d+(?::\d+)*$/.test(pinned.path)) {
+        problems.push(`${key}: path ${JSON.stringify(pinned.path)} is not a fast-check path`);
+      }
+      if (
+        pinned.expectedFailure !== undefined &&
+        (!/^T[1-7]$/.test(pinned.expectedFailure.family) ||
+          !/^[0-9a-f]{16}$/.test(pinned.expectedFailure.fingerprint))
+      ) {
+        problems.push(`${key}: expectedFailure needs a train family and a normalized fingerprint`);
+      }
+      if (pinned.note.trim() === "" || !/^\d{4}-\d{2}-\d{2}$/.test(pinned.date)) {
+        problems.push(`${key}: every entry needs a note and a YYYY-MM-DD date`);
+      }
+    }
+  }
+  return problems;
+};
+
 const ENV_KEYS = [
   "CI",
   "GITHUB_SHA",
@@ -158,7 +213,7 @@ test("nightly replay fixture", () => {
       /^Replay: PROPERTY_TEST_SEED=1234 PROPERTY_TEST_PATH='[\d:]+' bun test \.\/scripts\/property-seeds\.test\.ts -t 'a failure names the seed, the path and a replay line for this test'$/,
     );
     expect(message).toContain(
-      `under "scripts/property-seeds.test.ts::a failure names the seed, the path and a replay line for this test" in ${PROPERTY_SEEDS_FILE}`,
+      `under "a failure names the seed, the path and a replay line for this test" in ${seedFileFor("scripts/property-seeds.test.ts")}`,
     );
   });
 
@@ -566,46 +621,7 @@ describe("pinned regression seeds", () => {
   });
 
   test(`every ${PROPERTY_SEEDS_FILE} entry names a test that asserts through a registry driver`, () => {
-    const problems: string[] = [];
-    for (const [key, entries] of Object.entries(readPinnedSeeds())) {
-      const [file, title] = key.split("::") as [string, string | undefined];
-      let lines: string[] = [];
-      try {
-        lines = readFileSync(path.join(REPO_ROOT, file), "utf8").split("\n");
-      } catch {
-        problems.push(`${key}: no such file`);
-        continue;
-      }
-      const sites = lines.flatMap((text, index) =>
-        /\bassert(?:Pinned|Known)?Property\(/.test(text) && !/^\s*(?:\*|\/\/|import)/.test(text)
-          ? [index + 1]
-          : [],
-      );
-      if (!sites.some((line) => enclosingTitles(lines, line).at(-1) === title)) {
-        problems.push(`${key}: no registry driver call inside a test with that title`);
-      }
-      for (const pinned of entries) {
-        if (!Number.isInteger(pinned.seed) || (pinned.seed | 0) !== pinned.seed) {
-          problems.push(`${key}: seed ${String(pinned.seed)} is not a 32-bit integer`);
-        }
-        if (pinned.path !== undefined && !/^\d+(?::\d+)*$/.test(pinned.path)) {
-          problems.push(`${key}: path ${JSON.stringify(pinned.path)} is not a fast-check path`);
-        }
-        if (
-          pinned.expectedFailure !== undefined &&
-          (!/^T[1-7]$/.test(pinned.expectedFailure.family) ||
-            !/^[0-9a-f]{16}$/.test(pinned.expectedFailure.fingerprint))
-        ) {
-          problems.push(
-            `${key}: expectedFailure needs a train family and a normalized fingerprint`,
-          );
-        }
-        if (pinned.note.trim() === "" || !/^\d{4}-\d{2}-\d{2}$/.test(pinned.date)) {
-          problems.push(`${key}: every entry needs a note and a YYYY-MM-DD date`);
-        }
-      }
-    }
-    expect(problems).toEqual([]);
+    expect(registryDriverProblems(readPinnedSeeds())).toEqual([]);
   });
 });
 
@@ -636,5 +652,93 @@ describe("test titles", () => {
     expect(new RegExp(titlePattern("per fixture (${name})")).test("per fixture (a.docx)")).toBe(
       true,
     );
+  });
+});
+
+describe("per-test-file seed registry", () => {
+  test(
+    "split and join preserve generated registries",
+    () => {
+      const fragment = fc
+        .array(fc.constantFrom("a", "é", "%", "_", "😀"), { minLength: 1, maxLength: 8 })
+        .map((value) => value.join(""));
+      const key = fc
+        .tuple(fragment, fragment)
+        .map(([file, title]) => `scripts/${file}.test.ts::${title}::nested title`);
+      assertProperty(
+        fc.property(
+          fc.dictionary(
+            key,
+            fc.array(
+              fc.record({
+                seed: fc.integer(),
+                note: fc.constant("generated registry"),
+                date: fc.constant("2026-10-03"),
+              }),
+              { minLength: 1, maxLength: 3 },
+            ),
+            { maxKeys: 12 },
+          ),
+          (registry) => {
+            expect(joinPinnedSeeds(splitPinnedSeeds(registry))).toEqual(registry);
+            for (const file of Object.keys(splitPinnedSeeds(registry)))
+              expect(seedFileFor(testFileForSeedFile(file))).toBe(file);
+          },
+        ),
+        { numRuns: 80 },
+      );
+    },
+    propertyTestTimeout(10_000),
+  );
+
+  test("duplicate and escaped duplicate JSON keys are refused", () => {
+    for (const source of ['{"title":[],"title":[]}', '{"title":[],"\\u0074itle":[]}']) {
+      expect(() => parseSeedTitles(source, "probe.json")).toThrow("Duplicate seed key");
+    }
+  });
+
+  test("alternate path escapes cannot duplicate one driving test", () => {
+    const file = seedFileFor("scripts/probe.test.ts");
+    expect(testFileForSeedFile(file)).toBe("scripts/probe.test.ts");
+    expect(() => testFileForSeedFile(file.replace("%2F", "%2f"))).toThrow("Noncanonical");
+    expect(() => testFileForSeedFile(file.replace("scripts", "%73cripts"))).toThrow("Noncanonical");
+    expect(() => seedFileFor("../probe.test.ts")).toThrow("Invalid seed test path");
+  });
+
+  test("per-file readers preserve entries and refuse the monolithic registry", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "folio-seed-registry-"));
+    try {
+      mkdirSync(path.join(root, PROPERTY_SEEDS_FILE), { recursive: true });
+      const registry = {
+        "scripts/probe.test.ts::title": [
+          { seed: 7, path: "0:1", note: "sample", date: "2026-10-03" },
+        ],
+      };
+      for (const [file, titles] of Object.entries(splitPinnedSeeds(registry)))
+        writeFileSync(path.join(root, file), JSON.stringify(titles));
+      expect(readSeedRegistry(root)).toEqual(registry);
+      writeFileSync(path.join(root, "test/property-seeds.json"), "{}");
+      expect(() => readSeedRegistry(root)).toThrow("must not exist");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("driver guards reject absent files and orphan test titles", () => {
+    const entries = [{ seed: 7, note: "sample", date: "2026-10-03" }];
+    const registry = { "scripts/probe.test.ts::title": entries };
+    expect(
+      registryDriverProblems(registry, () => {
+        throw new TypeError("missing");
+      }),
+    ).toContain("scripts/probe.test.ts::title: no such file");
+    expect(
+      registryDriverProblems(registry, () => 'test("other", () => {\n  assertProperty(p);\n});'),
+    ).toContain(
+      "scripts/probe.test.ts::title: no registry driver call inside a test with that title",
+    );
+    expect(
+      registryDriverProblems(registry, () => 'test("title", () => {\n  assertProperty(p);\n});'),
+    ).toEqual([]);
   });
 });

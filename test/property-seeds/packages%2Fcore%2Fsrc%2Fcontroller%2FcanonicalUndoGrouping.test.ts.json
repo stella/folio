@@ -1,0 +1,10 @@
+{
+  "generated intent sequences restore every group exactly without projection adjacency": [
+    {
+      "seed": -755367587,
+      "path": "272:0:1:1:1:2:1:1:2:1:1:1:2:1:1:1:1:0:8:8:0:0:0:0:0:0:0:0:1:1:1:1:1:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:1:1:1:1:1:2:1:2:1:1:1:1:1:1:1:2:1:1:1:2:1:1:1:1:0:1",
+      "note": "Semantic grouping traces must handle caret gestures and refused deletions in empty paragraphs",
+      "date": "2026-10-01"
+    }
+  ]
+}
