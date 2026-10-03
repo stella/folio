@@ -44,4 +44,13 @@ export const OPERATION_LAW_DISPOSITIONS = {
   insertRow: "holds",
   deleteRow: "holds",
   setTableRows: "holds",
+  insertColumn: "holds",
+  deleteColumn: "holds",
+  mergeCells: "holds",
+  splitCell: "holds",
+  setTableGrid: "holds",
+  setCellProps: "holds",
+  setRowProps: "holds",
+  setTableProps: "holds",
+  setTable: "holds",
 } as const satisfies Record<DocumentOp["type"], OperationLawDisposition>;
