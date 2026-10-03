@@ -269,6 +269,7 @@ describe("a path that would escape the package is refused", () => {
   test("an escaping entry leaves with its relationship and its override", async () => {
     const zip = await JSZip.loadAsync(await buildPackage({ extras: [EMBEDDED_WORKBOOK] }));
     zip.file("../escape.bin", new Uint8Array([1, 2, 3]));
+    zip.file("escape.bin", new Uint8Array([4]));
     zip.file(
       "word/_rels/document.xml.rels",
       `${XML_DECL}<Relationships xmlns="${RELATIONSHIP_NAMESPACE}"><Relationship Id="rIdEscape" Type="${OFFICE_RELATIONSHIP}/package" Target="../../escape.bin"/></Relationships>`,
@@ -279,7 +280,7 @@ describe("a path that would escape the package is refused", () => {
     expect(zip.file("word/embeddings/Microsoft_Excel_Worksheet.xlsx")).not.toBeNull();
 
     const repair = await reconcilePackageReferences(zip, 6);
-    expect(repair.danglingRelationships).toEqual(["escape.bin"]);
+    expect(repair.danglingRelationships).toEqual(["../../escape.bin"]);
     const rels = await zip.file("word/_rels/document.xml.rels")?.async("text");
     expect(rels).not.toContain("escape.bin");
   });

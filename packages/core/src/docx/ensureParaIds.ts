@@ -19,7 +19,7 @@
  * so documents carrying features folio's parser does not model come back
  * with those features byte-identical. Contract:
  *
- * - Parts covered: `word/document.xml`, `word/header*.xml`, `word/footer*.xml`,
+ * - Parts covered: the officeDocument relationship target, `word/header*.xml`, `word/footer*.xml`,
  *   `word/footnotes.xml`, `word/endnotes.xml`. Paragraphs nested in table
  *   cells and in `mc:Choice` text boxes are plain `<w:p>` elements inside
  *   those parts and are covered by the same scan. The comments part mints its
@@ -42,12 +42,10 @@
  *   declarations and a `mc:Ignorable` listing `w14` when missing — non-Word
  *   producers declare neither, and absent `mc:Ignorable` handling is what
  *   makes pre-2010 consumers choke on the new attributes.
- * - Prefixes are aliases. Each part is scanned under the prefixes its root
- *   binds to WordprocessingML (a default namespace included), `w14` and `mc`
- *   (see `resolveWordprocessingPrefixes`), and a minted id is written under
- *   the part's own `w14` prefix, which is the one `mc:Ignorable` lists. A
- *   part whose bindings a string scan cannot follow (a nested element that
- *   rebinds one of them) is refused with {@link EnsureParaIdsError}.
+ * - Prefixes are aliases: elements and attributes resolve against their
+ *   in-scope namespace URI, including Strict and Transitional profiles and
+ *   nested rebinding. Minted attributes use a root prefix with no conflicting
+ *   nested binding; a fresh prefix is declared when necessary.
  * - Idempotent: a document that already has full coverage is returned as the
  *   original bytes, untouched (`alreadyComplete: true`). A body with
  *   paragraphs the scan did not see is refused, never reported complete.
@@ -59,26 +57,33 @@ import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import { deterministicHexId } from "../utils/hexId";
-import { isXmlNameBoundary, spliceXml } from "./selectiveXmlPatch";
+import { resolvePackageRelationshipTarget } from "./packageParts";
+import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
+import { scanStreamingXmlElements } from "./streamingXmlParser";
+import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import {
-  matchCloseTag,
-  matchOpenTag,
-  resolveWordprocessingPrefixes,
-  type WordprocessingPrefixes,
-} from "./wordprocessingPrefixes";
-import {
+  getAttribute,
   getChildElements,
   getLocalName,
   getNamespaceUri,
   parseXmlDocument,
+  resolveAttributeNamespaceUri,
   WORDPROCESSINGML_NAMESPACE_URIS,
+  OFFICE_RELATIONSHIP_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+
+export const ENSURE_PARA_IDS_REASONS = {
+  NORMALIZATION_FAILED: "normalization-failed",
+  NAMESPACE_INVALID: "namespace-invalid",
+  SIGNED_PACKAGE: "signed-package",
+} as const;
 
 /** A malformed or unsupported package prevented paragraph-ID normalization. */
 export class EnsureParaIdsError extends TaggedError("EnsureParaIdsError")<{
   message: string;
+  reason: (typeof ENSURE_PARA_IDS_REASONS)[keyof typeof ENSURE_PARA_IDS_REASONS];
   cause?: unknown;
 }> {}
 
@@ -115,68 +120,16 @@ const DIGITAL_SIGNATURE_PART_PREFIX = "_xmlsignatures/";
 /** Word reads an all-zero `w14:paraId` as "no id assigned". */
 const RESERVED_ZERO_ID_PATTERN = /^0*$/u;
 
-const DOCUMENT_PART = "word/document.xml";
+const PACKAGE_RELATIONSHIP_URI = "http://schemas.openxmlformats.org/package/2006/relationships";
 const TARGET_PART_PATTERNS = [
-  /^word\/document\.xml$/u,
   /^word\/header\d*\.xml$/u,
   /^word\/footer\d*\.xml$/u,
   /^word\/footnotes\.xml$/u,
   /^word\/endnotes\.xml$/u,
 ];
 
-const OPAQUE_XML_REGIONS = [
-  { open: "<!--", close: "-->" },
-  { open: "<![CDATA[", close: "]]>" },
-  { open: "<?", close: "?>" },
-] as const;
-
-/**
- * Every prefixed `paraId` counts toward uniqueness: the parser accepts the
- * WordprocessingML fallback, comment parts link replies via `w15:paraId`, and
- * a producer may spell any of them under a prefix of its own. Over-collecting
- * only steers a minted id away from a value; it never keeps one.
- */
-const ANY_PARA_ID_PATTERN = /\s[^\s=<>/"':]+:paraId=(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu;
-
-const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-
-/** An attribute `localName` under any of `prefixes`, with `quote` and `value` groups. */
-const prefixedAttributePattern = (prefixes: readonly string[], localName: string): RegExp => {
-  const names = prefixes.filter((prefix) => prefix !== "").map(escapeRegExp);
-  return names.length === 0
-    ? /(?!)/u
-    : new RegExp(
-        `\\s(?:${names.join("|")}):${localName}=(?<quote>["'])(?<value>[\\s\\S]*?)\\k<quote>`,
-        "u",
-      );
-};
-
-/** How one part spells the elements and attributes the scan reads and writes. */
-type PartSpelling = {
-  prefixes: WordprocessingPrefixes;
-  /** `paraId` under a `w14` prefix, or the WordprocessingML fallback the parser also reads. */
-  paraId: RegExp;
-  textId: RegExp;
-  /** The prefix a minted id is written under: the part's own `w14` binding. */
-  w14Prefix: string;
-};
-
-const partSpelling = (xml: string, partPath: string): PartSpelling => {
-  const resolution = resolveWordprocessingPrefixes(xml);
-  if (resolution.type === "unsupported") {
-    throw createEnsureParaIdsError(
-      `Cannot normalize paragraph ids in ${partPath}: ${resolution.reason}`,
-    );
-  }
-  const { prefixes } = resolution;
-  const attributePrefixes = [...prefixes.w14, ...prefixes.main];
-  return {
-    prefixes,
-    paraId: prefixedAttributePattern(attributePrefixes, "paraId"),
-    textId: prefixedAttributePattern(attributePrefixes, "textId"),
-    w14Prefix: (prefixes.w14Declared ? prefixes.w14[0] : undefined) ?? MC_IGNORABLE_W14,
-  };
-};
+/** Reserve package ids even in parts whose content the pass leaves untouched. */
+const ANY_PARA_ID_PATTERN = /\s[^\s=<>/"':]+:paraId\s*=\s*(?<quote>["'])(?<id>[\s\S]*?)\k<quote>/gu;
 
 type SpliceEdit = { start: number; end: number; text: string };
 
@@ -199,33 +152,11 @@ const applySplices = (xml: string, edits: SpliceEdit[], partPath: string): strin
 };
 
 const createEnsureParaIdsError = (message: string, cause?: unknown): EnsureParaIdsError =>
-  new EnsureParaIdsError({ message, ...(cause === undefined ? {} : { cause }) });
-
-const skipOpaqueXmlRegion = (xml: string, start: number, partPath: string): number | null => {
-  for (const { open, close } of OPAQUE_XML_REGIONS) {
-    if (!xml.startsWith(open, start)) {
-      continue;
-    }
-    const closeStart = xml.indexOf(close, start + open.length);
-    if (closeStart === -1) {
-      throw createEnsureParaIdsError(`Unterminated ${open} region in ${partPath}`);
-    }
-    return closeStart + close.length;
-  }
-  return null;
-};
-
-const attributeValueRange = (
-  match: RegExpExecArray,
-  absoluteOffset: number,
-  group: "id" | "value",
-): { start: number; end: number } => {
-  // SAFETY: every attribute pattern has matching `quote` and requested value groups.
-  const quote = match.groups!["quote"]!;
-  const value = match.groups![group]!;
-  const start = absoluteOffset + match.index + match[0].indexOf(quote) + 1;
-  return { start, end: start + value.length };
-};
+  new EnsureParaIdsError({
+    reason: ENSURE_PARA_IDS_REASONS.NORMALIZATION_FAILED,
+    message,
+    ...(cause === undefined ? {} : { cause }),
+  });
 
 const collectExistingParaIds = (xml: string, into: Set<string>): void => {
   for (const match of xml.matchAll(ANY_PARA_ID_PATTERN)) {
@@ -237,88 +168,117 @@ const collectExistingParaIds = (xml: string, into: Set<string>): void => {
   }
 };
 
+type AttributeSpan = { start: number; end: number; value: string };
 type ParagraphOpenTag = {
-  tagStart: number;
-  /** Offset of the tag's closing `>`. */
-  tagEnd: number;
-  /** Length of the matched `<prefix:p` literal: where a new attribute goes. */
   nameEnd: number;
   inFallback: boolean;
+  paraId: AttributeSpan | undefined;
+  textId: AttributeSpan | undefined;
 };
 
-/**
- * Every paragraph open tag of a part in document order, under whichever
- * WordprocessingML prefix the part binds, with whether it sits in
- * `mc:Fallback` (under the part's own `mc` prefix).
- */
-function* paragraphOpenTags(
-  xml: string,
-  partPath: string,
-  { prefixes }: PartSpelling,
-): Generator<ParagraphOpenTag> {
-  let fallbackDepth = 0;
-  let pos = 0;
+type PartSpelling = {
+  root: XmlElement;
+  rootNameEnd: number;
+  ignorable: AttributeSpan | undefined;
+  paragraphs: ParagraphOpenTag[];
+  w14Prefix: string;
+  mcPrefix: string;
+};
 
-  while (pos < xml.length) {
-    const tagStart = xml.indexOf("<", pos);
-    if (tagStart === -1) {
-      return;
-    }
-
-    const opaqueEnd = skipOpaqueXmlRegion(xml, tagStart, partPath);
-    if (opaqueEnd !== null) {
-      pos = opaqueEnd;
-      continue;
-    }
-
-    if (matchOpenTag(xml, tagStart, prefixes.mc, "Fallback") !== -1) {
-      const tagEnd = xml.indexOf(">", tagStart);
-      if (tagEnd === -1) {
-        throw createEnsureParaIdsError(`Unterminated mc:Fallback tag in ${partPath}`);
+/** Resolve every element and attribute in its own scope; retain source offsets for splices. */
+const partSpelling = (xml: string, partPath: string): PartSpelling => {
+  let root: XmlElement | undefined;
+  let rootNameEnd = 0;
+  let ignorable: AttributeSpan | undefined;
+  const paragraphs: ParagraphOpenTag[] = [];
+  const fallbacks = new WeakSet<XmlElement>();
+  const bindings = new Map<string, Set<string>>();
+  const scanned = scanStreamingXmlElements(
+    xml,
+    ({ element, attributeValueSpans: spans, nameEnd, parent }) => {
+      const elementName = element.name ?? "";
+      const unboundElement = elementName.includes(":") && getNamespaceUri(element) === undefined;
+      const unboundAttribute = Object.keys(element.attributes ?? {}).some(
+        (attribute) =>
+          attribute.includes(":") &&
+          !attribute.startsWith("xmlns:") &&
+          resolveAttributeNamespaceUri(element, attribute) === undefined,
+      );
+      if (unboundElement || unboundAttribute)
+        throw new EnsureParaIdsError({
+          reason: ENSURE_PARA_IDS_REASONS.NAMESPACE_INVALID,
+          message: `Undeclared namespace prefix in ${partPath}`,
+        });
+      if (parent === undefined) {
+        if (root !== undefined) throw createEnsureParaIdsError(`Multiple roots in ${partPath}`);
+        root = element;
+        rootNameEnd = nameEnd;
       }
-      if (xml[tagEnd - 1] !== "/") {
-        fallbackDepth += 1;
+      for (const [name, value] of Object.entries(element.attributes ?? {})) {
+        if (name !== "xmlns" && !name.startsWith("xmlns:")) continue;
+        const prefix = name === "xmlns" ? "" : name.slice(6);
+        let uris = bindings.get(prefix);
+        if (uris === undefined) {
+          uris = new Set();
+          bindings.set(prefix, uris);
+        }
+        uris.add(String(value));
       }
-      pos = tagEnd + 1;
-      continue;
+      const inFallback =
+        (parent !== undefined && fallbacks.has(parent)) ||
+        (getLocalName(element.name ?? "") === "Fallback" &&
+          getNamespaceUri(element) === MC_NAMESPACE_URI);
+      if (inFallback) fallbacks.add(element);
+      let paraId: AttributeSpan | undefined;
+      let textId: AttributeSpan | undefined;
+      for (const [name, span] of spans) {
+        const namespace = resolveAttributeNamespaceUri(element, name);
+        const localName = getLocalName(name);
+        const value = String(element.attributes?.[name] ?? "");
+        if (element === root && namespace === MC_NAMESPACE_URI && localName === "Ignorable")
+          ignorable = { ...span, value };
+        if (
+          namespace !== W14_NAMESPACE_URI &&
+          !WORDPROCESSINGML_NAMESPACE_URIS.has(namespace ?? "")
+        )
+          continue;
+        if (localName === "paraId") {
+          if (paraId === undefined || namespace === W14_NAMESPACE_URI) paraId = { ...span, value };
+        }
+        if (localName === "textId") textId = { ...span, value };
+      }
+      if (
+        getLocalName(element.name ?? "") === "p" &&
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+      )
+        paragraphs.push({ nameEnd, inFallback, paraId, textId });
+    },
+  );
+  if (scanned.status === "unsupported" || root === undefined)
+    throw createEnsureParaIdsError(`Malformed XML in ${partPath}`);
+  const rootElement = root;
+  const prefixFor = (uri: string, preferred: string): string => {
+    for (const [prefix, boundUri] of rootElement.namespaceScope?.bindings ?? []) {
+      if (prefix === "" || boundUri !== uri) continue;
+      if (uri !== W14_NAMESPACE_URI || bindings.get(prefix)?.size === 1) return prefix;
     }
+    let candidate = preferred;
+    for (let suffix = 1; bindings.has(candidate); suffix += 1) candidate = `${preferred}_${suffix}`;
+    return candidate;
+  };
+  return {
+    root,
+    rootNameEnd,
+    ignorable,
+    paragraphs,
+    w14Prefix: prefixFor(W14_NAMESPACE_URI, MC_IGNORABLE_W14),
+    mcPrefix: prefixFor(MC_NAMESPACE_URI, "mc"),
+  };
+};
 
-    const fallbackClose = matchCloseTag(xml, tagStart, prefixes.mc, "Fallback");
-    if (fallbackClose !== -1) {
-      fallbackDepth = Math.max(0, fallbackDepth - 1);
-      pos = tagStart + fallbackClose;
-      continue;
-    }
-
-    const nameLength = matchOpenTag(xml, tagStart, prefixes.main, "p");
-    if (nameLength === -1) {
-      pos = tagStart + 1;
-      continue;
-    }
-
-    const tagEnd = xml.indexOf(">", tagStart);
-    if (tagEnd === -1) {
-      throw createEnsureParaIdsError(`Unterminated paragraph tag in ${partPath}`);
-    }
-    pos = tagEnd + 1;
-    yield { tagStart, tagEnd, nameEnd: tagStart + nameLength, inFallback: fallbackDepth > 0 };
-  }
-}
-
-const collectFallbackParaIds = (
-  xml: string,
-  partPath: string,
-  spelling: PartSpelling,
-  into: Set<string>,
-): void => {
-  for (const { tagStart, tagEnd, inFallback } of paragraphOpenTags(xml, partPath, spelling)) {
-    if (!inFallback) {
-      continue;
-    }
-    const id = spelling.paraId.exec(xml.slice(tagStart, tagEnd + 1))?.groups?.["value"];
-    if (id) {
-      into.add(id.toUpperCase());
-    }
+const collectFallbackParaIds = (spelling: PartSpelling, into: Set<string>): void => {
+  for (const { inFallback, paraId } of spelling.paragraphs) {
+    if (inFallback && paraId?.value) into.add(paraId.value.toUpperCase());
   }
 };
 
@@ -348,8 +308,6 @@ type PartScanResult = {
   minted: string[];
   assigned: number;
   deduplicated: number;
-  /** Paragraphs outside `mc:Fallback` the scan saw, with or without an id. */
-  paragraphs: number;
 };
 
 /**
@@ -358,13 +316,14 @@ type PartScanResult = {
  * splice edit minting / replacing one. `seen` spans parts so the
  * first-occurrence rule is document-wide across the scan order.
  */
-const scanPart = (
-  xml: string,
-  partPath: string,
-  spelling: PartSpelling,
-  context: MintContext,
-  seen: Set<string>,
-): PartScanResult => {
+type ScanPartOptions = {
+  partPath: string;
+  spelling: PartSpelling;
+  context: MintContext;
+  seen: Set<string>;
+};
+
+const scanPart = ({ partPath, spelling, context, seen }: ScanPartOptions): PartScanResult => {
   const edits: SpliceEdit[] = [];
   const minted: string[] = [];
   const w14 = spelling.w14Prefix;
@@ -372,24 +331,17 @@ const scanPart = (
   let deduplicated = 0;
   let ordinal = 0;
 
-  for (const { tagStart, tagEnd, nameEnd, inFallback } of paragraphOpenTags(
-    xml,
-    partPath,
-    spelling,
-  )) {
+  for (const { nameEnd, inFallback, paraId, textId } of spelling.paragraphs) {
     if (inFallback) {
       continue;
     }
     ordinal += 1;
 
-    const openTag = xml.slice(tagStart, tagEnd + 1);
-    const paraIdMatch = spelling.paraId.exec(openTag);
-    if (!paraIdMatch) {
+    if (paraId === undefined) {
       const id = mintParaId(context, partPath, ordinal);
-      const textIdMatch = spelling.textId.exec(openTag);
-      if (textIdMatch) {
+      if (textId !== undefined) {
         edits.push({ start: nameEnd, end: nameEnd, text: ` ${w14}:paraId="${id}"` });
-        edits.push({ ...attributeValueRange(textIdMatch, tagStart, "value"), text: id });
+        edits.push({ start: textId.start, end: textId.end, text: id });
       } else {
         edits.push({
           start: nameEnd,
@@ -403,8 +355,7 @@ const scanPart = (
       continue;
     }
 
-    // SAFETY: named group `value` always present when the pattern matches
-    const value = paraIdMatch.groups!["value"]!.toUpperCase();
+    const value = paraId.value.toUpperCase();
     const unassigned = RESERVED_ZERO_ID_PATTERN.test(value);
     if (!unassigned && !seen.has(value)) {
       seen.add(value);
@@ -412,10 +363,9 @@ const scanPart = (
     }
 
     const id = mintParaId(context, partPath, ordinal);
-    edits.push({ ...attributeValueRange(paraIdMatch, tagStart, "value"), text: id });
-    const textIdMatch = spelling.textId.exec(openTag);
-    if (textIdMatch) {
-      edits.push({ ...attributeValueRange(textIdMatch, tagStart, "value"), text: id });
+    edits.push({ start: paraId.start, end: paraId.end, text: id });
+    if (textId !== undefined) {
+      edits.push({ start: textId.start, end: textId.end, text: id });
     } else {
       edits.push({ start: nameEnd, end: nameEnd, text: ` ${w14}:textId="${id}"` });
     }
@@ -428,7 +378,7 @@ const scanPart = (
     seen.add(id);
   }
 
-  return { edits, minted, assigned, deduplicated, paragraphs: ordinal };
+  return { edits, minted, assigned, deduplicated };
 };
 
 /**
@@ -436,110 +386,66 @@ const scanPart = (
  * `xmlns:mc` and lists `w14` in `mc:Ignorable`, so consumers that predate the
  * 2010 extensions skip the new attributes instead of rejecting the part.
  */
-const ensureRootNamespaces = (
-  xml: string,
-  partPath: string,
-  { prefixes, w14Prefix }: PartSpelling,
-): SpliceEdit[] => {
-  let pos = 0;
-  let rootStart = -1;
-  while (pos < xml.length) {
-    const lt = xml.indexOf("<", pos);
-    if (lt === -1) {
-      break;
-    }
-    const opaqueEnd = skipOpaqueXmlRegion(xml, lt, partPath);
-    if (opaqueEnd !== null) {
-      pos = opaqueEnd;
-      continue;
-    }
-    const next = xml[lt + 1];
-    if (next === "!") {
-      const skipTo = xml.indexOf(">", lt);
-      if (skipTo === -1) {
-        throw createEnsureParaIdsError(`Unterminated prolog in ${partPath}`);
-      }
-      pos = skipTo + 1;
-      continue;
-    }
-    rootStart = lt;
-    break;
-  }
-  if (rootStart === -1) {
-    throw createEnsureParaIdsError(`No root element in ${partPath}`);
-  }
-  const rootEnd = xml.indexOf(">", rootStart);
-  if (rootEnd === -1) {
-    throw createEnsureParaIdsError(`Unterminated root element in ${partPath}`);
-  }
-  const rootTag = xml.slice(rootStart, rootEnd + 1);
-
-  // An empty prefix list means the conventional prefix is bound on the root
-  // to some other namespace, so nothing can be declared or written under it.
-  if (!prefixes.mcDeclared && prefixes.mc.length === 0) {
-    throw createEnsureParaIdsError(`xmlns:mc has an unexpected namespace URI in ${partPath}`);
-  }
-  if (!prefixes.w14Declared && prefixes.w14.length === 0) {
-    throw createEnsureParaIdsError(`xmlns:w14 has an unexpected namespace URI in ${partPath}`);
-  }
-
+const ensureRootNamespaces = ({
+  root,
+  rootNameEnd,
+  ignorable,
+  w14Prefix,
+  mcPrefix,
+}: PartSpelling): SpliceEdit[] => {
   const edits: SpliceEdit[] = [];
   const declarations: string[] = [];
-  const mcPrefix = (prefixes.mcDeclared ? prefixes.mc[0] : undefined) ?? "mc";
-  if (!prefixes.mcDeclared) {
-    declarations.push(` xmlns:mc="${MC_NAMESPACE_URI}"`);
-  }
-  if (!prefixes.w14Declared) {
-    declarations.push(` xmlns:w14="${W14_NAMESPACE_URI}"`);
-  }
-
-  // `mc:Ignorable` lists prefixes, so it names the prefix the ids are written under.
-  const ignorable = prefixedAttributePattern(
-    prefixes.mcDeclared ? prefixes.mc : [mcPrefix],
-    "Ignorable",
-  ).exec(rootTag);
-  if (ignorable) {
-    // SAFETY: named group `value` always present when the pattern matches
-    const value = ignorable.groups!["value"]!;
-    const tokens = value.split(/\s+/u).filter((token) => token.length > 0);
-    if (!tokens.includes(w14Prefix)) {
-      const { end } = attributeValueRange(ignorable, rootStart, "value");
-      const text = tokens.length === 0 ? w14Prefix : ` ${w14Prefix}`;
-      edits.push({ start: end, end, text });
-    }
+  if (resolveNamespaceUri(root.namespaceScope, mcPrefix) !== MC_NAMESPACE_URI)
+    declarations.push(` xmlns:${mcPrefix}="${MC_NAMESPACE_URI}"`);
+  if (resolveNamespaceUri(root.namespaceScope, w14Prefix) !== W14_NAMESPACE_URI)
+    declarations.push(` xmlns:${w14Prefix}="${W14_NAMESPACE_URI}"`);
+  if (ignorable !== undefined) {
+    const tokens = ignorable.value.split(/\s+/u).filter((token) => token.length > 0);
+    if (!tokens.includes(w14Prefix))
+      edits.push({
+        start: ignorable.end,
+        end: ignorable.end,
+        text: tokens.length === 0 ? w14Prefix : ` ${w14Prefix}`,
+      });
   } else {
     declarations.push(` ${mcPrefix}:Ignorable="${w14Prefix}"`);
   }
-
-  if (declarations.length > 0) {
-    let nameEnd = rootStart + 1;
-    while (nameEnd < xml.length && !isXmlNameBoundary(xml[nameEnd])) {
-      nameEnd += 1;
-    }
-    edits.push({ start: nameEnd, end: nameEnd, text: declarations.join("") });
-  }
-
+  if (declarations.length > 0)
+    edits.push({ start: rootNameEnd, end: rootNameEnd, text: declarations.join("") });
   return edits;
 };
 
-const hasWordParagraph = (element: XmlElement): boolean =>
-  (getLocalName(element.name ?? "") === "p" &&
-    WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")) ||
-  getChildElements(element).some(hasWordParagraph);
-
-/**
- * A body the string scan saw no paragraph in is either genuinely empty or
- * spelled in a way the scan missed. Only the namespace-aware parser can tell
- * which, and it only has to be asked in that rare case: `alreadyComplete`
- * must never describe paragraphs nobody looked at.
- */
-const assertNoUnscannedParagraphs = (xml: string, partPath: string): void => {
-  const root = parseXmlDocument(xml);
-  if (root !== null && hasWordParagraph(root)) {
-    throw createEnsureParaIdsError(
-      `Cannot normalize paragraph ids in ${partPath}: its paragraphs are not spelled in a way the scan can patch`,
-    );
-  }
+const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
+  const root = parseXmlDocument(rels);
+  if (
+    root === null ||
+    getLocalName(root.name ?? "") !== "Relationships" ||
+    getNamespaceUri(root) !== PACKAGE_RELATIONSHIP_URI
+  )
+    throw createEnsureParaIdsError("Malformed package relationships");
+  const documents = getChildElements(root).filter((element) => {
+    if (
+      getLocalName(element.name ?? "") !== "Relationship" ||
+      getNamespaceUri(element) !== PACKAGE_RELATIONSHIP_URI
+    )
+      return false;
+    const type = getAttribute(element, null, "Type");
+    return [...OFFICE_RELATIONSHIP_NAMESPACE_URIS].some((uri) => type === `${uri}/officeDocument`);
+  });
+  const document = documents.at(0);
+  if (
+    documents.length !== 1 ||
+    document === undefined ||
+    getAttribute(document, null, "TargetMode") === "External"
+  )
+    throw createEnsureParaIdsError("Package must have one internal officeDocument relationship");
+  const target = getAttribute(document, null, "Target");
+  const partPath =
+    target === null ? undefined : resolvePackageRelationshipTarget(target, "_rels/.rels");
+  if (partPath === undefined) throw createEnsureParaIdsError("Invalid officeDocument target");
+  const name = entries.find((entry) => entry.toLowerCase() === partPath);
+  if (name === undefined) throw createEnsureParaIdsError("officeDocument part not found");
+  return name;
 };
 
 /** OPC part names are case-insensitive; compare lowercased. */
@@ -570,14 +476,13 @@ const ensureParaIdsInternal = async (
   // bomb entry must fail fast instead of exhausting memory.
   const archive = await loadDocxArchive(docx);
 
-  const xmlPartNames = archive.entries.filter((relativePath) => {
-    const lower = relativePath.toLowerCase();
-    return lower.startsWith("word/") && lower.endsWith(".xml");
-  });
-  const documentPartName = xmlPartNames.find((name) => name.toLowerCase() === DOCUMENT_PART);
-  if (documentPartName === undefined) {
-    throw createEnsureParaIdsError("word/document.xml not found: not a WordprocessingML package");
-  }
+  const relsPath = archive.entries.find((name) => name.toLowerCase() === "_rels/.rels");
+  const rels = relsPath === undefined ? null : await archive.readEntryString(relsPath);
+  if (rels === null) throw createEnsureParaIdsError("Package relationships not found");
+  const documentPartName = mainDocumentPart(rels, archive.entries);
+  const xmlPartNames = archive.entries.filter(
+    (name) => name.toLowerCase().endsWith(".xml") || name === documentPartName,
+  );
 
   const partTexts = new Map<string, string>();
   for (const name of xmlPartNames) {
@@ -593,8 +498,9 @@ const ensureParaIdsInternal = async (
     collectExistingParaIds(text, taken);
   }
 
-  // SAFETY: documentPartName came out of partTexts' key set
-  const documentXml = partTexts.get(documentPartName)!;
+  const documentXml = partTexts.get(documentPartName);
+  if (documentXml === undefined)
+    throw createEnsureParaIdsError("officeDocument part is unreadable");
   const context: MintContext = { taken, docKey: deterministicHexId(documentXml) };
 
   // document.xml first so its paragraphs win the first-occurrence rule, then
@@ -612,10 +518,10 @@ const ensureParaIdsInternal = async (
   const spellings = new Map<string, PartSpelling>();
   const seen = new Set<string>();
   for (const [partPath, xml] of partTexts) {
-    if (isTargetPart(partPath)) {
+    if (partPath === documentPartName || isTargetPart(partPath)) {
       const spelling = partSpelling(xml, partPath);
       spellings.set(partPath, spelling);
-      collectFallbackParaIds(xml, partPath, spelling, seen);
+      collectFallbackParaIds(spelling, seen);
     } else {
       collectExistingParaIds(xml, seen);
     }
@@ -631,10 +537,7 @@ const ensureParaIdsInternal = async (
     // every target part was given a spelling above
     const xml = partTexts.get(partPath)!;
     const spelling = spellings.get(partPath)!;
-    const scan = scanPart(xml, partPath, spelling, context, seen);
-    if (partPath === documentPartName && scan.paragraphs === 0) {
-      assertNoUnscannedParagraphs(xml, partPath);
-    }
+    const scan = scanPart({ partPath, spelling, context, seen });
     if (scan.edits.length === 0) {
       continue;
     }
@@ -647,11 +550,7 @@ const ensureParaIdsInternal = async (
     }
     updates.set(
       partPath,
-      applySplices(
-        xml,
-        [...scan.edits, ...ensureRootNamespaces(xml, partPath, spelling)],
-        partPath,
-      ),
+      applySplices(xml, [...scan.edits, ...ensureRootNamespaces(spelling)], partPath),
     );
   }
 
@@ -672,9 +571,11 @@ const ensureParaIdsInternal = async (
   const zip = await JSZip.loadAsync(docx);
 
   if (hasDigitalSignatureParts(zip) && options.allowSignedPackageMutation !== true) {
-    throw createEnsureParaIdsError(
-      "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
-    );
+    throw new EnsureParaIdsError({
+      reason: ENSURE_PARA_IDS_REASONS.SIGNED_PACKAGE,
+      message:
+        "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
+    });
   }
 
   for (const [partPath, content] of updates) {

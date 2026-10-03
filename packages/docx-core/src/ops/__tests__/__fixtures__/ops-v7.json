@@ -1801,19 +1801,6 @@
             "previousFormatting": {
               "alignment": "center"
             }
-          },
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center",
-              "keepNext": true
-            }
           }
         ]
       },
@@ -1857,22 +1844,7 @@
       "expected": {
         "formatting": {
           "alignment": "center"
-        },
-        "propertyChanges": [
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center",
-              "keepNext": true
-            }
-          }
-        ]
+        }
       },
       "review": {
         "formatting": {
@@ -1890,21 +1862,46 @@
             "previousFormatting": {
               "alignment": "center"
             }
-          },
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center",
-              "keepNext": true
-            }
           }
         ]
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "setParagraphReview",
+      "story": "main",
+      "blockId": "0000000B",
+      "expected": {
+        "formatting": {
+          "alignment": "center"
+        },
+        "pPrMark": {
+          "kind": "ins",
+          "info": {
+            "id": 69,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          },
+          "resolutionJoin": 2
+        }
+      },
+      "review": {
+        "formatting": {
+          "alignment": "center"
+        },
+        "pPrMark": {
+          "kind": "ins",
+          "info": {
+            "id": 69,
+            "author": "Reviewer",
+            "date": "2026-02-03T04:05:06Z",
+            "initials": "R"
+          },
+          "resolutionJoin": 0
+        }
       }
     }
   },
@@ -2353,19 +2350,7 @@
               "content": [
                 {
                   "type": "text",
-                  "text": "AY"
-                }
-              ]
-            },
-            {
-              "type": "run",
-              "formatting": {
-                "bold": true
-              },
-              "content": [
-                {
-                  "type": "text",
-                  "text": "l"
+                  "text": "AYl"
                 }
               ]
             },
@@ -2408,9 +2393,6 @@
       ],
       "blocks": [
         {
-          "formatting": {
-            "alignment": "center"
-          },
           "type": "paragraph",
           "paraId": "0000000B",
           "content": [
@@ -2427,6 +2409,9 @@
               ]
             }
           ],
+          "formatting": {
+            "alignment": "center"
+          },
           "pPrMark": {
             "kind": "ins",
             "info": {
@@ -2435,7 +2420,7 @@
               "date": "2026-02-03T04:05:06Z",
               "initials": "R"
             },
-            "resolutionJoin": 0
+            "resolutionJoin": 2
           }
         },
         {

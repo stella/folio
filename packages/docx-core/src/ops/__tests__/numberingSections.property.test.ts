@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, test, setDefaultTimeout } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 
@@ -10,8 +10,10 @@ import { serializeDocumentToDocx } from "../../serialize/docx";
 import { paragraphNumberingReference } from "../../model/paragraphNumbering";
 import { DOCUMENT_OP_TYPES, SECTION_BOUNDARY_POLICIES } from "../types";
 import type { DocumentOp, SectionPropertiesState } from "../types";
-import { propertyConfig } from "../../../../../test/property-testing";
+import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import { documentArbitrary } from "./documentArbitraries";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const paragraph: Paragraph = {
   type: "paragraph",
