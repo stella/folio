@@ -30,16 +30,15 @@ export const registerContentTypeParts = (
   for (const element of root.elements ?? []) {
     if (getNamespaceUri(element) !== OOXML_NS.ct) continue;
     const type = getAttribute(element, null, "ContentType");
-    if (type === undefined) continue;
+    if (type == null) continue;
     if (getLocalName(element.name) === "Override") {
       const name = getAttribute(element, null, "PartName");
-      const path =
-        name === undefined ? undefined : resolvePackageRelationshipTarget(name, "_rels/.rels");
+      const path = name == null ? undefined : resolvePackageRelationshipTarget(name, "_rels/.rels");
       if (path !== undefined) overrides.set(path, type);
     }
     if (getLocalName(element.name) === "Default") {
       const extension = getAttribute(element, null, "Extension");
-      if (extension !== undefined) defaults.set(extension.toLowerCase(), type);
+      if (extension != null) defaults.set(extension.toLowerCase(), type);
     }
   }
   const prefix = getNamespacePrefix(root.name);
