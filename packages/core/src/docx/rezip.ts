@@ -101,6 +101,8 @@ import { serializeNumberingXml } from "./serializer/numberingSerializer";
 import { readRootNamespaceBindings, serializePartElement } from "./serializer/partNamespaces";
 import { serializeFontTableXml } from "./serializer/fontTableSerializer";
 import { serializeSettingsXml } from "./serializer/settingsSerializer";
+import { parseSettings } from "./settingsParser";
+import { updateEvenAndOddHeaders } from "./settingsHeaderFooterUpdate";
 import { missingNoteReferenceStyles, noteReferenceNeeds } from "./noteReferenceStyles";
 import { serializeStyle, serializeStylesXml } from "./serializer/stylesSerializer";
 import { hasCanonicalWordprocessingPrefixes } from "./wordprocessingPrefixes";
@@ -1221,6 +1223,7 @@ const finishRepack = async ({
 
   await serializeNumberingIntoZip(document, originalZip, outputZip, compressionLevel);
   await serializeAddedStylesIntoZip(document, originalZip, outputZip, compressionLevel);
+  await serializeHeaderFooterSettingsIntoZip(document, outputZip, compressionLevel);
 
   await serializeCommentsToZip(document, outputZip, compressionLevel);
 
@@ -1401,6 +1404,7 @@ export async function repackDocxFromRaw(
 
   // Serialize and update modified headers/footers
   await serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
+  await serializeHeaderFooterSettingsIntoZip(exportDocument, newZip, compressionLevel);
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
   // unedited notes stay byte-exact).
@@ -2424,7 +2428,7 @@ async function serializeNotesToZip({
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/footnotes.xml",
         currentXml: serializeFootnotes(footnotes),
-        replacementXml: serializeNewFootnotesPart(footnotes),
+        replacementXml: serializeNewFootnotesPart(footnotes, doc),
         baselineFrom: (xml) => serializeFootnotes(parseFootnotes(xml).getNormalFootnotes()),
         elementName: "footnote",
         changedNoteParaIds,
@@ -2438,7 +2442,7 @@ async function serializeNotesToZip({
         newZip,
         partPath: "word/footnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.footnotes,
-        serializedPart: serializeNewFootnotesPart(footnotes),
+        serializedPart: serializeNewFootnotesPart(footnotes, doc),
         compressionLevel,
       });
     }
@@ -2452,7 +2456,7 @@ async function serializeNotesToZip({
       await patchNotePartIntoZip({
         conventionalLowerPath: "word/endnotes.xml",
         currentXml: serializeEndnotes(endnotes),
-        replacementXml: serializeNewEndnotesPart(endnotes),
+        replacementXml: serializeNewEndnotesPart(endnotes, doc),
         baselineFrom: (xml) => serializeEndnotes(parseEndnotes(xml).getNormalEndnotes()),
         elementName: "endnote",
         changedNoteParaIds,
@@ -2466,7 +2470,7 @@ async function serializeNotesToZip({
         newZip,
         partPath: "word/endnotes.xml",
         relationshipType: RELATIONSHIP_TYPES.endnotes,
-        serializedPart: serializeNewEndnotesPart(endnotes),
+        serializedPart: serializeNewEndnotesPart(endnotes, doc),
         compressionLevel,
       });
     }
@@ -2477,6 +2481,7 @@ type MaterializeNewNotePartOptions = {
   contentType: string;
   newZip: JSZip;
   partPath:
+    | "word/settings.xml"
     | "word/footnotes.xml"
     | "word/endnotes.xml"
     | "word/numbering.xml"
@@ -2534,6 +2539,38 @@ async function materializeNewNotePart({
   newZip.file(partPath, serializedPart, {
     compression: "DEFLATE",
     compressionOptions,
+  });
+}
+
+/** Only this modeled switch changes on story lifecycle edits; preserve all other settings. */
+async function serializeHeaderFooterSettingsIntoZip(
+  doc: Document,
+  zip: JSZip,
+  compressionLevel: number,
+): Promise<void> {
+  if (!doc.package.settings) return;
+  const enabled = doc.package.settings.evenAndOddHeaders;
+  const file = zip.file(SETTINGS_PART);
+  if (!file) {
+    if (enabled === undefined) return;
+    await materializeNewNotePart({
+      contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
+      newZip: zip,
+      partPath: "word/settings.xml",
+      relationshipType: RELATIONSHIP_TYPES.settings,
+      serializedPart: serializeSettingsXml(doc.package.settings),
+      compressionLevel,
+    });
+    return;
+  }
+  const xml = await file.async("text");
+  if (parseSettings(xml).evenAndOddHeaders === enabled) return;
+  const patched = updateEvenAndOddHeaders(xml, enabled);
+  if (patched === null)
+    throw new DocxPackageFidelityError("Cannot update malformed header/footer settings");
+  zip.file(file.name, patched, {
+    compression: "DEFLATE",
+    compressionOptions: { level: compressionLevel },
   });
 }
 

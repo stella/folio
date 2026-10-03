@@ -93,6 +93,7 @@ export const MODEL_TYPE_DISCRIMINATORS: ReadonlySet<string> = new Set([
   "drawing",
   "endnote",
   "endnoteRef",
+  "noteMarker",
   "fieldChar",
   "firstCol",
   "firstRow",

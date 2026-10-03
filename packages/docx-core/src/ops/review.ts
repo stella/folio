@@ -73,7 +73,9 @@ export const isTrackedWrapper = (node: InlineNode): node is TrackedWrapper =>
   node.type === "moveTo";
 
 /** Tracked content on its way in: an insertion or the destination of a move. */
-export const isAddedRevision = (node: InlineNode): boolean =>
+export const isAddedRevision = (
+  node: InlineNode,
+): node is Extract<TrackedWrapper, { type: "insertion" | "moveTo" }> =>
   node.type === "insertion" || node.type === "moveTo";
 
 /** Tracked content on its way out: a deletion or the source of a move. */
@@ -194,6 +196,34 @@ export const paragraphPropertyChange = (
   const recorded = paragraphPropertiesOf(previous);
   if (recorded !== undefined) {
     change.previousFormatting = recorded;
+  }
+  return change;
+};
+
+type FoldParagraphPropertyChangeOptions = {
+  paragraph: Paragraph;
+  formatting: ParagraphFormatting | undefined;
+  stamp: RevisionStamp;
+};
+
+/** Fold paragraph formatting into one review, retaining its id and original baseline. */
+export const foldedParagraphPropertyChange = ({
+  paragraph,
+  formatting,
+  stamp,
+}: FoldParagraphPropertyChangeOptions): ParagraphPropertyChange => {
+  const existing = paragraph.propertyChanges?.at(0);
+  if (existing === undefined)
+    return paragraphPropertyChange(stampInfo(stamp), paragraph.formatting);
+  const info = { ...existing.info, ...stampInfo(stamp), id: existing.info.id };
+  if (stamp.initials === undefined) delete info.initials;
+  // A companion date belongs to the previous attribution, not the new stamp.
+  delete info.utcDate;
+  const change = { ...existing, info };
+  // Parsed reviews carry this derived convenience field; keep it tied to live properties.
+  if (existing.currentFormatting !== undefined) {
+    if (formatting === undefined) delete change.currentFormatting;
+    else change.currentFormatting = formatting;
   }
   return change;
 };

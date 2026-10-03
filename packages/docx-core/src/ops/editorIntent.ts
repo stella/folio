@@ -1,6 +1,6 @@
 /** One editor intent, compiled to direct or tracked document operations. */
 import { Result, panic } from "better-result";
-import { applyDocumentOps } from "./apply";
+import { applyDocumentOp, applyDocumentOps } from "./apply";
 import { captureDocumentOp } from "./wire";
 import { applyFormattingPatch } from "./patch";
 import { paragraphNumberingReference } from "../model/paragraphNumbering";
@@ -17,29 +17,26 @@ import {
   type AbstractNumbering,
 } from "../model/document";
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
-import {
-  IDENTITY_SPACES,
-  idKey,
-  packageIdentityKeys,
-  reservedIdentityKeysIn,
-  packageParagraphIds,
-} from "./ids";
-import { defaultInsertionGap, leafSpans, zeroWidthLeavesAt } from "./leaves";
+import { IDENTITY_SPACES, idKey } from "./ids";
+import { createCensusReader } from "./editorIntentCensus";
+import { defaultInsertionGap, alikeDepth, leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import {
   appendTrackedDeletion,
   createTrackedPlan,
   selectedParagraphRuns,
   replacementDeletionSegments,
+  filterNewIds,
+  trimAppliedNewIds,
 } from "./plan";
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
+import { runsMergeable } from "./runMerge";
 import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
   SECTION_BOUNDARY_POLICIES,
-  PROPERTY_REVIEW_POLICIES,
   EMPTY_PROPERTY_SETS,
   SPLIT_HALVES,
   type DocumentOp,
@@ -50,6 +47,12 @@ import {
   type RunPropsPatch,
   type ParagraphPropsPatch,
 } from "./types";
+
+type SplitParagraphIntent = {
+  type: "splitParagraph";
+  at: TextPosition;
+  to?: TextPosition;
+};
 
 /** Positions use canonical physical offsets, including retained deleted content. */
 export type EditorIntent =
@@ -78,7 +81,7 @@ export type EditorIntent =
       runProps?: TextFormatting;
       runPropsPatch?: RunPropsPatch;
     }
-  | { type: "splitParagraph"; at: TextPosition; to?: TextPosition; newBlockId: string }
+  | (SplitParagraphIntent & { newBlockId: string })
   | { type: "joinParagraphs"; story: OpStory; blockId: string; nextBlockId: string };
 
 /** Revision metadata and every fresh identity are supplied before compilation. */
@@ -86,95 +89,120 @@ export type EditorIntentMode =
   | { type: "editing"; newIds?: NewIds }
   | { type: "suggesting"; revision: RevisionStamp; newIds: NewIds };
 
-export type CompileEditorIntentOptions = { intent: EditorIntent; mode: EditorIntentMode };
-export type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
+type CompileEditorIntentOptions = { intent: EditorIntent; mode: EditorIntentMode };
+type CompiledEditorIntent = { ops: DocumentOp[]; selection: TextPosition };
 
-/** Fresh identities for one input, bounded by its paragraph leaves and ancestor records. */
-export const allocateEditorIntentIds = (document: Document, intent?: EditorIntent) => {
-  const identities = packageIdentityKeys(document.package).concat(
-    reservedIdentityKeysIn(document.package),
-  );
-  const paragraphs = (() => {
-    if (intent === undefined) return storyParagraphs(document.package.document);
-    switch (intent.type) {
-      case "replaceText":
-      case "insertAtom":
-      case "formatRun": {
-        const selected = selectedParagraphRuns(document, intent.from, intent.to);
-        return selected.isOk() ? selected.value.flat() : [];
-      }
-      case "splitParagraph": {
-        if (intent.to !== undefined) {
-          const selected = selectedParagraphRuns(document, intent.at, intent.to);
-          return selected.isOk() ? selected.value.flat() : [];
-        }
-        return storyParagraphs(storyBody(document, intent.at.story)).filter(
-          ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.at.blockId),
-        );
-      }
-      case "formatParagraph":
-        return storyParagraphs(storyBody(document, intent.at.story)).filter(
-          ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(intent.at.blockId),
-        );
-      case "setList": {
-        const ids = new Set(intent.items.map(({ at }) => idKey(at.blockId)));
-        const first = intent.items.at(0);
-        return first === undefined
-          ? []
-          : storyParagraphs(storyBody(document, first.at.story)).filter(({ paragraph }) =>
-              ids.has(idKey(paragraph.paraId ?? "")),
-            );
-      }
-      case "joinParagraphs":
-        return storyParagraphs(storyBody(document, intent.story)).filter(
-          ({ paragraph }) =>
-            idKey(paragraph.paraId ?? "") === idKey(intent.blockId) ||
-            idKey(paragraph.paraId ?? "") === idKey(intent.nextBlockId),
-        );
-      default: {
-        const exhaustive: never = intent;
-        return exhaustive;
+/** A split's paragraph identity is allocated with its other fresh identities. */
+type EditorIntentAllocation = EditorIntent | SplitParagraphIntent;
+
+const intentEndpoints = (intent: EditorIntentAllocation) => {
+  switch (intent.type) {
+    case "replaceText":
+    case "insertAtom":
+    case "formatRun":
+      return {
+        story: intent.from.story,
+        fromId: intent.from.blockId,
+        toId: intent.to.blockId,
+        fromOffset: intent.from.offset,
+        toOffset: intent.to.offset,
+      };
+    case "formatParagraph":
+      return {
+        story: intent.at.story,
+        fromId: intent.at.blockId,
+        toId: intent.at.blockId,
+        fromOffset: undefined,
+        toOffset: undefined,
+      };
+    case "setList": {
+      const first = intent.items.at(0);
+      const last = intent.items.at(-1);
+      if (first === undefined || last === undefined) panic("List allocation requires a paragraph.");
+      return {
+        story: first.at.story,
+        fromId: first.at.blockId,
+        toId: last.at.blockId,
+        fromOffset: undefined,
+        toOffset: undefined,
+      };
+    }
+    case "splitParagraph":
+      return {
+        story: intent.at.story,
+        fromId: intent.at.blockId,
+        toId: (intent.to ?? intent.at).blockId,
+        fromOffset: intent.at.offset,
+        toOffset: (intent.to ?? intent.at).offset,
+      };
+    case "joinParagraphs":
+      return {
+        story: intent.story,
+        fromId: intent.blockId,
+        toId: intent.nextBlockId,
+        fromOffset: undefined,
+        toOffset: undefined,
+      };
+    default: {
+      const unreachable: never = intent;
+      return unreachable;
+    }
+  }
+};
+
+/** Cache only immutable document versions; never retain a retired version strongly. */
+export const createEditorIntentIdAllocator = () => {
+  const readCensus = createCensusReader();
+  return (document: Document, intent: EditorIntentAllocation) => {
+    const census = readCensus(document);
+    const { story, fromId, toId, fromOffset, toOffset } = intentEndpoints(intent);
+    let locations = census.stories.get(story);
+    if (locations === undefined) {
+      locations = storyParagraphs(storyBody(document, story));
+      census.stories.set(story, locations);
+    }
+    const first = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(fromId),
+    );
+    const last = locations.findIndex(
+      ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(toId),
+    );
+    // Every selected leaf may start a deletion segment; ancestors may be cut
+    // at both endpoints. Each paragraph adds join/mark/property stamps.
+    let demand = 1;
+    const selected = first < 0 || last < first ? [] : locations.slice(first, last + 1);
+    for (const { paragraph } of selected) {
+      demand += 3;
+      const blockId = idKey(paragraph.paraId ?? "");
+      for (const span of leafSpans(paragraph.content)) {
+        if (blockId === idKey(fromId) && fromOffset !== undefined && span.after.offset < fromOffset)
+          continue;
+        if (blockId === idKey(toId) && toOffset !== undefined && span.before.offset > toOffset)
+          continue;
+        demand += 4 * (1 + span.ancestors.length);
       }
     }
-  })();
-  // Each leaf can start a deletion segment; each ancestor can be cut at both
-  // endpoints. Paragraph joins need a mark and a property-change stamp.
-  const demand =
-    1 +
-    paragraphs.reduce(
-      (total, { paragraph }) =>
-        total +
-        3 +
-        leafSpans(paragraph.content).reduce(
-          (count, span) => count + 4 * (1 + span.ancestors.length),
-          0,
-        ),
-      0,
-    );
-  const fresh = (space: string, count: number) => {
-    const occupied = new Set(
-      identities
-        .filter((key) => key.startsWith(`${space}:`))
-        .map((key) => Number(key.slice(space.length + 1))),
-    );
-    const ids: number[] = [];
-    for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
-      if (!occupied.has(id)) ids.push(id);
-    }
-    return ids;
-  };
-  const revision = fresh(IDENTITY_SPACES.REVISION, demand + 1);
-  const revisionId = revision.at(0) ?? MAX_REVISION_ID + 1;
-  const usedParagraphs = new Set(packageParagraphIds(document.package).map(idKey));
-  let nextParagraph = 1;
-  while (usedParagraphs.has(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
-    nextParagraph += 1;
-  return {
-    revisionId,
-    newBlockId: nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
-    newIds: { revision: revision.slice(1), control: fresh(IDENTITY_SPACES.CONTROL, demand) },
+    const fresh = (occupied: ReadonlySet<number>, count: number) => {
+      const ids: number[] = [];
+      for (let id = 1; id <= MAX_REVISION_ID && ids.length < count; id += 1) {
+        if (!occupied.has(id)) ids.push(id);
+      }
+      return ids;
+    };
+    const revision = fresh(census.revisions, demand + 1);
+    let nextParagraph = 1;
+    while (census.paragraphs.has(nextParagraph.toString(16).padStart(8, "0").toUpperCase()))
+      nextParagraph += 1;
+    return {
+      revisionId: revision.at(0) ?? MAX_REVISION_ID + 1,
+      newBlockId: nextParagraph.toString(16).padStart(8, "0").toUpperCase(),
+      newIds: { revision: revision.slice(1), control: fresh(census.controls, demand) },
+    };
   };
 };
+
+/** Fresh identities bounded by the edit, with one package census per document version. */
+export const allocateEditorIntentIds = createEditorIntentIdAllocator();
 
 /** Accepted-view text without changing the canonical paragraph or its offset space. */
 export const paragraphVisibleText = (paragraph: Paragraph): string => {
@@ -270,7 +298,7 @@ const paragraphAt = (document: Document, at: TextPosition) =>
   )?.paragraph;
 
 /** Capture authored formatting before deletion, using only visible runs. */
-const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting => {
+const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting | undefined => {
   const spans = leafSpans(paragraph.content).filter(
     ({ ancestors }) => !ancestors.some(isRemovedRevisionNode),
   );
@@ -278,14 +306,14 @@ const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting => {
     spans.find(({ before, after }) => before.offset <= offset && offset < after.offset) ??
     spans.findLast(({ after }) => after.offset <= offset) ??
     spans.find(({ before }) => before.offset > offset);
-  return span?.ancestors.findLast((ancestor) => ancestor.type === "run")?.formatting ?? {};
+  return span?.ancestors.findLast((ancestor) => ancestor.type === "run")?.formatting;
 };
 
 const authoredFormatting = (
   document: Document,
   from: TextPosition,
   to: TextPosition,
-): TextFormatting => {
+): TextFormatting | undefined => {
   const paragraph = paragraphAt(document, from);
   if (paragraph === undefined)
     panic("A validated input paragraph must exist when reading authored formatting.");
@@ -319,7 +347,7 @@ type IntentRunFormattingOptions = {
 const intentRunFormatting = (
   document: Document,
   { from, to, runProps, runPropsPatch }: IntentRunFormattingOptions,
-): TextFormatting => {
+) => {
   const authored = runProps ?? authoredFormatting(document, from, to);
   return runPropsPatch === undefined
     ? authored
@@ -334,6 +362,38 @@ const splitParagraphFields = (document: Document, at: TextPosition) => {
     )
     ?.paragraphs.at(-1);
   return survivor?.formatting === undefined ? {} : { formatting: survivor.formatting };
+};
+
+/** Join only plain runs meeting at an edited seam, within the same container. */
+const textSeamDepth = (paragraph: Paragraph, offset: number): number => {
+  const spans = leafSpans(paragraph.content);
+  for (const [index, right] of spans.entries()) {
+    const left = spans.at(index - 1);
+    if (
+      index === 0 ||
+      left === undefined ||
+      left.after.offset !== offset ||
+      right.before.offset !== offset
+    )
+      continue;
+    const leftRun = left.ancestors.at(-1);
+    const rightRun = right.ancestors.at(-1);
+    if (
+      leftRun?.type !== "run" ||
+      rightRun?.type !== "run" ||
+      leftRun === rightRun ||
+      leftRun.content.at(-1) !== left.node ||
+      rightRun.content.at(0) !== right.node ||
+      left.ancestors.length !== right.ancestors.length ||
+      !left.ancestors
+        .slice(0, -1)
+        .every((parent, parentIndex) => parent === right.ancestors[parentIndex]) ||
+      !runsMergeable(leftRun, rightRun)
+    )
+      continue;
+    return alikeDepth(leftRun, rightRun);
+  }
+  return 0;
 };
 
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
@@ -548,7 +608,13 @@ export const compileEditorIntent = (
       const content = (
         text === ""
           ? []
-          : [{ type: "run", formatting: runProps, content: [{ type: "text", text }] }]
+          : [
+              {
+                type: "run",
+                ...(runProps === undefined ? {} : { formatting: runProps }),
+                content: [{ type: "text", text }],
+              },
+            ]
       ) satisfies ParagraphContent[];
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
@@ -576,7 +642,13 @@ export const compileEditorIntent = (
           )
             selection = { ...selection, blockId: op.nextBlockId };
           if (op.type === DOCUMENT_OP_TYPES.INSERT_CONTENT)
-            selection = { ...op.at, offset: op.at.offset + text.length, zeroWidthBefore: 0 };
+            selection = {
+              ...op.at,
+              offset: op.at.offset + text.length,
+              ...(text.length > 0 && op.at.zeroWidthBefore !== undefined
+                ? { zeroWidthBefore: 0 }
+                : {}),
+            };
         }
         break;
       }
@@ -650,22 +722,33 @@ export const compileEditorIntent = (
           slice: { openStart: 0, openEnd: 0, content },
           ...allocationFields,
         });
-      selection =
-        text === "" ? at : { ...at, offset: from.offset + text.length, zeroWidthBefore: 0 };
+      selection = {
+        ...at,
+        offset: from.offset + text.length,
+        ...(text.length > 0 && at.zeroWidthBefore !== undefined ? { zeroWidthBefore: 0 } : {}),
+      };
       break;
     }
     case "splitParagraph": {
       if (intent.to === undefined) {
-        ops = [
-          {
-            type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
-            at: intent.at,
-            newBlockId: intent.newBlockId,
-            newHalf: SPLIT_HALVES.FIRST,
-            newParagraph: splitParagraphFields(document, intent.at),
-            ...tracked,
-          },
-        ];
+        const split = {
+          type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+          at: intent.at,
+          newBlockId: intent.newBlockId,
+          newHalf: SPLIT_HALVES.FIRST,
+          newParagraph: splitParagraphFields(document, intent.at),
+          ...tracked,
+        } as const;
+        if (mode.type === "suggesting") {
+          const plan = createTrackedPlan({
+            document,
+            revision: mode.revision,
+            newIds: mode.newIds,
+          });
+          const appended = plan.append(split);
+          if (appended.isErr()) return Result.err(appended.error);
+          ops = plan.ops;
+        } else ops = [split];
         selection = { ...intent.at, offset: 0, zeroWidthBefore: 0 };
         break;
       }
@@ -799,7 +882,6 @@ export const compileEditorIntent = (
                 ? EMPTY_PROPERTY_SETS.OMIT
                 : EMPTY_PROPERTY_SETS.KEEP,
             revision: mode.revision,
-            propertyReview: PROPERTY_REVIEW_POLICIES.APPEND,
           });
           if (patched.isErr()) return Result.err(patched.error);
         }
@@ -818,6 +900,47 @@ export const compileEditorIntent = (
       const unreachable: never = intent;
       return unreachable;
     }
+  }
+  // Simulate direct pieces in order: each consumes its own pool, and later
+  // pieces must not reuse identities created by an earlier piece.
+  if (mode.type === "editing") {
+    let current = document;
+    const compact: DocumentOp[] = [];
+    const takenRevision = new Set<number>();
+    const takenControl = new Set<number>();
+    const { story } = intentEndpoints(intent);
+    for (const input of ops) {
+      const op = filterNewIds(
+        input,
+        (space, id) => !(space === IDENTITY_SPACES.REVISION ? takenRevision : takenControl).has(id),
+      );
+      const applied = applyDocumentOp(current, op);
+      if (applied.isErr()) return Result.err(applied.error);
+      const trimmed = trimAppliedNewIds({ op, applied: applied.value, story });
+      if ("newIds" in trimmed) {
+        for (const id of trimmed.newIds?.revision ?? []) takenRevision.add(id);
+        for (const id of trimmed.newIds?.control ?? []) takenControl.add(id);
+      }
+      compact.push(trimmed);
+      current = applied.value.document;
+    }
+    if (intent.type === "replaceText") {
+      // Closed insertion slices preserve authored boundaries. Merge only the
+      // two edited seams the parser would merge, with inverses in the journal.
+      for (const offset of new Set([selection.offset, selection.offset - intent.text.length])) {
+        const at = { ...selection, offset };
+        const paragraph = paragraphAt(current, at);
+        if (paragraph === undefined) panic("An edited paragraph must exist at its seam.");
+        const depth = textSeamDepth(paragraph, offset);
+        if (depth === 0) continue;
+        const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
+        const joined = applyDocumentOp(current, join);
+        if (joined.isErr()) return Result.err(joined.error);
+        compact.push(join);
+        current = joined.value.document;
+      }
+    }
+    ops = compact;
   }
   return Result.ok({ ops: ops.map(captureDocumentOp), selection });
 };

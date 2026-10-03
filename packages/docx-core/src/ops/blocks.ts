@@ -22,12 +22,14 @@ import type {
 import { structurallyEqual } from "./equality";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "./refusal";
 import {
-  OP_STORIES,
   type OpStory,
   type SectionViewEntry,
   type SectionMapState,
   type SectionViewState,
 } from "./types";
+import { storyBody, replaceStoryBody } from "./stories";
+
+export { storyBody } from "./stories";
 
 /** One step from a block list down to a block list nested in one of its blocks. */
 type BlockListStep =
@@ -77,18 +79,6 @@ const collectParagraphs = (
         const unreachable: never = block;
         return unreachable;
       }
-    }
-  }
-};
-
-/** The block-level content of a story. */
-export const storyBody = (document: Document, story: OpStory): DocumentBody => {
-  switch (story) {
-    case OP_STORIES.MAIN:
-      return document.package.document;
-    default: {
-      const unreachable: never = story;
-      return unreachable;
     }
   }
 };
@@ -582,12 +572,5 @@ export const replaceParagraphs = ({
   }
   if (!sectionsInStep(nextBody))
     return sectionFailure("The restored section metadata conflicts with its canonical boundaries.");
-  switch (story) {
-    case OP_STORIES.MAIN:
-      return Result.ok({ ...document, package: { ...document.package, document: nextBody } });
-    default: {
-      const unreachable: never = story;
-      return unreachable;
-    }
-  }
+  return Result.ok(replaceStoryBody({ document, story, body: nextBody }));
 };

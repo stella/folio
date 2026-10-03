@@ -387,6 +387,7 @@ export type PreservedXmlAttrs = {
     xml: string;
     text: string;
     level: PreservedXmlLevel;
+    foldedListNumber?: import__stll_docx_core_model.FoldedListNumber;
 };
 
 // @public (undocumented)

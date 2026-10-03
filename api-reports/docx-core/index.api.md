@@ -306,7 +306,7 @@ export type Run = {
 };
 
 // @public
-export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
+export type RunContent = TextContent | TabContent | BreakContent | SymbolContent | NoteReferenceContent | NoteMarkerContent | FieldCharContent | InstrTextContent | SoftHyphenContent | NoBreakHyphenContent | RenderedPageBreakContent | PreservedXmlContent | DrawingContent | ShapeContent;
 
 // @public
 export const sanitizeExternalUrl: (rawUrl: string | undefined) => string | undefined;

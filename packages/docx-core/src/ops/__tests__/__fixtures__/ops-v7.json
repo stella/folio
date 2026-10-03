@@ -6583,5 +6583,379 @@
       "expected": {},
       "undefinedFields": [["expected", "numPr"]]
     }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "createHeaderFooter",
+      "sectionIndex": 0,
+      "story": {
+        "kind": "footer",
+        "rId": "rIdFooter"
+      },
+      "referenceType": "first",
+      "content": [
+        {
+          "type": "paragraph",
+          "paraId": "000000A1",
+          "content": []
+        }
+      ]
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "restoreStoryParts",
+      "expected": {
+        "body": {
+          "finalSectionProperties": {
+            "titlePg": true,
+            "footerReferences": [
+              {
+                "type": "first",
+                "rId": "rIdFooter"
+              }
+            ]
+          }
+        },
+        "footers": [
+          [
+            "rIdFooter",
+            {
+              "type": "footer",
+              "hdrFtrType": "first",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "000000A1",
+                  "content": []
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "parts": {
+        "body": {
+          "finalSectionProperties": null
+        },
+        "footers": null
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "setSectionProps",
+      "sectionIndex": 0,
+      "patch": {
+        "footnotePr": {
+          "numStart": 2
+        }
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "restoreStoryParts",
+      "expected": {
+        "body": {
+          "finalSectionProperties": {
+            "titlePg": true,
+            "footerReferences": [
+              {
+                "type": "first",
+                "rId": "rIdFooter"
+              }
+            ],
+            "footnotePr": {
+              "numStart": 2
+            }
+          }
+        }
+      },
+      "parts": {
+        "body": {
+          "finalSectionProperties": {
+            "titlePg": true,
+            "footerReferences": [
+              {
+                "type": "first",
+                "rId": "rIdFooter"
+              }
+            ]
+          }
+        }
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "removeHeaderFooter",
+      "sectionIndex": 0,
+      "story": {
+        "kind": "footer",
+        "rId": "rIdFooter"
+      },
+      "referenceType": "first"
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "restoreStoryParts",
+      "expected": {
+        "body": {
+          "finalSectionProperties": {
+            "titlePg": true,
+            "footerReferences": [],
+            "footnotePr": {
+              "numStart": 2
+            }
+          }
+        },
+        "footers": []
+      },
+      "parts": {
+        "body": {
+          "finalSectionProperties": {
+            "titlePg": true,
+            "footerReferences": [
+              {
+                "type": "first",
+                "rId": "rIdFooter"
+              }
+            ],
+            "footnotePr": {
+              "numStart": 2
+            }
+          }
+        },
+        "footers": [
+          [
+            "rIdFooter",
+            {
+              "type": "footer",
+              "hdrFtrType": "first",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "paraId": "000000A1",
+                  "content": []
+                }
+              ]
+            }
+          ]
+        ]
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "addNote",
+      "at": {
+        "story": "main",
+        "blockId": "00000002",
+        "offset": 0
+      },
+      "note": {
+        "type": "footnote",
+        "id": 1,
+        "content": [
+          {
+            "type": "paragraph",
+            "paraId": "000000A2",
+            "content": []
+          }
+        ]
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "restoreStoryParts",
+      "expected": {
+        "body": {
+          "content": [
+            {
+              "type": "paragraph",
+              "paraId": "00000002",
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "footnoteRef",
+                      "id": 1
+                    }
+                  ]
+                },
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Delta"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "footnotes": [
+          {
+            "type": "footnote",
+            "id": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "paraId": "000000A2",
+                "content": [
+                  {
+                    "type": "run",
+                    "formatting": {
+                      "styleId": "FootnoteReference"
+                    },
+                    "content": [
+                      {
+                        "type": "noteMarker",
+                        "kind": "footnote"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "parts": {
+        "body": {
+          "content": [
+            {
+              "type": "paragraph",
+              "paraId": "00000002",
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Delta"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "footnotes": null
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "removeNote",
+      "at": {
+        "story": "main",
+        "blockId": "00000002",
+        "offset": 0
+      },
+      "story": {
+        "kind": "footnote",
+        "id": 1
+      }
+    }
+  },
+  {
+    "schema": 7,
+    "op": {
+      "type": "restoreStoryParts",
+      "expected": {
+        "body": {
+          "content": [
+            {
+              "type": "paragraph",
+              "paraId": "00000002",
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Delta"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "footnotes": []
+      },
+      "parts": {
+        "body": {
+          "content": [
+            {
+              "type": "paragraph",
+              "paraId": "00000002",
+              "content": [
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "footnoteRef",
+                      "id": 1
+                    }
+                  ]
+                },
+                {
+                  "type": "run",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Delta"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "footnotes": [
+          {
+            "type": "footnote",
+            "id": 1,
+            "content": [
+              {
+                "type": "paragraph",
+                "paraId": "000000A2",
+                "content": [
+                  {
+                    "type": "run",
+                    "formatting": {
+                      "styleId": "FootnoteReference"
+                    },
+                    "content": [
+                      {
+                        "type": "noteMarker",
+                        "kind": "footnote"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
   }
 ]

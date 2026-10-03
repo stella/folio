@@ -198,6 +198,11 @@ const OWNED_BY_A_SIBLING_RECORD = {
     }),
   },
   paragraphMark: {
+    specVanish: ownedElsewhere({
+      container: "run-properties",
+      child: "specVanish",
+      reader: "paragraphProperties#parseParagraphProperties",
+    }),
     ins: ownedElsewhere({
       container: "run-properties",
       child: "ins",
@@ -580,9 +585,6 @@ const RUN_PROPERTY_HANDLERS = {
   run: { ...RUN_PROPERTY_BASE_HANDLERS, ...OWNED_BY_A_SIBLING_RECORD.run },
   paragraphMark: {
     ...RUN_PROPERTY_BASE_HANDLERS,
-    // The paragraph's record reads the mark's `w:specVanish`
-    // (`runInWithNext`), so it is taken here without a capture.
-    specVanish: readLastOccurrenceOnly(() => undefined),
     ...OWNED_BY_A_SIBLING_RECORD.paragraphMark,
   },
   standalone: { ...RUN_PROPERTY_BASE_HANDLERS, ...OWNED_BY_A_SIBLING_RECORD.standalone },
@@ -615,7 +617,8 @@ const RUN_PROPERTY_HANDLERS = {
  * it beat are not kept.
  *
  * An element that states nothing at all still yields a record: `undefined` here
- * means the owner carried no `w:rPr`, never that the one it carried was empty.
+ * means the owner carried no `w:rPr`, or a paragraph-mark carrier contained
+ * only metadata owned by the paragraph. An authored empty set remains {}.
  */
 export function parseRunProperties(
   rPr: XmlElement | null,
@@ -636,6 +639,22 @@ export function parseRunProperties(
   });
   if (preserved) {
     formatting.preserved = preserved;
+  }
+
+  // A carrier created for paragraph-owned metadata does not also state
+  // empty formatting. Keep an actually empty rPr, and any formatting payload.
+  const children = getChildElements(rPr);
+  if (
+    owner === RUN_PROPERTY_OWNERS.paragraphMark &&
+    Object.keys(formatting).length === 0 &&
+    children.length > 0 &&
+    children.every(
+      (child) =>
+        WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "") &&
+        Object.hasOwn(OWNED_BY_A_SIBLING_RECORD.paragraphMark, getLocalName(child.name)),
+    )
+  ) {
+    return undefined;
   }
 
   // No empty-record guard, the decision `w:tblPrEx`, `w:trPr` and `w:tcPr`
@@ -981,6 +1000,18 @@ function parseRunContents(
         contents.push(parseEndnoteReference(child));
         break;
 
+      case "footnoteRef":
+      case "endnoteRef":
+        if (WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(child) ?? "")) {
+          contents.push({
+            type: "noteMarker",
+            kind: localName === "footnoteRef" ? "footnote" : "endnote",
+          });
+        } else {
+          contents.push(preserveRunChild(child));
+        }
+        break;
+
       case "fldChar":
         // Field character (begin/separate/end)
         contents.push(parseFieldChar(child));
@@ -1189,7 +1220,7 @@ function parseRunContents(
       default:
         // Every remaining child goes to the verbatim sink, at its source
         // position: `w:ruby`, `w:contentPart`, `w:pgNum`, `w:annotationRef`,
-        // the note markers `w:footnoteRef`/`w:endnoteRef`, the note separators,
+        // the note separators,
         // the date placeholders, a foreign namespace, an element a later OOXML
         // revision adds. `w:rPr` is excluded above because
         // `parseRunProperties` reads the same element.

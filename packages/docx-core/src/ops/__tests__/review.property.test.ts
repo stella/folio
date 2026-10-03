@@ -196,12 +196,12 @@ const stampedIds = (document: Document, stamps: readonly RevisionStamp[]): numbe
 };
 
 /**
- * The operation without its stamp: what it does directly. A direct join
- * merges no records, as a tracked one leaves that to resolution, which
- * merges as far as they are alike.
+ * The operation without its stamp: what it does directly. A tracked join
+ * records only a paragraph boundary deletion, so its direct counterpart
+ * preserves the authored inline records.
  */
 const directOf = (op: DocumentOp): DocumentOp => {
-  const direct = op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? { ...op, depth: 0 } : { ...op };
+  const direct = { ...op };
   Reflect.deleteProperty(direct, "revision");
   return direct;
 };
@@ -307,6 +307,13 @@ const alsoAccepted = (
         }
       }
       return { direct: [...enclosing], tracked: [...enclosing, ...pieces] };
+    }
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
+      // One OOXML property review folds both edits; acceptance resolves the original id too.
+      const folded = tracked.revisions.filter((id) => original.has(id));
+      return { direct: folded, tracked: folded };
     }
     case DOCUMENT_OP_TYPES.DELETE_RANGE: {
       const paragraph = paragraphById(document, op.from.blockId);
@@ -507,6 +514,10 @@ describe("tracked operations and their resolution", () => {
         );
         const expected = resolved(direct.value.document, extra.direct, REVISION_DECISIONS.ACCEPT);
         expectEquivalent(accepted, expected);
+        // Direct and accepted joins share the same conservative seam merge.
+        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
+          expect(accepted).toStrictEqual(expected);
+        }
       }),
       { numRuns: NUM_RUNS },
     );
@@ -928,6 +939,13 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.rows]).map(idKey)]);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
+      return new Set();
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
       return new Set();
     default: {
       const unreachable: never = op;

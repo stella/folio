@@ -503,6 +503,8 @@ function renderHtmlRun(
         text += `<sup>[${token}]</sup>`;
         break;
       }
+      case "noteMarker":
+        break;
       default:
         break;
     }

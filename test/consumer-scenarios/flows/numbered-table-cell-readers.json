@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "kind": "random",
+  "generation": "targeted",
+  "fixture": "styleNumbered",
+  "mode": "tracked-changes",
+  "seed": 1785652215,
+  "steps": [
+    {
+      "action": "story batch",
+      "seed": 1074722748,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "1F7C854F",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 868504360,
+      "operations": [
+        {
+          "type": "insertTable",
+          "blockId": "247C8D2E",
+          "rows": [
+            ["Term", "Value"],
+            ["Period", "12 months"]
+          ]
+        }
+      ]
+    },
+    {
+      "action": "story batch",
+      "seed": 1804893415,
+      "operations": [
+        {
+          "type": "setBlockParagraphProperties",
+          "blockId": "@10",
+          "properties": {
+            "numbering": {
+              "numId": 5,
+              "level": 0
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "weights": {
+    "version": 1,
+    "cells": {},
+    "operations": []
+  },
+  "origin": "shrunk from swap of 93405794f20d5a7b",
+  "title": "PINNED #1409, reported seed 1576446915: numbered table-cell labels agree across readers"
+}

@@ -1141,7 +1141,8 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
       fc.integer({ min: 0, max: 3 }),
       fc.integer({ min: 1, max: 2 }),
       fc.boolean(),
-      (nested, cut, count, foreign) => {
+      fc.boolean(),
+      (nested, cut, count, foreign, pendingSource) => {
         const siblings: ParagraphContent[] = [
           {
             type: "inlineWrapper",
@@ -1158,6 +1159,19 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
             content: [{ type: "run", formatting: {}, content: [{ type: "text", text: "aaa" }] }],
           },
         ];
+        const authoredContent: ParagraphContent[] = nested
+          ? [{ type: "hyperlink", anchor: "target", children: siblings }]
+          : siblings;
+        const sourceContent: ParagraphContent[] = pendingSource
+          ? [
+              {
+                type: "insertion",
+                info: { id: 17, author: "Earlier" },
+                content: authoredContent,
+                resolutionJoins: { before: 0, after: 0, remove: 0 },
+              },
+            ]
+          : authoredContent;
         const original = normalizeForOps({
           package: {
             document: {
@@ -1165,9 +1179,7 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
                 {
                   type: "paragraph",
                   paraId: "00000001",
-                  content: nested
-                    ? [{ type: "hyperlink", anchor: "target", children: siblings }]
-                    : siblings,
+                  content: sourceContent,
                 },
                 { type: "paragraph", paraId: "00000002", content: [] },
               ],
@@ -1232,6 +1244,30 @@ test("generated paragraph cut depths preserve authored wrappers and deferred spl
           for (const revisionIds of order)
             separate = resolve({ document: separate, revisionIds, decision: "reject" });
           assertExactModel(separate, together);
+          if (pendingSource) {
+            const sourceIds: number[] = [];
+            const collect = (nodes: readonly InlineNode[]): void => {
+              for (const node of nodes) {
+                if (node.type === "insertion" && node.info.author === "Earlier")
+                  sourceIds.push(node.info.id);
+                collect(childNodes(node) ?? []);
+              }
+            };
+            for (const block of current.package.document.content) {
+              if (block.type === "paragraph") collect(block.content);
+            }
+            const allTogether = resolve({
+              document: current,
+              revisionIds: [...groups.flat(), ...sourceIds],
+              decision: "reject",
+            });
+            const allSeparate = resolve({
+              document: separate,
+              revisionIds: [17],
+              decision: "reject",
+            });
+            assertExactModel(allSeparate, allTogether);
+          }
         }
         // Accepting any intervening insertion breaks only its deferred source
         // seam; rejecting the others must preserve that accepted authored payload.

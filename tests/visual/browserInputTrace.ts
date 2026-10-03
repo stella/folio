@@ -113,7 +113,7 @@ const suggestionActionArbitraries = {
 
 export const browserSuggestionActionKinds = Object.keys(suggestionActionArbitraries);
 
-const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[] = [
+export const commonActionArbitraries: readonly fc.Arbitrary<BrowserInputAction>[] = [
   ...SUGGESTION_INPUT_KINDS.filter((kind) => kind !== "dragCellDelete").map(
     (kind) => suggestionActionArbitraries[kind],
   ),
