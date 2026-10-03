@@ -1,4 +1,3 @@
-import { panic } from "better-result";
 import { escapeXmlAttribute } from "@stll/docx-core";
 import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
 import type { BlockContent } from "../types/document";
@@ -26,49 +25,13 @@ const BLOCK_ELEMENT_NAMES = {
   bookmarkStart: "bookmarkStart",
   bookmarkEnd: "bookmarkEnd",
 } as const satisfies Record<BlockContent["type"], string | null>;
-const isBlockKind = (type: string): type is BlockContent["type"] =>
-  Object.hasOwn(BLOCK_ELEMENT_NAMES, type);
-const record = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-type ReplayBlock =
-  | {
-      type: Exclude<
-        BlockContent["type"],
-        "blockSdt" | "blockCustomXml" | "table" | "preservedBlock"
-      >;
-    }
-  | { type: "blockSdt" | "blockCustomXml"; content: unknown[] }
-  | { type: "table"; rows: unknown[] }
-  | { type: "preservedBlock"; xml: string };
-const isReplayBlock = (value: unknown): value is ReplayBlock => {
-  if (
-    !record(value) ||
-    !("type" in value) ||
-    typeof value.type !== "string" ||
-    !isBlockKind(value.type)
-  )
-    return false;
-  switch (value.type) {
-    case "blockSdt":
-    case "blockCustomXml":
-      return "content" in value && Array.isArray(value.content);
-    case "table":
-      return "rows" in value && Array.isArray(value.rows);
-    case "preservedBlock":
-      return "xml" in value && typeof value.xml === "string";
-    case "paragraph":
-    case "bookmarkStart":
-    case "bookmarkEnd":
-      return true;
-    default: {
-      const unexpected: never = value.type;
-      panic(`Unknown replay block kind: ${unexpected}`);
-    }
-  }
+type ModelMatchOptions = {
+  value: BlockContent | undefined;
+  element: XmlElement;
+  mode: "source" | "generated";
 };
-type ModelMatchOptions = { value: unknown; element: XmlElement; mode: "source" | "generated" };
 const modelMatchesElement = ({ value, element, mode }: ModelMatchOptions): boolean => {
-  if (!isReplayBlock(value)) return false;
+  if (value === undefined) return false;
   // The parser projects a supported AlternateContent branch as one block;
   // source cardinality and the trusted baseline preserve its outer carrier.
   if (
@@ -217,18 +180,8 @@ const generatedFragment = ({
   return root === undefined ? null : captureSourceProfileXml(root, DOCX_CONFORMANCE_CLASSES.STRICT);
 };
 
-const paragraphIdentity = (value: unknown): string | undefined => {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("type" in value) ||
-    value.type !== "paragraph" ||
-    !("paraId" in value) ||
-    typeof value.paraId !== "string"
-  )
-    return undefined;
-  return value.paraId.toUpperCase();
-};
+const paragraphIdentity = (value: BlockContent): string | undefined =>
+  value.type === "paragraph" ? value.paraId?.toUpperCase() : undefined;
 
 type CandidateQueue = { indices: number[]; cursor: number };
 type AddCandidateOptions = { map: Map<string, CandidateQueue>; key: string; index: number };
@@ -258,7 +211,7 @@ type ReplayScopeOptions = {
 
 type StoryBlockReplayOptions = {
   sourceXml: string;
-  baselineContent: readonly unknown[];
+  baselineContent: readonly BlockContent[];
   currentContent: readonly BlockContent[];
   serializedXml: string;
 };
@@ -324,7 +277,7 @@ const replayBlocks = (
       !used.has(index)
     ) {
       const baseline = baselineContent[index];
-      if (isReplayBlock(baseline) && baseline.type === block.type) originalIndex = index;
+      if (baseline?.type === block.type) originalIndex = index;
     }
     if (originalIndex !== undefined) used.add(originalIndex);
     const original = originalIndex === undefined ? undefined : source.blocks[originalIndex];
@@ -389,7 +342,7 @@ const replayBlocks = (
 export const buildStoryBlockReplay = (options: StoryBlockReplayOptions): string | null =>
   replayBlocks(options);
 
-const withoutChildren = (value: Record<string, unknown>, key: string) =>
+const withoutChildren = (value: object, key: string) =>
   Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
 const wordChildren = (element: XmlElement, name: string) =>
   getChildElements(element).filter(
@@ -403,7 +356,7 @@ type NestedBlockOptions = {
   serializedXml: string;
   sourceElement: XmlElement;
   generatedElement: XmlElement;
-  baseline: unknown;
+  baseline: BlockContent | undefined;
   current: BlockContent;
   generatedRoot: XmlElement;
 };
@@ -416,14 +369,14 @@ const replayNestedBlock = ({
   current,
   generatedRoot,
 }: NestedBlockOptions): string | null => {
-  if (!isReplayBlock(baseline) || baseline.type !== current.type) return null;
+  if (baseline === undefined || baseline.type !== current.type) return null;
   const sourceRange = getXmlSourceRange(sourceElement);
   if (!sourceRange) return null;
   const splices: XmlSplice[] = [];
   const nestedContent = (
     sourceContainer: XmlElement,
     generatedContainer: XmlElement,
-    before: readonly unknown[],
+    before: readonly BlockContent[],
     after: readonly BlockContent[],
   ) => {
     const sourceContentRange = getXmlSourceRange(sourceContainer);
@@ -491,13 +444,11 @@ const replayNestedBlock = ({
       if (sourceRows.length !== current.rows.length || generatedRows.length !== current.rows.length)
         return null;
       for (const [rowIndex, row] of current.rows.entries()) {
-        const beforeRow: unknown = baseline.rows[rowIndex];
+        const beforeRow = baseline.rows[rowIndex];
         const sourceRow = sourceRows[rowIndex];
         const generatedRow = generatedRows[rowIndex];
         if (
-          !record(beforeRow) ||
-          !("cells" in beforeRow) ||
-          !Array.isArray(beforeRow.cells) ||
+          beforeRow === undefined ||
           beforeRow.cells.length !== row.cells.length ||
           canonicalJson(withoutChildren(beforeRow, "cells")) !==
             canonicalJson(withoutChildren(row, "cells")) ||
@@ -510,13 +461,11 @@ const replayNestedBlock = ({
         if (sourceCells.length !== row.cells.length || generatedCells.length !== row.cells.length)
           return null;
         for (const [cellIndex, cell] of row.cells.entries()) {
-          const beforeCell: unknown = beforeRow.cells[cellIndex];
+          const beforeCell = beforeRow.cells[cellIndex];
           const sourceCell = sourceCells[cellIndex];
           const generatedCell = generatedCells[cellIndex];
           if (
-            !record(beforeCell) ||
-            !("content" in beforeCell) ||
-            !Array.isArray(beforeCell.content) ||
+            beforeCell === undefined ||
             canonicalJson(withoutChildren(beforeCell, "content")) !==
               canonicalJson(withoutChildren(cell, "content")) ||
             !sourceCell ||
@@ -560,7 +509,7 @@ type CellContentOptions = {
   serializedXml: string;
   sourceCell: XmlElement;
   generatedCell: XmlElement;
-  before: readonly unknown[];
+  before: readonly BlockContent[];
   after: readonly BlockContent[];
   sourceRangeStart: number;
   splices: XmlSplice[];

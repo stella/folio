@@ -1,4 +1,4 @@
-import type { HeaderFooter } from "../types/document";
+import type { BlockContent, HeaderFooter } from "../types/document";
 import { Result } from "better-result";
 import { canonicalJson } from "../utils/canonicalJson";
 
@@ -15,12 +15,33 @@ const readFingerprint = (hf: HeaderFooter): unknown => {
   return value;
 };
 
+// The capture handle survives object spreads without exposing baseline content in JSON.
+const BASELINE_HANDLE = Symbol("header-footer-source-baseline");
+const contentBaselines = new WeakMap<
+  object,
+  { fingerprint: string; content: readonly BlockContent[] }
+>();
+
+const captureContentBaseline = (hf: HeaderFooter): void => {
+  const fingerprint = hf.verbatimFingerprint;
+  if (fingerprint === undefined) return;
+  const handle = {};
+  contentBaselines.set(handle, { fingerprint, content: structuredClone(hf.content) });
+  Object.defineProperty(hf, BASELINE_HANDLE, {
+    value: handle,
+    enumerable: true,
+    configurable: true,
+  });
+};
+
 export const getHeaderFooterBaselineContent = (
   hf: HeaderFooter,
-): readonly unknown[] | undefined => {
-  const baseline = readFingerprint(hf);
-  if (baseline === null || typeof baseline !== "object" || !("content" in baseline)) return;
-  return Array.isArray(baseline.content) ? baseline.content : undefined;
+): readonly BlockContent[] | undefined => {
+  if (!(BASELINE_HANDLE in hf)) return;
+  const handle = hf[BASELINE_HANDLE];
+  if (typeof handle !== "object" || handle === null) return;
+  const baseline = contentBaselines.get(handle);
+  return baseline?.fingerprint === hf.verbatimFingerprint ? baseline?.content : undefined;
 };
 
 export const canReplayHeaderFooterBlocks = (hf: HeaderFooter): boolean => {
@@ -79,6 +100,7 @@ export const assignHeaderFooterVerbatimXml = (hf: HeaderFooter, xml: string): vo
   const ext = hf;
   ext.verbatimXml = xml;
   ext.verbatimFingerprint = headerFooterSerializationFingerprint(hf);
+  captureContentBaseline(hf);
 };
 
 export const refreshHeaderFooterVerbatimFingerprint = (hf: HeaderFooter): void => {
@@ -87,10 +109,12 @@ export const refreshHeaderFooterVerbatimFingerprint = (hf: HeaderFooter): void =
     return;
   }
   ext.verbatimFingerprint = headerFooterSerializationFingerprint(hf);
+  captureContentBaseline(hf);
 };
 
 export const clearHeaderFooterVerbatimXml = (hf: HeaderFooter): void => {
   const ext = hf;
   delete ext.verbatimXml;
   delete ext.verbatimFingerprint;
+  Reflect.deleteProperty(hf, BASELINE_HANDLE);
 };

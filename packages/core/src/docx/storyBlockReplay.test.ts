@@ -167,27 +167,6 @@ test("unmapped elements, count mismatch and malformed XML fall back safely", () 
   ).toBeNull();
 });
 
-test("untrusted baseline blocks require a supported discriminator and matching payload shape", () => {
-  const value = block("11111111", "same");
-  for (const { baseline, sourceBody } of [
-    ...[null, [], {}, { type: 1 }, { type: "unsupported" }, { type: "preservedBlock", xml: 1 }].map(
-      (snapshot) => ({ baseline: snapshot, sourceBody: sourceParagraph("same") }),
-    ),
-    { baseline: { type: "table", rows: null }, sourceBody: "<q:tbl/>" },
-    { baseline: { type: "blockSdt", content: null }, sourceBody: "<q:sdt/>" },
-    { baseline: { type: "blockCustomXml", content: null }, sourceBody: "<q:customXml/>" },
-  ]) {
-    expect(
-      buildStoryBlockReplay({
-        sourceXml: story(sourceBody),
-        baselineContent: [baseline],
-        currentContent: [value],
-        serializedXml: emitted(emittedParagraph("same")),
-      }),
-    ).toBeNull();
-  }
-});
-
 test("block deletion or movement cannot unbalance a formerly balanced comment range", () => {
   const first = block("11111111", "first");
   const second = block("22222222", "second");
