@@ -7,6 +7,7 @@ import { assertProperty, propertyTestTimeout } from "../../../../../test/propert
 import type { Document, ParagraphContent, Run } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
 import { normalizeForOps } from "../contract";
+import { planTrackedReplace } from "../rangeReplacement";
 import { asParagraphContent, childNodes, type InlineNode, rebuildNode } from "../leaves";
 import { allocateEditorIntentIds, compileEditorIntent, type EditorIntent } from "../editorIntent";
 import { childrenOf, isInlineContainer, paragraphLogicalText } from "../offsets";
@@ -1518,5 +1519,60 @@ test("generated retained wrapper transfers rebase deferred references and select
       resolve({ document: first, revisionIds: [sourceId], decision: "reject" });
     }),
     { numRuns: 25 },
+  );
+});
+
+// The range law already generates replacement shapes; this sequence isolates
+// a deletion cut exposed by rejecting the subsequently inserted paragraph.
+test("generated replacement breaks restore deletion cut depths across paragraphs", () => {
+  assertProperty(
+    fc.property(
+      fc.integer({ min: 3, max: 12 }),
+      fc.nat(20),
+      fc.boolean(),
+      fc.boolean(),
+      (width, cutPick, linked, explicitFormatting) => {
+        const run: Run = {
+          type: "run",
+          content: [{ type: "text", text: "a".repeat(width) }],
+          ...(explicitFormatting ? { formatting: { bold: false, italic: false } } : {}),
+        };
+        const content: ParagraphContent[] = linked
+          ? [{ type: "hyperlink", anchor: "target", children: [run] }]
+          : [run];
+        const original = normalizeForOps({
+          package: {
+            document: {
+              content: [
+                { type: "paragraph", paraId: "00000001", content },
+                { type: "paragraph", paraId: "00000002", content: [] },
+              ],
+            },
+          },
+        });
+        const revisionIds = Array.from({ length: 32 }, (_, index) => 1001 + index);
+        const planned = planTrackedReplace(original, {
+          from: position({ offset: 1 + (cutPick % (width - 1)) }),
+          to: position({ blockId: "00000002", offset: 0 }),
+          revision: { id: 1000, author: "Reviewer" },
+          newIds: { revision: revisionIds },
+          replacement: {
+            paragraphs: [{ type: "paragraph", paraId: "00000003", content: [] }],
+            tail: { content: [], openStart: 0, openEnd: 0 },
+          },
+        });
+        if (planned.isErr()) throw planned.error;
+        const applied = applyDocumentOps(original, planned.value);
+        if (applied.isErr()) throw applied.error;
+        expectInverse(applied.value, original);
+        const rejected = resolve({
+          document: applied.value.document,
+          revisionIds: [1000, ...revisionIds],
+          decision: REVISION_DECISIONS.REJECT,
+        });
+        assertExactModel(rejected, original);
+      },
+    ),
+    { numRuns: 50 },
   );
 });
