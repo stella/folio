@@ -1,4 +1,11 @@
 {
+  "created story removal restores authored package registrations exactly": [
+    {
+      "seed": -666539293,
+      "note": "Saving a newly created story must not mutate the operation input or lose its content-type registration when removing and restoring it.",
+      "date": "2026-10-03"
+    }
+  ],
   "every operation preserves package inverse and declared scope laws": [
     {
       "seed": 327444275,
@@ -41,10 +48,11 @@
       }
     }
   ],
-  "created story removal restores authored package registrations exactly": [
+  "operation sequence generation retains the parsed package control": [
     {
-      "seed": -666539293,
-      "note": "Saving a newly created story must not mutate the operation input or lose its content-type registration when removing and restoring it.",
+      "seed": 1138888773,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Sequence controls retain parsed paragraph-property captures across clone and composed inverse",
       "date": "2026-10-03"
     }
   ]

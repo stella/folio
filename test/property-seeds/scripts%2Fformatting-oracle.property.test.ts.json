@@ -1,0 +1,9 @@
+{
+  "range formatting composes with restyling without permitting direct formatting leaks": [
+    {
+      "seed": 18568444,
+      "note": "Tracked range formatting followed by paragraph restyling retains formatting inside the requested text range.",
+      "date": "2026-10-03"
+    }
+  ]
+}

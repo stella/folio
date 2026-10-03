@@ -1,6 +1,8 @@
+import { stripVTControlCharacters } from "node:util";
+
 /** Stable reporting classes; fingerprints still identify individual replay cases. */
 export const normalizeFailureMessage = (message: string): string =>
-  message
+  stripVTControlCharacters(message)
     .replace(/^step\s+-?\d+:\s*/u, "")
     .replace(/(?:"(?:\\.|[^"\\])*"|(?<!\w)'[^'\n]*'(?!\w)|`[^`]*`)/gu, "<text>")
     .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/giu, "<id>")

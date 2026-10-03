@@ -68,7 +68,7 @@ import { outlineLevelStatedValue } from "../../../packages/docx-core/src/model/o
 import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -328,7 +328,7 @@ export const kernelDifferentialFailures = (
 export const runKernelDifferentialInvariant = async ({
   bytes,
   parsed,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
 
   const projected = await timeStage(timings, "kernel-project", () =>
@@ -343,6 +343,7 @@ export const runKernelDifferentialInvariant = async ({
   // A kernel that refuses a package folio accepted is the finding, not an outage.
   if (projected.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.kernelDifferential, projected.error)],
       timings,
     };
@@ -356,5 +357,5 @@ export const runKernelDifferentialInvariant = async ({
       ),
     ),
   );
-  return { failures, timings };
+  return { status: "evaluated", failures, timings };
 };
