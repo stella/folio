@@ -954,6 +954,8 @@ function serializeRunContent(content: RunContent): string {
     case "footnoteRef":
     case "endnoteRef":
       return serializeNoteReference(content);
+    case "noteMarker":
+      return content.kind === "footnote" ? "<w:footnoteRef/>" : "<w:endnoteRef/>";
     case "fieldChar":
       return serializeFieldChar(content);
     case "instrText":

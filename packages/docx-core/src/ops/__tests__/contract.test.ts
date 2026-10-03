@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { Document, Paragraph, Run } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import { normalizeForOps, validateOpsDocument } from "../contract";
+import { getSourceReplayToken, registerSourceReplayDocument } from "../sourceProvenance";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, type DocumentOp, INHERIT_RUN_PROPS, OP_STORIES } from "../types";
 import { packageIdentityKeys, packageParagraphIds } from "../ids";
@@ -201,6 +202,26 @@ describe("the seed contract", () => {
       ]);
       expect(normalizeForOps(normalized)).toEqual(normalized);
       expect(validateOpsDocument(normalized).isOk()).toBe(true);
+    },
+  );
+
+  test.each(["tracked", "untracked"] as const)(
+    "normalization preserves only registered %s provenance and unchanged block identity",
+    (mode) => {
+      const untouched = paragraph("00000001", "keep");
+      const changed = paragraph("00000002", "edit");
+      changed.content.push({ type: "run", content: [] });
+      const document = parsedShape(untouched, changed);
+      if (mode === "tracked") registerSourceReplayDocument(document);
+      const token = getSourceReplayToken(document);
+      const normalized = normalizeForOps(document);
+      expect(getSourceReplayToken(normalized)).toBe(token);
+      expect(getSourceReplayToken(normalized) !== undefined).toBe(mode === "tracked");
+      expect(normalized.package.document.content.at(0)).toBe(untouched);
+      expect(normalized.package.document.content.at(1)).not.toBe(changed);
+      expect(changed.content).toHaveLength(2);
+      expect(getSourceReplayToken(normalizeForOps(normalized))).toBe(token);
+      expect(getSourceReplayToken(structuredClone(normalized))).toBeUndefined();
     },
   );
 

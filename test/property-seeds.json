@@ -713,5 +713,13 @@
       "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
       "date": "2026-10-02"
     }
+  ],
+  "packages/docx-core/src/ops/__tests__/rangePlanning.property.test.ts::cross-paragraph deletion and replacement plans satisfy generated review laws": [
+    {
+      "seed": 1580815063,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
+      "date": "2026-10-01"
+    }
   ]
 }

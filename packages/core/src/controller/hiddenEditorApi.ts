@@ -7,6 +7,9 @@
  * React component or a headless controller without depending on React.
  */
 
+import type { DocumentOp, OpStory } from "@stll/docx-core/ops";
+import type { Node as PMNode } from "prosemirror-model";
+
 import { undo, redo } from "prosemirror-history";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { NodeSelection, Selection, TextSelection } from "prosemirror-state";
@@ -16,6 +19,18 @@ import type { EditorView } from "prosemirror-view";
 import { cloneDocumentWithParagraphPropertySources } from "../docx/documentClone";
 import { fromProseDoc } from "../prosemirror/conversion/fromProseDoc";
 import type { Document } from "../types/document";
+import type { createCanonicalInputBoundary } from "./canonicalInput";
+
+type CanonicalStoryHistoryOptions = {
+  view: EditorView;
+  story: OpStory;
+  direction: "undo" | "redo";
+};
+type CanonicalStoryTextOptions = {
+  view: EditorView;
+  story: OpStory;
+  intent: Parameters<Parameters<typeof createCanonicalInputBoundary>[0]["replace"]>[0];
+};
 
 export type HiddenEditorApi = {
   /** Request the off-screen EditorView (idempotent; creates it when possible). */
@@ -30,6 +45,14 @@ export type HiddenEditorApi = {
   getDocument: () => Document | null;
   /** Canonical snapshot, or null in the default session. */
   getCanonicalDocument: () => Document | null;
+  updateCanonicalInputLifecycle: (
+    action: "beginComposition" | "endComposition" | "breakUndoGroup",
+  ) => boolean;
+  applyCanonicalStoryHistory: (options: CanonicalStoryHistoryOptions) => boolean;
+  applyCanonicalOperations: (ops: readonly DocumentOp[]) => boolean;
+  getCanonicalStorySelection: (story: OpStory) => { anchor: number; head: number } | null;
+  getCanonicalStoryProjection: (story: OpStory) => PMNode | null;
+  replaceCanonicalStoryText: (options: CanonicalStoryTextOptions) => boolean;
   /** Focus the hidden editor */
   focus: () => void;
   /** Blur the hidden editor */
@@ -63,6 +86,15 @@ export type HiddenEditorApiDeps = {
   getDocumentContext: () => Document | null;
   getCanonicalDocument?: () => Document | null;
   getCanonicalHistory?: () => Pick<HiddenEditorApi, "undo" | "redo" | "canUndo" | "canRedo"> | null;
+  canonicalOperations?: Pick<
+    HiddenEditorApi,
+    | "updateCanonicalInputLifecycle"
+    | "applyCanonicalOperations"
+    | "getCanonicalStoryProjection"
+    | "replaceCanonicalStoryText"
+    | "applyCanonicalStoryHistory"
+    | "getCanonicalStorySelection"
+  >;
   isDestroying: () => boolean;
   ensureView: () => void;
   isViewRequested: () => boolean;
@@ -129,6 +161,19 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       }
       return stateToDocument(view.state, deps.getDocumentContext());
     },
+
+    updateCanonicalInputLifecycle: (action) =>
+      deps.canonicalOperations?.updateCanonicalInputLifecycle(action) ?? false,
+    applyCanonicalStoryHistory: (options) =>
+      deps.canonicalOperations?.applyCanonicalStoryHistory(options) ?? false,
+    applyCanonicalOperations: (ops) =>
+      deps.canonicalOperations?.applyCanonicalOperations(ops) ?? false,
+    getCanonicalStorySelection: (story) =>
+      deps.canonicalOperations?.getCanonicalStorySelection(story) ?? null,
+    getCanonicalStoryProjection: (story) =>
+      deps.canonicalOperations?.getCanonicalStoryProjection(story) ?? null,
+    replaceCanonicalStoryText: (options) =>
+      deps.canonicalOperations?.replaceCanonicalStoryText(options) ?? false,
 
     focus: () => {
       const view = deps.getView();

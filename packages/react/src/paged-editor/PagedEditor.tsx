@@ -102,6 +102,7 @@ import {
 } from "@stll/folio-core/layout-bridge/dom/findHfPmSpans";
 import { findNoteStoryForTarget } from "@stll/folio-core/layout-bridge/dom/noteStoryDom";
 import type { NoteStoryKey } from "@stll/folio-core/controller/noteEditorManager";
+import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
 import {
   createNoteReferenceFollower,
   type NoteReferenceFollower,
@@ -1402,6 +1403,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     const hiddenPMRef = useRef<HiddenProseMirrorRef>(null);
     const hfPMsRef = useRef<HiddenHeaderFooterPMsRef>(null);
     const noteEditorRef = useRef<NoteStoryEditorRef>(null);
+    const activeNoteStoryRef = useRef<NoteStoryKey | null>(null);
     const [noteStoryActive, setNoteStoryActive] = useState(false);
     const painterRef = useRef<LayoutPainter | null>(null);
     const noteStoryPlugins = useMemo(
@@ -1410,6 +1412,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     );
     const handleActiveNoteStoryChange = useCallback(
       (story: NoteStoryKey | null) => {
+        activeNoteStoryRef.current = story;
         setNoteStoryActive(story !== null);
         onActiveNoteStoryChange?.(story);
       },
@@ -1419,6 +1422,8 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
     useEffect(() => {
       if (readOnly || experimentalSession === "canonical") noteEditorRef.current?.close();
     }, [experimentalSession, readOnly]);
+
+    const getCanonicalApi = useCallback(() => hiddenPMRef.current, []);
 
     // Visual line navigation (ArrowUp/ArrowDown with sticky X)
     const { handlePMKeyDown } = useVisualLineNavigation({ pagesContainerRef });
@@ -2051,6 +2056,14 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [activeHeaderFooterRId, folioEditor, hfEditMode],
     );
 
+    const getCanonicalActiveStory = useCallback((): OpStory => {
+      const note = activeNoteStoryRef.current;
+      if (note) return { kind: note.kind, id: note.noteId };
+      if (hfEditMode && activeHeaderFooterRId)
+        return { kind: hfEditMode, rId: activeHeaderFooterRId };
+      return "main";
+    }, [hfEditMode, activeHeaderFooterRId]);
+
     // Painter-level settings: changing one does not change the layout, so
     // nothing else would repaint. `pageRenderer` belongs here for the same
     // reason, and the Vue adapter watches the same three.
@@ -2098,7 +2111,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
 
       let newDoc = hiddenPMRef.current?.getDocument();
       const body = hiddenPMRef.current?.getState()?.doc;
-      if (newDoc && body) {
+      if (newDoc && body && experimentalSession !== "canonical") {
         newDoc = noteFollower.reconcile(newDoc, body);
       }
       if (newDoc) {
@@ -3046,6 +3059,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             ensureHiddenEditorView({ sync: true });
           }
           scheduleLayout();
+          if (experimentalSession === "canonical") scheduleDocumentChangeNotification();
         }
         if (docChanged || selectionChanged) {
           const { from, to } = view.state.selection;
@@ -3067,7 +3081,12 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           folioEmitterRef.current.emit("selectionChange", { from, to });
         }
       },
-      [scheduleLayout, ensureHiddenEditorView],
+      [
+        scheduleLayout,
+        ensureHiddenEditorView,
+        experimentalSession,
+        scheduleDocumentChangeNotification,
+      ],
     );
 
     const handleNoteStoryTransaction = useCallback(
@@ -3084,10 +3103,22 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
       [scheduleLayout],
     );
 
-    const handleNoteDocumentChange = useCallback((updated: Document) => {
-      onDocumentChangeRef.current?.(updated);
-      folioEmitterRef.current.emit("docChange", updated);
-    }, []);
+    const handleNoteDocumentChange = useCallback(
+      (updated: Document) => {
+        onDocumentChangeRef.current?.(
+          experimentalSession === "canonical"
+            ? cloneDocumentWithParagraphPropertySources(updated)
+            : updated,
+        );
+        folioEmitterRef.current.emit(
+          "docChange",
+          experimentalSession === "canonical"
+            ? cloneDocumentWithParagraphPropertySources(updated)
+            : updated,
+        );
+      },
+      [experimentalSession],
+    );
 
     // Clear HF caret state + cross-surface drag state on any hfEditMode
     // transition. Without this, dragAnchorRef leftover from the previous
@@ -5666,6 +5697,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
             flushDocumentChangeNotification();
           }
           const editorDocument = folioEditor.getDocument();
+          if (experimentalSession === "canonical") return editorDocument;
           const current = editorDocument ? noteFollower.withPending(editorDocument) : null;
           return current ? (noteEditorRef.current?.snapshotDocument(current) ?? current) : null;
         },
@@ -5717,28 +5749,44 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         undo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return target.type === "body"
-            ? (hiddenPMRef.current?.undo() ?? false)
-            : historyUndo(target.view.state, target.view.dispatch);
+          if (experimentalSession === "canonical") {
+            return (
+              hiddenPMRef.current?.applyCanonicalStoryHistory({
+                view: target.view,
+                story: getCanonicalActiveStory(),
+                direction: "undo",
+              }) ?? false
+            );
+          }
+          if (target.type === "body") return hiddenPMRef.current?.undo() ?? false;
+          return historyUndo(target.view.state, target.view.dispatch);
         },
         redo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return target.type === "body"
-            ? (hiddenPMRef.current?.redo() ?? false)
-            : historyRedo(target.view.state, target.view.dispatch);
+          if (experimentalSession === "canonical") {
+            return (
+              hiddenPMRef.current?.applyCanonicalStoryHistory({
+                view: target.view,
+                story: getCanonicalActiveStory(),
+                direction: "redo",
+              }) ?? false
+            );
+          }
+          if (target.type === "body") return hiddenPMRef.current?.redo() ?? false;
+          return historyRedo(target.view.state, target.view.dispatch);
         },
         canUndo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return target.type === "body"
+          return experimentalSession === "canonical" || target.type === "body"
             ? (hiddenPMRef.current?.canUndo() ?? false)
             : historyUndo(target.view.state);
         },
         canRedo() {
           const target = getActiveEditorStory();
           if (target.type === "none") return false;
-          return target.type === "body"
+          return experimentalSession === "canonical" || target.type === "body"
             ? (hiddenPMRef.current?.canRedo() ?? false)
             : historyRedo(target.view.state);
         },
@@ -5853,6 +5901,7 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
         flushDocumentChangeNotification,
         folioEditor,
         getActiveEditorStory,
+        getCanonicalActiveStory,
         noteFollower,
         getScrollContainer,
         refreshBodyImeCaretAnchor,
@@ -5961,6 +6010,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ref={hfPMsRef}
           document={document}
           onTransaction={handleHfPmTransaction}
+          getCanonicalApi={getCanonicalApi}
+          onSessionRefusal={handleSessionRefusal}
+          {...(experimentalSession === undefined ? {} : { experimentalSession })}
           {...(styles !== undefined ? { styles } : {})}
           {...(_theme !== undefined ? { theme: _theme } : {})}
         />
@@ -5969,6 +6021,9 @@ export const PagedEditor = forwardRef<PagedEditorRef, PagedEditorProps>(
           ref={noteEditorRef}
           document={document}
           onActiveChange={handleActiveNoteStoryChange}
+          getCanonicalApi={getCanonicalApi}
+          onSessionRefusal={handleSessionRefusal}
+          {...(experimentalSession === undefined ? {} : { experimentalSession })}
           onDocumentChange={handleNoteDocumentChange}
           onStoryChange={handleNoteStoryTransaction}
           plugins={noteStoryPlugins}

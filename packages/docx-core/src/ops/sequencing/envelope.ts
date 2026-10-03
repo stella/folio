@@ -316,6 +316,12 @@ const operationFields = {
   insertRow: undefined,
   deleteRow: undefined,
   setTableRows: undefined,
+  addNote: undefined,
+  createHeaderFooter: undefined,
+  removeHeaderFooter: undefined,
+  removeNote: undefined,
+  restoreStoryParts: undefined,
+  setSectionProps: undefined,
 } satisfies Record<DocumentOpType, Fields | undefined>;
 
 export const BATCH_WIRE_OP_TYPES = Object.freeze(

@@ -1,3 +1,4 @@
+import { findStoryBody, sameStory, storyBody } from "./stories";
 /**
  * Pure planning around tracked operations: how many new revision ids an
  * operation takes, and the operations a tracked deletion of a range is made
@@ -8,7 +9,7 @@ import { Result } from "better-result";
 
 import { type Document, MAX_REVISION_ID } from "../model/document";
 import { applyDocumentOp, stampOf } from "./apply";
-import { blockListAt, sameBlockList, storyBody, storyParagraphs } from "./blocks";
+import { blockListAt, sameBlockList, storyParagraphs } from "./blocks";
 import { structurallyEqual } from "./equality";
 import {
   IDENTITY_SPACES,
@@ -69,6 +70,12 @@ const withNewIds = (op: DocumentOp, newIds: NewIds): DocumentOp => {
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
       return { ...op, newIds };
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.JOIN_INLINE:
     case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
     case DOCUMENT_OP_TYPES.REPLACE_BLOCKS:
@@ -316,12 +323,14 @@ export const appendTrackedDeletion = ({
   const { from, to, revision } = options;
   const refuse = (reason: DocumentOpRefusal["reason"], message: string) =>
     Result.err(new DocumentOpRefusal({ reason, message, opType: DOCUMENT_OP_TYPES.DELETE_RANGE }));
-  if (from.story !== to.story)
+  if (!sameStory(from.story, to.story))
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
       "A planned range must stay in one story.",
     );
-  const body = storyBody(document, from.story);
+  const body = findStoryBody(document, from.story);
+  if (!body)
+    return refuse(DOCUMENT_OP_REFUSAL_REASONS.BLOCK_NOT_FOUND, "The story does not exist.");
   const paragraphs = storyParagraphs(body);
   const first = paragraphs.find(
     ({ paragraph }) => idKey(paragraph.paraId ?? "") === idKey(from.blockId),

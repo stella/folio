@@ -88,7 +88,7 @@ describe("the forced leg asks for the reuse it means", () => {
       const buffer = await buildPackage(RICH_BODY);
       const parsed = await parseDocx(buffer, {
         preloadFonts: false,
-        sourceReplay: mode === "tracked" ? "tracked" : undefined,
+        sourceReplay: mode,
       });
       const proseDoc = toProseDoc(parsed);
       const forced = projectedWithoutReuse(proseDoc, parsed).package.document.content;

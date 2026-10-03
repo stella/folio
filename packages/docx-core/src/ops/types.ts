@@ -1,6 +1,6 @@
 /**
- * Document operations, schema version 4: text, formatting and review edits on
- * the main story, direct or tracked.
+ * Document operations, schema version 5: text, formatting and review edits on
+ * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
  * offset)`, where `blockId` is the paragraph's `w14:paraId` and `offset` counts
@@ -34,11 +34,20 @@ import type {
   TableRow,
   Table,
   BlockContent,
+  HeaderFooterType,
+  HeaderFooter,
+  Footnote,
+  Endnote,
+  SectionProperties,
+  DocumentBody,
+  DocumentSettings,
+  Section,
 } from "../model/document";
 
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 5 adds header/footer/note story addresses and exact lifecycle operations.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
  * whole-table operations with their exact structural inverse, terminal insertion,
  * and cell-ending paragraph marks on tracked row operations.
@@ -48,16 +57,18 @@ import type {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 4;
+export const DOCUMENT_OP_SCHEMA_VERSION = 5;
 
 /**
- * The stories an operation can address. Headers, footers, notes and comment
- * bodies are stories too; this version addresses the main story only.
+ * The main story has a fixed address; other editable parts use their stable
+ * relationship id or note id. Comment bodies are not yet editable stories.
  */
 export const OP_STORIES = Object.freeze({ MAIN: "main" } as const);
 
-/** One of {@link OP_STORIES}. */
-export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
+/** The stable identity of an independently editable package story. */
+export type HeaderFooterStory = { kind: "header" | "footer"; rId: string };
+export type NoteStory = { kind: "footnote" | "endnote"; id: number };
+export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 
 /**
  * A point in one paragraph's logical offset space.
@@ -165,8 +176,14 @@ export type SplitParagraphFields = Omit<
   "type" | "paraId" | "content" | "sectionProperties" | "pPrMark"
 >;
 
-/** The operation kinds of schema version 4. */
+/** The operation kinds of schema version 5. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
+  CREATE_HEADER_FOOTER: "createHeaderFooter",
+  REMOVE_HEADER_FOOTER: "removeHeaderFooter",
+  ADD_NOTE: "addNote",
+  REMOVE_NOTE: "removeNote",
+  SET_SECTION_PROPS: "setSectionProps",
+  RESTORE_STORY_PARTS: "restoreStoryParts",
   DELETE_BLOCKS: "deleteBlocks",
   INSERT_BLOCKS: "insertBlocks",
   INSERT_TEXT: "insertText",
@@ -671,8 +688,70 @@ export type SetContainerBlocksOp = {
   blocks: readonly BlockContent[];
 };
 
-/** A schema-version-4 document operation. */
+/** Create a deterministically identified part and bind it to one section variant. */
+export type CreateHeaderFooterOp = {
+  type: typeof DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER;
+  sectionIndex: number;
+  story: HeaderFooterStory;
+  referenceType: HeaderFooterType;
+  content: BlockContent[];
+};
+export type RemoveHeaderFooterOp = {
+  type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
+  sectionIndex: number;
+  story: HeaderFooterStory;
+  referenceType: HeaderFooterType;
+};
+export type AddNoteOp = {
+  type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
+  at: TextPosition;
+  note: Footnote | Endnote;
+};
+export type RemoveNoteOp = {
+  type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
+  at: TextPosition;
+  story: NoteStory;
+};
+export type SetSectionPropsOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;
+  sectionIndex: number;
+  patch: FormattingPatch<SectionProperties>;
+};
+/** JSON-safe lifecycle deltas: omitted fields are unowned, null restores absence. */
+export type StoryParts = {
+  body?: {
+    [Key in keyof Omit<DocumentBody, "sections">]?: Key extends "content"
+      ? DocumentBody[Key]
+      : Exclude<DocumentBody[Key], undefined> | null;
+  };
+  /** Section contents remain derived from the body's content and are never duplicated. */
+  sections?: readonly {
+    index: number;
+    properties?: Section["properties"];
+    headers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+    footers?: readonly (readonly [HeaderFooterType, HeaderFooter])[] | null;
+  }[];
+  headers?: readonly (readonly [string, HeaderFooter])[] | null;
+  footers?: readonly (readonly [string, HeaderFooter])[] | null;
+  footnotes?: readonly Footnote[] | null;
+  endnotes?: readonly Endnote[] | null;
+  settings?: DocumentSettings | null;
+};
+/** Exact stale-checked lifecycle inverse; unrelated package parts stay untouched. */
+export type RestoreStoryPartsOp = {
+  type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
+  expected: StoryParts;
+  parts: StoryParts;
+};
+
+/** A schema-version-5 document operation. */
 export type DocumentOp =
+  | CreateHeaderFooterOp
+  | RemoveHeaderFooterOp
+  | AddNoteOp
+  | RemoveNoteOp
+  | SetSectionPropsOp
+  | RestoreStoryPartsOp
   | DeleteBlocksOp
   | InsertTableOp
   | DeleteTableOp

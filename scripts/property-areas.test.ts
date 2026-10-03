@@ -60,6 +60,26 @@ const actualPropertyDrivers = (): string[] => {
 };
 
 describe("property areas", () => {
+  test("the workflow matrix exercises every selected file and collects every failure", () => {
+    const workflow = Bun.YAML.parse(
+      readFileSync(path.resolve(import.meta.dir, "../.github/workflows/ci.yml"), "utf8"),
+    );
+    const job = workflow.jobs["property-areas"];
+    const files = propertyFiles();
+    const exercised = [...job.strategy.matrix.shard].flatMap((index: number) =>
+      shardPropertyFiles(files, { index, total: job.strategy.matrix.shard.length }),
+    );
+    expect(exercised.length).toBe(files.length);
+    expect(new Set(exercised).size).toBe(files.length);
+    expect(exercised.toSorted((a, b) => a.file.localeCompare(b.file))).toEqual(files);
+    expect(job.strategy["fail-fast"]).toBe(false);
+    const step = job.steps.find(
+      (entry: { name?: string }) => entry.name === "Changed areas' properties at 5x numRuns",
+    );
+    expect(step.run).toContain('--factor 5 --shard "${PROPERTY_SHARD}/${PROPERTY_SHARD_COUNT}"');
+    expect(step.env.PROPERTY_SHARD).toBe("${{ matrix.shard }}");
+  });
+
   test("shards cover every selected file exactly once regardless of input order", () => {
     const inventory = propertyFiles();
     for (const total of [1, 2, 4, inventory.length + 1]) {

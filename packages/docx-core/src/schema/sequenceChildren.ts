@@ -29,6 +29,7 @@ import {
 
 export {
   SEQUENCE_CHILDREN,
+  SETTINGS_CHILDREN,
   type SequenceChild,
   type SequenceContainer,
 } from "./sequenceChildren.gen";

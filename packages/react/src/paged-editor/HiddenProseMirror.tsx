@@ -27,7 +27,7 @@ import {
 import type { CSSProperties } from "react";
 
 import { panic } from "better-result";
-import type { Transaction, Command, Plugin, EditorState } from "prosemirror-state";
+import type { Plugin, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import {
@@ -42,6 +42,7 @@ import {
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import type { ExtensionManager } from "@stll/folio-core/prosemirror/extensions/ExtensionManager";
 import type { Document, Theme, StyleDefinitions } from "@stll/folio-core/types/document";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 // Import ProseMirror CSS
 import "prosemirror-view/style/prosemirror.css";
 
@@ -107,46 +108,9 @@ export type HiddenProseMirrorProps = {
   onReadOnlyEditAttempt?: () => void;
 };
 
-export type HiddenProseMirrorRef = {
-  /** Request the off-screen EditorView (idempotent; creates it when possible). */
-  ensureView: () => void;
-  /** Whether view creation has been requested. */
-  isViewRequested: () => boolean;
+export type HiddenProseMirrorRef = HiddenEditorApi & {
   /** Get the off-screen host element. */
   getHostElement: () => HTMLElement | null;
-  /** Get the ProseMirror EditorState */
-  getState: () => EditorState | null;
-  /** Get the ProseMirror EditorView */
-  getView: () => EditorView | null;
-  /** Get the current Document from PM state */
-  getDocument: () => Document | null;
-  getCanonicalDocument: () => Document | null;
-  /** Focus the hidden editor */
-  focus: () => void;
-  /** Blur the hidden editor */
-  blur: () => void;
-  /** Check if focused */
-  isFocused: () => boolean;
-  /** Dispatch a transaction */
-  dispatch: (tr: Transaction) => void;
-  /** Execute a ProseMirror command */
-  executeCommand: (command: Command) => boolean;
-  /** Undo */
-  undo: () => boolean;
-  /** Redo */
-  redo: () => boolean;
-  /** Check if undo is available */
-  canUndo: () => boolean;
-  /** Check if redo is available */
-  canRedo: () => boolean;
-  /** Set selection by PM position */
-  setSelection: (anchor: number, head?: number) => void;
-  /** Set node selection at a PM position (for images, etc.) */
-  setNodeSelection: (pos: number) => void;
-  /** Set cell selection between two positions inside table cells */
-  setCellSelection: (anchorCellPos: number, headCellPos: number) => void;
-  /** Scroll the PM view to selection (no-op since hidden) */
-  scrollToSelection: () => void;
 };
 
 // ============================================================================

@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { createEmptyDocument } from "../utils/createDocument";
-import type { EditorState } from "prosemirror-state";
-import type { EditorView } from "prosemirror-view";
+import { EditorState } from "prosemirror-state";
+import { EditorView } from "prosemirror-view";
+import { OP_STORIES } from "@stll/docx-core/ops";
+import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
+import { createNoteEditorManager } from "./noteEditorManager";
 
 import {
   createHiddenEditorManager,
@@ -235,6 +238,71 @@ test("canonical manager refuses transaction bypasses and shares one input journa
   }
 });
 
+test.each(["body", "story"] as const)(
+  "%s composition defers every story synchronizer while public snapshots remain blocked",
+  async (owner) => {
+    GlobalRegistrator.register();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "Start" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+    paragraph.paraId = "12345678";
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+    });
+    const manager = createHiddenEditorManager(deps);
+    const storyDeps = {
+      getHost: () => host,
+      // Synchronization must defer before either snapshot source is read.
+      getDocument: () => manager.api.getDocument(),
+      getCanonicalApi: () => manager.api,
+      getExperimentalSession: () => "canonical" as const,
+      getStyles: () => null,
+      getTheme: () => null,
+    };
+    const synchronizers = [
+      createHeaderFooterEditorManager(storyDeps),
+      createNoteEditorManager(storyDeps),
+    ];
+    try {
+      manager.ensureView();
+      const view = manager.getView();
+      if (!view) panic("Expected canonical view");
+      const initial = manager.api.getCanonicalDocument();
+      for (const synchronizer of synchronizers) synchronizer.sync();
+      if (owner === "body") {
+        view.dom.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+      } else {
+        expect(manager.api.updateCanonicalInputLifecycle("beginComposition")).toBe(true);
+      }
+      for (const read of [manager.api.getDocument, manager.api.getCanonicalDocument])
+        expect(read).toThrow("Composition must finish before taking a snapshot.");
+      expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).toBeNull();
+      for (const synchronizer of synchronizers) expect(() => synchronizer.sync()).not.toThrow();
+      // Synchronization cannot clear the shared pending boundary.
+      expect(manager.api.getCanonicalDocument).toThrow();
+      if (owner === "body") {
+        view.dom.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true }));
+        await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      } else {
+        manager.api.updateCanonicalInputLifecycle("endComposition");
+      }
+      expect(manager.api.getCanonicalDocument()).toEqual(initial);
+      expect(manager.api.getCanonicalStoryProjection(OP_STORIES.MAIN)).not.toBeNull();
+      for (const synchronizer of synchronizers) synchronizer.sync();
+    } finally {
+      for (const synchronizer of synchronizers) synchronizer.destroy();
+      manager.destroyView();
+      host.remove();
+      GlobalRegistrator.unregister();
+    }
+  },
+);
+
 test("a refused canonical activation reports once per loaded document across retries", () => {
   GlobalRegistrator.register();
   const host = document.createElement("div");
@@ -261,6 +329,93 @@ test("a refused canonical activation reports once per loaded document across ret
     expect(reasons).toHaveLength(2);
   } finally {
     manager.destroyView();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test.each([
+  { kind: "header", rId: "rIdHeader1" },
+  { kind: "footer", rId: "rIdFooter1" },
+  { kind: "footnote", id: 12 },
+] as const)("a mode change refuses direct secondary commits and history in %s", (story) => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  const storyHost = document.createElement("div");
+  document.body.append(host, storyHost);
+  const source = createEmptyDocument({ initialText: "Body" });
+  const bodyParagraph = source.package.document.content.at(0);
+  if (bodyParagraph?.type !== "paragraph") panic("Expected body paragraph fixture");
+  bodyParagraph.paraId = "12345678";
+  const content = [
+    {
+      ...bodyParagraph,
+      paraId: "34567890",
+      content: [{ type: "run", content: [{ type: "text", text: "Story" }] }],
+    },
+  ] satisfies typeof source.package.document.content;
+  if (story.kind === "header")
+    source.package.headers = new Map([
+      [story.rId, { type: "header", hdrFtrType: "default", content }],
+    ]);
+  else if (story.kind === "footer")
+    source.package.footers = new Map([
+      [story.rId, { type: "footer", hdrFtrType: "default", content }],
+    ]);
+  else source.package.footnotes = [{ type: "footnote", id: story.id, content }];
+  let mode: "editing" | "suggesting" = "editing";
+  const reasons: string[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getEditingMode: () => mode,
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  let storyView: EditorView | undefined;
+  try {
+    manager.ensureView();
+    const projection = manager.api.getCanonicalStoryProjection(story);
+    if (!projection) panic("Expected secondary projection");
+    storyView = new EditorView(storyHost, { state: EditorState.create({ doc: projection }) });
+    const initialEnd = storyView.state.doc.content.size - 1;
+    expect(
+      manager.api.replaceCanonicalStoryText({
+        view: storyView,
+        story,
+        intent: { from: initialEnd, to: initialEnd, text: "!" },
+      }),
+    ).toBe(true);
+    const accepted = manager.api.getCanonicalDocument();
+    const committedState = storyView.state;
+    expect(committedState.doc.textContent).toBe("Story!");
+    expect(manager.api.canUndo()).toBe(true);
+    mode = "suggesting";
+    const committedEnd = storyView.state.doc.content.size - 1;
+    expect(
+      manager.api.replaceCanonicalStoryText({
+        view: storyView,
+        story,
+        intent: { from: committedEnd, to: committedEnd, text: "untracked" },
+      }),
+    ).toBe(false);
+    expect(
+      manager.api.applyCanonicalStoryHistory({ view: storyView, story, direction: "undo" }),
+    ).toBe(false);
+    expect(manager.api.getCanonicalDocument()).toEqual(accepted);
+    expect(storyView.state).toBe(committedState);
+    expect(manager.api.canUndo()).toBe(true);
+    expect(manager.api.canRedo()).toBe(false);
+    expect(reasons).toEqual([
+      "Suggesting is unavailable in the experimental canonical session.",
+      "Suggesting is unavailable in the experimental canonical session.",
+    ]);
+  } finally {
+    storyView?.destroy();
+    manager.destroyView();
+    host.remove();
+    storyHost.remove();
     GlobalRegistrator.unregister();
   }
 });

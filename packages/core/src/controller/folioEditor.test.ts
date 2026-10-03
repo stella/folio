@@ -70,6 +70,15 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
       return sentinelDocument;
     },
     getCanonicalDocument: () => null,
+    updateCanonicalInputLifecycle: (action) => {
+      calls.push({ method: "updateCanonicalInputLifecycle", args: [action] });
+      return action === "beginComposition";
+    },
+    applyCanonicalStoryHistory: () => false,
+    applyCanonicalOperations: () => false,
+    getCanonicalStorySelection: () => null,
+    getCanonicalStoryProjection: () => null,
+    replaceCanonicalStoryText: () => false,
     focus: record("focus"),
     blur: record("blur"),
     isFocused: () => {
@@ -127,6 +136,10 @@ describe("createFolioEditor", () => {
     expect(editor.redo()).toBe(true);
     expect(editor.canUndo()).toBe(true);
     expect(editor.canRedo()).toBe(true);
+    for (const action of ["beginComposition", "endComposition", "breakUndoGroup"] as const) {
+      expect(editor.updateCanonicalInputLifecycle(action)).toBe(action === "beginComposition");
+      expect(calls).toContainEqual({ method: "updateCanonicalInputLifecycle", args: [action] });
+    }
 
     editor.ensureView();
     editor.focus();
@@ -160,6 +173,7 @@ describe("createFolioEditor", () => {
     });
 
     expect(editor.getState()).toBeNull();
+    expect(editor.updateCanonicalInputLifecycle("beginComposition")).toBe(false);
 
     const { api } = createFakeApi();
     current = api;

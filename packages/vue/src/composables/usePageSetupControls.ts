@@ -30,6 +30,10 @@ export type UsePageSetupControlsOptions = {
    * tab-stop edits dispatch PM commands and notify via the pipeline instead.
    */
   onChange: (doc: Document) => void;
+  /** Canonical sessions publish section properties through the Document journal. */
+  applySectionProperties?: (
+    properties: Partial<SectionProperties>,
+  ) => "applied" | "refused" | "unhandled";
 };
 
 type MarginProperty = "marginLeft" | "marginRight" | "marginTop" | "marginBottom";
@@ -37,6 +41,8 @@ type MarginProperty = "marginLeft" | "marginRight" | "marginTop" | "marginBottom
 export function usePageSetupControls(opts: UsePageSetupControlsOptions) {
   function handlePageSetupApply(sp: Partial<SectionProperties>) {
     if (opts.readOnly.value) return;
+    const result = opts.applySectionProperties?.(sp);
+    if (result === "applied" || result === "refused") return;
     const doc = opts.getDocument();
     if (!doc?.package?.document) return;
     const existing = doc.package.document.finalSectionProperties ?? {};

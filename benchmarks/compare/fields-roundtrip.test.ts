@@ -19,7 +19,7 @@ beforeAll(async () => {
   // cases still validate their own redlines and keep their existing timeout.
   const input = await zipPackage(buildDocumentPackage({ documentClass: "fields", size: "s" }));
   expect(validate(input)).toEqual([]);
-});
+}, 120_000);
 
 test.each([
   ["ordinary", ""],

@@ -501,6 +501,7 @@ import { useTransientNotice } from "../composables/useTransientNotice";
 import { CanonicalSessionRefusalError } from "@stll/folio-core/controller/hiddenEditorManager";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { historyShortcutOwner } from "@stll/folio-core/managers/editorShortcuts";
+import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   clearAllCaches,
@@ -999,9 +1000,9 @@ const {
   imageInteracting,
   hyperlinkPopupData,
   readOnly,
-  showHeaderFooterEditing: computed(
-    () => props.showHeaderFooterEditing && props.experimentalSession !== "canonical",
-  ),
+  showHeaderFooterEditing: computed(() => props.showHeaderFooterEditing),
+  getExperimentalSession: () => props.experimentalSession,
+  applyCanonicalOperations: (operations) => editor.applyCanonicalOperations(operations),
   zoom,
   layout,
   tableResize: {
@@ -1021,22 +1022,11 @@ const {
   getActiveNoteView,
   reLayout,
   onDocumentChange: notifyDocumentChange,
-  onHeaderFooterEditAttempt: () =>
-    refuseCanonicalModelEdit("Header and footer editing is unavailable in this session."),
   clearOverlay: selectionSync.clearOverlay,
 });
 
 const getActiveHeaderFooterView = () =>
   hfEdit.value?.rId ? getHeaderFooterView(hfEdit.value.rId) : null;
-
-watch(
-  () => props.experimentalSession,
-  (session) => {
-    if (session !== "canonical") return;
-    hfEdit.value = null;
-    closeNoteStory();
-  },
-);
 
 const activeHeaderFooterSelection = computed(() => {
   const edit = hfEdit.value;
@@ -1450,11 +1440,11 @@ function handleInsertTOCAction(): void {
 // indent / tab-stop edits dispatch PM commands and already notify via the
 // transaction pipeline.
 const {
-  handlePageSetupApply: applyPageSetup,
-  handleLeftMarginChange: applyLeftMarginChange,
-  handleRightMarginChange: applyRightMarginChange,
-  handleTopMarginChange: applyTopMarginChange,
-  handleBottomMarginChange: applyBottomMarginChange,
+  handlePageSetupApply,
+  handleLeftMarginChange,
+  handleRightMarginChange,
+  handleTopMarginChange,
+  handleBottomMarginChange,
   handleIndentLeftChange,
   handleIndentRightChange,
   handleFirstLineIndentChange,
@@ -1466,32 +1456,26 @@ const {
   stateTick,
   reLayout,
   onChange: notifyDocumentChange,
+  applySectionProperties: (properties) => {
+    if (props.experimentalSession !== "canonical") return "unhandled";
+    editor.ensureView();
+    const document = editor.getCanonicalDocument();
+    if (
+      !document ||
+      !editor.applyCanonicalOperations([
+        createCanonicalSectionPropertiesOperation(document, properties),
+      ])
+    ) {
+      reportEditorError(
+        new CanonicalSessionRefusalError({
+          message: "Section property changes could not be applied.",
+        }),
+      );
+      return "refused";
+    }
+    return "applied";
+  },
 });
-
-function handlePageSetupApply(properties: Partial<SectionProperties>): void {
-  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
-  applyPageSetup(properties);
-}
-
-function handleLeftMarginChange(twips: number): void {
-  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
-  applyLeftMarginChange(twips);
-}
-
-function handleRightMarginChange(twips: number): void {
-  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
-  applyRightMarginChange(twips);
-}
-
-function handleTopMarginChange(twips: number): void {
-  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
-  applyTopMarginChange(twips);
-}
-
-function handleBottomMarginChange(twips: number): void {
-  if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) return;
-  applyBottomMarginChange(twips);
-}
 
 // Paragraph indent snapshot for the horizontal ruler's indent handles. Derived
 // from core's extractSelectionContext, re-run on every selection/doc tick.
@@ -1797,6 +1781,14 @@ const { exposed } = useDocxEditorRefApi({
   focus: () => activeEditorView.value?.focus(),
   getDocument,
   getActiveView: () => activeEditorView.value,
+  getExperimentalSession: () => props.experimentalSession,
+  getActiveCanonicalStory: () => {
+    const note = activeNoteStory.value;
+    if (note) return { kind: note.kind, id: note.noteId };
+    const headerFooter = hfEdit.value;
+    if (headerFooter?.rId) return { kind: headerFooter.position, rId: headerFooter.rId };
+    return "main";
+  },
   closeNoteStory,
   getHeaderFooterView,
   setZoom,

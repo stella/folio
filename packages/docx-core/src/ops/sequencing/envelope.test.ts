@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { applyDocumentOps } from "../apply";
 import type { Document } from "../../model/document";
-import { OP_STORIES, type DocumentOp } from "../types";
+import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";
 import { envelopes } from "../__tests__/wireFixtures";
 import {
   BATCH_WIRE_OP_TYPES,
@@ -28,7 +28,7 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    new URL("./__fixtures__/batches-v4.json", import.meta.url),
+    new URL("./__fixtures__/batches-v5.json", import.meta.url),
   ).json();
   expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
   const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
@@ -60,6 +60,7 @@ test("unknown envelopes refuse invalid identities, revisions, schemas and keys",
     [],
     {},
     { ...fixture, schema: 0 },
+    { ...fixture, schema: DOCUMENT_OP_SCHEMA_VERSION - 1 },
     { ...fixture, actor: "" },
     { ...fixture, opId: "" },
     { ...fixture, baseRev: -1 },

@@ -923,6 +923,13 @@ const namedParagraphs = (op: DocumentOp): Set<string> => {
       return new Set([idKey(op.blockId), ...paragraphIdsIn([op.expected, op.rows]).map(idKey)]);
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
       return new Set();
+    case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
+    case DOCUMENT_OP_TYPES.ADD_NOTE:
+    case DOCUMENT_OP_TYPES.REMOVE_NOTE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
+    case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
+      return new Set();
     default: {
       const unreachable: never = op;
       return unreachable;

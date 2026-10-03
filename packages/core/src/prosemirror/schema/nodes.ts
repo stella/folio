@@ -112,6 +112,9 @@ export const PRESERVED_XML_LEVELS = { run: "run", inline: "inline" } as const;
 
 export type PreservedXmlLevel = (typeof PRESERVED_XML_LEVELS)[keyof typeof PRESERVED_XML_LEVELS];
 
+/** The automatic number mark authored inside a note story, with no reader text. */
+export type NoteMarkerAttrs = { kind: "footnote" | "endnote" };
+
 /** A run or inline child folio does not model, carried through the editor untouched. */
 export type PreservedXmlAttrs = {
   /** Replayable markup, as `captureVerbatimXml` wrote it. */

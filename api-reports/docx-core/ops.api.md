@@ -7,6 +7,13 @@
 import { Result } from 'better-result';
 import { TaggedErrorClass } from 'better-result';
 
+// @public (undocumented)
+export type AddNoteOp = {
+    type: typeof DOCUMENT_OP_TYPES.ADD_NOTE;
+    at: TextPosition;
+    note: Footnote | Endnote;
+};
+
 // @public
 export type AppliedDocumentOp = {
     document: Document_2;
@@ -66,6 +73,15 @@ export const createClient: (document: Document_2) => {
     readonly headRev: number;
     readonly pending: readonly DocumentBatch[];
     readonly notices: readonly ClientNotice[];
+};
+
+// @public
+export type CreateHeaderFooterOp = {
+    type: typeof DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER;
+    sectionIndex: number;
+    story: HeaderFooterStory;
+    referenceType: HeaderFooterType;
+    content: BlockContent[];
 };
 
 // @public
@@ -146,10 +162,16 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 4;
+export const DOCUMENT_OP_SCHEMA_VERSION = 5;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
+    readonly CREATE_HEADER_FOOTER: "createHeaderFooter";
+    readonly REMOVE_HEADER_FOOTER: "removeHeaderFooter";
+    readonly ADD_NOTE: "addNote";
+    readonly REMOVE_NOTE: "removeNote";
+    readonly SET_SECTION_PROPS: "setSectionProps";
+    readonly RESTORE_STORY_PARTS: "restoreStoryParts";
     readonly DELETE_BLOCKS: "deleteBlocks";
     readonly INSERT_BLOCKS: "insertBlocks";
     readonly INSERT_TEXT: "insertText";
@@ -184,7 +206,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
+export type DocumentOp = CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp;
 
 // @public
 export type DocumentOpEnvelope = {
@@ -211,6 +233,9 @@ export class DocumentOpsContractError extends DocumentOpsContractError_base<{
 // @public
 export type DocumentOpType = (typeof DOCUMENT_OP_TYPES)[keyof typeof DOCUMENT_OP_TYPES];
 
+// @public (undocumented)
+export const documentStories: (document: Document_2) => OpStory[];
+
 // @public
 export const EMPTY_PROPERTY_SETS: Readonly<{
     readonly OMIT: "omit";
@@ -220,8 +245,17 @@ export const EMPTY_PROPERTY_SETS: Readonly<{
 // @public
 export type EmptyPropertySet = (typeof EMPTY_PROPERTY_SETS)[keyof typeof EMPTY_PROPERTY_SETS];
 
+// @public (undocumented)
+export const findStoryBody: (document: Document_2, story: OpStory) => DocumentBody | undefined;
+
 // @public
 export type FormattingPatch<Formatting> = { readonly [Key in keyof Formatting]?: Exclude<Formatting[Key], undefined> | null; };
+
+// @public
+export type HeaderFooterStory = {
+    kind: "header" | "footer";
+    rId: string;
+};
 
 // @public
 export const INHERIT_RUN_PROPS = "inherit";
@@ -322,6 +356,15 @@ export type NewIds = {
 // @public
 export const normalizeForOps: (document: Document_2) => Document_2;
 
+// @public (undocumented)
+export type NoteStory = {
+    kind: "footnote" | "endnote";
+    id: number;
+};
+
+// @public (undocumented)
+export const noteUsesCustomMark: (document: Document_2, note: Footnote | Endnote) => boolean;
+
 // @public
 export const OBJECT_REPLACEMENT_CHARACTER = "￼";
 
@@ -330,8 +373,8 @@ export const OP_STORIES: Readonly<{
     readonly MAIN: "main";
 }>;
 
-// @public
-export type OpStory = (typeof OP_STORIES)[keyof typeof OP_STORIES];
+// @public (undocumented)
+export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 
 // @public
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
@@ -377,6 +420,21 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
     };
 };
 
+// @public (undocumented)
+export type RemoveHeaderFooterOp = {
+    type: typeof DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER;
+    sectionIndex: number;
+    story: HeaderFooterStory;
+    referenceType: HeaderFooterType;
+};
+
+// @public (undocumented)
+export type RemoveNoteOp = {
+    type: typeof DOCUMENT_OP_TYPES.REMOVE_NOTE;
+    at: TextPosition;
+    story: NoteStory;
+};
+
 // @public
 export type ReplaceBlocksOp = {
     type: typeof DOCUMENT_OP_TYPES.REPLACE_BLOCKS;
@@ -403,6 +461,13 @@ export type ResolveRevisionOp = {
 };
 
 // @public
+export type RestoreStoryPartsOp = {
+    type: typeof DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS;
+    expected: StoryParts;
+    parts: StoryParts;
+};
+
+// @public
 export const REVISION_DECISIONS: Readonly<{
     readonly ACCEPT: "accept";
     readonly REJECT: "reject";
@@ -424,6 +489,12 @@ export type RevisionStamp = {
 
 // @public
 export type RunPropsPatch = FormattingPatch<TextFormatting>;
+
+// @public (undocumented)
+export const sameStory: (left: OpStory, right: OpStory) => boolean;
+
+// @public (undocumented)
+export const sectionPropertiesAt: (document: Document_2, sectionIndex: number) => SectionProperties | undefined;
 
 // @public (undocumented)
 export type SequencedBatch = DocumentBatch & {
@@ -474,6 +545,13 @@ export type SetRunPropsOp = {
     revision?: RevisionStamp;
 };
 
+// @public (undocumented)
+export type SetSectionPropsOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_SECTION_PROPS;
+    sectionIndex: number;
+    patch: FormattingPatch<SectionProperties>;
+};
+
 // @public
 export type SetTableRowsOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_TABLE_ROWS;
@@ -514,6 +592,9 @@ export type SplitInlineOp = {
 
 // @public
 export type SplitParagraphFields = Omit<Paragraph, "type" | "paraId" | "content" | "sectionProperties" | "pPrMark">;
+
+// @public (undocumented)
+export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 
 // @public
 export type TextPosition = {
