@@ -981,6 +981,12 @@
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated editor intents agree in direct and accepted tracked mode across structural shapes": [
     {
+      "seed": -1715428391,
+      "path": "33:0:0:0:0:0:0:0:5:3:3:5:6:5:5:6:6:6:6:6:6:6:6:7:6:6:6:6:6:6:2:5:5:5:5:5:5:6:5:5:6:6:6:6:6:6:6:6",
+      "note": "Direct and accepted structural intents retain authored empty paragraph properties and container boundaries.",
+      "date": "2026-10-03"
+    },
+    {
       "seed": -1323931036,
       "path": "2:0:0:0:0:2:2:1:1:1:2:2:2:2:2:2:2:3:3:4:2:2:2:2:3:2:3:3:3:2:2:4:7:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "date": "2026-10-02",
