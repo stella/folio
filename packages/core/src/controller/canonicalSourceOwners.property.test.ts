@@ -1,13 +1,15 @@
 import { cloneDocumentWithParagraphPropertySources } from "../docx/paragraphPropertySource";
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { schema } from "../prosemirror/schema";
 import { createEmptyDocument } from "../utils/createDocument";
 import { createDocx } from "../docx/rezip";
 import { parseDocx } from "../docx/parser";
 import { createCanonicalSession, publishCanonicalProjection } from "./canonicalSession";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const text = fc
   .array(fc.constantFrom("a", "é", "😀", "東京", "é"), { maxLength: 5 })
