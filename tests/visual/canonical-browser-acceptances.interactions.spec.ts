@@ -65,7 +65,8 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
       await drainErrors(page);
       for (const action of trace.actions) {
         if (action.kind === "selectionDrag" || action.kind === "dragCellDelete") {
-          const structuralTarget = action.kind === "selectionDrag" ? action.target : "table";
+          const structuralTarget =
+            action.kind === "selectionDrag" ? action.target : ("table" as const);
           const selected = await page.evaluate(
             (target) => globalThis.__folioCanonical?.selectStructuralTarget(target),
             structuralTarget,
