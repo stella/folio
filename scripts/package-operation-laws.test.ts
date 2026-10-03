@@ -21,7 +21,7 @@ import {
   serializeOpDocument,
   serializedOpParts,
 } from "./lib/corpus-invariants/op-sequences";
-import { createDocx } from "@stll/folio-core/docx/rezip";
+import { operationPackageBytes } from "./lib/corpus-invariants/package-fixtures";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { normalizeForOps } from "../packages/docx-core/src/ops/contract";
 import { applyDocumentOps } from "../packages/docx-core/src/ops/apply";
@@ -82,7 +82,7 @@ const assertPackageOperationLaws = async ({
   seed,
   story,
 }: Parameters<typeof generatedCaseFor>[0]) => {
-  const bytes = await createDocx(structuredClone(document));
+  const bytes = await operationPackageBytes(document, seed);
   const packaged = normalizeForOps(await parseDocx(bytes, { preloadFonts: false }));
   const generated = generatedCaseFor({ document: packaged, seed, story, kind });
   expect(generated.op.type).toBe(kind);
@@ -180,4 +180,22 @@ test(
     );
   },
   propertyTestTimeout(60_000),
+);
+
+test(
+  "created story removal restores authored package registrations exactly",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(packageDocumentArbitrary, opSeedArbitrary, async (document, seed) => {
+        await assertPackageOperationLaws({
+          kind: "removeHeaderFooter",
+          document,
+          seed,
+          story: "main",
+        });
+      }),
+      { numRuns: 30 },
+    );
+  },
+  propertyTestTimeout(30_000),
 );

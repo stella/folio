@@ -1,0 +1,10 @@
+{
+  "equivalent nested formatting spellings merge and undo restores their exact records": [
+    {
+      "seed": -348453513,
+      "path": "0:0:0:0",
+      "note": "Build run-format fixtures through operations to retain consistent body section projections",
+      "date": "2026-10-03"
+    }
+  ]
+}

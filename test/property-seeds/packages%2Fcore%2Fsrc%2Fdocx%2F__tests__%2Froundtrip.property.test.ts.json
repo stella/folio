@@ -1,0 +1,16 @@
+{
+  "multiple mark combinations survive round-trip": [
+    {
+      "seed": -714680487,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ],
+  "round-trip preserves document structure": [
+    {
+      "seed": 1018009646,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ]
+}

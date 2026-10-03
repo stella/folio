@@ -1,0 +1,43 @@
+{
+  "created story removal restores authored package registrations exactly": [
+    {
+      "seed": -666539293,
+      "note": "Saving a newly created story must not mutate the operation input or lose its content-type registration when removing and restoring it.",
+      "date": "2026-10-03"
+    }
+  ],
+  "every operation preserves package inverse and declared scope laws": [
+    {
+      "seed": 327444275,
+      "path": "66:1:1:1:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "Package inverse retains modeled records but changes captured footer serialization after a join.",
+      "date": "2026-10-03",
+      "expectedFailure": {
+        "family": "T4",
+        "fingerprint": "20c2d3fdbf109520"
+      }
+    },
+    {
+      "seed": -392419793,
+      "path": "444:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
+      "date": "2026-10-03",
+      "expectedFailure": {
+        "family": "T4",
+        "fingerprint": "af2bdcaabf37424e"
+      }
+    }
+  ],
+  "paragraph property package inverses retain authored stories": [
+    {
+      "seed": -392419793,
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1192899088,
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
+      "date": "2026-10-03"
+    }
+  ]
+}

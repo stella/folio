@@ -1,0 +1,10 @@
+{
+  "repeated merges keep numbering unique and bounded across loaded id ranges": [
+    {
+      "seed": -1284263412,
+      "path": "0:0:0",
+      "note": "The numbering oracle checks list paragraphs and skips the empty unnumbered target paragraph",
+      "date": "2026-10-01"
+    }
+  ]
+}

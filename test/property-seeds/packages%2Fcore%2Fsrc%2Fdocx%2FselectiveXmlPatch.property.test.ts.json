@@ -1,0 +1,10 @@
+{
+  "nested paragraph edits never apply overlapping source ranges": [
+    {
+      "seed": -1844025400,
+      "path": "0:0:0:0",
+      "note": "overlapping host and text-box paragraph replacements used stale source offsets",
+      "date": "2026-09-30"
+    }
+  ]
+}
