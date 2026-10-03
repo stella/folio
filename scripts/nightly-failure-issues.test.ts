@@ -1,3 +1,4 @@
+import { seedFileFor } from "../test/seed-registry";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -48,7 +49,7 @@ describe("nightly failure issues", () => {
     );
     expect(seedEntry(failure!, "2026-09-27", null)).toBe(
       [
-        '"packages/core/src/ai-edits/minimalDirectReplacement.property.test.ts::over generated paragraphs and edits, accepted and rejected": [',
+        '"over generated paragraphs and edits, accepted and rejected": [',
         '  {"seed":-449189980,"path":"350:1:1:1:1:1:11:10:10:10:11:1:1:1:1:1:1:1:1:5:6:6:4:5:5","note":"nightly 2026-09-27: <what it caught>","date":"2026-09-27"}',
         "]",
       ].join("\n"),
@@ -89,6 +90,8 @@ describe("nightly failure issues", () => {
     expect(body).toContain("### Replay\n```sh\ncd packages/core && PROPERTY_TEST_SEED=-449189980");
     expect(body).toContain("### Counterexample");
     expect(body).toContain("### Pin it");
+    if (!failure?.file) throw new TypeError("Missing property source file");
+    expect(body).toContain(seedFileFor(failure.file));
     expect(issueBody(failure!, context, true)).toStartWith("Failed again in [the nightly run]");
   });
 

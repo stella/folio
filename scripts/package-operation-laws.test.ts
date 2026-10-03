@@ -23,6 +23,7 @@ import {
   serializeOpDocument,
   serializedOpParts,
 } from "./lib/corpus-invariants/op-sequences";
+import { operationPackageBytes } from "./lib/corpus-invariants/package-fixtures";
 import { createDocx } from "@stll/folio-core/docx/rezip";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { normalizeForOps } from "../packages/docx-core/src/ops/contract";
@@ -78,6 +79,58 @@ test("a recorded inverse symptom cannot hide a new scope violation", () => {
   expect(unexpectedFailure("insertText", [inverse])).toBe(inverse);
 });
 
+const assertPackageOperationLaws = async ({
+  kind,
+  document,
+  seed,
+  story,
+}: Parameters<typeof generatedCaseFor>[0]) => {
+  const bytes = await operationPackageBytes(document, seed);
+  const packaged = normalizeForOps(await parseDocx(bytes, { preloadFonts: false }));
+  const generated = generatedCaseFor({ document: packaged, seed, story, kind });
+  expect(generated.op.type).toBe(kind);
+  const before = generated.document;
+  const originalModel = exactOpModel(before);
+  const originalXml = serializeOpDocument(before);
+  const control = await serializedOpParts(before);
+  const applied = applyDocumentOps(before, [generated.op]);
+  if (applied.isErr())
+    throw new OperationPackageLawError({
+      message: `${kind} refused generated case: ${applied.error.reason}: ${applied.error.message}`,
+    });
+  const edit = applied.value;
+  const step = { before, op: generated.op, edit };
+  const failures = inverseSequenceFailures({
+    original: before,
+    originalModel,
+    originalXml,
+    document: edit.document,
+    steps: [step],
+    inverse: [...edit.inverse],
+    mutations: sameOpModel(before, originalModel) ? [] : [kind],
+    refusals: [],
+  });
+  failures.push(...localityStepFailures(step));
+  const restored = applyDocumentOps(edit.document, edit.inverse);
+  if (restored.isOk()) {
+    const restoredParts = await serializedOpParts(restored.value.document);
+    failures.push(...serializedInverseStepFailures({ step, control, restored: restoredParts }));
+  }
+  const edited = await serializedOpParts(edit.document);
+  failures.push(
+    ...serializedLocalityStepFailures({
+      step,
+      control,
+      edited,
+      documentPart: "word/document.xml",
+    }),
+  );
+  if (failures.length > 0)
+    throw new OperationPackageLawError({
+      message: unexpectedFailure(kind, failures) ?? failures.join("\n"),
+    });
+};
+
 test(
   "every operation preserves package inverse and declared scope laws",
   async () => {
@@ -87,54 +140,8 @@ test(
       packageDocumentArbitrary,
       opSeedArbitrary,
       fc.constantFrom(...GENERATED_PACKAGE_STORIES),
-      async (kind, document, seed, story) => {
-        const bytes = await createDocx(structuredClone(document));
-        const packaged = normalizeForOps(await parseDocx(bytes, { preloadFonts: false }));
-        const generated = generatedCaseFor({ document: packaged, seed, story, kind });
-        expect(generated.op.type).toBe(kind);
-        const before = generated.document;
-        const originalModel = exactOpModel(before);
-        const originalXml = serializeOpDocument(before);
-        const control = await serializedOpParts(before);
-        const applied = applyDocumentOps(before, [generated.op]);
-        if (applied.isErr())
-          throw new OperationPackageLawError({
-            message: `${kind} refused generated case: ${applied.error.reason}: ${applied.error.message}`,
-          });
-        const edit = applied.value;
-        const step = { before, op: generated.op, edit };
-        const failures = inverseSequenceFailures({
-          original: before,
-          originalModel,
-          originalXml,
-          document: edit.document,
-          steps: [step],
-          inverse: [...edit.inverse],
-          mutations: sameOpModel(before, originalModel) ? [] : [kind],
-          refusals: [],
-        });
-        failures.push(...localityStepFailures(step));
-        const restored = applyDocumentOps(edit.document, edit.inverse);
-        if (restored.isOk()) {
-          const restoredParts = await serializedOpParts(restored.value.document);
-          failures.push(
-            ...serializedInverseStepFailures({ step, control, restored: restoredParts }),
-          );
-        }
-        const edited = await serializedOpParts(edit.document);
-        failures.push(
-          ...serializedLocalityStepFailures({
-            step,
-            control,
-            edited,
-            documentPart: "word/document.xml",
-          }),
-        );
-        if (failures.length > 0)
-          throw new OperationPackageLawError({
-            message: unexpectedFailure(kind, failures) ?? failures.join("\n"),
-          });
-      },
+      async (kind, document, seed, story) =>
+        assertPackageOperationLaws({ kind, document, seed, story }),
     );
     const fixture = fc.sample(packageDocumentArbitrary, { seed: 1336, numRuns: 1 }).at(0);
     const operationSeed = fc.sample(opSeedArbitrary, { seed: 1339, numRuns: 1 }).at(0);
@@ -186,4 +193,22 @@ test(
     );
   },
   propertyTestTimeout(60_000),
+);
+
+test(
+  "created story removal restores authored package registrations exactly",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(packageDocumentArbitrary, opSeedArbitrary, async (document, seed) => {
+        await assertPackageOperationLaws({
+          kind: "removeHeaderFooter",
+          document,
+          seed,
+          story: "main",
+        });
+      }),
+      { numRuns: 30 },
+    );
+  },
+  propertyTestTimeout(30_000),
 );

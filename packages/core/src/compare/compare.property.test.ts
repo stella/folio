@@ -741,7 +741,7 @@ describe("compareDocx", () => {
     test(
       `the change count never exceeds the blocks the script touched (${name})`,
       async () => {
-        // Seeds this property once failed on replay first (test/property-seeds.json).
+        // Seeds this property once failed on replay first (test/property-seeds/).
         await assertProperty(
           fc.asyncProperty(editScriptArb(baseBlocks), async (script) => {
             const scripted = await applyEditScript(base, script);
