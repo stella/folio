@@ -70,6 +70,8 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
       return sentinelDocument;
     },
     getCanonicalDocument: () => null,
+    setCanonicalMode: () => false,
+    resolveCanonicalRevisions: () => false,
     updateCanonicalInputLifecycle: (action) => {
       calls.push({ method: "updateCanonicalInputLifecycle", args: [action] });
       return action === "beginComposition";
@@ -79,6 +81,7 @@ const createFakeApi = (): { api: HiddenEditorApi; calls: Call[] } => {
     getCanonicalStorySelection: () => null,
     getCanonicalStoryProjection: () => null,
     replaceCanonicalStoryText: () => false,
+
     focus: record("focus"),
     blur: record("blur"),
     isFocused: () => {

@@ -48,7 +48,50 @@ export class DocumentOpsContractError extends TaggedError("DocumentOpsContractEr
 const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
   nodes.some((node) => isEmptyRecord(node) || holdsEmptyRecord(childNodes(node) ?? []));
 
+// Operation documents and their block lists are immutable once validated.
+const MULTIPLE_PROPERTY_CHANGES = new WeakMap<readonly BlockContent[], boolean>();
+
+const blocksHaveMultiplePropertyChanges = (blocks: readonly BlockContent[]): boolean => {
+  const cached = MULTIPLE_PROPERTY_CHANGES.get(blocks);
+  if (cached !== undefined) return cached;
+  const found = blocks.some((block) => {
+    switch (block.type) {
+      case "paragraph":
+        return (block.propertyChanges?.length ?? 0) > 1;
+      case "table":
+        return block.rows.some((row) =>
+          row.cells.some((cell) => blocksHaveMultiplePropertyChanges(cell.content)),
+        );
+      case "blockSdt":
+      case "blockCustomXml":
+        return blocksHaveMultiplePropertyChanges(block.content);
+      case "preservedBlock":
+      case "bookmarkStart":
+      case "bookmarkEnd":
+        return false;
+      default: {
+        const unreachable: never = block;
+        return unreachable;
+      }
+    }
+  });
+  MULTIPLE_PROPERTY_CHANGES.set(blocks, found);
+  return found;
+};
+
+/** Check every editable story and nested block container, reusing unchanged lists. */
+export const hasMultipleParagraphPropertyChanges = (document: Document): boolean =>
+  documentStories(document).some((story) =>
+    blocksHaveMultiplePropertyChanges(storyBody(document, story).content),
+  );
+
 const violation = (document: Document): DocumentOpsContractError | undefined => {
+  if (hasMultipleParagraphPropertyChanges(document)) {
+    return new DocumentOpsContractError({
+      reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+      message: "A paragraph cannot carry more than one property change.",
+    });
+  }
   const body = document.package.document;
   const paragraphs = documentStories(document).flatMap((story) =>
     storyParagraphs(storyBody(document, story)),

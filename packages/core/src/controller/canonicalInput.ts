@@ -5,7 +5,7 @@ import { ReplaceStep } from "prosemirror-transform";
 
 import { handleEditorBeforeInput } from "../prosemirror/textInput";
 import { createCanonicalComposition } from "./canonicalComposition";
-import { deletionRange } from "./canonicalSession";
+import { deletionRange, isCanonicalJoinBoundary } from "./canonicalSession";
 
 type ReplaceTextInput = {
   from: number;
@@ -19,6 +19,8 @@ type CanonicalInputOptions = {
   breakUndoGroup?: () => void;
   beginComposition?: () => boolean;
   endComposition?: () => void;
+  split?: () => void;
+  join?: (direction: "backward" | "forward") => void;
   undo: () => boolean;
   redo: () => boolean;
   refuse: (reason: string) => void;
@@ -167,7 +169,14 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return true;
       }
       if (event.key === "Enter") {
-        return refuseEvent(event, "Paragraph structure edits are unavailable in this session.");
+        if (!options.split || view.composing || composition.active)
+          return refuseEvent(
+            event,
+            "Paragraph structure edits are unavailable during composition.",
+          );
+        event.preventDefault();
+        options.split();
+        return true;
       }
       if (event.key !== "Backspace" && event.key !== "Delete") return false;
       event.preventDefault();
@@ -177,7 +186,13 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           options.refuse("Only plain character deletion is available in this session.");
         return true;
       }
-      const range = deletionRange(view.state, event.key === "Backspace" ? "backward" : "forward");
+      const direction = event.key === "Backspace" ? "backward" : "forward";
+      const { selection } = view.state;
+      if (options.join && selection.empty && isCanonicalJoinBoundary(view.state, direction)) {
+        options.join(direction);
+        return true;
+      }
+      const range = deletionRange(view.state, direction);
       if (range.isErr()) {
         closeGroup();
         options.refuse(range.error.message);
@@ -185,7 +200,7 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         options.replace({
           ...range.value,
           text: "",
-          semantic: event.key === "Backspace" ? "deleteBackward" : "deleteForward",
+          semantic: direction === "backward" ? "deleteBackward" : "deleteForward",
         });
       return true;
     },
@@ -269,14 +284,28 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
           };
           return false;
         }
+        if (event.inputType === "insertParagraph" && event.cancelable && options.split) {
+          event.preventDefault();
+          options.split();
+          return true;
+        }
         if (
           event.inputType === "deleteContentBackward" ||
           event.inputType === "deleteContentForward"
         ) {
-          const range = deletionRange(
-            view.state,
-            event.inputType === "deleteContentBackward" ? "backward" : "forward",
-          );
+          const direction = event.inputType === "deleteContentBackward" ? "backward" : "forward";
+          const { selection } = view.state;
+          if (
+            event.cancelable &&
+            options.join &&
+            selection.empty &&
+            isCanonicalJoinBoundary(view.state, direction)
+          ) {
+            event.preventDefault();
+            options.join(direction);
+            return true;
+          }
+          const range = deletionRange(view.state, direction);
           if (range.isErr()) return refuseEvent(event, range.error.message);
           const input = {
             ...range.value,

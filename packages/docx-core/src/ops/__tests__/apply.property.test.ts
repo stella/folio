@@ -6,8 +6,8 @@
  *    back a document structurally equal to the input, every unmodelled and
  *    captured field included, and so does the inverse after a JSON
  *    round-trip: it holds data, not references. Applying the inverse's own
- *    inverse redoes the operation. No inverse but a replacement's is a
- *    whole-paragraph replacement.
+ *    inverse redoes the operation. Structural inverses restore authored run
+ *    boundaries when the parser's seam merge would lose them.
  * 2. **Sequences.** For a random sequence of operations, the inverses applied
  *    in reverse order restore the input exactly; a batch of the same
  *    operations gives the same document, and its inverse restores the input.
@@ -26,13 +26,25 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
+import { projectReview } from "../../../../../test/reviewProjection";
 import type { BlockContent, Document, Paragraph, Run, TextFormatting } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps, type AppliedDocumentOp } from "../apply";
-import { storyParagraphs } from "../blocks";
+import { storyBody, storyParagraphs } from "../blocks";
 import { contractViolation, normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
+import { paragraphIdsIn, identityKeysIn, packageIdentityKeys, IDENTITY_SPACES } from "../ids";
 import { sameRunFormatting } from "../inline";
+import {
+  allocateEditorIntentIds,
+  compileEditorIntent,
+  editorParagraphGroups,
+  physicalPositionAtEditorOffset,
+  type EditorIntent,
+} from "../editorIntent";
 import {
   childrenOf,
   isInlineContainer,
@@ -48,6 +60,7 @@ import {
   INHERIT_RUN_PROPS,
   OP_STORIES,
   SPLIT_HALVES,
+  REVISION_DECISIONS,
 } from "../types";
 import {
   documentArbitrary,
@@ -59,6 +72,25 @@ import {
 } from "./documentArbitraries";
 
 setDefaultTimeout(propertyTestTimeout(240_000));
+
+const expectCompactIntentIds = (document: Document, ops: readonly DocumentOp[]): void => {
+  let current = document;
+  for (const op of ops) {
+    const applied = applyDocumentOp(current, op).unwrap();
+    if ("newIds" in op && op.newIds !== undefined) {
+      const changed = new Set([...applied.touched.modified, ...applied.touched.inserted]);
+      const records = storyParagraphs(storyBody(applied.document, OP_STORIES.MAIN))
+        .filter(({ paragraph }) => changed.has(paragraph.paraId ?? ""))
+        .map(({ paragraph }) => paragraph);
+      const identities = new Set(identityKeysIn(records));
+      for (const id of op.newIds.revision ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.REVISION}:${id}`)).toBe(true);
+      for (const id of op.newIds.control ?? [])
+        expect(identities.has(`${IDENTITY_SPACES.CONTROL}:${id}`)).toBe(true);
+    }
+    current = applied.document;
+  }
+};
 
 const NUM_RUNS = 10_000;
 
@@ -86,7 +118,8 @@ const expectEveryKindApplied = (tally: Tally, runs: number): void => {
  * What each operation's inverse is made of: the table in `apply.ts`. Every
  * inverse is one operation, except a run patch's, which restores one stretch
  * of prior values per operation, and a split's or join's, which may give the
- * paragraph keeping its id its own review fields back.
+ * paragraph keeping its id its own review fields back and restore authored
+ * content that the plain-run seam merge would otherwise coalesce.
  */
 const INVERSE_KINDS = {
   createHeaderFooter: ["restoreStoryParts"],
@@ -110,8 +143,8 @@ const INVERSE_KINDS = {
   joinInline: ["splitInline"],
   setRunProps: ["setRunProps"],
   setParagraphProps: ["setParagraphProps"],
-  splitBlock: ["joinBlocks", "setParagraphReview"],
-  joinBlocks: ["splitBlock", "setParagraphReview"],
+  splitBlock: ["joinBlocks", "replaceInline", "setParagraphReview"],
+  joinBlocks: ["splitBlock", "replaceInline", "setParagraphReview"],
   replaceBlocks: ["replaceBlocks"],
   setParagraphReview: ["setParagraphReview"],
   replaceInline: ["replaceInline"],
@@ -285,6 +318,202 @@ const codePointGaps = (text: string): number[] => {
 };
 
 describe("document operations", () => {
+  test("editor intent sequences preserve accepted editing, rejected baseline and exact journal undo", () => {
+    const kinds = ["insert", "delete", "replace", "split", "join"] as const;
+    const tally = new Set<string>();
+    assertProperty(
+      fc.property(
+        documentArbitrary,
+        plainInputArbitrary,
+        fc.array(
+          fc.record({
+            kind: fc.constantFrom(...kinds),
+            anchor: fc.nat(),
+            head: fc.nat(),
+            paragraph: fc.nat(),
+            text: plainInputArbitrary,
+          }),
+          { minLength: 8, maxLength: 24 },
+        ),
+        (generated, text, inputs) => {
+          const sectionProperties = generated.package.document.content.find(
+            (item) => item.type === "paragraph",
+          )?.sectionProperties;
+          const original = normalizeForOps({
+            ...generated,
+            package: {
+              ...generated.package,
+              document: {
+                ...generated.package.document,
+                sections: undefined,
+                content: ["00000001", "00000002"].map((paraId, index) => {
+                  const paragraph = {
+                    type: "paragraph",
+                    paraId,
+                    formatting: {
+                      alignment: index === 0 ? "start" : "end",
+                      runProperties: { italic: index === 0 },
+                      runInWithNext: index === 0,
+                    },
+                    content: [
+                      {
+                        type: "run",
+                        formatting: index === 0 ? { bold: true } : { italic: true },
+                        content: [{ type: "text", text }],
+                      },
+                    ],
+                  } satisfies Paragraph;
+                  // Model an absent XML property by omission, as the parser does.
+                  return index === 0 && sectionProperties !== undefined
+                    ? Object.assign(paragraph, { sectionProperties })
+                    : paragraph;
+                }),
+              },
+            },
+          });
+          let direct = original;
+          let tracked = original;
+          const journal: AppliedDocumentOp[] = [];
+          for (const input of inputs) {
+            const paragraphs = storyParagraphs(direct.package.document).map(
+              ({ paragraph }) => paragraph,
+            );
+            const source = paragraphs.at(input.paragraph % paragraphs.length);
+            if (source === undefined) panic("Generated editor paragraph disappeared.");
+            const group = editorParagraphGroups(tracked, OP_STORIES.MAIN).find(
+              ({ blockId }) => blockId === source.paraId,
+            );
+            if (group === undefined) panic("Generated editor tracked paragraph disappeared.");
+            const visible = paragraphLogicalText(source);
+            expect(group.text).toBe(visible);
+            const gaps = codePointGaps(visible);
+            const anchor = gaps.at(input.anchor % gaps.length) ?? 0;
+            const head = gaps.at(input.head % gaps.length) ?? 0;
+            const blockId = source.paraId ?? "";
+            const position = (offset: number) => ({ story: OP_STORIES.MAIN, blockId, offset });
+            let intent: EditorIntent;
+            let suggested: EditorIntent;
+            if (input.kind === "split") {
+              intent = {
+                type: "splitParagraph",
+                at: position(Math.min(anchor, head)),
+                to: position(Math.max(anchor, head)),
+                newBlockId: "00000003",
+              };
+              suggested = {
+                ...intent,
+                at: physicalPositionAtEditorOffset(tracked, intent.at),
+                to: physicalPositionAtEditorOffset(tracked, intent.to ?? intent.at),
+              };
+            } else if (input.kind === "join" && paragraphs.length > 1) {
+              // Join accepted-view neighbors even when prior deletions leave
+              // several physical paragraphs in either group.
+              const first = paragraphs.at(0);
+              const second = paragraphs.at(1);
+              if (first === undefined || second === undefined)
+                panic("Generated join has no endpoints.");
+              intent = {
+                type: "joinParagraphs",
+                story: OP_STORIES.MAIN,
+                blockId: first.paraId ?? "",
+                nextBlockId: second.paraId ?? "",
+              };
+              const firstGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).find(
+                ({ blockId: groupBlockId }) => groupBlockId === first.paraId,
+              );
+              const secondGroup = editorParagraphGroups(tracked, OP_STORIES.MAIN).find(
+                ({ blockId: groupBlockId }) => groupBlockId === second.paraId,
+              );
+              suggested = {
+                ...intent,
+                blockId: firstGroup?.paragraphs.at(-1)?.paraId ?? "",
+                nextBlockId: secondGroup?.paragraphs.at(0)?.paraId ?? "",
+              };
+            } else {
+              const from = input.kind === "insert" ? anchor : Math.min(anchor, head);
+              const to = input.kind === "insert" ? anchor : Math.max(anchor, head);
+              intent = {
+                type: "replaceText",
+                from: position(from),
+                to: position(to),
+                text: input.kind === "delete" ? "" : input.text,
+              };
+              suggested = {
+                ...intent,
+                from: physicalPositionAtEditorOffset(tracked, position(from)),
+                to: physicalPositionAtEditorOffset(tracked, position(to)),
+              };
+            }
+            const ids = allocateEditorIntentIds(tracked, suggested);
+            if (intent.type === "splitParagraph" && suggested.type === "splitParagraph") {
+              intent = { ...intent, newBlockId: ids.newBlockId };
+              suggested = { ...suggested, newBlockId: ids.newBlockId };
+            }
+            const editPlan = compileEditorIntent(direct, { intent, mode: { type: "editing" } });
+            const trackedPlan = compileEditorIntent(tracked, {
+              intent: suggested,
+              mode: {
+                type: "suggesting",
+                revision: { id: ids.revisionId, author: "Editor", date: "2026-10-01T12:00:00Z" },
+                newIds: ids.newIds,
+              },
+            });
+            if (editPlan.isErr()) throw editPlan.error;
+            if (trackedPlan.isErr()) throw trackedPlan.error;
+            expectCompactIntentIds(direct, editPlan.value.ops);
+            expectCompactIntentIds(tracked, trackedPlan.value.ops);
+            const edited = applyDocumentOps(direct, editPlan.value.ops);
+            const suggestedEdit = applyDocumentOps(tracked, trackedPlan.value.ops);
+            if (edited.isErr()) throw edited.error;
+            if (suggestedEdit.isErr()) throw suggestedEdit.error;
+            expectRestores(suggestedEdit.value, tracked);
+            journal.push(suggestedEdit.value);
+            direct = edited.value.document;
+            tracked = suggestedEdit.value.document;
+            tally.add(
+              intent.type === "replaceText" && input.kind === "join" ? "replace" : input.kind,
+            );
+            expect(contractViolation(tracked)).toBeUndefined();
+            const keys = packageIdentityKeys(tracked.package);
+            expect(new Set(keys).size).toBe(keys.length);
+          }
+          const prefix = `${IDENTITY_SPACES.REVISION}:`;
+          const revisionIds = identityKeysIn({
+            ...tracked.package,
+            document: { ...tracked.package.document, sections: undefined },
+          })
+            .filter((key) => key.startsWith(prefix))
+            .map((key) => Number(key.slice(prefix.length)));
+          const resolve = (
+            decision: (typeof REVISION_DECISIONS)[keyof typeof REVISION_DECISIONS],
+          ) => {
+            const result = applyDocumentOps(tracked, [
+              {
+                type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+                story: OP_STORIES.MAIN,
+                revisionIds,
+                decision,
+              },
+            ]);
+            if (result.isErr()) throw result.error;
+            expectRestores(result.value, tracked);
+            return result.value.document;
+          };
+          expect(
+            projectReview({ document: resolve(REVISION_DECISIONS.ACCEPT), projection: "π" }),
+          ).toStrictEqual(projectReview({ document: direct, projection: "π" }));
+          expect(
+            projectReview({ document: resolve(REVISION_DECISIONS.REJECT), projection: "π" }),
+          ).toStrictEqual(projectReview({ document: original, projection: "π" }));
+          for (const entry of journal.toReversed()) tracked = applyAll(tracked, entry.inverse);
+          expect(tracked).toStrictEqual(original);
+        },
+      ),
+      { numRuns: 300 },
+    );
+    expect([...tally].sort()).toEqual([...kinds].sort());
+  });
+
   test("plain-text input sequences preserve exact inverse, redo and rejection atomicity", () => {
     const tally = new Map<string, number>();
     fc.assert(
@@ -420,7 +649,7 @@ describe("document operations", () => {
 
   test("an operation's inverse restores the document exactly", () => {
     const tally: Tally = new Map();
-    fc.assert(
+    assertProperty(
       fc.property(documentArbitrary, opSeedArbitrary, (document, seed) => {
         const op = opFor(document, seed);
         const original = structuredClone(document);
@@ -436,17 +665,30 @@ describe("document operations", () => {
         for (const inverse of applied.value.inverse) {
           expect(allowed).toContain(inverse.type);
         }
-        if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
-          // A split or join gives the paragraph that keeps its id its own properties back too.
-          expect(applied.value.inverse.length).toBeLessThanOrEqual(
-            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK || op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
-              ? 2
-              : 1,
+        if (
+          op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ||
+          op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS
+        ) {
+          // One structural inverse, at most one review restoration, and at most
+          // one content restoration per original paragraph; no duplicate targets.
+          const restoring = applied.value.inverse.filter(
+            (inverse) => inverse.type === DOCUMENT_OP_TYPES.REPLACE_INLINE,
           );
+          const review = applied.value.inverse.filter(
+            (inverse) => inverse.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+          );
+          expect(new Set(restoring.map(({ blockId }) => blockId)).size).toBe(restoring.length);
+          expect(restoring.length).toBeLessThanOrEqual(
+            op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK ? 1 : 2,
+          );
+          expect(review.length).toBeLessThanOrEqual(1);
+          expect(applied.value.inverse.length - restoring.length - review.length).toBe(1);
+        } else if (op.type !== DOCUMENT_OP_TYPES.SET_RUN_PROPS) {
+          expect(applied.value.inverse.length).toBeLessThanOrEqual(1);
         }
         expectRestores(applied.value, original);
       }),
-      propertyConfig({ numRuns: NUM_RUNS }),
+      { numRuns: NUM_RUNS },
     );
     expectEveryKindApplied(tally, NUM_RUNS);
   });
@@ -575,8 +817,9 @@ describe("document operations", () => {
         const body = next.package.document;
         const beforeBody = document.package.document;
         const beforeSections = beforeBody.sections ?? [];
+        const beforeContent = new Set(beforeBody.content);
         const shared = beforeSections.every((section) =>
-          section.content.every((block) => beforeBody.content.includes(block)),
+          section.content.every((block) => beforeContent.has(block)),
         );
         const derived = body.sections?.flatMap(({ content }) => content) ?? [];
         expect(derived).toStrictEqual(body.content);

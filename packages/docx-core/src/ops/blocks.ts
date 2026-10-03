@@ -9,9 +9,18 @@
 
 import { panic } from "better-result";
 
-import type { BlockContent, Document, DocumentBody, Paragraph, Section } from "../model/document";
+import type {
+  BlockContent,
+  Document,
+  DocumentBody,
+  HeaderFooter,
+  HeaderFooterType,
+  HeaderReference,
+  Paragraph,
+  Section,
+} from "../model/document";
 import { structurallyEqual } from "./equality";
-import type { OpStory } from "./types";
+import type { OpStory, SectionViewEntry } from "./types";
 import { storyBody, replaceStoryBody } from "./stories";
 
 export { storyBody } from "./stories";
@@ -244,8 +253,8 @@ const sectionGroups = (content: readonly BlockContent[]): BlockContent[][] => {
  * `sections`, the parser's per-section view of the body's top-level blocks,
  * derived again from the body after an edit. Section `i` keeps every field of
  * the section it replaces (properties, headers, footers) and holds group `i`;
- * a section whose group is unchanged is the same object. Operations never
- * add, remove or move a section break, so a different count is a bug here.
+ * a section whose group is unchanged is the same object. This path owns
+ * replacements that preserve the section count.
  */
 const deriveSections = (content: readonly BlockContent[], previous: Section[]): Section[] => {
   const groups = sectionGroups(content);
@@ -263,6 +272,104 @@ const deriveSections = (content: readonly BlockContent[], previous: Section[]): 
     out.push(same ? section : { ...section, content: group });
   }
   return changed ? out : previous;
+};
+
+/** Capture only section metadata, with Maps represented as JSON-safe entries. */
+export const captureSectionView = (sections: readonly Section[]): SectionViewEntry[] =>
+  sections.map(({ properties, headers, footers }) => ({
+    properties,
+    ...(headers !== undefined && { headers: [...headers] }),
+    ...(footers !== undefined && { footers: [...footers] }),
+  }));
+
+const restoreSectionView = (
+  content: readonly BlockContent[],
+  snapshots: readonly SectionViewEntry[],
+): Section[] => {
+  const groups = sectionGroups(content);
+  if (groups.length !== snapshots.length) {
+    return panic("The section snapshot does not match the restored section boundaries.");
+  }
+  return snapshots.map(({ properties, headers, footers }, index) => {
+    const group = groups.at(index);
+    if (group === undefined) return panic("The restored section lost its block group.");
+    return {
+      properties,
+      content: group,
+      ...(headers !== undefined && { headers: new Map(headers) }),
+      ...(footers !== undefined && { footers: new Map(footers) }),
+    };
+  });
+};
+
+type SectionPartsOptions = {
+  references: readonly HeaderReference[] | undefined;
+  parts: ReadonlyMap<string, HeaderFooter> | undefined;
+};
+
+const sectionParts = ({ references, parts }: SectionPartsOptions) => {
+  if (references === undefined || references.length === 0) return undefined;
+  const resolved = new Map<HeaderFooterType, HeaderFooter>();
+  for (const { type, rId } of references) {
+    const part = parts?.get(rId);
+    if (part === undefined) return panic(`A section reference names unavailable part ${rId}.`);
+    resolved.set(type, part);
+  }
+  return resolved;
+};
+
+type RebuildSectionsOptions = {
+  document: Document;
+  content: readonly BlockContent[];
+  previous: readonly Section[];
+};
+
+/** A boundary keeps its section metadata when earlier section boundaries change. */
+const rebuildSections = ({ document, content, previous }: RebuildSectionsOptions): Section[] => {
+  const body = document.package.document;
+  const previousGroups = sectionGroups(body.content);
+  const sectionsByBoundary = new Map<string, Section>();
+  let finalSection: Section | undefined;
+  for (const [index, group] of previousGroups.entries()) {
+    const section = previous.at(index);
+    if (section === undefined) return panic("The previous section lost its block group.");
+    const boundary = group.at(-1);
+    if (boundary?.type === "paragraph" && boundary.sectionProperties !== undefined) {
+      if (boundary.paraId === undefined) return panic("A section boundary has no paragraph id.");
+      sectionsByBoundary.set(boundary.paraId, section);
+    } else {
+      finalSection = section;
+    }
+  }
+  return sectionGroups(content).map((group) => {
+    const boundary = group.at(-1);
+    const stated = boundary?.type === "paragraph" ? boundary.sectionProperties : undefined;
+    let matching = finalSection;
+    if (stated !== undefined && boundary?.type === "paragraph") {
+      matching = undefined;
+      if (boundary.paraId !== undefined) matching = sectionsByBoundary.get(boundary.paraId);
+    }
+    const properties = stated ?? body.finalSectionProperties ?? finalSection?.properties;
+    if (properties === undefined) return panic("A rebuilt section has no canonical properties.");
+    if (matching !== undefined && structurallyEqual(matching.properties, properties)) {
+      const section: Section = { properties, content: group };
+      if (matching.headers !== undefined) section.headers = matching.headers;
+      if (matching.footers !== undefined) section.footers = matching.footers;
+      return section;
+    }
+    const headers = sectionParts({
+      references: properties.headerReferences,
+      parts: document.package.headers,
+    });
+    const footers = sectionParts({
+      references: properties.footerReferences,
+      parts: document.package.footers,
+    });
+    const section: Section = { properties, content: group };
+    if (headers !== undefined) section.headers = headers;
+    if (footers !== undefined) section.footers = footers;
+    return section;
+  });
 };
 
 /**
@@ -322,6 +429,8 @@ type ReplaceParagraphsOptions = {
   at: ParagraphLocation;
   count: number;
   replacement: readonly Paragraph[];
+  /** Exact inverse metadata; section content is rebuilt from the restored blocks. */
+  restoreSections?: readonly SectionViewEntry[];
 };
 
 /** The document with `count` paragraphs from `at` replaced. */
@@ -331,6 +440,7 @@ export const replaceParagraphs = ({
   at,
   count,
   replacement,
+  restoreSections,
 }: ReplaceParagraphsOptions): Document => {
   const body = storyBody(document, story);
   const content = updateBlockList(body.content, at.list, (blocks) => {
@@ -339,8 +449,13 @@ export const replaceParagraphs = ({
     return out;
   });
   const nextBody: DocumentBody = { ...body, content };
-  if (body.sections !== undefined) {
-    nextBody.sections = deriveSections(content, body.sections);
+  if (restoreSections !== undefined) {
+    nextBody.sections = restoreSectionView(content, restoreSections);
+  } else if (body.sections !== undefined) {
+    nextBody.sections =
+      sectionGroups(content).length === body.sections.length
+        ? deriveSections(content, body.sections)
+        : rebuildSections({ document, content, previous: body.sections });
   }
   return replaceStoryBody({ document, story, body: nextBody });
 };

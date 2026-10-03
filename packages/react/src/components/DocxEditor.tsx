@@ -52,6 +52,7 @@ import {
   type FolioDocumentOperationUndoHandle,
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
+import { resolveCanonicalReviewRange } from "@stll/folio-core/controller/canonicalReview";
 import { resolveActiveEditorStory } from "@stll/folio-core/controller/activeEditorStory";
 import {
   FOLIO_DOCX_SERIALIZATION_MODE,
@@ -2846,13 +2847,29 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         case "acceptChange": {
           const { from, to } = view.state.selection;
           const range = findChangeAtPosition(view.state, from, to);
-          acceptChange(range.from, range.to)(view.state, view.dispatch);
+          if (
+            resolveCanonicalReviewRange({
+              editor: pagedEditorRef.current?.getEditor(),
+              ...range,
+              resolution: "accept",
+            }) === null
+          ) {
+            acceptChange(range.from, range.to)(view.state, view.dispatch);
+          }
           break;
         }
         case "rejectChange": {
           const { from, to } = view.state.selection;
           const range = findChangeAtPosition(view.state, from, to);
-          rejectChange(range.from, range.to)(view.state, view.dispatch);
+          if (
+            resolveCanonicalReviewRange({
+              editor: pagedEditorRef.current?.getEditor(),
+              ...range,
+              resolution: "reject",
+            }) === null
+          ) {
+            rejectChange(range.from, range.to)(view.state, view.dispatch);
+          }
           break;
         }
         case "restartNumbering":
@@ -3386,12 +3403,26 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         if (!view) {
           return false;
         }
+        const editor = pagedEditorRef.current?.getEditor();
+        if (editor?.getCanonicalDocument()) {
+          return editor.resolveCanonicalRevisions(
+            typeof revisionId === "number" ? [revisionId] : revisionId,
+            "accept",
+          );
+        }
         return acceptAIEditRevision(revisionId)(view.state, view.dispatch);
       },
       rejectAIEditOperation: (revisionId) => {
         const view = pagedEditorRef.current?.getView();
         if (!view) {
           return false;
+        }
+        const editor = pagedEditorRef.current?.getEditor();
+        if (editor?.getCanonicalDocument()) {
+          return editor.resolveCanonicalRevisions(
+            typeof revisionId === "number" ? [revisionId] : revisionId,
+            "reject",
+          );
         }
         return rejectAIEditRevision(revisionId)(view.state, view.dispatch);
       },
@@ -3892,7 +3923,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
     const { from, to } = view.state.selection;
     const range = findChangeAtPosition(view.state, from, to);
-    acceptChange(range.from, range.to)(view.state, view.dispatch);
+    if (
+      resolveCanonicalReviewRange({
+        editor: pagedEditorRef.current?.getEditor(),
+        ...range,
+        resolution: "accept",
+      }) === null
+    ) {
+      acceptChange(range.from, range.to)(view.state, view.dispatch);
+    }
   }, []);
   const handleRejectActiveChange = useCallback(() => {
     const view = pagedEditorRef.current?.getView();
@@ -3901,7 +3940,15 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     }
     const { from, to } = view.state.selection;
     const range = findChangeAtPosition(view.state, from, to);
-    rejectChange(range.from, range.to)(view.state, view.dispatch);
+    if (
+      resolveCanonicalReviewRange({
+        editor: pagedEditorRef.current?.getEditor(),
+        ...range,
+        resolution: "reject",
+      }) === null
+    ) {
+      rejectChange(range.from, range.to)(view.state, view.dispatch);
+    }
   }, []);
   const handlePreviousChange = useCallback(() => {
     const view = pagedEditorRef.current?.getView();
@@ -4284,7 +4331,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       if (revisionId === null) {
         return;
       }
-      acceptAIEditRevision(revisionId)(view.state, view.dispatch);
+      const editor = pagedEditorRef.current?.getEditor();
+      if (editor?.getCanonicalDocument()) {
+        editor.resolveCanonicalRevisions([revisionId], "accept");
+      } else {
+        acceptAIEditRevision(revisionId)(view.state, view.dispatch);
+      }
       extractTrackedChanges();
     },
     [extractTrackedChanges, resolveSidebarChangeRevisionId],
@@ -4299,7 +4351,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       if (revisionId === null) {
         return;
       }
-      rejectAIEditRevision(revisionId)(view.state, view.dispatch);
+      const editor = pagedEditorRef.current?.getEditor();
+      if (editor?.getCanonicalDocument()) {
+        editor.resolveCanonicalRevisions([revisionId], "reject");
+      } else {
+        rejectAIEditRevision(revisionId)(view.state, view.dispatch);
+      }
       extractTrackedChanges();
     },
     [extractTrackedChanges, resolveSidebarChangeRevisionId],

@@ -55,6 +55,7 @@ import {
   createCanonicalSession,
   publishCanonicalProjection,
   type CanonicalSession,
+  type CanonicalSessionMode,
   type CanonicalCommit,
 } from "./canonicalSession";
 import {
@@ -419,6 +420,7 @@ export type HiddenEditorManagerDeps = {
   getReadOnly: () => boolean;
   getExperimentalSession?: () => "canonical" | undefined;
   getEditingMode?: () => EditorMode;
+  getSuggestionAuthor?: () => string;
   onSessionRefusal?: (reason: string) => void;
   /**
    * Identity of the loaded document as tracked by the adapter's loader: the
@@ -495,6 +497,16 @@ export type HiddenEditorManager = {
 export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): HiddenEditorManager => {
   let view: EditorView | null = null;
   let editorSession: EditorSession = { type: "prosemirror" };
+  let modeOverride: CanonicalSessionMode | null = null;
+  const syncCanonicalMode = (): void => {
+    if (editorSession.type !== "canonical") return;
+    editorSession.session.setMode(
+      modeOverride ??
+        (deps.getEditingMode?.() === "suggesting"
+          ? { type: "suggesting", author: deps.getSuggestionAuthor?.() ?? "User" }
+          : { type: "editing" }),
+    );
+  };
   const refuse = (reason: string): void => {
     if (deps.onSessionRefusal) deps.onSessionRefusal(reason);
     else throw new CanonicalSessionRefusalError({ message: reason });
@@ -506,12 +518,6 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     }
     const documentIdentity = deps.getDocumentIdentity();
     if (editorSession.type === "refused" && editorSession.documentIdentity === documentIdentity) {
-      return false;
-    }
-    if (deps.getEditingMode?.() === "suggesting") {
-      const reason = "Suggesting is unavailable in the experimental canonical session.";
-      editorSession = { type: "refused", reason, documentIdentity };
-      refuse(reason);
       return false;
     }
     if (deps.getCollaboration() || !document) {
@@ -529,6 +535,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    syncCanonicalMode();
     return true;
   };
   const canonicalState = (session: CanonicalSession) =>
@@ -542,10 +549,6 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     });
   const publishCommit = (commit: CanonicalCommit): boolean => {
     if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return false;
-    if (deps.getEditingMode?.() === "suggesting") {
-      refuse("Suggesting is unavailable in the experimental canonical session.");
-      return false;
-    }
     const session = editorSession.session;
     const result = publishCanonicalProjection({ state: view.state, commit, session });
     if (result.isErr()) {
@@ -595,7 +598,22 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     ...canonicalInputLifecycle,
     replace: (intent) => {
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
+      syncCanonicalMode();
       const prepared = editorSession.session.prepareReplace(view.state, intent);
+      if (prepared.isErr()) refuse(prepared.error.message);
+      else publishCommit(prepared.value);
+    },
+    split: () => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
+      syncCanonicalMode();
+      const prepared = editorSession.session.prepareSplit(view.state);
+      if (prepared.isErr()) refuse(prepared.error.message);
+      else publishCommit(prepared.value);
+    },
+    join: (direction) => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
+      syncCanonicalMode();
+      const prepared = editorSession.session.prepareJoin(view.state, direction);
       if (prepared.isErr()) refuse(prepared.error.message);
       else publishCommit(prepared.value);
     },
@@ -653,10 +671,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const editorProps: DirectEditorProps = {
       state: initialState,
       attributes: HIDDEN_EDITOR_ATTRIBUTES,
-      editable: () =>
-        !deps.getReadOnly() &&
-        editorSession.type !== "refused" &&
-        (editorSession.type !== "canonical" || deps.getEditingMode?.() !== "suggesting"),
+      editable: () => !deps.getReadOnly() && editorSession.type !== "refused",
       dispatchTransaction: (transaction: Transaction) => {
         if (!view || isDestroying) {
           return;
@@ -949,6 +964,24 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     getDocumentContext: () => (editorSession.type === "refused" ? null : deps.getDocumentContext()),
     getCanonicalDocument: () =>
       editorSession.type === "canonical" ? editorSession.session.document : null,
+    setCanonicalMode: (mode) => {
+      if (editorSession.type !== "canonical") return false;
+      modeOverride = mode;
+      syncCanonicalMode();
+      return true;
+    },
+    resolveCanonicalRevisions: (revisionIds, resolution) => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return false;
+      const prepared = editorSession.session.prepareResolve(view.state, {
+        revisionIds,
+        resolution,
+      });
+      if (prepared.isErr()) {
+        refuse(prepared.error.message);
+        return false;
+      }
+      return publishCommit(prepared.value);
+    },
     getCanonicalHistory: () =>
       editorSession.type === "canonical"
         ? {

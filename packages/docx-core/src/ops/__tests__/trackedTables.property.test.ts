@@ -281,13 +281,13 @@ const assertLocality = (before: Document, result: ReturnType<typeof applied>) =>
   );
   for (const { paragraph } of storyParagraphs(before.package.document))
     if (!touched.has(paragraph.paraId ?? "")) expect(after.get(paragraph.paraId)).toBe(paragraph);
-  const beforeIds = paragraphIdsIn(before.package.document);
-  const afterIds = paragraphIdsIn(result.document.package.document);
+  const beforeIds = new Set(paragraphIdsIn(before.package.document));
+  const afterIds = new Set(paragraphIdsIn(result.document.package.document));
   expect(new Set(result.touched.inserted)).toEqual(
-    new Set(afterIds.filter((value) => !beforeIds.includes(value))),
+    new Set([...afterIds].filter((value) => !beforeIds.has(value))),
   );
   expect(new Set(result.touched.removed)).toEqual(
-    new Set(beforeIds.filter((value) => !afterIds.includes(value))),
+    new Set([...beforeIds].filter((value) => !afterIds.has(value))),
   );
 };
 const assertReviewShape = (value: Table, kind: "ins" | "del") => {
@@ -719,8 +719,9 @@ describe("tracked whole table properties", () => {
           );
           const marksKept = resolved(rowsKept.document, markIds, decision);
           exactInverse(rowsKept.document, marksKept);
+          const structuralIds = new Set([...rowIds, ...markIds]);
           const contentIds = tracked.revisions.filter(
-            (revisionId) => !rowIds.includes(revisionId) && !markIds.includes(revisionId),
+            (revisionId) => !structuralIds.has(revisionId),
           );
           const completed = resolved(marksKept.document, contentIds, decision);
           exactInverse(marksKept.document, completed);

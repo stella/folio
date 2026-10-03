@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { parseDocx } from "../../packages/core/src/docx/parser";
 import { createDocx } from "../../packages/core/src/docx/rezip";
 import { createEmptyDocument } from "../../packages/core/src/utils/createDocument";
+import { identityKeysIn, IDENTITY_SPACES } from "../../packages/docx-core/src/ops/ids";
 import type { buildCanonicalBridge } from "../parity/canonicalBridge";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
@@ -84,10 +85,6 @@ test("canonical input, history and saved document agree across both adapters", a
     const redone = await expectProjection(page, { text: "B", selection: { from: 1, to: 1 } });
     expect(redone.document).toEqual(deleted.document);
     expect(redone.canRedo).toBe(false);
-
-    // Refused structural input must leave the canonical model, projection and journal intact.
-    await page.keyboard.press("Enter");
-    expect(await snapshot(page)).toEqual(redone);
 
     await select(page, 1, 2);
     const compositionBaseline = await expectProjection(page, {
@@ -229,5 +226,114 @@ test("canonical input, history and saved document agree across both adapters", a
       redone.document.package.document.content,
     );
     expect(reloaded.canUndo).toBe(false);
+  }
+});
+
+test("canonical suggestions survive save and reopen before acceptance or rejection", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const sourceDocument = createEmptyDocument({ initialText: "A😀B" });
+  sourceDocument.package.document.content.push(
+    ...createEmptyDocument({ initialText: "C" }).package.document.content,
+  );
+  const source = await createDocx(sourceDocument);
+  for (const port of [reactPort, vuePort]) {
+    await page.goto(`http://localhost:${port}/?session=canonical`);
+    await page.waitForSelector(".layout-page");
+    expect(
+      await page.evaluate(
+        async (bytes) => globalThis.__folioCanonical?.load(bytes),
+        [...new Uint8Array(source)],
+      ),
+    ).toBe(true);
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+    expect(await page.evaluate(() => globalThis.__folioCanonical?.setMode("suggesting"))).toBe(
+      true,
+    );
+    await select(page, 5);
+    await page.keyboard.type("x");
+    await expectProjection(page, { text: "A😀BxC", selection: { from: 6, to: 6 } });
+    await select(page, 2);
+    await page.keyboard.press("Delete");
+    const typed = await snapshot(page);
+    const paragraph = typed?.document?.package.document.content.at(0);
+    if (!paragraph || paragraph.type !== "paragraph")
+      throw new TypeError("Expected suggested paragraph.");
+    expect(paragraph.content.map(({ type }) => type)).toEqual(
+      expect.arrayContaining(["insertion", "deletion"]),
+    );
+
+    await select(page, 2);
+    await page.keyboard.press("Enter");
+    const split = await snapshot(page);
+    expect(split?.document?.package.document.content).toHaveLength(3);
+    expect(split?.projectionMatchesCanonical).toBe(true);
+    // Join the original final paragraph to the split tail, a different paragraph mark.
+    await select(page, 10);
+    await page.keyboard.press("Backspace");
+    const suggested = await snapshot(page);
+    if (!suggested?.document) throw new Error("Canonical suggestions unavailable.");
+    expect(suggested.projectionMatchesCanonical).toBe(true);
+    expect(suggested.projectionJSON).toEqual(suggested.canonicalProjectionJSON);
+    expect(suggested.document.package.document.content).toHaveLength(3);
+    const revisionPrefix = `${IDENTITY_SPACES.REVISION}:`;
+    const revisionIds = identityKeysIn(suggested.document.package.document.content).flatMap(
+      (key) => (key.startsWith(revisionPrefix) ? [Number(key.slice(revisionPrefix.length))] : []),
+    );
+    expect(revisionIds).toHaveLength(4);
+    expect(new Set(revisionIds).size).toBe(revisionIds.length);
+
+    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    if (!saved) throw new Error("Canonical suggestions did not save.");
+    const reopened = await parseDocx(new Uint8Array(saved), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(reopened.package.document.content).toEqual(suggested.document.package.document.content);
+
+    for (const decision of ["accept", "reject"] as const) {
+      expect(
+        await page.evaluate(async (bytes) => globalThis.__folioCanonical?.load(bytes), saved),
+      ).toBe(true);
+      await page.evaluate(
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+      );
+      const reloaded = await snapshot(page);
+      expect(reloaded?.document?.package.document.content).toEqual(
+        reopened.package.document.content,
+      );
+      expect(reloaded?.canUndo).toBe(false);
+      expect(
+        await page.evaluate(
+          ({ ids, resolution }) => globalThis.__folioCanonical?.resolveRevisions(ids, resolution),
+          { ids: revisionIds, resolution: decision },
+        ),
+      ).toBe(true);
+      await select(page, 1);
+      const resolved = await expectProjection(page, {
+        text: decision === "accept" ? "ABxC" : "A😀BC",
+        selection: { from: 1, to: 1 },
+      });
+      expect(identityKeysIn(resolved.document.package.document.content)).toEqual([]);
+      expect(resolved.document.package.document.content).toHaveLength(2);
+      expect(resolved.document.package.document.content.at(0)).toMatchObject({
+        type: "paragraph",
+        content: [
+          { type: "run", content: [{ type: "text", text: decision === "accept" ? "A" : "A😀B" }] },
+        ],
+      });
+      expect(resolved.canUndo).toBe(true);
+      await page.keyboard.press(`${MODIFIER}+z`);
+      const undone = await snapshot(page);
+      expect(undone?.document?.package.document.content).toEqual(reopened.package.document.content);
+      expect(undone?.projectionMatchesCanonical).toBe(true);
+      await page.keyboard.press(`${MODIFIER}+Shift+z`);
+      const redone = await snapshot(page);
+      expect(redone?.document).toEqual(resolved.document);
+      expect(redone?.projectionMatchesCanonical).toBe(true);
+    }
   }
 });

@@ -543,7 +543,9 @@ describe("C9: Enter and Delete record paragraph marks", () => {
         ...source,
         pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
       },
-      paragraph("00000002", [], { propertyChanges: [pending] }),
+      paragraph("00000002", [], {
+        propertyChanges: [{ ...pending, info: { id: 7, author: "Reviewer", date: DATE } }],
+      }),
       paragraph("00000009", [run("next")]),
     ]);
     const plain = applied(documentOf(source, paragraph("00000009", [run("next")])), split);
@@ -597,6 +599,27 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     );
   });
 
+  test("tracked joins refuse every positive inline merge depth without changing the document", () => {
+    const document = documentOf(
+      paragraph("00000001", [run("a")]),
+      paragraph("00000002", [run("b")]),
+    );
+    const original = structuredClone(document);
+    for (const depth of [1, 2, 3, 100, Number.MAX_SAFE_INTEGER]) {
+      expect(
+        refusalOf(document, {
+          type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+          story: OP_STORIES.MAIN,
+          blockId: "00000001",
+          nextBlockId: "00000002",
+          depth,
+          revision: stamp(1),
+        }),
+      ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+      expect(document).toStrictEqual(original);
+    }
+  });
+
   test("accepting a join of an empty paragraph leaves the next one as it was", () => {
     const empty = paragraph("00000001", [{ type: "bookmarkStart", id: 1, name: "_Ref" }], {
       formatting: { styleId: "Heading1" },
@@ -633,20 +656,15 @@ describe("C9: Enter and Delete record paragraph marks", () => {
     ).toBe(DOCUMENT_OP_REFUSAL_REASONS.CONTAINER_FINAL_MARK);
   });
 
-  test("joining at a section break is refused", () => {
+  test("resolving a deleted section break removes its section and undo restores it", () => {
     const ends = paragraph("00000001", [run("a")], {
       sectionProperties: { pageWidth: 12240 },
       pPrMark: { kind: "del", info: { id: 1, author: "Other" } },
     });
     const document = documentOf(ends, paragraph("00000002", [run("b")]));
-    expect(
-      refusalOf(document, {
-        type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
-        story: OP_STORIES.MAIN,
-        revisionIds: [1],
-        decision: REVISION_DECISIONS.ACCEPT,
-      }),
-    ).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+    const accepted = resolved(document, [1], REVISION_DECISIONS.ACCEPT);
+    expect(blocks(accepted).length).toBe(1);
+    expect(blocks(accepted).at(0)?.sectionProperties).toBeUndefined();
     // Rejecting keeps the break, which needs no section operation.
     expect(blocks(resolved(document, [1], REVISION_DECISIONS.REJECT))).toEqual([
       paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 12240 } }),
@@ -1066,4 +1084,138 @@ describe("an empty content control is content: resolution never merges it away",
       });
     }
   });
+});
+
+describe("section-aware tracked editor joins", () => {
+  test("explicit section removal is tracked until resolution and every inverse preserves both sections", () => {
+    const document = documentOf(
+      paragraph("00000001", [run("a")], { sectionProperties: { pageWidth: 10000 } }),
+      paragraph("00000002", [run("b")], { sectionProperties: { pageWidth: 12000 } }),
+      paragraph("00000003", [run("c")]),
+    );
+    const content = document.package.document.content;
+    document.package.document.finalSectionProperties = { pageWidth: 14000 };
+    document.package.document.sections = [
+      { properties: { pageWidth: 10000 }, content: content.slice(0, 1), headers: new Map() },
+      { properties: { pageWidth: 12000 }, content: content.slice(1, 2), footers: new Map() },
+      { properties: { pageWidth: 14000 }, content: content.slice(2) },
+    ] satisfies Section[];
+    const join = {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionBoundary: "remove",
+    } as const satisfies DocumentOp;
+    const direct = applied(document, join);
+    const tracked = applied(document, {
+      ...join,
+      revision: stamp(1),
+      newIds: { revision: [2, 3] },
+    });
+    expect(blocks(tracked.document).at(0)?.sectionProperties).toEqual({ pageWidth: 10000 });
+    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.ACCEPT))).toStrictEqual(
+      blocks(direct.document),
+    );
+    expect(blocks(resolved(tracked.document, [1, 2, 3], REVISION_DECISIONS.REJECT))).toEqual(
+      blocks(document),
+    );
+  });
+});
+
+test("tracked paragraph patches and joins keep one pending property review and its baseline", () => {
+  for (const alignment of ["left", "center", "end"] as const) {
+    const pending = {
+      type: "paragraphPropertyChange" as const,
+      info: {
+        id: 7,
+        author: "Other",
+        date: "2026-01-01T00:00:00Z",
+        initials: "OA",
+        rsid: "00000001",
+        utcDate: { attribute: "w16du:dateUtc", value: "2026-01-01T00:00:00Z" },
+      },
+      previousFormatting: { alignment: "start" as const },
+    };
+    let document = documentOf(
+      paragraph("00000001", [run("first")], { formatting: { styleId: "Heading1" } }),
+      paragraph("00000002", [run("second")], {
+        formatting: { alignment },
+        propertyChanges: [pending],
+      }),
+    );
+    for (const nextAlignment of ["center", "right", "end"] as const) {
+      const previous = blocks(document).at(1);
+      const patch = applied(document, {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000002",
+        patch: { alignment: nextAlignment },
+        revision: stamp(1),
+      });
+      expect(patch.revisions).toEqual([]);
+      if (
+        previous?.type === "paragraph" &&
+        previous.formatting?.alignment !== nextAlignment &&
+        previous.propertyChanges?.at(0)?.info.author === "Other"
+      ) {
+        const patched = blocks(patch.document).at(1);
+        expect(patched?.type === "paragraph" && patched.propertyChanges).toEqual([
+          { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
+        ]);
+      }
+      document = patch.document;
+    }
+    const joined = applied(document, {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      revision: stamp(1),
+      newIds: { revision: [2] },
+    });
+    expect(joined.revisions).not.toContain(7);
+    const survivor = blocks(joined.document).at(1);
+    expect(survivor?.type === "paragraph" && survivor.propertyChanges).toEqual([
+      { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
+    ]);
+    expect(survivor?.type === "paragraph" && survivor.formatting).toEqual({ styleId: "Heading1" });
+    const rejected = resolved(joined.document, [7], REVISION_DECISIONS.REJECT);
+    const restoredBaseline = blocks(rejected).at(1);
+    expect(restoredBaseline?.type === "paragraph" && restoredBaseline.formatting).toEqual({
+      alignment: "start",
+    });
+  }
+});
+
+test("a new first split half records its own review without moving the surviving half's pending id", () => {
+  const pending = {
+    type: "paragraphPropertyChange" as const,
+    info: { id: 7, author: "Original author" },
+    previousFormatting: { alignment: "start" as const },
+  };
+  const original = documentOf(
+    paragraph("00000001", [run("alpha")], {
+      formatting: { alignment: "center" },
+      propertyChanges: [pending],
+    }),
+  );
+  const split = applied(original, {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: at("00000001", 2),
+    newBlockId: "00000002",
+    newParagraph: { formatting: { alignment: "end" } },
+    revision: stamp(1),
+    newIds: { revision: [2, 3] },
+  });
+  const first = blocks(split.document).at(0);
+  const second = blocks(split.document).at(1);
+  expect(first?.type === "paragraph" && first.propertyChanges).toEqual([
+    {
+      type: "paragraphPropertyChange",
+      info: { id: 1, author: "Reviewer", date: DATE },
+      previousFormatting: { alignment: "center" },
+    },
+  ]);
+  expect(second?.type === "paragraph" && second.propertyChanges).toEqual([pending]);
 });

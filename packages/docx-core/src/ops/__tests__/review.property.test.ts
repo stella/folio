@@ -51,7 +51,12 @@ import { compareGaps, defaultInsertionGap, type Gap, isCommentAnchor, leafSpans 
 import { paragraphLength, paragraphLogicalText } from "../offsets";
 import { planTrackedDeletion, revisionIdDemand } from "../plan";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
-import { isTrackedWrapper, sameParagraphProperties, stampedRevisionIds } from "../review";
+import {
+  isAddedRevision,
+  isTrackedWrapper,
+  sameParagraphProperties,
+  stampedRevisionIds,
+} from "../review";
 import {
   DOCUMENT_OP_TYPES,
   type DocumentOp,
@@ -190,12 +195,12 @@ const stampedIds = (document: Document, stamps: readonly RevisionStamp[]): numbe
 };
 
 /**
- * The operation without its stamp: what it does directly. A direct join
- * merges no records, as a tracked one leaves that to resolution, which
- * merges as far as they are alike.
+ * The operation without its stamp: what it does directly. A tracked join
+ * records only a paragraph boundary deletion, so its direct counterpart
+ * preserves the authored inline records.
  */
 const directOf = (op: DocumentOp): DocumentOp => {
-  const direct = op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? { ...op, depth: 0 } : { ...op };
+  const direct = { ...op };
   Reflect.deleteProperty(direct, "revision");
   return direct;
 };
@@ -301,6 +306,24 @@ const alsoAccepted = (
         }
       }
       return { direct: [...enclosing], tracked: [...enclosing, ...pieces] };
+    }
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
+      // One OOXML property review folds both edits; acceptance resolves the original id too.
+      const stamp = stampOf(op);
+      const folded = storyParagraphs(tracked.document.package.document).flatMap(({ paragraph }) =>
+        (paragraph.propertyChanges ?? []).flatMap(({ info }) =>
+          original.has(info.id) &&
+          stamp !== undefined &&
+          info.author === stamp.author &&
+          info.date === stamp.date &&
+          info.initials === stamp.initials
+            ? [info.id]
+            : [],
+        ),
+      );
+      return { direct: folded, tracked: folded };
     }
     case DOCUMENT_OP_TYPES.DELETE_RANGE: {
       const paragraph = paragraphById(document, op.from.blockId);
@@ -501,6 +524,10 @@ describe("tracked operations and their resolution", () => {
         );
         const expected = resolved(direct.value.document, extra.direct, REVISION_DECISIONS.ACCEPT);
         expectEquivalent(accepted, expected);
+        // Direct and accepted joins share the same conservative seam merge.
+        if (op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) {
+          expect(accepted).toStrictEqual(expected);
+        }
       }),
       { numRuns: NUM_RUNS },
     );
@@ -745,6 +772,8 @@ describe("tracked operations and their resolution", () => {
         count(tally, kindOf(op));
         expect(containerFinalMarks(applied.value.document)).toEqual([]);
         expect(contractViolation(applied.value.document)).toBeUndefined();
+        const existing = revisionIdsIn(document.package.document.content);
+        expect(applied.value.revisions.filter((id) => existing.has(id))).toEqual([]);
       }),
       { numRuns: NUM_RUNS },
     );
@@ -839,7 +868,7 @@ describe("tracked operations and their resolution", () => {
           );
           const mine = span.ancestors.some(
             (ancestor) =>
-              ancestor.type === "insertion" &&
+              isAddedRevision(ancestor) &&
               isTrackedWrapper(ancestor) &&
               ancestor.info.author === op.revision?.author,
           );

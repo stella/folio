@@ -14,6 +14,9 @@ import {
 import { buildBodySequenceDocx } from "@stll/folio-core/compare/__fixtures__/body-sequence";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 
+import { documentStories, storyBody } from "../packages/docx-core/src/ops/stories";
+import { storyParagraphs } from "../packages/docx-core/src/ops/blocks";
+
 import type { CorpusInvariantInput } from "./lib/corpus-invariants/contract";
 import { inverseSequenceFailures, runOpInverseInvariant } from "./lib/corpus-invariants/op-inverse";
 import {
@@ -170,10 +173,26 @@ describe("corpus operation invariants", () => {
     }
   });
 
-  test(
-    "seeded sequences cover every declared family and preserve exact inverse/locality",
-    () => {
+  test.each(["plain", "pending"] as const)(
+    "seeded sequences cover every declared family and preserve exact inverse/locality (%s)",
+    (reviewState) => {
       const document = documentFixture();
+      if (reviewState === "pending") {
+        let revisionId = 9100;
+        for (const story of documentStories(document)) {
+          for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
+            paragraph.formatting = { alignment: "end" };
+            paragraph.propertyChanges = [
+              {
+                type: "paragraphPropertyChange",
+                info: { id: revisionId, author: "Fixture" },
+                previousFormatting: { alignment: "start" },
+              },
+            ];
+            revisionId += 1;
+          }
+        }
+      }
       const snapshot = structuredClone(document);
       const exercised = new Set<string>();
       const structuralFamilies = [
@@ -188,10 +207,47 @@ describe("corpus operation invariants", () => {
         DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS,
       ];
       const checkedStructuralFamilies = new Set<string>();
+      const foldedReviewFamilies = new Set<string>();
       for (let seed = 0; seed < 64; seed += 1) {
         const sequence = generateOpSequence(document, seed);
         expect(sequence.steps.length).toBeGreaterThan(0);
         expect(sequence.mutations).toEqual([]);
+        for (const { before, op, edit } of sequence.steps) {
+          if (
+            (op.type === DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS ||
+              op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS) &&
+            op.revision !== undefined
+          ) {
+            const blockId = op.type === DOCUMENT_OP_TYPES.JOIN_BLOCKS ? op.nextBlockId : op.blockId;
+            const previous = storyParagraphs(storyBody(before, op.story)).find(
+              ({ paragraph }) => paragraph.paraId === blockId,
+            )?.paragraph;
+            const next = storyParagraphs(storyBody(edit.document, op.story)).find(
+              ({ paragraph }) => paragraph.paraId === blockId,
+            )?.paragraph;
+            const review = previous?.propertyChanges?.at(0);
+            const folded = next?.propertyChanges?.at(0);
+            if (
+              review !== undefined &&
+              folded !== undefined &&
+              !sameOpModel(previous?.formatting, next?.formatting)
+            ) {
+              expect(folded.info.id).toBe(review.info.id);
+              expect(folded.previousFormatting).toEqual(review.previousFormatting);
+              expect(folded.info.author).toBe(op.revision.author);
+              expect(folded.info.date).toBe(op.revision.date);
+              foldedReviewFamilies.add(op.type);
+            }
+          }
+          for (const story of documentStories(edit.document)) {
+            for (const { paragraph } of storyParagraphs(storyBody(edit.document, story))) {
+              expect(
+                paragraph.propertyChanges?.length ?? 0,
+                `sequence seed ${seed}, ${op.type}, paragraph ${paragraph.paraId}`,
+              ).toBeLessThanOrEqual(1);
+            }
+          }
+        }
         const failures = inverseSequenceFailures(sequence);
         expect(failures, `sequence seed ${seed}`).toEqual([]);
         for (const step of sequence.steps) {
@@ -225,6 +281,11 @@ describe("corpus operation invariants", () => {
       expect(Object.keys(OP_GENERATOR_ROLES).sort()).toEqual(
         Object.values(DOCUMENT_OP_TYPES).sort(),
       );
+      if (reviewState === "pending") {
+        expect([...foldedReviewFamilies].sort()).toEqual(
+          [DOCUMENT_OP_TYPES.JOIN_BLOCKS, DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS].sort(),
+        );
+      }
       expect(sameOpModel(document, snapshot)).toBe(true);
     },
     propertyTestTimeout(30_000),

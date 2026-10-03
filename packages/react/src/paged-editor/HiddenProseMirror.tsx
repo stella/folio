@@ -65,6 +65,7 @@ export type HiddenProseMirrorProps = {
   document: Document | null;
   experimentalSession?: "canonical";
   suggestionModeActive?: boolean;
+  suggestionAuthor?: string;
   onSessionRefusal?: (reason: string) => void;
   /**
    * Identity of the loaded document (same across internal edits, distinct per
@@ -165,6 +166,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
       documentIdentity,
       experimentalSession,
       suggestionModeActive = false,
+      suggestionAuthor = "User",
       onSessionRefusal,
       styles,
       theme: _theme,
@@ -199,6 +201,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     const readOnlyRef = useRef(readOnly);
     const experimentalSessionRef = useRef(experimentalSession);
     const suggestionModeActiveRef = useRef(suggestionModeActive);
+    const suggestionAuthorRef = useRef(suggestionAuthor);
     const onSessionRefusalRef = useRef(onSessionRefusal);
     const documentRef = useRef(document);
     const documentIdentityRef = useRef(documentIdentity);
@@ -226,6 +229,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
     readOnlyRef.current = readOnly;
     experimentalSessionRef.current = experimentalSession;
     suggestionModeActiveRef.current = suggestionModeActive;
+    suggestionAuthorRef.current = suggestionAuthor;
     onSessionRefusalRef.current = onSessionRefusal;
     stylesRef.current = styles;
     extensionManagerRef.current = extensionManager;
@@ -267,6 +271,7 @@ export const HiddenProseMirror = forwardRef<HiddenProseMirrorRef, HiddenProseMir
         getReadOnly: () => readOnlyRef.current,
         getExperimentalSession: () => experimentalSessionRef.current,
         getEditingMode: () => (suggestionModeActiveRef.current ? "suggesting" : "editing"),
+        getSuggestionAuthor: () => suggestionAuthorRef.current,
         onSessionRefusal: (reason) => onSessionRefusalRef.current?.(reason),
         getDocumentIdentity: () => documentIdentityRef.current,
         getDocumentContext: () => documentRef.current,

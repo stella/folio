@@ -72,6 +72,10 @@ import {
   paragraphNumberingReferenceId,
   resolveParagraphNumbering,
 } from "./numberingReference";
+import {
+  EMPTY_MARK_PROPERTIES_ATTRIBUTE,
+  restoreEmptyMarkProperties,
+} from "./paragraphMarkPropertyPresence";
 import { parseParagraphProperties } from "./paragraphProperties";
 import {
   CAPTURE,
@@ -2014,7 +2018,12 @@ function getCommentReferenceId(runElement: XmlElement): number | null {
  * `serializeParagraph`; `folio:reviewCarrier` is folio's own. Everything else
  * the element carried is the attribute remainder.
  */
-const PARAGRAPH_ATTRIBUTES: ReadonlySet<string> = new Set(["paraId", "textId", "reviewCarrier"]);
+const PARAGRAPH_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "paraId",
+  "textId",
+  "reviewCarrier",
+  EMPTY_MARK_PROPERTIES_ATTRIBUTE,
+]);
 
 type ParseParagraphOptions = {
   inHeaderFooter?: boolean;
@@ -2113,6 +2122,8 @@ export function parseParagraph(
       paragraph.sectionProperties = parseSectionProperties(sectPr);
     }
   }
+
+  restoreEmptyMarkProperties(paragraph, node);
 
   // Parse paragraph contents (runs, hyperlinks, bookmarks, fields)
   const rawContent = parseParagraphContents(

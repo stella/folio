@@ -33,6 +33,7 @@ import {
 } from "./offsets";
 import { applyFormattingPatch, priorValues } from "./patch";
 import { identitySlots } from "./slots";
+import { mergeRunContent, runsMergeable } from "./runMerge";
 import {
   EMPTY_PROPERTY_SETS,
   type EmptyPropertySet,
@@ -259,12 +260,31 @@ export const cutAt = (
   };
 };
 
-/** Two paragraphs' content end to end, `depth` levels of the records meeting there merged. */
+/** Join paragraph content: plain-run seam at zero depth, explicit record levels otherwise. */
 export const joinContent = (
   first: readonly ParagraphContent[],
   second: readonly ParagraphContent[],
   depth: number,
-): Joined => mergeRetiring(first, second, depth, 1);
+): Joined =>
+  depth === 0
+    ? { kind: "joined", content: joinParagraphSeam(first, second), retired: {} }
+    : mergeRetiring(first, second, depth, 1);
+
+/** Merge only plain runs meeting at a removed paragraph boundary. */
+export const joinParagraphSeam = (
+  first: readonly ParagraphContent[],
+  second: readonly ParagraphContent[],
+): ParagraphContent[] => {
+  const left = first.at(-1);
+  const right = second.at(0);
+  if (left?.type !== "run" || right?.type !== "run" || !runsMergeable(left, right))
+    return [...first, ...second];
+  return [
+    ...first.slice(0, -1),
+    { ...left, content: mergeRunContent(left.content, right.content) },
+    ...second.slice(1),
+  ];
+};
 
 // ---------------------------------------------------------------------------
 // Insert text

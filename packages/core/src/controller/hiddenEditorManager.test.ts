@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
+import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
@@ -329,6 +330,82 @@ test("a refused canonical activation reports once per loaded document across ret
     expect(reasons).toHaveLength(2);
   } finally {
     manager.destroyView();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("canonical suggesting uses the current author and preserves explicit mode across input", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "Start" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected paragraph fixture");
+  paragraph.paraId = "12345678";
+  let author = "First author";
+  let mode = "suggesting";
+  const reasons: string[] = [];
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getEditingMode: () => (mode === "suggesting" ? "suggesting" : "editing"),
+    getSuggestionAuthor: () => author,
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical editor view");
+    const type = (text: string) => {
+      view.dom.dispatchEvent(
+        new InputEvent("beforeinput", {
+          inputType: "insertText",
+          data: text,
+          cancelable: true,
+          bubbles: true,
+        }),
+      );
+    };
+    manager.api.setSelection(6);
+    type("!");
+    author = "Second author";
+    type("?");
+    const inserted = view.state.doc.nodeAt(6);
+    const second = view.state.doc.nodeAt(7);
+    expect(inserted?.marks.some((mark) => mark.attrs["author"] === "First author")).toBe(true);
+    expect(second?.marks.some((mark) => mark.attrs["author"] === "Second author")).toBe(true);
+    expect(manager.api.setCanonicalMode({ type: "suggesting", author: "Explicit author" })).toBe(
+      true,
+    );
+    mode = "editing";
+    type("+");
+    expect(
+      view.state.doc.nodeAt(8)?.marks.some((mark) => mark.attrs["author"] === "Explicit author"),
+    ).toBe(true);
+    expect(reasons).toEqual([]);
+    expect(manager.api.undo()).toBe(true);
+    expect(view.state.doc.textContent).toBe("Start!?");
+    const suggested = manager.api.getCanonicalDocument();
+    const revisionIds = new Set<number>();
+    view.state.doc.descendants((node) => {
+      for (const mark of node.marks) {
+        const revisionId: unknown = mark.attrs["revisionId"];
+        if (typeof revisionId === "number") revisionIds.add(revisionId);
+      }
+    });
+    expect(revisionIds.size).toBe(2);
+    expect(
+      resolveCanonicalReviewRange({ editor: manager.api, from: 6, to: 8, resolution: "reject" }),
+    ).toBe(true);
+    expect(view.state.doc.textContent).toBe("Start");
+    expect(manager.api.undo()).toBe(true);
+    expect(manager.api.getCanonicalDocument()).toEqual(suggested);
+  } finally {
+    manager.destroyView();
+    host.remove();
     GlobalRegistrator.unregister();
   }
 });
