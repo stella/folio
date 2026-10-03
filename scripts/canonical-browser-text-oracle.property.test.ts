@@ -1,7 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { EditorState, TextSelection } from "prosemirror-state";
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { schema } from "../packages/core/src/prosemirror/schema";
 import { canonicalTextSelection } from "../tests/parity/canonicalTextSelection";
 import {
@@ -9,6 +9,8 @@ import {
   publishCanonicalProjection,
 } from "../packages/core/src/controller/canonicalSession";
 import { createEmptyDocument } from "../packages/core/src/utils/createDocument";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const text = fc
   .array(fc.constantFrom("a", "é", "😀", "東京", "é"), { maxLength: 5 })
