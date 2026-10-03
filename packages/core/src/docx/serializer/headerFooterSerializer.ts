@@ -164,7 +164,11 @@ export function serializeHeaderFooter(
       sourceBindings: source?.bindings,
       body: contentXml,
     });
-  if (baseline.type === "captured" && verbatim && canReplayHeaderFooterBlocks(hf)) {
+  if (
+    baseline.type === "captured" &&
+    verbatim &&
+    canReplayHeaderFooterBlocks(hf, baseline.content)
+  ) {
     const replayed = buildStoryBlockReplay({
       sourceXml: verbatim,
       baselineContent: baseline.content,

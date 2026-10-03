@@ -95,7 +95,22 @@ export const getHeaderFooterSourceBaseline = (
   return { type: "captured", content: baseline.content };
 };
 
-export const canReplayHeaderFooterBlocks = (hf: HeaderFooter): boolean => {
+export const canReplayHeaderFooterBlocks = (
+  hf: HeaderFooter,
+  baselineContent: readonly BlockContent[],
+): boolean => {
+  if (hf.rawWatermarkXml !== undefined) {
+    const index = hf.watermarkBlockIndex;
+    if (
+      index === undefined ||
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= baselineContent.length ||
+      baselineContent.length !== hf.content.length ||
+      canonicalJson(baselineContent.at(index)) !== canonicalJson(hf.content.at(index))
+    )
+      return false;
+  }
   const baseline = readFingerprint(hf);
   if (
     baseline === null ||

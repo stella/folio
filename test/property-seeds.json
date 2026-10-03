@@ -745,5 +745,13 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "packages/core/src/docx/serializer/headerFooterSerializer-watermark.test.ts::structural story edits emit one captured watermark": [
+    {
+      "seed": -657275146,
+      "path": "4:0",
+      "note": "Structural header edits retain exactly one watermark when its captured host changes",
+      "date": "2026-10-03"
+    }
   ]
 }
