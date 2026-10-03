@@ -17,6 +17,12 @@
 
 import { describe, setDefaultTimeout, test, expect } from "bun:test";
 import fc from "fast-check";
+import JSZip from "jszip";
+import { validateDocxPackage } from "@stll/docx-core";
+import { createEmptyDocument } from "../utils/createDocument";
+import { createDocx, repackDocx } from "./rezip";
+import { parseDocx } from "./parser";
+import { attemptSelectiveSave } from "./selectiveSave";
 
 import {
   assertProperty,
@@ -29,6 +35,10 @@ import {
   countParagraphElements,
   findParagraphOffsets,
 } from "./selectiveXmlPatch";
+import { buildStructuralDocumentPatch } from "./structuralXmlPatch";
+import { parseXmlDocument } from "./xmlParser";
+import { serializeResolutionJoins } from "./reviewResolutionProvenance";
+import { FOLIO_REVIEW_HISTORY_NAMESPACE } from "./reviewHistoryNamespace";
 
 setDefaultTimeout(propertyTestTimeout(30_000));
 
@@ -86,7 +96,194 @@ ${paras.map(renderParagraph).join("\n")}
 </w:document>`;
 }
 
+const REVIEW_JOIN_ATTRIBUTES = serializeResolutionJoins({ before: 1, after: 1, remove: 0 });
+
+type ReviewDocShape =
+  | "plain"
+  | "candidate"
+  | "supported"
+  | "used-without-ignorable"
+  | "supported-alias"
+  | "conflicting"
+  | "bound-without-ignorable";
+
+const renderReviewDoc = (text: string, shape: ReviewDocShape) => {
+  const folioNamespace = shape === "conflicting" ? "urn:other" : FOLIO_REVIEW_HISTORY_NAMESPACE;
+  const review =
+    shape === "candidate" || shape === "supported" || shape === "used-without-ignorable";
+  const ignorable =
+    shape === "candidate" ||
+    shape === "supported" ||
+    shape === "supported-alias" ||
+    shape === "conflicting"
+      ? ' mc:Ignorable="folio"'
+      : "";
+  const alias =
+    shape === "supported-alias" ? ` xmlns:history="${FOLIO_REVIEW_HISTORY_NAMESPACE}"` : "";
+  const ignorablePrefix = shape === "supported-alias" ? "history" : "folio";
+  return `${XML_DECL}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"${shape === "plain" ? "" : ` xmlns:folio="${folioNamespace}"`}${alias}${ignorable ? ` mc:Ignorable="${ignorablePrefix}"` : ""}><w:body><w:p w14:paraId="A0000001">${review ? `<w:ins w:id="1" w:author="Reviewer"${REVIEW_JOIN_ATTRIBUTES}>` : ""}<w:r><w:t>${text}</w:t></w:r>${review ? "</w:ins>" : ""}</w:p><w:p w14:paraId="A0000002"><w:r><w:t>untouched</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>`;
+};
+
 describe("buildPatchedDocumentXml property invariants", () => {
+  test("selective save preserves introduced review provenance through valid package reopen", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        paraTextArb,
+        fc.constantFrom("paragraph", "structural"),
+        async (text, route) => {
+          const initial = createEmptyDocument();
+          initial.package.document.content = [
+            {
+              type: "paragraph",
+              paraId: "A0000001",
+              content: [{ type: "run", content: [{ type: "text", text: "before" }] }],
+            },
+          ];
+          const source = await createDocx(initial);
+          const zip = await JSZip.loadAsync(source);
+          expect(await zip.file("word/document.xml")?.async("text")).not.toContain("xmlns:folio=");
+          const document = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+          const paragraph = document.package.document.content.at(0);
+          if (paragraph?.type !== "paragraph") throw new TypeError("Expected source paragraph");
+          const joins = { before: 1, after: 1, remove: 0 };
+          paragraph.content = [
+            {
+              type: "insertion",
+              info: { id: 1, author: "Reviewer" },
+              resolutionJoins: joins,
+              content: [{ type: "run", content: [{ type: "text", text }] }],
+            },
+          ];
+          const selective = await attemptSelectiveSave(document, source, {
+            changedParaIds: new Set(["A0000001"]),
+            structuralChange: route === "structural",
+            hasUntrackedChanges: false,
+          });
+          if (route === "paragraph") expect(selective).toBeNull();
+          // Structural save may also decline for package-wide invariants;
+          // either route must reopen with the complete review provenance.
+          const saved = selective ?? (await repackDocx(document, { updateModifiedDate: false }));
+          expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
+          const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+          const restored = reopened.package.document.content.at(0);
+          if (restored?.type !== "paragraph") throw new TypeError("Expected reopened paragraph");
+          const insertion = restored.content.find((item) => item.type === "insertion");
+          expect(insertion?.resolutionJoins).toEqual(joins);
+        },
+      ),
+      {
+        numRuns: 4,
+        examples: [
+          ["a", "paragraph"],
+          ["a", "structural"],
+        ],
+      },
+    );
+  });
+
+  test("introduced review namespace is refused by ordinary splices and locally bound by structural splices", () => {
+    assertProperty(
+      fc.property(paraTextArb, (text) => {
+        const original = renderReviewDoc("before", "plain");
+        const serialized = renderReviewDoc(text, "candidate");
+        const changed = new Set(["A0000001"]);
+
+        expect(buildPatchedDocumentXml(original, serialized, changed)).toBeNull();
+
+        const structural = buildStructuralDocumentPatch({
+          originalXml: original,
+          serializedXml: serialized,
+          changedIds: changed,
+        });
+        expect(structural).not.toBeNull();
+        expect(structural).toContain(`xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}"`);
+        expect(structural).toMatch(/mc:Ignorable="[^"]*folio/u);
+        expect(parseXmlDocument(structural ?? "")).not.toBeNull();
+      }),
+      { numRuns: 20 },
+    );
+  });
+
+  test("ordinary and structural splices preserve supported review namespace bindings", () => {
+    assertProperty(
+      fc.property(paraTextArb, (text) => {
+        const original = renderReviewDoc("before", "supported");
+        const serialized = renderReviewDoc(text, "supported");
+        const changed = new Set(["A0000001"]);
+
+        expect(buildPatchedDocumentXml(original, serialized, changed)).not.toBeNull();
+        expect(
+          buildStructuralDocumentPatch({
+            originalXml: original,
+            serializedXml: serialized,
+            changedIds: changed,
+          }),
+        ).not.toBeNull();
+      }),
+      { numRuns: 20 },
+    );
+  });
+
+  test("existing extension uses retain source roots that omit ignorable metadata", () => {
+    assertProperty(
+      fc.property(paraTextArb, (text) => {
+        const original = renderReviewDoc("before", "used-without-ignorable");
+        const serialized = renderReviewDoc(text, "candidate");
+        const patched = buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]));
+        expect(patched).not.toBeNull();
+        expect(patched).not.toContain("mc:Ignorable=");
+        expect(patched).toContain(REVIEW_JOIN_ATTRIBUTES);
+      }),
+      { numRuns: 20 },
+    );
+  });
+
+  test("ignorable namespace support is compared by URI across aliases", () => {
+    assertProperty(
+      fc.property(paraTextArb, (text) => {
+        const original = renderReviewDoc("before", "supported-alias");
+        const serialized = renderReviewDoc(text, "candidate");
+        expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).not.toBeNull();
+      }),
+      { numRuns: 20 },
+    );
+  });
+
+  test("conflicting or non-ignorable root bindings require the full serializer", () => {
+    assertProperty(
+      fc.property(
+        paraTextArb,
+        fc.constantFrom("conflicting", "bound-without-ignorable"),
+        (text, sourceShape) => {
+          const original = renderReviewDoc("before", sourceShape);
+          const serialized = renderReviewDoc(text, "candidate");
+          expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).toBeNull();
+          expect(
+            buildStructuralDocumentPatch({
+              originalXml: original,
+              serializedXml: serialized,
+              changedIds: new Set(["A0000001"]),
+            }),
+          ).not.toBeNull();
+        },
+      ),
+      { numRuns: 20 },
+    );
+  });
+
+  test("local ignorable metadata on one replacement does not license a sibling", () => {
+    assertProperty(
+      fc.property(paraTextArb, paraTextArb, (first, second) => {
+        const original = renderReviewDoc("before", "bound-without-ignorable");
+        const serialized = `${XML_DECL}<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" xmlns:folio="${FOLIO_REVIEW_HISTORY_NAMESPACE}" mc:Ignorable="folio"><w:body><w:p w14:paraId="A0000001" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="folio"><w:ins w:id="1" w:author="Reviewer"${REVIEW_JOIN_ATTRIBUTES}><w:r><w:t>${first}</w:t></w:r></w:ins></w:p><w:p w14:paraId="A0000002"><w:ins w:id="2" w:author="Reviewer"${REVIEW_JOIN_ATTRIBUTES}><w:r><w:t>${second}</w:t></w:r></w:ins></w:p><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:body></w:document>`;
+        expect(
+          buildPatchedDocumentXml(original, serialized, new Set(["A0000001", "A0000002"])),
+        ).toBeNull();
+      }),
+      { numRuns: 20 },
+    );
+  });
+
   test("empty change set returns the original XML unchanged", () => {
     fc.assert(
       fc.property(paragraphsArb, (paras) => {

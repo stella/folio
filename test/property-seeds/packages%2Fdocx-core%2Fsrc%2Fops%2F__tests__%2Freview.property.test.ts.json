@@ -9,17 +9,17 @@
     {
       "seed": -1428670990,
       "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
-      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.; Only newly allocated review IDs are reported; folds retain the original baseline and stable existing identity.; Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.; Only newly allocated review IDs are reported; folds retain the original baseline and stable existing identity.",
       "date": "2026-10-03"
     },
     {
       "seed": 1158783253,
-      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged; Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
       "date": "2026-09-29"
     },
     {
       "seed": -1097168474,
-      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped; Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
       "date": "2026-09-30"
     },
     {
@@ -28,35 +28,14 @@
       "date": "2026-10-02"
     },
     {
-      "seed": -1428670990,
-      "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
-      "note": "Only newly allocated review IDs are reported; folds retain the original baseline and stable existing identity.",
-      "date": "2026-10-03"
-    },
-    {
       "seed": -1013725445,
-      "note": "Keep the original seed after generator changes invalidated its old shrink path; only newly allocated review IDs are reported.",
+      "note": "Keep the original seed after generator changes invalidated its old shrink path; only newly allocated review IDs are reported.; Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.; Keep the original seed after generator changes invalidated its old shrink path; only newly allocated review IDs are reported.; Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
       "date": "2026-10-03"
     },
     {
       "seed": 1158783253,
       "path": "6:4:5:4:4:4:4:4:9:8:8:8:9:8:8:8:8:8:9:10:12:12:11:11:14:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:18:19:7:0:6:6:8:9:6:5:5:9:7:5:7:7:7:7:7:7:7:7:7:7:9:7:7:7:7:7:7:7:7:7:7",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": 1158783253,
-      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
-      "date": "2026-09-29"
-    },
-    {
-      "seed": -1097168474,
-      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": -1013725445,
-      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
       "date": "2026-10-03"
     }
   ],
@@ -74,7 +53,7 @@
     },
     {
       "seed": 487359569,
-      "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records; replay the retained seed without its obsolete path after the generator gained own-undefined fields; A tracked split's new second half must keep the paragraph mark's run properties, which no property change records; A tracked split's new second half must keep the paragraph mark's run properties, which no property change records; replay the retained seed without its obsolete path after the generator gained own-undefined fields; A tracked split's new second half must keep the paragraph mark's run properties, which no property change records",
       "date": "2026-09-30"
     },
     {
@@ -82,11 +61,6 @@
       "path": "15:1:0:3:2:3:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:12:7:19:22:46:46:46:46:46:46:46:46:46:46:46:48:46:46:46:46:46:46:46:46:46:46:46:46:46:46",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
-    },
-    {
-      "seed": 487359569,
-      "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records",
-      "date": "2026-09-30"
     }
   ],
   "L3: resolving a run's revisions at once equals resolving each operation's in turn": [
@@ -98,12 +72,12 @@
     },
     {
       "seed": -1171708191,
-      "note": "accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties; replay the retained seed without its obsolete path after the generator gained own-undefined fields; accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties; accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties; replay the retained seed without its obsolete path after the generator gained own-undefined fields; accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties",
       "date": "2026-09-30"
     },
     {
       "seed": 1710333384,
-      "note": "a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours; replay the retained seed without its obsolete path after the generator gained own-undefined fields; a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours; a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours; replay the retained seed without its obsolete path after the generator gained own-undefined fields; a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours",
       "date": "2026-09-30"
     },
     {
@@ -140,16 +114,6 @@
       "path": "355:0:0:0:0:0:0:0:3:4:6:6:6:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:10:7:7:35:33:34:34:33:33:34:33:33:33:34:35:36:33:33:33:33:34:37:38:36:34:39:34:34:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:77:77:74:74:74:74:75:74:74:74:77:78:74:74:74:75:88:79:75:86:86:86:86:86:86:86:86:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87",
       "note": "Preserve resolution provenance through ordered run review resolution.",
       "date": "2026-10-03"
-    },
-    {
-      "seed": -1171708191,
-      "note": "accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 1710333384,
-      "note": "a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours",
-      "date": "2026-09-30"
     }
   ],
   "L4: a run of tracked operations is undone exactly, in reverse and as a batch": [
@@ -423,32 +387,17 @@
   "a planned tracked deletion removes only the author's own insertions": [
     {
       "seed": 1491020740,
-      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; replay the retained seed without its obsolete path after the generator gained own-undefined fields; rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; replay the retained seed without its obsolete path after the generator gained own-undefined fields; rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
       "date": "2026-09-30"
     },
     {
       "seed": 35362653,
-      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units; replay the retained seed without its obsolete path after the generator gained own-undefined fields; #1259: comment references inside own insertions remain anchors rather than retracted units; #1259: comment references inside own insertions remain anchors rather than retracted units; replay the retained seed without its obsolete path after the generator gained own-undefined fields; #1259: comment references inside own insertions remain anchors rather than retracted units",
       "date": "2026-09-30"
     },
     {
       "seed": 1316760003,
-      "note": "Own moveTo content is an added revision just like insertion.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
-      "date": "2026-10-02"
-    },
-    {
-      "seed": 1491020740,
-      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 35362653,
-      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 1316760003,
-      "note": "Own moveTo content is an added revision just like insertion.",
+      "note": "Own moveTo content is an added revision just like insertion.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Own moveTo content is an added revision just like insertion.; Own moveTo content is an added revision just like insertion.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Own moveTo content is an added revision just like insertion.",
       "date": "2026-10-02"
     }
   ],

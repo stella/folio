@@ -62,7 +62,7 @@ import {
   isParagraphPropertySourceToken,
   linkParagraphPropertySourceCandidate,
   paragraphPropertySourceTokenMatchesContract,
-  paragraphPropertySourceBelongsToDocument,
+  inspectParagraphSourceIdentity,
   recreateProseNodeWithParagraphPropertySource,
   restoreTableCellsWithParagraphPropertySources,
   visitDocumentStoryParagraphs,
@@ -474,16 +474,26 @@ const validateParagraphPropertySourceTokens = (
   }
   const currentTokens = new Set<string>();
   visitDocumentStoryParagraphs(baseDocument.package.document.content, (paragraph) => {
-    const token = getParagraphPropertySourceToken(paragraph);
-    if (!token) {
-      if (paragraphPropertySourceBelongsToDocument(paragraph, baseDocument)) {
+    const identity = inspectParagraphSourceIdentity(paragraph, baseDocument);
+    switch (identity.type) {
+      case "authored":
+      case "capture-only":
+        return;
+      case "missing-token":
         throw sourceValidationError(
           "invalid_token",
           "A source-bound paragraph is missing its paragraph-property token.",
         );
+      case "invalid":
+        throw sourceValidationError("invalid_token", "The source paragraph identity is invalid.");
+      case "durable":
+        break;
+      default: {
+        const unhandled: never = identity;
+        panic(`Unhandled paragraph source identity: ${String(unhandled)}`);
       }
-      return;
     }
+    const { token } = identity;
     if (!paragraphPropertySourceTokenMatchesContract(token, contract)) {
       throw sourceValidationError(
         "invalid_token",

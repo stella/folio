@@ -727,6 +727,9 @@ export const isBorderNone: (style: BorderStyleValue | undefined) => boolean;
 export const isBorderStyle: (value: string) => value is BorderStyle;
 
 // @public
+export const isNumberingLevel: (value: number) => boolean;
+
+// @public
 export const isNumberingReference: (numId: number | undefined) => numId is number;
 
 // @public
@@ -1071,6 +1074,7 @@ export type ParagraphFormatting = OwnFieldPresence<{
 export type ParagraphMarkChange = {
     kind: ParagraphMarkChangeKind;
     info: TrackedChangeInfo;
+    resolutionJoin?: number | undefined;
 };
 
 // @public

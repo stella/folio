@@ -65,6 +65,7 @@ import { parseFootnotes, parseEndnotes } from "./footnoteParser";
 import { parseHeader, parseFooter } from "./headerFooterParser";
 import {
   assignHeaderFooterVerbatimXml,
+  captureHeaderFooterPackageBaselines,
   canReplayHeaderFooterVerbatim,
   refreshHeaderFooterVerbatimFingerprint,
 } from "./headerFooterVerbatim";
@@ -883,6 +884,7 @@ export async function parseDocxWithPreviewBudget(
     }
 
     onProgress("Complete", 100);
+    captureHeaderFooterPackageBaselines(document);
     return document;
   } catch (error) {
     if (error instanceof DocxEncryptionError) {

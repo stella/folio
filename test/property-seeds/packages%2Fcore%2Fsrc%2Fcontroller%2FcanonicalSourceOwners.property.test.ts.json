@@ -1,0 +1,15 @@
+{
+  "repeated undo restores every removed paragraph's original source ownership": [
+    {
+      "seed": -1767611398,
+      "path": "0:0:0:0",
+      "note": "Generated parsed paragraph fixtures establish stable paragraph identities before serialization",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -347416988,
+      "note": "Exercise cached source ownership through repeated structural undo and redo",
+      "date": "2026-10-03"
+    }
+  ]
+}

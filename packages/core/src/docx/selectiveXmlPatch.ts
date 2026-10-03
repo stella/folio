@@ -14,10 +14,13 @@ import {
   getLocalName,
   getNamespacePrefix,
   getNamespaceUri,
+  NAMESPACES,
   parseXmlDocument,
   WORDPROCESSINGML_NAMESPACE_URIS,
   type XmlElement,
 } from "./xmlParser";
+import { readRootNamespaceBindings } from "./serializer/partNamespaces";
+import { resolveNamespaceUri } from "./xmlNamespaceContext";
 import { patchBreaksCommentRangeBalance } from "./commentRangeIntegrity";
 import { resolveParagraphIdentities } from "./paraIdAttribute";
 import { captureVerbatimXml } from "./verbatimCapture";
@@ -607,6 +610,16 @@ const routeChangedParagraphs = (
     });
   }
 
+  if (
+    !spliceSupportsRootNamespaces({
+      originalXml,
+      serializedXml,
+      fragments: splices.map(({ newXml }) => newXml),
+    })
+  ) {
+    return { type: "refused", reason: "root-namespace-requirements-changed" };
+  }
+
   const candidate = spliceXml(originalXml, splices);
   if (candidate === null) {
     return { type: "refused", reason: "unsafe-paragraph-splices" };
@@ -711,6 +724,103 @@ export const spliceXml = (xml: string, splices: readonly XmlSplice[]): string | 
     unpatchedEnd = start;
   }
   return patchBreaksCommentRangeBalance(xml, result) ? null : result;
+};
+
+/**
+ * A paragraph splice cannot change the owning part's root declarations. Refuse
+ * fragments that inherit a prefix from the serialized root when the source
+ * root does not bind that prefix to the same URI; the caller can then use the
+ * full serializer, which owns the root namespace set.
+ */
+type SpliceNamespaceOptions = {
+  originalXml: string;
+  serializedXml: string;
+  fragments: readonly string[];
+  originalRoot?: XmlElement;
+  serializedRoot?: XmlElement;
+};
+
+export const spliceSupportsRootNamespaces = ({
+  originalXml,
+  serializedXml,
+  fragments,
+  originalRoot,
+  serializedRoot,
+}: SpliceNamespaceOptions): boolean => {
+  const original = originalRoot ?? parseXmlDocument(originalXml);
+  const serialized = serializedRoot ?? parseXmlDocument(serializedXml);
+  if (!original || !serialized) return false;
+
+  const originalBindings = readRootNamespaceBindings(originalXml);
+  const serializedBindings = readRootNamespaceBindings(serializedXml);
+  const mcNamespace = new Set([NAMESPACES.mc]);
+  const ignorableUris = (root: XmlElement): ReadonlySet<string> => {
+    const uris = new Set<string>();
+    for (const prefix of (getAttributeByNamespaceUri(root, mcNamespace, "Ignorable") ?? "")
+      .split(/\s+/u)
+      .filter(Boolean)) {
+      const uri = resolveNamespaceUri(root.namespaceScope, prefix);
+      if (uri) uris.add(uri);
+    }
+    return uris;
+  };
+  // A source may already use extensions without declaring them ignorable.
+  // Preserve that source contract; only newly used namespaces add a requirement.
+  const originalNamespaceUses = new Set<string>();
+  const collectSourceNamespaces = (element: XmlElement): void => {
+    const uri = getNamespaceUri(element);
+    if (uri) originalNamespaceUses.add(uri);
+    for (const attribute of Object.keys(element.attributes ?? {})) {
+      if (attribute === "xmlns" || attribute.startsWith("xmlns:")) continue;
+      const prefix = getNamespacePrefix(attribute);
+      const attributeUri = prefix ? resolveNamespaceUri(element.namespaceScope, prefix) : undefined;
+      if (attributeUri) originalNamespaceUses.add(attributeUri);
+    }
+    for (const child of element.elements ?? []) collectSourceNamespaces(child);
+  };
+  collectSourceNamespaces(original);
+  const originalIgnorable = ignorableUris(original);
+  const serializedIgnorable = ignorableUris(serialized);
+  const inheritedPrefixes = new Set<string>();
+  const visit = (element: XmlElement, ancestorIgnorableUris: ReadonlySet<string>): boolean => {
+    const localIgnorableUris = new Set(ancestorIgnorableUris);
+    for (const uri of ignorableUris(element)) localIgnorableUris.add(uri);
+    const requirePrefix = (prefix: string): boolean => {
+      const localUri = resolveNamespaceUri(element.namespaceScope, prefix);
+      if (!localUri) inheritedPrefixes.add(prefix);
+      const uri = localUri ?? serializedBindings.get(prefix);
+      if (!uri) return false;
+      return (
+        !serializedIgnorable.has(uri) ||
+        originalNamespaceUses.has(uri) ||
+        originalIgnorable.has(uri) ||
+        localIgnorableUris.has(uri)
+      );
+    };
+    const namePrefix = element.name?.split(":").at(0);
+    if (namePrefix && namePrefix !== element.name && !requirePrefix(namePrefix)) return false;
+    for (const attribute of Object.keys(element.attributes ?? {})) {
+      if (attribute === "xmlns" || attribute.startsWith("xmlns:")) continue;
+      const prefix = attribute.split(":").at(0);
+      if (prefix && prefix !== attribute && !requirePrefix(prefix)) return false;
+    }
+    for (const child of element.elements ?? []) {
+      if (!visit(child, localIgnorableUris)) return false;
+    }
+    return true;
+  };
+
+  for (const fragment of fragments) {
+    const parsed = parseXmlDocument(fragment);
+    if (!parsed) return false;
+    if (!visit(parsed, new Set())) return false;
+  }
+
+  for (const prefix of inheritedPrefixes) {
+    const serializedUri = serializedBindings.get(prefix);
+    if (serializedUri === undefined || originalBindings.get(prefix) !== serializedUri) return false;
+  }
+  return true;
 };
 
 // ============================================================================

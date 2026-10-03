@@ -23,7 +23,7 @@ import { Result } from "better-result";
 import { failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -33,7 +33,7 @@ const DIFFERENCE_PREFIX = "editor round trip changed";
 
 export const runEditorRoundTripInvariant = async ({
   parsed,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
 
   const proseDoc = await timeStage(timings, "to-prose", () =>
@@ -41,6 +41,7 @@ export const runEditorRoundTripInvariant = async ({
   );
   if (proseDoc.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, proseDoc.error)],
       timings,
     };
@@ -51,6 +52,7 @@ export const runEditorRoundTripInvariant = async ({
   );
   if (back.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, back.error)],
       timings,
     };
@@ -64,6 +66,7 @@ export const runEditorRoundTripInvariant = async ({
   );
   if (saved.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, saved.error)],
       timings,
     };
@@ -77,6 +80,7 @@ export const runEditorRoundTripInvariant = async ({
   );
   if (reparsed.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorRoundTrip, reparsed.error)],
       timings,
     };
@@ -86,6 +90,7 @@ export const runEditorRoundTripInvariant = async ({
     Promise.resolve(describePackageDifferences(parsed, reparsed.value)),
   );
   return {
+    status: "evaluated",
     failures: differenceFailures(
       EXTENDED_CORPUS_INVARIANTS.editorRoundTrip,
       differences,

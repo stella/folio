@@ -14,6 +14,7 @@
  * "no worse" means.
  */
 
+import { declaredRefusalDifferences, type DeclaredRefusalCounts } from "./corpus-declared-refusals";
 import type { CorpusCensus } from "./corpus-census";
 import { isGatingFailure, isZeroFailure } from "./corpus-invariants/contract";
 import type { CorpusInvariant } from "./corpus-signature";
@@ -42,6 +43,8 @@ export type CorpusBaseline = {
   /** The report-only list these counts were measured under. */
   reportOnlyDigest: string;
   failedFiles: number;
+  /** Missing only in baselines written before declared verdicts; comparison refuses them. */
+  declaredRefusals?: DeclaredRefusalCounts;
   entries: CorpusBaselineEntry[];
 };
 
@@ -70,6 +73,7 @@ export const baselineFromCensus = (census: CorpusCensus): CorpusBaseline => ({
   lockDigest: census.lockDigest,
   reportOnlyDigest: census.reportOnlyDigest,
   failedFiles: census.failedFiles,
+  declaredRefusals: structuredClone(census.declaredRefusals),
   entries: gatingSignatures(census.signatures)
     .map(({ signature, invariant, message, frame, files }) => ({
       signature,
@@ -148,7 +152,22 @@ export const compareToBaseline = (
   const recorded = new Map(
     gatingSignatures(baseline.entries).map((entry) => [entry.signature, entry]),
   );
-  const violations: BaselineViolation[] = [];
+  const violations: BaselineViolation[] =
+    baseline.declaredRefusals === undefined
+      ? [
+          {
+            kind: "corpus-changed",
+            signature: "declared-refusals",
+            detail: "Baseline predates declared-refusal accounting; measure and refresh it",
+          },
+        ]
+      : declaredRefusalDifferences(baseline.declaredRefusals, census.declaredRefusals).map(
+          ({ invariant, reason, before, after }) => ({
+            kind: after > before ? "more-files" : "fewer-files",
+            signature: `declared-refusal | ${invariant} | ${reason}`,
+            detail: `${after} declared refusals, recorded ${before}; measure and refresh the counts`,
+          }),
+        );
   for (const observed of gatingSignatures(census.signatures)) {
     const entry = recorded.get(observed.signature);
     if (entry === undefined) {

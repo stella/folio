@@ -2,7 +2,7 @@
 import { fromMarkdown } from "@stll/folio-core/markdown";
 import { paragraph, run, table } from "@stll/folio-core/server";
 
-import { packDocument } from "./documents.ts";
+import { packFixture } from "./documents.ts";
 
 export const LARGE_DOCUMENT_FIXTURE = "large-100-pages";
 const PAGE_COUNT = 100;
@@ -41,5 +41,5 @@ export const largeDocument = (): Promise<Uint8Array> => {
   if (boundaries.length !== PAGE_COUNT - 1) {
     throw new TypeError("long-flow fixture must declare exactly 100 pages");
   }
-  return packDocument(document);
+  return packFixture(document);
 };

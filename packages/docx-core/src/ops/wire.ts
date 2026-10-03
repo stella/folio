@@ -1,3 +1,4 @@
+import { cloneModel } from "./modelClone";
 import { Result } from "better-result";
 
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
@@ -26,9 +27,7 @@ export const captureDocumentOp = (op: DocumentOp): DocumentOp => {
     }
   };
   visit(op, []);
-  return fields.length === 0
-    ? op
-    : { ...structuredClone(op), undefinedFields: structuredClone(fields) };
+  return fields.length === 0 ? op : { ...cloneModel(op), undefinedFields: cloneModel(fields) };
 };
 
 /** Restore validated presence metadata without mutating the supplied operation. */
@@ -52,7 +51,7 @@ export const restoreDocumentOp = (op: DocumentOp): Result<DocumentOp, DocumentOp
     );
   if (!Array.isArray(op.undefinedFields))
     return invalid("Operation presence metadata is not an array.");
-  const restored = structuredClone(op);
+  const restored = cloneModel(op);
   const paths = op.undefinedFields;
   const known = new Set<string>();
   for (const path of paths) {

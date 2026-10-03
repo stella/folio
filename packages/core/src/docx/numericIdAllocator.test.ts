@@ -71,6 +71,28 @@ test("numbering allocation depends only on the document's reserved ids", () => {
   }
 });
 
+test("endnote allocation depends only on the document's endnotes", () => {
+  const withEndnotes = (ids: readonly number[]) => {
+    const doc = createEmptyDocument();
+    doc.package.endnotes = ids.map((id) => ({ type: "endnote", id, content: [] }));
+    return doc;
+  };
+  fc.assert(
+    fc.property(
+      fc.array(fc.integer({ min: 1, max: MAX_REVISION_ID }), { maxLength: 8 }),
+      fc.array(fc.array(fc.integer({ min: 1, max: MAX_REVISION_ID }), { maxLength: 4 }), {
+        maxLength: 4,
+      }),
+      (ids, otherDocuments) => {
+        const fresh = endnote(withEndnotes(ids), "Note");
+        for (const otherIds of otherDocuments) endnote(withEndnotes(otherIds), "Other");
+        expect(endnote(withEndnotes(ids), "Note")).toEqual(fresh);
+      },
+    ),
+    propertyConfig({ numRuns: 30 }),
+  );
+});
+
 test("the endnote builder allocates a free bounded id when loaded notes contain the maximum", () => {
   const doc = createEmptyDocument();
   doc.package.endnotes = [

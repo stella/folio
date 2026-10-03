@@ -1,4 +1,5 @@
 /** Row edits and their exact inverse, addressed through a paragraph in the row. */
+import { cloneModel } from "./modelClone";
 import { replaceStoryBody } from "./stories";
 
 import { Result, panic } from "better-result";
@@ -264,7 +265,7 @@ export const applyRowOp = (
           message: "Indexed table markup or shared row wrappers require a table operation.",
         });
       }
-      const incoming = structuredClone(op.row);
+      const incoming = cloneModel(op.row);
       if (
         paragraphIdsIn(incoming).some((id) =>
           paragraphIdsIn(before).some((existing) => idKey(existing) === idKey(id)),
@@ -348,8 +349,7 @@ export const applyRowOp = (
         });
       }
       const replacement = op.rows.map(
-        (row) =>
-          before.find((existing) => structurallyEqual(existing, row)) ?? structuredClone(row),
+        (row) => before.find((existing) => structurallyEqual(existing, row)) ?? cloneModel(row),
       );
       return commitRows({ document: document, op: op, location: location, rows: replacement });
     }

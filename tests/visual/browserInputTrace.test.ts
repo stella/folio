@@ -1,3 +1,4 @@
+import type { BrowserDragTarget } from "./browserDragTarget";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
@@ -12,7 +13,6 @@ import {
   browserInputTraceArbitrary,
   browserSuggestionActionKinds,
   parseBrowserInputTraceConfig,
-  type BrowserDragTarget,
 } from "./browserInputTrace";
 
 setDefaultTimeout(propertyTestTimeout(5_000));

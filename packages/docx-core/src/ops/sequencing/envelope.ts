@@ -1,3 +1,4 @@
+import { cloneModel } from "../modelClone";
 import { Result, TaggedError } from "better-result";
 import type { ParagraphFormatting, TextFormatting } from "../../model/document";
 import { PARAGRAPH_ALIGNMENTS } from "../../model/ooxmlEnumerations.gen";
@@ -451,7 +452,7 @@ export const validateDocumentBatch = (value: unknown): Result<DocumentBatch, Bat
   }
   // The decoder also admits typed in-process batches. JSON normalization here
   // would erase their own undefined fields before the wire boundary captures them.
-  const normalized = Result.try((): unknown => structuredClone(value));
+  const normalized = Result.try((): unknown => cloneModel(value));
   if (normalized.isErr() || !isRecord(normalized.value)) {
     return Result.err(
       new BatchRejection({

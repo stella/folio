@@ -210,6 +210,28 @@ describe("operations aimed at every feature of the body", () => {
         `text box / ${mode}: no paragraph is left in the text box`,
       );
     });
+
+    // The feature sweeps never delete the paragraph a text box is drawn in;
+    // the oracle must expect the box's paragraphs to go with it.
+    test(`stories / ${mode}: deleting the paragraph a text box is drawn in does what it asked`, async () => {
+      const reviewer = await openReviewer(await storiesDocument());
+      const { inTextBox } = featureIndex(reviewer);
+      const blocks = reviewer.getContent();
+      const first = blocks.findIndex((block) => inTextBox.has(block.id));
+      const anchor = blocks.at(first - 1);
+      assert.ok(first > 0 && anchor && !inTextBox.has(anchor.id), "no paragraph draws a text box");
+      assert.ok(
+        await applyChecked(
+          reviewer,
+          MAIN,
+          { type: "deleteBlock", blockId: anchor.id },
+          mode,
+          "fresh",
+        ),
+        `text box / ${mode}: deleting its paragraph applied nothing`,
+      );
+      await assertStoriesHealthy(reviewer, mode, `text box anchor deleted / ${mode}`);
+    });
   }
 });
 

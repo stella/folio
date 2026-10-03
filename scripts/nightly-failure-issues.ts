@@ -520,7 +520,10 @@ export const fileConformanceReport = async ({
       ? `${original}\n\n${report}`
       : `${original.slice(0, start)}${report}${original.slice(end + REPORT_END.length)}`;
   if (existing.body !== body) await store.edit(existing.number, body);
-  if (existing.state === "closed") await store.reopen(existing.number);
+  if (existing.state === "closed") {
+    const run = context.runUrl ?? `the run of ${context.date}`;
+    await store.reopen(existing.number, `Reopening: conformance failures recurred in ${run}.`);
+  }
 };
 
 const parseArgs = (argv: readonly string[]) => {
@@ -611,8 +614,8 @@ const main = async (): Promise<void> => {
           writeFileSync(bodyFile, body);
           await $`gh issue edit ${String(number)} --body-file ${bodyFile}`.quiet();
         },
-        reopen: async (number) => {
-          await $`gh issue reopen ${String(number)}`.quiet();
+        reopen: async (number, comment) => {
+          await $`gh issue reopen ${String(number)} --comment ${comment}`.quiet();
         },
       },
     });

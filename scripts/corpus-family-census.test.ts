@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 
 import { CORPUS_EVIDENCE, type CorpusFileId } from "./lib/corpus-census";
 import {
@@ -17,6 +19,8 @@ import {
   type CorpusFailure,
   failureFromAssertion,
 } from "./lib/corpus-signature";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const REPORT_ONLY_DIGEST = "r".repeat(64);
 
@@ -39,6 +43,7 @@ const observed = (
   referenceMs: 1,
   producer,
   failures,
+  declaredRefusals: [],
   timings,
   evidence: CORPUS_EVIDENCE.gating,
 });
@@ -111,6 +116,32 @@ describe("FamilyCensusBuilder", () => {
 });
 
 describe("mergeFamilyCensuses", () => {
+  test("interleaved shards preserve every file cost in canonical order", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        fc.integer({ min: 3, max: 20 }),
+        fc.integer({ min: 2, max: 5 }),
+        async (count, shardCount) => {
+          const whole = new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST);
+          const shards = Array.from(
+            { length: shardCount },
+            () => new FamilyCensusBuilder("digest", REPORT_ONLY_DIGEST),
+          );
+          for (let index = 0; index < count; index += 1) {
+            const row = observed(String(index), "fixture", []);
+            whole.add(row);
+            // SAFETY: modulus is bounded by the constructed shard count.
+            shards[index % shardCount]!.add(row);
+          }
+          const merged = mergeFamilyCensuses(shards.map((shard) => shard.build()));
+          expect(merged.costs).toEqual(whole.build().costs);
+          expect(merged.costs).toHaveLength(count);
+        },
+      ),
+      { numRuns: 30 },
+    );
+  });
+
   /**
    * A sharded run must reduce to the census of one unsharded run over the same
    * files, or the ratchet compares against a number no single run produces.

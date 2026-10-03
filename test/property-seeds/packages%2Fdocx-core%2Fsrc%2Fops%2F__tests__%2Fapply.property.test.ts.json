@@ -111,8 +111,8 @@
   "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [
     {
       "seed": 1364722648,
-      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists",
-      "date": "2026-10-01"
+      "note": "Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists; Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Insertion at a visible gap after retained deleted content must inherit the next visible run when no prior visible run exists; Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields; Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-10-02"
     },
     {
       "seed": 1364722648,
@@ -125,16 +125,6 @@
       "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
       "date": "2026-10-02",
       "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
-    },
-    {
-      "seed": 1364722648,
-      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
-      "date": "2026-10-02"
-    },
-    {
-      "seed": 1364722648,
-      "date": "2026-10-02",
-      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields"
     },
     {
       "seed": 1364722648,
