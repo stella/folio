@@ -38,8 +38,17 @@ type InternalParseXmlResult =
 
 type AttributeNameOptions = { attributeName: string; elementName: string };
 
+type ElementScanOptions = {
+  element: XmlElement;
+  attributeValueSpans: ReadonlyMap<string, AttributeValueSpan>;
+  nameEnd: number;
+  parent: XmlElement | undefined;
+};
+type ElementScanVisitor = (options: ElementScanOptions) => void;
+
 type StreamingXmlOptions = {
   xml: string;
+  visitElement?: ElementScanVisitor;
   inheritedNamespaceScope?: XmlNamespaceScope;
 } & (
   | { mode: "tree"; visitOpenTag?: OpenTagScanVisitor }
@@ -55,6 +64,7 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
   const visitOpenTag = options.visitOpenTag;
   let spanMode: ParseOpenTagOptions["spanMode"] = "none";
   if (visitOpenTag !== undefined) spanMode = options.mode === "tree" ? "identities" : "all";
+  if (options.visitElement !== undefined) spanMode = "all";
   const openTagOptions = {
     xml,
     start: 0,
@@ -164,6 +174,12 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
     } else {
       attachXmlNamespaceContext(parsedTag.element, scope);
     }
+    options.visitElement?.({
+      element: parsedTag.element,
+      attributeValueSpans: parsedTag.attributeValueSpans ?? new Map(),
+      nameEnd: parsedTag.nameEnd,
+      parent,
+    });
     const shouldVisit =
       options.mode === "tree"
         ? parsedTag.attributeValueSpans !== undefined
@@ -261,11 +277,23 @@ export const scanStreamingXmlNumericIdAttributes = (
   return parsed.status === "parsed" ? { status: "scanned" as const } : parsed;
 };
 
+/** Visit namespace-resolved start tags and source spans without building a tree. */
+export const scanStreamingXmlElements = (xml: string, visitElement: ElementScanVisitor) => {
+  const parsed = parseStreamingXmlInternal({
+    xml,
+    mode: "attributes",
+    visitOpenTag: () => null,
+    visitElement,
+  });
+  return parsed.status === "parsed" ? { status: "scanned" as const } : parsed;
+};
+
 type ParsedOpenTag =
   | {
       status: "parsed";
       element: XmlElement;
       name: string;
+      nameEnd: number;
       selfClosing: boolean;
       attributeValueSpans: ReadonlyMap<string, AttributeValueSpan> | undefined;
     }
@@ -294,6 +322,7 @@ const parseOpenTag = ({
   }
 
   const name = xml.slice(nameStart, cursor);
+  const nameEnd = cursor;
   if (isUnsafePropertyName(name)) {
     return { status: "unsupported" };
   }
@@ -362,7 +391,7 @@ const parseOpenTag = ({
   if (attributes) {
     element.attributes = attributes;
   }
-  return { status: "parsed", element, name, selfClosing, attributeValueSpans };
+  return { status: "parsed", element, name, nameEnd, selfClosing, attributeValueSpans };
 };
 
 const appendElement = (parent: XmlElement, child: XmlElement): void => {

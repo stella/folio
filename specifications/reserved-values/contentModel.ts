@@ -929,6 +929,7 @@ export const INSERTION_RESERVED = {
   type: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  resolutionJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof Insertion, ReservedValueDisposition>;
 
 export type ExhaustiveInsertionReserved = ExhaustiveFields<
@@ -940,6 +941,7 @@ export const DELETION_RESERVED = {
   type: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  resolutionJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof Deletion, ReservedValueDisposition>;
 
 export type ExhaustiveDeletionReserved = ExhaustiveFields<Deletion, keyof typeof DELETION_RESERVED>;
@@ -948,6 +950,7 @@ export const MOVE_FROM_RESERVED = {
   type: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  resolutionJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveFrom, ReservedValueDisposition>;
 
 export type ExhaustiveMoveFromReserved = ExhaustiveFields<
@@ -959,6 +962,7 @@ export const MOVE_TO_RESERVED = {
   type: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
   content: NO_RESERVED_VALUE,
+  resolutionJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof MoveTo, ReservedValueDisposition>;
 
 export type ExhaustiveMoveToReserved = ExhaustiveFields<MoveTo, keyof typeof MOVE_TO_RESERVED>;
@@ -1022,6 +1026,7 @@ export const RUN_PROPERTY_CHANGE_RESERVED = {
   info: NO_RESERVED_VALUE,
   previousFormatting: NO_RESERVED_VALUE,
   currentFormatting: NO_RESERVED_VALUE,
+  boundaryJoins: NO_RESERVED_VALUE,
 } satisfies Record<keyof RunPropertyChange, ReservedValueDisposition>;
 
 export type ExhaustiveRunPropertyChangeReserved = ExhaustiveFields<
@@ -1195,6 +1200,7 @@ export type ExhaustiveBlockSdtReserved = ExhaustiveFields<
 export const PARAGRAPH_MARK_CHANGE_RESERVED = {
   kind: NO_RESERVED_VALUE,
   info: NO_RESERVED_VALUE,
+  resolutionJoin: NO_RESERVED_VALUE,
 } satisfies Record<keyof ParagraphMarkChange, ReservedValueDisposition>;
 
 export type ExhaustiveParagraphMarkChangeReserved = ExhaustiveFields<

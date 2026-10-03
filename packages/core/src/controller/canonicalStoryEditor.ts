@@ -25,7 +25,7 @@ export const createCanonicalStoryEditor = ({
 }: CanonicalStoryEditorOptions) => {
   const refuse = (message: string) => {
     if (onRefusal) onRefusal(message);
-    else throw new CanonicalSessionError({ message, reason: "refused" });
+    else throw new CanonicalSessionError({ message });
   };
   const history = (direction: "undo" | "redo") => {
     const view = getView();
