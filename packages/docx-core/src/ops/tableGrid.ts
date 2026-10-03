@@ -1,5 +1,9 @@
 /** Logical slots, including omitted cells and vertical continuation ownership. */
 import { Result } from "better-result";
+import {
+  TABLE_CELL_VERTICAL_MERGES,
+  tableCellVerticalMerge,
+} from "../model/tableCellVerticalMerge";
 import type { Table, TableCell } from "../model/document";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { DocumentOpType } from "./types";
@@ -47,13 +51,12 @@ export const tableGrid = (
       const end = start + span;
       let ownerRow = rowIndex;
       let ownerIndex = index;
-      if (cell.formatting?.vMerge === "continue") {
+      if (tableCellVerticalMerge(cell.formatting?.vMerge) === TABLE_CELL_VERTICAL_MERGES.CONTINUE) {
         const above = previous.get(start);
         if (
           !above ||
           above.end !== end ||
-          (above.cell.formatting?.vMerge !== "restart" &&
-            above.cell.formatting?.vMerge !== "continue")
+          tableCellVerticalMerge(above.cell.formatting?.vMerge) === TABLE_CELL_VERTICAL_MERGES.NONE
         )
           return refuse();
         ownerRow = above.ownerRow;

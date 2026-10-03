@@ -36,6 +36,7 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
     const buffer = await getRef()?.save();
     return buffer ? [...new Uint8Array(buffer)] : null;
   },
+  canSnapshot: () => getRef()?.getEditor()?.getCanonicalStoryProjection("main") != null,
   snapshot: () => {
     const ref = getRef();
     const editor = ref?.getEditor();
