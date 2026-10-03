@@ -11,41 +11,31 @@
       "seed": 327444275,
       "path": "9:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "Package inverse retains modeled records but changes captured footer serialization after a join.",
-      "date": "2026-10-03",
-      "expectedFailure": {
-        "family": "T4",
-        "fingerprint": "20c2d3fdbf109520"
-      }
+      "date": "2026-10-03"
     },
     {
       "seed": -392419793,
       "path": "13:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
-      "date": "2026-10-03",
-      "expectedFailure": {
-        "family": "T4",
-        "fingerprint": "af2bdcaabf37424e"
-      }
+      "date": "2026-10-03"
     },
     {
       "seed": -392419793,
       "path": "41:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml",
-      "date": "2026-10-03",
-      "expectedFailure": {
-        "family": "T4",
-        "fingerprint": "7bda296807167052"
-      }
+      "date": "2026-10-03"
     },
     {
       "seed": 1192899088,
       "path": "14:1:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml",
-      "date": "2026-10-03",
-      "expectedFailure": {
-        "family": "T4",
-        "fingerprint": "95820d436833c3fd"
-      }
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -2120778113,
+      "path": "5",
+      "note": "Restoring a removed story must retain captured replay ownership",
+      "date": "2026-10-03"
     }
   ],
   "operation sequence generation retains the parsed package control": [
