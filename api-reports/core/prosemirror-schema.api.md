@@ -766,6 +766,7 @@ export type TrackedChangeMarkAttrs = {
     initials?: string;
     moveKind?: "moveTo" | "moveFrom";
     _docxOuterWrapperCount?: number;
+    _docxResolutionJoins?: import__stll_docx_core_model.Insertion["resolutionJoins"];
     _docxRevisionAncestors?: readonly TrackedRevisionAncestor[];
     provenance: TrackedChangeProvenance;
     suggestionId?: string;
@@ -781,6 +782,7 @@ export type TrackedRevisionAncestor = {
     utcDate?: string;
     initials?: string;
     outerWrapperCount: number;
+    resolutionJoins?: import__stll_docx_core_model.Insertion["resolutionJoins"];
 };
 
 // @public
