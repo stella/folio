@@ -1266,11 +1266,6 @@ class CanonicalSession {
     if (propertySourceDocument !== undefined)
       preservePropertySources({ target: applied.value.document, source: propertySourceDocument });
     const stagedSources = new Map(this.sourceOwners);
-    for (const op of ops) {
-      if (op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK) continue;
-      const source = stagedSources.get(op.at.blockId);
-      if (source) stagedSources.set(op.newBlockId, source);
-    }
     for (const block of applied.value.document.package.document.content) {
       if (block.type !== "paragraph" || block.paraId === undefined) continue;
       const source = stagedSources.get(block.paraId);

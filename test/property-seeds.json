@@ -1038,6 +1038,12 @@
       "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Count expected noChange without changing document or history; preserve new-half source ownership.",
       "date": "2026-10-02"
+    },
+    {
+      "seed": 455509177,
+      "path": "6:4:3:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "note": "Undo must restore the exact run shape after page-break insertion and repeated splits.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/docx/joinSeamSaveFixedPoint.property.test.ts::equivalent nested formatting spellings merge and undo restores their exact records": [

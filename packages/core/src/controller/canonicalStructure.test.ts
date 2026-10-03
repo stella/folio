@@ -113,8 +113,12 @@ describe("canonical structural commands", () => {
           }[] = [];
           const outcomes = { applied: 0, noChange: 0 };
           const exercised = new Set<(typeof kinds)[number]>();
+          const repeatedSplits = [0, 1].map(
+            (offset) => ({ kind: "split", offset, reverse: false, bold: false }) as const,
+          );
           const inputs = [
             ...kinds.map((kind) => ({ kind, offset: 2, reverse: false, bold: true })),
+            ...repeatedSplits,
             ...generated,
           ];
           for (const input of inputs) {
