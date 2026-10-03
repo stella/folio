@@ -1,0 +1,10 @@
+{
+  "selective saves share imported numeric identities across original and canonical baselines": [
+    {
+      "seed": -1813517427,
+      "path": "0:0",
+      "note": "source import and canonical baseline must allocate the same numeric identities",
+      "date": "2026-10-03"
+    }
+  ]
+}

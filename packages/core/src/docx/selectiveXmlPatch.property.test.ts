@@ -102,13 +102,15 @@ type ReviewDocShape =
   | "plain"
   | "candidate"
   | "supported"
+  | "used-without-ignorable"
   | "supported-alias"
   | "conflicting"
   | "bound-without-ignorable";
 
 const renderReviewDoc = (text: string, shape: ReviewDocShape) => {
   const folioNamespace = shape === "conflicting" ? "urn:other" : FOLIO_REVIEW_HISTORY_NAMESPACE;
-  const review = shape === "candidate" || shape === "supported";
+  const review =
+    shape === "candidate" || shape === "supported" || shape === "used-without-ignorable";
   const ignorable =
     shape === "candidate" ||
     shape === "supported" ||
@@ -218,7 +220,21 @@ describe("buildPatchedDocumentXml property invariants", () => {
           }),
         ).not.toBeNull();
       }),
-      propertyConfig({ numRuns: 20 }),
+      { numRuns: 20 },
+    );
+  });
+
+  test("existing extension uses retain source roots that omit ignorable metadata", () => {
+    assertProperty(
+      fc.property(paraTextArb, (text) => {
+        const original = renderReviewDoc("before", "used-without-ignorable");
+        const serialized = renderReviewDoc(text, "candidate");
+        const patched = buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]));
+        expect(patched).not.toBeNull();
+        expect(patched).not.toContain("mc:Ignorable=");
+        expect(patched).toContain(REVIEW_JOIN_ATTRIBUTES);
+      }),
+      { numRuns: 20 },
     );
   });
 
@@ -229,7 +245,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
         const serialized = renderReviewDoc(text, "candidate");
         expect(buildPatchedDocumentXml(original, serialized, new Set(["A0000001"]))).not.toBeNull();
       }),
-      propertyConfig({ numRuns: 20 }),
+      { numRuns: 20 },
     );
   });
 
@@ -251,7 +267,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
           ).not.toBeNull();
         },
       ),
-      propertyConfig({ numRuns: 20 }),
+      { numRuns: 20 },
     );
   });
 
@@ -264,7 +280,7 @@ describe("buildPatchedDocumentXml property invariants", () => {
           buildPatchedDocumentXml(original, serialized, new Set(["A0000001", "A0000002"])),
         ).toBeNull();
       }),
-      propertyConfig({ numRuns: 20 }),
+      { numRuns: 20 },
     );
   });
 

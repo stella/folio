@@ -764,6 +764,21 @@ export const spliceSupportsRootNamespaces = ({
     }
     return uris;
   };
+  // A source may already use extensions without declaring them ignorable.
+  // Preserve that source contract; only newly used namespaces add a requirement.
+  const originalNamespaceUses = new Set<string>();
+  const collectSourceNamespaces = (element: XmlElement): void => {
+    const uri = getNamespaceUri(element);
+    if (uri) originalNamespaceUses.add(uri);
+    for (const attribute of Object.keys(element.attributes ?? {})) {
+      if (attribute === "xmlns" || attribute.startsWith("xmlns:")) continue;
+      const prefix = getNamespacePrefix(attribute);
+      const attributeUri = prefix ? resolveNamespaceUri(element.namespaceScope, prefix) : undefined;
+      if (attributeUri) originalNamespaceUses.add(attributeUri);
+    }
+    for (const child of element.elements ?? []) collectSourceNamespaces(child);
+  };
+  collectSourceNamespaces(original);
   const originalIgnorable = ignorableUris(original);
   const serializedIgnorable = ignorableUris(serialized);
   const inheritedPrefixes = new Set<string>();
@@ -776,7 +791,10 @@ export const spliceSupportsRootNamespaces = ({
       const uri = localUri ?? serializedBindings.get(prefix);
       if (!uri) return false;
       return (
-        !serializedIgnorable.has(uri) || originalIgnorable.has(uri) || localIgnorableUris.has(uri)
+        !serializedIgnorable.has(uri) ||
+        originalNamespaceUses.has(uri) ||
+        originalIgnorable.has(uri) ||
+        localIgnorableUris.has(uri)
       );
     };
     const namePrefix = element.name?.split(":").at(0);
