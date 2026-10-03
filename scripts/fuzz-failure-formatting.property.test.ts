@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { failureMarker, diffShape } from "../test/consumer-scenarios/support/failure-fingerprints";
 import { failureClass } from "./fuzz-failure-class";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 const marker = (failure: Error) =>
   failureMarker({
