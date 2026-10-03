@@ -55,17 +55,23 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
         });
         return;
       }
-      expect(
-        await page.evaluate(
-          async (bytes) => globalThis.__folioCanonical?.load(bytes),
-          [...new Uint8Array(source)],
-        ),
-      ).toBe(true);
-      expect(
-        await page.evaluate((value) => globalThis.__folioCanonical?.setMode(value), mode),
-      ).toBe(true);
-      expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1))).toBe(true);
-      await drainErrors(page);
+      // A development-server reload can replace the context during initial load.
+      // Retry the complete idempotent setup; action effects are never retried.
+      await expect(async () => {
+        expect(
+          await page.evaluate(
+            async (bytes) => globalThis.__folioCanonical?.load(bytes),
+            [...new Uint8Array(source)],
+          ),
+        ).toBe(true);
+        expect(
+          await page.evaluate((value) => globalThis.__folioCanonical?.setMode(value), mode),
+        ).toBe(true);
+        expect(await page.evaluate(() => globalThis.__folioCanonical?.select(1))).toBe(true);
+        await page.evaluate(() => {
+          globalThis.__folioCanonicalFuzzErrors = [];
+        });
+      }).toPass({ timeout: 5_000 });
       for (const action of trace.actions) {
         if (action.kind === "selectionDrag" || action.kind === "dragCellDelete") {
           const structuralTarget =
