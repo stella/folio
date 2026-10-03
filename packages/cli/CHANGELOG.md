@@ -1,5 +1,13 @@
 # @stll/folio-cli
 
+## 0.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`8785b4a`](https://github.com/stella/folio/commit/8785b4a6b65748af2b6c72b24eef8441e2702684), [`a011fb8`](https://github.com/stella/folio/commit/a011fb88c051b44a8f37d3e9dcc088f3c34f38cb), [`e719a0b`](https://github.com/stella/folio/commit/e719a0bebee7ba1baa8685a5f98c6fc3c5b0afd8), [`ae11395`](https://github.com/stella/folio/commit/ae11395ea3d938e44d19dae83c3e99daac4571f7), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`0e57245`](https://github.com/stella/folio/commit/0e5724534d895f2cd2293b4e7c72b4cfdb1fb791), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`7c35edd`](https://github.com/stella/folio/commit/7c35eddd79bdf2c08805e4468e58daf42fb178f7), [`dc8629f`](https://github.com/stella/folio/commit/dc8629f7c351a5fb1cf500c58b8dee73a679e4de), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff), [`0e57245`](https://github.com/stella/folio/commit/0e5724534d895f2cd2293b4e7c72b4cfdb1fb791), [`d52874d`](https://github.com/stella/folio/commit/d52874da2a0da3836d090032cffeae1473e7ba99), [`f723606`](https://github.com/stella/folio/commit/f7236067beb0a347eedee07523a791efd831cf0d), [`ef4910d`](https://github.com/stella/folio/commit/ef4910dff8189a37d234eae81b563edf653510d8), [`2fafe42`](https://github.com/stella/folio/commit/2fafe426a9abaa9fd19ed0c01ca39c5431db2c5c), [`2f9695f`](https://github.com/stella/folio/commit/2f9695f96f282239d6cc6b46791606c1faa15bff)]:
+  - @stll/folio-core@0.55.0
+  - @stll/folio-agents@0.15.2
+
 ## 0.4.0
 
 ### Minor Changes
