@@ -724,7 +724,6 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
           slice: { openStart: 0, openEnd: 0, content },
-          seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           ...allocationFields,
         });
       selection = {
