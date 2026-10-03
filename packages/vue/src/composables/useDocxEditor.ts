@@ -42,6 +42,7 @@ import type { DisplayMode } from "@stll/folio-core/managers/EditorModeManager";
 import { createFolioEditorEmitter } from "@stll/folio-core/controller/folioEditorEvents";
 import { prepareCanonicalDocxInput } from "@stll/folio-core/docx/canonicalSessionInput";
 import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
+import { repackWithCanonicalStoryRemovals } from "@stll/folio-core/docx/canonicalStoryRepack";
 import { loadCollaborationModules } from "@stll/folio-core/controller/collaborationModules";
 import { createHeaderFooterEditorManager } from "@stll/folio-core/controller/headerFooterEditorManager";
 import type {
@@ -654,7 +655,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const painter = new LayoutPainter({ pageGap, showShadow: true });
   const headerFooterManager = createHeaderFooterEditorManager({
     getHost: () => headerFooterHost.value,
-    getDocument: () => docModel.value,
+    getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
+    getCanonicalApi: () => manager.api,
+    getExperimentalSession: () => toValue(experimentalSession),
+    onSessionRefusal: (message) => {
+      parseError.value = message;
+      onError?.(new CanonicalSessionRefusalError({ message }));
+    },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
     onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
@@ -675,7 +682,13 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   const noteEditorManager = createNoteEditorManager({
     getHost: () => noteEditorContainer?.value ?? null,
     getPlugins: () => notePlugins,
-    getDocument: () => docModel.value,
+    getDocument: () => manager.api.getCanonicalDocument() ?? docModel.value,
+    getCanonicalApi: () => manager.api,
+    getExperimentalSession: () => toValue(experimentalSession),
+    onSessionRefusal: (message) => {
+      parseError.value = message;
+      onError?.(new CanonicalSessionRefusalError({ message }));
+    },
     getStyles: () => docModel.value?.package.styles ?? null,
     getTheme: () => docModel.value?.package.theme ?? null,
     onTransaction: ({ docChanged, selectionChanged, view }) => {
@@ -683,7 +696,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
         isDirty.value = true;
         const current = docModel.value;
         if (current) {
-          const updated = noteEditorManagerHolder.current?.snapshotDocument(current) ?? current;
+          const updated =
+            manager.api.getCanonicalDocument() ??
+            noteEditorManagerHolder.current?.snapshotDocument(current) ??
+            current;
           docModel.value = updated;
           onChange?.(cloneForHost(updated));
           emitter.emit("docChange", cloneForHost(updated));
@@ -700,16 +716,10 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   noteEditorManagerHolder.current = noteEditorManager;
 
   const syncSecondaryStoryEditors = (): void => {
-    if (isCanonicalSession()) {
-      headerFooterManager.destroy();
-      noteEditorManager.destroy();
-      activeNoteStory.value = null;
-      return;
-    }
     headerFooterManager.sync();
     noteEditorManager.sync();
   };
-  watch(() => toValue(experimentalSession), syncSecondaryStoryEditors, { immediate: true });
+  watch(() => toValue(experimentalSession), syncSecondaryStoryEditors);
 
   // ---- Layout pipeline ----------------------------------------------------
 
@@ -999,6 +1009,11 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
       noteFollower.noteBase(before);
     }
     if (docChanged) {
+      const canonical = manager.api.getCanonicalDocument();
+      if (canonical) {
+        docModel.value = canonical;
+        syncSecondaryStoryEditors();
+      }
       isDirty.value = true;
       syncCoordinator.incrementStateSeq();
       scheduler.schedule();
@@ -1145,6 +1160,7 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     noteEditorManager.activate(null);
     scheduler.dispose();
     manager.destroyView();
+    if (isCanonicalSession()) manager.ensureView();
     syncSecondaryStoryEditors();
     manager.ensureView();
     if (!manager.getView()) {
@@ -1310,11 +1326,16 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
     // or that deletion accepted) is one the repack must be told about, or it
     // refuses the smaller package.
     const repackFull = () =>
-      repackWithEditorSectionRemovals({
-        state,
-        document: updatedDoc,
-        repack: () => repackDocx(updatedDoc),
-      });
+      canonical
+        ? repackWithCanonicalStoryRemovals({
+            document: updatedDoc,
+            repack: () => repackDocx(updatedDoc),
+          })
+        : repackWithEditorSectionRemovals({
+            state,
+            document: updatedDoc,
+            repack: () => repackDocx(updatedDoc),
+          });
 
     if (!buffer) {
       // No original buffer means a from-scratch document — build one via createDocx.
@@ -1397,7 +1418,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function getHeaderFooterView(rId: string): EditorView | null {
-    if (isCanonicalSession()) return null;
     return headerFooterManager.getView(rId);
   }
 
@@ -1406,9 +1426,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function openNoteStory(story: NoteStoryKey): void {
-    if (refuseCanonicalModelEdit("Footnote and endnote editing is unavailable in this session.")) {
-      return;
-    }
     const view = noteEditorManager.activate(story);
     if (!view) return;
     syncSuggestionMode(view);
@@ -1422,7 +1439,6 @@ export function useDocxEditor(options: UseDocxEditorOptions): UseDocxEditorRetur
   }
 
   function getActiveNoteView(): EditorView | null {
-    if (isCanonicalSession()) return null;
     const story = activeNoteStory.value;
     return story ? noteEditorManager.getView(story) : null;
   }

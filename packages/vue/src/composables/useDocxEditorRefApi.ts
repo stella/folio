@@ -46,6 +46,7 @@ import {
   type FolioDocumentOperationUndoResult,
 } from "@stll/folio-core/ai-edits";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
+import type { OpStory } from "@stll/folio-core/controller/canonicalOperations";
 import type { Layout } from "@stll/folio-core/layout-engine";
 import { getPageScrollTarget } from "@stll/folio-core/paged-layout/scrollNavigation";
 import {
@@ -193,6 +194,8 @@ export type UseDocxEditorRefApiOptions = {
   focus: () => void;
   getDocument: () => Document | null;
   getActiveView: () => EditorView | null;
+  getExperimentalSession?: () => "canonical" | undefined;
+  getActiveCanonicalStory?: () => OpStory;
   closeNoteStory: () => void;
   getHeaderFooterView: (rId: string) => EditorView | null;
   setZoom: (zoom: number) => void;
@@ -282,23 +285,37 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
 
   function undoActiveView(): boolean {
     const view = opts.getActiveView();
+    if (opts.getExperimentalSession?.() === "canonical") {
+      const story = opts.getActiveCanonicalStory?.() ?? "main";
+      return view && story !== "main"
+        ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "undo" })
+        : opts.editor.undo();
+    }
     if (view === opts.editorView.value) return opts.editor.undo();
     return view ? historyUndo(view.state, view.dispatch) : false;
   }
 
   function redoActiveView(): boolean {
     const view = opts.getActiveView();
+    if (opts.getExperimentalSession?.() === "canonical") {
+      const story = opts.getActiveCanonicalStory?.() ?? "main";
+      return view && story !== "main"
+        ? opts.editor.applyCanonicalStoryHistory({ view, story, direction: "redo" })
+        : opts.editor.redo();
+    }
     if (view === opts.editorView.value) return opts.editor.redo();
     return view ? historyRedo(view.state, view.dispatch) : false;
   }
 
   function canUndoActiveView(): boolean {
+    if (opts.getExperimentalSession?.() === "canonical") return opts.editor.canUndo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canUndo();
     return view ? historyUndo(view.state) : false;
   }
 
   function canRedoActiveView(): boolean {
+    if (opts.getExperimentalSession?.() === "canonical") return opts.editor.canRedo();
     const view = opts.getActiveView();
     if (view === opts.editorView.value) return opts.editor.canRedo();
     return view ? historyRedo(view.state) : false;

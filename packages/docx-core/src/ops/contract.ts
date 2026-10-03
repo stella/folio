@@ -1,3 +1,5 @@
+import { noteContentWithAutomaticMark, noteUsesCustomMark } from "./noteMarks";
+import { documentStories, replaceStoryBody, storyBody } from "./stories";
 /**
  * The seed contract: what a document must be for operations to apply to it.
  *
@@ -6,17 +8,16 @@
  * footers and notes included, and makes ids unique), parse, then
  * {@link normalizeForOps}. {@link validateOpsDocument} states the result:
  *
- * - every paragraph of the main story has a `w14:paraId`;
+ * - every paragraph of each editable story has a `w14:paraId`;
  * - no paragraph id repeats anywhere in the package, compared as hex, so an
  *   inverse can always recreate the ids it removed;
  * - no revision id (tracked changes, property changes) or content-control id
  *   repeats, so the one record carrying an id is the one it names;
  * - the body's section view says what its blocks say;
- * - the main story holds no empty run, text node, or revision wrapper.
+ * - each editable story holds no empty run, text node, or revision wrapper.
  *
- * Paragraphs in text boxes, headers, footers, notes and comments are other
- * stories: they are not addressable in schema version 1, and their ids count
- * toward uniqueness like any other.
+ * Headers, footers and notes are independently addressable stories. Text-box
+ * and comment paragraph ids also count toward package-wide uniqueness.
  *
  * Every operation checks the contract before applying and leaves it holding,
  * so a document an operation produced is not checked again: documents are
@@ -29,6 +30,7 @@ import type { BlockContent, Document, TableCell, TableRow } from "../model/docum
 import { sectionsInStep, storyParagraphs, withBodyContent } from "./blocks";
 import { countIds, countKeys, packageIdentityKeys, packageParagraphIds } from "./ids";
 import {
+  leafSpans,
   asParagraphContent,
   childNodes,
   type InlineNode,
@@ -48,12 +50,38 @@ const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
 
 const violation = (document: Document): DocumentOpsContractError | undefined => {
   const body = document.package.document;
-  const paragraphs = storyParagraphs(body);
+  const paragraphs = documentStories(document).flatMap((story) =>
+    storyParagraphs(storyBody(document, story)),
+  );
   if (paragraphs.some(({ paragraph }) => paragraph.paraId === undefined)) {
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.MISSING_BLOCK_ID,
-      message: "A main-story paragraph has no paraId; ensureParaIds establishes one.",
+      message: "A story paragraph has no paraId; ensureParaIds establishes one.",
     });
+  }
+  for (const notes of [document.package.footnotes, document.package.endnotes]) {
+    const ids = notes?.map(({ id }) => id) ?? [];
+    if (new Set(ids).size !== ids.length)
+      return new DocumentOpsContractError({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.DUPLICATE_RECORD_ID,
+        message: "A note collection repeats a stable note id.",
+      });
+  }
+  for (const story of documentStories(document)) {
+    const misplaced = storyParagraphs(storyBody(document, story)).some(({ paragraph }) =>
+      leafSpans(paragraph.content).some(
+        ({ node }) =>
+          node.type === "noteMarker" &&
+          (story === "main" ||
+            (story.kind !== "footnote" && story.kind !== "endnote") ||
+            node.kind !== story.kind),
+      ),
+    );
+    if (misplaced)
+      return new DocumentOpsContractError({
+        reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        message: "An automatic note mark must belong to its matching note story.",
+      });
   }
   const repeated = [...countIds(packageParagraphIds(document.package))].find(
     ([, count]) => count > 1,
@@ -83,7 +111,7 @@ const violation = (document: Document): DocumentOpsContractError | undefined => 
     return new DocumentOpsContractError({
       reason: DOCUMENT_OP_REFUSAL_REASONS.EMPTY_RECORD,
       message:
-        "The main story holds an empty run, text node, or revision wrapper; normalizeForOps removes them.",
+        "A document story holds an empty run, text node, or revision wrapper; normalizeForOps removes them.",
     });
   }
   return undefined;
@@ -179,16 +207,35 @@ const normalizeBlocks = (blocks: readonly BlockContent[]): BlockContent[] => {
 };
 
 /**
- * The document with every empty run and empty text node of the main story
+ * The document with every empty run and empty text node of each editable story
  * removed, and its section view derived again. Nothing else changes.
  */
 export const normalizeForOps = (document: Document): Document => {
-  const body = document.package.document;
-  return {
-    ...document,
-    package: {
-      ...document.package,
-      document: withBodyContent(body, normalizeBlocks(body.content)),
-    },
-  };
+  let current = document;
+  for (const story of documentStories(document)) {
+    if (story !== "main" && (story.kind === "footnote" || story.kind === "endnote")) {
+      const note =
+        story.kind === "footnote"
+          ? current.package.footnotes?.find(({ id }) => id === story.id)
+          : current.package.endnotes?.find(({ id }) => id === story.id);
+      if (note)
+        current = replaceStoryBody({
+          document: current,
+          story,
+          body: {
+            content: noteContentWithAutomaticMark({
+              note,
+              customMark: noteUsesCustomMark(current, note),
+            }),
+          },
+        });
+    }
+    const body = storyBody(current, story);
+    current = replaceStoryBody({
+      document: current,
+      story,
+      body: withBodyContent(body, normalizeBlocks(body.content)),
+    });
+  }
+  return current;
 };

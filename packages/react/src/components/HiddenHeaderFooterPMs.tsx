@@ -15,6 +15,7 @@ import type {
   HeaderFooterPartKey,
   HeaderFooterPartKind,
 } from "@stll/folio-core/controller/headerFooterEditorManager";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
 import type { Document, StyleDefinitions, Theme } from "@stll/folio-core/types/document";
 
 import "prosemirror-view/style/prosemirror.css";
@@ -30,6 +31,9 @@ export type HiddenHeaderFooterPMsRef = {
 
 export type HiddenHeaderFooterPMsProps = {
   document: Document | null;
+  experimentalSession?: "canonical";
+  getCanonicalApi?: () => HiddenEditorApi | null;
+  onSessionRefusal?: (reason: string) => void;
   styles?: StyleDefinitions | null;
   theme?: Theme | null;
   defaultTabStopTwips?: number | null;
@@ -57,7 +61,15 @@ const HOST_STYLES: CSSProperties = {
 /* eslint-disable prefer-arrow-callback -- preserve the component name in React DevTools. */
 export const HiddenHeaderFooterPMs = memo(
   forwardRef<HiddenHeaderFooterPMsRef, HiddenHeaderFooterPMsProps>(function HiddenHeaderFooterPMs(
-    { document, styles, theme, onTransaction },
+    {
+      document,
+      styles,
+      theme,
+      onTransaction,
+      experimentalSession,
+      getCanonicalApi,
+      onSessionRefusal,
+    },
     ref,
   ) {
     const hostRef = useRef<HTMLDivElement>(null);
@@ -65,10 +77,16 @@ export const HiddenHeaderFooterPMs = memo(
     const stylesRef = useRef(styles);
     const themeRef = useRef(theme);
     const onTransactionRef = useRef(onTransaction);
+    const canonicalApiRef = useRef(getCanonicalApi);
+    const sessionRef = useRef(experimentalSession);
+    const refusalRef = useRef(onSessionRefusal);
     documentRef.current = document;
     stylesRef.current = styles;
     themeRef.current = theme;
     onTransactionRef.current = onTransaction;
+    canonicalApiRef.current = getCanonicalApi;
+    sessionRef.current = experimentalSession;
+    refusalRef.current = onSessionRefusal;
 
     const managerRef = useRef<HeaderFooterEditorManager | null>(null);
     managerRef.current ??= createHeaderFooterEditorManager({
@@ -76,6 +94,9 @@ export const HiddenHeaderFooterPMs = memo(
       getDocument: () => documentRef.current,
       getStyles: () => stylesRef.current,
       getTheme: () => themeRef.current,
+      getCanonicalApi: () => canonicalApiRef.current?.() ?? null,
+      getExperimentalSession: () => sessionRef.current,
+      onSessionRefusal: (reason) => refusalRef.current?.(reason),
       onTransaction: ({ rId, kind, view, docChanged, selectionChanged }) => {
         onTransactionRef.current?.(rId, kind, view, docChanged, selectionChanged);
       },

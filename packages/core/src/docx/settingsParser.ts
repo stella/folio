@@ -10,6 +10,7 @@
  */
 
 import type { DocumentSettings } from "../types/document";
+import { DEFAULT_TAB_STOP_TWIPS } from "@stll/docx-core/model";
 import { parseEndnoteProperties } from "./notePropertiesParser";
 import {
   findChild,
@@ -22,8 +23,7 @@ import {
 } from "./xmlParser";
 import type { XmlElement } from "./xmlParser";
 
-/** OOXML default per §17.6.13 when `w:defaultTabStop` is absent. */
-export const DEFAULT_TAB_STOP_TWIPS = 720;
+export { DEFAULT_TAB_STOP_TWIPS } from "@stll/docx-core/model";
 
 /**
  * Sanity cap on `w:defaultTabStop`. Word's maximum margin is ~22 inches

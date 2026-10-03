@@ -2,7 +2,7 @@
 // Refresh ci-test-timings.json from per-file group spans in a successful full-suite log.
 // Keep millisecond durations above one second; unmeasured files still run.
 import { panic } from "better-result";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import focusedTests from "./ci-focused-tests.json";
 import timings from "./ci-test-timings.json";
@@ -82,6 +82,58 @@ export const assignTestShards = (files: string[]) => {
 };
 
 export const focusedTestFiles = focusedTests;
+export const FAST_SIBLING_TEST_CAP = 150;
+const SOURCE_FILE = /^packages\/[^/]+\/src\/.*\.[cm]?[jt]sx?$/u;
+
+/** Deleted paths never expand a fast suite; git returns rename destinations. */
+export const changedTestPaths = (base: string, repoRoot = REPO_ROOT): string[] => {
+  const result = Bun.spawnSync(
+    ["git", "diff", "--name-only", "--diff-filter=ACMRT", "-z", `${base}...HEAD`, "--"],
+    { cwd: repoRoot, stdout: "pipe", stderr: "pipe" },
+  );
+  if (result.exitCode !== 0) panic(`Cannot select changed tests: ${result.stderr.toString()}`);
+  return result.stdout
+    .toString()
+    .split("\0")
+    .filter((file) => file !== "" && existsSync(path.join(repoRoot, file)));
+};
+
+type FastTestSuitesOptions = {
+  suites: TestSuite[];
+  changedFiles: string[];
+  focusedFiles?: string[];
+};
+
+/** Extend the fixed list within the owning test commands, retaining their preloads. */
+export const selectFastTestSuites = ({
+  suites,
+  changedFiles,
+  focusedFiles = focusedTests,
+}: FastTestSuitesOptions): TestSuite[] => {
+  const changed = new Set(changedFiles);
+  const siblingDirectories = new Set(
+    changedFiles
+      .filter((file) => SOURCE_FILE.test(file) && !TEST_FILE.test(file))
+      .map((file) => path.posix.dirname(file)),
+  );
+  const discovered = new Set(suites.flatMap(({ files }) => files));
+  const focused = new Set(
+    focusedFiles.filter((file) => discovered.has(file) || existsSync(path.join(REPO_ROOT, file))),
+  );
+  const selected = suites.map((suite) => {
+    const siblings = new Set(
+      suite.files.filter((file) => siblingDirectories.has(path.posix.dirname(file))),
+    );
+    const files =
+      suite.cwd.startsWith("packages/") && siblings.size > FAST_SIBLING_TEST_CAP
+        ? suite.files
+        : suite.files.filter((file) => changed.has(file) || siblings.has(file));
+    return { ...suite, files: files.filter((file) => !focused.has(file)) };
+  });
+  // Preserve the existing fixed-list command and avoid running its files twice.
+  selected.push({ cwd: ".", preloads: [], files: [...focused] });
+  return selected.filter(({ files }) => files.length > 0);
+};
 
 if (import.meta.main) {
   const args = process.argv.slice(2);
@@ -99,8 +151,14 @@ if (import.meta.main) {
   const allFiles = [...suites.flatMap(({ files }) => files), ...focusedTests];
   const assigned = assignTestShards(allFiles).at(shard - 1);
   if (!assigned) panic("Test shard unavailable");
+  const base = process.env["CI_TEST_BASE"];
   const selectedSuites =
-    depth === "full" ? suites : [{ cwd: ".", preloads: [], files: focusedTests }];
+    depth === "full"
+      ? suites
+      : selectFastTestSuites({
+          suites,
+          changedFiles: base ? changedTestPaths(base) : [],
+        });
   let exitCode = 0;
   for (const { cwd, preloads, files } of selectedSuites) {
     const selected = files.filter((file) => assigned.has(file));

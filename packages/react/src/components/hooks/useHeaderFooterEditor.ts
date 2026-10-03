@@ -25,6 +25,11 @@ import {
   saveHeaderFooterContent,
 } from "@stll/folio-core/utils/headerFooter";
 import type { UseHistoryReturn } from "../../hooks/useHistory";
+import type { HiddenEditorApi } from "@stll/folio-core/controller/hiddenEditorApi";
+import {
+  createCanonicalHeaderFooterOperation,
+  removeCanonicalHeaderFooterOperations,
+} from "@stll/folio-core/controller/canonicalOperations";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -33,6 +38,8 @@ import type { UseHistoryReturn } from "../../hooks/useHistory";
 type UseHeaderFooterEditorParams = {
   history: UseHistoryReturn<Document | null>;
   pushDocument: (document: Document) => Document;
+  getCanonicalApi?: () => HiddenEditorApi | null;
+  experimentalSession?: "canonical";
   /**
    * Look up the persistent hidden HF EditorView for an rId. Returns null
    * when the view isn't mounted (e.g. the chrome unmounted before the
@@ -137,6 +144,8 @@ export const useHeaderFooterEditor = ({
   history,
   pushDocument,
   getHfView,
+  getCanonicalApi,
+  experimentalSession,
 }: UseHeaderFooterEditorParams): UseHeaderFooterEditorReturn => {
   // -------------------------------------------------------------------------
   // State
@@ -203,6 +212,19 @@ export const useHeaderFooterEditor = ({
       }
 
       // Create an empty header/footer for docs that don't have one yet.
+      if (experimentalSession === "canonical") {
+        const api = getCanonicalApi?.();
+        api?.ensureView();
+        const canonical = api?.getCanonicalDocument();
+        if (!canonical || !api) return;
+        const operation = createCanonicalHeaderFooterOperation({
+          document: canonical,
+          position,
+          referenceType: isFirstPage ? "first" : "default",
+        });
+        if (api.applyCanonicalOperations([operation])) setHfEditPosition(position);
+        return;
+      }
       if (!history.state) {
         return;
       }
@@ -221,10 +243,16 @@ export const useHeaderFooterEditor = ({
       hasTitlePg,
       history,
       pushDocument,
+      getCanonicalApi,
+      experimentalSession,
     ],
   );
 
   const handleHeaderFooterSave = useCallback(() => {
+    if (experimentalSession === "canonical") {
+      setHfEditPosition(null);
+      return;
+    }
     if (!hfEditPosition || !history.state?.package) {
       setHfEditPosition(null);
       return;
@@ -247,7 +275,15 @@ export const useHeaderFooterEditor = ({
       setEditPosition: setHfEditPosition,
       view,
     });
-  }, [hfEditPosition, hfEditIsFirstPage, resolution, history, pushDocument, getHfView]);
+  }, [
+    hfEditPosition,
+    hfEditIsFirstPage,
+    resolution,
+    history,
+    pushDocument,
+    getHfView,
+    experimentalSession,
+  ]);
 
   const handleBodyClick = useCallback(() => {
     if (!hfEditPosition) {
@@ -268,6 +304,21 @@ export const useHeaderFooterEditor = ({
     // Same active-rId resolution as save: target the rId actually rendered, not
     // whatever lives in `finalSectionProperties` (Codex PR #258).
     const activeRId = pickActiveHeaderFooterRId(resolution, hfEditPosition, hfEditIsFirstPage);
+    if (experimentalSession === "canonical") {
+      const api = getCanonicalApi?.();
+      const canonical = api?.getCanonicalDocument();
+      if (api && canonical && activeRId) {
+        api.applyCanonicalOperations(
+          removeCanonicalHeaderFooterOperations({
+            document: canonical,
+            position: hfEditPosition,
+            rId: activeRId,
+          }),
+        );
+      }
+      setHfEditPosition(null);
+      return;
+    }
     if (activeRId) {
       pushDocument(
         removeHeaderFooter({ document: history.state, position: hfEditPosition, activeRId }),
@@ -275,7 +326,15 @@ export const useHeaderFooterEditor = ({
     }
 
     setHfEditPosition(null);
-  }, [hfEditPosition, hfEditIsFirstPage, resolution, history, pushDocument]);
+  }, [
+    hfEditPosition,
+    hfEditIsFirstPage,
+    resolution,
+    history,
+    pushDocument,
+    getCanonicalApi,
+    experimentalSession,
+  ]);
 
   return {
     hfEditPosition,

@@ -214,6 +214,8 @@ import type { HeadingInfo } from "@stll/folio-core/utils/headingCollector";
 import { collectHeadings } from "@stll/folio-core/utils/headingCollector";
 import { pointsToHalfPoints, twipsToPixels } from "@stll/folio-core/utils/units";
 import { useDocumentHistory } from "../hooks/useHistory";
+import { createCanonicalSectionPropertiesOperation } from "@stll/folio-core/controller/canonicalOperations";
+import { repackWithCanonicalStoryRemovals } from "@stll/folio-core/docx/canonicalStoryRepack";
 import { useTableSelection } from "../hooks/useTableSelection";
 import { getPageSize } from "@stll/folio-core/paged-layout/sectionGeometry";
 import { PagedEditor, VIEWPORT_PADDING_TOP } from "../paged-editor/PagedEditor";
@@ -1120,7 +1122,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     canUndo: false,
   });
   const [activeNoteStory, setActiveNoteStory] = useState<NoteStoryKey | null>(null);
-  const canEditHeaderFooter = showHeaderFooterEditing && experimentalSession !== "canonical";
+  const canEditHeaderFooter = showHeaderFooterEditing;
+  const getCanonicalApi = useCallback(() => pagedEditorRef.current?.getEditor() ?? null, []);
 
   const pushDocument = useCallback(
     (document: Document) => {
@@ -1158,6 +1161,8 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   } = useHeaderFooterEditor({
     history,
     pushDocument,
+    getCanonicalApi,
+    ...(experimentalSession === undefined ? {} : { experimentalSession }),
     // Hook reads live HF PM state at close time (the in-place sync
     // that previously kept package.headers/footers current per
     // keystroke was removed to fix the undo-corruption bug; the
@@ -1221,49 +1226,48 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
 
   // Helper to undo in the active editor
   const undoActiveEditor = useCallback(() => {
-    if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
+    if (
+      experimentalSession !== "canonical" &&
+      getActiveEditorStory().type === "headerFooter" &&
+      hfEditorRef.current
+    ) {
       hfEditorRef.current.undo();
     } else {
       pagedEditorRef.current?.undo();
       requestAnimationFrame(refreshBodyHistoryAvailability);
     }
-  }, [getActiveEditorStory, refreshBodyHistoryAvailability]);
+  }, [getActiveEditorStory, refreshBodyHistoryAvailability, experimentalSession]);
 
   // Helper to redo in the active editor
   const redoActiveEditor = useCallback(() => {
-    if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
+    if (
+      experimentalSession !== "canonical" &&
+      getActiveEditorStory().type === "headerFooter" &&
+      hfEditorRef.current
+    ) {
       hfEditorRef.current.redo();
     } else {
       pagedEditorRef.current?.redo();
       requestAnimationFrame(refreshBodyHistoryAvailability);
     }
-  }, [getActiveEditorStory, refreshBodyHistoryAvailability]);
+  }, [getActiveEditorStory, refreshBodyHistoryAvailability, experimentalSession]);
 
   const handleActiveNoteStoryChange = useCallback(
     (story: NoteStoryKey | null) => {
-      if (
-        story &&
-        refuseCanonicalModelEdit("Footnote and endnote editing is unavailable in this session.")
-      ) {
-        return;
-      }
       setActiveNoteStory(story);
       if (story && hfEditPosition) {
         handleBodyClick();
       }
     },
-    [handleBodyClick, hfEditPosition, refuseCanonicalModelEdit],
+    [handleBodyClick, hfEditPosition],
   );
 
   const handleHeaderFooterStoryOpen = useCallback(
     (position: "header" | "footer", pageNumber?: number) => {
-      if (refuseCanonicalModelEdit("Header and footer editing is unavailable in this session.")) {
-        return;
-      }
       pagedEditorRef.current?.closeNoteStory();
       handleHeaderFooterDoubleClick(position, pageNumber);
     },
-    [handleHeaderFooterDoubleClick, refuseCanonicalModelEdit],
+    [handleHeaderFooterDoubleClick],
   );
 
   // Find/Replace hook
@@ -1974,9 +1978,17 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Handle footnote/endnote properties update
   const handleApplyFootnoteProperties = useCallback(
     (footnotePr: FootnoteProperties, endnotePr: EndnoteProperties) => {
-      if (
-        refuseCanonicalModelEdit("Footnote and endnote properties are unavailable in this session.")
-      ) {
+      if (experimentalSession === "canonical") {
+        const api = getCanonicalApi();
+        api?.ensureView();
+        const canonical = api?.getCanonicalDocument();
+        if (
+          !canonical ||
+          !api?.applyCanonicalOperations([
+            createCanonicalSectionPropertiesOperation(canonical, { footnotePr, endnotePr }),
+          ])
+        )
+          refuseCanonicalModelEdit("Section property changes could not be applied.");
         return;
       }
       if (!history.state?.package) {
@@ -1998,7 +2010,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         },
       });
     },
-    [history, pushDocument, refuseCanonicalModelEdit],
+    [history, pushDocument, experimentalSession, getCanonicalApi, refuseCanonicalModelEdit],
   );
 
   // Handle table action from Toolbar - use ProseMirror commands
@@ -2898,7 +2910,18 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
   // Page setup apply handler
   const handlePageSetupApply = useCallback(
     (props: Partial<SectionProperties>) => {
-      if (refuseCanonicalModelEdit("Page layout settings are unavailable in this session.")) {
+      if (readOnly) return;
+      if (experimentalSession === "canonical") {
+        const api = getCanonicalApi();
+        api?.ensureView();
+        const canonical = api?.getCanonicalDocument();
+        if (
+          !canonical ||
+          !api?.applyCanonicalOperations([
+            createCanonicalSectionPropertiesOperation(canonical, props),
+          ])
+        )
+          refuseCanonicalModelEdit("Section property changes could not be applied.");
         return;
       }
       if (!history.state || readOnly) {
@@ -2919,7 +2942,14 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       };
       handleDocumentChange(newDoc);
     },
-    [history.state, readOnly, handleDocumentChange, refuseCanonicalModelEdit],
+    [
+      history.state,
+      readOnly,
+      handleDocumentChange,
+      experimentalSession,
+      getCanonicalApi,
+      refuseCanonicalModelEdit,
+    ],
   );
 
   // Ruler drag handlers. Page-margin drags go through the section-properties
@@ -3028,6 +3058,9 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         const repackFull = async (): Promise<ArrayBuffer> => {
           const repackDocx = await loadRepackDocx();
           const repack = () => repackDocx(repackSourceDoc);
+          if (experimentalSession === "canonical") {
+            return repackWithCanonicalStoryRemovals({ document: repackSourceDoc, repack });
+          }
           return editorState
             ? repackWithEditorSectionRemovals({
                 state: editorState,
@@ -3402,7 +3435,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       // saves and closes an active header/footer. Ports upstream docx-editor
       // ff971a7b.
       undo: () => {
-        if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
+        if (
+          experimentalSession !== "canonical" &&
+          getActiveEditorStory().type === "headerFooter" &&
+          hfEditorRef.current
+        ) {
           return hfEditorRef.current.undo();
         }
         const undone = pagedEditorRef.current?.undo() ?? false;
@@ -3410,7 +3447,11 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
         return undone;
       },
       redo: () => {
-        if (getActiveEditorStory().type === "headerFooter" && hfEditorRef.current) {
+        if (
+          experimentalSession !== "canonical" &&
+          getActiveEditorStory().type === "headerFooter" &&
+          hfEditorRef.current
+        ) {
           return hfEditorRef.current.redo();
         }
         const redone = pagedEditorRef.current?.redo() ?? false;
@@ -3777,6 +3818,7 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
       commentsDirtyRef,
       getActiveEditorStory,
       refreshBodyHistoryAvailability,
+      experimentalSession,
     ],
   );
 
@@ -3800,6 +3842,12 @@ export const DocxEditor = forwardRef<DocxEditorRef, DocxEditorProps>(function Do
     [t],
   );
   const activeHistoryAvailability = (() => {
+    if (experimentalSession === "canonical") {
+      return {
+        canRedo: pagedEditorRef.current?.canRedo() ?? false,
+        canUndo: pagedEditorRef.current?.canUndo() ?? false,
+      };
+    }
     if (activeNoteStory) {
       return {
         canRedo: pagedEditorRef.current?.canRedo() ?? false,

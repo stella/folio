@@ -4,8 +4,9 @@ import fc from "fast-check";
 import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
 import type { Document, Paragraph } from "../../model/document";
 import { applyDocumentOps } from "../apply";
+import { envelopes } from "../__tests__/wireFixtures";
 import { equalForStaleness } from "../equality";
-import { DOCUMENT_OP_SCHEMA_VERSION, type DocumentOp } from "../types";
+import { DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
 import { BATCH_REJECTION_REASONS, type DocumentBatch, type SequencedBatch } from "./envelope";
 import { createSequencer } from "./sequencer";
 import { transformBatch } from "./transform";
@@ -456,4 +457,29 @@ describe("property and structural policies", () => {
     const affected = { ...insertion(1, "X"), at: at(1, "00000003") };
     expect(transformBatch(batch(affected), [removed]).isErr()).toBe(true);
   });
+});
+
+test("story lifecycle operation pairs refuse sequencing in both directions", () => {
+  const lifecycle = new Set([
+    DOCUMENT_OP_TYPES.ADD_NOTE,
+    DOCUMENT_OP_TYPES.REMOVE_NOTE,
+    DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER,
+    DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER,
+    DOCUMENT_OP_TYPES.SET_SECTION_PROPS,
+    DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS,
+  ]);
+  const exercised = new Set<string>();
+  for (const { op } of envelopes()) {
+    if (![...lifecycle].some((type) => type === op.type)) continue;
+    exercised.add(op.type);
+    for (const result of [
+      transformBatch(batch(op), [sequenced(insertion(0, "X"))]),
+      transformBatch(batch(insertion(0, "X")), [sequenced(op)]),
+    ]) {
+      expect(result.isErr()).toBe(true);
+      if (result.isErr())
+        expect(result.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_PAIR);
+    }
+  }
+  expect([...exercised].toSorted()).toEqual([...lifecycle].toSorted());
 });

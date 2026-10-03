@@ -56,3 +56,30 @@ describe("usePageSetupControls.handlePageSetupApply — readOnly guard", () => {
     expect(stateTick.value).toBe(1);
   });
 });
+
+test.each(["applied", "refused", "unhandled"] as const)(
+  "section write result %s only permits direct fallback when unhandled",
+  (result) => {
+    const doc = makeDoc();
+    const onChange = mock((_doc: Document) => {});
+    const reLayout = mock(() => {});
+    const stateTick = ref(0);
+    const applySectionProperties = mock((_properties: unknown) => result);
+    const { handlePageSetupApply } = usePageSetupControls({
+      editorView: ref(null),
+      getDocument: () => doc,
+      readOnly: ref(false),
+      stateTick,
+      reLayout,
+      onChange,
+      applySectionProperties,
+    });
+    handlePageSetupApply({ marginLeft: 720 });
+    expect(applySectionProperties).toHaveBeenCalledWith({ marginLeft: 720 });
+    const directWrites = result === "unhandled" ? 1 : 0;
+    expect(doc.package.document.finalSectionProperties?.marginLeft).toBe(directWrites ? 720 : 1440);
+    expect(onChange).toHaveBeenCalledTimes(directWrites);
+    expect(reLayout).toHaveBeenCalledTimes(directWrites);
+    expect(stateTick.value).toBe(directWrites);
+  },
+);

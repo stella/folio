@@ -73,7 +73,9 @@ export const isTrackedWrapper = (node: InlineNode): node is TrackedWrapper =>
   node.type === "moveTo";
 
 /** Tracked content on its way in: an insertion or the destination of a move. */
-export const isAddedRevision = (node: InlineNode): boolean =>
+export const isAddedRevision = (
+  node: InlineNode,
+): node is Extract<TrackedWrapper, { type: "insertion" | "moveTo" }> =>
   node.type === "insertion" || node.type === "moveTo";
 
 /** Tracked content on its way out: a deletion or the source of a move. */

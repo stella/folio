@@ -12,6 +12,9 @@ import runContract from "./ci-run-contract.json";
 import { PUBLISHED_PACKAGES } from "./lib/published-packages";
 import {
   assignTestShards,
+  changedTestPaths,
+  FAST_SIBLING_TEST_CAP,
+  selectFastTestSuites,
   discoverTestSuites,
   focusedTestFiles,
   TEST_SHARD_COUNT,
@@ -174,6 +177,170 @@ describe("CI plan", () => {
     }
   });
 
+  test("fast selection includes changed examples and immediate source siblings with preloads", () => {
+    const suites = [
+      {
+        cwd: "packages/example",
+        preloads: ["./test/setup.ts"],
+        files: [
+          "packages/example/src/parser/plain.test.ts",
+          "packages/example/src/parser/roundtrip.spec.ts",
+          "packages/example/src/parser/nested/unrelated.test.ts",
+          "packages/example/src/other/added.test.ts",
+          "packages/example/src/other/unchanged.test.ts",
+        ],
+      },
+      { cwd: ".", preloads: [], files: ["scripts/new.test.ts", "scripts/unchanged.test.ts"] },
+    ];
+    const selected = selectFastTestSuites({
+      suites,
+      changedFiles: [
+        "packages/example/src/parser/parse.ts",
+        "packages/example/src/parser/parse.ts",
+        "packages/example/src/other/added.test.ts",
+        "scripts/new.test.ts",
+        "packages/example/src/removed/deleted.test.ts",
+      ],
+      focusedFiles: [
+        "packages/example/src/parser/plain.test.ts",
+        "packages/example/src/removed/deleted.test.ts",
+      ],
+    });
+    expect(selected).toEqual([
+      {
+        cwd: "packages/example",
+        preloads: ["./test/setup.ts"],
+        files: [
+          "packages/example/src/parser/roundtrip.spec.ts",
+          "packages/example/src/other/added.test.ts",
+        ],
+      },
+      { cwd: ".", preloads: [], files: ["scripts/new.test.ts"] },
+      { cwd: ".", preloads: [], files: ["packages/example/src/parser/plain.test.ts"] },
+    ]);
+    const selectedFiles = selected.flatMap(({ files }) => files);
+    expect(new Set(selectedFiles).size).toBe(selectedFiles.length);
+    expect(
+      assignTestShards(selectedFiles)
+        .flatMap((shard) => Array.from(shard))
+        .toSorted(),
+    ).toEqual(selectedFiles.toSorted());
+    expect(suites.at(0)?.files).toHaveLength(5);
+  });
+
+  test("only non-test source changes select sibling tests", () => {
+    const suites = [
+      {
+        cwd: "packages/example",
+        preloads: [],
+        files: ["packages/example/src/one.test.ts", "packages/example/src/two.test.ts"],
+      },
+    ];
+    expect(
+      selectFastTestSuites({
+        suites,
+        changedFiles: ["packages/example/src/one.test.ts"],
+        focusedFiles: [],
+      }),
+    ).toEqual([{ ...suites[0], files: ["packages/example/src/one.test.ts"] }]);
+    expect(
+      selectFastTestSuites({
+        suites,
+        changedFiles: ["packages/example/src/README.md"],
+        focusedFiles: [],
+      }),
+    ).toEqual([]);
+  });
+
+  test("the sibling cap expands the owning package without truncation or other packages", () => {
+    const siblings = Array.from(
+      { length: FAST_SIBLING_TEST_CAP },
+      (_, i) => `packages/example/src/parser/test-${i}.test.ts`,
+    );
+    const elsewhere = "packages/example/src/elsewhere/roundtrip.test.ts";
+    const other = {
+      cwd: "packages/other",
+      preloads: [],
+      files: ["packages/other/src/other.test.ts"],
+    };
+    const select = (files: string[]) =>
+      selectFastTestSuites({
+        suites: [{ cwd: "packages/example", preloads: ["./setup.ts"], files }, other],
+        changedFiles: ["packages/example/src/parser/parse.ts"],
+        focusedFiles: [],
+      });
+    expect(select([...siblings, elsewhere]).at(0)?.files).toEqual(siblings);
+    const files = [...siblings, "packages/example/src/parser/over-cap.test.ts", elsewhere];
+    expect(select(files)).toEqual([{ cwd: "packages/example", preloads: ["./setup.ts"], files }]);
+  });
+
+  test("changed-path discovery excludes deleted tests and deleted source before sibling expansion", () => {
+    const fixtureRoot = mkdtempSync(path.join(tmpdir(), "folio-ci-diff-"));
+    const git = (...args: string[]) => {
+      const result = Bun.spawnSync(["git", ...args], {
+        cwd: fixtureRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(result.exitCode).toBe(0);
+      return result.stdout.toString().trim();
+    };
+    const write = (file: string, text: string) => {
+      const target = path.join(fixtureRoot, file);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, text);
+    };
+    try {
+      git("init", "--quiet");
+      const deletedSource = "packages/example/src/deleted.ts";
+      const deletedTest = "packages/example/src/deleted.test.ts";
+      const changedTest = "packages/example/src/changed.test.ts";
+      const sibling = "packages/example/src/sibling.test.ts";
+      for (const file of [deletedSource, deletedTest, changedTest, sibling]) write(file, "before");
+      git("add", ".");
+      const commit = () =>
+        git(
+          "-c",
+          "user.name=CI fixture",
+          "-c",
+          "user.email=ci@example.com",
+          "-c",
+          "commit.gpgsign=false",
+          "commit",
+          "--quiet",
+          "-m",
+          "test: fixture",
+        );
+      commit();
+      const base = git("rev-parse", "HEAD");
+      rmSync(path.join(fixtureRoot, deletedSource));
+      rmSync(path.join(fixtureRoot, deletedTest));
+      write(changedTest, "after");
+      const added = "scripts/added.test.ts";
+      write(added, "added");
+      git("add", ".");
+      commit();
+      const changedFiles = changedTestPaths(base, fixtureRoot);
+      expect(changedFiles.toSorted()).toEqual([changedTest, added].toSorted());
+      const selected = selectFastTestSuites({
+        suites: [
+          { cwd: "packages/example", preloads: [], files: [changedTest, sibling] },
+          { cwd: ".", preloads: [], files: [added] },
+        ],
+        changedFiles,
+        focusedFiles: [],
+      });
+      expect(selected.flatMap(({ files }) => files).toSorted()).toEqual(
+        [changedTest, added].toSorted(),
+      );
+      expect(() => changedTestPaths("missing-base", fixtureRoot)).toThrow(
+        "Cannot select changed tests",
+      );
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   test("every discovered and focused test belongs to exactly one deterministic shard", () => {
     const suites = discoverTestSuites();
     const files = [...suites.flatMap(({ files: suiteFiles }) => suiteFiles), ...focusedTestFiles];
@@ -202,6 +369,25 @@ describe("CI plan", () => {
       expect(jobs[id]?.if).toBe("needs.ci-plan.outputs.code_required == 'true'");
       const steps = jobs[id]?.steps;
       if (!Array.isArray(steps)) throw new Error(`Missing steps for ${id}`);
+      const checkout = steps.find(
+        (step) =>
+          isRecord(step) &&
+          typeof step["uses"] === "string" &&
+          step["uses"].startsWith("actions/checkout@"),
+      );
+      if (!isRecord(checkout) || !isRecord(checkout["with"]))
+        throw new Error(`Missing checkout for ${id}`);
+      expect(checkout["with"]["fetch-depth"]).toBe(0);
+      const fast = steps.find(
+        (step) =>
+          isRecord(step) &&
+          step["run"] === `bun scripts/ci-test-shards.ts --shard ${shard} --depth fast`,
+      );
+      if (!isRecord(fast) || !isRecord(fast["env"]))
+        throw new Error(`Missing fast selection for ${id}`);
+      expect(fast["env"]["CI_TEST_BASE"]).toBe(
+        "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}",
+      );
       const uploads = steps.filter(
         (step) =>
           isRecord(step) &&

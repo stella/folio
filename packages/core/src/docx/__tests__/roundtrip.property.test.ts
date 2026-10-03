@@ -18,7 +18,11 @@ import { describe, test, expect } from "bun:test";
 import fc from "fast-check";
 import type { Node as PMNode, Mark } from "prosemirror-model";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import {
+  assertProperty,
+  propertyConfig,
+  propertyTestTimeout,
+} from "../../../../../test/property-testing";
 
 import { fromProseDoc } from "../../prosemirror/conversion/fromProseDoc";
 import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
@@ -324,14 +328,14 @@ describe("DOCX round-trip property tests", () => {
   test(
     "round-trip preserves document structure",
     () => {
-      fc.assert(
+      assertProperty(
         fc.property(arbDocument(), (doc) => {
           const result = roundTrip(doc);
           const originalNorm = normalizeDoc(doc);
           const resultNorm = normalizeDoc(result);
           expect(resultNorm).toEqual(originalNorm);
         }),
-        propertyConfig({ numRuns: 200 }),
+        { numRuns: 200 },
       );
     },
     propertyTestTimeout(10_000),
@@ -601,14 +605,14 @@ describe("DOCX round-trip property tests", () => {
           ]),
         );
 
-      fc.assert(
+      assertProperty(
         fc.property(multiMarkDoc, (doc) => {
           const result = roundTrip(doc);
           const originalNorm = normalizeDoc(doc);
           const resultNorm = normalizeDoc(result);
           expect(resultNorm).toEqual(originalNorm);
         }),
-        propertyConfig({ numRuns: 200 }),
+        { numRuns: 200 },
       );
     },
     propertyTestTimeout(10_000),

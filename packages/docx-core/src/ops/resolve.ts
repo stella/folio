@@ -39,6 +39,7 @@ import {
 import { paragraphLength } from "./offsets";
 import { identitySlots, withInlineIdentity } from "./slots";
 import { canonicalDeferredGroups } from "./identity";
+import { joinParagraphSeam } from "./inline";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
@@ -886,6 +887,23 @@ const deferSplitSeam = ({
   right: readonly InlineNode[];
 } => {
   if (depth === 0) return { left, right };
+  const last = left.at(-1);
+  const first = right.at(0);
+  const lastChildren = last === undefined ? undefined : childNodes(last);
+  const firstChildren = first === undefined ? undefined : childNodes(first);
+  if (
+    last !== undefined &&
+    first !== undefined &&
+    lastChildren !== undefined &&
+    firstChildren !== undefined &&
+    sameOwnFields(last, first)
+  ) {
+    const inner = deferSplitSeam({ left: lastChildren, right: firstChildren, depth: depth - 1 });
+    return {
+      left: [...left.slice(0, -1), rebuildNode(last, inner.left)],
+      right: [rebuildNode(first, inner.right), ...right.slice(1)],
+    };
+  }
   const blocking = (node: InlineNode | undefined): boolean =>
     node !== undefined &&
     isAddedRevision(node) &&
@@ -895,6 +913,22 @@ const deferSplitSeam = ({
   let rightStart = 0;
   while (leftEnd >= 0 && blocking(left.at(leftEnd))) leftEnd -= 1;
   while (rightStart < right.length && blocking(right.at(rightStart))) rightStart += 1;
+  // Pending revisions can themselves be the two source fragments. Keep
+  // those outside the blocker group; only insertions between them defer it.
+  let sourcePair = false;
+  for (let leftIndex = left.length - 1; leftIndex > leftEnd && !sourcePair; leftIndex -= 1) {
+    const leftSource = left.at(leftIndex);
+    if (leftSource === undefined) panic("A scanned source fragment exists.");
+    for (let rightIndex = 0; rightIndex < rightStart; rightIndex += 1) {
+      const rightSource = right.at(rightIndex);
+      if (rightSource === undefined) panic("A scanned source fragment exists.");
+      if (!sameOwnFields(leftSource, rightSource)) continue;
+      leftEnd = leftIndex;
+      rightStart = rightIndex;
+      sourcePair = true;
+      break;
+    }
+  }
   if (leftEnd !== left.length - 1 || rightStart !== 0) {
     const blockers = [...left.slice(leftEnd + 1), ...right.slice(0, rightStart)].flatMap((node) =>
       isTrackedWrapper(node) ? [node.info.id] : [],
@@ -921,18 +955,7 @@ const deferSplitSeam = ({
       right: right.map((node, index) => (index < rightStart ? deferred(node) : node)),
     };
   }
-  const last = left.at(-1);
-  const first = right.at(0);
-  if (last === undefined || first === undefined || !sameOwnFields(last, first))
-    return { left, right };
-  const lastChildren = childNodes(last);
-  const firstChildren = childNodes(first);
-  if (lastChildren === undefined || firstChildren === undefined) return { left, right };
-  const inner = deferSplitSeam({ left: lastChildren, right: firstChildren, depth: depth - 1 });
-  return {
-    left: [...left.slice(0, -1), rebuildNode(last, inner.left)],
-    right: [rebuildNode(first, inner.right), ...right.slice(1)],
-  };
+  return { left, right };
 };
 
 /**
@@ -988,7 +1011,9 @@ const joinOps = (
     }
     let merged: InlineNode[];
     if (depth === undefined) {
-      merged = mergedAtSeam(paragraph.content, next.content, emptied);
+      merged = added
+        ? mergedAtSeam(paragraph.content, next.content, emptied)
+        : joinParagraphSeam(paragraph.content, next.content);
     } else {
       const seam = deferSplitSeam({ left: paragraph.content, right: next.content, depth });
       const left = seam.left.at(-1);

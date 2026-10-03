@@ -135,6 +135,11 @@ export const attributeRemainder = ({
       continue;
     }
     const namespace = resolveAttributeNamespaceUri(element, spelling);
+    // Part and self-bound fragment writers derive this from namespace bindings.
+    // Retaining it as content makes structural saves add model metadata.
+    if (namespace === OOXML_NAMESPACES.mc.uri && name === "Ignorable") {
+      continue;
+    }
     if (namespace !== undefined && !CANONICAL_PREFIX.has(namespace)) {
       continue;
     }
