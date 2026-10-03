@@ -367,6 +367,7 @@ export const createTrackedPlan = ({ document, revision, newIds }: TrackedPlanOpt
     const story = (() => {
       switch (input.type) {
         case DOCUMENT_OP_TYPES.DELETE_RANGE:
+        case DOCUMENT_OP_TYPES.SET_RUN_PROPS:
           return input.from.story;
         case DOCUMENT_OP_TYPES.INSERT_CONTENT:
         case DOCUMENT_OP_TYPES.SPLIT_BLOCK:
