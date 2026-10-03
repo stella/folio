@@ -1,16 +1,21 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
+import fc from "fast-check";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { applyDocumentOps } from "../apply";
 import type { Document } from "../../model/document";
 import { DOCUMENT_OP_SCHEMA_VERSION, OP_STORIES, type DocumentOp } from "../types";
 import { envelopes } from "../__tests__/wireFixtures";
 import {
   BATCH_WIRE_OP_TYPES,
+  BATCH_REJECTION_REASONS,
   MAX_BATCH_WIRE_BYTES,
   parseDocumentBatch,
   validateDocumentBatch,
   validateSequencedBatch,
 } from "./envelope";
 import { envelopeFixtures, sequencedFixture } from "./__tests__/envelopeFixtures";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 
 const fixture = envelopeFixtures[0];
 const withOp = (op: unknown) => ({ ...fixture, ops: [op] });
@@ -72,6 +77,112 @@ test("unknown envelopes refuse invalid identities, revisions, schemas and keys",
   ])
     expect(validateDocumentBatch(batch).isErr()).toBe(true);
   expect(parseDocumentBatch("{invalid").isErr()).toBe(true);
+});
+
+test("surplus identity pools retain their JSON and apply like consumed-only pools", () => {
+  assertProperty(
+    fc.property(fc.nat(32), fc.nat(32), (revisionCount, controlCount) => {
+      const documents = [
+        {
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+                },
+              ],
+            },
+          },
+        },
+        {
+          package: {
+            document: {
+              content: [
+                {
+                  type: "paragraph",
+                  paraId: "00000001",
+                  content: [
+                    {
+                      type: "inlineSdt",
+                      properties: { sdtType: "richText", id: 8 },
+                      content: [
+                        {
+                          type: "insertion",
+                          info: { id: 5, author: "Editor" },
+                          content: [{ type: "run", content: [{ type: "text", text: "abc" }] }],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ] as const satisfies readonly Document[];
+      const compact = {
+        type: "splitBlock",
+        at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 1 },
+        newBlockId: "00000002",
+        newIds: { revision: [43], control: [9] },
+      } as const satisfies DocumentOp;
+      const supplied = {
+        ...compact,
+        newIds: {
+          revision: [43, ...Array.from({ length: revisionCount }, (_, index) => index + 100)],
+          control: [9, ...Array.from({ length: controlCount }, (_, index) => index + 100)],
+        },
+      };
+      const batch = withOp(supplied);
+      const decoded = parseDocumentBatch(JSON.stringify(batch));
+      if (decoded.isErr()) throw decoded.error;
+      expect(decoded.value).toStrictEqual(batch);
+      for (const document of documents) {
+        const old = applyDocumentOps(document, decoded.value.ops);
+        const first = document.package.document.content.at(0);
+        const newIds =
+          first?.type === "paragraph" && first.content.at(0)?.type === "inlineSdt"
+            ? compact.newIds
+            : {};
+        const trimmed = applyDocumentOps(document, [{ ...compact, newIds }]);
+        if (old.isErr()) throw old.error;
+        if (trimmed.isErr()) throw trimmed.error;
+        expect(old.value).toStrictEqual(trimmed.value);
+        const undone = applyDocumentOps(old.value.document, old.value.inverse);
+        if (undone.isErr()) throw undone.error;
+        expect(undone.value.document).toStrictEqual(document);
+      }
+    }),
+  );
+});
+
+test("empty and omitted identity pools decode without a schema change", () => {
+  const op = {
+    type: "insertText",
+    at: { story: OP_STORIES.MAIN, blockId: "00000001", offset: 0 },
+    text: "A",
+    runProps: "inherit",
+  } as const satisfies DocumentOp;
+  for (const input of [
+    op,
+    { ...op, newIds: {} },
+    { ...op, newIds: { revision: [] } },
+    { ...op, newIds: { control: [] } },
+    { ...op, newIds: { revision: [], control: [] } },
+  ]) {
+    const batch = withOp(input);
+    const decoded = parseDocumentBatch(JSON.stringify(batch));
+    if (decoded.isErr()) throw decoded.error;
+    expect(decoded.value).toStrictEqual(batch);
+  }
+  for (let schema = 1; schema < DOCUMENT_OP_SCHEMA_VERSION; schema += 1) {
+    const decoded = parseDocumentBatch(JSON.stringify({ ...withOp(op), schema }));
+    expect(decoded.isErr()).toBe(true);
+    if (decoded.isErr())
+      expect(decoded.error.reason).toBe(BATCH_REJECTION_REASONS.UNSUPPORTED_SCHEMA);
+  }
 });
 
 test("each supported operation validates every supplied field and nested payload", () => {
@@ -203,4 +314,43 @@ test("actual text inverses normalize absent optional fields and remain decodable
     if (undone.isErr()) throw undone.error;
     expect(undone.value.document).toEqual(document);
   }
+});
+
+test("sequencing refuses unsupported paragraph-review and section-boundary payloads", () => {
+  const operations = [
+    {
+      type: "setParagraphProps",
+      story: "main",
+      blockId: "00000001",
+      patch: {},
+      propertyReview: "append",
+    },
+    {
+      type: "splitBlock",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      newBlockId: "00000002",
+      firstSectionProperties: {},
+    },
+    {
+      type: "splitBlock",
+      at: { story: "main", blockId: "00000001", offset: 1 },
+      newBlockId: "00000002",
+      sectionView: { expected: [], restore: [] },
+    },
+    {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionBoundary: "remove",
+    },
+    {
+      type: "joinBlocks",
+      story: "main",
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      sectionView: { expected: [], restore: [] },
+    },
+  ] as const satisfies readonly DocumentOp[];
+  for (const op of operations) expect(validateDocumentBatch(withOp(op)).isErr()).toBe(true);
 });

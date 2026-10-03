@@ -58,8 +58,8 @@ export class BatchRejection extends TaggedError("BatchRejection")<{
 
 type Validator = (value: unknown) => boolean;
 type Fields = Readonly<Record<string, Validator>>;
-type OperationFields<Type extends DocumentOpType> = {
-  [Key in keyof Extract<DocumentOp, { type: Type }>]-?: Validator;
+type OperationFields = {
+  [Op in DocumentOp as Op["type"]]: { [Key in keyof Op]-?: Validator };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -224,7 +224,7 @@ const operationFields = {
     runProps: (value) => value === "inherit" || runProps(value),
     newIds,
     revision,
-  } satisfies OperationFields<"insertText">,
+  } satisfies OperationFields["insertText"],
   deleteRange: {
     type: literal("deleteRange"),
     from: position,
@@ -233,7 +233,7 @@ const operationFields = {
     expected: optional(slice),
     newIds,
     revision,
-  } satisfies OperationFields<"deleteRange">,
+  } satisfies OperationFields["deleteRange"],
   setRunProps: {
     type: literal("setRunProps"),
     from: position,
@@ -245,7 +245,7 @@ const operationFields = {
     joinEnd: optional(natural),
     newIds,
     revision,
-  } satisfies OperationFields<"setRunProps">,
+  } satisfies OperationFields["setRunProps"],
   setParagraphProps: {
     type: literal("setParagraphProps"),
     story: isOpStory,
@@ -254,7 +254,7 @@ const operationFields = {
     expected: optional(paragraphPatch),
     whenEmpty,
     revision,
-  } satisfies OperationFields<"setParagraphProps">,
+  } satisfies OperationFields["setParagraphProps"],
   splitBlock: {
     type: literal("splitBlock"),
     at: position,
@@ -262,9 +262,11 @@ const operationFields = {
     newHalf: half,
     newParagraph: absent,
     firstMark: absent,
+    firstSectionProperties: absent,
+    sectionView: absent,
     newIds,
     revision,
-  } satisfies OperationFields<"splitBlock">,
+  } satisfies OperationFields["splitBlock"],
   joinBlocks: {
     type: literal("joinBlocks"),
     story: isOpStory,
@@ -274,9 +276,11 @@ const operationFields = {
     survivor: half,
     expectedRetired: absent,
     expectedSurvivor: absent,
+    sectionBoundary: absent,
+    sectionView: absent,
     newIds,
     revision,
-  } satisfies OperationFields<"joinBlocks">,
+  } satisfies OperationFields["joinBlocks"],
   insertBlocks: {
     type: literal("insertBlocks"),
     story: isOpStory,
@@ -284,27 +288,27 @@ const operationFields = {
     blocks: array(paragraph),
     newIds,
     revision,
-  } satisfies OperationFields<"insertBlocks">,
+  } satisfies OperationFields["insertBlocks"],
   deleteBlocks: {
     type: literal("deleteBlocks"),
     story: isOpStory,
     blockIds: array(blockId),
     newIds,
     revision,
-  } satisfies OperationFields<"deleteBlocks">,
+  } satisfies OperationFields["deleteBlocks"],
   resolveRevision: {
     type: literal("resolveRevision"),
     story: isOpStory,
     revisionIds: array(natural),
     decision: literal("accept", "reject"),
-  } satisfies OperationFields<"resolveRevision">,
+  } satisfies OperationFields["resolveRevision"],
   insertContent: {
     type: literal("insertContent"),
     at: position,
     slice,
     newIds,
     revision,
-  } satisfies OperationFields<"insertContent">,
+  } satisfies OperationFields["insertContent"],
   splitInline: undefined,
   joinInline: undefined,
   replaceBlocks: undefined,

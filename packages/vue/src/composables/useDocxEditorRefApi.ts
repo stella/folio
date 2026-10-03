@@ -632,12 +632,24 @@ export function useDocxEditorRefApi(opts: UseDocxEditorRefApiOptions): {
       if (!view) {
         return false;
       }
+      if (opts.editor.getCanonicalDocument()) {
+        return opts.editor.resolveCanonicalRevisions(
+          typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+          "accept",
+        );
+      }
       return acceptAIEditRevision(revisionIds)(view.state, view.dispatch);
     },
     rejectAIEditOperation: (revisionIds) => {
       const view = opts.editorView.value;
       if (!view) {
         return false;
+      }
+      if (opts.editor.getCanonicalDocument()) {
+        return opts.editor.resolveCanonicalRevisions(
+          typeof revisionIds === "number" ? [revisionIds] : revisionIds,
+          "reject",
+        );
       }
       return rejectAIEditRevision(revisionIds)(view.state, view.dispatch);
     },

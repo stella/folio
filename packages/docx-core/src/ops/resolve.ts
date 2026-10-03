@@ -34,11 +34,13 @@ import {
   sameOwnFields,
 } from "./leaves";
 import { paragraphLength } from "./offsets";
+import { joinParagraphSeam } from "./inline";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { reachableRowIds, resolveTableRows } from "./resolveTableRows";
 import { isAddedRevision, isTrackedWrapper, reviewFieldsOf, withMarkFormatting } from "./review";
 import {
   DOCUMENT_OP_TYPES,
+  SECTION_BOUNDARY_POLICIES,
   type DocumentOp,
   type OpStory,
   type ParagraphReviewFields,
@@ -464,15 +466,6 @@ const joinOps = (
     );
   }
   const { paragraph } = location;
-  if (paragraph.sectionProperties !== undefined) {
-    return Result.err(
-      refusal(
-        op,
-        DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE,
-        `The mark of ${paraId} ends a section: joining it is a section operation.`,
-      ),
-    );
-  }
   const blocks = blockListAt(body.content, location.list);
   const next = blocks[location.index + 1];
   const empty = paragraphLength(paragraph) === 0;
@@ -505,7 +498,11 @@ const joinOps = (
       const record = edgeRecord(content, edge);
       if (isEmptied && record !== undefined) emptied.add(record);
     }
-    const merged = mergedAtSeam(paragraph.content, next.content, emptied);
+    // Inserted-mark rejection heals split records; deleted-mark acceptance uses
+    // the same plain-run seam rule as a direct paragraph join.
+    const merged = added
+      ? mergedAtSeam(paragraph.content, next.content, emptied)
+      : joinParagraphSeam(paragraph.content, next.content);
     // A record left as it was keeps its identity through the merge; an emptied
     // one folded into its neighbour is rebuilt, and is no longer empty.
     ends.set(nextId, emptiedEndsOf(merged, emptied));
@@ -516,6 +513,9 @@ const joinOps = (
         story,
         expected: [paragraph, next],
         blocks: [survivor],
+        ...(paragraph.sectionProperties === undefined
+          ? {}
+          : { sectionBoundaries: SECTION_BOUNDARY_POLICIES.REPLACE }),
       },
     ]);
   }

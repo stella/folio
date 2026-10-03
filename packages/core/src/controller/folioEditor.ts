@@ -96,6 +96,11 @@ export const createFolioEditor = (deps: FolioEditorDeps): FolioEditor => {
       deps.getEditorApi()?.replaceCanonicalStoryText(options) ?? false,
     getCanonicalDocument: () => deps.getEditorApi()?.getCanonicalDocument() ?? null,
 
+    setCanonicalMode: (mode) => deps.getEditorApi()?.setCanonicalMode(mode) ?? false,
+
+    resolveCanonicalRevisions: (revisionIds, resolution) =>
+      deps.getEditorApi()?.resolveCanonicalRevisions(revisionIds, resolution) ?? false,
+
     focus: () => deps.getEditorApi()?.focus(),
 
     blur: () => deps.getEditorApi()?.blur(),

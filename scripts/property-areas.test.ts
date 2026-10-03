@@ -5,7 +5,9 @@ import ts from "typescript";
 
 import {
   areaOf,
+  propertyBatches,
   propertyFiles,
+  runPropertyBatches,
   selectPropertyFiles,
   shardPropertyFiles,
   touchedAreas,
@@ -169,5 +171,117 @@ describe("property areas", () => {
     expect(selectPropertyFiles(["scripts/container-survival-census.ts"], [rootProperty])).toEqual([
       rootProperty,
     ]);
+  });
+});
+
+describe("property batch execution", () => {
+  test("partitioning retains every selected file exactly once in its owning package", () => {
+    for (const coreCount of [0, 1, 2, 3, 5]) {
+      for (const docxCount of [0, 1, 2, 3, 5]) {
+        for (const scriptCount of [0, 1, 2, 3, 5]) {
+          const selected = [
+            ...Array.from({ length: coreCount }, (_, index) =>
+              makePropertyFile(`packages/core/src/docx/example-${index}.property.test.ts`),
+            ),
+            ...Array.from({ length: docxCount }, (_, index) =>
+              makePropertyFile(`packages/docx-core/src/model/example-${index}.property.test.ts`),
+            ),
+            ...Array.from({ length: scriptCount }, (_, index) => ({
+              area: "scripts",
+              packageDir: ".",
+              file: `scripts/example-${index}.property.test.ts`,
+            })),
+          ];
+          const batches = propertyBatches(selected);
+          const actual = batches.flatMap(({ files }) => files);
+          expect(actual.map(({ file }) => file).toSorted()).toEqual(
+            selected.map(({ file }) => file).toSorted(),
+          );
+          expect(new Set(actual.map(({ file }) => file)).size).toBe(selected.length);
+          for (const batch of batches) {
+            expect(batch.files.length).toBeGreaterThan(0);
+            expect(batch.files.every(({ packageDir }) => packageDir === batch.packageDir)).toBe(
+              true,
+            );
+          }
+          for (const packageDir of new Set(selected.map((file) => file.packageDir))) {
+            const owned = batches.filter((batch) => batch.packageDir === packageDir);
+            expect(owned.length).toBeLessThanOrEqual(2);
+            const sizes = owned.map(({ files }) => files.length);
+            expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThanOrEqual(1);
+          }
+          if (selected.length === 0) expect(batches).toEqual([]);
+        }
+      }
+    }
+  });
+
+  test("an empty schedule never invokes the runner", async () => {
+    let calls = 0;
+    expect(
+      await runPropertyBatches([], async () => {
+        calls += 1;
+        return 0;
+      }),
+    ).toEqual([]);
+    expect(calls).toBe(0);
+  });
+
+  test("two workers drain every batch and retain failures while another batch remains blocked", async () => {
+    const batches = propertyBatches([
+      ...ALL,
+      makePropertyFile("packages/docx-core/src/model/extra.property.test.ts"),
+      { area: "scripts", packageDir: ".", file: "scripts/extra.property.test.ts" },
+    ]);
+    const releases = new Map<(typeof batches)[number], (code: number) => void>();
+    const active = new Set<(typeof batches)[number]>();
+    const completed = new Set<(typeof batches)[number]>();
+    let peak = 0;
+    const issuedCodes: number[] = [];
+    const execution = runPropertyBatches(batches, (batch) => {
+      expect(releases.has(batch)).toBe(false);
+      active.add(batch);
+      peak = Math.max(peak, active.size);
+      expect(active.size).toBeLessThanOrEqual(2);
+      return new Promise<number>((resolve) => {
+        releases.set(batch, (code) => {
+          expect(completed.has(batch)).toBe(false);
+          completed.add(batch);
+          issuedCodes.push(code);
+          active.delete(batch);
+          resolve(code);
+        });
+      });
+    });
+    await Promise.resolve();
+    expect(releases.size).toBe(2);
+    expect(active.size).toBe(2);
+    const first = releases.entries().next().value;
+    if (first === undefined) throw new TypeError("Expected the first scheduled batch");
+    first[1](17);
+    await Promise.resolve();
+    await Promise.resolve();
+    // A completed worker picks up more work while the other first-wave batch
+    // is still blocked. This catches both serial execution and unbounded starts.
+    expect(releases.size).toBe(3);
+    expect(active.size).toBe(2);
+    for (let step = 0; step < batches.length; step += 1) {
+      for (const [batch, release] of releases) {
+        if (!completed.has(batch)) release(batches.indexOf(batch) === 2 ? 9 : 0);
+      }
+      await Promise.resolve();
+      await Promise.resolve();
+    }
+    expect(completed.size).toBe(batches.length);
+    expect(releases.size).toBe(batches.length);
+    expect(active.size).toBe(0);
+    expect(peak).toBe(2);
+    const codes = await execution;
+    expect(codes).toHaveLength(batches.length);
+    expect(codes).toContain(17);
+    expect(codes).toContain(9);
+    expect(codes.toSorted((left, right) => left - right)).toEqual(
+      issuedCodes.toSorted((left, right) => left - right),
+    );
   });
 });
