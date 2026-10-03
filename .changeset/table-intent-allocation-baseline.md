@@ -2,4 +2,4 @@
 "@stll/docx-core": patch
 ---
 
-Trim table intent identity allocations against their input document.
+Budget final-column deletion identities from table content and trim unused table intent allocations.

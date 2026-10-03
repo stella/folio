@@ -109,6 +109,9 @@ const intentEndpoints = (intent: EditorIntentAllocation) => {
   }
 };
 
+const PARAGRAPH_REVISION_DEMAND = 3;
+const leafRevisionDemand = (ancestorCount: number) => 4 * (1 + ancestorCount);
+
 /** Cache only immutable document versions; never retain a retired version strongly. */
 export const createEditorIntentIdAllocator = () => {
   const readCensus = createCensusReader();
@@ -131,14 +134,14 @@ export const createEditorIntentIdAllocator = () => {
     let demand = 1;
     const selected = first < 0 || last < first ? [] : locations.slice(first, last + 1);
     for (const { paragraph } of intent.type === "table" ? [] : selected) {
-      demand += 3;
+      demand += PARAGRAPH_REVISION_DEMAND;
       const blockId = idKey(paragraph.paraId ?? "");
       for (const span of leafSpans(paragraph.content)) {
         if (blockId === idKey(fromId) && fromOffset !== undefined && span.after.offset < fromOffset)
           continue;
         if (blockId === idKey(toId) && toOffset !== undefined && span.before.offset > toOffset)
           continue;
-        demand += 4 * (1 + span.ancestors.length);
+        demand += leafRevisionDemand(span.ancestors.length);
       }
     }
     const fresh = (occupied: ReadonlySet<number>, count: number) => {
@@ -155,9 +158,22 @@ export const createEditorIntentIdAllocator = () => {
       if (located.isOk()) {
         switch (op.type) {
           case DOCUMENT_OP_TYPES.INSERT_COLUMN:
-          case DOCUMENT_OP_TYPES.DELETE_COLUMN:
             demand = located.value.table.rows.length + 2;
             break;
+          case DOCUMENT_OP_TYPES.DELETE_COLUMN: {
+            const table = located.value.table;
+            demand = table.rows.length + 2;
+            const grid = tableGrid(table, op.type);
+            if (op.column !== 0 || grid.isErr() || grid.value.width !== 1) break;
+            // Removing the final column tracks the whole table, including paragraph
+            // marks and every inline wrapper identity, rather than just its rows.
+            for (const { paragraph } of storyParagraphs({ content: [table] })) {
+              demand += PARAGRAPH_REVISION_DEMAND;
+              for (const span of leafSpans(paragraph.content))
+                demand += leafRevisionDemand(span.ancestors.length);
+            }
+            break;
+          }
           case DOCUMENT_OP_TYPES.MERGE_CELLS:
             demand = (op.bottom - op.top + 1) * 2;
             break;

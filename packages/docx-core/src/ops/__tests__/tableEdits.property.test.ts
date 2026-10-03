@@ -2,7 +2,14 @@
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
-import type { BlockContent, Document, Paragraph, Table, TableCell } from "../../model/document";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Run,
+  Table,
+  TableCell,
+} from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
 import {
   allocateEditorIntentIds,
@@ -210,6 +217,108 @@ const idsForInsert = (table: Table, column: number, first: number) => {
 const target = (blockId: string) => ({ story: OP_STORIES.MAIN, blockId });
 
 describe("semantic table edit properties", () => {
+  test("final-column intent allocation covers every tracked paragraph and inline span", () => {
+    // The general edit sequence keeps at least three columns, so it never exercises
+    // the whole-table tracking path reached by deleting the final column.
+    const cellContent = fc.array(
+      fc.array(
+        fc.record({
+          text: fc.constantFrom("x", "é😀", "multiple words"),
+          bold: fc.boolean(),
+          hyperlink: fc.boolean(),
+        }),
+        { minLength: 0, maxLength: 5 },
+      ),
+      { minLength: 1, maxLength: 4 },
+    );
+    assertProperty(
+      fc.property(
+        fc.array(cellContent, { minLength: 2, maxLength: 4 }),
+        fc.boolean(),
+        fc.boolean(),
+        (rows, nested, explicitGrid) => {
+          const f = fixture({
+            width: 1,
+            height: rows.length,
+            variant: 0,
+            nested,
+            empty: true,
+            explicitGrid,
+          });
+          const table = tableOf(f.document, nested);
+          let next = 0x100;
+          const paragraphs = rows.map((content) =>
+            content.map(
+              (spans): Paragraph => ({
+                type: "paragraph",
+                paraId: id(next++),
+                content: spans.map(({ text, bold, hyperlink }) => {
+                  const run = {
+                    type: "run",
+                    formatting: { bold },
+                    content: [{ type: "text", text }],
+                  } satisfies Run;
+                  return hyperlink
+                    ? { type: "hyperlink", href: "https://example.org", children: [run] }
+                    : run;
+                }),
+              }),
+            ),
+          );
+          for (const [rowIndex, row] of table.rows.entries()) {
+            const cell = row.cells.at(0);
+            const content = paragraphs.at(rowIndex);
+            if (!cell || !content) throw new Error("Generated cell missing.");
+            cell.content = content;
+          }
+          const intent = {
+            type: "table",
+            operation: {
+              type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+              ...target(targetOf(table)),
+              column: 0,
+            },
+          } as const;
+          const allocation = allocateEditorIntentIds(f.document, intent);
+          const direct = compileEditorIntent(f.document, {
+            intent,
+            mode: { type: "editing", newIds: allocation.newIds },
+          });
+          const tracked = compileEditorIntent(f.document, {
+            intent,
+            mode: {
+              type: "suggesting",
+              revision: {
+                id: allocation.revisionId,
+                author: "Reviewer",
+                date: "2026-10-02T10:00:00Z",
+              },
+              newIds: allocation.newIds,
+            },
+          });
+          if (direct.isErr()) throw direct.error;
+          if (tracked.isErr()) throw tracked.error;
+          const directOp = direct.value.ops.at(0);
+          const trackedOp = tracked.value.ops.at(0);
+          if (!directOp || !trackedOp) throw new Error("Compiled deletion missing.");
+          const deleted = applied(f.document, directOp);
+          const suggested = applied(f.document, trackedOp);
+          expect(suggested.revisions.length).toBeGreaterThanOrEqual(rows.length);
+          for (const decision of ["accept", "reject"] as const) {
+            const resolved = applyDocumentOp(suggested.document, {
+              type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+              story: OP_STORIES.MAIN,
+              revisionIds: suggested.revisions,
+              decision,
+            });
+            if (resolved.isErr()) throw resolved.error;
+            exact(resolved.value.document, decision === "accept" ? deleted.document : f.document);
+          }
+        },
+      ),
+      { numRuns: NUM_RUNS },
+    );
+  });
   test("generated column edits change logical width and preserve surviving slot content", () => {
     // Wrong implementations that merely change tblGrid pass width checks; surviving-slot identity closes that gap.
     assertProperty(
