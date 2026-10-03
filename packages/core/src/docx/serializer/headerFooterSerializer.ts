@@ -1,3 +1,4 @@
+import type { SaveDiagnosticOptions } from "../saveDiagnostics";
 /**
  * Header/Footer Serializer - Serialize headers/footers to OOXML XML
  *
@@ -11,7 +12,13 @@
  */
 
 import type { BlockContent, HeaderFooter, Watermark } from "../../types/document";
-import { getHeaderFooterVerbatimXml, canReplayHeaderFooterVerbatim } from "../headerFooterVerbatim";
+import {
+  getHeaderFooterVerbatimXml,
+  canReplayHeaderFooterVerbatim,
+  canReplayHeaderFooterBlocks,
+  getHeaderFooterSourceBaseline,
+} from "../headerFooterVerbatim";
+import { buildStoryBlockReplay } from "../storyBlockReplay";
 import { isEmptyParagraph } from "../paragraphParser";
 import { captureVerbatimXml } from "../verbatimCapture";
 import { getLocalName, parseXmlDocument } from "../xmlParser";
@@ -90,9 +97,18 @@ function serializeBlock(block: BlockContent): string {
  *   document bound keeps its URI
  * @returns Complete XML string for header*.xml or footer*.xml
  */
-export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): string {
+type HeaderFooterSerializeOptions = SourcePart &
+  SaveDiagnosticOptions & { originalBuffer?: ArrayBuffer | undefined };
+
+export function serializeHeaderFooter(
+  hf: HeaderFooter,
+  source?: HeaderFooterSerializeOptions,
+): string {
+  const baseline = getHeaderFooterSourceBaseline(hf, source?.originalBuffer);
+  if (baseline.type === "mismatch")
+    source?.onDiagnostic?.({ type: "sourceReplayMismatch", part: source.path });
   const verbatim = getHeaderFooterVerbatimXml(hf);
-  if (verbatim && canReplayHeaderFooterVerbatim(hf)) {
+  if (baseline.type === "captured" && verbatim && canReplayHeaderFooterVerbatim(hf)) {
     return verbatim;
   }
 
@@ -139,7 +155,7 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
   // back. Synthesising a paragraph here would add a line to a header the author
   // left blank, on every rebuild, and only on the rebuild path — verbatim
   // replay returns the part as written.
-  return (
+  const serializedXml =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     serializePartElement({
       partPath: source?.path ?? `word/${hf.type}.xml`,
@@ -147,8 +163,21 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
       baselinePrefixes: HEADER_FOOTER_BASELINE_PREFIXES,
       sourceBindings: source?.bindings,
       body: contentXml,
-    })
-  );
+    });
+  if (
+    baseline.type === "captured" &&
+    verbatim &&
+    canReplayHeaderFooterBlocks(hf, baseline.content)
+  ) {
+    const replayed = buildStoryBlockReplay({
+      sourceXml: verbatim,
+      baselineContent: baseline.content,
+      currentContent: hf.content,
+      serializedXml,
+    });
+    if (replayed !== null) return replayed;
+  }
+  return serializedXml;
 }
 
 type SerializeRawWatermarkIntoHostOptions = {

@@ -8,6 +8,8 @@ import { propertyConfig, propertyTestTimeout } from "../../../../test/property-t
 
 import {
   parseStreamingXml,
+  parseStreamingXmlWithSourceRanges,
+  getXmlSourceRange,
   rewriteStreamingXmlDecimalAttributes,
   scanStreamingXmlNumericIdAttributes,
 } from "./streamingXmlParser";
@@ -106,6 +108,62 @@ const XML_CASES = [
 ] as const;
 
 describe("parseStreamingXml", () => {
+  test("source ranges are opt-in and exact across namespace profiles and nested containers", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom("w", "alias", ""),
+        fc.constantFrom(
+          "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+          "http://purl.oclc.org/ooxml/wordprocessingml/main",
+        ),
+        fc.constantFrom(" ", "\n", "\r\n"),
+        fc.constantFrom('"', "'"),
+        (prefix, uri, whitespace, quote) => {
+          const name = (local: string) => (prefix ? `${prefix}:${local}` : local);
+          const namespace = prefix ? `xmlns:${prefix}` : "xmlns";
+          const text = `<${name("t")}>é😀<!--nested comment--><![CDATA[<raw>&]]></${name("t")}>`;
+          const run = `<${name("r")}>${text}</${name("r")}>`;
+          const paragraph = `<${name("p")} data=${quote}a>b${quote}>${run}</${name("p")}>`;
+          const empty = `<${name("p")}${whitespace}/>`;
+          const cell = `<${name("tc")}>${paragraph}${whitespace}${empty}</${name("tc")}>`;
+          const row = `<${name("tr")}>${cell}</${name("tr")}>`;
+          const table = `<${name("tbl")}>${row}</${name("tbl")}>`;
+          const rebound = `<${name("other")} ${namespace}=${quote}urn:other${quote}/>`;
+          const root = `<${name("hdr")} ${namespace}=${quote}${uri}${quote}>${whitespace}<!--root comment-->${table}${rebound}</${name("hdr")}>`;
+          const xml = `<?xml version="1.0"?>${whitespace}${root}${whitespace}`;
+          const ordinary = parseStreamingXml(xml);
+          const tracked = parseStreamingXmlWithSourceRanges(xml);
+          expect(ordinary.status).toBe("parsed");
+          expect(tracked.status).toBe("parsed");
+          if (ordinary.status !== "parsed" || tracked.status !== "parsed") return;
+          expect(describeTree(tracked.value)).toBe(describeTree(ordinary.value));
+          const visitOrdinary = (element: XmlElement): void => {
+            expect(getXmlSourceRange(element)).toBeUndefined();
+            for (const child of element.elements ?? []) visitOrdinary(child);
+          };
+          visitOrdinary(ordinary.value);
+          const expected = [root, table, row, cell, paragraph, run, text, empty, rebound];
+          const actual: string[] = [];
+          const visitTracked = (element: XmlElement): void => {
+            if (element.type === "element") {
+              const range = getXmlSourceRange(element);
+              expect(range).toBeDefined();
+              if (range) actual.push(xml.slice(range.start, range.end));
+              expect(getNamespaceUri(element)).toBe(
+                element.name === name("other") ? "urn:other" : uri,
+              );
+            } else {
+              expect(getXmlSourceRange(element)).toBeUndefined();
+            }
+            for (const child of element.elements ?? []) visitTracked(child);
+          };
+          visitTracked(tracked.value);
+          expect(actual).toEqual(expected);
+        },
+      ),
+      propertyConfig(),
+    );
+  });
   test("identity scans preserve namespace and source spans without retaining content", () => {
     fc.assert(
       fc.property(
