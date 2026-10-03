@@ -1145,13 +1145,22 @@ test("tracked paragraph patches and joins keep one pending property review and i
       }),
     );
     for (const nextAlignment of ["center", "right", "end"] as const) {
-      document = applied(document, {
+      const previous = blocks(document).at(1);
+      const patch = applied(document, {
         type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
         story: OP_STORIES.MAIN,
         blockId: "00000002",
         patch: { alignment: nextAlignment },
         revision: stamp(1),
-      }).document;
+      });
+      if (
+        previous?.type === "paragraph" &&
+        previous.formatting?.alignment !== nextAlignment &&
+        previous.propertyChanges?.at(0)?.info.author === "Other"
+      ) {
+        expect(patch.revisions).toEqual([7]);
+      }
+      document = patch.document;
     }
     const joined = applied(document, {
       type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,

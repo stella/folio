@@ -2207,7 +2207,27 @@ const recordedRevisions = (
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = new Set(packageIdentityKeys(before.package));
-  const revisions = stampedRevisionIds(paragraphs, stamp, known);
+  const priorParagraphChanges = new Map(
+    documentStories(before)
+      .flatMap((story) => storyParagraphs(storyBody(before, story)))
+      .flatMap(({ paragraph }) =>
+        (paragraph.propertyChanges ?? []).map(({ info }) => [info.id, info] as const),
+      ),
+  );
+  const revisions = paragraphs.flatMap((paragraph) => {
+    const folded = (paragraph.propertyChanges ?? []).flatMap(({ info }) => {
+      const prior = priorParagraphChanges.get(info.id);
+      // A fold attributes the existing physical review to this edit without allocating an id.
+      return prior !== undefined &&
+        !structurallyEqual(info, prior) &&
+        info.author === stamp.author &&
+        info.date === stamp.date &&
+        info.initials === stamp.initials
+        ? [info.id]
+        : [];
+    });
+    return folded.concat(stampedRevisionIds([paragraph], stamp, known));
+  });
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
     ...documentStories(edit.document)
@@ -2295,10 +2315,12 @@ export const applyDocumentOp = (
   }
   // Check all operation outputs before trusting them, including caller-supplied block/review records.
   if (hasMultipleParagraphPropertyChanges(edit.document)) {
-    return refuse(
-      op,
-      DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
-      "A paragraph cannot carry more than one property change.",
+    return Result.err(
+      refusal(
+        op,
+        DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        "A paragraph cannot carry more than one property change.",
+      ),
     );
   }
   meetsContract(edit.document);

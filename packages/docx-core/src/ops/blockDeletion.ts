@@ -123,11 +123,7 @@ export const deleteBlocks = ({
       },
     });
   }
-  if (
-    affected.some(
-      ({ pPrMark, propertyChanges }) => pPrMark !== undefined || (propertyChanges?.length ?? 0) > 0,
-    )
-  ) {
+  if (affected.some(({ pPrMark }) => pPrMark !== undefined)) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       "Deletion would overwrite a paragraph review record.",
