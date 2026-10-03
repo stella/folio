@@ -943,6 +943,11 @@
       "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
       "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1446885207,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::a sequence's inverses in reverse, and a batch's, restore the document exactly": [
@@ -1253,11 +1258,6 @@
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
       "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
       "date": "2026-10-02"
-    },
-    {
-      "seed": 1446885207,
-      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
-      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/rangePlanning.property.test.ts::cross-paragraph deletion and replacement plans satisfy generated review laws": [
@@ -1323,22 +1323,6 @@
     {
       "seed": 1012818371,
       "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
-      "date": "2026-10-03"
-    }
-  ],
-  "packages/core/src/prosemirror/conversion/modelFixedPoint.property.test.ts::generated symbol-font bullets and folded LISTNUM fields preserve parsed rendering": [
-    {
-      "seed": -1715044072,
-      "path": "6:0:0:1:1:1:1:1:1:1:1",
-      "note": "Retain generated source rendering and exact rejection behavior reported by stack CI.",
-      "date": "2026-10-03"
-    }
-  ],
-  "packages/core/src/controller/canonicalStructure.test.ts::generated structural sequences preserve text, identities, projection and exact history selections": [
-    {
-      "seed": -1798387597,
-      "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
-      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
     }
   ],
