@@ -28,7 +28,34 @@ type ParagraphPropertySource = Readonly<{
   [paragraphPropertySourceEmissionFingerprint]: string;
 }>;
 
-const paragraphPropertySources = new WeakMap<Paragraph, ParagraphPropertySource>();
+const paragraphPropertyCapture = Symbol("paragraphPropertyCapture");
+type ParagraphPropertyCapture = Readonly<{
+  source: ParagraphPropertySource;
+  owner: Paragraph;
+}>;
+const paragraphPropertyCaptures = new WeakMap<object, ParagraphPropertyCapture>();
+
+// Opaque handles follow immutable model operations without giving copies a
+// durable paragraph identity. JSON and structuredClone omit this private symbol.
+const captureForParagraph = (paragraph: Paragraph): ParagraphPropertyCapture | undefined => {
+  const handle: unknown = Object.getOwnPropertyDescriptor(
+    paragraph,
+    paragraphPropertyCapture,
+  )?.value;
+  return typeof handle === "object" && handle !== null
+    ? paragraphPropertyCaptures.get(handle)
+    : paragraphPropertyCaptures.get(paragraph);
+};
+
+const attachParagraphCapture = (paragraph: Paragraph, capture: ParagraphPropertyCapture): void => {
+  const handle = Object.freeze({});
+  paragraphPropertyCaptures.set(handle, capture);
+  Object.defineProperty(paragraph, paragraphPropertyCapture, {
+    value: handle,
+    enumerable: true,
+    configurable: true,
+  });
+};
 
 const paragraphFormattingEmissionFingerprint = (
   emission: ModeledParagraphFormattingEmission,
@@ -46,7 +73,6 @@ const ownedParagraphPropertySource = (
   } satisfies ParagraphPropertySource);
 };
 
-const paragraphPropertySourceOwners = new WeakMap<Paragraph, Paragraph>();
 const proseParagraphSourceOwners = new WeakMap<PMNode, Paragraph>();
 const paragraphPropertySourceCandidates = new WeakMap<Paragraph, Paragraph>();
 const paragraphPropertySourceTransferIds = new WeakMap<Paragraph, string>();
@@ -203,13 +229,15 @@ export const visitDocumentStoryParagraphs = (
 };
 
 export const assignParagraphPropertySource = (paragraph: Paragraph, xml: string): void => {
-  paragraphPropertySources.set(paragraph, ownedParagraphPropertySource(paragraph, xml));
-  paragraphPropertySourceOwners.set(paragraph, paragraph);
+  attachParagraphCapture(paragraph, {
+    source: ownedParagraphPropertySource(paragraph, xml),
+    owner: paragraph,
+  });
 };
 
 export const getParagraphPropertySource = (
   paragraph: Paragraph,
-): ParagraphPropertySource | undefined => paragraphPropertySources.get(paragraph);
+): ParagraphPropertySource | undefined => captureForParagraph(paragraph)?.source;
 
 export const paragraphPropertySourceMatchesEmission = (
   source: ParagraphPropertySource,
@@ -220,12 +248,15 @@ export const paragraphPropertySourceMatchesEmission = (
 
 /** Copy the captured `w:pPr` without claiming the source paragraph's durable identity. */
 export const copyParagraphPropertyCapture = (target: Paragraph, source: Paragraph): void => {
-  const propertySource = paragraphPropertySources.get(source);
-  if (propertySource) {
-    const copiedSource = Object.freeze({ ...propertySource });
-    paragraphPropertySources.set(target, copiedSource);
-    paragraphPropertySourceOwners.set(target, paragraphPropertySourceOwners.get(source) ?? source);
-  }
+  const capture = captureForParagraph(source);
+  if (capture) attachParagraphCapture(target, capture);
+};
+
+const copyParagraphCaptureForTransport = (target: Paragraph, source: Paragraph): void => {
+  // Transport graphs contain string keys only; keep this in-memory capture
+  // off the wire while the explicit token carries its durable identity.
+  const capture = captureForParagraph(source);
+  if (capture) paragraphPropertyCaptures.set(target, capture);
 };
 
 export const copyParagraphPropertySource = (target: Paragraph, source: Paragraph): void => {
@@ -302,7 +333,7 @@ export const paragraphPropertySourceBelongsToDocument = (
   paragraph: Paragraph,
   document: Document,
 ): boolean => {
-  const owner = paragraphPropertySourceOwners.get(paragraph);
+  const owner = captureForParagraph(paragraph)?.owner;
   const binding = getDocumentParagraphPropertySourceBinding(document);
   return owner !== undefined && binding !== undefined && binding.sourceOwners.has(owner);
 };
@@ -346,7 +377,11 @@ export const cloneParagraphWithPropertySource = (
 export const cloneParagraphWithoutPropertySource = (
   paragraph: Paragraph,
   overrides: ParagraphCloneOverrides,
-): Paragraph => ({ ...paragraph, ...overrides });
+): Paragraph => {
+  const cloned = { ...paragraph, ...overrides };
+  Reflect.deleteProperty(cloned, paragraphPropertyCapture);
+  return cloned;
+};
 
 const paragraphsIn = (document: Document): Paragraph[] => {
   const paragraphs: Paragraph[] = [];
@@ -1061,7 +1096,7 @@ export const transportTableCellsWithParagraphPropertySources = (
     if (!target) {
       panic("The cloned table cells lost a paragraph owner.");
     }
-    copyParagraphPropertyCapture(target, source);
+    copyParagraphCaptureForTransport(target, source);
     const inspection = inspectTableCellParagraphPropertySourceBinding(source);
     setTableCellParagraphPropertySourceBinding(
       target,
@@ -1134,7 +1169,7 @@ export const cloneTableCellsWithParagraphPropertyCaptures = (
     if (!target) {
       panic("The cloned table cells lost a paragraph owner.");
     }
-    copyParagraphPropertyCapture(target, sourceEntry.paragraph);
+    copyParagraphCaptureForTransport(target, sourceEntry.paragraph);
     setTableCellParagraphPropertySourceBinding(target, { type: "authored" });
   }
   return cloned;
@@ -1144,12 +1179,8 @@ export const linkProseParagraphPropertySource = (
   proseParagraph: PMNode,
   sourceParagraph: Paragraph,
 ): void => {
-  if (paragraphPropertySources.has(sourceParagraph)) {
-    proseParagraphSourceOwners.set(
-      proseParagraph,
-      paragraphPropertySourceOwners.get(sourceParagraph) ?? sourceParagraph,
-    );
-  }
+  const capture = captureForParagraph(sourceParagraph);
+  if (capture) proseParagraphSourceOwners.set(proseParagraph, capture.owner);
 };
 
 type CreateProseParagraphOptions = {

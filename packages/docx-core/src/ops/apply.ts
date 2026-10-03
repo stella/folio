@@ -1,3 +1,4 @@
+import { cloneModel } from "./modelClone";
 import { noteContentWithAutomaticMark } from "./noteMarks";
 import { applyStoryLifecycle, storyLifecycleEdit } from "./storyLifecycle";
 import { documentStories, findStoryBody, sameStory } from "./stories";
@@ -705,7 +706,7 @@ const holdsEmptyRecord = (nodes: readonly InlineNode[]): boolean =>
 const insertContent = (document: Document, op: InsertContentOp): Applied => {
   // The slice's records are new records wherever they came from: copies, so
   // one that repeats a record still in the document is told apart from it.
-  const slice = { ...op.slice, content: structuredClone(op.slice.content) };
+  const slice = { ...op.slice, content: cloneModel(op.slice.content) };
   if (slice.content.length === 0 || holdsEmptyRecord(slice.content)) {
     return refuse(
       op,
@@ -1849,7 +1850,7 @@ const setParagraphReview = (document: Document, op: SetParagraphReviewOp): Appli
       `${op.blockId} states other review fields than expected.`,
     );
   }
-  const review = structuredClone(op.review);
+  const review = cloneModel(op.review);
   const next = withReviewFields(paragraph, review);
   if (structurallyEqual(next, paragraph)) {
     return unchanged(document);
@@ -1905,7 +1906,7 @@ const replaceInline = (document: Document, op: ReplaceInlineOp): Applied => {
       `${op.blockId} holds other content than expected.`,
     );
   }
-  const content = structuredClone(op.content);
+  const content = cloneModel(op.content);
   if (holdsEmptyRecord(content)) {
     return refuse(
       op,
@@ -1983,7 +1984,7 @@ const editNote = (document: Document, op: AddNoteOp | RemoveNoteOp): Applied => 
         DOCUMENT_OP_REFUSAL_REASONS.EMPTY_CONTENT,
         "A note needs an addressable paragraph.",
       );
-    const note = structuredClone(op.note);
+    const note = cloneModel(op.note);
     const paragraphs = storyParagraphs({ content: note.content });
     const markers = paragraphs
       .flatMap(({ paragraph }) => leafSpans(paragraph.content))
