@@ -8,7 +8,15 @@ type ParseXmlResult = { status: "parsed"; value: XmlElement } | { status: "unsup
 type ElementFrame = {
   element: XmlElement;
   name: string;
+  start?: number;
 };
+
+type XmlSourceRange = { readonly start: number; readonly end: number };
+const sourceRanges = new WeakMap<XmlElement, XmlSourceRange>();
+
+/** Exact element source ranges, available only from the opt-in source-range reader. */
+export const getXmlSourceRange = (element: XmlElement): XmlSourceRange | undefined =>
+  sourceRanges.get(element);
 
 const BUILT_IN_ENTITIES = {
   amp: "&",
@@ -42,7 +50,7 @@ type StreamingXmlOptions = {
   xml: string;
   inheritedNamespaceScope?: XmlNamespaceScope;
 } & (
-  | { mode: "tree"; visitOpenTag?: OpenTagScanVisitor }
+  | { mode: "tree"; visitOpenTag?: OpenTagScanVisitor; sourceRanges?: "tracked" }
   | {
       mode: "attributes";
       visitOpenTag: OpenTagVisitor;
@@ -141,6 +149,9 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
       if (!frame || frame.name !== name) {
         return { status: "unsupported" };
       }
+      if (frame.start !== undefined) {
+        sourceRanges.set(frame.element, { start: frame.start, end: close + 1 });
+      }
       cursor = close + 1;
       mergeAdjacentText = false;
       continue;
@@ -185,7 +196,13 @@ const parseStreamingXmlInternal = (options: StreamingXmlOptions): InternalParseX
       if (stack.length >= FOLIO_XML_RESOURCE_LIMITS.maxDepth) {
         return { status: "unsupported" };
       }
-      stack.push({ element: parsedTag.element, name: parsedTag.name });
+      stack.push(
+        options.mode === "tree" && options.sourceRanges === "tracked"
+          ? { element: parsedTag.element, name: parsedTag.name, start: open }
+          : { element: parsedTag.element, name: parsedTag.name },
+      );
+    } else if (options.mode === "tree" && options.sourceRanges === "tracked") {
+      sourceRanges.set(parsedTag.element, { start: open, end: close + 1 });
     }
     cursor = close + 1;
     mergeAdjacentText = false;
@@ -206,6 +223,22 @@ export const parseStreamingXml = (
   inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
 ): ParseXmlResult => {
   const parsed = parseStreamingXmlInternal({ xml, mode: "tree", inheritedNamespaceScope });
+  return parsed.status === "parsed"
+    ? { status: "parsed", value: parsed.value }
+    : { status: "unsupported" };
+};
+
+/** Retain source spans for every element without changing the parsed namespace tree. */
+export const parseStreamingXmlWithSourceRanges = (
+  xml: string,
+  inheritedNamespaceScope: XmlNamespaceScope = EMPTY_NAMESPACE_SCOPE,
+): ParseXmlResult => {
+  const parsed = parseStreamingXmlInternal({
+    xml,
+    mode: "tree",
+    inheritedNamespaceScope,
+    sourceRanges: "tracked",
+  });
   return parsed.status === "parsed"
     ? { status: "parsed", value: parsed.value }
     : { status: "unsupported" };

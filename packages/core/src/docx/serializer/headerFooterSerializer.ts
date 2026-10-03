@@ -11,7 +11,13 @@
  */
 
 import type { BlockContent, HeaderFooter, Watermark } from "../../types/document";
-import { getHeaderFooterVerbatimXml, canReplayHeaderFooterVerbatim } from "../headerFooterVerbatim";
+import {
+  getHeaderFooterVerbatimXml,
+  canReplayHeaderFooterVerbatim,
+  canReplayHeaderFooterBlocks,
+  getHeaderFooterBaselineContent,
+} from "../headerFooterVerbatim";
+import { buildStoryBlockReplay } from "../storyBlockReplay";
 import { isEmptyParagraph } from "../paragraphParser";
 import { captureVerbatimXml } from "../verbatimCapture";
 import { getLocalName, parseXmlDocument } from "../xmlParser";
@@ -139,7 +145,7 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
   // back. Synthesising a paragraph here would add a line to a header the author
   // left blank, on every rebuild, and only on the rebuild path — verbatim
   // replay returns the part as written.
-  return (
+  const serializedXml =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
     serializePartElement({
       partPath: source?.path ?? `word/${hf.type}.xml`,
@@ -147,8 +153,18 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
       baselinePrefixes: HEADER_FOOTER_BASELINE_PREFIXES,
       sourceBindings: source?.bindings,
       body: contentXml,
-    })
-  );
+    });
+  const baselineContent = getHeaderFooterBaselineContent(hf);
+  if (verbatim && baselineContent && canReplayHeaderFooterBlocks(hf)) {
+    const replayed = buildStoryBlockReplay({
+      sourceXml: verbatim,
+      baselineContent,
+      currentContent: hf.content,
+      serializedXml,
+    });
+    if (replayed !== null) return replayed;
+  }
+  return serializedXml;
 }
 
 type SerializeRawWatermarkIntoHostOptions = {

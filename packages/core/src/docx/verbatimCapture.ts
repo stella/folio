@@ -16,7 +16,9 @@
  * and a fragment that carries no Strict namespace passes through byte for byte.
  */
 
-import { TaggedError } from "better-result";
+import { panic, TaggedError } from "better-result";
+import { DOCX_CONFORMANCE_CLASSES } from "@stll/docx-core/model";
+import type { DocxConformanceClass } from "../types/document";
 
 import { assertXmlResourceLimits } from "./xmlResourceLimits";
 import { getDocxXmlSafetyIssue } from "./xmlSafety";
@@ -36,12 +38,15 @@ import { roundHalfAwayFromZero, universalMeasureAs } from "./universalMeasure";
 import {
   cloneElement,
   elementToXml,
+  getAttributeByNamespaceUri,
   getChildElements,
   getLocalName,
   getNamespacePrefix,
   NAMESPACES,
   OOXML_NAMESPACE_SCOPE,
+  WORDPROCESSINGML_NAMESPACE_URIS,
   parseXml,
+  resolveAttributeNamespaceUri,
   type XmlElement,
   type XmlNamespaceScope,
 } from "./xmlParser";
@@ -142,10 +147,27 @@ const originOf = (element: XmlElement, inherited: FragmentOrigin): FragmentOrigi
   return TRANSITIONAL_URIS.has(uri) ? "transitional" : inherited;
 };
 
+/** A same-local-name extension attribute is not a slot in the element's vocabulary. */
+const attributeSlotEncoding = (element: XmlElement, name: string): SlotEncoding | undefined => {
+  if (getNamespacePrefix(name) !== null) {
+    const attributeUri = resolveAttributeNamespaceUri(element, name);
+    if (
+      attributeUri === undefined ||
+      element.namespaceUri === undefined ||
+      toTransitionalNamespaceUri(attributeUri) !== toTransitionalNamespaceUri(element.namespaceUri)
+    )
+      return undefined;
+  }
+  return transitionalSlotEncoding(
+    element.namespaceUri,
+    getLocalName(element.name),
+    getLocalName(name),
+  );
+};
+
 const convertAttributes = (
   element: XmlElement,
   namespaceUri: string,
-  localName: string,
   convertValues: boolean,
 ): Record<string, string | number | undefined> | undefined => {
   const attributes = element.attributes ?? {};
@@ -158,11 +180,7 @@ const convertAttributes = (
     if (name === "xmlns" || name.startsWith("xmlns:")) {
       next = toTransitionalNamespaceUri(raw);
     } else if (convertValues) {
-      next = transitionalValue(
-        raw,
-        namespaceUri,
-        transitionalSlotEncoding(element.namespaceUri, localName, getLocalName(name)),
-      );
+      next = transitionalValue(raw, namespaceUri, attributeSlotEncoding(element, name));
     }
     if (next === raw) {
       continue;
@@ -188,7 +206,7 @@ const toTransitional = (element: XmlElement, inherited: FragmentOrigin): XmlElem
   const textEncoding = transitionalSlotEncoding(element.namespaceUri, localName);
 
   const attributes = element.attributes
-    ? convertAttributes(element, namespaceUri, localName, origin === "strict")
+    ? convertAttributes(element, namespaceUri, origin === "strict")
     : undefined;
 
   let elements: XmlElement[] | undefined;
@@ -697,4 +715,67 @@ export const createCapturedXmlSanitizer = (
     cachedCharacters += characters;
     return sanitized;
   };
+};
+
+const STRICT_BY_TRANSITIONAL = new Map(
+  [...TRANSITIONAL_NAMESPACE_BY_STRICT_URI].map(([strict, transitional]) => [transitional, strict]),
+);
+
+const strictPercentage = (value: string, unit: keyof typeof NUMBERS_PER_PERCENT): string =>
+  /^-?\d+(?:\.\d+)?$/u.test(value) ? `${Number(value) / NUMBERS_PER_PERCENT[unit]}%` : value;
+
+/** Translate generated markup by namespace/slot, never by a user-text replacement. */
+const strictElement = (element: XmlElement): void => {
+  const localName = getLocalName(element.name);
+  for (const [name, value] of Object.entries(element.attributes ?? {})) {
+    if (typeof value !== "string") continue;
+    if (name === "xmlns" || name.startsWith("xmlns:")) {
+      element.attributes![name] = STRICT_BY_TRANSITIONAL.get(value) ?? value;
+      continue;
+    }
+    // Graphic payload URIs name the vocabulary of their children.
+    if (
+      localName === "graphicData" &&
+      toTransitionalNamespaceUri(element.namespaceUri ?? "") === NAMESPACES.a &&
+      name === "uri"
+    ) {
+      element.attributes![name] = STRICT_BY_TRANSITIONAL.get(value) ?? value;
+      continue;
+    }
+    const encoding = attributeSlotEncoding(element, name);
+    if (
+      encoding?.percent &&
+      (!encoding.measure ||
+        getAttributeByNamespaceUri(element, WORDPROCESSINGML_NAMESPACE_URIS, "type") === "pct")
+    ) {
+      element.attributes![name] = strictPercentage(value, encoding.percent);
+    }
+  }
+  const encoding = transitionalSlotEncoding(element.namespaceUri, localName);
+  for (const child of element.elements ?? []) {
+    if (child.type === "element") strictElement(child);
+    else if (child.type === "text" && typeof child.text === "string" && encoding?.percent) {
+      child.text = strictPercentage(child.text, encoding.percent);
+    }
+  }
+};
+
+/** Serialize a generated, scope-bound block in the source part's profile. */
+const cloneSourceProfileTree = (element: XmlElement): XmlElement =>
+  cloneElement(element, {
+    ...(element.attributes === undefined ? {} : { attributes: { ...element.attributes } }),
+    ...(element.elements === undefined
+      ? {}
+      : { elements: element.elements.map(cloneSourceProfileTree) }),
+  });
+
+export const captureSourceProfileXml = (
+  element: XmlElement,
+  conformance: DocxConformanceClass | undefined,
+): string => {
+  const owned = cloneSourceProfileTree(element);
+  if (conformance === DOCX_CONFORMANCE_CLASSES.STRICT) strictElement(owned);
+  const xml = elementToXml(owned);
+  if (!isSafeCapturedXmlDocument(xml)) panic("Generated source-profile markup is unsafe.");
+  return xml;
 };
