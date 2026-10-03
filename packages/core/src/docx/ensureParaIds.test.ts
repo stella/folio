@@ -30,6 +30,9 @@ const DIGITAL_SIGNATURE_PARTS = {
   "_xmlsignatures/sig1.xml": '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#"/>',
 };
 
+const ID_NS = ' xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"';
+const MC_NS = ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"';
+
 const W_NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 const documentXml = (body: string, extraRootAttrs = ""): string =>
@@ -218,6 +221,7 @@ describe("ensureParaIds", () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(
         PARA("Zeroed", ' w14:paraId="00000000" w14:textId="DEADBEEF"'),
+        ID_NS,
       ),
     });
 
@@ -234,6 +238,7 @@ describe("ensureParaIds", () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(
         `${PARA("Original", ' w14:paraId="ABCD1234"')}${PARA("Copy", ' w14:paraId="ABCD1234" w14:textId="DEADBEEF"')}`,
+        ID_NS,
       ),
     });
 
@@ -269,6 +274,7 @@ describe("ensureParaIds", () => {
     const input = await buildDocx({
       "word/document.xml": documentXml(
         `<w:p w14:paraId="FEED0001"><w:r><mc:AlternateContent><mc:Choice Requires="wps">${PARA("Box text")}</mc:Choice><mc:Fallback>${fallbackParagraph}${PARA("No id either")}</mc:Fallback></mc:AlternateContent></w:r></w:p>`,
+        ID_NS + MC_NS,
       ),
     });
 
@@ -324,7 +330,7 @@ describe("ensureParaIds", () => {
     const commentsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:comments ${W_NS} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"><w:comment w:id="0">${PARA("A comment", ' w14:paraId="C0FFEE01"')}</w:comment></w:comments>`;
     const input = await buildDocx({
-      "word/document.xml": documentXml(PARA("Body", ' w14:paraId="C0FFEE01"')),
+      "word/document.xml": documentXml(PARA("Body", ' w14:paraId="C0FFEE01"'), ID_NS),
       "word/comments.xml": commentsXml,
     });
 
@@ -335,14 +341,16 @@ describe("ensureParaIds", () => {
     expect(await getPart(result.docx, "word/comments.xml")).toBe(commentsXml);
   });
 
-  test("rejects conflicting w14 or mc namespace bindings before patching", async () => {
+  test("uses fresh prefixes when conventional extension prefixes bind foreign URIs", async () => {
     const conflictingRoots = [' xmlns:w14="urn:wrong"', ' xmlns:mc="urn:wrong"'];
 
     for (const rootAttrs of conflictingRoots) {
       const input = await buildDocx({
         "word/document.xml": documentXml(PARA("Body"), rootAttrs),
       });
-      await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
+      const result = await ensureParaIds(input);
+      expect(result.assigned).toBe(1);
+      expect((await ensureParaIds(result.docx)).alreadyComplete).toBe(true);
     }
   });
 
