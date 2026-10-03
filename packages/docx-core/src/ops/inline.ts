@@ -130,12 +130,19 @@ export const insertSliceAt = (
   slice: InlineSlice,
 ): ParagraphContent[] | undefined => {
   const [before = [], after = []] = partitionContent(items, [at]);
-  const withStart = mergeLists(before, slice.content, slice.openStart);
+  const withStart = mergeLists(before, slice.content, slice.openStart, {
+    mode: "exact",
+    fields: "source",
+  });
   // An open end continues the record it meets, so that record's ids stand.
   const whole =
     withStart === undefined
       ? undefined
-      : mergeLists(withStart, after, slice.openEnd, { mode: "exact", identity: "second" });
+      : mergeLists(withStart, after, slice.openEnd, {
+          mode: "exact",
+          identity: "second",
+          fields: "source",
+        });
   return whole === undefined ? undefined : asParagraphContent(whole);
 };
 

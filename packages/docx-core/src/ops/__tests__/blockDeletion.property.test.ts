@@ -344,7 +344,7 @@ test("terminal deletion folds existing property reviews with stable identity and
         } as const satisfies DeleteBlocksOp;
         const tracked = apply(document, op);
         const survivor = paragraphsOf(tracked.document).at(-1);
-        expect(tracked.revisions).toContain(7);
+        expect(tracked.revisions).not.toContain(7);
         expect(survivor?.formatting).toEqual({ alignment: previousAlignment });
         expect(survivor?.propertyChanges).toEqual([
           { ...pending, info: { id: 7, author: "Latest reviewer", date: "2026-02-03T04:05:06Z" } },

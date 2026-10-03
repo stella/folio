@@ -1,4 +1,5 @@
 /** One editor intent, compiled to direct or tracked document operations. */
+import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { Result, panic } from "better-result";
 import { applyDocumentOp, applyDocumentOps } from "./apply";
 import { captureDocumentOp } from "./wire";
@@ -36,6 +37,7 @@ import { runsMergeable } from "./runMerge";
 import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
+  PROPERTY_REVIEW_POLICIES,
   SECTION_BOUNDARY_POLICIES,
   EMPTY_PROPERTY_SETS,
   SPLIT_HALVES,
@@ -533,6 +535,7 @@ export const compileEditorIntent = (
       break;
     }
     case "insertAtom": {
+      const formatting = intentRunFormatting(document, intent);
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
           from: intent.from,
@@ -547,7 +550,7 @@ export const compileEditorIntent = (
               content: [
                 {
                   type: "run",
-                  formatting: intentRunFormatting(document, intent),
+                  ...(formatting === undefined ? {} : { formatting }),
                   content: [intent.atom],
                 },
               ],
@@ -572,7 +575,7 @@ export const compileEditorIntent = (
       const content = [
         {
           type: "run",
-          formatting: intentRunFormatting(document, intent),
+          ...(formatting === undefined ? {} : { formatting }),
           content: [intent.atom],
         },
       ] satisfies ParagraphContent[];
@@ -622,6 +625,7 @@ export const compileEditorIntent = (
           to,
           revision: mode.revision,
           newIds: mode.newIds,
+          seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
             paragraphs: [],
             tail: {
@@ -720,6 +724,7 @@ export const compileEditorIntent = (
           type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
           at,
           slice: { openStart: 0, openEnd: 0, content },
+          seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           ...allocationFields,
         });
       selection = {
@@ -924,7 +929,7 @@ export const compileEditorIntent = (
       compact.push(trimmed);
       current = applied.value.document;
     }
-    if (intent.type === "replaceText") {
+    if (intent.type === "replaceText" && intent.text.length > 0) {
       // Closed insertion slices preserve authored boundaries. Merge only the
       // two edited seams the parser would merge, with inverses in the journal.
       for (const offset of new Set([selection.offset, selection.offset - intent.text.length])) {

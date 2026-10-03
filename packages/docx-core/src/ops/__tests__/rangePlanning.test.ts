@@ -572,13 +572,19 @@ test.each(["splitGrouped", "joinGrouped"] as const)(
 );
 
 test.each(["body", "cell"] as const)(
-  "ranged split inherits the surviving paragraph formatting in a %s",
+  "ranged split inherits joined paragraph properties and trailing mark properties in a %s",
   (container) => {
     const document = documentOf(
       wrap(
         [
-          { ...paragraph("00000001", "first"), formatting: { alignment: "center" } },
-          { ...paragraph("00000002", "last"), formatting: { alignment: "end", keepNext: true } },
+          {
+            ...paragraph("00000001", "first"),
+            formatting: { alignment: "center", runProperties: { italic: true } },
+          },
+          {
+            ...paragraph("00000002", "last"),
+            formatting: { alignment: "end", keepNext: true, runProperties: { bold: true } },
+          },
         ],
         container,
       ),
@@ -593,7 +599,8 @@ test.each(["body", "cell"] as const)(
     if (planned.isErr()) throw planned.error;
     const edited = apply(document, planned.value.ops);
     for (const item of paragraphs(edited.document)) {
-      expect(item.formatting).toStrictEqual({ alignment: "end", keepNext: true });
+      // A join carries leading paragraph properties with trailing mark properties.
+      expect(item.formatting).toStrictEqual({ alignment: "center", runProperties: { bold: true } });
     }
     expectUndo(edited, document);
   },

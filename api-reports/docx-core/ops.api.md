@@ -423,6 +423,7 @@ export type InsertContentOp = {
     type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
     at: TextPosition;
     slice: InlineSlice;
+    seamPolicy?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
     newIds?: NewIds;
     revision?: RevisionStamp;
 };
@@ -752,7 +753,6 @@ export type SetParagraphPropsOp = {
     whenEmpty?: EmptyPropertySet;
     expected?: ParagraphPropsPatch;
     revision?: RevisionStamp;
-    propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 // @public
