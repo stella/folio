@@ -24,9 +24,8 @@
  * does not open.
  */
 
+import { Result } from "better-result";
 import type JSZip from "jszip";
-
-import { resolveRelativePath } from "./relsParser";
 
 const CONTENT_TYPE_ELEMENT = /<(?:Default|Override)\b[^>]*?\/?>/giu;
 const PART_NAME_ATTRIBUTE = /\bPartName\s*=\s*(?<quote>["'])(?<value>[^"']*)\k<quote>/u;
@@ -59,15 +58,41 @@ const owningPartPath = (relsPath: string): string | undefined => {
 const normalizePartPath = (path: string): string =>
   (path.startsWith("/") ? path.slice(1) : path).toLowerCase();
 
-/**
- * Decode `%XX` escapes in a part name. `decodeURI` throws on a malformed
- * escape, and a malformed target is exactly the input this has to survive, so
- * the replacement is done by hand.
- */
-const decodePartName = (name: string): string =>
-  name.replaceAll(/%[0-9A-Fa-f]{2}/gu, (escape) =>
-    String.fromCharCode(Number.parseInt(escape.slice(1), 16)),
-  );
+/** Decode URI escapes as UTF-8; malformed references cannot name a part. */
+const decodePartName = (name: string): string | undefined => {
+  const decoded = Result.try({ try: () => decodeURIComponent(name), catch: () => undefined });
+  return decoded.isOk() ? decoded.value : undefined;
+};
+
+/** Resolve an internal URI reference once, before comparing it with ZIP entries. */
+export const resolvePackageRelationshipTarget = (
+  target: string,
+  relsPath: string,
+): string | undefined => {
+  const fragment = target.indexOf("#");
+  if (fragment === 0) {
+    const owner = owningPartPath(relsPath);
+    return owner === undefined ? undefined : normalizePartPath(owner);
+  }
+  const reference = fragment > 0 ? target.slice(0, fragment) : target;
+  if (!reference || reference.startsWith("//") || /[\\?:]/u.test(reference)) return undefined;
+  const owner = owningPartPath(relsPath);
+  const segments =
+    reference.startsWith("/") || owner === undefined ? [] : owner.split("/").slice(0, -1);
+  for (const encoded of reference.split("/")) {
+    const segment = decodePartName(encoded);
+    if (segment === undefined || /[/\\]/u.test(segment) || segment.includes(String.fromCharCode(0)))
+      return undefined;
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (segments.pop() === undefined) return undefined;
+      continue;
+    }
+    segments.push(segment);
+  }
+  const path = normalizePartPath(segments.join("/"));
+  return isUnsafePackagePath(path) ? undefined : path;
+};
 
 /**
  * Whether an entry path would escape the package when a host writes the archive
@@ -107,7 +132,7 @@ const presentPartPaths = (zip: JSZip): Set<string> => {
 
 const isPresent = (present: ReadonlySet<string>, partPath: string): boolean =>
   present.has(normalizePartPath(partPath)) ||
-  present.has(normalizePartPath(decodePartName(partPath)));
+  present.has(normalizePartPath(decodePartName(partPath) ?? ""));
 
 /** The part a relationship names, or null when it points outside the package. */
 const relationshipTarget = (element: string, relsPath: string): string | null => {
@@ -118,12 +143,8 @@ const relationshipTarget = (element: string, relsPath: string): string | null =>
   if (target === undefined) {
     return null;
   }
-  const fragment = target.indexOf("#");
-  // A fragment-only URI names a location in the owning part, not a ZIP entry.
-  if (fragment === 0) {
-    return owningPartPath(relsPath) ?? "";
-  }
-  return resolveRelativePath(relsPath, fragment > 0 ? target.slice(0, fragment) : target);
+  // Invalid internal references must be pruned, never treated as external.
+  return resolvePackageRelationshipTarget(target, relsPath) ?? "";
 };
 
 /** What reconciliation removed to make the package internally consistent. */
@@ -211,10 +232,12 @@ export const reconcilePackageReferences = async (
     let dropped = false;
     const pruned = xml.replaceAll(RELATIONSHIP_ELEMENT, (element) => {
       const target = relationshipTarget(element, path);
-      if (target === null || isPresent(present, target)) {
+      if (target === null || present.has(target)) {
         return element;
       }
-      repair.danglingRelationships.push(target);
+      repair.danglingRelationships.push(
+        target || TARGET_ATTRIBUTE.exec(element)?.groups?.["value"] || "",
+      );
       dropped = true;
       const id = RELATIONSHIP_ID_ATTRIBUTE.exec(element)?.groups?.["value"];
       const owningPart = owningPartPath(path);
@@ -275,7 +298,7 @@ export const reconcilePackageReferences = async (
       if (partName === undefined || isPresent(present, partName)) {
         return element;
       }
-      repair.danglingOverrides.push(normalizePartPath(decodePartName(partName)));
+      repair.danglingOverrides.push(normalizePartPath(decodePartName(partName) ?? partName));
       droppedOverride = true;
       return "";
     },
@@ -340,8 +363,10 @@ export const checkPackageIntegrity = async (zip: JSZip): Promise<PackageIntegrit
         ids.add(id);
       }
       const target = relationshipTarget(element, path);
-      if (target !== null && !isPresent(present, target)) {
-        report.danglingRelationshipTargets.push(`${path}|${target}`);
+      if (target !== null && !present.has(target)) {
+        report.danglingRelationshipTargets.push(
+          `${path}|${target || TARGET_ATTRIBUTE.exec(element)?.groups?.["value"] || ""}`,
+        );
       }
     }
     if (owningPart !== undefined) {

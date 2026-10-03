@@ -458,7 +458,7 @@ export const compileEditorIntent = (
             ...(mode.type === "suggesting"
               ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
               : {}),
-            ...tracked,
+            ...(mode.type === "suggesting" ? { revision: mode.revision } : {}),
           }) as const,
       );
       if (mode.type === "editing") ops = [...creation, ...paragraphOps];
@@ -491,9 +491,19 @@ export const compileEditorIntent = (
           ...(mode.type === "suggesting"
             ? { propertyReview: PROPERTY_REVIEW_POLICIES.APPEND }
             : {}),
-          ...tracked,
+          ...(mode.type === "suggesting" ? { revision: mode.revision } : {}),
         },
       ];
+      if (mode.type === "suggesting") {
+        const plan = createTrackedPlan({ document, revision: mode.revision, newIds: mode.newIds });
+        for (const op of ops) {
+          if (op.type !== DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS)
+            panic("A paragraph-format intent compiled to a different operation.");
+          const appended = plan.append(op);
+          if (appended.isErr()) return Result.err(appended.error);
+        }
+        ops = plan.ops;
+      }
       selection = intent.at;
       break;
     }

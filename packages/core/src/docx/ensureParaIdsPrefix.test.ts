@@ -9,6 +9,9 @@
 
 import { describe, expect, test } from "bun:test";
 import JSZip from "jszip";
+import fc from "fast-check";
+
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 
 import { FolioDocxReviewer } from "../ai-edits/headless";
 import { fromMarkdown } from "../markdown/fromMarkdown";
@@ -16,12 +19,24 @@ import { ensureParaIds, EnsureParaIdsError } from "./ensureParaIds";
 import { rewritePackagePrefixes, type PrefixVariant } from "./__tests__/namespacePrefixVariants";
 import { createDocx } from "./rezip";
 import {
+  getChildElements,
+  getLocalName,
+  getNamespaceUri,
+  parseXmlDocument,
+  resolveAttributeNamespaceUri,
+  WORDPROCESSINGML_NAMESPACE_URIS,
+  type XmlElement,
+} from "./xmlParser";
+import {
   PARAGRAPH_SCAN_NAMES,
   resolveWordprocessingPrefixes,
   splicesAsCanonical,
 } from "./wordprocessingPrefixes";
 
 const W_URI = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const STRICT_W_URI = "http://purl.oclc.org/ooxml/wordprocessingml/main";
+const MC_URI = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const PACKAGE_REL_URI = "http://schemas.openxmlformats.org/package/2006/relationships";
 const W14_URI = "http://schemas.microsoft.com/office/word/2010/wordml";
 
 const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer =>
@@ -108,13 +123,17 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
     expect(out).toContain('m2:Ignorable="w14"');
   });
 
-  test("refuses a part whose nested element rebinds the paragraph prefix", async () => {
+  test("leaves foreign paragraphs alone when a nested element rebinds the paragraph prefix", async () => {
     const xml =
       `<x:document xmlns:x="${W_URI}"><x:body><x:p><x:r><x:t>a</x:t></x:r></x:p>` +
       `<x:tbl xmlns:x="urn:example:other"><x:p/></x:tbl><x:sectPr/></x:body></x:document>`;
     const input = await withDocumentPart(await twoParagraphs(), xml);
-    await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
-    await expect(ensureParaIds(input)).rejects.toThrow("rebinds prefix x");
+    const result = await ensureParaIds(input);
+    expect(result.assigned).toBe(1);
+    expect(await documentPart(result.docx)).toContain(
+      `<x:tbl xmlns:x="urn:example:other"><x:p/></x:tbl>`,
+    );
+    expect((await ensureParaIds(result.docx)).alreadyComplete).toBe(true);
   });
 
   test("never reports a body complete when its paragraphs went unseen", async () => {
@@ -124,7 +143,9 @@ describe("ensureParaIds with non-conventional WordprocessingML prefixes", () => 
       `<doc:document xmlns:doc="${W_URI}"><doc:body>` +
       `<y:p xmlns:y="${W_URI}"><y:r><y:t>a</y:t></y:r></y:p><doc:sectPr/></doc:body></doc:document>`;
     const input = await withDocumentPart(await twoParagraphs(), xml);
-    await expect(ensureParaIds(input)).rejects.toThrow(EnsureParaIdsError);
+    const result = await ensureParaIds(input);
+    expect(result.assigned).toBe(1);
+    expect((await ensureParaIds(result.docx)).alreadyComplete).toBe(true);
   });
 });
 
@@ -181,4 +202,181 @@ describe("resolveWordprocessingPrefixes", () => {
     );
     expect(resolution).toMatchObject({ type: "resolved", prefixes: { canonical: true } });
   });
+});
+
+const namespaceBindings = fc.record({
+  namespace: fc.constantFrom(W_URI, STRICT_W_URI),
+  prefix: fc.constantFrom("w", "x", ""),
+  idPrefix: fc.constantFrom("w14", "ids", "ext"),
+  mcPrefix: fc.constantFrom("mc", "compat"),
+  extensionBinding: fc.constantFrom("root", "nested", "foreign"),
+  mainPart: fc.constantFrom(
+    "word/document.xml",
+    "word/document2.xml",
+    "parts/main.xml",
+    "word/my document.xml",
+    "parts/článek_日本.xml",
+  ),
+  relationshipProfile: fc.constantFrom(
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "http://purl.oclc.org/ooxml/officeDocument/relationships",
+  ),
+  relationshipPrefix: fc.constantFrom("", "pkg"),
+  targetSpelling: fc.constantFrom("relative", "absolute", "dot", "encoded"),
+  paragraphCount: fc.integer({ min: 1, max: 6 }),
+  quote: fc.constantFrom('"', "'"),
+});
+
+const qualified = (prefix: string, local: string): string =>
+  prefix === "" ? local : `${prefix}:${local}`;
+
+const allParagraphs = (root: XmlElement): XmlElement[] => {
+  const result: XmlElement[] = [];
+  const visit = (element: XmlElement): void => {
+    if (
+      getLocalName(element.name ?? "") === "p" &&
+      WORDPROCESSINGML_NAMESPACE_URIS.has(getNamespaceUri(element) ?? "")
+    )
+      result.push(element);
+    for (const child of getChildElements(element)) visit(child);
+  };
+  visit(root);
+  return result;
+};
+
+const paragraphIds = (element: XmlElement): string[] =>
+  Object.entries(element.attributes ?? {})
+    .filter(([name]) => {
+      const uri = resolveAttributeNamespaceUri(element, name);
+      return (
+        getLocalName(name) === "paraId" &&
+        (uri === W14_URI || WORDPROCESSINGML_NAMESPACE_URIS.has(uri ?? ""))
+      );
+    })
+    .map(([, value]) => String(value));
+
+test(
+  "namespace binding dimensions preserve paragraph coverage, uniqueness and byte idempotence",
+  async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        namespaceBindings,
+        async ({
+          namespace,
+          prefix,
+          idPrefix,
+          mcPrefix,
+          extensionBinding,
+          mainPart,
+          relationshipProfile,
+          relationshipPrefix,
+          targetSpelling,
+          paragraphCount,
+          quote,
+        }) => {
+          const q = (local: string) => qualified(prefix, local);
+          const rootDeclaration =
+            prefix === ""
+              ? `xmlns=${quote}${namespace}${quote}`
+              : `xmlns:${prefix}=${quote}${namespace}${quote}`;
+          const idDeclaration = `xmlns:${idPrefix}=${quote}${extensionBinding === "foreign" ? "urn:foreign:ids" : W14_URI}${quote}`;
+          const rootIdDeclaration = extensionBinding === "nested" ? "" : idDeclaration;
+          const nestedIdDeclaration =
+            extensionBinding === "nested"
+              ? idDeclaration
+              : `xmlns:${idPrefix}="urn:foreign:nested"`;
+          const existingPrefix = extensionBinding === "nested" ? idPrefix : "old";
+          const nestedWordDeclaration =
+            prefix === "" ? 'xmlns="urn:foreign:word"' : `xmlns:${prefix}="urn:foreign:word"`;
+          const foreign = `<foreign:p xmlns:foreign="urn:foreign" foreign:paraId="FEED0002" data="a&gt;b"/>`;
+          const fallback = `<local:Fallback xmlns:local="${MC_URI}"><actual:p xmlns:actual="${namespace}" xmlns:kept="${W14_URI}" kept:paraId="FEED0001"/></local:Fallback>`;
+          const repeated = Array.from({ length: paragraphCount }, () => `<${q("p")} />`).join("");
+          const xml = `<${q("document")} ${rootDeclaration} ${rootIdDeclaration} xmlns:${mcPrefix}="${MC_URI}" ${mcPrefix}:Ignorable=""><${q("body")}>${repeated}<scope ${nestedWordDeclaration} ${nestedIdDeclaration} xmlns:${mcPrefix}="urn:foreign:compat"><actual:p xmlns:actual="${namespace}" xmlns:old="${W14_URI}" ${existingPrefix}:paraId = ${quote}FEED0001${quote} ${existingPrefix}:textId="00000000"/><actual:p xmlns:actual="${namespace}" xmlns:other="${namespace}"><other:r><other:t>Unchanged</other:t></other:r></actual:p>${foreign}${fallback}</scope><${q("p")}/></${q("body")}></${q("document")}>`;
+          const target = {
+            relative: mainPart,
+            absolute: `/${mainPart}`,
+            dot: `./${mainPart}`,
+            encoded: mainPart.split("/").map(encodeURIComponent).join("/"),
+          }[targetSpelling];
+          const rel = qualified(relationshipPrefix, "Relationship");
+          const rels = qualified(relationshipPrefix, "Relationships");
+          const relDeclaration =
+            relationshipPrefix === ""
+              ? `xmlns="${PACKAGE_REL_URI}"`
+              : `xmlns:${relationshipPrefix}="${PACKAGE_REL_URI}"`;
+          const zip = new JSZip();
+          zip.file(
+            "_rels/.rels",
+            `<${rels} ${relDeclaration}><${rel} Id="rId1" Type="${relationshipProfile}/officeDocument" Target="${target}"/></${rels}>`,
+          );
+          zip.file(mainPart, xml);
+          zip.file(
+            "word/comments.xml",
+            `<w:comments xmlns:w="${W_URI}" xmlns:ids="${W14_URI}"><w:p ids:paraId="FEED0003"/></w:comments>`,
+          );
+          const input = await zip.generateAsync({ type: "uint8array" });
+          const normalized = await ensureParaIds(input);
+          expect(normalized.assigned).toBe(paragraphCount + 2);
+          expect(normalized.deduplicated).toBe(1);
+          const saved = await JSZip.loadAsync(normalized.docx);
+          const output = await saved.file(mainPart)?.async("text");
+          expect(output).toBeDefined();
+          const root = parseXmlDocument(output ?? "");
+          if (root === null) throw new Error("normalized fixture has no root");
+          const ids = allParagraphs(root).map(paragraphIds);
+          expect(ids).toHaveLength(paragraphCount + 4);
+          expect(ids.every((values) => values.length === 1)).toBe(true);
+          const editable = ids.filter((values) => values.at(0) !== "FEED0001").flat();
+          expect(new Set(editable).size).toBe(paragraphCount + 3);
+          expect(
+            editable.every(
+              (id) => /^[0-9A-F]{8}$/u.test(id) && id !== "00000000" && id !== "FEED0003",
+            ),
+          ).toBe(true);
+          expect(output).toContain(foreign);
+          expect(output).toContain(fallback);
+          expect(output).toContain("<other:t>Unchanged</other:t>");
+          expect(await saved.file("word/comments.xml")?.async("text")).toBe(
+            await zip.file("word/comments.xml")?.async("text"),
+          );
+          const again = await ensureParaIds(normalized.docx);
+          expect(again.alreadyComplete).toBe(true);
+          expect(again.docx).toBe(normalized.docx);
+          expect(again.mintedParaIds).toEqual([]);
+          const repeat = await ensureParaIds(input);
+          expect(await (await JSZip.loadAsync(repeat.docx)).file(mainPart)?.async("text")).toBe(
+            output,
+          );
+        },
+      ),
+      { numRuns: 60 },
+    );
+  },
+  propertyTestTimeout(30_000),
+);
+
+for (const malformed of [
+  `<w:document xmlns:w="${W_URI}"><w:body></w:document>`,
+  `<w:document xmlns:w="${W_URI}"><w:p key="unterminated/></w:document>`,
+]) {
+  test("refuses malformed paragraph markup", async () => {
+    await expect(
+      ensureParaIds(await withDocumentPart(await twoParagraphs(), malformed)),
+    ).rejects.toThrow(EnsureParaIdsError);
+  });
+}
+
+test("a missing officeDocument target is refused at the attribute boundary", async () => {
+  const zip = new JSZip();
+  zip.file(
+    "_rels/.rels",
+    `<Relationships xmlns="${PACKAGE_REL_URI}"><Relationship Id="r1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/></Relationships>`,
+  );
+  zip.file(
+    "word/document.xml",
+    `<w:document xmlns:w="${W_URI}"><w:body><w:p/></w:body></w:document>`,
+  );
+  await expect(
+    ensureParaIds(await zip.generateAsync({ type: "uint8array" })),
+  ).rejects.toBeInstanceOf(EnsureParaIdsError);
 });

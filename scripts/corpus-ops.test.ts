@@ -181,7 +181,7 @@ describe("corpus operation invariants", () => {
         let revisionId = 9100;
         for (const story of documentStories(document)) {
           for (const { paragraph } of storyParagraphs(storyBody(document, story))) {
-            paragraph.formatting = { alignment: "end" };
+            paragraph.formatting = { alignment: revisionId % 2 === 0 ? "end" : "center" };
             paragraph.propertyChanges = [
               {
                 type: "paragraphPropertyChange",

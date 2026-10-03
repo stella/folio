@@ -288,7 +288,6 @@ const bindCutRetainedIdentities = ({
   };
   const replacements = new Map<InlineNode, InlineNode>();
   for (const [joins, pieces] of groups) {
-    if (pieces.length < 2) continue;
     for (const [index, piece] of pieces.entries()) {
       const fresh = piece.fresh;
       if (fresh.type !== "deletion" && fresh.type !== "moveFrom") continue;
