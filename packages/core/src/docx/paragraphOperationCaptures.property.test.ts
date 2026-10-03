@@ -53,53 +53,63 @@ test(
   "mixed durable and spread-derived paragraphs retain exact public content through editor save",
   async () => {
     await assertProperty(
-      fc.asyncProperty(fc.array(fc.boolean(), { minLength: 1, maxLength: 6 }), async (derive) => {
-        const initial = createEmptyDocument();
-        initial.package.document.content = derive.map((_, index) => ({
-          type: "paragraph",
-          paraId: (index + 1).toString(16).toUpperCase().padStart(8, "0"),
-          formatting: { alignment: "center" },
-          content: [{ type: "run", content: [{ type: "text", text: `é😀 ${index}` }] }],
-        }));
-        const source = await parseDocx(await createDocx(initial), {
-          preloadFonts: false,
-          detectVariables: false,
-        });
-        const content = source.package.document.content.map((paragraph, index) => {
-          if (paragraph.type !== "paragraph") throw new TypeError("Expected a source paragraph");
-          return derive.at(index) ? { ...paragraph, content: [...paragraph.content] } : paragraph;
-        });
-        const document = {
-          ...source,
-          package: { ...source.package, document: { ...source.package.document, content } },
-        };
-        const rebuilt = updateDocumentContent(document, toProseDoc(document));
-        const reopened = await parseDocx(await createDocx(rebuilt), {
-          preloadFonts: false,
-          detectVariables: false,
-        });
-        expect(structuredClone(reopened.package.document.content)).toStrictEqual(
-          structuredClone(document.package.document.content),
-        );
-        for (const paragraph of content) {
-          const forged = { ...paragraph };
-          const key = Object.getOwnPropertySymbols(forged).find(
-            (symbol) => symbol.description === "paragraphPropertyCapture",
-          );
-          if (!key) throw new TypeError("Expected a paragraph capture handle");
-          Object.defineProperty(forged, key, { value: {} });
-          const invalid = {
-            ...document,
-            package: {
-              ...document.package,
-              document: { ...document.package.document, content: [forged] },
-            },
+      fc.asyncProperty(
+        fc.array(fc.boolean(), { minLength: 1, maxLength: 6 }),
+        fc.oneof(
+          fc.constant(null),
+          fc.constant(undefined),
+          fc.string({ maxLength: 5 }),
+          fc.integer(),
+          fc.constant({}),
+        ),
+        async (derive, invalidHandle) => {
+          const initial = createEmptyDocument();
+          initial.package.document.content = derive.map((_, index) => ({
+            type: "paragraph",
+            paraId: (index + 1).toString(16).toUpperCase().padStart(8, "0"),
+            formatting: { alignment: "center" },
+            content: [{ type: "run", content: [{ type: "text", text: `é😀 ${index}` }] }],
+          }));
+          const source = await parseDocx(await createDocx(initial), {
+            preloadFonts: false,
+            detectVariables: false,
+          });
+          const content = source.package.document.content.map((paragraph, index) => {
+            if (paragraph.type !== "paragraph") throw new TypeError("Expected a source paragraph");
+            return derive.at(index) ? { ...paragraph, content: [...paragraph.content] } : paragraph;
+          });
+          const document = {
+            ...source,
+            package: { ...source.package, document: { ...source.package.document, content } },
           };
-          expect(() => updateDocumentContent(invalid, toProseDoc(invalid))).toThrow(
-            "The source paragraph identity is invalid.",
+          const rebuilt = updateDocumentContent(document, toProseDoc(document));
+          const reopened = await parseDocx(await createDocx(rebuilt), {
+            preloadFonts: false,
+            detectVariables: false,
+          });
+          expect(structuredClone(reopened.package.document.content)).toStrictEqual(
+            structuredClone(document.package.document.content),
           );
-        }
-      }),
+          for (const paragraph of content) {
+            const forged = { ...paragraph };
+            const key = Object.getOwnPropertySymbols(forged).find(
+              (symbol) => symbol.description === "paragraphPropertyCapture",
+            );
+            if (!key) throw new TypeError("Expected a paragraph capture handle");
+            Object.defineProperty(forged, key, { value: invalidHandle });
+            const invalid = {
+              ...document,
+              package: {
+                ...document.package,
+                document: { ...document.package.document, content: [forged] },
+              },
+            };
+            expect(() => updateDocumentContent(invalid, toProseDoc(invalid))).toThrow(
+              "The source paragraph identity is invalid.",
+            );
+          }
+        },
+      ),
       { numRuns: 20 },
     );
   },

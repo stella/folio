@@ -42,9 +42,11 @@ const captureForParagraph = (paragraph: Paragraph): ParagraphPropertyCapture | u
     paragraph,
     paragraphPropertyCapture,
   )?.value;
+  if (!Object.hasOwn(paragraph, paragraphPropertyCapture))
+    return paragraphPropertyCaptures.get(paragraph);
   return typeof handle === "object" && handle !== null
     ? paragraphPropertyCaptures.get(handle)
-    : paragraphPropertyCaptures.get(paragraph);
+    : undefined;
 };
 
 const attachParagraphCapture = (paragraph: Paragraph, capture: ParagraphPropertyCapture): void => {
