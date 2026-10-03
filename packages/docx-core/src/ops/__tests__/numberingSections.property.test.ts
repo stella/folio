@@ -75,7 +75,7 @@ test("numbering instance creation and its inverse preserve absent numbering and 
         const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
         expect(redo.isOk()).toBe(true);
         if (redo.isErr()) return;
-        expect(redo.value.document).toEqual(forward.value.document);
+        expect(redo.value.document).toStrictEqual(forward.value.document);
       },
     ),
     propertyConfig(),
@@ -90,7 +90,7 @@ test("generated section endpoint edits restore paragraph, final, and section-vie
       );
       const target = topLevel.at(0);
       if (target?.paraId === undefined) return;
-      const endpoint = { type: "paragraph" as const, blockId: target.paraId };
+      const endpoint = { type: "paragraph" as const, blockId: target.paraId.toLowerCase() };
       const current = target.sectionProperties;
       const properties = { ...current, pageWidth: width };
       const original = structuredClone(document);
@@ -169,11 +169,11 @@ test("section endpoint edits preserve exact inverse for explicit and absent prop
     const undo = applyDocumentOps(forward.value.document, forward.value.inverse);
     expect(undo.isOk()).toBe(true);
     if (undo.isErr()) continue;
-    expect(undo.value.document).toEqual(base);
+    expect(undo.value.document).toStrictEqual(base);
     const redo = applyDocumentOps(undo.value.document, undo.value.inverse);
     expect(redo.isOk()).toBe(true);
     if (redo.isErr()) continue;
-    expect(redo.value.document).toEqual(forward.value.document);
+    expect(redo.value.document).toStrictEqual(forward.value.document);
   }
 });
 

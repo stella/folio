@@ -33,6 +33,14 @@ export const captureDocumentOp = (op: DocumentOp): DocumentOp => {
 
 /** Restore validated presence metadata without mutating the supplied operation. */
 export const restoreDocumentOp = (op: DocumentOp): Result<DocumentOp, DocumentOpRefusal> => {
+  if (op === null || typeof op !== "object" || Array.isArray(op))
+    return Result.err(
+      new DocumentOpRefusal({
+        opType: undefined,
+        reason: DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH,
+        message: "A document operation must be an object.",
+      }),
+    );
   if (op.undefinedFields === undefined) return Result.ok(op);
   const invalid = (message: string) =>
     Result.err(
