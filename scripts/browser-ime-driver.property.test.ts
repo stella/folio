@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
-import { assertProperty } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { browserImeActionArbitrary } from "../tests/visual/browserInputTrace";
 import { runBrowserImeLifecycle } from "../tests/visual/browserImeDriver";
+
+setDefaultTimeout(propertyTestTimeout(5_000));
 
 test("generated IME lifecycles deliver every update and exactly their declared completion", async () => {
   await assertProperty(
