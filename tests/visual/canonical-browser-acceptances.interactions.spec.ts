@@ -12,7 +12,10 @@ import type {} from "../parity/canonicalFuzzErrors";
 
 const MODIFIER = process.platform === "darwin" ? "Meta" : "Control";
 const snapshot = async (page: Page) => {
-  const value = await page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+  const read = () => page.evaluate(() => globalThis.__folioCanonical?.snapshot());
+  // Native composition completion is asynchronous; observe the committed state.
+  await expect(read).toPass({ timeout: 2_000 });
+  const value = await read();
   expect(value?.active).toBe(true);
   expect(value?.projectionMatchesCanonical).toBe(true);
   expect(value?.projectionJSON).toEqual(value?.canonicalProjectionJSON);
