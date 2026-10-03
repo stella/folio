@@ -254,7 +254,6 @@ const operationFields = {
     expected: optional(paragraphPatch),
     whenEmpty,
     revision,
-    propertyReview: absent,
   } satisfies OperationFields["setParagraphProps"],
   splitBlock: {
     type: literal("splitBlock"),

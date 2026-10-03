@@ -62,20 +62,8 @@ export type BlockInsertionPoint = {
     blockId: string;
 };
 
-// @public (undocumented)
-export type CompiledEditorIntent = {
-    ops: DocumentOp[];
-    selection: TextPosition;
-};
-
 // @public
 export const compileEditorIntent: (document: Document_2, input: CompileEditorIntentOptions) => Result<CompiledEditorIntent, DocumentOpRefusal>;
-
-// @public (undocumented)
-export type CompileEditorIntentOptions = {
-    intent: EditorIntent;
-    mode: EditorIntentMode;
-};
 
 // @public
 export const createClient: (document: Document_2) => {
@@ -473,9 +461,6 @@ export const parseDocumentBatch: (json: string) => Result<DocumentBatch, BatchRe
 export const physicalOffsetAtVisibleOffset: (paragraph: Paragraph, offset: number) => number;
 
 // @public
-export const physicalPositionAtEditorOffset: (document: Document_2, at: TextPosition) => TextPosition;
-
-// @public
 export const planTrackedDeletion: (document: Document_2, options: PlanTrackedDeletionOptions) => Result<DocumentOp[], DocumentOpRefusal>;
 
 // @public
@@ -496,11 +481,6 @@ export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
         tail: InlineSlice;
     };
 };
-
-// @public (undocumented)
-export const PROPERTY_REVIEW_POLICIES: Readonly<{
-    readonly APPEND: "append";
-}>;
 
 // @public (undocumented)
 export type RemoveHeaderFooterOp = {
@@ -580,12 +560,6 @@ export function runsMergeable(a: MergeDecidedRun, b: MergeDecidedRun): boolean;
 // @public (undocumented)
 export const sameStory: (left: OpStory, right: OpStory) => boolean;
 
-// @public
-export const SECTION_BOUNDARY_POLICIES: Readonly<{
-    readonly REMOVE: "remove";
-    readonly REPLACE: "replace";
-}>;
-
 // @public (undocumented)
 export const sectionPropertiesAt: (document: Document_2, sectionIndex: number) => SectionProperties | undefined;
 
@@ -613,7 +587,6 @@ export type SetParagraphPropsOp = {
     whenEmpty?: EmptyPropertySet;
     expected?: ParagraphPropsPatch;
     revision?: RevisionStamp;
-    propertyReview?: typeof PROPERTY_REVIEW_POLICIES.APPEND;
 };
 
 // @public
