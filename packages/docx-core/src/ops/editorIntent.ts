@@ -447,7 +447,7 @@ export const compileEditorIntent = (
       }
       const applied = applyDocumentOp(document, op);
       if (applied.isErr()) return Result.err(applied.error);
-      ops = [trimAppliedNewIds({ op, applied: applied.value, story: op.story })];
+      ops = [trimAppliedNewIds({ before: document, op, applied: applied.value, story: op.story })];
       selection = { story: op.story, blockId, offset: 0 };
       break;
     }
