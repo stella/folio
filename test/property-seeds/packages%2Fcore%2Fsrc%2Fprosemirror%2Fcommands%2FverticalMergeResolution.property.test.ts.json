@@ -1,0 +1,10 @@
+{
+  "resolved vertical merges match the reader across content and row shapes": [
+    {
+      "seed": 381901026,
+      "path": "0:1:1:1:1:1",
+      "note": "Collapsed continuation chains transported shared revision metadata as an aliased hidden graph",
+      "date": "2026-09-30"
+    }
+  ]
+}
