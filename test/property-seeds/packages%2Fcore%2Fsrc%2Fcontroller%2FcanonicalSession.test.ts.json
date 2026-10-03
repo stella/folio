@@ -1,0 +1,24 @@
+{
+  "canonical input sequences keep the projection, inverse history and refusal atomic": [
+    {
+      "seed": -1996873487,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
+      "date": "2026-10-02"
+    }
+  ],
+  "generated replacements lower tracked batches and resolution shares exact inverse history": [
+    {
+      "seed": 1520856127,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:4:0:0:0:0:1",
+      "note": "Direct and tracked text input must insert the same authored run without copying source run XML attributes.",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1572780071,
+      "path": "2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:2:3:0:0:0:0:0:1:0:0:4:1:1:2",
+      "note": "Review equivalence canonicalizes adjacent equivalent runs while exact undo retains authored structure.",
+      "date": "2026-10-02"
+    }
+  ]
+}

@@ -135,7 +135,8 @@
     "test:differential": "cd packages/core && bun test src/docx/__tests__/differential.test.ts",
     "test:visual:update": "bunx playwright test --update-snapshots",
     "test:visual:report": "bunx playwright show-report",
-    "bench:compare": "bun benchmarks/compare/run.ts"
+    "bench:compare": "bun benchmarks/compare/run.ts",
+    "test:source-guards": "bun test scripts/property-test-budgets.test.ts scripts/rust-boundaries.test.ts scripts/on-off-element-writer.test.ts scripts/on-off-spelling.test.ts scripts/consumer-scenario-dependencies.test.ts scripts/adapter-layout-timing.test.ts scripts/specification-sources.test.ts scripts/ci-plan.test.ts"
   },
   "devDependencies": {
     "@babel/core": "^8.0.1",

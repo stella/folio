@@ -1,0 +1,10 @@
+{
+  "zero numbering defaults stay absent from direct indentation across a style edit and save": [
+    {
+      "seed": -2138602871,
+      "path": "0:0",
+      "note": "numbering zero defaults became direct indentation after a style edit and reopen",
+      "date": "2026-09-30"
+    }
+  ]
+}

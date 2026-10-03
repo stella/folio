@@ -1,0 +1,10 @@
+{
+  "matches the legacy small-document semantics across generated nested revisions": [
+    {
+      "seed": 2609090,
+      "path": "0:0",
+      "note": "#1237: bulk paragraph joins must preserve the formatting owner marks rather than rebase their provenance",
+      "date": "2026-09-29"
+    }
+  ]
+}
