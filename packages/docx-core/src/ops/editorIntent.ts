@@ -662,6 +662,7 @@ export const compileEditorIntent = (
       : allocationFields;
   let ops: DocumentOp[];
   let selection: TextPosition;
+  const editedSeams: TextPosition[] = [];
   switch (intent.type) {
     case "replaceFragment": {
       if (intent.paragraphs.length === 0)
@@ -793,6 +794,7 @@ export const compileEditorIntent = (
           to: intent.to,
           revision: mode.revision,
           newIds: mode.newIds,
+          seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
           replacement: {
             paragraphs: leading.map(({ sectionProperties: _section, ...paragraph }) => paragraph),
             tail: { openStart: 0, openEnd: 0, content: tail?.content ?? [] },
@@ -844,6 +846,7 @@ export const compileEditorIntent = (
               type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
               at,
               slice: { openStart: 0, openEnd: 0, content: paragraph.content },
+              seamPolicy: INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS,
               ...allocationFields,
             });
           const {
@@ -885,19 +888,38 @@ export const compileEditorIntent = (
           ),
         };
       }
+      if (mode.type === "editing" && intent.openStart === 1 && leading.length > 0) {
+        const first = leading.at(0);
+        if (first?.paraId === undefined)
+          panic("An identified leading clipboard paragraph must have an id.");
+        editedSeams.push({
+          story: intent.from.story,
+          blockId: first.paraId,
+          offset: intent.from.offset,
+        });
+      }
       // Open edges and retained suffixes explicitly carry destination
       // properties; closed pasted marks carry their source properties. A
       // range deletion may have joined paragraphs with different formatting.
       if (tail !== undefined) {
         const applied = applyDocumentOps(document, ops);
         if (applied.isErr()) return Result.err(applied.error);
-        const current = paragraphAt(applied.value.document, selection);
+        const trailing = editorParagraphGroups(applied.value.document, selection.story)
+          .find(({ paragraphs: group }) =>
+            group.some(({ paraId }) => idKey(paraId ?? "") === idKey(selection.blockId)),
+          )
+          ?.paragraphs.at(-1);
+        const trailingMarkAt =
+          trailing?.paraId === undefined
+            ? selection
+            : { ...selection, blockId: trailing.paraId, offset: 0 };
+        const current = paragraphAt(applied.value.document, trailingMarkAt);
         const patch = Object.fromEntries([
           ...Object.keys(current?.formatting ?? {}).map((key) => [key, null]),
           ...Object.entries(tail.formatting ?? {}),
         ]);
         const formatting = compileEditorIntent(applied.value.document, {
-          intent: { type: "formatParagraph", at: selection, patch },
+          intent: { type: "formatParagraph", at: trailingMarkAt, patch },
           mode: modeAfterOps(applied.value.document, mode),
         });
         if (formatting.isErr()) return formatting;
@@ -933,15 +955,24 @@ export const compileEditorIntent = (
           );
         }
         const expected = reviewFieldsOf(current);
-        const changes = [...(current.propertyChanges ?? [])];
-        for (const change of paragraph.propertyChanges ?? []) {
-          if (!changes.some((existing) => existing.info.id === change.info.id))
-            changes.push(change);
-        }
+        const copiedChange = paragraph.propertyChanges?.at(0);
+        const currentChange = current.propertyChanges?.at(0);
         if (
-          paragraph.pPrMark !== undefined ||
-          changes.length > (current.propertyChanges?.length ?? 0)
-        ) {
+          copiedChange !== undefined &&
+          currentChange !== undefined &&
+          packageIdentityKeys(document.package).includes(
+            `${IDENTITY_SPACES.REVISION}:${currentChange.info.id}`,
+          )
+        )
+          return Result.err(
+            new DocumentOpRefusal({
+              reason: DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
+              message: "Copied paragraph review cannot replace a pre-existing destination review.",
+              opType: DOCUMENT_OP_TYPES.SET_PARAGRAPH_REVIEW,
+            }),
+          );
+        const changes = [...(paragraph.propertyChanges ?? current.propertyChanges ?? [])];
+        if (paragraph.pPrMark !== undefined || copiedChange !== undefined) {
           const review = reviewFieldsOf(current);
           if (changes.length > 0) review.propertyChanges = changes;
           if (paragraph.pPrMark !== undefined) review.pPrMark = paragraph.pPrMark;
@@ -964,6 +995,12 @@ export const compileEditorIntent = (
             properties: { type: "present", value: paragraph.sectionProperties },
           });
         }
+      }
+      if (mode.type === "editing" && tail !== undefined) {
+        const width = paragraphLength(tail);
+        if (width > 0)
+          for (const offset of new Set([selection.offset, selection.offset - width]))
+            if (offset >= 0) editedSeams.push({ ...selection, offset });
       }
       // A closed paragraph payload ends outside that paragraph. Match the
       // forward text-selection affinity at its closing boundary when a next
@@ -1734,21 +1771,22 @@ export const compileEditorIntent = (
       compact.push(trimmed);
       current = applied.value.document;
     }
-    if (intent.type === "replaceText" && intent.text.length > 0) {
-      // Closed insertion slices preserve authored boundaries. Merge only the
-      // two edited seams the parser would merge, with inverses in the journal.
-      for (const offset of new Set([selection.offset, selection.offset - intent.text.length])) {
-        const at = { ...selection, offset };
-        const paragraph = paragraphAt(current, at);
-        if (paragraph === undefined) panic("An edited paragraph must exist at its seam.");
-        const depth = textSeamDepth(paragraph, offset);
-        if (depth === 0) continue;
-        const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
-        const joined = applyDocumentOp(current, join);
-        if (joined.isErr()) return Result.err(joined.error);
-        compact.push(join);
-        current = joined.value.document;
-      }
+    const insertedWidth = intent.type === "replaceText" ? intent.text.length : 0;
+    if (insertedWidth > 0) {
+      for (const offset of new Set([selection.offset, selection.offset - insertedWidth]))
+        if (offset >= 0) editedSeams.push({ ...selection, offset });
+    }
+    // Merge only the edited seams, keeping every authored interior run boundary.
+    for (const at of editedSeams) {
+      const paragraph = paragraphAt(current, at);
+      if (paragraph === undefined) panic("An edited paragraph must exist at its seam.");
+      const depth = textSeamDepth(paragraph, at.offset);
+      if (depth === 0) continue;
+      const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
+      const joined = applyDocumentOp(current, join);
+      if (joined.isErr()) return Result.err(joined.error);
+      compact.push(join);
+      current = joined.value.document;
     }
     ops = compact;
   }

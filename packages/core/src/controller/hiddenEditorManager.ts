@@ -556,12 +556,24 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         createParagraphChangeTrackerPlugin(),
         createDocumentStylesPlugin(deps.getStyles() ?? session.document.package.styles),
         createDocumentNumberingPlugin(session.document.package.numbering),
-        ...(deps.getExtensionManager()?.getPlugins() ?? []).flatMap(({ props }) =>
-          props.transformPastedHTML === undefined && props.transformPasted === undefined
+        ...[
+          ...(deps.getExtensionManager()?.getPlugins() ?? []),
+          ...deps.getExternalPlugins(),
+        ].flatMap(({ props }) =>
+          props.transformPastedHTML === undefined &&
+          props.transformPasted === undefined &&
+          props.transformCopied === undefined &&
+          props.clipboardTextSerializer === undefined
             ? []
             : [
                 new PMPlugin({
                   props: {
+                    ...(props.transformCopied === undefined
+                      ? {}
+                      : { transformCopied: props.transformCopied }),
+                    ...(props.clipboardTextSerializer === undefined
+                      ? {}
+                      : { clipboardTextSerializer: props.clipboardTextSerializer }),
                     ...(props.transformPastedHTML === undefined
                       ? {}
                       : { transformPastedHTML: props.transformPastedHTML }),
@@ -644,6 +656,23 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     type: "idle",
   };
   let lastInputRule: { session: CanonicalSession; version: number; caret: number } | undefined;
+  const canonicalInputLifecycle = {
+    breakUndoGroup: () => {
+      if (editorSession.type === "canonical") editorSession.session.breakUndoGroup();
+    },
+    beginComposition: () => {
+      if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
+      const begun = editorSession.session.beginComposition();
+      if (begun.isErr()) {
+        refuse(begun.error.message);
+        return false;
+      }
+      return true;
+    },
+    endComposition: () => {
+      if (editorSession.type === "canonical") editorSession.session.endComposition();
+    },
+  };
   const input = createCanonicalInputBoundary({
     pastePlainText: (pmView) => {
       if (deps.getReadOnly()) return;
@@ -807,21 +836,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       }
       publishCommit(prepared.value);
     },
-    breakUndoGroup: () => {
-      if (editorSession.type === "canonical") editorSession.session.breakUndoGroup();
-    },
-    beginComposition: () => {
-      if (deps.getReadOnly() || editorSession.type !== "canonical") return false;
-      const begun = editorSession.session.beginComposition();
-      if (begun.isErr()) {
-        refuse(begun.error.message);
-        return false;
-      }
-      return true;
-    },
-    endComposition: () => {
-      if (editorSession.type === "canonical") editorSession.session.endComposition();
-    },
+    ...canonicalInputLifecycle,
     replace: (intent) => {
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
       syncCanonicalMode();

@@ -25,7 +25,7 @@ export const createCanonicalStoryEditor = ({
 }: CanonicalStoryEditorOptions) => {
   const refuse = (message: string) => {
     if (onRefusal) onRefusal(message);
-    else throw new CanonicalSessionError({ message });
+    else throw new CanonicalSessionError({ message, reason: "refused" });
   };
   const history = (direction: "undo" | "redo") => {
     const view = getView();
@@ -87,7 +87,7 @@ export const createCanonicalStoryEditor = ({
           enabled() && boundary.handleDOMEvents.compositionend(view),
         input: (view: EditorView) => enabled() && boundary.handleDOMEvents.input(view),
         blur: (view: EditorView) => enabled() && boundary.handleDOMEvents.blur(view),
-        paste: (view: EditorView, event: Event) =>
+        paste: (view: EditorView, event: ClipboardEvent) =>
           enabled() && boundary.handleDOMEvents.paste(view, event),
         cut: (view: EditorView, event: Event) =>
           enabled() && boundary.handleDOMEvents.cut(view, event),

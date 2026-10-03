@@ -186,6 +186,7 @@ export const planTrackedReplace = (
         type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
         at,
         slice: { content: paragraph.content, openStart: 0, openEnd: 0 },
+        ...(options.seamPolicy === undefined ? {} : { seamPolicy: options.seamPolicy }),
         revision,
       });
       if (inserted.isErr()) return Result.err(inserted.error);

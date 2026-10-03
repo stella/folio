@@ -1892,7 +1892,11 @@ describe("document operations", () => {
             },
           } satisfies Document;
           let document: Document = original;
-          const journal: { before: Document; edit: AppliedDocumentOp }[] = [];
+          const journal: {
+            before: Document;
+            edit: AppliedDocumentOp;
+            ops: readonly DocumentOp[];
+          }[] = [];
           const refusals = new Map<DocumentOpRefusalReason, number>();
           let expectedRefusals = 0;
           for (const [index, step] of steps.entries()) {
@@ -1992,7 +1996,7 @@ describe("document operations", () => {
               assertExactModel(undo.document, before);
               const redo = applyDocumentOps(undo.document, undo.inverse).unwrap();
               assertExactModel(redo.document, edit.document);
-              journal.push({ before, edit });
+              journal.push({ before, edit, ops: compiled.value.ops });
               document = redo.document;
             }
           }
@@ -2004,7 +2008,7 @@ describe("document operations", () => {
           }
           assertExactModel(document, original);
           for (const entry of journal) {
-            document = applyDocumentOps(document, entry.edit.ops).unwrap().document;
+            document = applyDocumentOps(document, entry.ops).unwrap().document;
             assertExactModel(document, entry.edit.document);
           }
         },

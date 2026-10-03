@@ -744,7 +744,7 @@ test("canonical drop moves atomically and pending clipboard reads respect read-o
       configurable: true,
       value: { clipboard: { readText: () => pending.promise } },
     });
-    expect(manager.executeCanonicalCommand(pasteWithoutFormatting)).toBe(true);
+    expect(manager.api.executeCommand(pasteWithoutFormatting)).toBe(true);
     const beforeResolution = manager.api.getCanonicalDocument();
     const stateBeforeResolution = view.state;
     readOnly = true;
