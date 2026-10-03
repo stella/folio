@@ -1218,11 +1218,13 @@ export const resolveRevision = (
   const joins: JoinPlan[] = [];
   const emptiedEnds: EmptiedEndsById = new Map();
   const resolvedContents = new Map<string, readonly InlineNode[]>();
+  const resolvedCutEdges = new Map<string, CutEdges>();
   for (const { paragraph } of paragraphs) {
     const paraId = paragraph.paraId ?? "";
     const prepared = prepareDeferredRemovals(paragraph.content, resolution);
     const resolved = resolveList(prepared, resolution);
     resolvedContents.set(idKey(paraId), resolved.nodes);
+    if (resolved.edges !== undefined) resolvedCutEdges.set(idKey(paraId), resolved.edges);
     if (resolved.changed || prepared !== paragraph.content) {
       emptiedEnds.set(idKey(paraId), emptiedEndsOf(resolved.nodes, resolution.emptied));
       inline.push({
@@ -1264,14 +1266,29 @@ export const resolveRevision = (
     if (leading !== undefined) depth = Math.min(depth, leading);
     if (depth !== mark.resolutionJoin) retiredCutDepths.set(idKey(paragraph.paraId ?? ""), depth);
   }
-  for (const { paragraph } of paragraphs) {
+  for (const location of paragraphs) {
+    const { paragraph } = location;
     const paraId = paragraph.paraId ?? "";
     const mark = paragraph.pPrMark;
     const markResolved = mark !== undefined && ids.has(mark.info.id);
     const added = mark !== undefined && markWasAdded(mark.kind);
     const keepsBreak = markResolved && added === (op.decision === REVISION_DECISIONS.ACCEPT);
     if (markResolved && !keepsBreak) {
-      joins.push({ op, story: op.story, paraId, added, depth: mark.resolutionJoin });
+      let depth = mark.resolutionJoin;
+      if (added && depth !== undefined && op.decision === REVISION_DECISIONS.REJECT) {
+        const next = blockListAt(body.content, location.list).at(location.index + 1);
+        // A deletion can have cut the source run before a later paragraph
+        // split. Rejecting its wrapper exposes that source seam at the edge;
+        // carry the recorded depth across the removed inserted break.
+        depth = Math.max(
+          depth,
+          resolvedCutEdges.get(idKey(paraId))?.last ?? 0,
+          next?.type === "paragraph"
+            ? (resolvedCutEdges.get(idKey(next.paraId ?? ""))?.first ?? 0)
+            : 0,
+        );
+      }
+      joins.push({ op, story: op.story, paraId, added, depth });
     }
     let review = resolveParagraphReview(paragraph, resolution, keepsBreak);
     const retiredDepth = retiredCutDepths.get(idKey(paraId));
