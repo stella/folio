@@ -1,3 +1,4 @@
+import type { SaveDiagnosticOptions } from "./saveDiagnostics";
 import { removeResolvedHeaderFooterParts } from "./removeHeaderFooterParts";
 import { consumeSectionReferenceResolution } from "../internal/sectionReferenceResolution";
 import type { RemovedSectionReference } from "../internal/sectionEndpointResolution";
@@ -963,7 +964,7 @@ async function processNewHyperlinks(
 /**
  * Options for repacking DOCX
  */
-export type RepackOptions = {
+export type RepackOptions = SaveDiagnosticOptions & {
   /** Compression level (0-9, default: 6) */
   compressionLevel?: number;
   /** Whether to update modification date in docProps/core.xml */
@@ -1133,7 +1134,7 @@ const cloneDocxZip = (source: JSZip): JSZip => {
   return clone;
 };
 
-type FinishRepackOptions = {
+type FinishRepackOptions = SaveDiagnosticOptions & {
   document: Document;
   originalZip: JSZip;
   outputZip: JSZip;
@@ -1167,6 +1168,7 @@ const finishRepack = async ({
   updateModifiedDate,
   modifiedBy,
   changedNoteParaIds,
+  onDiagnostic,
   sectionEndpointRemoval,
   sectionReferenceRemovals,
 }: FinishRepackOptions): Promise<ArrayBuffer> => {
@@ -1211,7 +1213,12 @@ const finishRepack = async ({
 
   await rebindWatermarkRelIds(document, outputZip, compressionLevel);
 
-  await serializeHeadersFootersToZip(document, outputZip, compressionLevel);
+  await serializeHeadersFootersToZip({
+    doc: document,
+    zip: outputZip,
+    compressionLevel,
+    onDiagnostic,
+  });
 
   await serializeNotesToZip({
     doc: document,
@@ -1299,6 +1306,7 @@ async function repackDocxWithSectionEndpointRemoval({
     originalCorePropertiesXml,
     compressionLevel,
     updateModifiedDate,
+    onDiagnostic: options.onDiagnostic,
     ...(modifiedBy !== undefined ? { modifiedBy } : {}),
     ...(changedNoteParaIds !== undefined ? { changedNoteParaIds } : {}),
     ...(sectionEndpointRemoval !== undefined ? { sectionEndpointRemoval } : {}),
@@ -1403,7 +1411,12 @@ export async function repackDocxFromRaw(
   await rebindWatermarkRelIds(exportDocument, newZip, compressionLevel);
 
   // Serialize and update modified headers/footers
-  await serializeHeadersFootersToZip(exportDocument, newZip, compressionLevel);
+  await serializeHeadersFootersToZip({
+    doc: exportDocument,
+    zip: newZip,
+    compressionLevel,
+    onDiagnostic: options.onDiagnostic,
+  });
   await serializeHeaderFooterSettingsIntoZip(exportDocument, newZip, compressionLevel);
 
   // Splice edited footnote/endnote bodies back into their parts (separators and
@@ -2331,9 +2344,11 @@ async function rebindWatermarkRelIds(
  * `sourceZip` supplies each part as it stands before the save so the rebuilt
  * root can keep any prefix binding only the source document declared.
  */
+type CollectHeaderFooterUpdatesOptions = SaveDiagnosticOptions & { sourceZip: JSZip };
+
 export async function collectHeaderFooterUpdates(
   doc: Document,
-  sourceZip: JSZip,
+  { sourceZip, onDiagnostic }: CollectHeaderFooterUpdatesOptions,
 ): Promise<Map<string, string>> {
   const updates = new Map<string, string>();
   const rels = doc.package.relationships;
@@ -2362,7 +2377,15 @@ export async function collectHeaderFooterUpdates(
         const bindings = sourceFile
           ? readRootNamespaceBindings(await sourceFile.async("text"))
           : new Map<string, string>();
-        updates.set(path, serializeHeaderFooter(headerFooter, { path, bindings }));
+        updates.set(
+          path,
+          serializeHeaderFooter(headerFooter, {
+            path,
+            bindings,
+            onDiagnostic,
+            originalBuffer: doc.originalBuffer,
+          }),
+        );
       }
     }
   }
@@ -2373,13 +2396,22 @@ export async function collectHeaderFooterUpdates(
 /**
  * Serialize modified headers and footers into the ZIP
  */
-async function serializeHeadersFootersToZip(
-  doc: Document,
-  zip: JSZip,
-  compressionLevel: number,
-): Promise<void> {
+type SerializeHeadersFootersOptions = SaveDiagnosticOptions & {
+  doc: Document;
+  zip: JSZip;
+  compressionLevel: number;
+};
+async function serializeHeadersFootersToZip({
+  doc,
+  zip,
+  compressionLevel,
+  onDiagnostic,
+}: SerializeHeadersFootersOptions): Promise<void> {
   const compressionOptions = { level: compressionLevel };
-  for (const [filename, xml] of await collectHeaderFooterUpdates(doc, zip)) {
+  for (const [filename, xml] of await collectHeaderFooterUpdates(doc, {
+    sourceZip: zip,
+    onDiagnostic,
+  })) {
     zip.file(filename, xml, { compression: "DEFLATE", compressionOptions });
   }
 }
@@ -3097,7 +3129,7 @@ export function isDocxBuffer(buffer: ArrayBuffer): boolean {
  * ignored for a document that carries a source package, which keeps the
  * properties that package already states.
  */
-export type DocumentPropertiesOptions = {
+export type DocumentPropertiesOptions = SaveDiagnosticOptions & {
   /** `dc:creator` in `docProps/core.xml`. Omitted when absent. */
   creator?: string;
   /** `Application` in `docProps/app.xml`. Omitted, with `AppVersion`, when absent. */
@@ -3233,6 +3265,7 @@ export async function createDocx(
       originalCorePropertiesXml: source.corePropertiesXml,
       compressionLevel: 6,
       updateModifiedDate: true,
+      onDiagnostic: properties.onDiagnostic,
     });
   }
 
@@ -3245,6 +3278,7 @@ export async function createDocx(
     originalCorePropertiesXml: await zip.file("docProps/core.xml")?.async("text"),
     compressionLevel: 6,
     updateModifiedDate: true,
+    onDiagnostic: properties.onDiagnostic,
   });
 }
 

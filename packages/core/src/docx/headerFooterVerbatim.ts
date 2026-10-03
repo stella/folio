@@ -1,4 +1,4 @@
-import type { BlockContent, HeaderFooter } from "../types/document";
+import type { BlockContent, Document, HeaderFooter } from "../types/document";
 import { Result } from "better-result";
 import { canonicalJson } from "../utils/canonicalJson";
 
@@ -19,14 +19,25 @@ const readFingerprint = (hf: HeaderFooter): unknown => {
 const BASELINE_HANDLE = Symbol("header-footer-source-baseline");
 const contentBaselines = new WeakMap<
   object,
-  { fingerprint: string; content: readonly BlockContent[] }
+  {
+    fingerprint: string;
+    xml: string | undefined;
+    contentFingerprint: string;
+    content: readonly BlockContent[];
+  }
 >();
 
 const captureContentBaseline = (hf: HeaderFooter): void => {
   const fingerprint = hf.verbatimFingerprint;
   if (fingerprint === undefined) return;
   const handle = {};
-  contentBaselines.set(handle, { fingerprint, content: structuredClone(hf.content) });
+  const content = structuredClone(hf.content);
+  contentBaselines.set(handle, {
+    fingerprint,
+    xml: hf.verbatimXml,
+    contentFingerprint: canonicalJson(content),
+    content,
+  });
   Object.defineProperty(hf, BASELINE_HANDLE, {
     value: handle,
     enumerable: true,
@@ -34,14 +45,54 @@ const captureContentBaseline = (hf: HeaderFooter): void => {
   });
 };
 
-export const getHeaderFooterBaselineContent = (
+type HeaderFooterSourceBaseline =
+  | { type: "missing" }
+  | { type: "mismatch" }
+  | { type: "captured"; content: readonly BlockContent[] };
+
+// A story journal is JSON data; its restored records can recover ownership from
+// the same parsed package without trusting their fingerprint as model data.
+const packageBaselines = new WeakMap<ArrayBuffer, Map<string, Map<string, object>>>();
+export const captureHeaderFooterPackageBaselines = (document: Document): void => {
+  if (!document.originalBuffer) return;
+  const handles = new Map<string, Map<string, object>>();
+  for (const parts of [document.package.headers, document.package.footers]) {
+    for (const hf of parts?.values() ?? []) {
+      if (
+        !(BASELINE_HANDLE in hf) ||
+        typeof hf[BASELINE_HANDLE] !== "object" ||
+        hf[BASELINE_HANDLE] === null ||
+        hf.verbatimFingerprint === undefined ||
+        hf.verbatimXml === undefined
+      )
+        continue;
+      const bySource = handles.get(hf.verbatimFingerprint) ?? new Map<string, object>();
+      bySource.set(hf.verbatimXml, hf[BASELINE_HANDLE]);
+      handles.set(hf.verbatimFingerprint, bySource);
+    }
+  }
+  packageBaselines.set(document.originalBuffer, handles);
+};
+
+export const getHeaderFooterSourceBaseline = (
   hf: HeaderFooter,
-): readonly BlockContent[] | undefined => {
-  if (!(BASELINE_HANDLE in hf)) return;
-  const handle = hf[BASELINE_HANDLE];
-  if (typeof handle !== "object" || handle === null) return;
+  originalBuffer?: ArrayBuffer,
+): HeaderFooterSourceBaseline => {
+  let handle: unknown;
+  if (BASELINE_HANDLE in hf) handle = hf[BASELINE_HANDLE];
+  else if (originalBuffer && hf.verbatimFingerprint !== undefined && hf.verbatimXml !== undefined)
+    handle = packageBaselines.get(originalBuffer)?.get(hf.verbatimFingerprint)?.get(hf.verbatimXml);
+  if (handle === undefined && !(BASELINE_HANDLE in hf)) return { type: "missing" };
+  if (typeof handle !== "object" || handle === null) return { type: "mismatch" };
   const baseline = contentBaselines.get(handle);
-  return baseline?.fingerprint === hf.verbatimFingerprint ? baseline?.content : undefined;
+  if (
+    !baseline ||
+    baseline.fingerprint !== hf.verbatimFingerprint ||
+    baseline.xml !== hf.verbatimXml ||
+    baseline.contentFingerprint !== canonicalJson(baseline.content)
+  )
+    return { type: "mismatch" };
+  return { type: "captured", content: baseline.content };
 };
 
 export const canReplayHeaderFooterBlocks = (hf: HeaderFooter): boolean => {

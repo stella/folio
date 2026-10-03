@@ -1,3 +1,4 @@
+import type { SaveDiagnosticOptions } from "../saveDiagnostics";
 /**
  * Header/Footer Serializer - Serialize headers/footers to OOXML XML
  *
@@ -15,7 +16,7 @@ import {
   getHeaderFooterVerbatimXml,
   canReplayHeaderFooterVerbatim,
   canReplayHeaderFooterBlocks,
-  getHeaderFooterBaselineContent,
+  getHeaderFooterSourceBaseline,
 } from "../headerFooterVerbatim";
 import { buildStoryBlockReplay } from "../storyBlockReplay";
 import { isEmptyParagraph } from "../paragraphParser";
@@ -96,9 +97,18 @@ function serializeBlock(block: BlockContent): string {
  *   document bound keeps its URI
  * @returns Complete XML string for header*.xml or footer*.xml
  */
-export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): string {
+type HeaderFooterSerializeOptions = SourcePart &
+  SaveDiagnosticOptions & { originalBuffer?: ArrayBuffer };
+
+export function serializeHeaderFooter(
+  hf: HeaderFooter,
+  source?: HeaderFooterSerializeOptions,
+): string {
+  const baseline = getHeaderFooterSourceBaseline(hf, source?.originalBuffer);
+  if (baseline.type === "mismatch")
+    source?.onDiagnostic?.({ type: "sourceReplayMismatch", part: source.path });
   const verbatim = getHeaderFooterVerbatimXml(hf);
-  if (verbatim && canReplayHeaderFooterVerbatim(hf)) {
+  if (baseline.type === "captured" && verbatim && canReplayHeaderFooterVerbatim(hf)) {
     return verbatim;
   }
 
@@ -154,11 +164,10 @@ export function serializeHeaderFooter(hf: HeaderFooter, source?: SourcePart): st
       sourceBindings: source?.bindings,
       body: contentXml,
     });
-  const baselineContent = getHeaderFooterBaselineContent(hf);
-  if (verbatim && baselineContent && canReplayHeaderFooterBlocks(hf)) {
+  if (baseline.type === "captured" && verbatim && canReplayHeaderFooterBlocks(hf)) {
     const replayed = buildStoryBlockReplay({
       sourceXml: verbatim,
-      baselineContent,
+      baselineContent: baseline.content,
       currentContent: hf.content,
       serializedXml,
     });

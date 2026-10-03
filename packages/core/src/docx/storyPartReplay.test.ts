@@ -1,3 +1,4 @@
+import { panic } from "better-result";
 import { expect, test } from "bun:test";
 import JSZip from "jszip";
 
@@ -5,7 +6,12 @@ import { applyDocumentOps, paragraphLogicalText, type DocumentOp } from "@stll/d
 import type { Paragraph } from "../types/document";
 import { visitDocxParagraphs } from "./paragraphTraversal";
 import { parseDocx } from "./parser";
-import { repackDocx } from "./rezip";
+import { createDocx, repackDocx as repack } from "./rezip";
+
+const repackDocx = (
+  document: Parameters<typeof repack>[0],
+  options: Parameters<typeof repack>[1] = {},
+) => repack(document, { ...options, onDiagnostic: ({ type, part }) => panic(`${type}: ${part}`) });
 
 const PROFILES = [
   {
@@ -164,3 +170,26 @@ test.each(NESTED_CASES)(
     );
   },
 );
+
+test("save paths forward source mismatch diagnostics with the resolved part path", async () => {
+  const source = await storyFixture({ profile: PROFILES[0], story: "header", prefix: "w" });
+  const document = await parseDocx(source.bytes, { preloadFonts: false });
+  const header = document.package.headers?.get("rIdStory");
+  if (!header) throw new Error("Missing header");
+  header.verbatimFingerprint = "forged";
+  const diagnostics: unknown[] = [];
+  for (const save of [
+    () =>
+      repack(document, {
+        updateModifiedDate: false,
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }),
+    () => createDocx(document, { onDiagnostic: (diagnostic) => diagnostics.push(diagnostic) }),
+  ]) {
+    diagnostics.length = 0;
+    const saved = await save();
+    expect(diagnostics).toEqual([{ type: "sourceReplayMismatch", part: source.partPath }]);
+    const reopened = await parseDocx(saved, { preloadFonts: false });
+    expect(reopened.package.headers?.get("rIdStory")?.content).toEqual(header.content);
+  }
+});

@@ -722,6 +722,12 @@
       "path": "14:1:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -2120778113,
+      "path": "5",
+      "note": "Restoring a removed story must retain captured replay ownership",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::an operation's inverse restores the document exactly": [
