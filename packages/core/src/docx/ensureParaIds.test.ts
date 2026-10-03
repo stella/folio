@@ -12,7 +12,7 @@ import JSZip from "jszip";
 import { createFolioAIEditSnapshot } from "../ai-edits/snapshot";
 import { isSequentialFolioBlockId } from "../types/block-id";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
-import { ensureParaIds, EnsureParaIdsError } from "./ensureParaIds";
+import { ensureParaIds, EnsureParaIdsError, ENSURE_PARA_IDS_REASONS } from "./ensureParaIds";
 import { parseDocx } from "./parser";
 import { DOCX_MAX_ENTRIES } from "./server/boundedArchive";
 
@@ -351,6 +351,23 @@ describe("ensureParaIds", () => {
       const result = await ensureParaIds(input);
       expect(result.assigned).toBe(1);
       expect((await ensureParaIds(result.docx)).alreadyComplete).toBe(true);
+    }
+  });
+
+  test("refuses undeclared extension prefixes with a typed namespace error", async () => {
+    for (const body of [
+      PARA("Body", ' w14:paraId="12345678"'),
+      "<mc:Fallback><w:p/></mc:Fallback>",
+    ]) {
+      const input = await buildDocx({ "word/document.xml": documentXml(body) });
+      const error = await ensureParaIds(input).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      );
+      expect(error).toBeInstanceOf(EnsureParaIdsError);
+      if (!(error instanceof EnsureParaIdsError))
+        throw new Error("expected a normalization refusal");
+      expect(error.reason).toBe(ENSURE_PARA_IDS_REASONS.NAMESPACE_INVALID);
     }
   });
 

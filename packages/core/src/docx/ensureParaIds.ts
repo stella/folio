@@ -73,9 +73,16 @@ import {
   type XmlElement,
 } from "./xmlParser";
 
+export const ENSURE_PARA_IDS_REASONS = {
+  NORMALIZATION_FAILED: "normalization-failed",
+  NAMESPACE_INVALID: "namespace-invalid",
+  SIGNED_PACKAGE: "signed-package",
+} as const;
+
 /** A malformed or unsupported package prevented paragraph-ID normalization. */
 export class EnsureParaIdsError extends TaggedError("EnsureParaIdsError")<{
   message: string;
+  reason: (typeof ENSURE_PARA_IDS_REASONS)[keyof typeof ENSURE_PARA_IDS_REASONS];
   cause?: unknown;
 }> {}
 
@@ -144,7 +151,11 @@ const applySplices = (xml: string, edits: SpliceEdit[], partPath: string): strin
 };
 
 const createEnsureParaIdsError = (message: string, cause?: unknown): EnsureParaIdsError =>
-  new EnsureParaIdsError({ message, ...(cause === undefined ? {} : { cause }) });
+  new EnsureParaIdsError({
+    reason: ENSURE_PARA_IDS_REASONS.NORMALIZATION_FAILED,
+    message,
+    ...(cause === undefined ? {} : { cause }),
+  });
 
 const collectExistingParaIds = (xml: string, into: Set<string>): void => {
   for (const match of xml.matchAll(ANY_PARA_ID_PATTERN)) {
@@ -184,6 +195,19 @@ const partSpelling = (xml: string, partPath: string): PartSpelling => {
   const scanned = scanStreamingXmlElements(
     xml,
     ({ element, attributeValueSpans: spans, nameEnd, parent }) => {
+      const elementName = element.name ?? "";
+      const unboundElement = elementName.includes(":") && getNamespaceUri(element) === undefined;
+      const unboundAttribute = Object.keys(element.attributes ?? {}).some(
+        (attribute) =>
+          attribute.includes(":") &&
+          !attribute.startsWith("xmlns:") &&
+          resolveAttributeNamespaceUri(element, attribute) === undefined,
+      );
+      if (unboundElement || unboundAttribute)
+        throw new EnsureParaIdsError({
+          reason: ENSURE_PARA_IDS_REASONS.NAMESPACE_INVALID,
+          message: `Undeclared namespace prefix in ${partPath}`,
+        });
       if (parent === undefined) {
         if (root !== undefined) throw createEnsureParaIdsError(`Multiple roots in ${partPath}`);
         root = element;
@@ -555,9 +579,11 @@ const ensureParaIdsInternal = async (
   const zip = await JSZip.loadAsync(docx);
 
   if (hasDigitalSignatureParts(zip) && options.allowSignedPackageMutation !== true) {
-    throw createEnsureParaIdsError(
-      "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
-    );
+    throw new EnsureParaIdsError({
+      reason: ENSURE_PARA_IDS_REASONS.SIGNED_PACKAGE,
+      message:
+        "Refusing to normalize a digitally signed package because rewriting OOXML invalidates its signatures. Warn the user and pass allowSignedPackageMutation only if invalidation is acceptable.",
+    });
   }
 
   for (const [partPath, content] of updates) {
