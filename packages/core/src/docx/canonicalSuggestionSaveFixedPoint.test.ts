@@ -130,7 +130,9 @@ test.each(["absent", "empty", "bold"] as const)(
     const structuralSave = await zip.generateAsync({ type: "arraybuffer" });
     for (const saved of [fullSave, structuralSave]) {
       const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
-      expect(reopened.package.document.content).toStrictEqual(suggested.package.document.content);
+      expect(structuredClone(reopened.package.document.content)).toStrictEqual(
+        structuredClone(suggested.package.document.content),
+      );
       for (const decision of Object.values(REVISION_DECISIONS)) {
         const revisionIds = getTrackedChangeStatsFromDoc(toProseDoc(suggested)).ids;
         expect(revisionIds.length).toBeGreaterThan(0);
@@ -144,8 +146,8 @@ test.each(["absent", "empty", "bold"] as const)(
         const after = applyDocumentOps(reopened, [resolution]);
         if (before.isErr()) throw before.error;
         if (after.isErr()) throw after.error;
-        expect(after.value.document.package.document.content).toStrictEqual(
-          before.value.document.package.document.content,
+        expect(structuredClone(after.value.document.package.document.content)).toStrictEqual(
+          structuredClone(before.value.document.package.document.content),
         );
         expect(getTrackedChangeStatsFromDoc(toProseDoc(after.value.document)).ids).toEqual([]);
       }
@@ -304,7 +306,9 @@ test("every paragraph mark kind retains absent, empty and populated formatting",
             .replaceAll("xmlns:folio=", "xmlns:f="),
         ]) {
           const reopened = parseDocumentBody(xml);
-          expect(reopened.content).toStrictEqual(original.package.document.content);
+          expect(structuredClone(reopened.content)).toStrictEqual(
+            structuredClone(original.package.document.content),
+          );
           expect(
             parseDocumentBody(serializeDocument({ package: { document: reopened } })).content,
           ).toStrictEqual(reopened.content);
