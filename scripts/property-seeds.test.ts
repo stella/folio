@@ -6,6 +6,7 @@
 
 import { afterEach, describe, expect, setDefaultTimeout, spyOn, test } from "bun:test";
 import fc from "fast-check";
+import ts from "typescript";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -98,6 +99,7 @@ describe("failure reporting", () => {
       fixture,
       `import { test } from "bun:test";
 import fc from "fast-check";
+import ts from "typescript";
 import { assertProperty } from "../property-testing";
 test("nightly replay fixture", () => {
   assertProperty(fc.property(fc.constant(false), (value) => value), { seed: 33, numRuns: 1 });
@@ -637,4 +639,30 @@ describe("test titles", () => {
       true,
     );
   });
+});
+
+const duplicateJsonKeys = (text: string): string[] => {
+  const duplicates: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const keys = new Set<string>();
+      for (const property of node.properties) {
+        if (!ts.isPropertyAssignment(property) || !ts.isStringLiteral(property.name)) continue;
+        const key = property.name.text;
+        if (keys.has(key)) duplicates.push(key);
+        keys.add(key);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(ts.parseJsonText(PROPERTY_SEEDS_FILE, text));
+  return duplicates;
+};
+
+test("the seed registry never shadows earlier replays with duplicate JSON keys", () => {
+  expect(duplicateJsonKeys('{"a": [], "\\u0061": []}')).toEqual(["a"]);
+  expect(duplicateJsonKeys('{"a": [], "nested": {"a": []}}')).toEqual([]);
+  expect(
+    duplicateJsonKeys(readFileSync(path.join(REPO_ROOT, PROPERTY_SEEDS_FILE), "utf8")),
+  ).toEqual([]);
 });

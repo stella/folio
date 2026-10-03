@@ -595,7 +595,7 @@ test("generated pending deletion splits preserve resolution order and exact hist
 
 // A replacement can strand a deletion's inner source seam at a control edge.
 // Resolving the deletion first must retain that fact for the payload blocker.
-test("generated nested replacements preserve reviewed source seams in every resolution order", () => {
+test("generated clipboard replacements preserve retained tail lineage and authored seams", () => {
   const refusals = new Map<DocumentOpRefusalReason, number>();
   assertProperty(
     fc.property(
@@ -1557,6 +1557,7 @@ test("generated replacement breaks restore deletion cut depths across paragraphs
         });
         const revisionIds = Array.from({ length: 32 }, (_, index) => 1001 + index);
         const planned = planTrackedReplace(original, {
+          sourceContainerPolicy: "join",
           from: position({ offset: 1 + (cutPick % (width - 1)) }),
           to: position({ blockId: "00000002", offset: 0 }),
           revision: { id: 1000, author: "Reviewer" },

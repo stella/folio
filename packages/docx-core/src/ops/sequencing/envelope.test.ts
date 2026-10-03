@@ -61,7 +61,7 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
-  for (const schema of [4, 5, 6, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+  for (const schema of [4, 5, 6, 7, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
     const refused = validateDocumentBatch({ ...fixture, schema });
     expect(refused.isErr()).toBe(true);
     if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");

@@ -333,6 +333,7 @@ const operationFields = {
   createNumberingInstance: undefined,
   deleteNumberingInstance: undefined,
   setSectionEndpoint: undefined,
+  setPackageResources: undefined,
   addNote: undefined,
   createHeaderFooter: undefined,
   removeHeaderFooter: undefined,

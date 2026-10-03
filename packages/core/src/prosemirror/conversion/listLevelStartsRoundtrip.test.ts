@@ -127,6 +127,7 @@ describe("listRendering.levelStarts round-trip", () => {
       throw new TypeError("Expected parsed LISTNUM rendering.");
     expect(paragraph.listRendering.marker).toBe("7.\t(a)");
     expect(paragraph.listRendering.markerTemplate).toBe("%1.");
+    expect(paragraph.listRendering.foldedMarkerSuffix).toBe("(a)");
     expect(paragraph.listRendering.implicitChildLevelAdvances).toBe(1);
     expect(paragraph.listRendering.markerSecondSlotOffsetTwips).toBe(360);
     expect(paragraph.content.some((item) => item.type === "complexField")).toBe(false);
@@ -140,6 +141,8 @@ describe("listRendering.levelStarts round-trip", () => {
       paragraph.listRendering,
     );
     expect(markers(rebuilt).at(1)).toBe("b.");
+    expect(markers(initial).at(0)).toBe("7.\t(a)");
+    expect(markers(rebuilt).at(0)).toBe("7.\t(a)");
   });
 
   test("same reference recomputes cached rendering when its definition changes", async () => {

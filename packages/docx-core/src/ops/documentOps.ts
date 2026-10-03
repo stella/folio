@@ -9,6 +9,8 @@ export { storyBody, findStoryBody, documentStories, sameStory } from "./stories"
  */
 
 export { captureDocumentOp } from "./wire";
+export { defaultInsertionGap, zeroWidthLeavesAt } from "./leaves";
+export { packageResourcesOf } from "./packageResources";
 export { combineEdits } from "./edits";
 export {
   applyDocumentOpEnvelope,
@@ -93,6 +95,10 @@ export {
   type JoinInlineOp,
   type NewIds,
   type NumberingPartState,
+  type PackageResourcePart,
+  type PackageResourceMedia,
+  type PackageResources,
+  type SetPackageResourcesOp,
   type OpStory,
   type ParagraphPropsPatch,
   type ParagraphReviewFields,

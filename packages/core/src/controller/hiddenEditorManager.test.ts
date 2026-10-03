@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { assertExactModel } from "../../../../test/exactModel";
+import { describe, expect, spyOn, test } from "bun:test";
+import { Fragment, Slice } from "prosemirror-model";
+import { pasteWithoutFormatting } from "../prosemirror/commands/pastePlainText";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { panic } from "better-result";
 import { resolveCanonicalReviewRange } from "./canonicalReview";
 import { createEmptyDocument } from "../utils/createDocument";
-import { EditorState } from "prosemirror-state";
+import { EditorState, Plugin } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { OP_STORIES } from "@stll/docx-core/ops";
 import { createHeaderFooterEditorManager } from "./headerFooterEditorManager";
@@ -402,7 +405,7 @@ test("canonical suggesting uses the current author and preserves explicit mode a
     ).toBe(true);
     expect(view.state.doc.textContent).toBe("Start");
     expect(manager.api.undo()).toBe(true);
-    expect(manager.api.getCanonicalDocument()).toEqual(suggested);
+    assertExactModel(manager.api.getCanonicalDocument(), suggested);
   } finally {
     manager.destroyView();
     host.remove();
@@ -493,6 +496,269 @@ test.each([
     manager.destroyView();
     host.remove();
     storyHost.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test("canonical native paste and cut share one journal and clipboard failures cannot delete", () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "abcd" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected clipboard fixture");
+  paragraph.paraId = "12345678";
+  const reasons: string[] = [];
+  let copyTransforms = 0;
+  const clipboardPlugin = new Plugin({
+    props: {
+      transformCopied: (_slice, view) => {
+        copyTransforms += 1;
+        return new Slice(
+          Fragment.from(
+            view.state.schema.node(
+              "paragraph",
+              null,
+              view.state.schema.text("copiedX", [view.state.schema.marks["bold"].create()]),
+            ),
+          ),
+          1,
+          1,
+        );
+      },
+    },
+  });
+  const { deps } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getExternalPlugins: () => [clipboardPlugin],
+    onSessionRefusal: (reason) => reasons.push(reason),
+  });
+  const manager = createHiddenEditorManager(deps);
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical clipboard view");
+    manager.api.setSelection(2, 4);
+    const initial = manager.api.getCanonicalDocument();
+    const initialSelection = view.state.selection.toJSON();
+    const pasted = new Slice(
+      Fragment.from(
+        view.state.schema.node(
+          "paragraph",
+          { paraId: "4AFE0001" },
+          view.state.schema.text("X", [view.state.schema.marks["bold"].create()]),
+        ),
+      ),
+      1,
+      1,
+    );
+    expect(
+      view.someProp("handlePaste", (handler) => handler(view, new ClipboardEvent("paste"), pasted)),
+    ).toBe(true);
+    expect(view.state.doc.textContent).toBe("aXd");
+    const afterPaste = manager.api.getCanonicalDocument();
+    expect(manager.api.undo()).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), initial);
+    expect(view.state.selection.toJSON()).toEqual(initialSelection);
+    expect(manager.api.canUndo()).toBe(false);
+    expect(manager.api.redo()).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), afterPaste);
+
+    manager.api.setSelection(2, 3);
+    const beforeCut = manager.api.getCanonicalDocument();
+    const stateBeforeCut = view.state;
+    const clipboard = new Map<string, string>();
+    const rejected = new ClipboardEvent("cut", { cancelable: true, bubbles: true });
+    Object.defineProperty(rejected, "clipboardData", {
+      value: {
+        setData: () => {
+          throw new TypeError("Clipboard denied");
+        },
+      },
+    });
+    view.dom.dispatchEvent(rejected);
+    expect(rejected.defaultPrevented).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), beforeCut);
+    expect(view.state).toBe(stateBeforeCut);
+    expect(reasons).toHaveLength(1);
+
+    const accepted = new ClipboardEvent("cut", { cancelable: true, bubbles: true });
+    Object.defineProperty(accepted, "clipboardData", {
+      value: { setData: (type: string, value: string) => clipboard.set(type, value) },
+    });
+    view.dom.dispatchEvent(accepted);
+    expect(accepted.defaultPrevented).toBe(true);
+    expect(clipboard.get("text/plain")).toBe("copiedX");
+    expect(copyTransforms).toBe(2);
+    expect(clipboard.get("text/html")).toContain("data-pm-slice");
+    expect(clipboard.get("text/html")).toContain("<strong");
+    expect(view.state.doc.textContent).toBe("ad");
+    const afterCut = manager.api.getCanonicalDocument();
+    expect(manager.api.undo()).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), beforeCut);
+    expect(manager.api.redo()).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), afterCut);
+  } finally {
+    manager.destroyView();
+    host.remove();
+    GlobalRegistrator.unregister();
+  }
+});
+
+test.each(["selection", "edit", "uncaptured"] as const)(
+  "native drag captures its source across a later %s change",
+  (change) => {
+    GlobalRegistrator.register();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const source = createEmptyDocument({ initialText: "abcd" });
+    const paragraph = source.package.document.content.at(0);
+    if (paragraph?.type !== "paragraph") panic("Expected drag source fixture.");
+    paragraph.paraId = "12345678";
+    const reasons: string[] = [];
+    const { deps } = makeDeps({
+      getHost: () => host,
+      getDocument: () => source,
+      getDocumentContext: () => source,
+      getExperimentalSession: () => "canonical",
+      onSessionRefusal: (reason) => reasons.push(reason),
+    });
+    const manager = createHiddenEditorManager(deps);
+    try {
+      manager.ensureView();
+      const view = manager.getView();
+      if (!view) panic("Expected canonical drag view.");
+      manager.api.setSelection(2, 4);
+      const slice = view.state.selection.content();
+      if (change !== "uncaptured")
+        view.dom.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true }));
+      manager.api.setSelection(5);
+      if (change === "edit")
+        view.dom.dispatchEvent(
+          new InputEvent("beforeinput", {
+            inputType: "insertText",
+            data: "!",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      const beforeDrop = manager.api.getCanonicalDocument();
+      const selectionBeforeDrop = view.state.selection.toJSON();
+      const stateBeforeDrop = view.state;
+      const coordinates = spyOn(view, "posAtCoords").mockReturnValue({
+        pos: change === "edit" ? 6 : 5,
+        inside: 0,
+      });
+      expect(
+        view.someProp("handleDrop", (handler) =>
+          handler(view, new DragEvent("drop", { clientX: 10, clientY: 10 }), slice, true),
+        ),
+      ).toBe(true);
+      coordinates.mockRestore();
+      if (change === "edit") {
+        expect(view.state.doc.textContent).toBe("abcd!");
+        assertExactModel(manager.api.getCanonicalDocument(), beforeDrop);
+        expect(view.state).toBe(stateBeforeDrop);
+        assertExactModel(view.state.selection.toJSON(), selectionBeforeDrop);
+        expect(reasons).toHaveLength(1);
+        expect(reasons.at(0)).toContain("changed");
+        expect(manager.api.undo()).toBe(true);
+        expect(view.state.doc.textContent).toBe("abcd");
+        expect(manager.api.canUndo()).toBe(false);
+      } else if (change === "uncaptured") {
+        assertExactModel(manager.api.getCanonicalDocument(), beforeDrop);
+        expect(view.state).toBe(stateBeforeDrop);
+        assertExactModel(view.state.selection.toJSON(), selectionBeforeDrop);
+        expect(reasons).toHaveLength(1);
+        expect(reasons.at(0)).toContain("captured source");
+        expect(manager.api.canUndo()).toBe(false);
+      } else {
+        expect(view.state.doc.textContent).toBe("adbc");
+        expect(reasons).toEqual([]);
+        const moved = manager.api.getCanonicalDocument();
+        const movedSelection = view.state.selection.toJSON();
+        expect(manager.api.undo()).toBe(true);
+        assertExactModel(manager.api.getCanonicalDocument(), beforeDrop);
+        assertExactModel(view.state.selection.toJSON(), selectionBeforeDrop);
+        expect(manager.api.canUndo()).toBe(false);
+        expect(manager.api.redo()).toBe(true);
+        assertExactModel(manager.api.getCanonicalDocument(), moved);
+        assertExactModel(view.state.selection.toJSON(), movedSelection);
+      }
+    } finally {
+      manager.destroyView();
+      host.remove();
+      GlobalRegistrator.unregister();
+    }
+  },
+);
+
+test("canonical drop moves atomically and pending clipboard reads respect read-only changes", async () => {
+  GlobalRegistrator.register();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const source = createEmptyDocument({ initialText: "abcd" });
+  const paragraph = source.package.document.content.at(0);
+  if (paragraph?.type !== "paragraph") panic("Expected drop fixture");
+  paragraph.paraId = "12345678";
+  let readOnly = false;
+  const { deps, spies } = makeDeps({
+    getHost: () => host,
+    getDocument: () => source,
+    getDocumentContext: () => source,
+    getExperimentalSession: () => "canonical",
+    getReadOnly: () => readOnly,
+  });
+  const manager = createHiddenEditorManager(deps);
+  const navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  try {
+    manager.ensureView();
+    const view = manager.getView();
+    if (!view) panic("Expected canonical drop view");
+    manager.api.setSelection(2, 4);
+    const initial = manager.api.getCanonicalDocument();
+    const initialSelection = view.state.selection.toJSON();
+    const slice = view.state.selection.content();
+    view.dom.dispatchEvent(new DragEvent("dragstart", { bubbles: true, cancelable: true }));
+    const coordinates = spyOn(view, "posAtCoords").mockReturnValue({ pos: 5, inside: 0 });
+    expect(
+      view.someProp("handleDrop", (handler) =>
+        handler(view, new DragEvent("drop", { clientX: 10, clientY: 10 }), slice, true),
+      ),
+    ).toBe(true);
+    coordinates.mockRestore();
+    expect(view.state.doc.textContent).toBe("adbc");
+    const moved = manager.api.getCanonicalDocument();
+    expect(manager.api.undo()).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), initial);
+    expect(view.state.selection.toJSON()).toEqual(initialSelection);
+    expect(manager.api.canUndo()).toBe(false);
+    expect(manager.api.redo()).toBe(true);
+    assertExactModel(manager.api.getCanonicalDocument(), moved);
+
+    const pending = Promise.withResolvers<string>();
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { clipboard: { readText: () => pending.promise } },
+    });
+    expect(manager.api.executeCommand(pasteWithoutFormatting)).toBe(true);
+    const beforeResolution = manager.api.getCanonicalDocument();
+    const stateBeforeResolution = view.state;
+    readOnly = true;
+    pending.resolve("forbidden");
+    await pending.promise;
+    await Promise.resolve();
+    assertExactModel(manager.api.getCanonicalDocument(), beforeResolution);
+    expect(view.state).toBe(stateBeforeResolution);
+    expect(spies["onReadOnlyEditAttempt"].calls).toBe(1);
+  } finally {
+    if (navigatorDescriptor) Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+    else Reflect.deleteProperty(globalThis, "navigator");
+    manager.destroyView();
+    host.remove();
     GlobalRegistrator.unregister();
   }
 });

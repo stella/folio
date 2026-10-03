@@ -185,6 +185,7 @@ export const LIST_RENDERING_RESERVED = {
     sentinel: "nothing",
     reader: RESERVED_VALUE_READERS.numbering,
   }),
+  foldedMarkerSuffix: NO_RESERVED_VALUE,
   levelNumFmts: NO_RESERVED_VALUE,
   levelStarts: NO_RESERVED_VALUE,
   levelTabs: NO_RESERVED_VALUE,

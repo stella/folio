@@ -812,18 +812,87 @@ describe("canonical input boundary", () => {
     },
   );
 
-  test.each(["paste", "cut", "drop"] as const)(
-    "%s DOM proposals are refused atomically",
+  test.each(["paste", "drop"] as const)(
+    "%s DOM gestures delegate without changing authority",
     (kind) => {
       const { boundary, view, inputs, refusals } = createRig();
+      const before = view.state;
       const event = new Event(kind, { cancelable: true });
+      expect(boundary.handleDOMEvents[kind](view, event)).toBe(false);
+      expect(event.defaultPrevented).toBe(false);
+      expect(inputs).toEqual([]);
+      expect(refusals).toEqual([]);
+      expect(view.state).toBe(before);
+    },
+  );
+
+  test("cut without its clipboard owner is refused atomically", () => {
+    const { boundary, view, inputs, refusals } = createRig();
+    const before = view.state;
+    const event = new ClipboardEvent("cut", { cancelable: true });
+    expect(boundary.handleDOMEvents.cut(view, event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(inputs).toEqual([]);
+    expect(refusals).toHaveLength(1);
+    expect(view.state).toBe(before);
+  });
+
+  test.each(["paste", "cut", "drop"] as const)(
+    "composition blocks the %s DOM gesture atomically",
+    (kind) => {
+      const { boundary, view, inputs, refusals } = createRig();
+      boundary.handleDOMEvents.compositionstart(view, new CompositionEvent("compositionstart"));
+      const before = view.state;
+      const event = new ClipboardEvent(kind, { cancelable: true });
       expect(boundary.handleDOMEvents[kind](view, event)).toBe(true);
       expect(event.defaultPrevented).toBe(true);
       expect(inputs).toEqual([]);
       expect(refusals).toHaveLength(1);
-      expect(view.state.doc.textContent).toBe("A😀B");
+      expect(boundary.isComposing).toBe(true);
+      expect(view.state).toBe(before);
     },
   );
+
+  test("generated clipboard gesture sequences report refusals without ending composition", async () => {
+    await assertProperty(
+      fc.property(
+        fc.array(fc.constantFrom("paste", "cut", "drop"), { minLength: 8, maxLength: 16 }),
+        (gestures) => {
+          const { boundary, view, inputs, refusals, compositionTransitions } = createRig();
+          boundary.handleDOMEvents.compositionstart(view, new CompositionEvent("compositionstart"));
+          const before = view.state;
+          const expectedReasons = {
+            paste: "Composition must finish before pasting.",
+            cut: "Composition must finish before cutting.",
+            drop: "Composition must finish before dropping.",
+          } as const satisfies Record<(typeof gestures)[number], string>;
+          const expectedCounts = new Map<string, number>();
+          for (const kind of gestures) {
+            const event = new ClipboardEvent(kind, { cancelable: true });
+            expect(boundary.handleDOMEvents[kind](view, event)).toBe(true);
+            expect(event.defaultPrevented).toBe(true);
+            const reason = expectedReasons[kind];
+            expectedCounts.set(reason, (expectedCounts.get(reason) ?? 0) + 1);
+            expect(refusals.at(-1)).toBe(reason);
+            // Native IME mutation notifications remain suppressed in the same gesture.
+            const reported = refusals.length;
+            boundary.refuseNativeMutation(view);
+            expect(refusals).toHaveLength(reported);
+            expect(boundary.isComposing).toBe(true);
+            expect(view.state).toBe(before);
+            expect(inputs).toEqual([]);
+            expect(compositionTransitions).toEqual(["begin"]);
+          }
+          const actualCounts = new Map<string, number>();
+          for (const reason of refusals)
+            actualCounts.set(reason, (actualCounts.get(reason) ?? 0) + 1);
+          expect(actualCounts).toEqual(expectedCounts);
+          expect(refusals).toHaveLength(gestures.length);
+        },
+      ),
+      { numRuns: 30 },
+    );
+  });
 
   test.each([
     { key: "Backspace", from: 1, ctrlKey: false },

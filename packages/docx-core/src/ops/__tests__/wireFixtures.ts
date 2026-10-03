@@ -2,6 +2,7 @@
 import path from "node:path";
 import type { Document, Paragraph, Table, TableRow } from "../../model/document";
 import { captureSectionView, captureSectionViewState } from "../blocks";
+import { packageResourcesOf } from "../packageResources";
 import { applyDocumentOp } from "../apply";
 import {
   DOCUMENT_OP_SCHEMA_VERSION,
@@ -58,6 +59,22 @@ const document: Document = { package: { document: { content: [first, second] } }
 
 /** Each operation, applied in turn to what the previous one produced. */
 const OPS: readonly DocumentOp[] = [
+  {
+    type: DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES,
+    expected: packageResourcesOf(document),
+    resources: {
+      ...packageResourcesOf(document),
+      media: {
+        type: "present",
+        value: [
+          [
+            "word/media/clipboard.png",
+            { path: "word/media/clipboard.png", mimeType: "image/png", data: [137, 80, 78, 71] },
+          ],
+        ],
+      },
+    },
+  },
   {
     type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
     abstractNum: {

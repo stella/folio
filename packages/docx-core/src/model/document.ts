@@ -442,7 +442,7 @@ export type DocxPackage = {
   /** Document-wide settings (`word/settings.xml`). */
   settings?: DocumentSettings;
   /** Style definitions */
-  styles?: StyleDefinitions;
+  styles?: StyleDefinitions | undefined;
   /** Theme */
   theme?: Theme;
   /** Numbering definitions */
@@ -458,9 +458,9 @@ export type DocxPackage = {
   /** Footers by relationship ID */
   footers?: Map<string, HeaderFooter>;
   /** Document relationships */
-  relationships?: RelationshipMap;
+  relationships?: RelationshipMap | undefined;
   /** Media files */
-  media?: Map<string, MediaFile>;
+  media?: Map<string, MediaFile> | undefined;
   /** Document properties */
   properties?: {
     title?: string;

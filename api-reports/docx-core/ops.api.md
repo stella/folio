@@ -91,6 +91,7 @@ export const compileEditorIntent: (document: Document_2, input: CompileEditorInt
 export type CompileEditorIntentOptions = {
     intent: EditorIntent;
     mode: EditorIntentMode;
+    firstBlockId?: number;
 };
 
 // @public
@@ -228,7 +229,7 @@ export const DOCUMENT_OP_REFUSAL_REASONS: Readonly<{
 }>;
 
 // @public
-export const DOCUMENT_OP_SCHEMA_VERSION = 7;
+export const DOCUMENT_OP_SCHEMA_VERSION = 8;
 
 // @public
 export const DOCUMENT_OP_TYPES: Readonly<{
@@ -262,6 +263,7 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly CREATE_NUMBERING_INSTANCE: "createNumberingInstance";
     readonly DELETE_NUMBERING_INSTANCE: "deleteNumberingInstance";
     readonly SET_SECTION_ENDPOINT: "setSectionEndpoint";
+    readonly SET_PACKAGE_RESOURCES: "setPackageResources";
 }>;
 
 // @public
@@ -275,7 +277,7 @@ export type DocumentBatch = {
 };
 
 // @public
-export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp) & {
+export type DocumentOp = (CreateHeaderFooterOp | RemoveHeaderFooterOp | AddNoteOp | RemoveNoteOp | SetSectionPropsOp | RestoreStoryPartsOp | DeleteBlocksOp | InsertTableOp | DeleteTableOp | SetContainerBlocksOp | InsertBlocksOp | InsertTextOp | InsertContentOp | DeleteRangeOp | SplitInlineOp | JoinInlineOp | SetRunPropsOp | SetParagraphPropsOp | SplitBlockOp | JoinBlocksOp | ReplaceBlocksOp | SetParagraphReviewOp | ReplaceInlineOp | ResolveRevisionOp | InsertRowOp | DeleteRowOp | SetTableRowsOp | CreateNumberingInstanceOp | DeleteNumberingInstanceOp | SetSectionEndpointOp | SetPackageResourcesOp) & {
     undefinedFields?: readonly (readonly string[])[];
 };
 
@@ -309,6 +311,21 @@ export const documentStories: (document: Document_2) => OpStory[];
 
 // @public
 export type EditorIntent = {
+    type: "replaceFragment";
+    from: TextPosition;
+    to: TextPosition;
+    paragraphs: readonly Paragraph[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
+    type: "moveFragment";
+    from: TextPosition;
+    to: TextPosition;
+    target: TextPosition;
+    paragraphs: readonly Paragraph[];
+    openStart: 0 | 1;
+    openEnd: 0 | 1;
+} | {
     type: "replaceText";
     from: TextPosition;
     to: TextPosition;
@@ -540,6 +557,32 @@ export type OpStory = typeof OP_STORIES.MAIN | HeaderFooterStory | NoteStory;
 export const packageParagraphIds: (pkg: DocxPackage) => string[];
 
 // @public
+export type PackageResourceMedia = Omit<MediaFile, "data"> & {
+    data: readonly number[];
+};
+
+// @public
+export type PackageResourcePart<Value> = {
+    type: "omitted";
+} | {
+    type: "undefined";
+} | {
+    type: "present";
+    value: Value;
+};
+
+// @public
+export type PackageResources = {
+    styles: PackageResourcePart<StyleDefinitions>;
+    numbering: PackageResourcePart<NumberingDefinitions>;
+    relationships: PackageResourcePart<readonly (readonly [string, Relationship])[]>;
+    media: PackageResourcePart<readonly (readonly [string, PackageResourceMedia])[]>;
+};
+
+// @public
+export const packageResourcesOf: (input: Document_2) => PackageResources;
+
+// @public
 export const PARAGRAPH_MARK_FORMATTING_KEYS: readonly ["runProperties", "runInWithNext"];
 
 // @public
@@ -742,6 +785,13 @@ export type SetContainerBlocksOp = {
     blockId: string;
     expected: readonly BlockContent[];
     blocks: readonly BlockContent[];
+};
+
+// @public
+export type SetPackageResourcesOp = {
+    type: typeof DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES;
+    expected: PackageResources;
+    resources: PackageResources;
 };
 
 // @public
