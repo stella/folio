@@ -41,6 +41,7 @@ const observed = (
   referenceMs: 1,
   producer,
   failures,
+  declaredRefusals: [],
   timings,
   evidence: CORPUS_EVIDENCE.gating,
 });

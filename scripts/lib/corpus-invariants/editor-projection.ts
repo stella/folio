@@ -24,7 +24,7 @@ import { Result } from "better-result";
 import { failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -46,7 +46,7 @@ export const projectedWithoutReuse = (
 
 export const runEditorProjectionInvariant = async ({
   parsed,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
 
   const proseDoc = await timeStage(timings, "to-prose", () =>
@@ -54,6 +54,7 @@ export const runEditorProjectionInvariant = async ({
   );
   if (proseDoc.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, proseDoc.error)],
       timings,
     };
@@ -64,6 +65,7 @@ export const runEditorProjectionInvariant = async ({
   );
   if (back.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, back.error)],
       timings,
     };
@@ -77,6 +79,7 @@ export const runEditorProjectionInvariant = async ({
   );
   if (saved.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, saved.error)],
       timings,
     };
@@ -90,6 +93,7 @@ export const runEditorProjectionInvariant = async ({
   );
   if (reparsed.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.editorProjection, reparsed.error)],
       timings,
     };
@@ -99,6 +103,7 @@ export const runEditorProjectionInvariant = async ({
     Promise.resolve(describePackageDifferences(parsed, reparsed.value)),
   );
   return {
+    status: "evaluated",
     failures: differenceFailures(
       EXTENDED_CORPUS_INVARIANTS.editorProjection,
       differences,

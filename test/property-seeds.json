@@ -640,5 +640,13 @@
       "note": "Canonical edits must not change projection provenance in untouched paragraphs; reported by the authored-run merge group",
       "date": "2026-10-02"
     }
+  ],
+  "scripts/corpus-declared-refusals.test.ts::refusal accounting merges, deduplicates per file and never counts a pass": [
+    {
+      "seed": 859368167,
+      "path": "0:1:0:0:1:2:2",
+      "note": "Interleaved shards must preserve deterministic file-cost ordering in the family census",
+      "date": "2026-10-03"
+    }
   ]
 }

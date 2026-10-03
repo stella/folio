@@ -28,7 +28,7 @@ import { Result } from "better-result";
 import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -163,7 +163,7 @@ const save = (document: Document): Promise<ArrayBuffer> =>
 
 export const runSaveIdempotenceInvariant = async ({
   parsed,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
 
   const first = await timeStage(timings, "first-save", () =>
@@ -171,6 +171,7 @@ export const runSaveIdempotenceInvariant = async ({
   );
   if (first.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, first.error)],
       timings,
     };
@@ -184,6 +185,7 @@ export const runSaveIdempotenceInvariant = async ({
   );
   if (reparsed.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, reparsed.error)],
       timings,
     };
@@ -194,6 +196,7 @@ export const runSaveIdempotenceInvariant = async ({
   );
   if (second.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, second.error)],
       timings,
     };
@@ -207,6 +210,7 @@ export const runSaveIdempotenceInvariant = async ({
   );
   if (parts.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.saveIdempotence, parts.error)],
       timings,
     };
@@ -216,5 +220,5 @@ export const runSaveIdempotenceInvariant = async ({
   const differences = await timeStage(timings, "compare", () =>
     Promise.resolve(findPartDifferences(firstParts, secondParts)),
   );
-  return { failures: failuresForDifferences(differences), timings };
+  return { status: "evaluated", failures: failuresForDifferences(differences), timings };
 };

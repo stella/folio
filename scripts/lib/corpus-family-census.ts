@@ -15,6 +15,15 @@
  */
 
 import {
+  emptyDeclaredRefusalCounts,
+  countDeclaredRefusals,
+  mergeDeclaredRefusalCounts,
+  declaredRefusalCount,
+  renderDeclaredRefusals,
+  type DeclaredRefusalCounts,
+} from "./corpus-declared-refusals";
+import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
+import {
   type CorpusInvariantFamily,
   EXTENDED_INVARIANT_FAMILY,
   familyOf,
@@ -79,6 +88,7 @@ export type FamilyCensus = {
   files: number;
   producers: ProducerCounts;
   totals: Record<string, FamilyTotals>;
+  declaredRefusals: DeclaredRefusalCounts;
   signatures: FamilySignature[];
   /** Stage name to its slowest files, longest first. */
   slowest: Record<string, StageTiming[]>;
@@ -96,6 +106,7 @@ export const emptyFamilyCensus = (lockDigest: string, reportOnlyDigest: string):
   files: 0,
   producers: {},
   totals: {},
+  declaredRefusals: emptyDeclaredRefusalCounts(),
   signatures: [],
   slowest: {},
   costs: [],
@@ -138,6 +149,7 @@ export type ObservedFile = {
   referenceMs: number;
   producer: string;
   failures: readonly CorpusFailure[];
+  declaredRefusals: readonly CorpusDeclaredRefusal[];
   timings: Readonly<Record<string, number>>;
   /**
    * Whether this file's findings may gate, as `evidenceOf` decided it.
@@ -164,9 +176,11 @@ export class FamilyCensusBuilder {
     referenceMs,
     producer,
     failures,
+    declaredRefusals,
     timings,
     evidence,
   }: ObservedFile): void {
+    countDeclaredRefusals(this.#census.declaredRefusals, declaredRefusals);
     this.#census.files += 1;
     bump(this.#census.producers, producer);
     this.#census.costs.push({ file, bytes, parseMs, peakRssBytes, referenceMs, producer });
@@ -247,6 +261,7 @@ export const mergeFamilyCensuses = (censuses: readonly FamilyCensus[]): FamilyCe
   const merged = emptyFamilyCensus(first.lockDigest, first.reportOnlyDigest);
   const bySignature = new Map<string, FamilySignature>();
   for (const census of censuses) {
+    mergeDeclaredRefusalCounts(merged.declaredRefusals, census.declaredRefusals);
     merged.files += census.files;
     mergeCounts(merged.producers, census.producers);
     merged.costs.push(...census.costs);
@@ -366,7 +381,7 @@ export const renderFamilyCensus = ({
     const totals = census.totals[family] ?? { files: 0, failedFiles: 0 };
     const signatures = census.signatures.filter((signature) => signature.family === family);
     lines.push(
-      `${family}: ${totals.files} files, ${totals.files - totals.failedFiles} pass, ${totals.failedFiles} fail, ${signatures.length} signatures`,
+      `${family}: ${totals.files} files, ${totals.files - totals.failedFiles - declaredRefusalCount(census.declaredRefusals, family)} pass, ${totals.failedFiles} fail, ${signatures.length} signatures`,
     );
     for (const signature of signatures.slice(0, signaturesPerFamily)) {
       const example = signature.examples.at(0);
@@ -377,6 +392,7 @@ export const renderFamilyCensus = ({
       );
     }
   }
+  lines.push(...renderDeclaredRefusals(census.declaredRefusals));
   for (const stage of Object.keys(census.slowest).sort()) {
     const timings = (census.slowest[stage] ?? []).slice(0, slowestPerStage);
     if (timings.length === 0) {

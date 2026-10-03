@@ -45,6 +45,7 @@ const censusOf = (
       referenceMs: 1,
       producer: "word/16",
       failures,
+      declaredRefusals: [],
       timings: {},
       evidence: CORPUS_EVIDENCE.gating,
     });

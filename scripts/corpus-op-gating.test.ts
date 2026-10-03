@@ -33,6 +33,7 @@ const observed = (invariant: (typeof OPS)[number], evidence: "gating" | "report-
     referenceMs: 1,
     producer: "fixture",
     failures: [failure],
+    declaredRefusals: [],
     timings: {},
     evidence,
   });
@@ -71,8 +72,13 @@ describe("operation invariants have an immutable zero allowance", () => {
         builder.add(
           FILE,
           kind === "truncated"
-            ? { kind, failures: [observation.failure], stage: "schema-validity" }
-            : { kind, failures: [observation.failure] },
+            ? {
+                kind,
+                declaredRefusals: [],
+                failures: [observation.failure],
+                stage: "schema-validity",
+              }
+            : { kind, declaredRefusals: [], failures: [observation.failure] },
         );
         const census = builder.build();
         expect(census.signatures.map((signature) => signature.invariant)).toEqual([invariant]);
