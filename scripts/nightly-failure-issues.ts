@@ -9,7 +9,7 @@
  * and counterexample). Property failures open or comment on per-test issues
  * labelled `nightly-property-failure`; conformance failures replace the latest
  * evidence in one `nightly-conformance-failure` standing issue. A property issue carries the line that replays the failure locally
- * and the exact test/property-seeds.json entry that pins it once it is fixed;
+ * and the exact test/property-seeds/ entry that pins it once it is fixed;
  * seeds are never committed automatically.
  *
  * It reads the `PROPERTY_FAILURE {json}` lines test/property-testing.ts logs
@@ -23,6 +23,7 @@
  * `--dry-run` prints the issues instead of calling `gh`.
  */
 
+import { seedFileFor } from "../test/seed-registry";
 import { $ } from "bun";
 import { TaggedError } from "better-result";
 import { createHash } from "node:crypto";
@@ -47,7 +48,7 @@ export type Failure = {
   title: string | null;
   replay: string | null;
   error: string | null;
-  /** A seed test/property-seeds.json already pins failed again. */
+  /** A seed test/property-seeds/ already pins failed again. */
   pinned: boolean;
   /** Conformance violation kinds the error names, `mode kind` (e.g. `editing undo`). */
   violations?: string[];
@@ -325,10 +326,10 @@ export const overflowFailure = (
   error: rest.map((failure) => `${failure.name}\n  ${replayFor(kind, failure, factor)}`).join("\n"),
 });
 
-/** The test/property-seeds.json entry that pins a property failure. */
+/** The test/property-seeds/ entry that pins a property failure. */
 export const seedEntry = (failure: Failure, date: string, runUrl: string | null): string | null => {
   if (failure.seed === null || failure.file === null) return null;
-  const key = `${failure.file}::${failure.title ?? lastSegment(failure.name)}`;
+  const key = failure.title ?? lastSegment(failure.name);
   const entry = {
     seed: failure.seed,
     ...(failure.path === null ? {} : { path: failure.path }),
@@ -380,7 +381,7 @@ export const issueBody = (failure: Failure, context: Context, recurrence: boolea
       ? `Failed again in ${where}.`
       : `${failure.seed === null ? "A test" : "A property"} failed in ${where}.`,
     ...(failure.pinned
-      ? ["", "This is a seed `test/property-seeds.json` already pins: a fixed failure came back."]
+      ? ["", "This is a seed `test/property-seeds/` already pins: a fixed failure came back."]
       : []),
     "",
     ...(failure.group === undefined
@@ -414,7 +415,7 @@ export const issueBody = (failure: Failure, context: Context, recurrence: boolea
     sections.push(
       "",
       "### Pin it",
-      "Once fixed, add this entry to `test/property-seeds.json` (the test must assert through `assertProperty`, which replays it first in every run):",
+      `Once fixed, add this entry to \`${seedFileFor(failure.file ?? "")}\` (the test must assert through \`assertProperty\`, which replays it first in every run):`,
       fence(entry, "json"),
     );
   }
