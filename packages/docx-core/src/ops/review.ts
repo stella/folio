@@ -302,6 +302,7 @@ type Entry = {
 };
 
 type WrapState = {
+  acceptance: NonNullable<TrackedWrapper["resolutionJoins"]>["acceptance"];
   gaps: readonly [Gap, Gap];
   resolutionJoin: number | undefined;
   depth: number;
@@ -322,6 +323,8 @@ const mergeWithStampedNeighbour = (out: InlineNode[], index: number, state: Wrap
     neighbour !== undefined &&
     isTrackedWrapper(neighbour) &&
     neighbour.type === wrapper.type &&
+    wrapper.resolutionJoins?.acceptance === undefined &&
+    neighbour.resolutionJoins?.acceptance === undefined &&
     !(
       wrapper.resolutionJoins !== undefined &&
       neighbour.resolutionJoins !== undefined &&
@@ -392,6 +395,7 @@ const groupCovered = (entries: readonly Entry[], state: WrapState): InlineNode[]
         after: stretch.at(-1)?.joinAfter ?? 0,
         remove: Math.max(0, state.resolutionJoin - state.depth),
       };
+      if (state.acceptance !== undefined) wrapper.resolutionJoins.acceptance = state.acceptance;
       const retainedAfter = stretch.at(-1)?.retainedAfter;
       if (retainedAfter !== undefined) wrapper.resolutionJoins.retainedAfter = retainedAfter;
     }
@@ -517,6 +521,7 @@ const wrapList = (
 };
 
 export type WrapOptions = {
+  acceptance?: NonNullable<TrackedWrapper["resolutionJoins"]>["acceptance"];
   items: readonly ParagraphContent[];
   from: Gap;
   to: Gap;
@@ -543,10 +548,12 @@ export const wrapTracked = ({
   kind,
   stamp,
   resolutionJoin,
+  acceptance,
 }: WrapOptions): WrapOutcome => {
   const state: WrapState = {
     gaps: [from, to],
     resolutionJoin,
+    acceptance,
     depth: 0,
     kind,
     stamp,

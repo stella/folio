@@ -24,6 +24,7 @@
  * migration of the journaled operations.
  */
 
+import { INSERTION_SEAM_POLICIES } from "../model/content";
 import { captureDocumentOp } from "./wire";
 
 import type {
@@ -302,6 +303,7 @@ export type InsertContentOp = {
   type: typeof DOCUMENT_OP_TYPES.INSERT_CONTENT;
   at: TextPosition;
   slice: InlineSlice;
+  seamPolicy?: typeof INSERTION_SEAM_POLICIES.MERGE_PLAIN_RUNS;
   newIds?: NewIds;
   revision?: RevisionStamp;
 };
@@ -361,6 +363,9 @@ export type JoinInlineOp = {
   at: TextPosition;
   depth: number;
 };
+
+/** Whether a tracked run patch appends an independently rejectable review. */
+export const PROPERTY_REVIEW_POLICIES = Object.freeze({ APPEND: "append" } as const);
 
 /**
  * Patch the run properties of every run between two positions of one

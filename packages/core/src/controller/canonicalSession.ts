@@ -576,7 +576,6 @@ type StageOptions = {
   origin: CanonicalOrigin;
   propertySourceDocument?: Document;
   stagedApplied?: AppliedDocumentOp;
-  splitSources?: "inherit" | "fresh";
   story?: OpStory;
   previousProjection?: CanonicalProjection;
   onPublish: (inverse: readonly DocumentOp[], version: number) => void;
@@ -1001,7 +1000,6 @@ class CanonicalSession {
     return this.stage({
       state,
       story,
-      splitSources: semantic === "paste" ? "fresh" : "inherit",
       ops,
       selection: postSelection,
       origin: "input",
@@ -1259,7 +1257,6 @@ class CanonicalSession {
     stagedApplied,
     story = OP_STORIES.MAIN,
     previousProjection,
-    splitSources = "inherit",
   }: StageOptions): Result<CanonicalCommit, CanonicalSessionError> {
     const previous =
       previousProjection === undefined ? this.projectStory(story) : Result.ok(previousProjection);
@@ -1286,16 +1283,6 @@ class CanonicalSession {
     if (propertySourceDocument !== undefined)
       preservePropertySources({ target: applied.value.document, source: propertySourceDocument });
     const stagedSources = new Map(this.sourceOwners);
-    for (const op of ops) {
-      if (
-        splitSources === "fresh" ||
-        propertySourceDocument !== undefined ||
-        op.type !== DOCUMENT_OP_TYPES.SPLIT_BLOCK
-      )
-        continue;
-      const source = stagedSources.get(op.at.blockId);
-      if (source) stagedSources.set(op.newBlockId, source);
-    }
     for (const block of applied.value.document.package.document.content) {
       if (block.type !== "paragraph" || block.paraId === undefined) continue;
       const source = stagedSources.get(block.paraId);

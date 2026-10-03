@@ -263,7 +263,6 @@ const operationFields = {
     expected: optional(paragraphPatch),
     whenEmpty,
     revision,
-    propertyReview: absent,
   } satisfies OperationFields<"setParagraphProps">,
   splitBlock: {
     type: literal("splitBlock"),
@@ -318,6 +317,7 @@ const operationFields = {
     slice,
     newIds,
     revision,
+    seamPolicy: absent,
   } satisfies OperationFields<"insertContent">,
   splitInline: undefined,
   joinInline: undefined,

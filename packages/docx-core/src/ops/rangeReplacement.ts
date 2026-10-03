@@ -73,6 +73,7 @@ export const rangeStartAfterDeletion = ({
  * paragraphs require an explicit package import policy.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+  seamPolicy?: Extract<DocumentOp, { type: "insertContent" }>["seamPolicy"];
   replacement: {
     paragraphs: readonly Paragraph[];
     tail: InlineSlice;
@@ -214,6 +215,7 @@ export const planTrackedReplace = (
       type: DOCUMENT_OP_TYPES.INSERT_CONTENT,
       at,
       slice: replacement.tail,
+      ...(options.seamPolicy === undefined ? {} : { seamPolicy: options.seamPolicy }),
       revision,
     });
     if (inserted.isErr()) return Result.err(inserted.error);
