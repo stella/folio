@@ -5,14 +5,20 @@ import {
   applyDocumentOps,
   compileEditorIntent,
   createEditorIntentIdAllocator,
+  documentStories,
   OP_STORIES,
+  paragraphLogicalText,
   REVISION_DECISIONS,
+  storyBody,
+  type DocumentOp,
   type EditorIntent,
+  type OpStory,
 } from "@stll/docx-core/ops";
 
 import { PARAGRAPH_MARK_CHANGE_KINDS } from "@stll/docx-core/model";
 import { parseDocumentBody } from "./documentParser";
-import { identityKeysIn, IDENTITY_SPACES } from "../../../docx-core/src/ops/ids";
+import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
+import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 
 import type { Document } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
@@ -35,6 +41,18 @@ const apply = (document: Document, intent: EditorIntent) => {
   const applied = applyDocumentOps(document, planned.value.ops);
   if (applied.isErr()) throw applied.error;
   return applied.value.document;
+};
+
+const applyWithInverse = (document: Document, intent: EditorIntent) => {
+  const ids = createEditorIntentIdAllocator()(document, intent);
+  const planned = compileEditorIntent(document, {
+    intent,
+    mode: { type: "editing", newIds: ids.newIds },
+  });
+  if (planned.isErr()) throw planned.error;
+  const applied = applyDocumentOps(document, planned.value.ops);
+  if (applied.isErr()) throw applied.error;
+  return applied.value;
 };
 
 // Exercise edit sequences and both save paths; a static serializer fixture misses
@@ -114,15 +132,13 @@ test.each(["absent", "empty", "bold"] as const)(
       const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
       expect(reopened.package.document.content).toStrictEqual(suggested.package.document.content);
       for (const decision of Object.values(REVISION_DECISIONS)) {
+        const revisionIds = getTrackedChangeStatsFromDoc(toProseDoc(suggested)).ids;
+        expect(revisionIds.length).toBeGreaterThan(0);
         const resolution = {
           type: "resolveRevision",
           story: OP_STORIES.MAIN,
           decision,
-          revisionIds: identityKeysIn(suggested.package.document.content).flatMap((key) =>
-            key.startsWith(`${IDENTITY_SPACES.REVISION}:`)
-              ? [Number(key.slice(IDENTITY_SPACES.REVISION.length + 1))]
-              : [],
-          ),
+          revisionIds,
         } as const;
         const before = applyDocumentOps(suggested, [resolution]);
         const after = applyDocumentOps(reopened, [resolution]);
@@ -131,10 +147,127 @@ test.each(["absent", "empty", "bold"] as const)(
         expect(after.value.document.package.document.content).toStrictEqual(
           before.value.document.package.document.content,
         );
+        expect(getTrackedChangeStatsFromDoc(toProseDoc(after.value.document)).ids).toEqual([]);
       }
     }
   },
 );
+
+// Static story fixtures never exercised the two closed-slice insertion seams.
+// Vary authored property presence, run boundaries and insertion positions in every story.
+test.each(
+  ["absent", "empty", "bold"].flatMap((runProperties) =>
+    ["absent", "present"].map((runBoundary) => [runProperties, runBoundary] as const),
+  ),
+)(
+  "text seam edits across every story are save/reopen fixed points and invertible (%s formatting, %s run boundary)",
+  async (runProperties, runBoundary) => {
+    const createStoryParagraph = ({ paraId, text }: { paraId: string; text: string }) => ({
+      type: "paragraph" as const,
+      paraId,
+      content: [
+        {
+          type: "run" as const,
+          ...(runBoundary === "present"
+            ? { preservedAttributes: [{ name: "rsidR", value: "00A1B2C3" }] }
+            : {}),
+          ...(runProperties === "absent"
+            ? {}
+            : { formatting: runProperties === "empty" ? {} : { bold: true } }),
+          content: [{ type: "text" as const, text }],
+        },
+      ],
+    });
+    const seed = createEmptyDocument({ initialText: "main" });
+    seed.package.document.content = [createStoryParagraph({ paraId: "00000011", text: "main" })];
+    seed.package.headers = new Map([
+      [
+        "rIdCanonicalHeader",
+        {
+          type: "header",
+          hdrFtrType: "default",
+          content: [createStoryParagraph({ paraId: "00000012", text: "header" })],
+        },
+      ],
+    ]);
+    seed.package.footers = new Map([
+      [
+        "rIdCanonicalFooter",
+        {
+          type: "footer",
+          hdrFtrType: "default",
+          content: [createStoryParagraph({ paraId: "00000013", text: "footer" })],
+        },
+      ],
+    ]);
+    seed.package.footnotes = [
+      {
+        type: "footnote",
+        id: 2,
+        content: [createStoryParagraph({ paraId: "00000014", text: "footnote" })],
+      },
+    ];
+    seed.package.endnotes = [
+      {
+        type: "endnote",
+        id: 3,
+        content: [createStoryParagraph({ paraId: "00000015", text: "endnote" })],
+      },
+    ];
+    seed.package.document.finalSectionProperties = {
+      ...seed.package.document.finalSectionProperties,
+      headerReferences: [{ type: "default", rId: "rIdCanonicalHeader" }],
+      footerReferences: [{ type: "default", rId: "rIdCanonicalFooter" }],
+    };
+
+    const source = await createDocx(seed);
+    const original = await parseDocx(source, { preloadFonts: false, detectVariables: false });
+    const stories = documentStories(original).map((story) => {
+      const paragraph = storyParagraph(original, story);
+      return {
+        story,
+        id: paragraph.paraId ?? panic("Expected an identified story paragraph"),
+        text: paragraphLogicalText(paragraph),
+      };
+    });
+    for (const position of ["start", "interior", "end"] as const) {
+      let edited = original;
+      const inverses: DocumentOp[][] = [];
+      for (const { story, id, text } of stories) {
+        const offset = { start: 0, interior: 2, end: text.length }[position];
+        const applied = applyWithInverse(edited, {
+          type: "replaceText",
+          from: { story, blockId: id, offset },
+          to: { story, blockId: id, offset },
+          text: "X",
+        });
+        edited = applied.document;
+        inverses.push(applied.inverse);
+      }
+      const reopened = await parseDocx(await createDocx(edited), {
+        preloadFonts: false,
+        detectVariables: false,
+      });
+      for (const { story, id } of stories) {
+        const paragraph = storyParagraph(reopened, story);
+        expect(paragraph.paraId).toBe(id);
+        expect(paragraph).toStrictEqual(storyParagraph(edited, story));
+      }
+      const restored = applyDocumentOps(reopened, inverses.toReversed().flat());
+      if (restored.isErr()) throw restored.error;
+      for (const { story } of stories) {
+        const paragraph = storyParagraph(restored.value.document, story);
+        expect(paragraph.content).toStrictEqual(storyParagraph(original, story).content);
+      }
+    }
+  },
+);
+
+const storyParagraph = (document: Document, story: OpStory) => {
+  const paragraph = storyBody(document, story).content.find((block) => block.type === "paragraph");
+  if (!paragraph || paragraph.type !== "paragraph") panic("Expected original story paragraph");
+  return paragraph;
+};
 
 test("every paragraph mark kind retains absent, empty and populated formatting", () => {
   for (const kind of [undefined, ...PARAGRAPH_MARK_CHANGE_KINDS]) {

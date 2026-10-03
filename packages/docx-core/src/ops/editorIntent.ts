@@ -11,7 +11,7 @@ import {
 import { sameBlockList, storyBody, storyParagraphs } from "./blocks";
 import { IDENTITY_SPACES, idKey } from "./ids";
 import { createCensusReader } from "./editorIntentCensus";
-import { leafSpans, zeroWidthLeavesAt } from "./leaves";
+import { alikeDepth, leafSpans, zeroWidthLeavesAt } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
 import {
   appendTrackedDeletion,
@@ -24,6 +24,7 @@ import { applyDocumentOp } from "./apply";
 import { planTrackedReplace, rangeStartAfterDeletion } from "./rangeReplacement";
 import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import { structurallyEqual } from "./equality";
+import { runsMergeable } from "./runMerge";
 import { isRemovedRevisionNode, paragraphPropertiesOf } from "./review";
 import {
   DOCUMENT_OP_TYPES,
@@ -242,7 +243,7 @@ const paragraphAt = (document: Document, at: TextPosition) =>
   )?.paragraph;
 
 /** Capture authored formatting before deletion, using only visible runs. */
-const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting => {
+const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting | undefined => {
   const spans = leafSpans(paragraph.content).filter(
     ({ ancestors }) => !ancestors.some(isRemovedRevisionNode),
   );
@@ -250,14 +251,14 @@ const formattingAt = (paragraph: Paragraph, offset: number): TextFormatting => {
     spans.find(({ before, after }) => before.offset <= offset && offset < after.offset) ??
     spans.findLast(({ after }) => after.offset <= offset) ??
     spans.find(({ before }) => before.offset > offset);
-  return span?.ancestors.findLast((ancestor) => ancestor.type === "run")?.formatting ?? {};
+  return span?.ancestors.findLast((ancestor) => ancestor.type === "run")?.formatting;
 };
 
 const authoredFormatting = (
   document: Document,
   from: TextPosition,
   to: TextPosition,
-): TextFormatting => {
+): TextFormatting | undefined => {
   const paragraph = paragraphAt(document, from);
   if (paragraph === undefined)
     panic("A validated input paragraph must exist when reading authored formatting.");
@@ -291,6 +292,38 @@ const splitParagraphFields = (document: Document, at: TextPosition) => {
   return survivor?.formatting === undefined ? {} : { formatting: survivor.formatting };
 };
 
+/** Join only plain runs meeting at an edited seam, within the same container. */
+const textSeamDepth = (paragraph: Paragraph, offset: number): number => {
+  const spans = leafSpans(paragraph.content);
+  for (const [index, right] of spans.entries()) {
+    const left = spans.at(index - 1);
+    if (
+      index === 0 ||
+      left === undefined ||
+      left.after.offset !== offset ||
+      right.before.offset !== offset
+    )
+      continue;
+    const leftRun = left.ancestors.at(-1);
+    const rightRun = right.ancestors.at(-1);
+    if (
+      leftRun?.type !== "run" ||
+      rightRun?.type !== "run" ||
+      leftRun === rightRun ||
+      leftRun.content.at(-1) !== left.node ||
+      rightRun.content.at(0) !== right.node ||
+      left.ancestors.length !== right.ancestors.length ||
+      !left.ancestors
+        .slice(0, -1)
+        .every((parent, parentIndex) => parent === right.ancestors[parentIndex]) ||
+      !runsMergeable(leftRun, rightRun)
+    )
+      continue;
+    return alikeDepth(leftRun, rightRun);
+  }
+  return 0;
+};
+
 /** Compile one batch; the caller applies it atomically and journals its exact inverse. */
 export const compileEditorIntent = (
   document: Document,
@@ -322,7 +355,13 @@ export const compileEditorIntent = (
       const content = (
         text === ""
           ? []
-          : [{ type: "run", formatting: runProps, content: [{ type: "text", text }] }]
+          : [
+              {
+                type: "run",
+                ...(runProps === undefined ? {} : { formatting: runProps }),
+                content: [{ type: "text", text }],
+              },
+            ]
       ) satisfies ParagraphContent[];
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
@@ -608,6 +647,22 @@ export const compileEditorIntent = (
       }
       compact.push(trimmed);
       current = applied.value.document;
+    }
+    if (intent.type === "replaceText") {
+      // Closed insertion slices preserve authored boundaries. Merge only the
+      // two edited seams the parser would merge, with inverses in the journal.
+      for (const offset of new Set([selection.offset, selection.offset - intent.text.length])) {
+        const at = { ...selection, offset };
+        const paragraph = paragraphAt(current, at);
+        if (paragraph === undefined) panic("An edited paragraph must exist at its seam.");
+        const depth = textSeamDepth(paragraph, offset);
+        if (depth === 0) continue;
+        const join = { type: DOCUMENT_OP_TYPES.JOIN_INLINE, at, depth } as const;
+        const joined = applyDocumentOp(current, join);
+        if (joined.isErr()) return Result.err(joined.error);
+        compact.push(join);
+        current = joined.value.document;
+      }
     }
     ops = compact;
   }
