@@ -229,7 +229,7 @@ test("source defaults and style toggles materialize beneath direct formatting in
       styles: {
         docDefaults: {
           rPr: { fontFamily: { ascii: "Destination Sans" }, color: { rgb: "FF0000" } },
-          pPr: { spaceBefore: 10 },
+          pPr: { spaceBefore: 10, spacingExplicit: { before: true, after: true } },
         },
         styles: [],
       },
@@ -289,6 +289,7 @@ test("source defaults and style toggles materialize beneath direct formatting in
     const imported = importClipboardStyles({ source, destination, paragraphs }).unwrap();
     const paragraph = imported.paragraphs.at(0);
     expect(paragraph?.formatting?.spaceBefore).toBe(expectedSpacing[kind]);
+    expect(paragraph?.formatting?.spacingExplicit).toBeUndefined();
     if (kind === "empty") {
       expect(paragraph?.formatting?.runProperties?.fontFamily?.ascii).toBe("Source Serif");
       expect(paragraph?.formatting?.runProperties?.color?.rgb).toBe("112233");

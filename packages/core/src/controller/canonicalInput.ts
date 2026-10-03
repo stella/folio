@@ -221,6 +221,11 @@ export const createCanonicalInputBoundary = (options: CanonicalInputOptions) => 
         return true;
       }
       if (event.key === "Enter") {
+        if (view.composing)
+          return refuseEvent(
+            event,
+            "Paragraph structure edits are unavailable during composition.",
+          );
         event.preventDefault();
         closeGroup();
         if (options.structure === undefined)

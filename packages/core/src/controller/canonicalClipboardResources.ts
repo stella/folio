@@ -256,6 +256,8 @@ const materializeClipboardDefaults = ({
           key === "preserved" ||
           key === "styleId" ||
           key === "runProperties" ||
+          // Authored spacing provenance is not an inherited visual property.
+          key === "spacingExplicit" ||
           value === undefined ||
           Reflect.get(formatting, key) !== undefined ||
           Reflect.get(resolved.paragraphFormatting ?? {}, key) !== undefined

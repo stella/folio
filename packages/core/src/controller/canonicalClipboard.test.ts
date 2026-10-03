@@ -764,6 +764,9 @@ describe("canonical clipboard", () => {
             if (collisionId === undefined)
               throw new TypeError("Expected owned hyperlink collision.");
             const sourceDocument = seed();
+            // A modeled source must supply the defaults needed by a parsed destination.
+            if (destination.package.styles !== undefined)
+              sourceDocument.package.styles = structuredClone(destination.package.styles);
             sourceDocument.package.relationships = new Map([
               [
                 collisionId,
@@ -880,7 +883,8 @@ describe("canonical clipboard", () => {
                 if (drawing === undefined)
                   throw new TypeError("Reopened clipboard drawing disappeared.");
                 expect(drawing.rawXmlMode).toBeUndefined();
-                expect(drawing.image.hlinkHref).toBe("https://foreign.example.test");
+                // Drawing links use the URL parser's normalized href on reopen.
+                expect(drawing.image.hlinkHref).toBe(new URL("https://foreign.example.test").href);
                 expect(drawing.image.hlinkClickSource?.xml).toContain(
                   'tooltip="Clipboard tooltip"',
                 );

@@ -1342,6 +1342,12 @@
       "path": "49:2:3:3:4:4:4",
       "note": "Revision allocation demand includes clipboard paragraphs and both closed edge boundaries",
       "date": "2026-10-02"
+    },
+    {
+      "seed": 54534382,
+      "path": "3:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/controller/canonicalClipboard.test.ts::generated owned story-reference moves preserve arbitrary-target sequences and count atomic refusals": [
@@ -1384,6 +1390,12 @@
       "path": "0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:3:0:0:0:0:0:0:0:0:2:0:0:0:0:1:0:1:1:2:0:0:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:1:0:0:0:2:0:0:0:2:0:0:0:0:0:0:2:1:3:2:1:2:1:2:2:2:2:7:1:1:1:1:2:1:4:4:2:2:2:2:2:3:2:2:2:2:2:3:2:2:2:4:2:2:3:3:4:4:4:4:4:5:1:0:0:0:0:0:0:0:0:1:0:0:0:0:0:0:0:0:0:0:3:0:0:0:2:0:3:1:0:0:0:1:1:6:0:1:8:0:1:0:0:0:0:1:1:1:1:1:1:1:2:0:1:0:1:1:0:0:0:0:0:0:0:1:0:5:1:0:1:1:1:0:1:0:1:0:0:0:1:1:0:0:0:0:0:2:0:0:1:2:1:1:1:1:1:1:4:0:3:3:0:0:0:0:0:12:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:12:11:11:11:11:11:11:12:12:12:12:12:12:12:12",
       "date": "2026-10-02",
       "note": "Retain exact clipboard source ownership, selection and journal behavior observed in leaf CI."
+    },
+    {
+      "seed": -1470548670,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:3:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:1:0:2:1:1:1:1:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:2:1:2:2:0:8:2:3:1:1:1:1:1:1:1:3:1:4:1:1:2:1:1:1:1:1:1:3:2:3:3:3:3:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/controller/canonicalClipboard.test.ts::foreign text and image hyperlink relationships never bind colliding destination ids": [
@@ -1404,6 +1416,18 @@
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0",
       "note": "Retain namespace-aware image links and canonical gaps at multi-unit note labels.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1153678734,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -614412611,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:2:0:0",
+      "date": "2026-10-03",
+      "note": "Foreign hyperlink fixtures provide resolved source defaults and preserve spacing provenance."
     }
   ],
   "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated clipboard replacements preserve retained tail lineage and authored seams": [
@@ -1804,22 +1828,6 @@
       "date": "2026-10-03"
     }
   ],
-  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated clipboard fragments preserve history and accepted tracked content": [
-    {
-      "seed": 54534382,
-      "path": "3:0:0:0:0",
-      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
-      "date": "2026-10-03"
-    }
-  ],
-  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated clipboard sequences preserve arbitrary ranges, marked content and every inverse": [
-    {
-      "seed": -1470548670,
-      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:3:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:1:0:2:1:1:1:1:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:2:1:2:2:0:8:2:3:1:1:1:1:1:1:1:3:1:4:1:1:2:1:1:1:1:1:1:3:2:3:3:3:3:0:0:0:0:0:0",
-      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
-      "date": "2026-10-03"
-    }
-  ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated move intents rebase the original target and refuse atomically": [
     {
       "seed": -1300277500,
@@ -1858,14 +1866,6 @@
     {
       "seed": 1650860415,
       "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
-      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
-      "date": "2026-10-03"
-    }
-  ],
-  "packages/core/src/controller/canonicalClipboard.test.ts::foreign text and image hyperlink relationships never bind colliding destination ids": [
-    {
-      "seed": -1153678734,
-      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0",
       "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
     }

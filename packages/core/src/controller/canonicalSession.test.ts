@@ -249,6 +249,13 @@ describe("canonical session", () => {
           if (kind === "footnote")
             document.package.footnotes = [{ type: "footnote", id, noteType, content }];
           else document.package.endnotes = [{ type: "endnote", id, noteType, content }];
+          // Clipboard support admits preserved inline XML in ordinary notes too.
+          expect(createCanonicalSession(document).isOk()).toBe(true);
+          content.push({
+            type: "paragraph",
+            paraId: "34567891",
+            content: [{ type: "run", content: [{ type: "renderedPageBreak" }] }],
+          });
           expect(createCanonicalSession(document).isOk()).toBe(noteType !== "normal");
         }
       }
