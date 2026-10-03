@@ -308,6 +308,13 @@ const alsoAccepted = (
       }
       return { direct: [...enclosing], tracked: [...enclosing, ...pieces] };
     }
+    case DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS:
+    case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
+    case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
+      // One OOXML property review folds both edits; acceptance resolves the original id too.
+      const folded = tracked.revisions.filter((id) => original.has(id));
+      return { direct: folded, tracked: folded };
+    }
     case DOCUMENT_OP_TYPES.DELETE_RANGE: {
       const paragraph = paragraphById(document, op.from.blockId);
       if (paragraph === undefined) return { direct: [], tracked: [] };

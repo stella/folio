@@ -321,6 +321,18 @@
       "seed": -618669412,
       "note": "Accepting a tracked join must preserve the trailing paragraph formatting.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
       "date": "2026-10-02"
+    },
+    {
+      "seed": -1428670990,
+      "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1013725445,
+      "path": "7:0:0:0:0:0:0:1:0:2:2:2:2:2:3:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:34:34:34:34:34:34:34:39:41:43:41:2:40:40:40:40:35:36:34:34:34:34:34:34:34:34:34:34:34:34:34:36:34:34:34:34:34:34:34:34",
+      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::a planned tracked deletion removes only the author's own insertions": [
