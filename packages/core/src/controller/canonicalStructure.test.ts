@@ -375,6 +375,66 @@ describe("canonical structural commands", () => {
     );
   });
 
+  test("note-reference digits and inline atoms do not become autoformat markers", async () => {
+    await assertProperty(
+      fc.asyncProperty(fc.constantFrom(".", ")"), async (punctuation) => {
+        for (const type of ["footnoteRef", "endnoteRef"] as const) {
+          for (const id of [1, 12]) {
+            for (const atom of ["none", "tab", "break"] as const) {
+              const document = seed();
+              document.package.document.content = [
+                {
+                  type: "paragraph",
+                  paraId: "12345678",
+                  content: [
+                    {
+                      type: "run",
+                      content: [
+                        { type, id },
+                        ...(atom === "tab" ? [{ type: "tab" as const }] : []),
+                        ...(atom === "break"
+                          ? [{ type: "break" as const, breakType: "page" as const }]
+                          : []),
+                        { type: "text", text: punctuation },
+                      ],
+                    },
+                  ],
+                },
+              ];
+              const session = createCanonicalSession(document).unwrap();
+              let state = EditorState.create({ schema, doc: session.projection.doc });
+              const address =
+                session.projection.paragraph("12345678") ?? panic("Note paragraph is absent.");
+              const logicalEnd = session.projection
+                .positionAt({
+                  story: session.projection.story,
+                  blockId: address.blockId,
+                  offset: address.text.length,
+                })
+                .unwrap();
+              expect(session.projection.addressAt(logicalEnd).unwrap().offset).toBe(
+                address.text.length,
+              );
+              expect(logicalEnd).toBe(address.start + address.node.content.size);
+              state = select(state, logicalEnd);
+              const before = structuredClone(session.document);
+              const selection = state.selection.toJSON();
+              const prepared = prepareCanonicalAutoformat(session, state, {
+                from: state.selection.head,
+                to: state.selection.head,
+                text: " ",
+              });
+              expect(prepared).toBeUndefined();
+              expect(session.document).toStrictEqual(before);
+              expect(state.selection.toJSON()).toStrictEqual(selection);
+            }
+          }
+        }
+      }),
+      { numRuns: 4 },
+    );
+  });
+
   test("generated restart, continue and nesting commands preserve zero starts and exact history", async () => {
     await assertProperty(
       fc.asyncProperty(
