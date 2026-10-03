@@ -51,8 +51,19 @@ const paragraph = ({ id, text, seed }: ParagraphOptions): Paragraph => ({
 
 const insertedRow = (seed: Seed): TableRow => ({
   type: "tableRow",
-  cells: [{ type: "tableCell", content: [paragraph({ id: NEW_ID, text: seed.insertion, seed })] }],
+  cells: [0, 1, 2].map((index) => ({
+    type: "tableCell",
+    content: [
+      paragraph({
+        id: (0x20 + index).toString(16).toUpperCase().padStart(8, "0"),
+        text: seed.insertion,
+        seed,
+      }),
+    ],
+  })),
 });
+
+const tableAt = (blockId = ROW_ID) => ({ story: OP_STORIES.MAIN, blockId });
 
 export const fixture = async (seed: Seed): Promise<Document> => {
   const nested = paragraph({ id: NESTED_ID, text: seed.text, seed });
@@ -93,21 +104,29 @@ export const fixture = async (seed: Seed): Promise<Document> => {
           ...targetBlocks,
           {
             type: "table",
-            rows: [0, 1, 2].map((index) => ({
-              type: "tableRow",
-              cells: [
-                {
-                  type: "tableCell",
-                  content: [
-                    paragraph({
-                      id: (0x10 + index).toString(16).toUpperCase().padStart(8, "0"),
-                      text: seed.text,
-                      seed,
-                    }),
-                  ],
-                },
-              ],
-            })),
+            columnWidths: [100, 100, 100],
+            rows: [0, 1, 2].map((index) => {
+              const rowId = (0x10 + index).toString(16).toUpperCase().padStart(8, "0");
+              const rightId = (0x30 + index).toString(16).toUpperCase().padStart(8, "0");
+              return {
+                type: "tableRow",
+                cells: [
+                  {
+                    type: "tableCell",
+                    formatting: { gridSpan: 2 },
+                    content: [
+                      index === 0
+                        ? paragraph({ id: rowId, text: seed.text, seed })
+                        : { type: "paragraph", paraId: rowId, content: [] },
+                    ],
+                  },
+                  {
+                    type: "tableCell",
+                    content: [paragraph({ id: rightId, text: seed.text, seed })],
+                  },
+                ],
+              };
+            }),
           },
           paragraph({ id: "00000005", text: "outside", seed }),
         ],
@@ -257,7 +276,7 @@ export const operations = {
     type: DOCUMENT_OP_TYPES.INSERT_TABLE,
     story: OP_STORIES.MAIN,
     at: { type: seed.offset % 2 === 0 ? "before" : "after", blockId: FIRST_ID },
-    table: { type: "table", rows: [insertedRow(seed)] },
+    table: { type: "table", columnWidths: [100, 100, 100], rows: [insertedRow(seed)] },
     revision: stamp,
     newIds,
   }),
@@ -281,6 +300,70 @@ export const operations = {
     type: DOCUMENT_OP_TYPES.DELETE_ROW,
     story: OP_STORIES.MAIN,
     blockId: ROW_ID,
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.INSERT_COLUMN]: () => ({
+    type: DOCUMENT_OP_TYPES.INSERT_COLUMN,
+    ...tableAt(),
+    column: 2,
+    width: 100,
+    newBlockIds: [0x40, 0x41, 0x42].map((value) =>
+      value.toString(16).toUpperCase().padStart(8, "0"),
+    ),
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.DELETE_COLUMN]: () => ({
+    type: DOCUMENT_OP_TYPES.DELETE_COLUMN,
+    ...tableAt(),
+    column: 2,
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.MERGE_CELLS]: () => ({
+    type: DOCUMENT_OP_TYPES.MERGE_CELLS,
+    ...tableAt(),
+    top: 0,
+    bottom: 3,
+    left: 0,
+    right: 2,
+    newBlockIds: [],
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.SPLIT_CELL]: () => ({
+    type: DOCUMENT_OP_TYPES.SPLIT_CELL,
+    ...tableAt(),
+    newBlockIds: ["00000050"],
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.SET_TABLE_GRID]: () => ({
+    type: DOCUMENT_OP_TYPES.SET_TABLE_GRID,
+    ...tableAt(),
+    columnWidths: [110, 90, 100],
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.SET_CELL_PROPS]: () => ({
+    type: DOCUMENT_OP_TYPES.SET_CELL_PROPS,
+    ...tableAt(),
+    patch: { verticalAlign: "center" },
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.SET_ROW_PROPS]: () => ({
+    type: DOCUMENT_OP_TYPES.SET_ROW_PROPS,
+    ...tableAt(),
+    patch: { cantSplit: true },
+    revision: stamp,
+    newIds,
+  }),
+  [DOCUMENT_OP_TYPES.SET_TABLE_PROPS]: () => ({
+    type: DOCUMENT_OP_TYPES.SET_TABLE_PROPS,
+    ...tableAt(),
+    patch: { justification: "center" },
     revision: stamp,
     newIds,
   }),

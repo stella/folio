@@ -1,5 +1,5 @@
 /**
- * Document operations, schema version 5: text, formatting and review edits on
+ * Document operations, schema version 6: text, formatting and review edits on
  * independently addressed document stories, direct or tracked.
  *
  * An operation names everything it needs. Positions are `(story, blockId,
@@ -10,8 +10,9 @@
  * give equal outputs wherever the operation runs.
  *
  * Every operation's inverse is an operation of the same schema, addressed the
- * same way, so a step that rebases operations over concurrent edits rebases
- * inverses too. An inverse states what it expects to find (the slice it
+ * same way. Supported text and review operations rebase their inverses over
+ * concurrent edits; table operations require exclusive editing and are refused
+ * by the sequenced batch decoder. An inverse states what it expects to find (the slice it
  * removes, the values a patch replaced, the fields of a paragraph it merges
  * away) and is refused as stale when that has changed.
  *
@@ -32,6 +33,9 @@ import type {
   ParagraphPropertyChange,
   TextFormatting,
   TableRow,
+  TableCellFormatting,
+  TableRowFormatting,
+  TableFormatting,
   Table,
   BlockContent,
   HeaderFooterType,
@@ -59,6 +63,7 @@ type SectionViewChange = {
 /**
  * The operation schema this module reads and writes.
  *
+ * Version 6 adds semantic table edits and exact whole-table restoration.
  * Version 5 adds explicit section-boundary removal/restoration.
  * Version 5 adds header/footer/note story addresses and exact lifecycle operations.
  * Version 4 adds paragraph deletion through `deleteBlocks`, direct and tracked
@@ -70,7 +75,7 @@ type SectionViewChange = {
  * and paragraph operations, and the review operations `setParagraphReview`,
  * `replaceInline` and `resolveRevision`.
  */
-export const DOCUMENT_OP_SCHEMA_VERSION = 5;
+export const DOCUMENT_OP_SCHEMA_VERSION = 6;
 
 /**
  * The main story has a fixed address; other editable parts use their stable
@@ -195,7 +200,7 @@ export const SECTION_BOUNDARY_POLICIES = Object.freeze({
   REPLACE: "replace",
 } as const);
 
-/** The operation kinds of schema version 5. */
+/** The operation kinds of schema version 6. */
 export const DOCUMENT_OP_TYPES = Object.freeze({
   CREATE_HEADER_FOOTER: "createHeaderFooter",
   REMOVE_HEADER_FOOTER: "removeHeaderFooter",
@@ -224,6 +229,15 @@ export const DOCUMENT_OP_TYPES = Object.freeze({
   INSERT_ROW: "insertRow",
   DELETE_ROW: "deleteRow",
   SET_TABLE_ROWS: "setTableRows",
+  INSERT_COLUMN: "insertColumn",
+  DELETE_COLUMN: "deleteColumn",
+  MERGE_CELLS: "mergeCells",
+  SPLIT_CELL: "splitCell",
+  SET_TABLE_GRID: "setTableGrid",
+  SET_CELL_PROPS: "setCellProps",
+  SET_ROW_PROPS: "setRowProps",
+  SET_TABLE_PROPS: "setTableProps",
+  SET_TABLE: "setTable",
 } as const);
 
 /** One of {@link DOCUMENT_OP_TYPES}. */
@@ -775,7 +789,83 @@ export type RestoreStoryPartsOp = {
   parts: StoryParts;
 };
 
-/** A schema-version-5 document operation. */
+/** A paragraph selects its innermost table; columns are logical grid slots. */
+type TableEditTarget = {
+  story: OpStory;
+  blockId: string;
+  revision?: RevisionStamp;
+  newIds?: NewIds;
+};
+
+/** Insert before column (including the final boundary); fresh ids are in row order. */
+export type InsertColumnOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
+  column: number;
+  width: number;
+  newBlockIds: readonly string[];
+};
+export type DeleteColumnOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.DELETE_COLUMN;
+  column: number;
+};
+/** Half-open logical rectangle; every touched span must be wholly contained. */
+export type MergeCellsOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.MERGE_CELLS;
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  newBlockIds: readonly string[];
+};
+/** Split the addressed span into unit cells; the top-left cell keeps its content and identity. */
+export type SplitCellOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
+  newBlockIds: readonly string[];
+};
+/** Resize the existing logical grid without changing its topology. */
+export type SetTableGridOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.SET_TABLE_GRID;
+  columnWidths: readonly number[];
+};
+export type SetCellPropsOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.SET_CELL_PROPS;
+  patch: FormattingPatch<TableCellFormatting>;
+};
+export type SetRowPropsOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.SET_ROW_PROPS;
+  patch: FormattingPatch<TableRowFormatting>;
+};
+export type SetTablePropsOp = TableEditTarget & {
+  type: typeof DOCUMENT_OP_TYPES.SET_TABLE_PROPS;
+  patch: FormattingPatch<TableFormatting>;
+};
+/** Exact inverse/resolution primitive, including grid and captured markup. */
+export type SetTableOp = {
+  type: typeof DOCUMENT_OP_TYPES.SET_TABLE;
+  story: OpStory;
+  blockId: string;
+  expected: Table;
+  table: Table;
+};
+export type TableEditOp =
+  | InsertColumnOp
+  | DeleteColumnOp
+  | MergeCellsOp
+  | SplitCellOp
+  | SetTableGridOp
+  | SetCellPropsOp
+  | SetRowPropsOp
+  | SetTablePropsOp;
+
+/** Table intent ids are derived from topology by the shared compiler. */
+export type TableIntentOperation = {
+  [Kind in TableEditOp["type"]]: Omit<
+    Extract<TableEditOp, { type: Kind }>,
+    "revision" | "newIds" | "newBlockIds"
+  >;
+}[TableEditOp["type"]];
+
+/** A schema-version-6 document operation. */
 export type DocumentOp =
   | CreateHeaderFooterOp
   | RemoveHeaderFooterOp
@@ -803,7 +893,9 @@ export type DocumentOp =
   | ResolveRevisionOp
   | InsertRowOp
   | DeleteRowOp
-  | SetTableRowsOp;
+  | SetTableRowsOp
+  | TableEditOp
+  | SetTableOp;
 
 /**
  * An operation as it is journaled and sent: the schema that reads it, and the

@@ -781,6 +781,8 @@ class CanonicalSession {
           return intent.at.story;
         case "joinParagraphs":
           return intent.story;
+        case "table":
+          return intent.operation.story;
         default: {
           const unreachable: never = intent;
           return panic(`Unknown canonical intent ${unreachable}`);

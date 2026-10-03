@@ -535,6 +535,7 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
       return false;
     }
     editorSession = { type: "canonical", session: result.value };
+    modeOverride = null;
     syncCanonicalMode();
     return true;
   };

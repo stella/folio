@@ -122,6 +122,7 @@ import {
   zeroWidthLeavesAt,
 } from "./leaves";
 import { paragraphLength, paragraphLogicalText } from "./offsets";
+import { tableEditBoundaryRefusal } from "./tableEditBoundary";
 import { priorValues } from "./patch";
 import {
   DOCUMENT_OP_REFUSAL_REASONS,
@@ -131,7 +132,8 @@ import {
 import { resolveRevision } from "./resolve";
 import { applyRowOp } from "./tableRows";
 import { applyTableOp } from "./tables";
-import { stampedTableRowRevisionIds } from "./tableTracking";
+import { stampedTableRevisionIds } from "./tableTracking";
+import { applyTableEdit } from "./tableEdits";
 import {
   namesMarkFormatting,
   paragraphPropertiesOf,
@@ -2149,6 +2151,16 @@ const dispatch = (document: Document, op: DocumentOp): Applied => {
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
       return applyRowOp(document, op);
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+    case DOCUMENT_OP_TYPES.DELETE_COLUMN:
+    case DOCUMENT_OP_TYPES.MERGE_CELLS:
+    case DOCUMENT_OP_TYPES.SPLIT_CELL:
+    case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE:
+      return applyTableEdit(document, op);
     default: {
       const unreachable: never = op;
       return unreachable;
@@ -2172,6 +2184,14 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.DELETE_ROW:
     case DOCUMENT_OP_TYPES.INSERT_TABLE:
     case DOCUMENT_OP_TYPES.DELETE_TABLE:
+    case DOCUMENT_OP_TYPES.INSERT_COLUMN:
+    case DOCUMENT_OP_TYPES.DELETE_COLUMN:
+    case DOCUMENT_OP_TYPES.MERGE_CELLS:
+    case DOCUMENT_OP_TYPES.SPLIT_CELL:
+    case DOCUMENT_OP_TYPES.SET_TABLE_GRID:
+    case DOCUMENT_OP_TYPES.SET_CELL_PROPS:
+    case DOCUMENT_OP_TYPES.SET_ROW_PROPS:
+    case DOCUMENT_OP_TYPES.SET_TABLE_PROPS:
       return op.revision;
     case DOCUMENT_OP_TYPES.CREATE_HEADER_FOOTER:
     case DOCUMENT_OP_TYPES.REMOVE_HEADER_FOOTER:
@@ -2186,6 +2206,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
     case DOCUMENT_OP_TYPES.REPLACE_INLINE:
     case DOCUMENT_OP_TYPES.RESOLVE_REVISION:
     case DOCUMENT_OP_TYPES.SET_TABLE_ROWS:
+    case DOCUMENT_OP_TYPES.SET_TABLE:
     case DOCUMENT_OP_TYPES.SET_CONTAINER_BLOCKS:
       return undefined;
     default: {
@@ -2214,7 +2235,7 @@ const recordedRevisions = (
   revisions.unshift(
     ...documentStories(edit.document)
       .map((story) =>
-        stampedTableRowRevisionIds(storyBody(edit.document, story).content, stamp, known),
+        stampedTableRevisionIds({ blocks: storyBody(edit.document, story).content, stamp, known }),
       )
       .flat(),
   );
@@ -2240,6 +2261,8 @@ export const applyDocumentOp = (
         refusal(op, DOCUMENT_OP_REFUSAL_REASONS.STALE, "The derived section metadata changed."),
       );
   }
+  const malformedTable = tableEditBoundaryRefusal(op);
+  if (malformedTable !== undefined) return Result.err(malformedTable);
   const addressed = (() => {
     if ("at" in op && typeof op.at === "object" && "story" in op.at) return op.at.story;
     if ("from" in op) return op.from.story;

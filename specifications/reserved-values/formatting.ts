@@ -566,7 +566,7 @@ export const TABLE_CELL_FORMATTING_RESERVED = {
   vMerge: readerOwned({
     slot: "w:vMerge@val",
     sentinel: "absent|continue",
-    reader: RESERVED_VALUE_READERS.tableCellProperties,
+    reader: RESERVED_VALUE_READERS.tableCellVerticalMerge,
     evidence: "vmerge-absent-means-continue",
   }),
   fitText: toggle("w:tcFitText@val"),

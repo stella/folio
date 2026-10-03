@@ -16,25 +16,49 @@
     {
       "seed": -392419793,
       "path": "13:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
+      "note": "Package inverse retains modeled records but changes captured header serialization after a join. The expanded operation alphabet makes this historical shrink path pass; the source replay law must hold.",
       "date": "2026-10-03"
     },
     {
       "seed": -392419793,
       "path": "41:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml",
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml The expanded operation alphabet makes this historical shrink path pass; the source replay law must hold.",
       "date": "2026-10-03"
     },
     {
       "seed": 1192899088,
       "path": "14:1:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml",
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml The expanded operation alphabet makes this historical shrink path pass; the source replay law must hold.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 327444275,
+      "path": "7:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "Retain the seeded join inverse witness under the expanded operation alphabet; its migrated shrink path now addresses a header.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1947858305,
+      "note": "Expanded operation schedule retains the known header join inverse witness; table cases use their declared main-story domain.",
+      "date": "2026-10-03",
+      "path": "64:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2"
+    },
+    {
+      "seed": -804201985,
+      "path": "71",
+      "note": "Paragraph-property inverse retains exact header serialization under the expanded operation schedule.",
       "date": "2026-10-03"
     },
     {
       "seed": -2120778113,
       "path": "5",
       "note": "Restoring a removed story must retain captured replay ownership",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -804201985,
+      "path": "127:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "note": "Header paragraph-property inverse byte law under the extended table-operation schedule.",
       "date": "2026-10-03"
     }
   ],

@@ -9,13 +9,16 @@ import { IDENTITY_SPACES, identityKeysIn, slotKey } from "../ids";
 import { DOCUMENT_OP_REFUSAL_REASONS } from "../refusal";
 import { DOCUMENT_OP_TYPES, OP_STORIES, REVISION_DECISIONS } from "../types";
 
-const documentOf = (revisionId: number): Document => ({
+const documentOf = (
+  revisionId: number,
+  columnWidths: readonly (number | undefined)[] = [undefined, 1000],
+): Document => ({
   package: {
     document: {
       content: [
         {
           type: "table",
-          formatting: { gridChange: { id: revisionId, columnWidths: [undefined, 1000] } },
+          formatting: { gridChange: { id: revisionId, columnWidths } },
           rows: [
             {
               type: "tableRow",
@@ -34,16 +37,38 @@ const documentOf = (revisionId: number): Document => ({
   },
 });
 
-test("a grid revision is present and refused until its resolution is implemented", () => {
+test("accepting a grid revision clears its historical snapshot", () => {
   const result = applyDocumentOp(documentOf(100), {
     type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
     story: OP_STORIES.MAIN,
     revisionIds: [100],
     decision: REVISION_DECISIONS.ACCEPT,
   });
-  expect(result.isErr()).toBe(true);
-  if (result.isErr()) expect(result.error.reason).toBe(DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE);
+  if (result.isErr()) throw result.error;
+  const table = result.value.document.package.document.content.at(0);
+  if (table?.type !== "table") throw new Error("The table remains present.");
+  expect(table.formatting?.gridChange).toBeUndefined();
 });
+
+test.each([
+  [[undefined, 1000], DOCUMENT_OP_REFUSAL_REASONS.UNTRACKABLE],
+  [[2400, 1200], DOCUMENT_OP_REFUSAL_REASONS.STRUCTURE_MISMATCH],
+] as const)(
+  "rejecting an unrepresentable or inconsistent previous grid refuses atomically",
+  (widths, reason) => {
+    const document = documentOf(100, widths);
+    const before = structuredClone(document);
+    const result = applyDocumentOp(document, {
+      type: DOCUMENT_OP_TYPES.RESOLVE_REVISION,
+      story: OP_STORIES.MAIN,
+      revisionIds: [100],
+      decision: REVISION_DECISIONS.REJECT,
+    });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) expect(result.error.reason).toBe(reason);
+    expect(document).toStrictEqual(before);
+  },
+);
 
 test(
   "the revision census reserves every grid revision id and detects collisions",
