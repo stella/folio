@@ -404,7 +404,7 @@ type IntentRunFormattingOptions = {
 const intentRunFormatting = (
   document: Document,
   { from, to, runProps, runPropsPatch }: IntentRunFormattingOptions,
-): TextFormatting => {
+) => {
   const authored = runProps ?? authoredFormatting(document, from, to);
   return runPropsPatch === undefined
     ? authored

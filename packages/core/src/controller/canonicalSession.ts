@@ -60,6 +60,9 @@ const operationChangesPackage = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return true;
     default: {
       if ("story" in op) return !sameStory(op.story, OP_STORIES.MAIN);
@@ -80,6 +83,9 @@ const operationChangesBodyProjection = (op: DocumentOp): boolean => {
     case DOCUMENT_OP_TYPES.SET_SECTION_PROPS:
     case DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS:
     case DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES:
+    case DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE:
+    case DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT:
       return true;
     default: {
       if ("story" in op) return sameStory(op.story, OP_STORIES.MAIN);
