@@ -1,17 +1,26 @@
 /** Package-shaped cases for the same inverse/locality laws across every operation kind. */
 import { panic } from "better-result";
-import type { BlockContent, Document, Paragraph, Table } from "../../model/document";
-import { applyDocumentOp } from "../apply";
-import { storyBody, storyParagraphs } from "../blocks";
-import { normalizeForOps } from "../contract";
-import { paragraphIdsIn } from "../ids";
-import { DOCUMENT_OP_TYPES, type DocumentOp, type OpStory } from "../types";
+import type {
+  BlockContent,
+  Document,
+  Paragraph,
+  Table,
+} from "../../packages/docx-core/src/model/document";
+import { applyDocumentOp } from "../../packages/docx-core/src/ops/apply";
+import { storyBody, storyParagraphs } from "../../packages/docx-core/src/ops/blocks";
+import { normalizeForOps } from "../../packages/docx-core/src/ops/contract";
+import { paragraphIdsIn } from "../../packages/docx-core/src/ops/ids";
+import {
+  DOCUMENT_OP_TYPES,
+  type DocumentOp,
+  type OpStory,
+} from "../../packages/docx-core/src/ops/types";
 import {
   GENERATED_OP_KINDS,
   opForStory,
   opSeedArbitrary,
   type OpSeed,
-} from "./documentArbitraries";
+} from "../../packages/docx-core/src/ops/__tests__/documentArbitraries";
 
 export const GENERATED_PACKAGE_STORIES = [
   "main",
@@ -418,15 +427,34 @@ export const PACKAGE_OP_CASES = {
       content: [freshParagraph(args)],
     },
   }),
-  removeHeaderFooter: (args: CaseArgs): GeneratedCase => ({
-    document: args.document,
-    op: {
-      type: "removeHeaderFooter",
+  removeHeaderFooter: (args: CaseArgs): GeneratedCase => {
+    if (args.seed.first % 2 !== 0)
+      return {
+        document: args.document,
+        op: {
+          type: "removeHeaderFooter",
+          sectionIndex: 0,
+          story: { kind: "header", rId: "rIdHeader" },
+          referenceType: "default",
+        },
+      };
+    const created = applyDocumentOp(args.document, {
+      type: "createHeaderFooter",
       sectionIndex: 0,
-      story: { kind: "header", rId: "rIdHeader" },
-      referenceType: "default",
-    },
-  }),
+      story: { kind: "footer", rId: "rIdGenerated" },
+      referenceType: "first",
+      content: [freshParagraph(args)],
+    }).unwrap().document;
+    return {
+      document: created,
+      op: {
+        type: "removeHeaderFooter",
+        sectionIndex: 0,
+        story: { kind: "footer", rId: "rIdGenerated" },
+        referenceType: "first",
+      },
+    };
+  },
   addNote: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
     op: {

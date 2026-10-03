@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { applyDocumentOps, normalizeForOps } from "@stll/docx-core/ops";
-import { packageDocumentArbitrary } from "../../../docx-core/src/ops/__tests__/packageOperationArbitraries";
+import { packageDocumentArbitrary } from "../../../../test/generators/packageOperationArbitraries";
 import {
   generateOpSequence,
   serializedOpParts,

@@ -1,0 +1,10 @@
+{
+  "retracting pasted list breaks preserves acceptance and rejection for paragraph properties": [
+    {
+      "seed": 197,
+      "path": "0:0:0:0:0:0:0:0:0",
+      "note": "Independent editing and suggesting documents allocate numbering deterministically from their own reserved IDs",
+      "date": "2026-10-01"
+    }
+  ]
+}

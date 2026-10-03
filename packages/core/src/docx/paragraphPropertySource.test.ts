@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { readFile } from "node:fs/promises";
-import { exactOpModel } from "../../../../scripts/lib/corpus-invariants/op-sequences";
 
 import type { BlockContent, Paragraph } from "../types/document";
 import { parseDocx } from "./parser";
@@ -89,7 +88,7 @@ describe("paragraph-property source identity", () => {
     const unboundWire = JSON.stringify(unbound);
     expect(capturedWire).toBe(unboundWire);
     expect(new TextEncoder().encode(capturedWire)).toEqual(new TextEncoder().encode(unboundWire));
-    expect(exactOpModel(derived)).toEqual(exactOpModel(unbound));
+    expect(structuredClone(derived)).toStrictEqual(structuredClone(unbound));
     expect(JSON.stringify(derived)).not.toContain("paragraphPropertyCapture");
 
     const forged = { ...derived };
