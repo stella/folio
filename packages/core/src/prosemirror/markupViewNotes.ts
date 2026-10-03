@@ -33,10 +33,11 @@ const resolvedNote = <TNote extends Footnote | Endnote>(
   const styleResolver = getDocumentStyleResolver(state);
   const cached = resolvedNotes.get(note)?.get(mode);
   if (cached?.styleResolver === styleResolver) return cached.note as TNote;
-  const { styles, theme } = document.package;
+  const { styles, theme, numbering } = document.package;
   const doc = footnoteToProseDoc(note.content, {
     ...(styles !== undefined && { styles }),
     ...(theme !== undefined && { theme }),
+    ...(numbering !== undefined && { numbering }),
   });
   const result = resolveWholeStory({
     doc,

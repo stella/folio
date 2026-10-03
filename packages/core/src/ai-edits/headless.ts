@@ -3110,6 +3110,9 @@ export class FolioDocxReviewer {
       return null;
     }
     const conversionOptions = {
+      ...(this.baseDocument.package.numbering !== undefined && {
+        numbering: this.baseDocument.package.numbering,
+      }),
       ...(this.baseDocument.package.styles !== undefined && {
         styles: this.baseDocument.package.styles,
       }),

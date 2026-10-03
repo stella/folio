@@ -27,7 +27,13 @@ import {
   FOOTNOTE_SEPARATOR_HEIGHT,
 } from "../../layout-engine/types";
 import { footnoteToProseDoc } from "../../prosemirror/conversion/toProseDoc";
-import type { Endnote, Footnote, StyleDefinitions, Theme } from "../../types/document";
+import type {
+  Endnote,
+  Footnote,
+  NumberingDefinitions,
+  StyleDefinitions,
+  Theme,
+} from "../../types/document";
 import { measureParagraph } from "../engine/measuring";
 import { layoutTextBoxContent } from "../../layout-engine/measure/textBoxParagraphLayout";
 import { collectNoteRefs, toFlowBlocks } from "./toFlowBlocks";
@@ -44,6 +50,7 @@ export type MeasureBlocksFn = (blocks: FlowBlock[], contentWidth: number) => Mea
 
 export type ConvertFootnoteOptions = {
   styles?: StyleDefinitions | null;
+  numbering?: NumberingDefinitions;
   theme?: Theme | null;
   defaultSize?: number;
   fontAlternates?: ToFlowBlocksOptions["fontAlternates"];
@@ -353,6 +360,9 @@ export function convertNoteStoryToFlowBlocks(
   }
   if (options.theme !== undefined) {
     proseOptions.theme = options.theme;
+  }
+  if (options.numbering !== undefined) {
+    proseOptions.numbering = options.numbering;
   }
   const pmDoc = footnoteToProseDoc(content, proseOptions);
   const flowOptions: Parameters<typeof toFlowBlocks>[1] = {};

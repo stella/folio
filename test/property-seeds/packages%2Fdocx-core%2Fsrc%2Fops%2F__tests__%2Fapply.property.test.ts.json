@@ -88,6 +88,24 @@
       "path": "0:0:0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1071090964,
+      "path": "0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1283850532,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1284509449,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "editor intent sequences preserve accepted editing, rejected baseline and exact journal undo": [

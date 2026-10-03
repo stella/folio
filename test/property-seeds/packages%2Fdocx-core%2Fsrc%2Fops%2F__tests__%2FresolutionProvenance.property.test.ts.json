@@ -17,6 +17,24 @@
       "path": "2:0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 1483041901,
+      "path": "1:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 467231556,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1421512014,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "generated deletion cuts accept and reject at the recorded wrapper depth": [
@@ -101,6 +119,12 @@
       "path": "42:0:0:0:1:6",
       "note": "Merge surviving text leaves within the recorded maximum cut depth after wrapper removal.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 782520743,
+      "path": "1:0:0:0:0:1:1:0:0:1",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "generated paragraph cut depths preserve authored wrappers and deferred split seams": [
@@ -154,6 +178,24 @@
       "path": "3:6:0:1:5:3:2",
       "note": "Replay the observed source-seam or revision allocation failure.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": 281419480,
+      "path": "0:0:1:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 568015242,
+      "path": "0:0:1:0:1:2:1:2:2:2:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1598198952,
+      "path": "0:0:8:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "generated retained source identities survive a later pending formatting action": [
@@ -173,6 +215,24 @@
       "seed": 1876835879,
       "path": "0:0",
       "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1876035242,
+      "path": "0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 844748741,
+      "path": "0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1730233178,
+      "path": "0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
     }
   ],

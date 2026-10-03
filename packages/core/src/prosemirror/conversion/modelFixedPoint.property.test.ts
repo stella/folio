@@ -15,7 +15,7 @@ import fc from "fast-check";
 import { readdirSync } from "node:fs";
 import path from "node:path";
 
-import { propertyConfig, propertyTestTimeout } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 import { parseDocx } from "../../docx/parser";
 import { createDocx } from "../../docx/rezip";
 import { toFlowBlocks } from "../../layout-bridge/convert/toFlowBlocks";
@@ -108,19 +108,22 @@ describe("paragraph model fixed point under a no-op rebuild", () => {
 
 const NUM_FMTS = ["decimal", "lowerLetter", "upperRoman", "bullet"] as const;
 
-const listLevelArb = (ilvl: number): fc.Arbitrary<ListLevel> =>
+const listLevelArb = (ilvl: number) =>
   fc
     .record({
       start: fc.integer({ min: 1, max: 9 }),
       numFmt: fc.constantFrom(...NUM_FMTS),
     })
-    .map(({ start, numFmt }) => ({
-      ilvl,
-      start,
-      numFmt,
-      lvlText: numFmt === "bullet" ? "•" : `%${ilvl + 1}.`,
-      pPr: { indentation: { left: 720 * (ilvl + 1), hanging: 360 } },
-    }));
+    .map(
+      ({ start, numFmt }) =>
+        ({
+          ilvl,
+          start,
+          numFmt,
+          lvlText: numFmt === "bullet" ? "•" : `%${ilvl + 1}.`,
+          pPr: { indentLeft: 720 * (ilvl + 1), indentFirstLine: -360, hangingIndent: true },
+        }) satisfies ListLevel,
+    );
 
 const numberedDocumentArb: fc.Arbitrary<Document> = fc
   .record({
@@ -161,7 +164,7 @@ const markers = (document: Document): (string | null)[] =>
 
 describe("list rendering fixed point under a no-op rebuild", () => {
   test("generated numbering definitions keep their metadata and markers", async () => {
-    await fc.assert(
+    await assertProperty(
       fc.asyncProperty(numberedDocumentArb, async (model) => {
         const document = await parseDocx(await createDocx(model), {
           preloadFonts: false,
@@ -170,7 +173,49 @@ describe("list rendering fixed point under a no-op rebuild", () => {
         expectParagraphFixedPoint(document);
         expect(markers(rebuild(document))).toEqual(markers(document));
       }),
-      propertyConfig({ numRuns: 25 }),
+      { numRuns: 25 },
+    );
+  });
+
+  test("generated symbol-font bullets and folded LISTNUM fields preserve parsed rendering", async () => {
+    await assertProperty(
+      fc.asyncProperty(
+        numberedDocumentArb,
+        fc.boolean(),
+        fc.boolean(),
+        async (model, symbolicBullet, foldedListNum) => {
+          if (symbolicBullet) {
+            for (const abstract of model.package.numbering?.abstractNums ?? []) {
+              for (const level of abstract.levels) {
+                if (level.numFmt !== "bullet") continue;
+                level.lvlText = "\uF0B7";
+                level.rPr = { fontFamily: { ascii: "Symbol", hAnsi: "Symbol" } };
+              }
+            }
+          }
+          if (foldedListNum) {
+            const first = collectParagraphs(model.package.document.content, []).at(0);
+            if (first === undefined) throw new TypeError("Generated LISTNUM paragraph is missing.");
+            first.content.unshift(
+              {
+                type: "complexField",
+                instruction: "LISTNUM",
+                fieldType: "LISTNUM",
+                fieldCode: [],
+                fieldResult: [{ type: "run", content: [{ type: "text", text: "(a)" }] }],
+              },
+              { type: "run", content: [{ type: "tab" }] },
+            );
+          }
+          const document = await parseDocx(await createDocx(model), {
+            preloadFonts: false,
+            detectVariables: false,
+          });
+          expectParagraphFixedPoint(document);
+          expect(markers(rebuild(document))).toEqual(markers(document));
+        },
+      ),
+      { numRuns: 25 },
     );
   });
 });

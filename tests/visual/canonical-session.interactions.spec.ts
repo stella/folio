@@ -86,6 +86,15 @@ test("canonical input, history and saved document agree across both adapters", a
     expect(redone.document).toEqual(deleted.document);
     expect(redone.canRedo).toBe(false);
 
+    // Structural input shares the same journal, including the caret before its split.
+    await page.keyboard.press("Enter");
+    expect((await snapshot(page))?.document?.package.document.content).toHaveLength(2);
+    await page.keyboard.press(`${MODIFIER}+z`);
+    const splitUndone = await snapshot(page);
+    expect(splitUndone?.document).toEqual(redone.document);
+    expect(splitUndone?.selection).toEqual(redone.selection);
+    expect(splitUndone?.projectionMatchesCanonical).toBe(true);
+
     await select(page, 1, 2);
     const compositionBaseline = await expectProjection(page, {
       text: "B",
@@ -226,6 +235,231 @@ test("canonical input, history and saved document agree across both adapters", a
       redone.document.package.document.content,
     );
     expect(reloaded.canUndo).toBe(false);
+  }
+});
+
+test("canonical structural and formatting hooks survive save and reopen", async ({ page }) => {
+  test.setTimeout(60_000);
+  const source = await createDocx(createEmptyDocument({ initialText: "ab" }));
+  for (const port of [reactPort, vuePort]) {
+    await page.goto(`http://localhost:${port}/?session=canonical`);
+    await page.waitForSelector(".layout-page");
+    expect(
+      await page.evaluate(
+        (bytes) => globalThis.__folioCanonical?.load(bytes),
+        [...new Uint8Array(source)],
+      ),
+    ).toBe(true);
+    await select(page, 2);
+    const initial = await expectProjection(page, { text: "ab", selection: { from: 2, to: 2 } });
+    const original = initial.document.package.document.content.at(0);
+    if (original?.type !== "paragraph") throw new TypeError("Expected paragraph.");
+    await page.keyboard.press("Enter");
+    const split = await expectProjection(page, { text: "ab", selection: { from: 4, to: 4 } });
+    expect(split.document.package.document.content).toHaveLength(2);
+    const splitFirst = split.document.package.document.content.at(0);
+    const splitSecond = split.document.package.document.content.at(1);
+    expect(splitSecond?.type === "paragraph" ? splitSecond.paraId : undefined).toBe(
+      original.paraId,
+    );
+    expect(splitFirst?.type === "paragraph" ? splitFirst.paraId : undefined).not.toBe(
+      original.paraId,
+    );
+    await page.keyboard.press("Backspace");
+    const joined = await expectProjection(page, { text: "ab", selection: { from: 2, to: 2 } });
+    expect(joined.document.package.document.content).toHaveLength(1);
+    const joinedParagraph = joined.document.package.document.content.at(0);
+    expect(joinedParagraph?.type === "paragraph" ? joinedParagraph.paraId : undefined).toBe(
+      original.paraId,
+    );
+    await select(page, 1, 3);
+    await page.keyboard.press(`${MODIFIER}+b`);
+    const formatted = await expectProjection(page, { text: "ab", selection: { from: 1, to: 3 } });
+    const paragraph = formatted.document.package.document.content.at(0);
+    expect(
+      paragraph?.type === "paragraph" &&
+        paragraph.content.some((run) => run.type === "run" && run.formatting?.bold),
+    ).toBe(true);
+    await select(page, 3);
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("- ");
+    await page.keyboard.press("Tab");
+    const beforeItem = await snapshot(page);
+    await page.keyboard.type("item");
+    const current = await snapshot(page);
+    expect(current?.projectionMatchesCanonical).toBe(true);
+    expect(current?.projectionJSON).toEqual(current?.canonicalProjectionJSON);
+    const listed = current?.document?.package.document.content.at(1);
+    expect(
+      listed?.type === "paragraph" &&
+        listed.formatting?.numPr?.kind === "reference" &&
+        listed.formatting.numPr.ilvl,
+    ).toBe(1);
+    const beforeUndo = current?.document;
+    await page.keyboard.press(`${MODIFIER}+z`);
+    const itemUndone = await snapshot(page);
+    expect(itemUndone?.document).toEqual(beforeItem?.document);
+    expect(itemUndone?.selection).toEqual(beforeItem?.selection);
+    expect(itemUndone?.text).toBe("ab");
+    expect(itemUndone?.projectionMatchesCanonical).toBe(true);
+    await page.keyboard.press(`${MODIFIER}+Shift+z`);
+    expect((await snapshot(page))?.document).toEqual(beforeUndo);
+    const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
+    if (!saved) throw new TypeError("Canonical save unavailable.");
+    const reopened = await parseDocx(new Uint8Array(saved), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const first = reopened.package.document.content.at(0);
+    const last = reopened.package.document.content.at(1);
+    expect(
+      first?.type === "paragraph" &&
+        first.content.some((run) => run.type === "run" && run.formatting?.bold),
+    ).toBe(true);
+    expect(
+      last?.type === "paragraph" &&
+        last.formatting?.numPr?.kind === "reference" &&
+        last.formatting.numPr.ilvl,
+    ).toBe(1);
+    expect(reopened.package.numbering?.nums).toHaveLength(1);
+    expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), saved)).toBe(
+      true,
+    );
+    expect((await snapshot(page))?.text).toBe("abitem");
+    expect((await snapshot(page))?.projectionMatchesCanonical).toBe(true);
+  }
+});
+
+test("canonical structural gestures and toolbar operations preserve each intermediate history state", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const source = [...new Uint8Array(await createDocx(createEmptyDocument({ initialText: "ab" })))];
+  for (const port of [reactPort, vuePort]) {
+    await page.goto(`http://localhost:${port}/?session=canonical`);
+    await page.waitForSelector(".layout-page");
+    const reload = async () => {
+      expect(await page.evaluate((bytes) => globalThis.__folioCanonical?.load(bytes), source)).toBe(
+        true,
+      );
+      await select(page, 2);
+    };
+    const undoExactly = async (before: Awaited<ReturnType<typeof snapshot>>) => {
+      const after = await snapshot(page);
+      expect(after?.document).not.toEqual(before?.document);
+      expect(after?.projectionMatchesCanonical).toBe(true);
+      await page.keyboard.press(`${MODIFIER}+z`);
+      const undone = await snapshot(page);
+      expect(undone?.document).toEqual(before?.document);
+      expect(undone?.selection).toEqual(before?.selection);
+      expect(undone?.projectionJSON).toEqual(before?.projectionJSON);
+      await page.keyboard.press(`${MODIFIER}+Shift+z`);
+      const redone = await snapshot(page);
+      expect(redone?.document).toEqual(after?.document);
+      expect(redone?.selection).toEqual(after?.selection);
+      expect(redone?.projectionJSON).toEqual(after?.projectionJSON);
+    };
+
+    for (const shortcut of ["Shift+Enter", `${MODIFIER}+Enter`]) {
+      await reload();
+      const before = await snapshot(page);
+      await page.keyboard.press(shortcut);
+      const inserted = await snapshot(page);
+      expect(inserted?.document?.package.document.content).toHaveLength(1);
+      const paragraph = inserted?.document?.package.document.content.at(0);
+      if (paragraph?.type !== "paragraph") throw new TypeError("Expected break paragraph.");
+      const breaks = paragraph.content.flatMap((run) =>
+        run.type === "run" ? run.content.filter((leaf) => leaf.type === "break") : [],
+      );
+      expect(breaks).toHaveLength(1);
+      expect(breaks.at(0)).toMatchObject({
+        type: "break",
+        breakType: shortcut === "Shift+Enter" ? "textWrapping" : "page",
+      });
+      await undoExactly(before);
+    }
+
+    await reload();
+    await page.keyboard.press("Enter");
+    await select(page, 2);
+    const split = await snapshot(page);
+    await page.keyboard.press("Delete");
+    expect((await snapshot(page))?.document?.package.document.content).toHaveLength(1);
+    await undoExactly(split);
+
+    await reload();
+    const beforeShiftTab = await snapshot(page);
+    await page.keyboard.press("Shift+Tab");
+    expect(await snapshot(page)).toEqual(beforeShiftTab);
+
+    await reload();
+    await select(page, 1, 3);
+    const beforeToolbar = await snapshot(page);
+    await page.getByRole("button", { name: "Bold", exact: true }).click();
+    const bold = (await snapshot(page))?.document?.package.document.content.at(0);
+    expect(
+      bold?.type === "paragraph" &&
+        bold.content.some((run) => run.type === "run" && run.formatting?.bold),
+    ).toBe(true);
+    await undoExactly(beforeToolbar);
+
+    await reload();
+    await select(page, 1, 3);
+    await page.keyboard.press("Backspace");
+    await page.keyboard.type("- ");
+    await page.keyboard.press("Tab");
+    const nested = await snapshot(page);
+    await page.keyboard.press("Shift+Tab");
+    const outdented = (await snapshot(page))?.document?.package.document.content.at(0);
+    expect(
+      outdented?.type === "paragraph" &&
+        outdented.formatting?.numPr?.kind === "reference" &&
+        (outdented.formatting.numPr.ilvl ?? 0),
+    ).toBe(0);
+    await undoExactly(nested);
+    await page.keyboard.type("item");
+    await select(page, 1);
+    const beforeListBackspace = await snapshot(page);
+    await page.keyboard.press("Backspace");
+    const removed = (await snapshot(page))?.document?.package.document.content.at(0);
+    expect(removed?.type === "paragraph" && removed.formatting?.numPr?.kind === "reference").toBe(
+      false,
+    );
+    await undoExactly(beforeListBackspace);
+
+    await reload();
+    await select(page, 1, 3);
+    await page.keyboard.press("Backspace");
+    const beforeMarker = await snapshot(page);
+    await page.keyboard.type("-");
+    const beforeRule = await snapshot(page);
+    await page.keyboard.type(" ");
+    const ruled = (await snapshot(page))?.document?.package.document.content.at(0);
+    expect(ruled?.type === "paragraph" && ruled.formatting?.numPr?.kind).toBe("reference");
+    await page.keyboard.press("Backspace");
+    const ruleUndone = await snapshot(page);
+    expect(ruleUndone?.document).toEqual(beforeRule?.document);
+    expect(ruleUndone?.selection).toEqual(beforeRule?.selection);
+    expect(ruleUndone?.text).toBe("-");
+    await page.keyboard.press(`${MODIFIER}+z`);
+    expect((await snapshot(page))?.document).toEqual(beforeMarker?.document);
+    expect((await snapshot(page))?.selection).toEqual(beforeMarker?.selection);
+
+    await reload();
+    await page.keyboard.type("x");
+    const beforeFormatting = await snapshot(page);
+    await select(page, 1, 4);
+    const formattingSelection = await snapshot(page);
+    await page.keyboard.press(`${MODIFIER}+i`);
+    await select(page, 4);
+    const beforeSecondTyping = await snapshot(page);
+    await page.keyboard.type("y");
+    await page.keyboard.press(`${MODIFIER}+z`);
+    expect((await snapshot(page))?.document).toEqual(beforeSecondTyping?.document);
+    expect((await snapshot(page))?.selection).toEqual(beforeSecondTyping?.selection);
+    await page.keyboard.press(`${MODIFIER}+z`);
+    expect((await snapshot(page))?.document).toEqual(beforeFormatting?.document);
+    expect((await snapshot(page))?.selection).toEqual(formattingSelection?.selection);
   }
 });
 

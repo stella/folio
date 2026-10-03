@@ -1,0 +1,10 @@
+{
+  "generated structural sequences preserve text, identities, projection and exact history selections": [
+    {
+      "seed": -1798387597,
+      "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ]
+}

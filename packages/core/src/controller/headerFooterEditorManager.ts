@@ -17,7 +17,10 @@ import { clearHeaderFooterVerbatimXml } from "../docx/headerFooterVerbatim";
 import { cloneParagraphWithPropertySource } from "../docx/paragraphPropertySource";
 import { proseDocToBlocks } from "../prosemirror/conversion/fromProseDoc";
 import { storyListNumbering } from "../prosemirror/storyListNumbering";
-import { headerFooterToProseDoc } from "../prosemirror/conversion/toProseDoc";
+import {
+  headerFooterToProseDoc,
+  type ToProseDocOptions,
+} from "../prosemirror/conversion/toProseDoc";
 import { ExtensionManager } from "../prosemirror/extensions/ExtensionManager";
 import { ensureBaseDirectionInState } from "../prosemirror/extensions/features/AutoBidiDetectionExtension";
 import { ensureParaIdsInState } from "../prosemirror/extensions/features/ParaIdAllocatorExtension";
@@ -93,7 +96,7 @@ const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 
 const headerFooterToProseDocWithDetachedWatermarkHost = (
   headerFooter: HeaderFooter,
-  options: { styles?: StyleDefinitions; theme?: Theme | null },
+  options: ToProseDocOptions,
 ): PMNode => {
   const markedContent: BlockContent[] = headerFooter.content.map((block, blockIndex) => {
     if (blockIndex !== headerFooter.watermarkBlockIndex || block.type !== "paragraph") {
@@ -113,12 +116,15 @@ const buildInitialState = (
   numbering: NumberingDefinitions | null | undefined,
   manager: ExtensionManager,
 ): EditorStateT => {
-  const proseDocOptions: { styles?: StyleDefinitions; theme?: Theme | null } = {};
+  const proseDocOptions: ToProseDocOptions = {};
   if (styles) {
     proseDocOptions.styles = styles;
   }
   if (theme !== undefined) {
     proseDocOptions.theme = theme;
+  }
+  if (numbering != null) {
+    proseDocOptions.numbering = numbering;
   }
   const document =
     headerFooter.watermarkBlockIndex === undefined

@@ -11,6 +11,13 @@ import { OP_STORIES } from "@stll/docx-core/ops";
  * *when* to act) and drives this manager through the methods below.
  */
 
+import type { Command } from "prosemirror-state";
+import {
+  toggleMarkForAllScripts,
+  toggleUnderlineMark,
+} from "../prosemirror/extensions/marks/markUtils";
+import { getCanonicalCommandIntents } from "../prosemirror/canonicalCommands";
+import { prepareCanonicalCommands, prepareCanonicalAutoformat } from "./canonicalStructure";
 import { panic, Result, TaggedError } from "better-result";
 import type { EditorState, Plugin, Transaction } from "prosemirror-state";
 import { EditorState as PMEditorState } from "prosemirror-state";
@@ -572,11 +579,165 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
     const prepared =
       direction === "undo" ? session.prepareUndo(view.state) : session.prepareRedo(view.state);
     if (prepared.isErr()) {
-      refuse(prepared.error.message);
+      if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
       return false;
     }
     return publishCommit(prepared.value);
   };
+  const executeCanonicalCommand = (command: Command): boolean | undefined => {
+    if (!view || editorSession.type !== "canonical") return undefined;
+    if (deps.getReadOnly()) return false;
+    if (editorSession.session.isComposing) {
+      refuse("Composition must finish before formatting.");
+      return false;
+    }
+    syncCanonicalMode();
+    editorSession.session.breakUndoGroup();
+    const intents = getCanonicalCommandIntents(command, view.state);
+    if (intents === undefined) {
+      refuse("This command has no canonical operation intent.");
+      return false;
+    }
+    if (
+      intents.length > 0 &&
+      intents.every((intent) => intent.type === "formatRun" && intent.from === intent.to)
+    )
+      return command(
+        view.state,
+        (transaction) => {
+          if (view !== null) view.dispatch(view.state.tr.setStoredMarks(transaction.storedMarks));
+        },
+        view,
+      );
+    const prepared = prepareCanonicalCommands(editorSession.session, view.state, intents);
+    if (prepared.isErr()) {
+      if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+      return false;
+    }
+    return publishCommit(prepared.value);
+  };
+  let lastInputRule: { session: CanonicalSession; version: number; caret: number } | undefined;
+  const canonicalStructuralInput = {
+    command: (name) => {
+      if (!view) return;
+      let command = deps.getExtensionManager()?.getCommand(name)?.();
+      if (command === undefined) {
+        const markName = {
+          toggleBold: "bold",
+          toggleItalic: "italic",
+          toggleUnderline: "underline",
+        } as const;
+        const mark = view.state.schema.marks[markName[name]];
+        if (mark !== undefined) {
+          command =
+            name === "toggleUnderline"
+              ? toggleUnderlineMark(mark)
+              : toggleMarkForAllScripts(mark, name === "toggleBold" ? "bold" : "italic");
+        }
+      }
+      if (command === undefined) {
+        refuse("The formatting command is unavailable.");
+        return;
+      }
+      const handled = executeCanonicalCommand(command);
+      if (handled === undefined)
+        command(view.state, (transaction) => view?.dispatch(transaction), view);
+    },
+    structure: (type) => {
+      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
+      syncCanonicalMode();
+      const session = editorSession.session;
+      const state = view.state;
+      const selection = session.projection.selectionAt(state);
+      if (selection.isErr()) {
+        refuse(selection.error.message);
+        return;
+      }
+      let prepared;
+      switch (type) {
+        case "split": {
+          const source = session.projection.paragraph(selection.value.head.blockId)?.source;
+          prepared =
+            source?.formatting?.numPr?.kind === "reference" &&
+            state.selection.$from.parent.content.size === 0
+              ? prepareCanonicalCommands(session, state, [{ type: "removeList" }])
+              : session.prepareSplit(state);
+          break;
+        }
+        case "joinBackward": {
+          if (
+            lastInputRule?.session === session &&
+            lastInputRule.version === session.version &&
+            lastInputRule.caret === state.selection.head
+          ) {
+            lastInputRule = undefined;
+            history("undo");
+            return;
+          }
+          const paragraph = session.projection.paragraph(selection.value.head.blockId)?.source;
+          if (paragraph?.formatting?.numPr?.kind === "reference") {
+            prepared = prepareCanonicalCommands(session, state, [{ type: "removeList" }]);
+            break;
+          }
+          if (
+            (paragraph?.formatting?.indentLeft ?? 0) > 0 ||
+            (paragraph?.formatting?.indentFirstLine ?? 0) > 0
+          ) {
+            prepared = session.prepareIntent(state, {
+              type: "formatParagraph",
+              at: selection.value.head,
+              patch: { indentLeft: null, indentFirstLine: null, hangingIndent: null },
+            });
+            break;
+          }
+          prepared = session.prepareJoin(state, "backward");
+          break;
+        }
+        case "joinForward":
+          prepared = session.prepareJoin(state, "forward");
+          break;
+        case "indent":
+        case "outdent":
+          prepared = prepareCanonicalCommands(session, state, [
+            { type: "changeListLevel", direction: type === "indent" ? "increase" : "decrease" },
+          ]);
+          break;
+        case "tab":
+        case "lineBreak":
+        case "pageBreak": {
+          const from = session.projection.addressAt(state.selection.from);
+          const to = session.projection.addressAt(state.selection.to);
+          if (from.isErr()) {
+            refuse(from.error.message);
+            return;
+          }
+          if (to.isErr()) {
+            refuse(to.error.message);
+            return;
+          }
+          prepared = session.prepareIntent(state, {
+            type: "insertAtom",
+            from: from.value,
+            to: to.value,
+            atom:
+              type === "tab"
+                ? { type: "tab" }
+                : { type: "break", breakType: type === "pageBreak" ? "page" : "textWrapping" },
+          });
+          break;
+        }
+        default: {
+          const unreachable: never = type;
+          return unreachable;
+        }
+      }
+      if (prepared.isErr()) {
+        if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        return;
+      }
+      publishCommit(prepared.value);
+    },
+  } satisfies Pick<Parameters<typeof createCanonicalInputBoundary>[0], "command" | "structure">;
   const canonicalInputLifecycle = {
     breakUndoGroup: () => {
       if (editorSession.type === "canonical") editorSession.session.breakUndoGroup();
@@ -596,26 +757,19 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
   };
   const input = createCanonicalInputBoundary({
     ...canonicalInputLifecycle,
+    ...canonicalStructuralInput,
     replace: (intent) => {
       if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
       syncCanonicalMode();
-      const prepared = editorSession.session.prepareReplace(view.state, intent);
-      if (prepared.isErr()) refuse(prepared.error.message);
-      else publishCommit(prepared.value);
-    },
-    split: () => {
-      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
-      syncCanonicalMode();
-      const prepared = editorSession.session.prepareSplit(view.state);
-      if (prepared.isErr()) refuse(prepared.error.message);
-      else publishCommit(prepared.value);
-    },
-    join: (direction) => {
-      if (!view || deps.getReadOnly() || editorSession.type !== "canonical") return;
-      syncCanonicalMode();
-      const prepared = editorSession.session.prepareJoin(view.state, direction);
-      if (prepared.isErr()) refuse(prepared.error.message);
-      else publishCommit(prepared.value);
+      const rule = prepareCanonicalAutoformat(editorSession.session, view.state, intent);
+      const prepared = rule ?? editorSession.session.prepareReplace(view.state, intent);
+      if (prepared.isErr()) {
+        if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
+        return;
+      }
+      const session = editorSession.session;
+      if (publishCommit(prepared.value) && rule !== undefined && view !== null)
+        lastInputRule = { session, version: session.version, caret: view.state.selection.head };
     },
     undo: () => history("undo"),
     redo: () => history("redo"),
@@ -693,8 +847,10 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
           view.updateState(view.state);
           return;
         }
-        if (editorSession.type === "canonical" && transaction.selectionSet && !input.isComposing)
+        if (editorSession.type === "canonical" && transaction.selectionSet && !input.isComposing) {
+          lastInputRule = undefined;
           editorSession.session.breakUndoGroup();
+        }
         const applied = view.state.applyTransaction(transaction);
         if (editorSession.type === "canonical" && !applied.state.doc.eq(view.state.doc)) {
           refuse("A plugin attempted an unclassified canonical document mutation.");
@@ -977,11 +1133,12 @@ export const createHiddenEditorManager = (deps: HiddenEditorManagerDeps): Hidden
         resolution,
       });
       if (prepared.isErr()) {
-        refuse(prepared.error.message);
+        if (prepared.error.reason !== "noChange") refuse(prepared.error.message);
         return false;
       }
       return publishCommit(prepared.value);
     },
+    executeCanonicalCommand,
     getCanonicalHistory: () =>
       editorSession.type === "canonical"
         ? {

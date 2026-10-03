@@ -95,6 +95,7 @@ export type HiddenEditorApiDeps = {
   getCanonicalDocument?: () => Document | null;
   setCanonicalMode?: HiddenEditorApi["setCanonicalMode"];
   resolveCanonicalRevisions?: HiddenEditorApi["resolveCanonicalRevisions"];
+  executeCanonicalCommand?: (command: Command) => boolean | undefined;
   getCanonicalHistory?: () => Pick<HiddenEditorApi, "undo" | "redo" | "canUndo" | "canRedo"> | null;
   canonicalOperations?: Pick<
     HiddenEditorApi,
@@ -220,6 +221,8 @@ export const createHiddenEditorApi = (deps: HiddenEditorApiDeps): HiddenEditorAp
       if (!view) {
         return false;
       }
+      const canonical = deps.executeCanonicalCommand?.(command);
+      if (canonical !== undefined) return canonical;
       return command(view.state, (tr) => dispatchTr(view, tr), view);
     },
 

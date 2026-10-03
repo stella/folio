@@ -95,6 +95,127 @@ afterEach(() => {
 afterAll(() => GlobalRegistrator.unregister());
 
 describe("canonical input boundary", () => {
+  test("structural key and native input hooks lower once without authorizing PM mutation", () => {
+    const { view } = createRig(1);
+    const structure: string[] = [];
+    const commands: string[] = [];
+    const inputs: CanonicalReplacement[] = [];
+    const boundary = createCanonicalInputBoundary({
+      structure: (intent) => structure.push(intent),
+      command: (name) => commands.push(name),
+      replace: (input) => inputs.push(input),
+      refuse: (reason) => {
+        throw new TypeError(reason);
+      },
+      undo: () => false,
+      redo: () => false,
+    });
+    for (const init of [
+      { key: "Enter" },
+      { key: "Enter", shiftKey: true },
+      { key: "Enter", ctrlKey: true },
+      { key: "Backspace" },
+      { key: "Tab" },
+      { key: "b", metaKey: true },
+    ]) {
+      const event = new KeyboardEvent("keydown", { ...init, cancelable: true });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    for (const inputType of ["insertParagraph", "insertLineBreak", "deleteContentBackward"]) {
+      const event = new InputEvent("beforeinput", { inputType, cancelable: true });
+      expect(boundary.handleDOMEvents.beforeinput(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(structure).toEqual([
+      "split",
+      "lineBreak",
+      "pageBreak",
+      "joinBackward",
+      "tab",
+      "split",
+      "lineBreak",
+      "joinBackward",
+    ]);
+    expect(commands).toEqual(["toggleBold"]);
+    expect(inputs).toEqual([]);
+    expect(
+      boundary.takeNativeProposal(view.state, view.state.tr.insertText("foreign", 1)),
+    ).toBeNull();
+  });
+
+  test("generated Enter modifier traces refuse native composition lag without editing callbacks", () => {
+    assertProperty(
+      fc.property(
+        fc.array(
+          fc.record({
+            shiftKey: fc.boolean(),
+            ctrlKey: fc.boolean(),
+            metaKey: fc.boolean(),
+            altKey: fc.boolean(),
+          }),
+          { minLength: 8, maxLength: 16 },
+        ),
+        (modifiers) => {
+          const { view } = createRig();
+          // PM's public native composition state can precede our compositionstart lifecycle.
+          Object.defineProperty(view, "composing", { value: true, configurable: true });
+          const before = view.state;
+          const structures: string[] = [];
+          const commands: string[] = [];
+          const inputs: CanonicalReplacement[] = [];
+          const transitions: string[] = [];
+          const history: string[] = [];
+          const refusalCounts = new Map<string, number>();
+          let prevented = 0;
+          const boundary = createCanonicalInputBoundary({
+            replace: (input) => inputs.push(input),
+            structure: (intent) => structures.push(intent),
+            command: (name) => commands.push(name),
+            beginComposition: () => {
+              transitions.push("begin");
+              return true;
+            },
+            endComposition: () => transitions.push("end"),
+            refuse: (reason) => refusalCounts.set(reason, (refusalCounts.get(reason) ?? 0) + 1),
+            undo: () => {
+              history.push("undo");
+              return true;
+            },
+            redo: () => {
+              history.push("redo");
+              return true;
+            },
+          });
+          for (const [index, modifier] of modifiers.entries()) {
+            const event = new KeyboardEvent("keydown", {
+              key: "Enter",
+              ...modifier,
+              cancelable: true,
+            });
+            expect(view.composing).toBe(true);
+            expect(boundary.isComposing).toBe(false);
+            expect(boundary.handleKeyDown(view, event)).toBe(true);
+            expect(event.defaultPrevented).toBe(true);
+            prevented += Number(event.defaultPrevented);
+            expect(view.state).toBe(before);
+            expect(structures).toEqual([]);
+            expect(commands).toEqual([]);
+            expect(inputs).toEqual([]);
+            expect(transitions).toEqual([]);
+            expect(history).toEqual([]);
+            expect([...refusalCounts]).toEqual([
+              ["Paragraph structure edits are unavailable during composition.", index + 1],
+            ]);
+          }
+          expect(prevented).toBe(modifiers.length);
+          expect(boundary.isComposing).toBe(false);
+        },
+      ),
+      { numRuns: 100 },
+    );
+  });
+
   test.each(["keydown", "mousedown", "blur", "paste", "cut", "drop", "compositionstart"] as const)(
     "%s expires the preceding gesture's native proposal",
     (gesture) => {
@@ -117,6 +238,28 @@ describe("canonical input boundary", () => {
       boundary.reset();
     },
   );
+
+  test("Shift+Tab outside a list consumes the gesture without inserting a tab", () => {
+    const { view } = createRig();
+    const structures: string[] = [];
+    const boundary = createCanonicalInputBoundary({
+      replace: () => {
+        throw new TypeError("Shift+Tab must not author text.");
+      },
+      structure: (intent) => structures.push(intent),
+      undo: () => false,
+      redo: () => false,
+      refuse: (reason) => {
+        throw new TypeError(reason);
+      },
+    });
+    const before = view.state;
+    const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true });
+    expect(boundary.handleKeyDown(view, event)).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+    expect(structures).toEqual([]);
+    expect(view.state).toBe(before);
+  });
 
   test("each refused keyboard gesture surfaces its own refusal without a browser input event", () => {
     const { boundary, view, refusals, groupBoundaries } = createRig();
@@ -144,6 +287,24 @@ describe("canonical input boundary", () => {
     boundary.handleDOMEvents.cut(view, new Event("cut", { cancelable: true }));
     boundary.handleDOMEvents.drop(view, new Event("drop", { cancelable: true }));
     expect(groupBoundaries).toHaveLength(6);
+  });
+
+  test("every structural or modifier refusal closes its gesture exactly once", () => {
+    const { boundary, view, groupBoundaries, refusals } = createRig();
+    const gestures = [
+      { key: "Enter" },
+      { key: "Enter", ctrlKey: true },
+      { key: "Enter", metaKey: true },
+      { key: "Backspace", ctrlKey: true },
+      { key: "Delete", altKey: true },
+    ];
+    for (const [index, gesture] of gestures.entries()) {
+      const event = new KeyboardEvent("keydown", { ...gesture, cancelable: true });
+      expect(boundary.handleKeyDown(view, event)).toBe(true);
+      expect(event.defaultPrevented).toBe(true);
+      expect(groupBoundaries).toHaveLength(index + 1);
+      expect(refusals).toHaveLength(index + 1);
+    }
   });
 
   test("cancelable beforeinput emits one classified intent without a PM edit", () => {

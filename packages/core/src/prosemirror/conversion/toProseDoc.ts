@@ -14,7 +14,7 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { panic } from "better-result";
-import { PARSE_WARNING_CODES } from "@stll/docx-core/model";
+import { mergeParagraphNumbering, PARSE_WARNING_CODES } from "@stll/docx-core/model";
 
 import type { ParseContext } from "../../docx/parseContext";
 import { createStyleEngine } from "../../style-engine";
@@ -29,6 +29,7 @@ import type {
   Document,
   Paragraph,
   ParagraphFormatting,
+  ListRendering,
   PreservedAttribute,
   PreservedBlock,
   PreservedInline,
@@ -42,6 +43,7 @@ import type {
   Shape,
   ShapeFill,
   StyleDefinitions,
+  NumberingDefinitions,
   Table,
   TableRow,
   TableRowFormatting,
@@ -66,6 +68,7 @@ import type {
 } from "../../types/document";
 import { resolveTableLook, type ResolvedTableLook } from "../../docx/tableLook";
 import { mergeParagraphFormatting } from "../../utils/paragraphFormattingMerge";
+import { canonicalJson } from "../../utils/canonicalJson";
 import { rangedCommentIds } from "../../docx/commentAnchorIndex";
 import { isInlineSdtContent, isTrackedChangeWrapperChild } from "../../docx/inlineWrapperContent";
 import { resolveColorValueToHex } from "../../docx/drawingUtils";
@@ -135,7 +138,13 @@ import type {
   TextBoxAttrs,
 } from "../schema/nodes";
 import { assertValidProseMirrorDocument } from "../validation";
+import {
+  computeListRendering,
+  getCachedNumberingMap,
+  type NumberingMap,
+} from "../../docx/numberingParser";
 import { listRenderingAttrPatch } from "../listRenderingAttrs";
+import { CLEARED_LIST_RENDERING_ATTRS } from "../listMarker";
 import { planEmptyRanges } from "../emptyRangeAnchor";
 import { MOVE_RANGE_BOUNDARY_NODE_NAME } from "../extensions/nodes/MoveRangeBoundaryExtension";
 import { RANGE_ANCHOR_NODE_NAME } from "../extensions/nodes/RangeAnchorExtension";
@@ -163,6 +172,8 @@ const DETACHED_WATERMARK_HOST = Symbol.for("stll.detachedWatermarkHost");
 export type ToProseDocOptions = {
   /** Style definitions for resolving paragraph styles */
   styles?: StyleDefinitions;
+  /** Package definitions used to recompute secondary-story list rendering. */
+  numbering?: NumberingDefinitions;
   /** Theme used when converting themed table/cell values in nested content. */
   theme?: Theme | null;
   /**
@@ -471,6 +482,10 @@ export function toProseDoc(document: Document, options?: ToProseDocOptions): PMN
   const nextHyperlinkInstanceIndex = createHyperlinkInstanceIndexAllocator();
   const pairedBookmarkIds = collectPairedBookmarkIds(paragraphs);
   const conversionContext = {
+    numbering:
+      document.package.numbering === undefined
+        ? undefined
+        : getCachedNumberingMap(document.package.numbering),
     theme,
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
@@ -680,6 +695,13 @@ function convertBlockCustomXml(
   );
 }
 
+const listRenderingDefinition = ({
+  marker: _marker,
+  implicitChildLevelAdvances: _advances,
+  markerSecondSlotOffsetTwips: _secondSlot,
+  ...definition
+}: ListRendering) => definition;
+
 /**
  * Convert a Paragraph to a ProseMirror paragraph node
  *
@@ -711,6 +733,38 @@ function convertParagraph(
     styleResolver,
     tableParagraphOverlay,
   );
+  const numPr = mergeParagraphNumbering(
+    attrs.numPrFromStyle ?? undefined,
+    attrs.numPr ?? undefined,
+  );
+  if (numPr?.kind === "none") Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  else if (context.numbering !== undefined && numPr?.kind === "reference") {
+    const rendering = computeListRendering(numPr, context.numbering);
+    if (rendering !== null) {
+      const cached = paragraph.listRendering;
+      const nextLevel = context.numbering.getLevel(numPr.numId, (numPr.ilvl ?? 0) + 1);
+      const nextSlotOffset =
+        nextLevel?.pPr?.hangingIndent === true &&
+        nextLevel.pPr.indentFirstLine !== undefined &&
+        nextLevel.pPr.indentFirstLine < 0
+          ? -nextLevel.pPr.indentFirstLine
+          : undefined;
+      // Parsed markers include paragraph counters and folded LISTNUM text that
+      // the definition-only computation cannot reconstruct. Preserve them only
+      // while their reference and every rendering definition field still match.
+      const cacheMatches =
+        cached !== undefined &&
+        canonicalJson(listRenderingDefinition(cached)) ===
+          canonicalJson(listRenderingDefinition(rendering)) &&
+        (cached.markerSecondSlotOffsetTwips === undefined ||
+          cached.markerSecondSlotOffsetTwips === nextSlotOffset);
+      Object.assign(
+        attrs,
+        CLEARED_LIST_RENDERING_ATTRS,
+        listRenderingAttrPatch(cacheMatches ? cached : rendering),
+      );
+    } else Object.assign(attrs, CLEARED_LIST_RENDERING_ATTRS);
+  }
   reportParagraphPageBreakProjection({
     paragraph,
     attrs,
@@ -1368,7 +1422,7 @@ function paragraphFormattingToAttrs(
     attrs.numPrFromStyle = paragraphNumberingAttr(formatting.numPrFromStyle);
   }
   // List rendering info from parsed numbering definitions
-  if (paragraph.listRendering) {
+  if (paragraph.listRendering && formatting?.numPr?.kind !== "none") {
     Object.assign(attrs, listRenderingAttrPatch(paragraph.listRendering));
   }
   // Store original inline formatting for lossless serialization round-trip
@@ -1690,6 +1744,7 @@ function resolveTextFormatting(
  * preserve their layout when opened from DOCX files.
  */
 type TableConversionContext = {
+  numbering: NumberingMap | undefined;
   theme: Theme | null | undefined;
   nextTextBoxGroupId: () => string;
   nextHyperlinkInstanceIndex: HyperlinkInstanceIndexAllocator;
@@ -2446,6 +2501,7 @@ export function standaloneTableCellToProseMirror(
     styleResolver: null,
     context: {
       theme: null,
+      numbering: undefined,
       nextTextBoxGroupId,
       nextHyperlinkInstanceIndex,
       pairedBookmarkIds: collectPairedBookmarkIds(cell.content),
@@ -5081,9 +5137,8 @@ function convertTextBox(
  * Convert HeaderFooter content (array of Paragraph/Table blocks) to a ProseMirror document.
  * Used for editing headers/footers in their own ProseMirror editor and for
  * the unified header/footer render pipeline (see
- * `core/layout-bridge/headerFooterLayout.ts`). `theme` lives in
- * `ToProseDocOptions` for future themeColor cell-shading resolution; folio's
- * `convertTable` does not yet thread it (orthogonal upstream divergence).
+ * `core/layout-bridge/headerFooterLayout.ts`). Package numbering definitions
+ * recompute list rendering for direct paragraphs and nested table content.
  */
 export function headerFooterToProseDoc(
   content: BlockContent[],
@@ -5097,6 +5152,8 @@ export function headerFooterToProseDoc(
   const pairedBookmarkIds = collectPairedBookmarkIds(content);
   const conversionContext = {
     theme,
+    numbering:
+      options?.numbering === undefined ? undefined : getCachedNumberingMap(options.numbering),
     nextTextBoxGroupId,
     nextHyperlinkInstanceIndex,
     pairedBookmarkIds,

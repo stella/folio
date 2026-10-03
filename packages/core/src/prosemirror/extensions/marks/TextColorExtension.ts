@@ -2,6 +2,8 @@
  * Text Color Mark Extension
  */
 
+import { canonicalRunFormatting, withCanonicalCommand } from "../../canonicalCommands";
+
 import { panic } from "better-result";
 
 import { textToStyle } from "../../../utils/formatToStyle";
@@ -52,11 +54,16 @@ export const TextColorExtension = createMarkExtension({
       commands: {
         setTextColor: (attrs: TextColorAttrs) => {
           if (!attrs.rgb && !attrs.themeColor) {
-            return clearRunColor();
+            return withCanonicalCommand(clearRunColor(), (state) =>
+              canonicalRunFormatting(state, { color: null }),
+            );
           }
           return setMark(textColorType, attrs as Record<string, unknown>);
         },
-        clearTextColor: () => clearRunColor(),
+        clearTextColor: () =>
+          withCanonicalCommand(clearRunColor(), (state) =>
+            canonicalRunFormatting(state, { color: null }),
+          ),
       },
     };
   },
