@@ -724,18 +724,27 @@ const untouchedText = (row: ModelRow): boolean =>
 type Expect = (model: Model, operation: Operation) => void;
 
 /**
- * A text box's paragraphs belong to the paragraph it is drawn in, which a
- * reader lists just before them: a block inserted after that paragraph
- * follows them.
+ * The paragraphs of the text boxes drawn in `row`, which a reader lists just
+ * after it; none for a paragraph inside a text box.
  */
-const pastTextBoxes = (model: Model, row: ModelRow): ModelRow => {
-  const boxed = (candidate: ModelRow | undefined) =>
-    candidate?.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
-  if (boxed(row)) return row;
-  let index = model.rows.indexOf(row);
-  while (boxed(model.rows[index + 1])) index += 1;
-  return model.rows[index] ?? row;
+const textBoxRowsOf = (model: Model, row: ModelRow): ModelRow[] => {
+  const boxed = (candidate: ModelRow): boolean =>
+    candidate.pre !== undefined && model.inTextBox?.has(candidate.pre.id) === true;
+  if (boxed(row)) return [];
+  const rows: ModelRow[] = [];
+  for (const candidate of model.rows.slice(model.rows.indexOf(row) + 1)) {
+    if (!boxed(candidate)) break;
+    rows.push(candidate);
+  }
+  return rows;
 };
+
+/**
+ * A text box's paragraphs belong to the paragraph it is drawn in: a block
+ * inserted after that paragraph follows them.
+ */
+const pastTextBoxes = (model: Model, row: ModelRow): ModelRow =>
+  textBoxRowsOf(model, row).at(-1) ?? row;
 
 /**
  * Where a block inserted next to `row` goes: next to the row itself, or, for
@@ -854,7 +863,12 @@ export const EXPECTATIONS = {
     addComment(model, operation);
   },
   deleteBlock: (model, operation) => {
-    target(model, operation["blockId"]).removed = true;
+    const row = target(model, operation["blockId"]);
+    row.removed = true;
+    // The text boxes drawn in the paragraph go with it once the deletion
+    // resolves; the suggested live view still lists their paragraphs.
+    if (model.mode === "suggested") return;
+    for (const boxed of textBoxRowsOf(model, row)) boxed.removed = true;
   },
   splitBlock: (model, operation) => {
     const row = target(model, operation["blockId"]);

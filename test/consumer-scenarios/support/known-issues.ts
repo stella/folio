@@ -32,6 +32,8 @@ export const FINDINGS = {
     "#1408 (closed, still reproduces): a suggested paragraph inserted after a table cell's paragraph and a suggested deletion of the paragraph holding a comment's range end: accepted, the comment's anchored text takes in the inserted paragraph, which direct editing leaves out",
   COLUMN_CELL_IN_ROW_PENDING_DELETION:
     "#1415: insertTableColumn on a table whose header row has a pending tracked deletion: the oracle expects the new column's cell in that row to be listed, the reader leaves it out with the row",
+  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
+    "#1415: a batch merges a block with the next and deletes that next block; the legacy path applies the batch in reverse, so the merge joins the block after the deleted one, where the oracle expects the separator with nothing joined",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -64,7 +66,10 @@ export const KNOWN_FAILING_FLOWS: readonly {
   generation?: "targeted" | "legacy";
   /** Required relation for a finding; the scenario is omitted when disabled. */
   relation?: Relation;
-}[] = [{ seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" }];
+}[] = [
+  { seed: 18568319, steps: 16, finding: "TERMINAL_DELETE_BATCH_FORMATTING" },
+  { seed: 18568230, steps: 16, finding: "MERGE_INTO_BLOCK_THE_BATCH_DELETES" },
+];
 
 /** How each finding fails a scenario, so an expected failure fails for that reason only. */
 export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
@@ -83,6 +88,9 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   // The expected texts list the new cell; the reader's do not.
   COLUMN_CELL_IN_ROW_PENDING_DELETION:
     /not what was asked \(insertTableColumn\):\n\s*block texts differ:\n\s*expected \[[^\n]*"Column cell 1"[^\n]*\n\s*got +\[(?![^\n]*"Column cell 1")/u,
+  // A batch with both operations, whose expected block ends in the merge's separator.
+  MERGE_INTO_BLOCK_THE_BATCH_DELETES:
+    /not what was asked \((?=[^)]*mergeBlockWithNext)(?=[^)]*deleteBlock)[^)]*\):\n\s*block texts differ:\n\s*expected \[[^\n]* ","/u,
 };
 
 /**
@@ -92,6 +100,7 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
 export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
   "batch-after-table-row-delete.json": "BATCH_INSERT_BEFORE_ROW_PENDING_DELETION",
   "deleted-endnote-reopen.json": "DELETED_REFERENCE_NOTES_STAY_LISTED",
+  "merge-with-next-block-the-batch-deletes.json": "MERGE_INTO_BLOCK_THE_BATCH_DELETES",
   "suggested-note-delete-and-heading-insert.json":
     "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
   "suggested-story-insert-and-delete.json": "COMMENT_RANGE_TAKES_IN_TRACKED_CELL_INSERT",
