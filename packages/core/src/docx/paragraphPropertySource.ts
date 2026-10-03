@@ -16,6 +16,7 @@ import {
 } from "../internal/paragraphFormattingSerialization";
 import { canonicalJson } from "../utils/canonicalJson";
 import { visitDocxParagraphs } from "./paragraphTraversal";
+import { copyHeaderFooterPackageBaselines } from "./headerFooterVerbatim";
 
 // The private symbol makes a source factory-only at the type boundary. Keep it
 // enumerable so sanctioned immutable object copies retain the exact fingerprint.
@@ -383,6 +384,7 @@ export const cloneDocumentWithParagraphPropertySources = (document: Document): D
     copyParagraphPropertySource(target, source);
   }
   copyDocumentParagraphPropertySourceContract(cloned, document);
+  copyHeaderFooterPackageBaselines(cloned, document);
   return cloned;
 };
 

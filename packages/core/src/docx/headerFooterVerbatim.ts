@@ -74,6 +74,13 @@ export const captureHeaderFooterPackageBaselines = (document: Document): void =>
   packageBaselines.set(document.originalBuffer, handles);
 };
 
+/** Transfer the parsed package registry only across a trusted document graph clone. */
+export const copyHeaderFooterPackageBaselines = (target: Document, source: Document): void => {
+  if (!target.originalBuffer || !source.originalBuffer) return;
+  const baselines = packageBaselines.get(source.originalBuffer);
+  if (baselines) packageBaselines.set(target.originalBuffer, baselines);
+};
+
 export const getHeaderFooterSourceBaseline = (
   hf: HeaderFooter,
   originalBuffer?: ArrayBuffer,

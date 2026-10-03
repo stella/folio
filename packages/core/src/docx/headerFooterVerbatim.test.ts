@@ -5,6 +5,7 @@ import {
   captureHeaderFooterPackageBaselines,
   getHeaderFooterSourceBaseline,
 } from "./headerFooterVerbatim";
+import { cloneDocumentWithParagraphPropertySources } from "./paragraphPropertySource";
 import { createEmptyDocument } from "../utils/createDocument";
 import { serializeHeaderFooter } from "./serializer/headerFooterSerializer";
 
@@ -94,6 +95,18 @@ test("journal copies recover source ownership only within their parsed package",
     ["second", second],
   ]);
   captureHeaderFooterPackageBaselines(document);
+  const cloned = cloneDocumentWithParagraphPropertySources(document);
+  for (const [key, header] of cloned.package.headers ?? []) {
+    const original = document.package.headers?.get(key);
+    expect(getHeaderFooterSourceBaseline(header, cloned.originalBuffer).type).toBe("captured");
+    expect(
+      serializeHeaderFooter(header, {
+        path: "word/header1.xml",
+        bindings: new Map(),
+        originalBuffer: cloned.originalBuffer,
+      }),
+    ).toBe(original?.verbatimXml);
+  }
   for (const header of [first, second]) {
     const restored = structuredClone(header);
     const diagnostics: unknown[] = [];
