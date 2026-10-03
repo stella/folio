@@ -1,3 +1,4 @@
+import type { BrowserDragTarget } from "./browserDragTarget";
 import { driveBrowserIme } from "./browserImeDriver";
 import { expect, test, type Page } from "@playwright/test";
 import fc from "fast-check";
@@ -25,7 +26,6 @@ import {
   parseBrowserInputTraceConfig,
   type BrowserInputAction,
   type BrowserInputTrace,
-  type BrowserDragTarget,
 } from "./browserInputTrace";
 import {
   failureMarker,
