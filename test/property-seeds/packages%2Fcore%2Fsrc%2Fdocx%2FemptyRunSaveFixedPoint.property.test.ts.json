@@ -1,0 +1,14 @@
+{
+  "any sequence of empty, near-empty and not-yet-filled runs is a fixed point after the first save": [
+    {
+      "seed": -1759781140,
+      "note": "Text-box enrichment must consume standalone comment references before matching following drawing carriers",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1094066634,
+      "note": "Inline order oracle must compare text independently of valid adjacent-run consolidation",
+      "date": "2026-10-02"
+    }
+  ]
+}
