@@ -183,10 +183,9 @@ export type AppliedDocumentOp = {
   inverse: readonly DocumentOp[];
   touched: TouchedBlocks;
   /**
-   * The revision ids of the tracked changes the operation recorded, in
-   * document order: its stamp's id and the new ids its other records took.
-   * Empty for a direct operation, and for a tracked one that merged into a
-   * change carrying the same stamp.
+   * Newly allocated tracked revision ids, in document order: its stamp's
+   * id and the new ids its other records took. Existing ids retained by a
+   * folded or continued review are excluded; a direct operation reports none.
    */
   revisions: readonly number[];
 };
@@ -2195,7 +2194,7 @@ export const stampOf = (op: DocumentOp): RevisionStamp | undefined => {
   }
 };
 
-/** The revision ids a tracked operation's records took. */
+/** Newly allocated revision ids; folding changes an existing record in place. */
 const recordedRevisions = (
   before: Document,
   edit: DocumentEdit,
@@ -2207,27 +2206,9 @@ const recordedRevisions = (
     .map(({ paragraph }) => paragraph)
     .filter(({ paraId }) => paraId !== undefined && touched.has(idKey(paraId)));
   const known = new Set(packageIdentityKeys(before.package));
-  const priorParagraphChanges = new Map(
-    documentStories(before)
-      .flatMap((story) => storyParagraphs(storyBody(before, story)))
-      .flatMap(({ paragraph }) =>
-        (paragraph.propertyChanges ?? []).map(({ info }) => [info.id, info] as const),
-      ),
+  const revisions = paragraphs.flatMap((paragraph) =>
+    stampedRevisionIds([paragraph], stamp, known),
   );
-  const revisions = paragraphs.flatMap((paragraph) => {
-    const folded = (paragraph.propertyChanges ?? []).flatMap(({ info }) => {
-      const prior = priorParagraphChanges.get(info.id);
-      // A fold attributes the existing physical review to this edit without allocating an id.
-      return prior !== undefined &&
-        !structurallyEqual(info, prior) &&
-        info.author === stamp.author &&
-        info.date === stamp.date &&
-        info.initials === stamp.initials
-        ? [info.id]
-        : [];
-    });
-    return folded.concat(stampedRevisionIds([paragraph], stamp, known));
-  });
   // Every physical row record is reported, including later rows of a table.
   revisions.unshift(
     ...documentStories(edit.document)

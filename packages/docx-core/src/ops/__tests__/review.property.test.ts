@@ -311,7 +311,18 @@ const alsoAccepted = (
     case DOCUMENT_OP_TYPES.JOIN_BLOCKS:
     case DOCUMENT_OP_TYPES.SPLIT_BLOCK: {
       // One OOXML property review folds both edits; acceptance resolves the original id too.
-      const folded = tracked.revisions.filter((id) => original.has(id));
+      const stamp = stampOf(op);
+      const folded = storyParagraphs(tracked.document.package.document).flatMap(({ paragraph }) =>
+        (paragraph.propertyChanges ?? []).flatMap(({ info }) =>
+          original.has(info.id) &&
+          stamp !== undefined &&
+          info.author === stamp.author &&
+          info.date === stamp.date &&
+          info.initials === stamp.initials
+            ? [info.id]
+            : [],
+        ),
+      );
       return { direct: folded, tracked: folded };
     }
     case DOCUMENT_OP_TYPES.DELETE_RANGE: {
@@ -761,6 +772,8 @@ describe("tracked operations and their resolution", () => {
         count(tally, kindOf(op));
         expect(containerFinalMarks(applied.value.document)).toEqual([]);
         expect(contractViolation(applied.value.document)).toBeUndefined();
+        const existing = revisionIdsIn(document.package.document.content);
+        expect(applied.value.revisions.filter((id) => existing.has(id))).toEqual([]);
       }),
       { numRuns: NUM_RUNS },
     );
