@@ -43,5 +43,5 @@
     "deleteTable"
   ],
   "origin": "shrunk from random flow seed 774176255",
-  "title": "PINNED #1353, reported seed 774176255: Fuzz failure [4fd46a030f4d37ba]: consumer flow notes / tracked-changes: block texts differ:"
+  "title": "a table inserted into an endnote whose reference paragraph's tracked deletion is pending goes with the note once accepted"
 }

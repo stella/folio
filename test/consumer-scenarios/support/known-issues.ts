@@ -22,6 +22,8 @@ export const FINDINGS = {
     "insertAfterBlock on a block whose tracked merge with the next is pending lists the new paragraph between them, but accepting joins the new paragraph onto the merged block and leaves the block the merge named apart",
   MARKDOWN_DROPS_TEXT_BOX:
     "docxToMarkdown writes nothing of a text box's paragraphs, which getContent() and read_document list as blocks (support/readers.ts leaves them out of the Markdown comparison until fixed)",
+  REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
+    "a tracked deletion of a footnote's reference paragraph, then a tracked paragraph inserted into that footnote: rejecting every change leaves the inserted paragraph behind, empty",
 } as const;
 
 export type OpenIssue = keyof typeof OPEN_ISSUES;
@@ -61,6 +63,34 @@ export const FINDING_SYMPTOMS: Record<Finding, RegExp> = {
   TERMINAL_DELETE_BATCH_FORMATTING: /directAlignment is undefined, expected "center"/u,
   MARKDOWN_DROPS_TEXT_BOX: /docxToMarkdown writes no text-box paragraph/u,
   INSERT_AFTER_PENDING_MERGE: /accepting glues the inserted paragraph onto the merged one/u,
+  REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE:
+    /\[rejectAll\] the flow's batches replayed tracked and rejected do not give the fixture back[^\n]*\n\s*\{"type":"footnote","noteId":\d+\}: \.blocks\[\d+\]: undefined → \{"kind":"heading","text":""/u,
+};
+
+/**
+ * Checked-in flow files (scenarios/flow-corpus.test.ts) that reproduce a
+ * finding; they run as expected failures there.
+ */
+export const KNOWN_FAILING_CHECKED_IN_FLOWS: Readonly<Record<string, Finding>> = {
+  "suggested-note-delete-and-heading-insert.json":
+    "REJECT_KEEPS_PARAGRAPH_INSERTED_IN_DELETED_NOTE",
+};
+
+/**
+ * Checked-in flow files with steps that apply nothing (support/fuzz.ts
+ * `vacuousSteps`), and those steps. Their pinned block ids are paragraph ids
+ * minted from a hash of the fixture's document.xml as it serialized when
+ * they were recorded; they name no block now, so these steps guard nothing.
+ * Each replays exactly this vacuous until its ids are re-pinned from a
+ * fresh shrink, when its entry goes.
+ */
+export const VACUOUS_CHECKED_IN_FLOWS: Readonly<Record<string, readonly number[]>> = {
+  "batch-after-table-row-delete.json": [0, 1, 4, 5],
+  "deleted-endnote-reopen.json": [0],
+  "revision-wrappers-around-link.json": [0],
+  "suggested-story-insert-and-delete.json": [0],
+  "text-box-comment-reference-order.json": [2],
+  "tracked-story-row-delete-and-column-insert.json": [0, 1],
 };
 
 /**
