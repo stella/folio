@@ -1,0 +1,19 @@
+{
+  "document-position text slices agree with flat text replacement across paragraphs": [
+    {
+      "seed": 431,
+      "note": "Structural document positions differ from flattened text offsets after paragraph insertion",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 263,
+      "note": "Keep Unicode selections at scalar boundaries across paragraph structure",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 131,
+      "note": "Preserve surrounding text when replacing at a later paragraph",
+      "date": "2026-10-03"
+    }
+  ]
+}

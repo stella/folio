@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { applyDocumentOps } from "../../../packages/docx-core/src/ops/documentOps";
 import { Result } from "better-result";
-import { failureFromAssertion, failureFromError } from "../corpus-signature";
+import { failureFromAssertion } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
   type CorpusInvariantOutcome,
@@ -21,6 +21,8 @@ import {
   type OpSequenceStep,
 } from "./op-sequences";
 import { firstDifferingOpPart } from "./op-part-difference";
+
+import { opErrorOutcome } from "./op-outcome";
 
 const INVARIANT = EXTENDED_CORPUS_INVARIANTS.opInverse;
 
@@ -187,10 +189,11 @@ export const runOpInverseInvariant = async (
       catch: (cause: unknown) => cause,
     }),
   );
+  if (outcome.isErr())
+    return opErrorOutcome({ invariant: INVARIANT, error: outcome.error, timings });
   return {
+    status: "evaluated",
     timings,
-    failures: outcome.isErr()
-      ? [failureFromError(INVARIANT, outcome.error)]
-      : outcome.value.map((message) => failureFromAssertion(INVARIANT, message)),
+    failures: outcome.value.map((message) => failureFromAssertion(INVARIANT, message)),
   };
 };

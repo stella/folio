@@ -470,7 +470,10 @@ describe("corpus operation invariants", () => {
     const input = await inputFor(buffer);
     const prepared = await prepareOpDocument(input);
     expect(await prepareOpDocument(input)).toBe(prepared);
-    expect((await runOpInverseInvariant(input)).failures).toEqual([]);
-    expect((await runOpLocalityInvariant(input)).failures).toEqual([]);
+    expect(await runOpInverseInvariant(input)).toMatchObject({ status: "evaluated", failures: [] });
+    expect(await runOpLocalityInvariant(input)).toMatchObject({
+      status: "evaluated",
+      failures: [],
+    });
   });
 });

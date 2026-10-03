@@ -1,6 +1,7 @@
 import { TextSelection } from "prosemirror-state";
 import { applyCellSelection } from "@stll/folio-core/prosemirror/cellDragSelection";
 import type { BrowserDragTarget } from "../visual/browserInputTrace";
+import { canonicalTextSelection } from "./canonicalTextSelection";
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
@@ -83,6 +84,7 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
       ),
       provenance: { valid: provenanceValid, capturedParagraphCount },
       text: state?.doc.textContent ?? null,
+      textSelection: state ? canonicalTextSelection(state) : null,
       selection: state ? { from: state.selection.from, to: state.selection.to } : null,
       selectionJSON: state?.selection.toJSON() ?? null,
       canUndo: editor?.canUndo() ?? false,

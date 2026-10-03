@@ -137,3 +137,14 @@ test("paginated issue responses fail before matching malformed issue data", () =
   };
   expect(parseIssuePages([[issue], [issue]])).toHaveLength(2);
 });
+
+test("failure records retain the deepest comparison diff without terminal styling", () => {
+  const comparison = new Error(
+    "\u001b[31mexpect(received).toEqual(expected)\u001b[0m\n\n- Expected field: before\n+ Received field: after",
+  );
+  const wrapper = new Error("Generated flow failed", { cause: comparison });
+  const record = failureRecord(marker(11, comparison.message), wrapper);
+  expect(record.error).toContain("- Expected field: before");
+  expect(record.error).toContain("+ Received field: after");
+  expect(record.error).not.toContain("\u001b");
+});
