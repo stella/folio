@@ -1,0 +1,14 @@
+{
+  "paint commits re-resolve changing targets and return one consistent snapshot": [
+    {
+      "seed": 83,
+      "note": "Painter commit targets remain consistent across generated position changes",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 197,
+      "note": "Painter commit targets remain consistent across generated position changes",
+      "date": "2026-10-03"
+    }
+  ]
+}
