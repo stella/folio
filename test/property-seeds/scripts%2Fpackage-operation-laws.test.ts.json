@@ -40,5 +40,12 @@
         "fingerprint": "95820d436833c3fd"
       }
     }
+  ],
+  "created story removal restores authored package registrations exactly": [
+    {
+      "seed": -666539293,
+      "note": "Saving a newly created story must not mutate the operation input or lose its content-type registration when removing and restoring it.",
+      "date": "2026-10-03"
+    }
   ]
 }
