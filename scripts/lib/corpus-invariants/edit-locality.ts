@@ -45,7 +45,7 @@ import { Result } from "better-result";
 import { type CorpusFailure, failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   type StageTimings,
   timeStage,
@@ -250,7 +250,7 @@ const parse = (buffer: ArrayBuffer): Promise<Document> =>
 
 export const runEditLocalityInvariant = async ({
   buffer,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: StageTimings = {};
 
   const opened = await timeStage(timings, "open", () =>
@@ -260,7 +260,7 @@ export const runEditLocalityInvariant = async ({
     }),
   );
   if (opened.isErr()) {
-    return { failures: [failureFromError(INVARIANT, opened.error)], timings };
+    return { status: "evaluated", failures: [failureFromError(INVARIANT, opened.error)], timings };
   }
   const reviewer = opened.value;
 
@@ -268,12 +268,16 @@ export const runEditLocalityInvariant = async ({
     Result.try(() => firstEditableBlock(reviewer.snapshot().blocks)),
   );
   if (selected.isErr()) {
-    return { failures: [failureFromError(INVARIANT, selected.error)], timings };
+    return {
+      status: "evaluated",
+      failures: [failureFromError(INVARIANT, selected.error)],
+      timings,
+    };
   }
   const target = selected.value;
   // A package with nothing to edit has nothing to keep local.
   if (target === undefined) {
-    return { failures: [], timings };
+    return { status: "evaluated", failures: [], timings };
   }
 
   const application = await timeStage(timings, "apply", () =>
@@ -282,10 +286,15 @@ export const runEditLocalityInvariant = async ({
     ),
   );
   if (application.isErr()) {
-    return { failures: [failureFromError(INVARIANT, application.error)], timings };
+    return {
+      status: "evaluated",
+      failures: [failureFromError(INVARIANT, application.error)],
+      timings,
+    };
   }
   if (application.value.applied.length === 0) {
     return {
+      status: "evaluated",
       failures: [failureFromAssertion(INVARIANT, MESSAGES.missingInsertion)],
       timings,
     };
@@ -295,7 +304,11 @@ export const runEditLocalityInvariant = async ({
     Result.tryPromise({ try: () => reviewer.toBuffer(), catch: (cause: unknown) => cause }),
   );
   if (editedSave.isErr()) {
-    return { failures: [failureFromError(INVARIANT, editedSave.error)], timings };
+    return {
+      status: "evaluated",
+      failures: [failureFromError(INVARIANT, editedSave.error)],
+      timings,
+    };
   }
 
   const controlSave = await timeStage(timings, "control-save", () =>
@@ -305,7 +318,11 @@ export const runEditLocalityInvariant = async ({
     }),
   );
   if (controlSave.isErr()) {
-    return { failures: [failureFromError(INVARIANT, controlSave.error)], timings };
+    return {
+      status: "evaluated",
+      failures: [failureFromError(INVARIANT, controlSave.error)],
+      timings,
+    };
   }
 
   const read = await timeStage(timings, "parse", () =>
@@ -321,7 +338,7 @@ export const runEditLocalityInvariant = async ({
     }),
   );
   if (read.isErr()) {
-    return { failures: [failureFromError(INVARIANT, read.error)], timings };
+    return { status: "evaluated", failures: [failureFromError(INVARIANT, read.error)], timings };
   }
   const [edited, control, editedParts, controlParts] = read.value;
 
@@ -353,5 +370,5 @@ export const runEditLocalityInvariant = async ({
     return failures;
   });
 
-  return { failures: compared, timings };
+  return { status: "evaluated", failures: compared, timings };
 };

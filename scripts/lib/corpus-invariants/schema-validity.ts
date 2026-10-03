@@ -26,7 +26,7 @@ import {
 import { failureFromAssertion, failureFromError } from "../corpus-signature";
 import {
   type CorpusInvariantInput,
-  type CorpusInvariantOutcome,
+  type CorpusEvaluatedOutcome,
   EXTENDED_CORPUS_INVARIANTS,
   timeStage,
 } from "./contract";
@@ -97,7 +97,7 @@ const introducedViolations = (before: PartViolations, after: PartViolations): st
 export const runSchemaValidityInvariant = async ({
   buffer,
   parsed,
-}: CorpusInvariantInput): Promise<CorpusInvariantOutcome> => {
+}: CorpusInvariantInput): Promise<CorpusEvaluatedOutcome> => {
   const timings: Record<string, number> = {};
   const graph = await timeStage(timings, "load-schema", () => loadSchemaGraph());
 
@@ -106,6 +106,7 @@ export const runSchemaValidityInvariant = async ({
   );
   if (before.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.schemaValidity, before.error)],
       timings,
     };
@@ -119,6 +120,7 @@ export const runSchemaValidityInvariant = async ({
   );
   if (saved.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.schemaValidity, saved.error)],
       timings,
     };
@@ -132,6 +134,7 @@ export const runSchemaValidityInvariant = async ({
   );
   if (after.isErr()) {
     return {
+      status: "evaluated",
       failures: [failureFromError(EXTENDED_CORPUS_INVARIANTS.schemaValidity, after.error)],
       timings,
     };
@@ -141,6 +144,7 @@ export const runSchemaValidityInvariant = async ({
     introducedViolations(before.value, after.value),
   );
   return {
+    status: "evaluated",
     failures: introduced
       .slice(0, REPORTED_PER_FILE)
       .map((detail) => failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.schemaValidity, detail)),

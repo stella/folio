@@ -79,12 +79,12 @@ const lockOf = (...names: readonly string[]): CorpusLock => ({
 describe("a listed file is measured and never gated", () => {
   const censusWith = (kind: "complete" | "report-only"): CorpusCensus => {
     const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
-    builder.add(file("a"), { kind: "complete", failures: [GATING] });
+    builder.add(file("a"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
     builder.add(
       file("b"),
       kind === "complete"
-        ? { kind: "complete", failures: [GATING, TIMING] }
-        : { kind: "report-only", failures: [GATING, TIMING] },
+        ? { kind: "complete", declaredRefusals: [], failures: [GATING, TIMING] }
+        : { kind: "report-only", declaredRefusals: [], failures: [GATING, TIMING] },
     );
     return builder.build();
   };
@@ -121,7 +121,11 @@ describe("a listed file is measured and never gated", () => {
   });
 
   test("the family census drops the same findings, from the same decision", () => {
-    const listed = { kind: "report-only" as const, failures: [GATING, TIMING] };
+    const listed = {
+      kind: "report-only" as const,
+      declaredRefusals: [],
+      failures: [GATING, TIMING],
+    };
     const builder = new FamilyCensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
     builder.add({
       file: file("b"),
@@ -134,6 +138,7 @@ describe("a listed file is measured and never gated", () => {
         failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, "a serializer difference"),
         TIMING,
       ],
+      declaredRefusals: [],
       timings: {},
       evidence: evidenceOf(listed),
     });
@@ -148,17 +153,17 @@ describe("a listed file is measured and never gated", () => {
 describe("a baseline written before a listing is not ratcheted down to it", () => {
   const before = (): CorpusCensus => {
     const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf()));
-    builder.add(file("a"), { kind: "complete", failures: [GATING] });
-    builder.add(file("b"), { kind: "complete", failures: [GATING] });
+    builder.add(file("a"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
+    builder.add(file("b"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
     return builder.build();
   };
 
   const after = (extra: readonly CorpusFileId[] = []): CorpusCensus => {
     const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
-    builder.add(file("a"), { kind: "complete", failures: [GATING] });
-    builder.add(file("b"), { kind: "report-only", failures: [GATING] });
+    builder.add(file("a"), { kind: "complete", declaredRefusals: [], failures: [GATING] });
+    builder.add(file("b"), { kind: "report-only", declaredRefusals: [], failures: [GATING] });
     for (const id of extra) {
-      builder.add(id, { kind: "complete", failures: [GATING] });
+      builder.add(id, { kind: "complete", declaredRefusals: [], failures: [GATING] });
     }
     return builder.build();
   };
@@ -184,7 +189,7 @@ describe("a baseline written before a listing is not ratcheted down to it", () =
 
   test("once re-measured, a real shrink ratchets again", () => {
     const builder = new CensusBuilder(LOCK_DIGEST, reportOnlyFilesDigest(listOf("b")));
-    builder.add(file("b"), { kind: "report-only", failures: [GATING] });
+    builder.add(file("b"), { kind: "report-only", declaredRefusals: [], failures: [GATING] });
     const violations = compareToBaseline(baselineFromCensus(after()), builder.build());
     expect(violations.map((violation) => violation.kind)).toEqual(["resolved-signature"]);
     expect(violations.every(isFailingViolation)).toBe(true);
@@ -206,6 +211,7 @@ describe("a baseline written before a listing is not ratcheted down to it", () =
         failures: [
           failureFromAssertion(EXTENDED_CORPUS_INVARIANTS.reserialize, "a serializer difference"),
         ],
+        declaredRefusals: [],
         timings: {},
         evidence,
       });

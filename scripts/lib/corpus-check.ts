@@ -18,6 +18,7 @@
  *    assertions no round trip touches.
  */
 
+import type { CorpusDeclaredRefusal } from "./corpus-invariants/contract";
 import { parseDocx } from "@stll/folio-core/docx/parser";
 import { createDocx, repackDocx, validateDocx } from "@stll/folio-core/docx/rezip";
 import { fromProseDoc } from "@stll/folio-core/prosemirror/conversion/fromProseDoc";
@@ -53,6 +54,7 @@ export type CorpusCheckResult =
   | {
       kind: "checked";
       failures: CorpusFailure[];
+      declaredRefusals: CorpusDeclaredRefusal[];
       producer: string;
       cost: CorpusCheckCost;
       timings: Record<string, number>;
@@ -216,6 +218,7 @@ export const runCorpusChecks = async (
   if (parsed.isErr()) {
     return {
       kind: "checked",
+      declaredRefusals: [],
       failures: [failureFromError(CORPUS_INVARIANTS.parse, parsed.error)],
       producer: UNKNOWN_PRODUCER,
       cost,
@@ -246,6 +249,7 @@ export const runCorpusChecks = async (
   });
   return {
     kind: "checked",
+    declaredRefusals: extended.declaredRefusals,
     failures: [...fixedPoint.failures, ...validation, ...styleSet, ...extended.failures],
     producer: extended.producer.label,
     cost,

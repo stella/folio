@@ -1,0 +1,10 @@
+{
+  "refusal accounting merges, deduplicates per file and never counts a pass": [
+    {
+      "seed": 859368167,
+      "path": "0:1:0:0:1:2:2",
+      "note": "Interleaved shards must preserve deterministic file-cost ordering in the family census",
+      "date": "2026-10-03"
+    }
+  ]
+}
