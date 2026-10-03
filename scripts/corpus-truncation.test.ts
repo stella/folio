@@ -46,9 +46,14 @@ const fail = (invariant: CorpusInvariant, message: string) =>
 describe("a truncated file contributes no gating evidence", () => {
   const censusWithTruncatedFailure = (): CorpusCensus => {
     const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
-    builder.add(file("a"), { kind: "complete", failures: [fail(GATING, "text changed")] });
+    builder.add(file("a"), {
+      kind: "complete",
+      declaredRefusals: [],
+      failures: [fail(GATING, "text changed")],
+    });
     builder.add(file("b"), {
       kind: "truncated",
+      declaredRefusals: [],
       stage: "reserialize",
       failures: [
         // Produced before the budget ran out: still not evidence.
@@ -81,7 +86,12 @@ describe("a truncated file contributes no gating evidence", () => {
 
   test("it is not counted as a file that passed", () => {
     const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
-    builder.add(file("a"), { kind: "truncated", stage: "reserialize", failures: [] });
+    builder.add(file("a"), {
+      kind: "truncated",
+      declaredRefusals: [],
+      stage: "reserialize",
+      failures: [],
+    });
     const census = builder.build();
     expect(census.files).toBe(1);
     expect(census.passed).toBe(0);
@@ -93,10 +103,15 @@ describe("an unlisted truncation degrades the run", () => {
   const runTruncating = (total: number, truncated: number): CorpusCensus => {
     const builder = new CensusBuilder(LOCK_DIGEST, REPORT_ONLY_DIGEST);
     for (let index = 0; index < total - truncated; index += 1) {
-      builder.add(file(`ok${index}`), { kind: "complete", failures: [] });
+      builder.add(file(`ok${index}`), { kind: "complete", declaredRefusals: [], failures: [] });
     }
     for (let index = 0; index < truncated; index += 1) {
-      builder.add(file(`slow${index}`), { kind: "truncated", stage: "reserialize", failures: [] });
+      builder.add(file(`slow${index}`), {
+        kind: "truncated",
+        declaredRefusals: [],
+        stage: "reserialize",
+        failures: [],
+      });
     }
     return builder.build();
   };

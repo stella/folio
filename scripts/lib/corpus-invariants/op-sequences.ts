@@ -15,6 +15,7 @@ import {
   type NoteStory,
   sectionPropertiesAt,
 } from "../../../packages/docx-core/src/ops/documentOps";
+import { cloneDocumentWithParagraphPropertySources } from "@stll/folio-core/docx/document-clone";
 import { ensureParaIds } from "@stll/folio-core/docx/ensureParaIds";
 import { repackDocx } from "@stll/folio-core/docx/rezip";
 import { unzipDocx } from "@stll/folio-core/docx/unzip";
@@ -457,8 +458,7 @@ export type OpSequence = {
 
 /** A schedule covers every family; the file seed varies positions, modes and order. */
 export const generateOpSequence = (document: Document, seed: number): OpSequence => {
-  // Operations preserve their input; cloning would erase parsed source ownership.
-  const original = document;
+  const original = cloneDocumentWithParagraphPropertySources(document);
   const originalModel = exactOpModel(original);
   const originalXml = serializeOpDocument(original);
   const choose = randomFor(seed);

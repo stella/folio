@@ -37,5 +37,13 @@
       "note": "Restoring a removed story must retain captured replay ownership",
       "date": "2026-10-03"
     }
+  ],
+  "operation sequence generation retains the parsed package control": [
+    {
+      "seed": 1138888773,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Sequence controls retain parsed paragraph-property captures across clone and composed inverse",
+      "date": "2026-10-03"
+    }
   ]
 }

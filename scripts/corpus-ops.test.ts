@@ -210,7 +210,6 @@ describe("corpus operation invariants", () => {
       const foldedReviewFamilies = new Set<string>();
       for (let seed = 0; seed < 64; seed += 1) {
         const sequence = generateOpSequence(document, seed);
-        expect(sequence.original).toBe(document);
         expect(sequence.steps.length).toBeGreaterThan(0);
         expect(sequence.mutations).toEqual([]);
         for (const { before, op, edit } of sequence.steps) {
@@ -471,7 +470,10 @@ describe("corpus operation invariants", () => {
     const input = await inputFor(buffer);
     const prepared = await prepareOpDocument(input);
     expect(await prepareOpDocument(input)).toBe(prepared);
-    expect((await runOpInverseInvariant(input)).failures).toEqual([]);
-    expect((await runOpLocalityInvariant(input)).failures).toEqual([]);
+    expect(await runOpInverseInvariant(input)).toMatchObject({ status: "evaluated", failures: [] });
+    expect(await runOpLocalityInvariant(input)).toMatchObject({
+      status: "evaluated",
+      failures: [],
+    });
   });
 });
