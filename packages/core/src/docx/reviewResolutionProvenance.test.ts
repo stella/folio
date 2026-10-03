@@ -63,7 +63,8 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           ),
           { nil: undefined },
         ),
-        (prefix, depths, boundaryJoins, kind, resolutionJoin, deferredRemove) => {
+        fc.option(fc.constant("merge-plain-runs"), { nil: undefined }),
+        (prefix, depths, boundaryJoins, kind, resolutionJoin, deferredRemove, acceptance) => {
           const paragraphMark = {
             kind,
             info: { id: 3, author: "Reviewer" },
@@ -77,6 +78,7 @@ for (const wordNamespace of WORDPROCESSINGML_NAMESPACE_URIS) {
           );
           const joins = {
             ...depths,
+            ...(acceptance === undefined ? {} : { acceptance }),
             ...(deferredRemove === undefined
               ? {}
               : {
@@ -174,6 +176,9 @@ test("malformed and future provenance is refused instead of discarded", () => {
       ],
     ].map((deferredRemove) =>
       JSON.stringify({ version: 1, value: { before: 0, after: 0, remove: 0, deferredRemove } }),
+    ),
+    ...["unknown", null, 1, {}, ["merge-plain-runs"]].map((acceptance) =>
+      JSON.stringify({ version: 1, value: { before: 0, after: 0, remove: 0, acceptance } }),
     ),
     JSON.stringify({ version: 2, value: { before: 0, after: 0, remove: 0 } }),
     JSON.stringify({ version: 1, value: { before: -1, after: 0, remove: 0 } }),

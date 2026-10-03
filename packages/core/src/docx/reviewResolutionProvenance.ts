@@ -24,7 +24,13 @@ const JOIN_FIELDS = {
   remove: true,
   retainedAfter: true,
   deferredRemove: true,
+  acceptance: true,
 } as const satisfies Record<keyof ResolutionJoins, true>;
+
+const ACCEPTANCE_POLICIES = { "merge-plain-runs": true } as const satisfies Record<
+  NonNullable<ResolutionJoins["acceptance"]>,
+  true
+>;
 
 const PARAGRAPH_MARK_FIELDS = {
   kind: { type: "ooxml" },
@@ -109,6 +115,9 @@ export const isResolutionJoins = (value: unknown): value is ResolutionJoins =>
   natural(value["before"]) &&
   natural(value["after"]) &&
   natural(value["remove"]) &&
+  (!Object.hasOwn(value, "acceptance") ||
+    (typeof value["acceptance"] === "string" &&
+      Object.hasOwn(ACCEPTANCE_POLICIES, value["acceptance"]))) &&
   (value["retainedAfter"] === undefined || retained(value["retainedAfter"])) &&
   (!Object.hasOwn(value, "deferredRemove") || deferredRemovals(value["deferredRemove"]));
 

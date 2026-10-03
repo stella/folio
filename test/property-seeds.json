@@ -43,6 +43,12 @@
       "seed": 487359569,
       "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
       "date": "2026-09-30"
+    },
+    {
+      "seed": -1426848857,
+      "path": "15:1:0:3:2:3:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:12:7:19:22:46:46:46:46:46:46:46:46:46:46:46:48:46:46:46:46:46:46:46:46:46:46:46:46:46:46",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/ops/__tests__/reviewRoundTrip.property.test.ts::L8: ${kind} survives editor save and reopen": [
@@ -296,13 +302,13 @@
     {
       "seed": -1487704601,
       "path": "31:0:0:0:0:0:0:0:0:1:0:0:1:1:1:1:1:1:1:3:3:5:6:7:9:9:12",
-      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:\u2026, which counted the two example scenarios)",
+      "note": "a view switched away and back before its re-render, while an edit's pass laid out the view in between, kept that pass's layout (found at path 33:…, which counted the two example scenarios)",
       "date": "2026-09-29"
     },
     {
       "seed": -315487089,
       "path": "14:4:5:3:14:14:14:4:13:14:14:14:14:5:4:2:5:5:5:3:4:4:4:4:2:2:2:2:5:3:9:38:38:39:42:54:44:55:55:62:70:71:72:72:102:104:110:119:124:125:139:167:167:181:47:194:205:190:204:204:204:205:226:208:210:207:209:208:207:209:208:208:207:207:207:210:209:208:208:208:207:211:207:207:208:210:212:209",
-      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:\u2026, which counted the two example scenarios)",
+      "note": "a hidden insertion split a word across two runs in Original; the line width summed \"confirm\" + \"ation\" and differed from the materialised line in the last floating-point digit (found at path 16:…, which counted the two example scenarios)",
       "date": "2026-09-30"
     }
   ],
@@ -325,13 +331,18 @@
     {
       "seed": -1428670990,
       "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
-      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "note": "Only newly allocated review IDs are reported; folds retain the original baseline and stable existing identity.",
       "date": "2026-10-03"
     },
     {
       "seed": -1013725445,
-      "path": "7:0:0:0:0:0:0:1:0:2:2:2:2:2:3:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:34:34:34:34:34:34:34:39:41:43:41:2:40:40:40:40:35:36:34:34:34:34:34:34:34:34:34:34:34:34:34:36:34:34:34:34:34:34:34:34",
-      "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
+      "note": "Keep the original seed after generator changes invalidated its old shrink path; only newly allocated review IDs are reported.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1158783253,
+      "path": "6:4:5:4:4:4:4:4:9:8:8:8:9:8:8:8:8:8:9:10:12:12:11:11:14:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:18:19:7:0:6:6:8:9:6:5:5:9:7:5:7:7:7:7:7:7:7:7:7:7:9:7:7:7:7:7:7:7:7:7:7",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
     }
   ],
@@ -385,6 +396,12 @@
       "path": "997:5:7:7:7:7:11:10:13:13:13:13:14:13:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:22:27:30:27:21:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:29:29:29:29:29:4:18:20:19:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:22:22:21:24:24:26:2:29:32:31:26:26:26:26:26:26:26:27:27:27:27:27:27:27:27:27:27:28:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28",
       "date": "2026-10-02",
       "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
+    },
+    {
+      "seed": -1171708191,
+      "path": "4:2:3:3:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:2:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:6:5:5:5:6:6:6:6:5:5:5:5:5:5:5:5:5:5:5:5:5:34:34:3:3:33:32:32:32:32:32:34:33:32:35:32:37:33:32:32:33:33:33:33:33:33:33:33:33:33:33:35:33:33:33:33:33:33:33:33:33:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/prosemirror/commands/comments.bulk.test.ts::matches the legacy small-document semantics across generated nested revisions": [
@@ -556,6 +573,12 @@
       "seed": 1364722648,
       "date": "2026-10-02",
       "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields"
+    },
+    {
+      "seed": 1364722648,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/controller/canonicalSession.test.ts::generated replacements lower tracked batches and resolution shares exact inverse history": [
@@ -680,6 +703,42 @@
       "path": "2:0:0:1:0:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:3:7:11:2:2:1:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:7:7:7:7:7:7:7",
       "date": "2026-10-02",
       "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -1110176322,
+      "path": "17:1:4:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:36:35:35:35:34:34:34:34:34:34:34:34:35:35:34:34:34:35:36:34:35:35:35:35:35:35:35:35:35:35:35:35:37:35:35:35:35:35:35:35:35:35:35:35",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 768165215,
+      "path": "8:2:5:4:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:11:27:28:27:29:28:28:27:27:28:29:29:27:27:32:32:32:32:32:32:32:32:32:32:32:32:34:32:32:32:32:32:32:32:32:32",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1811213953,
+      "path": "18:3:2:2:2:2:5:0:0:2:2:2:2:2:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:4:2:2:10:8:2:2:2:8:9:8:8:11:12:8:8:10:8:9:8:8:10:8:8:11:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1649804333,
+      "path": "3:1:1:1:1:1:1:1:2:2:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:7:7:10:7:8:7:10:11:7:7:7:7:7:8:7:7:7:10:10:10:10:10:10:10:10:10:12:10:10:10:10:10:10:10:10:10",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1573806693,
+      "path": "3:1:0:0:3:5:5:8:8:7:8:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:9:31:7:10:10:1:2:8:2:7:7:7:7:7:7:7:7:7:7:9:9:9:9:9:9:9:9:9:9",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 631257065,
+      "path": "1:0:0:0:0:0:0:0:0:0:1:0:3:2:6:6:6:6:6:7:8:1:4:3:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:20:9:4:9:9:11:9:8:8:11:8:8:9:8:8:8:8:9:8:8:8:10:11:10:10:10:11:10:10:10:10:10:10:10:13:20:10:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::L4: a run of tracked operations is undone exactly, in reverse and as a batch": [
@@ -712,6 +771,42 @@
       "path": "200:0:0:0:0:0:0:0:0:3:2:2:2:2:2:7:6:6:7:7:8:12:12:12:12:12:12:16:16:16:19:20:20:20:20:21:23:23:29:29:31:32:34:34:35:34:34:34:34:34:34:34:34:34:34:36:36:36:36:36:36:36:38:35:35:36:34:34:35:34:36:38:34:34:35:34:34:35:35:35:35:35:35:35:35:36:38:36:36:36:36:44:41:46:47:0:31:42:42:44:42:44:44:43:43:43:42:44:42:48:6:34:34:34:35:34:34:35:34:35:34:35:35:34:34:34:34:35:34:37:15:53:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:39:37:33:36:32:32:40:39:39:40:39:39:43:40:41:42:39:39:39:40:39:40:40:40:41:40:1:24:24:2:25:32:34:37:33:34:32:33:33:34:33:33:33:33:33:33:33:33:33:33:33:33:33:33:33:33:33:34:33:35:35:35:35:35:35",
       "date": "2026-10-02",
       "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
+    },
+    {
+      "seed": -1640368394,
+      "path": "11:0:0:0:0:0:0:3:2:2:2:2:2:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:7:4:9:6:4:5:4:4:4:4:4:6:4:4:4:5:4:4:5:5:5:5:5:5:5:5:6:8:6:6:6:11:6:6:6:18:6:13:9:14:9:9:9:9:9:9:9:10:11:9:11:9:13:11:14:13:11:12:11:11:11:18:11:11:11:11:13:13:13:13:13:13:13:13:13:13:13:13:15:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -579682301,
+      "path": "6:0:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:4:1:3:7:9:11:12:11:11:11:12:11:11:11:11:11:11:11:11:11:11:11:13:11:12:12:12:11:12:11:13:13:12:11:11:16:12:12:12:12:12:12:12:12:13:15:15:4:11:10:4:9:11:9:13:9:9:9:9:12:10:10:9:9:9:9:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -221212230,
+      "path": "2:4:3:3:3:9:8:8:9:8:8:8:8:8:0:1:2:2:2:2:2:2:2:0:0:0:0:0:0:0:0:0:0:3:6:22:22:22:22:22:4:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:19:27:30:20:19:19:20:23:27:23:23:23:24:24:23:24:26:23:24:24:23:24:23:23:24:24:24:24:24:24:24:24:24:24:24:26:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:41:29:28:27:40:27:27:31:27:27:27:27:27:27:27:27:27:29:29:29:29:29:29:29:29:29:29:29:30:30:30:30:30:30:30:30:30:30",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 2093353516,
+      "path": "3:0:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:3:2:5:5:6:7:6:6:7:7:7:7:7:7:7:7:7:7:0:6:6:6:6:6:6:6:6:36:35:35:35:38:36:37:35:40:35:35:39:35:35:36:37:3:4:34:35:34:34:35:37:34:34:34:35:35:34:34:35:34:35:36:36:36:36:36:36:36:36:36:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 453072392,
+      "path": "6:0:0:0:0:0:0:0:0:1:1:1:1:1:1:1:1:1:3:2:3:3:3:3:3:4:5:4:4:5:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:9:6:15:6:11:12:11:0:8:8:10:8:9:9:11:8:8:8:12:9:8:9:12:10:9:10:9:10:11:9:11:9:11:13:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:12:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -2147317808,
+      "path": "4:2:4:5:6:6:7:6:6:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:6:32:33:32:32:32:32:32:32:41:35:33:34:32:32:33:33:33:33:33:33:33:33:33:33:33:33:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/review.property.test.ts::L5: equal inputs give equal results": [
@@ -738,6 +833,42 @@
       "path": "149:0:0:0:0:0:0:1:1:1:1:1:1:1:3:3:3:3:3:3:3:5:7:6:7:7:7:7:7:7:7:7:7:7:7:7:0:0:4:4:4:4:4:4:4:4:4:31:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:10:8:8:8:8:0:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4",
       "date": "2026-10-02",
       "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -122480978,
+      "path": "52:0:0:0:0:0:3:4:5:5:5:5:5:8:11:11:11:11:12:10:1:1:5:3:3:4:4:4:5:4:4:4:4:4:4:4:4:4:6:6:5:7:4:4:4:6:4:4:5:4:4:4:4:8:8:8:8:8:8:8:8:38:38:39:39:38:39:46:43:38:38:38:39:39:39:39:39:39:39:39:39:39:39:39:41:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1303943241,
+      "path": "12:0:0:0:0:0:0:1:3:3:5:8:13:12:2:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:6:5:11:6:5:11:5:5:5:5:8:5:7:7:7:7:7:7:7:7:12:12:3:13:11:12:12:12:12:12:12:12:12:12:12:12:14:12:12:12:12:12:12:12:12:12:12:12:12:12",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1744463560,
+      "path": "6:0:0:0:0:0:0:0:2:1:0:1:1:1:1:1:1:1:1:1:4:5:5:5:5:5:6:5:5:5:5:5:5:5:0:4:4:4:4:4:4:4:4:4:10:11:9:36:36:36:36:36:36:36:36:36:36:36:36:38:36:36:36:36:36:36:36:36:36:36",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -558608542,
+      "path": "8:3:2:3:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:5:3:3:30:30:31:32:32:30:30:30:32:30:30:32:33:31:30:31:30:31:31:31:31:31:31:31:31:31:31:31:31:31:33:33:33:33:33:33:33:33:33:33:33",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 882965222,
+      "path": "1:1:3:2:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:9:9:11:9:1:8:8:9:9:9:8:8:8:9:9:10:8:9:11:10:10:10:10:10:10:10:10:10:10:10:10:12:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 48235593,
+      "path": "10:1:2:2:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:4:7:4:4:6:4:7:5:5:4:5:5:5:4:4:6:5:5:5:5:5:5:5:5:5:7:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::an operation's inverse restores the document exactly": [
@@ -886,6 +1017,12 @@
       "seed": 698052997,
       "note": "Retain structural direct/accepted mode agreement through compound edits.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1323931036,
+      "path": "2:0:0:0:0:2:2:1:1:1:2:2:2:2:2:2:2:3:3:4:2:2:2:2:3:2:3:3:3:2:2:4:7:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::the same operation on equal documents gives equal results": [
@@ -936,6 +1073,18 @@
       "path": "1:0:0:0:2:2:2:2:3:3:2:3",
       "date": "2026-10-02",
       "note": "Preserve own property presence and authored run boundaries through generated multi-step edits and exact inverses."
+    },
+    {
+      "seed": 2064493567,
+      "path": "1:0:0:0:2:2:2:2:3:3:2:3:0:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1152846089,
+      "path": "0:0:1:1:1:1:1:1:1",
+      "note": "Replay the observed source-seam or revision allocation failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated deletion cuts accept and reject at the recorded wrapper depth": [
@@ -968,6 +1117,12 @@
       "path": "10:0:1:6",
       "date": "2026-10-02",
       "note": "Preserve exact imported review identities and structural editing equivalence through generated direct and tracked resolution."
+    },
+    {
+      "seed": 1010476761,
+      "path": "2:0:1:3:7:2:0:0:2:1:1:1:2:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated later property rejection retains earlier cut provenance": [
@@ -976,6 +1131,12 @@
       "path": "2:0:0:0",
       "date": "2026-10-02",
       "note": "Preserve own property presence and authored run boundaries through generated multi-step edits and exact inverses."
+    },
+    {
+      "seed": 1820773325,
+      "path": "2:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/sequencing/__tests__/runtime.property.test.ts::reference sequencing convergence": [
@@ -1036,8 +1197,8 @@
     {
       "seed": -1798387597,
       "path": "0:0:0:0:0:0:1:1:1:1:2:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
-      "note": "Count expected noChange without changing document or history; preserve new-half source ownership.",
-      "date": "2026-10-02"
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ],
   "packages/core/src/prosemirror/listMarker-folded-suffix.property.test.ts::folded LISTNUM display text stays literal while numbered and symbol-font bullet markers resolve": [
@@ -1093,12 +1254,54 @@
       "path": "1:0:1:0:2:2:3:3:3:3:3:3:0:1:1:1:1:1:1:1:2:1:1:1:1:1:3:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:2:2:2",
       "note": "Retain generated source rendering and exact rejection behavior reported by stack CI.",
       "date": "2026-10-03"
+    },
+    {
+      "seed": -1122325844,
+      "path": "3:3:4:5:5:6:6:6:6:6:0:0:1:1:1:1:1:2:2:2:2:2:2:3:3:2:3:3:3",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 248189386,
+      "path": "8:4:2:2:4:4:5:5:5:5:5:5:5:5:5:5:5:5:7:6:6:7:7:7:7:7:8:1:7:6:2:5:16:5:5:5:13:7:7",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 2062752932,
+      "path": "10:2:1:1:1:3:3:3:3:3:0:0:0:1:1:1:1:1:2:2:2:2:2:2:2:4:2:2:3:2:4:2:4:4:2:2:2:6:6:6",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1096659045,
+      "path": "1:3:2:2:2:2:2:2:2:2:2:0:0:2:1:1:2:2:2:2:2:2:2:2:2:2:2:3:32:32",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 519159351,
+      "path": "1:3:3:5:6:6:6:6:6:6:6:6:6:8:7:7:7:8:8:8:8:8:8:8:10:2:7:7:7:7:6:10:2:5:11:9:7:7",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 527872595,
+      "path": "1:2:5:4:3:3:4:4:4:4:4:4:4:4:4:4:4:6:5:6:6:6:6:6:6:6:8:2:5:7:7:7",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
     }
   ],
   "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated paragraph cut depths preserve authored wrappers and deferred split seams": [
     {
       "seed": 802608016,
       "note": "Exercise pending source insertions split before later intervening insertions across wrapper depths.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 802608016,
+      "path": "2",
+      "note": "Preserve original cut closures while joining accepted editor payload seams.",
       "date": "2026-10-03"
     }
   ],
@@ -1128,6 +1331,416 @@
       "seed": -1715044072,
       "path": "6:0:0:1:1:1:1:1:1:1:1",
       "note": "Retain generated source rendering and exact rejection behavior reported by stack CI.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::each formatting author gets a separately rejectable record over pending run review": [
+    {
+      "seed": -1253336004,
+      "path": "0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -806702859,
+      "path": "0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -53818266,
+      "path": "0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1071090964,
+      "path": "0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1283850532,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1284509449,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated compound intents reserve source IDs before additional action stamps": [
+    {
+      "seed": -137924357,
+      "path": "2:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 173165399,
+      "path": "0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 478126124,
+      "path": "2:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1483041901,
+      "path": "1:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 467231556,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1421512014,
+      "path": "0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated nested replacements preserve reviewed source seams in every resolution order": [
+    {
+      "seed": -1408566367,
+      "path": "0:0:0:0:0:0:1:0:0:0:1:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -239249692,
+      "path": "0:0:0:0:1:0:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 341854196,
+      "path": "1:0:0:0:0:0:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 920771850,
+      "path": "0:1:0:0:0:0:1:0:0:0:0:1:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 423924683,
+      "path": "42:0:0:0:1:6",
+      "note": "Merge surviving text leaves within the recorded maximum cut depth after wrapper removal.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 782520743,
+      "path": "1:0:0:0:0:1:1:0:0:1",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated replacements preserve input affinity around zero-width leaves": [
+    {
+      "seed": -2001295604,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1236713541,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -992172216,
+      "path": "1:0:1:0:2:1:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -200735029,
+      "path": "0:1:3:2:1",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 464543571,
+      "path": "3:6:0:1:5:3:2",
+      "note": "Replay the observed source-seam or revision allocation failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 281419480,
+      "path": "0:0:1:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 568015242,
+      "path": "0:0:1:0:1:2:1:2:2:2:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1598198952,
+      "path": "0:0:8:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/resolutionProvenance.property.test.ts::generated retained source identities survive a later pending formatting action": [
+    {
+      "seed": -547730310,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 767755419,
+      "path": "0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1876835879,
+      "path": "0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1876035242,
+      "path": "0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 844748741,
+      "path": "0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1730233178,
+      "path": "0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts::L6: an operation touches only the paragraphs it names or resolves": [
+    {
+      "seed": -972342326,
+      "path": "16:0:0:0:0:0:1:2:2:2:2:2:5:3:5:4:5:5:5:6:5:5:5:5:5:5:5:5:5:6:5:5:5:6:5:8:9:5:6:10:5:6:6:6:6:6:6:6:6:6:35:35:36:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:36:36:36:36:36:36:36:36:36:36:36:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 503608757,
+      "path": "5:0:0:0:0:0:0:0:0:3:2:2:2:3:2:2:2:2:3:3:3:3:3:3:3:3:3:5:5:3:3:7:4:6:6:5:3:4:3:4:4:4:4:4:4:4:4:4:8:8:13:13:9:8:9:8:8:9:8:10:11:11:11:11:11:11:11:11:13:13:13:13:13:13:13:13:13:13",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 2096016674,
+      "path": "0:0:0:0:0:0:2:1:1:1:1:1:1:1:1:1:1:1:8:6:7:7:7:7:8:7:7:9:9:8:8:8:8:8:8:8:8:8:8:11:11:11:11:11:11:11:11:11:11:11:11:11:11:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:25:0:6:11:11:11:13:11:13:12:12:16:11:12:3:12:4:11:14:13:11:12:10:10:10:10:10:10:10:11:11:11:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -151058128,
+      "path": "26:3:1:3:3:4:4:5:4:4:4:4:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:5:3:3:30:30:31:30:32:32:32:32:32:32:32:32:32:32:32:34:32:32:32:32:32:32:32:32:32:32:32:32:32",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -819595560,
+      "path": "27:0:0:0:0:0:0:2:1:0:2:2:5:1:5:5:10:10:11:1:3:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:25:5:16:16:14:15:14:14:19:16:15:18:14:17:3:17:45:45:45:45:45:45:45:45:45:45:45:47:47:47:47:47:47:47:47:47:47:47",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1622109882,
+      "path": "37:0:0:0:0:0:1:4:3:3:3:3:4:5:4:5:1:3:4:4:5:4:4:4:4:4:4:4:4:4:6:6:6:6:6:6:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:24:7:15:7:13:10:4:7:10:15:8:8:7:7:7:7:9:9:2:7:8:8:8:8:8:8:8:8:8:8:8:8:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts::L7: no tracked operation marks a paragraph that ends its container": [
+    {
+      "seed": 51019285,
+      "path": "77:1:5:3:2:4:6:6:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:9:8:9:5:5:5:5:5:5:5:15:16:1:14:14:12:14:12:13:14:12:15:15:12:14:14:14:14:14:14:14:14:14:14:14:16:16:16:16:16:16:16:16:16:16",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 508723512,
+      "path": "32:0:0:0:0:0:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:6:6:6:6:6:6:6:7:7:7:8:7:7:7:8:7:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:17:9:9:17:9:23:30:25:29:23:23:24:23:23:24:23:23:23:24:24:24:24:24:24:24:24:24:26:24:24:24:24:24:24:24:24:24:24:24:24:24",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1123425962,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:1:2:2:2:3:2:2:2:4:4:4:4:4:4:5:5:5:5:5:5:5:5:6:5:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:19:17:5:10:8:15:9:10:10:9:10:15:14:2:14:13:13:13:13:13:13:14:13:13:14:14:13:15:14:21:47:47:47:47:47:47:47:47:47:47:47:47:49:47:47:47:47:47:47:47:47",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1523849082,
+      "path": "10:2:3:2:2:3:3:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:11:24:25:24:25:25:33:25:29:24:24:24:25:25:25:25:25:25:25:25:25:25:25:25:25:25:27:25:25:25:25:25:25:25:25:25",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -778145441,
+      "path": "20:0:0:0:0:0:0:0:0:2:1:1:1:1:1:5:5:5:6:6:6:6:6:9:11:14:15:18:18:18:19:18:18:18:18:18:18:18:18:18:18:25:0:17:19:17:17:19:18:17:20:18:17:17:20:20:20:20:20:20:20:20:20:23:24:55:55:55:55:55:55:55:55:55:55:55:55:57:55:55:55:55:55:55:55:55:55",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1314984037,
+      "path": "8:0:0:0:0:0:0:0:1:1:1:1:1:1:1:1:1:4:3:4:7:5:6:11:13:11:11:11:12:11:11:11:11:11:11:11:11:11:11:13:0:10:9:9:11:9:13:11:9:10:13:12:11:11:11:11:11:11:11:11:13:13:2:2:10:8:8:8:8:8:8:8:8:8:8:8:8:10:10:10:10:10:10:10:10:10:10:10:10",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/review.property.test.ts::a tracked operation takes exactly the new ids revisionIdDemand counts": [
+    {
+      "seed": -989063486,
+      "path": "1:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:1:1:1:3:3:3:3:3:3:7:8:7:7:8:7:7:7:7:7:7:7:7:7:7:7:7:7:7:0:0:4:4:4:4:4:4:4:4:12:11:10:9:9:9:9:9:14:9:10:10:9:10:10:10:12:10:10:12:10:11:10:11:10:13:10:11:11:10:10:13:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -433894177,
+      "path": "33:0:0:0:0:0:0:0:5:4:5:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:24:5:5:5:5:13:13:14:13:14:12:13:12:12:12:12:15:12:13:12:13:16:3:13:13:13:15:13:13:13:17:16:14:13:18:18:40:40:40:40:40:40:40:40:40:40:40:42:40:40:40:40:40:40:40:40:40:40:40",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 687387518,
+      "path": "8:0:0:0:0:0:0:0:0:0:1:4:3:3:4:6:7:9:11:10:10:11:10:10:10:10:1:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:14:15:3:15:15:15:15:15:15:15:15:17:15:15:15:15:15:15:15:15:15",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1910367245,
+      "path": "7:0:0:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:1:1:3:4:3:7:5:5:5:6:6:6:6:7:6:8:9:8:8:9:9:10:9:9:9:9:9:9:9:9:0:8:8:8:8:8:8:8:8:26:8:8:8:16:15:16:17:18:16:15:16:18:19:16:18:20:18:18:18:1:16:15:15:15:16:17:17:17:15:16:15:15:17:17:17:17:17:17:17:17:17:17:17:18:18:18:18:18:18:18",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 683756373,
+      "path": "25:2:2:3:3:3:4:4:8:7:7:7:7:8:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:30:7:11:12:0:2:8:7:11:7:8:10:8:8:7:7:11:7:7:9:10:8:9:8:14:10:10:8:8:8:8:8:8:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1580552360,
+      "path": "13:2:5:5:6:6:6:6:6:7:7:0:1:1:2:1:1:1:2:1:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:7:3:9:20:21:20:20:1:19:19:19:19:19:19:19:19:22:24:19:22:19:22:22:22:22:22:22:22:22:22:22:22:24:22:22:22:22:22:22:22:22:22",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/leaves.property.test.ts::alike merges consume surviving text within the maximum source depth": [
+    {
+      "seed": 914656760,
+      "path": "0:1:1",
+      "note": "Use production-shaped runs inside generated hyperlink branches; test maximum surviving cut depth.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 354032385,
+      "path": "2:2",
+      "note": "Generate nested bidi wrappers over runs, preserving valid nested container shapes.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::rejecting generated run formatting restores authored boundaries inside wrappers and pending review": [
+    {
+      "seed": 1885693896,
+      "path": "0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1458871499,
+      "path": "0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated clipboard fragments preserve history and accepted tracked content": [
+    {
+      "seed": 54534382,
+      "path": "3:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated clipboard sequences preserve arbitrary ranges, marked content and every inverse": [
+    {
+      "seed": -1470548670,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:3:0:0:0:0:0:0:0:0:0:0:1:1:0:0:0:0:0:0:1:0:2:1:1:1:1:1:1:1:2:1:2:1:1:1:2:1:1:1:1:1:1:1:1:1:1:2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:0:2:1:2:2:0:8:2:3:1:1:1:1:1:1:1:3:1:4:1:1:2:1:1:1:1:1:1:3:2:3:3:3:3:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated move intents rebase the original target and refuse atomically": [
+    {
+      "seed": -1300277500,
+      "path": "0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -253280134,
+      "path": "9",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated comment-anchor move sequences preserve marker gaps and refuse tracked transfer atomically": [
+    {
+      "seed": -1354577293,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -933871918,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/core/src/controller/canonicalInput.test.ts::generated Enter modifier traces refuse native composition lag without editing callbacks": [
+    {
+      "seed": -1318145371,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1650860415,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
+      "date": "2026-10-03"
+    }
+  ],
+  "packages/core/src/controller/canonicalClipboard.test.ts::foreign text and image hyperlink relationships never bind colliding destination ids": [
+    {
+      "seed": -1153678734,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:0:0",
+      "note": "Regression observed in cached upper-red property logs; retain this exact generated case.",
       "date": "2026-10-03"
     }
   ]

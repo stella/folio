@@ -31,6 +31,8 @@ import type {
   ParagraphFormatting,
   ParagraphPropertyChange,
 } from "../../model/document";
+import { asParagraphContent, childNodes, rebuildNode, type InlineNode } from "../leaves";
+import { isTrackedWrapper } from "../review";
 import { applyDocumentOps } from "../apply";
 import { IDENTITY_SPACES, identityKeysIn } from "../ids";
 import {
@@ -79,10 +81,19 @@ const edited = (document: Document, ops: readonly DocumentOp[]): BlockContent[] 
   // Reference OOXML shapes omit operation-private cut provenance. The exact
   // model (including provenance) is still checked by the inverse above and
   // the resolution-provenance properties.
+  const referenceInline = (node: InlineNode): InlineNode => {
+    const children = childNodes(node);
+    const mapped = children === undefined ? node : rebuildNode(node, children.map(referenceInline));
+    if (!isTrackedWrapper(mapped)) return mapped;
+    const { resolutionJoins: _resolutionJoins, ...reference } = mapped;
+    return reference;
+  };
   return applied.value.document.package.document.content.map((block) => {
-    if (block.type !== "paragraph" || block.pPrMark === undefined) return block;
+    if (block.type !== "paragraph") return block;
+    const content = asParagraphContent(block.content.map(referenceInline));
+    if (block.pPrMark === undefined) return Object.assign({}, block, { content });
     const { resolutionJoin: _resolutionJoin, ...pPrMark } = block.pPrMark;
-    return Object.assign({}, block, { pPrMark });
+    return Object.assign({}, block, { content, pPrMark });
   });
 };
 
