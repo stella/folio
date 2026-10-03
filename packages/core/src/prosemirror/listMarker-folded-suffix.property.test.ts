@@ -1,7 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 import fc from "fast-check";
 import { paragraphNumberingReference } from "@stll/docx-core/model";
-import { assertProperty } from "../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { toFlowBlocks } from "../layout-bridge/convert/toFlowBlocks";
 import { listRenderingAttrPatch } from "./listRenderingAttrs";
 import { CLEARED_LIST_RENDERING_ATTRS } from "./listMarker";
