@@ -11,7 +11,7 @@ import { DOCUMENT_OP_REFUSAL_REASONS, DocumentOpRefusal } from "./refusal";
 import type { ApplyOps } from "./resolve";
 import {
   paragraphPropertiesOf,
-  paragraphPropertyChange,
+  foldedParagraphPropertyChange,
   reviewFieldsOf,
   sameParagraphProperties,
   stampInfo,
@@ -123,11 +123,7 @@ export const deleteBlocks = ({
       },
     });
   }
-  if (
-    affected.some(
-      ({ pPrMark, propertyChanges }) => pPrMark !== undefined || (propertyChanges?.length ?? 0) > 0,
-    )
-  ) {
+  if (affected.some(({ pPrMark }) => pPrMark !== undefined)) {
     return refuse(
       DOCUMENT_OP_REFUSAL_REASONS.REVISION_CONFLICT,
       "Deletion would overwrite a paragraph review record.",
@@ -161,7 +157,13 @@ export const deleteBlocks = ({
       const review = reviewFieldsOf(next);
       delete review.formatting;
       if (survivor.formatting !== undefined) review.formatting = survivor.formatting;
-      review.propertyChanges = [paragraphPropertyChange(stampInfo(op.revision), next.formatting)];
+      review.propertyChanges = [
+        foldedParagraphPropertyChange({
+          paragraph: next,
+          formatting: survivor.formatting,
+          stamp: op.revision,
+        }),
+      ];
       next = withReviewFields(next, review);
     }
     tracked.push(next);

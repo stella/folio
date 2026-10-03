@@ -543,7 +543,9 @@ describe("C9: Enter and Delete record paragraph marks", () => {
         ...source,
         pPrMark: { kind: "ins", info: { id: 1, author: "Reviewer", date: DATE } },
       },
-      paragraph("00000002", [], { propertyChanges: [pending] }),
+      paragraph("00000002", [], {
+        propertyChanges: [{ ...pending, info: { id: 7, author: "Reviewer", date: DATE } }],
+      }),
       paragraph("00000009", [run("next")]),
     ]);
     const plain = applied(documentOf(source, paragraph("00000009", [run("next")])), split);
@@ -1119,4 +1121,96 @@ describe("section-aware tracked editor joins", () => {
       blocks(document),
     );
   });
+});
+
+test("tracked paragraph patches and joins keep one pending property review and its baseline", () => {
+  for (const alignment of ["left", "center", "end"] as const) {
+    const pending = {
+      type: "paragraphPropertyChange" as const,
+      info: {
+        id: 7,
+        author: "Other",
+        date: "2026-01-01T00:00:00Z",
+        initials: "OA",
+        rsid: "00000001",
+        utcDate: { attribute: "w16du:dateUtc", value: "2026-01-01T00:00:00Z" },
+      },
+      previousFormatting: { alignment: "start" as const },
+    };
+    let document = documentOf(
+      paragraph("00000001", [run("first")], { formatting: { styleId: "Heading1" } }),
+      paragraph("00000002", [run("second")], {
+        formatting: { alignment },
+        propertyChanges: [pending],
+      }),
+    );
+    for (const nextAlignment of ["center", "right", "end"] as const) {
+      const previous = blocks(document).at(1);
+      const patch = applied(document, {
+        type: DOCUMENT_OP_TYPES.SET_PARAGRAPH_PROPS,
+        story: OP_STORIES.MAIN,
+        blockId: "00000002",
+        patch: { alignment: nextAlignment },
+        revision: stamp(1),
+      });
+      if (
+        previous?.type === "paragraph" &&
+        previous.formatting?.alignment !== nextAlignment &&
+        previous.propertyChanges?.at(0)?.info.author === "Other"
+      ) {
+        expect(patch.revisions).toEqual([7]);
+      }
+      document = patch.document;
+    }
+    const joined = applied(document, {
+      type: DOCUMENT_OP_TYPES.JOIN_BLOCKS,
+      story: OP_STORIES.MAIN,
+      blockId: "00000001",
+      nextBlockId: "00000002",
+      revision: stamp(1),
+      newIds: { revision: [2] },
+    });
+    const survivor = blocks(joined.document).at(1);
+    expect(survivor?.type === "paragraph" && survivor.propertyChanges).toEqual([
+      { ...pending, info: { id: 7, author: "Reviewer", date: DATE, rsid: "00000001" } },
+    ]);
+    expect(survivor?.type === "paragraph" && survivor.formatting).toEqual({ styleId: "Heading1" });
+    const rejected = resolved(joined.document, [7], REVISION_DECISIONS.REJECT);
+    const restoredBaseline = blocks(rejected).at(1);
+    expect(restoredBaseline?.type === "paragraph" && restoredBaseline.formatting).toEqual({
+      alignment: "start",
+    });
+  }
+});
+
+test("a new first split half records its own review without moving the surviving half's pending id", () => {
+  const pending = {
+    type: "paragraphPropertyChange" as const,
+    info: { id: 7, author: "Original author" },
+    previousFormatting: { alignment: "start" as const },
+  };
+  const original = documentOf(
+    paragraph("00000001", [run("alpha")], {
+      formatting: { alignment: "center" },
+      propertyChanges: [pending],
+    }),
+  );
+  const split = applied(original, {
+    type: DOCUMENT_OP_TYPES.SPLIT_BLOCK,
+    at: at("00000001", 2),
+    newBlockId: "00000002",
+    newParagraph: { formatting: { alignment: "end" } },
+    revision: stamp(1),
+    newIds: { revision: [2, 3] },
+  });
+  const first = blocks(split.document).at(0);
+  const second = blocks(split.document).at(1);
+  expect(first?.type === "paragraph" && first.propertyChanges).toEqual([
+    {
+      type: "paragraphPropertyChange",
+      info: { id: 1, author: "Reviewer", date: DATE },
+      previousFormatting: { alignment: "center" },
+    },
+  ]);
+  expect(second?.type === "paragraph" && second.propertyChanges).toEqual([pending]);
 });

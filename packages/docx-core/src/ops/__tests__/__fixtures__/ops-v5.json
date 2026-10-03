@@ -1713,19 +1713,6 @@
             "previousFormatting": {
               "alignment": "center"
             }
-          },
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center",
-              "keepNext": true
-            }
           }
         ]
       },
@@ -1769,22 +1756,7 @@
       "expected": {
         "formatting": {
           "alignment": "center"
-        },
-        "propertyChanges": [
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center",
-              "keepNext": true
-            }
-          }
-        ]
+        }
       },
       "review": {
         "formatting": {
@@ -1801,19 +1773,6 @@
             },
             "previousFormatting": {
               "alignment": "center"
-            }
-          },
-          {
-            "type": "paragraphPropertyChange",
-            "info": {
-              "id": 73,
-              "author": "Reviewer",
-              "date": "2026-02-03T04:05:06Z",
-              "initials": "R"
-            },
-            "previousFormatting": {
-              "alignment": "center",
-              "keepNext": true
             }
           }
         ]

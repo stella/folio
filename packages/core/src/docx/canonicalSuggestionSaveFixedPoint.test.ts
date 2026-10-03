@@ -20,7 +20,7 @@ import { parseDocumentBody } from "./documentParser";
 import { getTrackedChangeStatsFromDoc } from "../ai-edits/read";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
 
-import type { Document } from "../types/document";
+import type { BlockContent, Document, Paragraph } from "../types/document";
 import { createEmptyDocument } from "../utils/createDocument";
 import { parseDocx } from "./parser";
 import { createDocx } from "./rezip";
@@ -313,3 +313,148 @@ test("every paragraph mark kind retains absent, empty and populated formatting",
     }
   }
 });
+
+test.each(["body", "cell"] as const)(
+  "repeated paragraph formatting and joins fold to one save-stable review in a %s",
+  async (container) => {
+    const paragraphs = [
+      {
+        type: "paragraph",
+        paraId: "00000011",
+        formatting: { alignment: "center", styleId: "Heading1" },
+        content: [{ type: "run", content: [{ type: "text", text: "alpha" }] }],
+      },
+      {
+        type: "paragraph",
+        paraId: "00000012",
+        formatting: { alignment: "end", styleId: "Normal" },
+        propertyChanges: [
+          {
+            type: "paragraphPropertyChange",
+            info: {
+              id: 8,
+              author: "Original author",
+              date: "2026-01-01T00:00:00Z",
+              initials: "OA",
+            },
+            previousFormatting: { alignment: "start", styleId: "Normal" },
+          },
+        ],
+        content: [{ type: "run", content: [{ type: "text", text: "omega" }] }],
+      },
+    ] satisfies Paragraph[];
+    const content =
+      container === "body"
+        ? paragraphs
+        : ([
+            {
+              type: "table",
+              rows: [{ type: "tableRow", cells: [{ type: "tableCell", content: paragraphs }] }],
+            },
+          ] satisfies BlockContent[]);
+    const seed = createEmptyDocument();
+    seed.package.document.content = content;
+    const original = await parseDocx(await createDocx(seed), {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    const repeated = applyDocumentOps(original, [
+      {
+        type: "setParagraphProps",
+        story: OP_STORIES.MAIN,
+        blockId: "00000012",
+        patch: { alignment: "right" },
+        revision: {
+          id: 100,
+          author: "First reviewer",
+          date: "2026-02-01T00:00:00Z",
+          initials: "FR",
+        },
+      },
+      {
+        type: "setParagraphProps",
+        story: OP_STORIES.MAIN,
+        blockId: "00000012",
+        patch: { styleId: "Heading2" },
+        revision: { id: 101, author: "Second reviewer", date: "2026-02-02T00:00:00Z" },
+      },
+    ]).unwrap();
+    const intent = {
+      type: "joinParagraphs",
+      story: OP_STORIES.MAIN,
+      blockId: "00000011",
+      nextBlockId: "00000012",
+    } as const;
+    const ids = createEditorIntentIdAllocator()(repeated.document, intent);
+    const plan = compileEditorIntent(repeated.document, {
+      intent,
+      mode: {
+        type: "suggesting",
+        revision: {
+          id: ids.revisionId,
+          author: "Latest reviewer",
+          date: "2026-02-03T00:00:00Z",
+        },
+        newIds: ids.newIds,
+      },
+    }).unwrap();
+    const joined = applyDocumentOps(repeated.document, plan.ops).unwrap();
+    expect(
+      applyDocumentOps(joined.document, [...joined.inverse, ...repeated.inverse]).unwrap().document,
+    ).toStrictEqual(original);
+    const saved = await createDocx(joined.document);
+    const reopened = await parseDocx(saved, { preloadFonts: false, detectVariables: false });
+    const savedAgain = await createDocx(reopened);
+    const reopenedAgain = await parseDocx(savedAgain, {
+      preloadFonts: false,
+      detectVariables: false,
+    });
+    expect(reopened.package.document.content).toStrictEqual(
+      joined.document.package.document.content,
+    );
+    expect(reopenedAgain.package.document.content).toStrictEqual(reopened.package.document.content);
+    const modelParagraphs = (document: Document) =>
+      container === "body"
+        ? document.package.document.content
+        : document.package.document.content.flatMap((block) =>
+            block.type === "table"
+              ? block.rows.flatMap((row) => row.cells.flatMap((cell) => cell.content))
+              : [],
+          );
+    const survivor = modelParagraphs(reopenedAgain).at(1);
+    if (survivor?.type !== "paragraph") panic("Expected the pending join survivor");
+    expect(survivor.propertyChanges).toEqual([
+      {
+        type: "paragraphPropertyChange",
+        info: { id: 8, author: "Latest reviewer", date: "2026-02-03T00:00:00Z" },
+        previousFormatting: { alignment: "start", styleId: "Normal" },
+        currentFormatting: { alignment: "center", styleId: "Heading1" },
+      },
+    ]);
+    expect(survivor.formatting).toEqual({ alignment: "center", styleId: "Heading1" });
+    for (const decision of Object.values(REVISION_DECISIONS)) {
+      const resolution = {
+        type: "resolveRevision",
+        story: OP_STORIES.MAIN,
+        revisionIds: [8],
+        decision,
+      } as const;
+      const resolved = applyDocumentOps(reopenedAgain, [resolution]).unwrap();
+      const resolvedBeforeSave = applyDocumentOps(joined.document, [resolution]).unwrap();
+      expect(resolved.document.package.document.content).toStrictEqual(
+        resolvedBeforeSave.document.package.document.content,
+      );
+      const reviewed = modelParagraphs(resolved.document).at(1);
+      if (reviewed?.type !== "paragraph") panic("Expected the reviewed survivor");
+      expect(reviewed.formatting).toEqual(
+        decision === REVISION_DECISIONS.ACCEPT
+          ? { alignment: "center", styleId: "Heading1" }
+          : { alignment: "start", styleId: "Normal" },
+      );
+      expect(reviewed.propertyChanges).toBeUndefined();
+      expect(applyDocumentOps(resolved.document, resolved.inverse).unwrap().document).toStrictEqual(
+        reopenedAgain,
+      );
+    }
+  },
+);

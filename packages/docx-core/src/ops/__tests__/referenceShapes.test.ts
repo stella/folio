@@ -76,7 +76,14 @@ const edited = (document: Document, ops: readonly DocumentOp[]): BlockContent[] 
   const undone = applyDocumentOps(applied.value.document, applied.value.inverse);
   if (undone.isErr()) throw undone.error;
   expect(undone.value.document).toStrictEqual(document);
-  return applied.value.document.package.document.content;
+  // Reference OOXML shapes omit operation-private cut provenance. The exact
+  // model (including provenance) is still checked by the inverse above and
+  // the resolution-provenance properties.
+  return applied.value.document.package.document.content.map((block) => {
+    if (block.type !== "paragraph" || block.pPrMark === undefined) return block;
+    const { resolutionJoin: _resolutionJoin, ...pPrMark } = block.pPrMark;
+    return Object.assign({}, block, { pPrMark });
+  });
 };
 
 const change = (id: number, previous?: ParagraphFormatting): ParagraphPropertyChange =>
@@ -313,7 +320,14 @@ const resolvedAll = (
   const undone = applyDocumentOps(applied.value.document, applied.value.inverse);
   if (undone.isErr()) throw undone.error;
   expect(undone.value.document).toStrictEqual(document);
-  return applied.value.document.package.document.content;
+  // Reference OOXML shapes omit operation-private cut provenance. The exact
+  // model (including provenance) is still checked by the inverse above and
+  // the resolution-provenance properties.
+  return applied.value.document.package.document.content.map((block) => {
+    if (block.type !== "paragraph" || block.pPrMark === undefined) return block;
+    const { resolutionJoin: _resolutionJoin, ...pPrMark } = block.pPrMark;
+    return Object.assign({}, block, { pPrMark });
+  });
 };
 
 const ACCEPT = REVISION_DECISIONS.ACCEPT;
