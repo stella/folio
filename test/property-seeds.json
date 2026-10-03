@@ -755,5 +755,13 @@
       "note": "Cross-paragraph tracked plans must import the shared story lookup when comparing direct and tracked survivors",
       "date": "2026-10-01"
     }
+  ],
+  "scripts/painter-target-commit.property.test.ts::paint commits re-resolve changing targets and return one consistent snapshot": [
+    {
+      "seed": 83
+    },
+    {
+      "seed": 197
+    }
   ]
 }
