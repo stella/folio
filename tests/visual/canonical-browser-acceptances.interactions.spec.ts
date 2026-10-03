@@ -53,7 +53,7 @@ for (const { seed, trace } of canonicalBrowserAcceptances) {
         });
         return;
       }
-      await page.waitForFunction(() => globalThis.__folioCanonical?.canSnapshot());
+      await page.waitForFunction(() => globalThis.__folioCanonical != null);
       expect(
         await page.evaluate(
           async (bytes) => globalThis.__folioCanonical?.load(bytes),
