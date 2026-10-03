@@ -57,6 +57,7 @@ import { TaggedError } from "better-result";
 import JSZip from "jszip";
 
 import { deterministicHexId } from "../utils/hexId";
+import { resolvePackageRelationshipTarget } from "./packageParts";
 import { spliceXml } from "./selectiveXmlPatch";
 import { loadDocxArchive } from "./server/boundedArchive";
 import { scanStreamingXmlElements } from "./streamingXmlParser";
@@ -439,19 +440,10 @@ const mainDocumentPart = (rels: string, entries: readonly string[]): string => {
   )
     throw createEnsureParaIdsError("Package must have one internal officeDocument relationship");
   const target = getAttribute(document, null, "Target");
-  if (!target || /[\\?#]/u.test(target))
-    throw createEnsureParaIdsError("Invalid officeDocument target");
-  const segments: string[] = [];
-  for (const segment of target.replace(/^\//u, "").split("/")) {
-    if (segment === "" || segment === ".") continue;
-    if (segment === "..") {
-      if (segments.pop() === undefined)
-        throw createEnsureParaIdsError("officeDocument target escapes the package");
-      continue;
-    }
-    segments.push(segment);
-  }
-  const name = entries.find((entry) => entry.toLowerCase() === segments.join("/").toLowerCase());
+  const partPath =
+    target === undefined ? undefined : resolvePackageRelationshipTarget(target, "_rels/.rels");
+  if (partPath === undefined) throw createEnsureParaIdsError("Invalid officeDocument target");
+  const name = entries.find((entry) => entry.toLowerCase() === partPath);
   if (name === undefined) throw createEnsureParaIdsError("officeDocument part not found");
   return name;
 };
