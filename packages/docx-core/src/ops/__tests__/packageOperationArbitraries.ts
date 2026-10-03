@@ -157,6 +157,12 @@ export const packageDocumentArbitrary = opSeedArbitrary.map((seed): Document => 
       footers: new Map([["rIdFooter", footer]]),
       footnotes: [footnote],
       endnotes: [endnote],
+      numbering: {
+        abstractNums: [
+          { abstractNumId: 1, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+        ],
+        nums: [{ numId: 1, abstractNumId: 1 }],
+      },
       settings: { defaultTabStop: 720 },
       properties: {
         title: "operation fixture",
@@ -223,6 +229,21 @@ const inverseCase = (
 };
 
 /** Total by the actual op union, rather than a separately maintained kind list. */
+const numberingCreation = ({ document }: CaseArgs) => {
+  let numId = 1;
+  while (document.package.numbering?.nums.some((num) => num.numId === numId)) numId += 1;
+  let abstractNumId = 1;
+  while (
+    document.package.numbering?.abstractNums.some((num) => num.abstractNumId === abstractNumId)
+  )
+    abstractNumId += 1;
+  return {
+    type: DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE,
+    num: { numId, abstractNumId },
+    abstractNum: { abstractNumId, levels: [{ ilvl: 0, numFmt: "decimal", lvlText: "%1." }] },
+  } satisfies DocumentOp;
+};
+
 export const PACKAGE_OP_CASES = {
   insertText: direct("insertText"),
   insertContent: direct("insertContent"),
@@ -458,6 +479,26 @@ export const PACKAGE_OP_CASES = {
       type: "setSectionProps",
       sectionIndex: 0,
       patch: { pageWidth: 13000 + (args.seed.first % 100) },
+    },
+  }),
+  createNumberingInstance: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: numberingCreation(args),
+  }),
+  deleteNumberingInstance: (args: CaseArgs): GeneratedCase =>
+    inverseCase(args, numberingCreation(args), "deleteNumberingInstance"),
+  setSectionEndpoint: (args: CaseArgs): GeneratedCase => ({
+    document: args.document,
+    op: {
+      type: "setSectionEndpoint",
+      endpoint: { type: "final" },
+      properties: {
+        type: "present",
+        value: {
+          ...args.document.package.document.finalSectionProperties,
+          pageWidth: 13000 + (args.seed.first % 100),
+        },
+      },
     },
   }),
   restoreStoryParts: (args: CaseArgs): GeneratedCase =>

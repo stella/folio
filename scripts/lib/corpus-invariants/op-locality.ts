@@ -193,7 +193,10 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
 };
 
 const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOptions): Document => {
-  if (op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE) {
+  if (
+    op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
+    op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE
+  ) {
     const out = structuredClone(document);
     if (out.package.numbering !== undefined) {
       out.package.numbering.nums = out.package.numbering.nums.filter(
@@ -204,7 +207,9 @@ const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOpti
           ({ abstractNumId }) => abstractNumId !== op.abstractNum?.abstractNumId,
         );
       if (
-        original.package.numbering === undefined &&
+        (original.package.numbering === undefined ||
+          (op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE &&
+            op.restore?.type !== "definitions")) &&
         out.package.numbering.nums.length === 0 &&
         out.package.numbering.abstractNums.length === 0
       ) {
@@ -212,6 +217,22 @@ const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOpti
         else delete out.package.numbering;
       }
     }
+    return out;
+  }
+  if (op.type === DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT) {
+    const out = structuredClone(document);
+    if (op.endpoint.type === "final") delete out.package.document.finalSectionProperties;
+    else {
+      const endpoint = op.endpoint;
+      for (const block of out.package.document.content)
+        if (
+          block.type === "paragraph" &&
+          block.paraId !== undefined &&
+          idKey(block.paraId) === idKey(endpoint.blockId)
+        )
+          delete block.sectionProperties;
+    }
+    delete out.package.document.sections;
     return out;
   }
   if (op.type === DOCUMENT_OP_TYPES.RESTORE_STORY_PARTS)
@@ -428,7 +449,10 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
   for (const { op } of sequence.steps) {
-    if (op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE) {
+    if (
+      op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
+      op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE
+    ) {
       lifecycle = true;
       ownedRelationshipTypes.add(RELATIONSHIP_TYPES.numbering);
     }
@@ -457,6 +481,7 @@ export const serializedLocalityFailures = ({
         lifecycle = true;
       }
     }
+    if (op.type === DOCUMENT_OP_TYPES.SET_SECTION_ENDPOINT) ownedPaths.add(documentPart);
     const story = addressedStory(op);
     if (story === OP_STORIES.MAIN) ownedPaths.add(documentPart);
     if (story !== undefined && story !== OP_STORIES.MAIN) {
