@@ -15,7 +15,7 @@
           "range": {
             "type": "textRange",
             "story": "main",
-            "blockId": "6C3D4F0C",
+            "blockId": "04D9A0FF",
             "startOffset": 18,
             "endOffset": 23,
             "selectedTextHash": "h4gr0cj"
@@ -26,7 +26,7 @@
         },
         {
           "type": "insertBeforeBlock",
-          "blockId": "6C3D4F0C",
+          "blockId": "04D9A0FF",
           "text": "Term supplier notice term term clause goods warranty."
         }
       ]
@@ -44,7 +44,7 @@
           "range": {
             "type": "textRange",
             "story": "main",
-            "blockId": "6C3D4F0C",
+            "blockId": "04D9A0FF",
             "startOffset": 3,
             "endOffset": 10,
             "selectedTextHash": "h2dcbi0"
@@ -61,7 +61,7 @@
       "operations": [
         {
           "type": "insertBeforeBlock",
-          "blockId": "2C3555E4",
+          "blockId": "483CD5EB",
           "text": "Clause agreement period written invoice written agreement supplier."
         }
       ]

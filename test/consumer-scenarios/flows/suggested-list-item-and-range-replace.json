@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "insertAfterBlock",
-          "blockId": "1308F7CE",
+          "blockId": "31617F9A",
           "text": "Invoice goods term clause period invoice period.",
           "styleId": "Heading2"
         }
@@ -27,7 +27,7 @@
           "range": {
             "type": "textRange",
             "story": "main",
-            "blockId": "1108F4A8",
+            "blockId": "412DDC7F",
             "startOffset": 8,
             "endOffset": 17,
             "selectedTextHash": "hnqfstq"

@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "replaceBlock",
-          "blockId": "1508FAF4",
+          "blockId": "483CD5EB",
           "text": "Notice buyer invoice buyer payment goods notice."
         }
       ]
@@ -23,7 +23,7 @@
       "operations": [
         {
           "type": "insertAfterBlock",
-          "blockId": "1508FAF4",
+          "blockId": "483CD5EB",
           "text": "Delivery period invoice payment period buyer schedule.",
           "numbering": {
             "start": "new",
@@ -35,7 +35,7 @@
           "range": {
             "type": "textRange",
             "story": "main",
-            "blockId": "1508FAF4",
+            "blockId": "483CD5EB",
             "startOffset": 41,
             "endOffset": 47,
             "selectedTextHash": "h4lgk0d"

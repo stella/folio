@@ -12,13 +12,13 @@
       "operations": [
         {
           "type": "insertAfterBlock",
-          "blockId": "333153C8",
+          "blockId": "682BB056",
           "text": "Goods buyer payment invoice period supplier buyer term.",
           "styleId": "Heading2"
         },
         {
           "type": "deleteBlock",
-          "blockId": "2D314A56"
+          "blockId": "3BEFEC68"
         }
       ]
     }

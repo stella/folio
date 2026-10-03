@@ -12,7 +12,7 @@
       "operations": [
         {
           "type": "deleteBlock",
-          "blockId": "1688D395"
+          "blockId": "1BF99289"
         }
       ]
     },
@@ -22,7 +22,7 @@
       "operations": [
         {
           "type": "insertAfterBlock",
-          "blockId": "1688D395",
+          "blockId": "1BF99289",
           "text": "Party period delivery buyer.",
           "styleId": "Heading2"
         }

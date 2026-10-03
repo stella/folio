@@ -12,12 +12,12 @@
       "operations": [
         {
           "type": "mergeBlockWithNext",
-          "blockId": "0D88C56A",
+          "blockId": "7B806329",
           "separator": " "
         },
         {
           "type": "deleteBlock",
-          "blockId": "1688D395"
+          "blockId": "1BF99289"
         }
       ]
     }

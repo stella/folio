@@ -36,7 +36,13 @@ import {
   targetFeatureSignature,
   type FeatureCoverage,
 } from "./feature-coverage.ts";
-import { COLLISION_FIXTURES, FIXTURES, openReviewer, STORY_FIXTURES } from "./documents.ts";
+import {
+  COLLISION_FIXTURES,
+  FIXTURES,
+  openReviewer,
+  pinnedParaIdsOf,
+  STORY_FIXTURES,
+} from "./documents.ts";
 import { normalizeAssertion } from "./failure-fingerprints.ts";
 import {
   type Action,
@@ -94,7 +100,7 @@ export type Flow = {
   trace: FlowStep[];
   /** The running step, when a flow file planned it. */
   planned: FlowStep | undefined;
-  /** Ids of the fixture's blocks, which every run of the flow opens with. */
+  /** Ids of the fixture's blocks that every run of the flow opens with (`stableFixtureIds`). */
   fixtureIds: ReadonlySet<string>;
   swarm: string[] | undefined;
   weights: FeatureCoverage | undefined;
@@ -184,7 +190,8 @@ const randomOperations = (
 
 // A block a flow inserted gets a new id on every run, so a pinned operation
 // names it by its position in the story's blocks when the step drew, `@<n>`.
-// A fixture block keeps its id, which survives steps before it going away.
+// A fixture block keeps its id (`stableFixtureIds`), which survives steps
+// before it going away.
 const POSITION = /^@(\d+)$/u;
 
 const mapBlockIds = (value: unknown, map: (id: string) => string): unknown => {
@@ -699,6 +706,48 @@ type Plan = {
   origin?: string;
 };
 
+type LoadFixtureOptions = Pick<FlowFile, "fixture" | "kind" | "generation">;
+
+const loadFixture = ({ fixture, kind, generation }: LoadFixtureOptions): Promise<Uint8Array> => {
+  if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument();
+  if (isPublicCorpusFixture(fixture)) return loadPublicCorpusFixture(fixture);
+  const load = flowFixtures(kind, generation)[fixture];
+  if (load === undefined) {
+    throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
+  }
+  return load();
+};
+
+/**
+ * The fixture block ids a flow may name verbatim: a public-corpus file's own
+ * ids, or the paraIds the fixture's model carried (support/documents.ts
+ * `pinnedParaIdsOf`). Any other id was minted while the fixture was built (a
+ * reviewer edit's new paragraph) and differs between runs, so a flow names
+ * that block by position.
+ */
+const stableFixtureIds = async (fixture: string, bytes: Uint8Array): Promise<Set<string>> => {
+  const ids = blockIdsOf(await openReviewer(bytes));
+  if (isPublicCorpusFixture(fixture)) return ids;
+  const pinned = pinnedParaIdsOf(bytes);
+  return new Set([...ids].filter((id) => pinned.has(id)));
+};
+
+/**
+ * The block ids `flow` names verbatim that its fixture, built now, does not
+ * open with as stable ids: the references a replay would no longer resolve.
+ */
+export const unstableFixtureRefs = async (flow: FlowFile): Promise<string[]> => {
+  const stable = await stableFixtureIds(flow.fixture, await loadFixture(flow));
+  const refs = new Set<string>();
+  for (const { operations } of flow.steps) {
+    mapBlockIds(operations ?? [], (id) => {
+      if (!POSITION.test(id) && !stable.has(id)) refs.add(id);
+      return id;
+    });
+  }
+  return [...refs];
+};
+
 const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   registerFeatureOperations(Object.keys(GENERATORS));
   const { seed, kind, generation, fixture, mode } = plan;
@@ -710,15 +759,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
   ) {
     throw new TypeError("flow file: swarm contains an unknown or unsupported operation kind");
   }
-  const load = (() => {
-    if (fixture === LARGE_DOCUMENT_FIXTURE) return largeDocument;
-    if (isPublicCorpusFixture(fixture)) return () => loadPublicCorpusFixture(fixture);
-    return flowFixtures(kind, generation)[fixture];
-  })();
-  if (load === undefined) {
-    throw new TypeError(`${kind} flow (${generation}): no fixture ${fixture}`);
-  }
-  const bytes = await load();
+  const bytes = await loadFixture({ fixture, kind, generation });
   const weights = plan.weights === undefined ? undefined : parseFeatureCoverage(plan.weights);
   const flow: Flow = {
     reviewer: await openReviewer(bytes),
@@ -733,7 +774,7 @@ const execute = async (plan: Plan, options: RunOptions): Promise<FlowRun> => {
     trace: [],
     planned: undefined,
     // Read from a reviewer of its own, so the flow's never serves an extra read.
-    fixtureIds: blockIdsOf(await openReviewer(bytes)),
+    fixtureIds: await stableFixtureIds(fixture, bytes),
     swarm: plan.swarm,
     weights,
     operationHits: weights === undefined ? undefined : featureOperationHits(weights),

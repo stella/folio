@@ -16,7 +16,7 @@ import { readFlowDir } from "../support/corpus.ts";
 import { reportScenarioFailure } from "../support/failure-fingerprints.ts";
 import { type FlowFile, parseFlowFile } from "../support/flow-file.ts";
 import { flowReplay, flowTestName, relationEnv } from "../support/fuzz-loop.ts";
-import { type FlowRun, runFlowFile, vacuousSteps } from "../support/fuzz.ts";
+import { type FlowRun, runFlowFile, unstableFixtureRefs, vacuousSteps } from "../support/fuzz.ts";
 import {
   expectedFailure,
   FINDING_SYMPTOMS,
@@ -79,6 +79,16 @@ if (requested !== undefined && requested !== "") {
       listed.filter((file) => !files.has(file)),
       [],
     );
+  });
+  test("checked-in flows name fixture blocks only by the paraIds fixture models pin", async () => {
+    // A fixture block id that came from serialization or a build-time edit
+    // changes without the fixture changing, and the flow then acts on nothing.
+    const unstable: Record<string, string[]> = {};
+    for (const { file, flow } of corpus) {
+      const refs = await unstableFixtureRefs(flow);
+      if (refs.length > 0) unstable[file] = refs;
+    }
+    assert.deepEqual(unstable, {});
   });
   for (const { file, flow } of corpus) {
     const name = `checked-in flow ${file}`;
