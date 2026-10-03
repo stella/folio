@@ -226,10 +226,6 @@ export const DOCUMENT_OP_TYPES: Readonly<{
     readonly SET_ROW_PROPS: "setRowProps";
     readonly SET_TABLE_PROPS: "setTableProps";
     readonly SET_TABLE: "setTable";
-    readonly FIRST: "first";
-    readonly SECOND: "second";
-    readonly ACCEPT: "accept";
-    readonly REJECT: "reject";
 }>;
 
 // @public
@@ -352,7 +348,7 @@ export type InsertBlocksOp = {
     newIds?: NewIds;
 };
 
-// @public (undocumented)
+// @public
 export type InsertColumnOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.INSERT_COLUMN;
     column: number;
@@ -436,9 +432,6 @@ export type JoinInlineOp = {
 export const MAX_BATCH_WIRE_BYTES: number;
 
 // @public
-export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
-
-// @public (undocumented)
 export type MergeCellsOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.MERGE_CELLS;
     top: number;
@@ -447,6 +440,9 @@ export type MergeCellsOp = TableEditTarget & {
     right: number;
     newBlockIds: readonly string[];
 };
+
+// @public
+export function mergeRunContent(content1: RunContent[], content2: RunContent[]): RunContent[];
 
 // @public
 export type NewIds = {
@@ -676,13 +672,13 @@ export type SetSectionPropsOp = {
     patch: FormattingPatch<SectionProperties>;
 };
 
-// @public (undocumented)
+// @public
 export type SetTableGridOp = TableEditTarget & {
     type: typeof DOCUMENT_OP_TYPES.SET_TABLE_GRID;
     columnWidths: readonly number[];
 };
 
-// @public (undocumented)
+// @public
 export type SetTableOp = {
     type: typeof DOCUMENT_OP_TYPES.SET_TABLE;
     story: OpStory;
@@ -706,12 +702,6 @@ export type SetTableRowsOp = {
     rows: readonly TableRow[];
 };
 
-// @public (undocumented)
-export type SplitCellOp = TableEditTarget & {
-    type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
-    newBlockIds: readonly string[];
-};
-
 // @public
 export const SPLIT_HALVES: Readonly<{
     readonly FIRST: "first";
@@ -730,6 +720,12 @@ export type SplitBlockOp = {
     sectionView?: SectionViewChange;
     newIds?: NewIds;
     revision?: RevisionStamp;
+};
+
+// @public
+export type SplitCellOp = TableEditTarget & {
+    type: typeof DOCUMENT_OP_TYPES.SPLIT_CELL;
+    newBlockIds: readonly string[];
 };
 
 // @public
@@ -752,12 +748,10 @@ export const storyBody: (document: Document_2, story: OpStory) => DocumentBody;
 // @public (undocumented)
 export type TableEditOp = InsertColumnOp | DeleteColumnOp | MergeCellsOp | SplitCellOp | SetTableGridOp | SetCellPropsOp | SetRowPropsOp | SetTablePropsOp;
 
-// @public (undocumented)
-export type TableIntentOperation = {
-    [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {
+// @public
+export type TableIntentOperation = { [Kind in TableEditOp["type"]]: Omit<Extract<TableEditOp, {
         type: Kind;
-    }>, "revision" | "newIds" | "newBlockIds">;
-}[TableEditOp["type"]];
+    }>, "revision" | "newIds" | "newBlockIds">; }[TableEditOp["type"]];
 
 // @public
 export type TextPosition = {

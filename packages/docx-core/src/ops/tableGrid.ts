@@ -53,10 +53,12 @@ export const tableGrid = (
       let ownerIndex = index;
       if (tableCellVerticalMerge(cell.formatting?.vMerge) === TABLE_CELL_VERTICAL_MERGES.CONTINUE) {
         const above = previous.get(start);
+        const aboveMerge = tableCellVerticalMerge(above?.cell.formatting?.vMerge);
         if (
           !above ||
           above.end !== end ||
-          tableCellVerticalMerge(above.cell.formatting?.vMerge) === TABLE_CELL_VERTICAL_MERGES.NONE
+          (aboveMerge !== TABLE_CELL_VERTICAL_MERGES.RESTART &&
+            aboveMerge !== TABLE_CELL_VERTICAL_MERGES.CONTINUE)
         )
           return refuse();
         ownerRow = above.ownerRow;
