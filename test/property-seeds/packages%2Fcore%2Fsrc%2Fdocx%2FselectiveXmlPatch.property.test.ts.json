@@ -1,10 +1,26 @@
 {
+  "introduced review namespace is refused by ordinary splices and locally bound by structural splices": [
+    {
+      "seed": -230152313,
+      "path": "0:0:0",
+      "note": "a tracked-resolution attribute introduced a required root namespace binding",
+      "date": "2026-10-03"
+    }
+  ],
   "nested paragraph edits never apply overlapping source ranges": [
     {
       "seed": -1844025400,
       "path": "0:0:0:0",
       "note": "overlapping host and text-box paragraph replacements used stale source offsets",
       "date": "2026-09-30"
+    }
+  ],
+  "selective save preserves introduced review provenance through valid package reopen": [
+    {
+      "seed": 29495201,
+      "path": "1:0:0",
+      "note": "save/reopen across structural-route fallback; the selective-save contract permits null for package-wide refusals",
+      "date": "2026-10-03"
     }
   ]
 }
