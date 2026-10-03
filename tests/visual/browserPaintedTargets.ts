@@ -1,4 +1,4 @@
-import type { EditorView } from "prosemirror-view";
+import type { EditorState } from "prosemirror-state";
 import {
   getCaretPositionFromDom,
   clickToPositionDom,
@@ -7,7 +7,7 @@ import { resolvePainterTarget } from "./painterTargetCommit";
 import type { BrowserDragTarget } from "./browserInputTrace";
 
 type PaintedTargetEditor = {
-  getEditorRef: () => { getView: () => EditorView | null } | null;
+  getEditorRef: () => { getView: () => { state: EditorState } | null } | null;
   onLayoutChange: (listener: () => void) => () => void;
 };
 
