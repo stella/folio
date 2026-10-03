@@ -138,6 +138,10 @@ test.each(["fresh", "createParsed", "repack", "repackRaw"] as const)(
     const token = getSourceReplayToken(document);
     if (path !== "fresh") expect(token).toBeDefined();
     const before = structuredClone(document);
+    const privateProperties = Object.getOwnPropertySymbols(document).map((symbol) => ({
+      symbol,
+      descriptor: Object.getOwnPropertyDescriptor(document, symbol),
+    }));
     freezeGraph(document);
     const raw = path === "repackRaw" ? await unzipDocx(source) : undefined;
     let output: ArrayBuffer;
@@ -154,7 +158,13 @@ test.each(["fresh", "createParsed", "repack", "repackRaw"] as const)(
         output = await repackDocxFromRaw(document, raw, { updateModifiedDate: false });
         break;
     }
-    expect(document).toEqual(before);
+    expect(structuredClone(document)).toEqual(before);
+    expect(Object.getOwnPropertySymbols(document)).toEqual(
+      privateProperties.map(({ symbol }) => symbol),
+    );
+    for (const { symbol, descriptor } of privateProperties) {
+      expect(Object.getOwnPropertyDescriptor(document, symbol)?.value).toBe(descriptor?.value);
+    }
     expect(getSourceReplayToken(document)).toBe(token);
     const zip = await JSZip.loadAsync(output);
     const relationshipParts = Object.values(zip.files).filter(({ name }) => name.endsWith(".rels"));
