@@ -18,6 +18,7 @@ const CORE = "packages/core/src";
 
 export const RESERVED_VALUE_READERS = {
   /** `w:numId` 0 names no numbering definition. */
+  numberingLevel: "packages/docx-core/src/model/numberingLevel.ts#isNumberingLevel",
   numberingReference: "packages/docx-core/src/model/paragraphNumbering.ts#isNumberingReference",
   /** Reads `w:numPr`, `w:outlineLvl`, `w:ind`, `w:framePr` and the pPr toggles. */
   paragraphProperties: `${CORE}/docx/paragraphProperties.ts#parseParagraphProperties`,

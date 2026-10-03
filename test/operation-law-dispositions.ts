@@ -12,6 +12,9 @@ export type OperationLawDisposition =
 /** Every operation needs an explicit law disposition; fixed cases return to holds. */
 export const OPERATION_LAW_DISPOSITIONS = {
   createHeaderFooter: "holds",
+  createNumberingInstance: "holds",
+  deleteNumberingInstance: "holds",
+  setSectionEndpoint: "holds",
   removeHeaderFooter: "holds",
   addNote: "holds",
   removeNote: "holds",

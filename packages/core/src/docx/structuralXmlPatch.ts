@@ -2,7 +2,7 @@
 import { canonicalJson } from "../utils/canonicalJson";
 import { parseDocumentBody } from "./documentParser";
 import { paraIdAttribute } from "./paraIdAttribute";
-import { spliceXml, type XmlSplice } from "./selectiveXmlPatch";
+import { spliceSupportsRootNamespaces, spliceXml, type XmlSplice } from "./selectiveXmlPatch";
 import { readRootNamespaceBindings, serializePartElement } from "./serializer/partNamespaces";
 import {
   getChildElements,
@@ -253,5 +253,15 @@ export const buildStructuralDocumentPatch = ({
   }
   if (pending.length > 0)
     splices.push({ start: source.bodyEnd, end: source.bodyEnd, newXml: pending.join("") });
+  if (
+    !spliceSupportsRootNamespaces({
+      originalXml,
+      serializedXml,
+      fragments: splices.map(({ newXml }) => newXml).filter(Boolean),
+      originalRoot: source.root,
+      serializedRoot: current.root,
+    })
+  )
+    return null;
   return spliceXml(originalXml, splices);
 };

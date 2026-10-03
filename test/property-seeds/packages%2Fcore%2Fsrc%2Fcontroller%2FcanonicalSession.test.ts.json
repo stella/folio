@@ -19,6 +19,11 @@
       "path": "2:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:0:2:3:0:0:0:0:0:1:0:0:4:1:1:2",
       "note": "Review equivalence canonicalizes adjacent equivalent runs while exact undo retains authored structure.",
       "date": "2026-10-02"
+    },
+    {
+      "seed": 11,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
     }
   ]
 }

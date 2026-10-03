@@ -1,37 +1,5 @@
 {
-  "a planned tracked deletion removes only the author's own insertions": [
-    {
-      "seed": 1491020740,
-      "path": "196:2:1:1:1:3:3:3:7:8:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:11:11:11:10:11:12:10:15:11:10:11:13:11:11:5:9:10:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9",
-      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 35362653,
-      "path": "708:0:0:0:0:0:0:1:5:4:4:4:4:6:6:7:8:8:8:8:8:11:10:10:11:12:13:13:13:13:14:14:18:16:16:16:16:16:16:16:16:17:16:17:42:42:42:42:42:42:42:42:42:42:42:1:2:2:3:3:32:30:31:29:29:29:30:29:29:29:35:29:30:29:32:32:32:32:32:32:32:32:32:33:33:33:33:33:33:33:33:33:33:33:33:33",
-      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
-      "date": "2026-09-30"
-    },
-    {
-      "seed": 1316760003,
-      "path": "362:0:0:0:0:0:0:5:4:4:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:4:4:4:4:4:4:4:4:4:4:5:4:4:6:4:4:8:4:5:5:4:4:6:6:4:15:7:9:8:7:9:8:7:7:9:7:7:7:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
-      "note": "Own moveTo content is an added revision just like insertion.",
-      "date": "2026-10-02"
-    }
-  ],
   "L1: accepting a tracked operation's revisions gives the direct operation's result": [
-    {
-      "seed": 1158783253,
-      "path": "474:0:0:0:0:0:0:5:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:3:3:3:3:3:3:3:3:4:2:4:3:4:4:3:3:5:3:3:3:4:5:4:4:3:3:3:5:3:3:3:3:3:3:5:6:3:3:11:10:3:7:7:7:7:8:10:7:9:7:8:7:11:7:7:7:7:7:7:8:8:7:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
-      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
-      "date": "2026-09-29"
-    },
-    {
-      "seed": -1097168474,
-      "path": "2789:0:0:0:0:0:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:4:7:8:7:8:8:8:8:8:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:13:39:0:5:38:32:31:33:32:31:33:31:31:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
-      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
-      "date": "2026-09-30"
-    },
     {
       "seed": -618669412,
       "path": "681:0:0:0:0:0:0:0:0:0:0:3:2:2:2:2:3:2:2:2:4:5:4:5:5:5:5:6:5:5:5:5:5:5:7:7:7:7:8:9:8:9:8:8:8:8:8:8:8:8:8:9:8:9:9:8:10:8:11:9:12:9:12:9:8:8:8:8:8:15:31:38:31:31:31:31:31:31:31:31:31:31:31:32:31:31:32:31:31:33:31:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32",
@@ -45,8 +13,49 @@
       "date": "2026-10-03"
     },
     {
+      "seed": 1158783253,
+      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -1097168474,
+      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -618669412,
+      "note": "Accepting a tracked join must preserve the trailing paragraph formatting.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": -1428670990,
+      "path": "3:0:0:0:0:0:0:1:1:1:1:1:1:2:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:3:1:2:1:2:1:1:4:1:1:1:1:1:1:2:1:3:6:6:6:6:6:6:6:6:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11",
+      "note": "Only newly allocated review IDs are reported; folds retain the original baseline and stable existing identity.",
+      "date": "2026-10-03"
+    },
+    {
       "seed": -1013725445,
-      "path": "7:0:0:0:0:0:0:1:0:2:2:2:2:2:3:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:34:34:34:34:34:34:34:39:41:43:41:2:40:40:40:40:35:36:34:34:34:34:34:34:34:34:34:34:34:34:34:36:34:34:34:34:34:34:34:34",
+      "note": "Keep the original seed after generator changes invalidated its old shrink path; only newly allocated review IDs are reported.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1158783253,
+      "path": "6:4:5:4:4:4:4:4:9:8:8:8:9:8:8:8:8:8:9:10:12:12:11:11:14:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:18:19:7:0:6:6:8:9:6:5:5:9:7:5:7:7:7:7:7:7:7:7:7:7:9:7:7:7:7:7:7:7:7:7:7",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1158783253,
+      "note": "Empty pre-existing revision wrappers must be normalized before direct or tracked operations; zero-width deletion acceptance diverged",
+      "date": "2026-09-29"
+    },
+    {
+      "seed": -1097168474,
+      "note": "Merging alike records at a seam must merge the seam inside them too; an accepted hyperlink insertion kept an empty inner wrapper the direct result's merge dropped",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -1013725445,
       "note": "Folded paragraph property reviews report their stable physical id; acceptance resolves the original review on both sides.",
       "date": "2026-10-03"
     }
@@ -59,30 +68,318 @@
       "date": "2026-09-30"
     },
     {
+      "seed": -1426848857,
+      "note": "Shared review projection must treat optional undefined formatting fields as absent; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-30"
+    },
+    {
       "seed": 487359569,
-      "path": "1983:0:0:0:0:0:0:0:0:2:1:2:2:2:2:2:2:2:4:15:14:15:14:14:14:14:16:16:16:16:16:16:16:17:17:17:17:17:17:17:17:17:18:18:15:0:13:13:13:13:13:13:13:13:13:16:13:13:13:13:13:27:17:16:11:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:15:27:24:24:26:26:26:26:26",
+      "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -1426848857,
+      "path": "15:1:0:3:2:3:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:12:7:19:22:46:46:46:46:46:46:46:46:46:46:46:48:46:46:46:46:46:46:46:46:46:46:46:46:46:46",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 487359569,
       "note": "A tracked split's new second half must keep the paragraph mark's run properties, which no property change records",
       "date": "2026-09-30"
     }
   ],
   "L3: resolving a run's revisions at once equals resolving each operation's in turn": [
     {
+      "seed": 1719811078,
+      "path": "30:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:17:6:9:6:12:12:17:17:12:15:14:13:12:21:13:12:12:12:12:12:12:15:35:13:15:15:15:15:15:15:15:15:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16",
+      "note": "resolution of an emptied bidi wrapper containing a comment reference folds it into its matching neighbour",
+      "date": "2026-09-30"
+    },
+    {
       "seed": -1171708191,
-      "path": "992:6:4:4:8:9:10:10:10:10:10:10:12:15:16:16:16:17:16:16:16:16:17:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:19:40:21:21:21:26:43:38:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:45:38:32:32:32:33:32:32:59:59:59:59:59:59:59:59:59:59:59:59:59:59:59:59:59:62:62:62:62:62:68:89:90:89:90:10:44:20:64:71:64:87:80:99:99:99:99:99:99:99:99:99:100:100:100:100:100:100:100:100:100:100:100:100:100:100:100:100:65:62:62:64:63:62:62:62:34:63:64:65:66:63:65:71:69:69:75:69:69:72:70:69:69:69:70:71:70:70:70:69:69:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:70:74:70:83:81:82:86:88:35:64:68:72:62:61:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62:62",
+      "note": "accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1710333384,
+      "note": "a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1719811078,
+      "note": "resolution of an emptied bidi wrapper containing a comment reference folds it into its matching neighbour; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": -1171708191,
+      "path": "49:5:5:8:8:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:15:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:20:20:20:21:15:6:17:22:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38",
+      "date": "2026-10-02",
+      "note": "Preserve exact identity provenance through tracked resolution and editor serialization."
+    },
+    {
+      "seed": 418052982,
+      "path": "122:2:1:7:7:12:14:14:14:14:20:23:25:26:29:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:31:31:31:31:32:41:38:31:31:39:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:40:49:59:46:46:46:76:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:48:48:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47:47",
+      "date": "2026-10-02",
+      "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": -1513138991,
+      "path": "997:5:7:7:7:7:11:10:13:13:13:13:14:13:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:22:27:30:27:21:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:29:29:29:29:29:4:18:20:19:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:21:22:22:21:24:24:26:2:29:32:31:26:26:26:26:26:26:26:27:27:27:27:27:27:27:27:27:27:28:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:27:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28:28",
+      "date": "2026-10-02",
+      "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
+    },
+    {
+      "seed": -1171708191,
+      "path": "4:2:3:3:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:2:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:6:5:5:5:6:6:6:6:5:5:5:5:5:5:5:5:5:5:5:5:5:34:34:3:3:33:32:32:32:32:32:34:33:32:35:32:37:33:32:32:33:33:33:33:33:33:33:33:33:33:33:35:33:33:33:33:33:33:33:33:33:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1977496298,
+      "path": "355:0:0:0:0:0:0:0:3:4:6:6:6:7:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:10:7:7:35:33:34:34:33:33:34:33:33:33:34:35:36:33:33:33:33:34:37:38:36:34:39:34:34:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:43:77:77:74:74:74:74:75:74:74:74:77:78:74:74:74:75:88:79:75:86:86:86:86:86:86:86:86:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87:87",
+      "note": "Preserve resolution provenance through ordered run review resolution.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1171708191,
       "note": "accepting a deletion emptied one piece of a cut wrapper and kept it, so accepting in turn left it beside the other piece where accepting at once folded it in; acceptance leaves no record it empties",
       "date": "2026-09-30"
     },
     {
       "seed": 1710333384,
-      "path": "832:1:0:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:4:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:6:22:11:6:6:6:9:32:13:12:12:11:11:11:11:11:11:11:11:11:11:11:11:12:12:11:11:12:11:11:12:14:12:13:13:12:12:13:12:12:12:12:13:12:12:12:12:12:12:12:12:12:13:12:13:13:13:13:13:13:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14",
       "note": "a paste open at its start cut a content control, its content going into the first piece; rejecting emptied that piece with no change resolved between the two, so it stayed beside the other; a container resolution empties meets its neighbours",
+      "date": "2026-09-30"
+    }
+  ],
+  "L4: a run of tracked operations is undone exactly, in reverse and as a batch": [
+    {
+      "seed": 249128062,
+      "path": "0:0:0:1:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -472165576,
+      "path": "12:0:1:0:0:0:0:0:1:1:1:1:1:1:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:6:3:1:10:5:4:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:7:9:9:9:9:9:9:9",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -436555599,
+      "path": "24:0:0:0:0:0:0:0:0:2:1:2:3:2:2:2:2:2:3:3:3:3:3:3:2:2:2:2:2:2:2:2:2:2:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:9:27:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:10:10:10:10:30:11:11:11:11:11:17:17:18:18:18:21:17:21:17:17:19:18:19:17:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 2014179339,
+      "path": "19:0:0:0:0:0:0:0:0:1:0:1:1:1:1:1:1:1:1:1:1:4:4:4:4:4:4:4:4:4:5:4:4:4:5:5:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:12:12:7:7:12:7:17:15:0:17:12:12:12:12:2:18:3:12:12:12:12:12:12:12:12:12:12:12:12:12:12:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14:14",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 152492092,
+      "path": "200:0:0:0:0:0:0:0:0:3:2:2:2:2:2:7:6:6:7:7:8:12:12:12:12:12:12:16:16:16:19:20:20:20:20:21:23:23:29:29:31:32:34:34:35:34:34:34:34:34:34:34:34:34:34:36:36:36:36:36:36:36:38:35:35:36:34:34:35:34:36:38:34:34:35:34:34:35:35:35:35:35:35:35:35:36:38:36:36:36:36:44:41:46:47:0:31:42:42:44:42:44:44:43:43:43:42:44:42:48:6:34:34:34:35:34:34:35:34:35:34:35:35:34:34:34:34:35:34:37:15:53:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:32:39:37:33:36:32:32:40:39:39:40:39:39:43:40:41:42:39:39:39:40:39:40:40:40:41:40:1:24:24:2:25:32:34:37:33:34:32:33:33:34:33:33:33:33:33:33:33:33:33:33:33:33:33:33:33:33:33:34:33:35:35:35:35:35:35",
+      "date": "2026-10-02",
+      "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
+    },
+    {
+      "seed": -1640368394,
+      "path": "11:0:0:0:0:0:0:3:2:2:2:2:2:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:7:4:9:6:4:5:4:4:4:4:4:6:4:4:4:5:4:4:5:5:5:5:5:5:5:5:6:8:6:6:6:11:6:6:6:18:6:13:9:14:9:9:9:9:9:9:9:10:11:9:11:9:13:11:14:13:11:12:11:11:11:18:11:11:11:11:13:13:13:13:13:13:13:13:13:13:13:13:15:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -579682301,
+      "path": "6:0:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:4:1:3:7:9:11:12:11:11:11:12:11:11:11:11:11:11:11:11:11:11:11:13:11:12:12:12:11:12:11:13:13:12:11:11:16:12:12:12:12:12:12:12:12:13:15:15:4:11:10:4:9:11:9:13:9:9:9:9:12:10:10:9:9:9:9:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -221212230,
+      "path": "2:4:3:3:3:9:8:8:9:8:8:8:8:8:0:1:2:2:2:2:2:2:2:0:0:0:0:0:0:0:0:0:0:3:6:22:22:22:22:22:4:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:18:19:27:30:20:19:19:20:23:27:23:23:23:24:24:23:24:26:23:24:24:23:24:23:23:24:24:24:24:24:24:24:24:24:24:24:26:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:24:41:29:28:27:40:27:27:31:27:27:27:27:27:27:27:27:27:29:29:29:29:29:29:29:29:29:29:29:30:30:30:30:30:30:30:30:30:30",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "L4: tracked operations and resolutions are undone exactly by their inverses": [
+    {
+      "seed": -1209234643,
+      "path": "7:0:0:0:0:0:2:1:2:3:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:5:5:5:5:5:5:5:5:6:4:4:4:4:4:5:4:4:4:4:11:4:4:4:6:4:4:4:4:4:4:6:4:11:11:11:11:11:11:11:11:11:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -1530264354,
+      "path": "7:0:0:0:0:0:0:0:0:0:3:2:3:2:2:2:2:3:3:3:3:3:3:3:3:2:5:4:2:2:3:2:4:3:2:2:2:2:7:7:7:7:7:7:7:7:7:11:8:12:8:9:8:9:8:7:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:12:12:12:12:12:12:12:12:12:12:12",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -2044852460,
+      "path": "2:0:0:0:0:0:0:1:0:1:1:2:1:1:1:1:2:2:2:3:2:2:2:4:2:2:3:2:4:2:2:2:2:2:4:3:2:2:2:4:2:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 749017515,
+      "path": "2:0:0:1:0:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:3:7:11:2:2:1:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:7:7:7:7:7:7:7",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -1110176322,
+      "path": "17:1:4:3:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:36:35:35:35:34:34:34:34:34:34:34:34:35:35:34:34:34:35:36:34:35:35:35:35:35:35:35:35:35:35:35:35:37:35:35:35:35:35:35:35:35:35:35:35",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 768165215,
+      "path": "8:2:5:4:4:4:4:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:11:27:28:27:29:28:28:27:27:28:29:29:27:27:32:32:32:32:32:32:32:32:32:32:32:32:34:32:32:32:32:32:32:32:32:32",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1811213953,
+      "path": "18:3:2:2:2:2:5:0:0:2:2:2:2:2:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:4:2:2:10:8:2:2:2:8:9:8:8:11:12:8:8:10:8:9:8:8:10:8:8:11:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "L5: equal inputs give equal results": [
+    {
+      "seed": -1958880906,
+      "path": "2:0:0:1:0:0:0:0:0:1:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": 522966059,
+      "path": "189:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:7:5:5:5:6:6:6:6:6:6:6:6:6:6:6",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -710638391,
+      "path": "156:1:1:1:1:1:2:1:3:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:34:36:34:34:34:34:0:31:32:32:32:32:32:32:32:32:32:32:32:32",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -1176200294,
+      "path": "149:0:0:0:0:0:0:1:1:1:1:1:1:1:3:3:3:3:3:3:3:5:7:6:7:7:7:7:7:7:7:7:7:7:7:7:0:0:4:4:4:4:4:4:4:4:4:31:9:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:10:8:8:8:8:0:3:3:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -122480978,
+      "path": "52:0:0:0:0:0:3:4:5:5:5:5:5:8:11:11:11:11:12:10:1:1:5:3:3:4:4:4:5:4:4:4:4:4:4:4:4:4:6:6:5:7:4:4:4:6:4:4:5:4:4:4:4:8:8:8:8:8:8:8:8:38:38:39:39:38:39:46:43:38:38:38:39:39:39:39:39:39:39:39:39:39:39:39:41:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1303943241,
+      "path": "12:0:0:0:0:0:0:1:3:3:5:8:13:12:2:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:6:5:11:6:5:11:5:5:5:5:8:5:7:7:7:7:7:7:7:7:12:12:3:13:11:12:12:12:12:12:12:12:12:12:12:12:14:12:12:12:12:12:12:12:12:12:12:12:12:12",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1744463560,
+      "path": "6:0:0:0:0:0:0:0:2:1:0:1:1:1:1:1:1:1:1:1:4:5:5:5:5:5:6:5:5:5:5:5:5:5:0:4:4:4:4:4:4:4:4:4:10:11:9:36:36:36:36:36:36:36:36:36:36:36:36:38:36:36:36:36:36:36:36:36:36:36",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "L6: an operation touches only the paragraphs it names or resolves": [
+    {
+      "seed": -972342326,
+      "path": "16:0:0:0:0:0:1:2:2:2:2:2:5:3:5:4:5:5:5:6:5:5:5:5:5:5:5:5:5:6:5:5:5:6:5:8:9:5:6:10:5:6:6:6:6:6:6:6:6:6:35:35:36:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:35:36:36:36:36:36:36:36:36:36:36:36:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38:38",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 503608757,
+      "path": "5:0:0:0:0:0:0:0:0:3:2:2:2:3:2:2:2:2:3:3:3:3:3:3:3:3:3:5:5:3:3:7:4:6:6:5:3:4:3:4:4:4:4:4:4:4:4:4:8:8:13:13:9:8:9:8:8:9:8:10:11:11:11:11:11:11:11:11:13:13:13:13:13:13:13:13:13:13",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 2096016674,
+      "path": "0:0:0:0:0:0:2:1:1:1:1:1:1:1:1:1:1:1:8:6:7:7:7:7:8:7:7:9:9:8:8:8:8:8:8:8:8:8:8:11:11:11:11:11:11:11:11:11:11:11:11:11:11:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:25:0:6:11:11:11:13:11:13:12:12:16:11:12:3:12:4:11:14:13:11:12:10:10:10:10:10:10:10:11:11:11:11:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "L7: no tracked operation marks a paragraph that ends its container": [
+    {
+      "seed": 51019285,
+      "path": "77:1:5:3:2:4:6:6:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:9:8:9:5:5:5:5:5:5:5:15:16:1:14:14:12:14:12:13:14:12:15:15:12:14:14:14:14:14:14:14:14:14:14:14:16:16:16:16:16:16:16:16:16:16",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 508723512,
+      "path": "32:0:0:0:0:0:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:6:6:6:6:6:6:6:7:7:7:8:7:7:7:8:7:8:8:8:8:8:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:17:9:9:17:9:23:30:25:29:23:23:24:23:23:24:23:23:23:24:24:24:24:24:24:24:24:24:26:24:24:24:24:24:24:24:24:24:24:24:24:24",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1123425962,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:1:2:2:2:3:2:2:2:4:4:4:4:4:4:5:5:5:5:5:5:5:5:6:5:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:5:19:17:5:10:8:15:9:10:10:9:10:15:14:2:14:13:13:13:13:13:13:14:13:13:14:14:13:15:14:21:47:47:47:47:47:47:47:47:47:47:47:47:49:47:47:47:47:47:47:47:47",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "a planned tracked deletion removes only the author's own insertions": [
+    {
+      "seed": 1491020740,
+      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
       "date": "2026-09-30"
     },
     {
-      "seed": 1719811078,
-      "path": "30:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:5:5:5:5:5:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:7:17:6:9:6:12:12:17:17:12:15:14:13:12:21:13:12:12:12:12:12:12:15:35:13:15:15:15:15:15:15:15:15:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16:16",
-      "note": "resolution of an emptied bidi wrapper containing a comment reference folds it into its matching neighbour",
+      "seed": 35362653,
+      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
       "date": "2026-09-30"
+    },
+    {
+      "seed": 1316760003,
+      "note": "Own moveTo content is an added revision just like insertion.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1491020740,
+      "note": "rejecting the plan merged a pre-existing empty content control into the alike control after it; resolution merges only containers it emptied",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 35362653,
+      "note": "#1259: comment references inside own insertions remain anchors rather than retracted units",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1316760003,
+      "note": "Own moveTo content is an added revision just like insertion.",
+      "date": "2026-10-02"
+    }
+  ],
+  "a tracked operation takes exactly the new ids revisionIdDemand counts": [
+    {
+      "seed": -989063486,
+      "path": "1:0:0:0:0:0:0:0:2:1:1:1:1:1:1:1:1:1:1:3:3:3:3:3:3:7:8:7:7:8:7:7:7:7:7:7:7:7:7:7:7:7:7:7:0:0:4:4:4:4:4:4:4:4:12:11:10:9:9:9:9:9:14:9:10:10:9:10:10:10:12:10:10:12:10:11:10:11:10:13:10:11:11:10:10:13:11:11:11:11:11:11:11:11:11:11:13:11:11:11:11:11:11",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -433894177,
+      "path": "33:0:0:0:0:0:0:0:5:4:5:5:5:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:24:5:5:5:5:13:13:14:13:14:12:13:12:12:12:12:15:12:13:12:13:16:3:13:13:13:15:13:13:13:17:16:14:13:18:18:40:40:40:40:40:40:40:40:40:40:40:42:40:40:40:40:40:40:40:40:40:40:40",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 687387518,
+      "path": "8:0:0:0:0:0:0:0:0:0:1:4:3:3:4:6:7:9:11:10:10:11:10:10:10:10:1:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:14:15:3:15:15:15:15:15:15:15:15:17:15:15:15:15:15:15:15:15:15",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
     }
   ]
 }

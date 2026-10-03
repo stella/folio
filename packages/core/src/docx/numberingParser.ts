@@ -11,6 +11,7 @@
  * - w:lvl - Level definition with start, format, text pattern, etc.
  */
 
+import { isNumberingLevel } from "@stll/docx-core/model";
 import type {
   NumberingDefinitions,
   AbstractNumbering,
@@ -236,7 +237,6 @@ function parseAbstractNumbering(element: XmlElement): AbstractNumbering | null {
 }
 
 /** ECMA-376 §17.9.1: a `w:abstractNum` defines levels 0 through 8 and no more. */
-const MAX_LIST_LEVEL = 8;
 
 const MULTI_LEVEL_TYPES = ["hybridMultilevel", "multilevel", "singleLevel"] as const;
 
@@ -653,7 +653,7 @@ export function createNumberingMap(definitions: NumberingDefinitions): Numbering
       // through 8 names none however the part spells it. The refusal lives
       // here rather than in the reader so a definition folio cannot resolve is
       // still a definition it carries.
-      if (ilvl < 0 || ilvl > MAX_LIST_LEVEL) {
+      if (!isNumberingLevel(ilvl)) {
         return null;
       }
       const num = numMap.get(numId);

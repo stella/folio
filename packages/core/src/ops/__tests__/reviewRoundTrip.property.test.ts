@@ -17,6 +17,7 @@ import { assertProperty, propertyTestTimeout } from "../../../../../test/propert
 import {
   compareReviewResolution,
   editorRoundTrip,
+  editorProjectionRoundTrip,
   reviewDifferences,
   storyRevisionIds,
   type ReviewOracleOutcome,
@@ -73,6 +74,10 @@ describe("tracked model round trip and resolution oracle", () => {
           if (applied.isErr()) throw applied.error;
           expect(applied.value.revisions.length).toBeGreaterThan(0);
           const pending = applied.value.document;
+          expect(reviewDifferences(pending, editorProjectionRoundTrip(pending))).toEqual({
+            messages: [],
+            omitted: 0,
+          });
           const reopened = await editorRoundTrip(pending);
           expect(reviewDifferences(pending, reopened)).toEqual({ messages: [], omitted: 0 });
           expect(storyRevisionIds(reopened)).toEqual(storyRevisionIds(pending));

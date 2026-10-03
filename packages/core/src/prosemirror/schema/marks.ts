@@ -11,6 +11,7 @@ import type {
   EmphasisMark,
   Hyperlink,
   InlineWrapper,
+  Insertion,
   NoteReferenceContent,
   PreservedAttribute,
   PreservedMarkup,
@@ -141,6 +142,7 @@ export type TrackedRevisionAncestor = {
   utcDate?: string;
   initials?: string;
   outerWrapperCount: number;
+  resolutionJoins?: Insertion["resolutionJoins"];
 };
 
 export type TrackedChangeMarkAttrs = {
@@ -154,6 +156,7 @@ export type TrackedChangeMarkAttrs = {
   moveKind?: "moveTo" | "moveFrom";
   /** Number of inline-wrapper layers authored outside this revision. */
   _docxOuterWrapperCount?: number;
+  _docxResolutionJoins?: Insertion["resolutionJoins"];
   /** Outer revisions, in authored order, that ProseMirror cannot hold as nested marks. */
   _docxRevisionAncestors?: readonly TrackedRevisionAncestor[];
   /** Defaults to `"user"`; `"suggested"` for AI-proposed, non-serialized edits. */

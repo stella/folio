@@ -9,40 +9,41 @@
   "every operation preserves package inverse and declared scope laws": [
     {
       "seed": 327444275,
-      "path": "9:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "Package inverse retains modeled records but changes captured footer serialization after a join.",
+      "note": "Package inverse retains modeled records but changes captured footer serialization after a join. Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
       "date": "2026-10-03"
     },
     {
       "seed": -392419793,
-      "path": "13:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
-      "date": "2026-10-03"
-    },
-    {
-      "seed": -392419793,
-      "path": "41:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml",
+      "note": "Package inverse retains modeled records but changes captured header serialization after a join. Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases. setParagraphProps inverse changed the original serialized package parts: word/headerN.xml Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
       "date": "2026-10-03"
     },
     {
       "seed": 1192899088,
-      "path": "14:1:1:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
-      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml",
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
       "date": "2026-10-03"
     },
     {
       "seed": -2120778113,
-      "path": "5",
-      "note": "Restoring a removed story must retain captured replay ownership",
+      "note": "Restoring a removed story must retain captured replay ownership Retain the seed without its obsolete shrink path after the operation-kind generator expansion; exact-head CI replay executed zero cases.",
       "date": "2026-10-03"
     }
   ],
   "operation sequence generation retains the parsed package control": [
     {
       "seed": 1138888773,
-      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
-      "note": "Sequence controls retain parsed paragraph-property captures across clone and composed inverse",
+      "note": "Retain the parsed-control regression seed after the numbering fixture expansion invalidated its historical shrink path (CI replay executed zero cases).",
+      "date": "2026-10-03"
+    }
+  ],
+  "paragraph property package inverses retain authored stories": [
+    {
+      "seed": -392419793,
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/headerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 1192899088,
+      "note": "setParagraphProps inverse changed the original serialized package parts: word/footerN.xml The original symptom does not reproduce with the canonical operation baseline; retain the seed on the per-kind law.",
       "date": "2026-10-03"
     }
   ]

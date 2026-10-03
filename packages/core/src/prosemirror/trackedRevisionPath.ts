@@ -23,6 +23,7 @@ export const trackedRevisionLayerOf = (mark: Mark, node: PMNode): TrackedRevisio
     ...(attrs.utcDate ? { utcDate: attrs.utcDate } : {}),
     ...(attrs.initials ? { initials: attrs.initials } : {}),
     outerWrapperCount: attrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
+    ...(attrs._docxResolutionJoins == null ? {} : { resolutionJoins: attrs._docxResolutionJoins }),
   };
 };
 

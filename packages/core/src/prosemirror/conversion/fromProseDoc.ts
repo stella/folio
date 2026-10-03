@@ -2363,22 +2363,32 @@ type TrackedRunWrapper = Extract<
   { type: "insertion" | "deletion" | "moveFrom" | "moveTo" }
 >;
 
-function createTrackedRunWrapper(
-  type: TrackedRunWrapper["type"],
-  info: TrackedChangeInfo,
-  child?: TrackedRunWrapper["content"][number],
-): TrackedRunWrapper {
+type CreateTrackedRunWrapperOptions = {
+  type: TrackedRunWrapper["type"];
+  info: TrackedChangeInfo;
+  child?: TrackedRunWrapper["content"][number];
+  resolutionJoins?: TrackedRunWrapper["resolutionJoins"];
+};
+
+function createTrackedRunWrapper({
+  type,
+  info,
+  child,
+  resolutionJoins,
+}: CreateTrackedRunWrapperOptions): TrackedRunWrapper {
   const content = child ? [child] : [];
+  const provenance =
+    resolutionJoins === undefined ? {} : { resolutionJoins: structuredClone(resolutionJoins) };
   if (type === "insertion") {
-    return { type, info, content };
+    return { type, info, content, ...provenance };
   }
   if (type === "deletion") {
-    return { type, info, content };
+    return { type, info, content, ...provenance };
   }
   if (type === "moveFrom") {
-    return { type, info, content };
+    return { type, info, content, ...provenance };
   }
-  return { type, info, content };
+  return { type, info, content, ...provenance };
 }
 
 type RunFormattingContext = {
@@ -2540,7 +2550,8 @@ const sameRevisionLayer = (
   left.date === right.date &&
   left.utcDate === right.utcDate &&
   left.initials === right.initials &&
-  left.outerWrapperCount === right.outerWrapperCount;
+  left.outerWrapperCount === right.outerWrapperCount &&
+  JSON.stringify(left.resolutionJoins) === JSON.stringify(right.resolutionJoins);
 
 const revisionInfoFromLayer = (layer: TrackedRevisionAncestor): TrackedChangeInfo => ({
   id: layer.revisionId,
@@ -2571,6 +2582,7 @@ const nestRevisionAncestors = (
       ...(item.info.utcDate ? { utcDate: item.info.utcDate.value } : {}),
       ...(item.info.initials ? { initials: item.info.initials } : {}),
       outerWrapperCount: revisionOuterWrapperCounts.get(item) ?? 0,
+      ...(item.resolutionJoins === undefined ? {} : { resolutionJoins: item.resolutionJoins }),
     };
     const path = [...(ancestorsByWrapper.get(item) ?? []), ownLayer];
     let shared = 0;
@@ -2583,7 +2595,11 @@ const nestRevisionAncestors = (
     }
     open.length = shared;
     for (const layer of path.slice(shared)) {
-      const wrapper = createTrackedRunWrapper(layer.type, revisionInfoFromLayer(layer));
+      const wrapper = createTrackedRunWrapper({
+        type: layer.type,
+        info: revisionInfoFromLayer(layer),
+        resolutionJoins: layer.resolutionJoins,
+      });
       revisionOuterWrapperCounts.set(wrapper, layer.outerWrapperCount);
       const parent = open.at(-1)?.wrapper;
       if (parent) {
@@ -2958,7 +2974,12 @@ function extractParagraphContent(
       } else {
         type = changeAttrs.moveKind === "moveFrom" ? "moveFrom" : "deletion";
       }
-      const wrapper = createTrackedRunWrapper(type, info, anchoredContent);
+      const wrapper = createTrackedRunWrapper({
+        type,
+        info,
+        child: anchoredContent,
+        resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
+      });
       revisionOuterWrapperCounts.set(
         wrapper,
         changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length,
@@ -3018,7 +3039,7 @@ function extractParagraphContent(
       }
       const outerWrapperCount =
         changeAttrs._docxOuterWrapperCount ?? inlineWrapperStackOf(node).length;
-      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}`;
+      const trackedChangeKey = `${type}:${JSON.stringify(info)}:${outerWrapperCount}:${JSON.stringify(revisionAncestors)}:${JSON.stringify(changeAttrs._docxResolutionJoins ?? undefined)}`;
       if (linkMark) {
         const linkKey = getLinkKey(linkMark);
         if (
@@ -3028,7 +3049,12 @@ function extractParagraphContent(
           currentTrackedChange.hyperlinkKey !== linkKey
         ) {
           const hyperlink = createIndexedHyperlink(linkMark);
-          const wrapper = createTrackedRunWrapper(type, info, hyperlink);
+          const wrapper = createTrackedRunWrapper({
+            type,
+            info,
+            child: hyperlink,
+            resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
+          });
           revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
           revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
           content.push(wrapper);
@@ -3077,7 +3103,11 @@ function extractParagraphContent(
         currentTrackedChange.type !== "direct" ||
         currentTrackedChange.key !== trackedChangeKey
       ) {
-        const wrapper = createTrackedRunWrapper(type, info);
+        const wrapper = createTrackedRunWrapper({
+          type,
+          info,
+          resolutionJoins: changeAttrs._docxResolutionJoins ?? undefined,
+        });
         revisionOuterWrapperCounts.set(wrapper, outerWrapperCount);
         revisionAncestorsByWrapper.set(wrapper, revisionAncestors);
         content.push(wrapper);

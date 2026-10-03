@@ -1,3 +1,4 @@
+import path from "node:path";
 import { expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
@@ -33,7 +34,7 @@ test("unsupported operation families refuse production-shaped wire fixtures", ()
 
 test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", async () => {
   const pinned: unknown = await Bun.file(
-    new URL("./__fixtures__/batches-v5.json", import.meta.url),
+    path.join(import.meta.dir, "__fixtures__", `batches-v${DOCUMENT_OP_SCHEMA_VERSION}.json`),
   ).json();
   expect(JSON.parse(JSON.stringify([...envelopeFixtures, sequencedFixture]))).toEqual(pinned);
   const kinds = new Set(envelopeFixtures.flatMap(({ ops }) => ops.map(({ type }) => type)));
@@ -60,6 +61,11 @@ test("batch wire fixtures pin every supported decoder kind and JSON roundtrip", 
 });
 
 test("unknown envelopes refuse invalid identities, revisions, schemas and keys", () => {
+  for (const schema of [4, 5, 6, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+    const refused = validateDocumentBatch({ ...fixture, schema });
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
+  }
   for (const batch of [
     null,
     [],
@@ -316,8 +322,15 @@ test("actual text inverses normalize absent optional fields and remain decodable
   }
 });
 
-test("sequencing refuses unsupported paragraph-review and section-boundary payloads", () => {
+test("sequencing refuses unsupported property-review and section-boundary payloads", () => {
   const operations = [
+    {
+      type: "setRunProps",
+      from: { story: "main", blockId: "00000001", offset: 0 },
+      to: { story: "main", blockId: "00000001", offset: 1 },
+      patch: {},
+      propertyReview: "append",
+    },
     {
       type: "setParagraphProps",
       story: "main",

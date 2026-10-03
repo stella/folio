@@ -5,12 +5,17 @@
  * JSON is pinned: one envelope per operation kind and per inverse, produced
  * from a fixed document. A change to an operation's fields, or to a model
  * record an operation embeds, shows up here as a diff of the fixture; it
- * needs a new schema version and a migration, not an updated fixture.
+ * needs a new schema version and a migration, not an updated released fixture.
+ * The fixture for an unreleased schema records that cutover's final contract;
+ * schema 7 includes cut provenance and owned-field presence in one cutover.
  *
  * `bun packages/docx-core/src/ops/__tests__/wireFixtures.ts` generates the current fixture.
  */
 
 import { expect, test } from "bun:test";
+import type { Document } from "../../model/document";
+import { paragraphLogicalText } from "../offsets";
+import { applyDocumentOpEnvelope } from "../apply";
 import type { Paragraph } from "../../model/document";
 import { DOCUMENT_OP_SCHEMA_VERSION, DOCUMENT_OP_TYPES } from "../types";
 import { envelopes, wireFixturePath } from "./wireFixtures";
@@ -69,4 +74,35 @@ test("every operation kind and its inverse keep their persisted JSON", async () 
   const kinds = new Set(envelopes().map(({ op }) => op.type));
   expect([...kinds].toSorted()).toEqual(Object.values(DOCUMENT_OP_TYPES).toSorted());
   expect(envelopes().every(({ schema }) => schema === DOCUMENT_OP_SCHEMA_VERSION)).toBe(true);
+});
+
+test("older envelopes are refused structurally and current envelopes apply", async () => {
+  const document: Document = {
+    package: { document: { content: [{ type: "paragraph", paraId: "00000001", content: [] }] } },
+  };
+  const op = {
+    type: DOCUMENT_OP_TYPES.INSERT_TEXT,
+    at: { story: "main", blockId: "00000001", offset: 0 },
+    text: "x",
+    runProps: "inherit",
+  } as const;
+  // Schema 5 belongs to PR6; this reader implements the explicit schema-7 cutover.
+  const older: unknown = await Bun.file(
+    new URL("./__fixtures__/ops-v4.json", import.meta.url),
+  ).json();
+  expect(Array.isArray(older)).toBe(true);
+  for (const schema of [4, 5, 6, DOCUMENT_OP_SCHEMA_VERSION + 1]) {
+    const refused = applyDocumentOpEnvelope(document, { schema, op });
+    expect(refused.isErr()).toBe(true);
+    if (refused.isErr()) expect(refused.error.reason).toBe("unsupportedSchema");
+    expect(document.package.document.content.at(0)?.content).toEqual([]);
+  }
+  const current = applyDocumentOpEnvelope(document, {
+    schema: DOCUMENT_OP_SCHEMA_VERSION,
+    op,
+  }).unwrap();
+  const paragraph = current.document.package.document.content.at(0);
+  expect(paragraph?.type).toBe("paragraph");
+  if (paragraph?.type === "paragraph") expect(paragraphLogicalText(paragraph)).toBe("x");
+  expect(current.inverse.length).toBe(1);
 });

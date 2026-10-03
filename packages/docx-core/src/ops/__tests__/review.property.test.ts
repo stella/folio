@@ -37,6 +37,7 @@
  *   ids are gone.
  */
 
+import { assertExactModel } from "../../../../../test/exactModel";
 import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 
@@ -594,10 +595,10 @@ describe("tracked operations and their resolution", () => {
             perOp.toReversed(),
             REVISION_DECISIONS.REJECT,
           );
-          expectEquivalent(rejectedAtOnce, rejectedInTurn, "π′");
+          assertExactModel(projected(rejectedAtOnce, "π′"), projected(rejectedInTurn, "π′"));
           // A split at a paragraph's end is given back under the new paragraph's id.
           if (!keptEarlier) {
-            expectEquivalent(rejectedAtOnce, document, "π′");
+            assertExactModel(projected(rejectedAtOnce, "π′"), projected(document, "π′"));
           }
           // Every revision (A*, J*): the run's in turn first, or all at once.
           const acceptedInTurn = resolvedInTurn(current, perOp, REVISION_DECISIONS.ACCEPT);
@@ -605,13 +606,13 @@ describe("tracked operations and their resolution", () => {
           const turnAccepted = resolvedAll(acceptedInTurn, REVISION_DECISIONS.ACCEPT);
           if (allAccepted !== undefined && turnAccepted !== undefined) {
             count(tally, "A*");
-            expectEquivalent(allAccepted, turnAccepted, "π′");
+            assertExactModel(projected(allAccepted, "π′"), projected(turnAccepted, "π′"));
           }
           const allRejected = resolvedAll(current, REVISION_DECISIONS.REJECT);
           const originalRejected = resolvedAll(document, REVISION_DECISIONS.REJECT);
           if (allRejected !== undefined && originalRejected !== undefined) {
             count(tally, "J*");
-            expectEquivalent(allRejected, originalRejected, "π′");
+            assertExactModel(projected(allRejected, "π′"), projected(originalRejected, "π′"));
           }
         },
       ),

@@ -1,6 +1,7 @@
 import type { Document } from "../../model/document";
 import { validateOpsDocument } from "../contract";
 import { DOCUMENT_OP_TYPES, type DocumentOp } from "../types";
+import { captureDocumentOp, restoreDocumentOp } from "../wire";
 import { applyBatch } from "./applyBatch";
 import {
   BATCH_REJECTION_REASONS,
@@ -46,6 +47,7 @@ export const createSequencer = (document: Document) => {
     if (validated.isErr()) {
       return reject(validated.error);
     }
+    batch = validated.value;
     if (batch.revision !== undefined || batch.baseRev > journal.length) {
       return reject(
         new BatchRejection({
@@ -81,11 +83,24 @@ export const createSequencer = (document: Document) => {
     const revision = journal.length + 1;
     const normalizedOps: DocumentOp[] = [];
     for (const [index, op] of transformed.value.ops.entries()) {
+      const restored = restoreDocumentOp(op);
+      if (restored.isErr()) {
+        return reject(
+          new BatchRejection({
+            reason: BATCH_REJECTION_REASONS.INVALID_OPERATION,
+            message: restored.error.message,
+          }),
+        );
+      }
+      const admitted = restored.value;
       const effect = applied.value.effects.at(index);
       normalizedOps.push(
-        op.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK && effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
-          ? { ...op, newHalf: effect.newHalf }
-          : op,
+        captureDocumentOp(
+          admitted.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK &&
+            effect?.type === DOCUMENT_OP_TYPES.SPLIT_BLOCK
+            ? { ...admitted, newHalf: effect.newHalf }
+            : admitted,
+        ),
       );
     }
     const sequenced: SequencedBatch = {

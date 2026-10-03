@@ -1,7 +1,7 @@
 /**
  * Structural equality over model records: plain objects, arrays and
- * primitives. A key holding `undefined` is the same as an absent key, which is
- * how the value reads after a JSON round-trip.
+ * primitives. Own-field presence is part of the model: an undefined-valued
+ * key differs from an absent key. The operation wire boundary preserves it.
  */
 
 /** The keys of a record a comparison leaves out. */
@@ -25,7 +25,7 @@ const equal = (left: unknown, right: unknown, skipped: SkippedKeys): boolean => 
   const fields = (record: object): [string, unknown][] => {
     const entries = Object.entries(record);
     const skip = skipped(entries);
-    return entries.filter(([key, value]) => value !== undefined && !skip.has(key));
+    return entries.filter(([key]) => !skip.has(key));
   };
   const leftEntries = fields(left);
   const rightEntries = new Map(fields(right));

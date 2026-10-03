@@ -24,9 +24,13 @@ import { toProseDoc } from "../../prosemirror/conversion/toProseDoc";
 
 export { storyRevisionIds, reviewDifferences };
 
-export const editorRoundTrip = async (document: Document): Promise<Document> => {
+export const editorProjectionRoundTrip = (document: Document): Document => {
   const projected = toProseDoc(document);
-  const rebuilt = updateDocumentContent(document, projected);
+  return updateDocumentContent(document, projected);
+};
+
+export const editorRoundTrip = async (document: Document): Promise<Document> => {
+  const rebuilt = editorProjectionRoundTrip(document);
   return normalizeForOps(
     await parseDocx(await repackDocx(rebuilt, { updateModifiedDate: false }), {
       preloadFonts: false,

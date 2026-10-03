@@ -1,9 +1,92 @@
 {
+  "a sequence's inverses in reverse, and a batch's, restore the document exactly": [
+    {
+      "seed": -1852722974,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -1472931228,
+      "path": "4:0:0:1:0:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:3:3:12:6:3:3:3:5:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:5:4:4:4:4:4:4:4:4:4:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -10821763,
+      "path": "1:0:0:1:0:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:2:8:9:4:3:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:14:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13:13",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -493285366,
+      "path": "18:0:0:0:0:0:0:0:3:3:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:4:4:4:3:3:3:3:3:3:3:3:3:4:7:12:8:5:5:7:4:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:15:9:11:9:11:9:9:11:13:11:29:3:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:11:12:11:11:11:11:11:11:11:11:11",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    }
+  ],
   "an operation's inverse restores the document exactly": [
     {
       "seed": 684444476,
       "path": "3419:4:3:3:3:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:34:34:34:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39:39",
       "note": "A split between alike authored runs needs content restoration after its inverse seam merge",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -573093496,
+      "path": "0:0:0:0:0:0:0:1:0:0:3:3:4:3:3:3:4:4:4:4:4:4:5:4:4:9:7:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:8:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -53885986,
+      "path": "36:0:1:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:3:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:3:2:2:2:2:2",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 146579047,
+      "path": "81:0:0:0:0:0:0:0:3:2:2:2:2:2:2:2:5:5:5:5:5:5:5:5:7:9:9:9:9:9:9:9:9:9:9:9:9:9:10:10:10:10:10:10:10:10:10:11:10:10:11:11:11:11:13:13:13:13:13:13:13:13:13:13:11:13:13:12:14:13:12:12:11:12:15:12:12:12:12:12:12:12:12:12:20:12:12:12:19:25:53:51:51:51:51:51:51:51:51:51:51:54:51:51:51:53:51:51:51:51:51:51:51:51:51:52:52:52:54:54:54:54:54:54:54:54:54:54:54:54:54:54:54",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 1706424327,
+      "path": "9:0:0:0:0:0:0:0:0:0:2:2:1:1:1:1:2:2:2:2:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12:12",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 1446885207,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ],
+  "blocks an operation does not touch are the same objects": [
+    {
+      "seed": -581656715,
+      "path": "109:0:0:0:0:0:0:0:0:4:2:2:2:2:2:3:3:3:3:3:3:3:3:2:2:2:2:2:2:2:2:2:5:2:2:2:7:8:2:2:2:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:3:3:3:3:3:3:3:3:3:3",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    }
+  ],
+  "each formatting author gets a separately rejectable record over pending run review": [
+    {
+      "seed": -1253336004,
+      "path": "0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -806702859,
+      "path": "0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -53818266,
+      "path": "0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
       "date": "2026-10-03"
     }
   ],
@@ -24,6 +107,162 @@
       "path": "5:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:2:0:1:4:4:2:7:7:0:4:0:5:36:34:35:33:34:35:34:35:34:33:34:33:36:36:37:36:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:5:5:5:8:8:8:9:9:9:9:9:10:10:10:10:10",
       "date": "2026-10-02",
       "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph."
+    },
+    {
+      "seed": 1364722648,
+      "note": "Editor fixtures must omit absent section properties so JSON journal inverses preserve exact authored structure.; replay the retained seed without its obsolete path after the generator gained own-undefined fields",
+      "date": "2026-10-02"
+    },
+    {
+      "seed": 1364722648,
+      "date": "2026-10-02",
+      "note": "Cancelling an own inserted paragraph mark must retain a rejectable formatting change on its original trailing paragraph.; replay the retained seed without its obsolete path after the generator gained own-undefined fields"
+    },
+    {
+      "seed": 1364722648,
+      "path": "0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:1:1:1:1:1:1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    }
+  ],
+  "generated editor intents agree in direct and accepted tracked mode across structural shapes": [
+    {
+      "seed": -1715428391,
+      "path": "33:0:0:0:0:0:0:0:5:3:3:5:6:5:5:6:6:6:6:6:6:6:6:7:6:6:6:6:6:6:2:5:5:5:5:5:5:6:5:5:6:6:6:6:6:6:6:6",
+      "note": "Direct and accepted structural intents retain authored empty paragraph properties and container boundaries.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1323931036,
+      "path": "2:0:0:0:0:2:2:1:1:1:2:2:2:2:2:2:2:3:3:4:2:2:2:2:3:2:3:3:3:2:2:4:7:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -1694683193,
+      "path": "2:0:0:0:0:0:0:0:0:3:5:4:5:4:4:4:4:4:4:4:4:4:4:4:4:4:4:4:6:6:6:6:6:6:6:6",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -365984484,
+      "path": "0:0:0:0:0:0:0:0:1:3:3:5:4:5:5:5:5:6:5:6:6:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": 891363918,
+      "path": "1:0:0:0:0:0:0:0:0:2:1:1:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -184920088,
+      "path": "26:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1",
+      "date": "2026-10-02",
+      "note": "Preserve exact identity provenance through tracked resolution and editor serialization."
+    },
+    {
+      "seed": 1478367656,
+      "path": "0:0:0:0:0:0:0:4:6:4:5:7:7:7:7:7:7:7:7:7:7:7:7:10:6:7:6:7:6:8:7:8:7:6:6:6:6:6:6:6:7:7:7:7:7:7:7:7",
+      "date": "2026-10-02",
+      "note": "Preserve exact prior review identities and marker affinity through generated structural editing and resolution."
+    },
+    {
+      "seed": 1547254410,
+      "path": "19:0:0:0:0:0:0:0:0:0:5:4:4:4:6:5:7:7:7:7:7:7:7:7:7:7:7:7:7:8:7:7:7:7:7:7:7:7:7:7:7:8:6:9:6:7:6:6:7:6:6:8:7:6:6:6:8:6:6:8:8:8:8:8:8:8:8:8",
+      "date": "2026-10-02",
+      "note": "Preserve exact authored run boundaries and pending deletion identity provenance across structural editing and journal replay."
+    },
+    {
+      "seed": -103609242,
+      "path": "0:0:0:0:0:0:0:0:2:1:1:3:3:3:3:4:5:6:5:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:10:6:6:9:8:8:6:6:7:8:7:6:6:6:7:7:7:7:7:7:7:7:7",
+      "date": "2026-10-02",
+      "note": "Preserve exact imported review identities and structural editing equivalence through generated direct and tracked resolution."
+    },
+    {
+      "seed": 333199603,
+      "path": "6:0:0:0:0:0:0:0:0:5:3:3:3:3:3:3:3:3:3:3:3:4:4:4:4:4:4:5:4:4:3:8:3:3:4:3:5:6:3:3:3:4:7:7:7:7:7:7:7:7:7",
+      "date": "2026-10-02",
+      "note": "Preserve exact imported review identities and structural editing equivalence through generated direct and tracked resolution."
+    },
+    {
+      "seed": -889883140,
+      "path": "63:0:0:0:0:0:0:3:3:4:5:4:4:5:5:5:5:5:5:5:5:5:5:7:6:6:7:7:7:8:7:7:8:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:9:11:11:11:11:11:11:11:12:12:12:12:12:12:12:12:10:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": -728782211,
+      "path": "8:3:2:2:4:1:2:3:4:3:5:4:4:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5:5",
+      "date": "2026-10-02",
+      "note": "Retain exact structural identity allocation and revision-resolution boundaries observed in parent and inherited child CI."
+    },
+    {
+      "seed": 1756038609,
+      "path": "41:0:0:0:0:0:0:6:5:4:6:6:6:6:6:6:6:6:6:6:6:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain inherited resolution provenance validity and independent authored wrapper boundaries observed in shared CI."
+    },
+    {
+      "seed": 87430792,
+      "path": "49:0:0:0:0:0:0:0:4:2:4:4:4:5:5:5:5:5:5:5:6:5:5:5:5:5:7:5:7:6:5:6:6:5:5:5:5:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Retain inherited exact structural editor-intent behavior observed in clipboard child CI."
+    },
+    {
+      "seed": -1800721526,
+      "note": "Retain structural direct/accepted mode agreement through compound edits.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": 698052997,
+      "note": "Retain structural direct/accepted mode agreement through compound edits.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1323931036,
+      "path": "2:0:0:0:0:2:2:1:1:1:2:2:2:2:2:2:2:3:3:4:2:2:2:2:3:2:3:3:3:2:2:4:7:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:0",
+      "note": "Replay tracked editor and resolution invariants from the current CI failure.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -100044288,
+      "path": "141:0:0:0:0:0:0:0:0:5:4:5:6:7:8:8:8:8:8:8:8:8:8:8:9:8:8:8:8:8:8:8:8:8:10:0:7:7:7:7:7:9:7:7:8:8:9:7:7:7:8:7:12:12:12:12:12:12:12:12",
+      "note": "Retain the generated structural intent comparison from CI.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1745318826,
+      "path": "408:0:0:0:0:0:0:0:0:0:1:3:3:4:6:5:6:6:6:6:7:6:6:6:6:6:6:6:7:7:7:7:7:7:7:7:7:11:7:7:7:6:12:7:8:8:6:8:6:6:8:8:8:8:8:8:8:8:8",
+      "note": "Visible move-away content preserves editor join formatting selection.",
+      "date": "2026-10-03"
+    }
+  ],
+  "the same operation on equal documents gives equal results": [
+    {
+      "seed": 667134277,
+      "path": "12:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0",
+      "date": "2026-10-02",
+      "note": "Lossy JSON fixture cloning dropped own undefined fields in package resources and detached section content; preserve exact structural copies."
+    },
+    {
+      "seed": -2141154057,
+      "path": "194:0:0:0:0:0:0:0:1:1:1:2:1:1:1:1:2:2:2:2:2:2:4:4:4:4:4:4:4:4:2:2:2:4:2:2:3:2:8:2:4:2:2:2:4:4:4:4:4:4:4:4:36:35:36:35:35:35:35:36:35:35:36:35:35:40:36:35:36:35:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37:37",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -1733223019,
+      "path": "114:0:0:1:0:0:0:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:1:11:11:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10:10",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
+    },
+    {
+      "seed": -1225712215,
+      "path": "9:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:30:32:30:30:30:30:31:31:31:31:31:31:31:31",
+      "date": "2026-10-02",
+      "note": "Preserve exact optional paragraph fields and authored run boundaries through structural edits and tracked resolution."
     }
   ]
 }

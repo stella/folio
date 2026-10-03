@@ -20,7 +20,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import fc from "fast-check";
 import { panic } from "better-result";
 
-import { propertyConfig, propertyTestTimeout } from "../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../test/property-testing";
 import { RESERVED_NOTE_REFERENCE_IDS } from "../packages/docx-core/src/model/content";
 import type { SurvivalBaseline } from "./container-survival-census";
 import { allSubjects, valueKey } from "./container-survival-census";
@@ -286,7 +286,7 @@ describe("a slot that survives its representative value survives the rest of its
     test(`w:${container}`, async () => {
       for (const subject of subjects) {
         const { values } = valuesForType(space.index, subject.slot.typeQName);
-        await fc.assert(
+        await assertProperty(
           fc.asyncProperty(fc.constantFrom(...values), async (value) => {
             const candidate: Subject = { kind: "attribute", slot: subject.slot, value };
             const outcome = await runSurvivalLaws(space, candidate);
@@ -302,7 +302,7 @@ describe("a slot that survives its representative value survives the rest of its
             const slot = valueKey(candidate).replaceAll(`{${WML_NAMESPACE}}`, "w:");
             expect({ slot, measured }).toEqual({ slot, measured: recorded });
           }),
-          propertyConfig({ numRuns: Math.min(values.length, 8) }),
+          { numRuns: Math.min(values.length, 8) },
         );
       }
     }, 120_000);

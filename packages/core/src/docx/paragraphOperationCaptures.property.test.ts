@@ -2,14 +2,18 @@ import { expect, test } from "bun:test";
 import fc from "fast-check";
 import JSZip from "jszip";
 import { applyDocumentOps, normalizeForOps } from "@stll/docx-core/ops";
-import { packageDocumentArbitrary } from "../../../../test/generators/packageOperationArbitraries";
+import { captureDocumentArbitrary } from "../../../../test/generators/packageOperationArbitraries";
 import {
   generateOpSequence,
   serializedOpParts,
 } from "../../../../scripts/lib/corpus-invariants/op-sequences";
 import { assertProperty, propertyTestTimeout } from "../../../../test/property-testing";
 import { createDocx } from "./rezip";
-import { copyParagraphPropertyCapture } from "./paragraphPropertySource";
+import {
+  cloneDocumentWithParagraphPropertySources,
+  copyParagraphPropertyCapture,
+} from "./paragraphPropertySource";
+import { visitDocxParagraphs } from "./paragraphTraversal";
 import { parseDocx } from "./parser";
 import { createEmptyDocument } from "../utils/createDocument";
 import { toProseDoc } from "../prosemirror/conversion/toProseDoc";
@@ -20,7 +24,7 @@ test(
   async () => {
     await assertProperty(
       fc.asyncProperty(
-        packageDocumentArbitrary,
+        captureDocumentArbitrary,
         fc.integer({ min: 0, max: 0x7fffffff }),
         fc.constantFrom(" ", "\n", "\r\n", "\t"),
         async (document, seed, whitespace) => {
@@ -42,6 +46,23 @@ test(
           const restored = applyDocumentOps(applied.document, applied.inverse).unwrap();
           const saved = await serializedOpParts(restored.document);
           expect(saved.get("word/document.xml")).toEqual(control.get("word/document.xml"));
+          // Mutation control: emulate the old clone losing source handles while
+          // preserving every public field. This oracle must fail without the fix.
+          const withoutCaptures = cloneDocumentWithParagraphPropertySources(restored.document);
+          let removed = 0;
+          visitDocxParagraphs({ documentBody: withoutCaptures.package.document }, (paragraph) => {
+            for (const key of Object.getOwnPropertySymbols(paragraph)) {
+              if (key.description !== "paragraphPropertyCapture") continue;
+              expect(Reflect.deleteProperty(paragraph, key)).toBe(true);
+              removed++;
+            }
+          });
+          expect(removed).toBeGreaterThan(0);
+          expect(structuredClone(withoutCaptures.package.document.content)).toStrictEqual(
+            structuredClone(restored.document.package.document.content),
+          );
+          const mutated = await serializedOpParts(withoutCaptures);
+          expect(mutated.get("word/document.xml")).not.toEqual(control.get("word/document.xml"));
         },
       ),
       { numRuns: 12 },
