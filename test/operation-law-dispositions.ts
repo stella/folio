@@ -12,6 +12,9 @@ export type OperationLawDisposition =
 /** Every operation needs an explicit law disposition; fixed cases return to holds. */
 export const OPERATION_LAW_DISPOSITIONS = {
   createHeaderFooter: "holds",
+  createNumberingInstance: "holds",
+  deleteNumberingInstance: "holds",
+  setSectionEndpoint: "holds",
   removeHeaderFooter: "holds",
   addNote: "holds",
   removeNote: "holds",
@@ -25,10 +28,7 @@ export const OPERATION_LAW_DISPOSITIONS = {
   splitInline: "holds",
   joinInline: "holds",
   setRunProps: "holds",
-  setParagraphProps: [
-    { knownIssue: "T4", fingerprint: "7bda296807167052" },
-    { knownIssue: "T4", fingerprint: "95820d436833c3fd" },
-  ],
+  setParagraphProps: "holds",
   splitBlock: "holds",
   joinBlocks: [
     { knownIssue: "T4", fingerprint: "20c2d3fdbf109520" },
