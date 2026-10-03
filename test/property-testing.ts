@@ -229,11 +229,21 @@ const identify = (): PropertyIdentity => {
 // Pinned regression seeds
 // ---------------------------------------------------------------------------
 
+export type ExpectedPropertyFailure = {
+  family: string;
+  fingerprint: string;
+};
+
+export type KnownPropertyFailure<Ts> = ExpectedPropertyFailure & {
+  matches?: (value: Ts) => boolean;
+};
+
 export type PinnedSeed = {
   seed: number;
   path?: string;
   note: string;
   date: string;
+  expectedFailure?: ExpectedPropertyFailure;
 };
 
 let pinnedSeeds: Record<string, readonly PinnedSeed[]> | undefined;
@@ -341,8 +351,25 @@ const replayReporter =
     if (health.status === "infrastructure") {
       throw new Error(`Fuzz infrastructure: ${health.detail}`);
     }
+    const expected = pinned?.expectedFailure;
     if (!details.failed) {
+      if (expected !== undefined) {
+        throw new Error(
+          `${expected.family} no longer reproduces: pinned seed ${String(pinned?.seed)} passes; remove expectedFailure from ${PROPERTY_SEEDS_FILE}.`,
+        );
+      }
       return;
+    }
+    if (expected !== undefined) {
+      const marker = failureMarker({
+        test: identity.key ?? identity.title ?? "property",
+        seed: details.seed,
+        path: details.counterexamplePath,
+        repro: replayCommand(identity, { seed: details.seed, path: details.counterexamplePath }),
+        failure: details.errorInstance,
+      });
+      if (marker.fingerprint === expected.fingerprint) return;
+      throw details.errorInstance;
     }
     const counterexamplePath = details.counterexamplePath;
     const replay = replayCommand(identity, { seed: details.seed, path: counterexamplePath });
@@ -440,7 +467,8 @@ const buildConfig = <Ts>(
   const seed = pinned?.seed ?? params.seed ?? defaultSeed(identity);
   const replayPath = pinned === undefined ? envReplayPath(seed, params.path) : pinned.path;
   const own = params.reporter === undefined && params.asyncReporter === undefined;
-  return {
+  const expected = pinned?.expectedFailure;
+  const config: fc.Parameters<Ts> = {
     verbose: isCi(),
     ...params,
     ...(seed === undefined ? {} : { seed }),
@@ -448,6 +476,15 @@ const buildConfig = <Ts>(
     ...(own ? { reporter: replayReporter<Ts>(identity, pinned) } : {}),
     numRuns: Math.ceil(baseNumRuns * numRunsFactor()),
   };
+  if (expected !== undefined) {
+    // A recorded counterexample is one exact replay, independent of the nightly
+    // factor and caller reporters. The generated pass keeps its own configuration.
+    Reflect.deleteProperty(config, "asyncReporter");
+    config.reporter = replayReporter<Ts>(identity, pinned);
+    config.numRuns = 1;
+    config.endOnFailure = true;
+  }
+  return config;
 };
 
 /**
@@ -498,6 +535,79 @@ export function assertProperty<Ts>(
   const replays = pinned.map((entry) => buildConfig({ ...params, examples: [] }, identity, entry));
   const generated = configFor(params, identity, true);
   return runConfiguredProperty(property, [...replays, generated]);
+}
+
+/** Run the raw law for pinned seeds and require every recorded cause in generated cases. */
+export function assertKnownProperty<Ts>(
+  property: fc.IAsyncProperty<Ts>,
+  expectedFailures: readonly KnownPropertyFailure<Ts>[],
+  params?: fc.Parameters<Ts>,
+): Promise<void>;
+export function assertKnownProperty<Ts>(
+  property: fc.IProperty<Ts>,
+  expectedFailures: readonly KnownPropertyFailure<Ts>[],
+  params?: fc.Parameters<Ts>,
+): void;
+export function assertKnownProperty<Ts>(
+  property: fc.IRawProperty<Ts>,
+  expectedFailures: readonly KnownPropertyFailure<Ts>[],
+  params: fc.Parameters<Ts> = {},
+): Promise<void> | void {
+  if (expectedFailures.length === 0) throw new Error("Known property requires a recorded cause");
+  const identity = identify();
+  const seen = new Set<KnownPropertyFailure<Ts>>();
+  const inspect = (value: Ts, outcome: fc.PreconditionFailure | fc.PropertyFailure | null) => {
+    if (outcome === null || outcome instanceof fc.PreconditionFailure) return outcome;
+    const marker = failureMarker({
+      test: identity.key ?? identity.title ?? "property",
+      seed: 0,
+      repro: "",
+      failure: outcome.error,
+    });
+    const matched = expectedFailures.filter(
+      (expected) =>
+        expected.fingerprint === marker.fingerprint &&
+        (expected.matches === undefined || expected.matches(value)),
+    );
+    if (matched.length === 0) return outcome;
+    for (const expected of matched) seen.add(expected);
+    return null;
+  };
+  const search: fc.IRawProperty<Ts> = {
+    isAsync: () => property.isAsync(),
+    generate: (mrng, runId) => property.generate(mrng, runId),
+    shrink: (value) => property.shrink(value),
+    runBeforeEach: () => property.runBeforeEach(),
+    runAfterEach: () => property.runAfterEach(),
+    run: (value) => {
+      const result = property.run(value);
+      return result instanceof Promise
+        ? result.then((outcome) => inspect(value, outcome))
+        : inspect(value, result);
+    },
+  };
+  const generated = configFor(params, identity, true);
+  Reflect.deleteProperty(generated, "asyncReporter");
+  generated.reporter = (details) => {
+    replayReporter<Ts>(identity, undefined)(details);
+    const missing = expectedFailures.filter((expected) => !seen.has(expected));
+    if (missing.length > 0) {
+      throw new Error(
+        `${missing.map(({ family, fingerprint }) => `${family}:${fingerprint}`).join(", ")} no longer reproduces: fixed: set this kind to holds.`,
+      );
+    }
+  };
+  const replays = pinnedFor(identity.key).map((entry) =>
+    buildConfig({ ...params, examples: [] }, identity, entry),
+  );
+  if (property.isAsync()) {
+    return (async () => {
+      await runConfiguredProperty(property, replays);
+      await runConfiguredProperty(search, [generated]);
+    })();
+  }
+  runConfiguredProperty(property, replays);
+  return runConfiguredProperty(search, [generated]);
 }
 
 /** Run only registry seeds for bugs already fixed, without a fresh generated pass. */
