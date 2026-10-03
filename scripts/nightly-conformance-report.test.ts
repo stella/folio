@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Issue, IssueStore } from "./fuzz-issue-classes";
+import type { ClosedIssueDisposition, Issue, IssueStore } from "./fuzz-issue-classes";
 import { conformanceReportBody, fileConformanceReport } from "./nightly-failure-issues";
 import { groupConformanceFailures, parseFailures, unparsedFailure } from "./nightly-failure-issues";
 
@@ -14,6 +14,7 @@ const context = {
 const fakeStore = (initial: Issue[] = []) => {
   const issues = [...initial];
   const writes: string[] = [];
+  const comments: string[] = [];
   const store = {
     list: async () => issues,
     create: async (title, body) => {
@@ -34,15 +35,19 @@ const fakeStore = (initial: Issue[] = []) => {
       issue.body = body;
       writes.push("edit");
     },
-    reopen: async (number) => {
+    reopen: async (number, comment) => {
       const issue = issues.find((candidate) => candidate.number === number);
       if (issue === undefined) throw new Error("Unknown test issue");
-      issue.state = "open";
+      const { title, body } = issue;
+      issues[issues.indexOf(issue)] = { number, title, body, state: "open", closedAt: null };
       writes.push("reopen");
+      comments.push(comment);
     },
   } satisfies IssueStore;
-  return { issues, writes, store };
+  return { issues, writes, comments, store };
 };
+
+const FIXED = { type: "fixed" } as const satisfies ClosedIssueDisposition;
 
 test("arbitrary group counts and later runs update one standing issue, preserving legacy issues", async () => {
   const legacy = {
@@ -97,17 +102,19 @@ test("arbitrary group counts and later runs update one standing issue, preservin
 
 test("a closed standing issue reopens even after fourteen days", async () => {
   const failures = [unparsedFailure("conformance")];
-  const { store, writes, issues } = fakeStore([
+  const { store, writes, comments, issues } = fakeStore([
     {
       number: 100,
       title: "Nightly conformance failure: standing report",
       state: "closed",
       body: `<!-- standing-conformance -->\n\n${conformanceReportBody(failures, context)}`,
       closedAt: "2026-01-01T00:00:00Z",
+      disposition: FIXED,
     },
   ]);
   await fileConformanceReport({ failures, context, store });
   expect(writes).toEqual(["reopen"]);
+  expect(comments).toEqual([`Reopening: conformance failures recurred in ${context.runUrl}.`]);
   expect(issues.at(0)?.state).toBe("open");
   await fileConformanceReport({ failures, context, store });
   expect(writes).toEqual(["reopen"]);
@@ -123,6 +130,7 @@ test("marker matches anywhere in the body independently of the title", async () 
       state: "closed",
       body: "old",
       closedAt: "2026-10-01T00:00:00Z",
+      disposition: FIXED,
     },
     { number: 2, title: "Renamed standing report", state: "open", body, closedAt: null },
   ]);
@@ -137,7 +145,9 @@ test("out-of-order runs never replace or reopen newer evidence", async () => {
       const failures = [unparsedFailure("conformance")];
       const body = `<!-- standing-conformance -->\n\n${conformanceReportBody(failures, context)}`;
       const { store, writes, issues } = fakeStore([
-        { number: 1404, title: "Tracker", body, state, closedAt: null },
+        state === "open"
+          ? { number: 1404, title: "Tracker", body, state, closedAt: null }
+          : { number: 1404, title: "Tracker", body, state, closedAt: null, disposition: FIXED },
       ]);
       await fileConformanceReport({
         failures: [],
