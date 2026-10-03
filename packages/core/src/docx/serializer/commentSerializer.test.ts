@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { Comment } from "../../types/content";
 import { parseComments } from "../commentParser";
+import { getParagraphPropertySource } from "../paragraphPropertySource";
 import {
   planCommentParts,
   serializeComments,
@@ -213,6 +214,50 @@ describe("serializeComments", () => {
 });
 
 describe("serializeCommentsExtended", () => {
+  test("plans frozen threaded comments without changing their paragraphs or property provenance", () => {
+    const comments = parseComments(
+      `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+        <w:comment w:id="1" w:author="Tester"><w:p><w:pPr><w:keepNext w:val="true"/></w:pPr>
+          <w:r><w:t>root</w:t></w:r></w:p></w:comment>
+        <w:comment w:id="2" w:author="Tester"><w:p><w:r><w:t>reply</w:t></w:r></w:p></w:comment>
+      </w:comments>`,
+      null,
+      null,
+      new Map(),
+      new Map(),
+    );
+    const root = comments.at(0)!;
+    const reply = comments.at(1)!;
+    root.done = true;
+    reply.parentId = root.id;
+    const before = structuredClone(comments);
+    const paragraph = root.content.at(-1)!;
+    const source = getParagraphPropertySource(paragraph);
+    expect(source).toBeDefined();
+    const freeze = (value: unknown): void => {
+      if (typeof value !== "object" || value === null || Object.isFrozen(value)) return;
+      for (const child of Object.values(value)) freeze(child);
+      Object.freeze(value);
+    };
+    freeze(comments);
+
+    const plan = planCommentParts(comments);
+    const rootId = plan.threadParaIdById.get(root.id)!;
+    const replyId = plan.threadParaIdById.get(reply.id)!;
+    const plannedParagraph = plan.byId.get(root.id)?.content.at(-1);
+    expect(plannedParagraph).not.toBe(paragraph);
+    expect(plannedParagraph?.paraId).toBe(rootId);
+    expect(plannedParagraph && getParagraphPropertySource(plannedParagraph)).toEqual(source);
+    const xml = serializeComments(plan);
+    const extended = serializeCommentsExtended(plan);
+    expect(xml).toContain(`w14:paraId="${rootId}"`);
+    expect(xml).toContain(`w14:paraId="${replyId}"`);
+    expect(xml).toContain('<w:keepNext w:val="true"/>');
+    expect(extended).toContain(`w15:paraId="${replyId}" w15:paraIdParent="${rootId}"`);
+    expect(serializeComments(planCommentParts(comments))).toBe(xml);
+    expect(serializeCommentsExtended(planCommentParts(comments))).toBe(extended);
+    expect(comments).toEqual(before);
+  });
   test("keeps a thread root and its replies on their own paraIds when a later root follows", () => {
     // The construct the public corpus minimised to: comments.xml interleaves a
     // thread's replies with a later thread root, and the root's key is its LAST

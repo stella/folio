@@ -5,6 +5,7 @@
  */
 
 import { commentThreadParaId } from "../commentThreadKey";
+import { cloneParagraphWithPropertySource } from "../paragraphPropertySource";
 import { deterministicHexId } from "../../utils/hexId";
 import type { Comment, Paragraph } from "../../types/content";
 import type { TextFormatting } from "../../types/formatting";
@@ -224,7 +225,14 @@ export const planCommentParts = (comments: readonly Comment[]): CommentPartPlan 
       minted = deterministicHexId(`comment:${id}:${salt}`);
     }
     used.add(minted.toUpperCase());
-    last.paraId = minted;
+    byId.set(id, {
+      ...comment,
+      content: comment.content.map((paragraph, index) =>
+        index === comment.content.length - 1
+          ? cloneParagraphWithPropertySource(paragraph, { paraId: minted })
+          : paragraph,
+      ),
+    });
     threadParaIdById.set(id, minted);
   }
 

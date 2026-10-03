@@ -211,29 +211,30 @@ export const replayDocumentSource = ({
   return safeSourceXml(chunks.join(""));
 };
 
-/** Export normalizers may write only into model-derived blocks, never retained source identities. */
+/** Own normalizer output in every story; retained body identities remain immutable for replay. */
 export const prepareSourceReplayExport = (document: Document): Document => {
+  const cloned = cloneDocumentWithParagraphPropertySources(document);
   const token = getSourceReplayToken(document);
-  if (token === undefined) return document;
+  if (token === undefined) return cloned;
   const source = tokenSources.get(token);
   const repliesNeedMarkers = hasUnsynthesizedReplyRanges(document);
-  let changed = false;
-  const content = document.package.document.content.map((block) => {
+  const content = document.package.document.content.map((block, index) => {
     const retained = source !== undefined && blockSources.get(block)?.source === source;
     if (retained && !repliesNeedMarkers) return block;
-    changed = true;
-    const cloned = cloneDocumentWithParagraphPropertySources({
-      package: { document: { content: [block] } },
-    }).package.document.content.at(0);
-    if (!cloned) throw new DocumentSourceReplayError({ message: "Export clone lost its block." });
-    return cloned;
+    const copy = cloned.package.document.content.at(index);
+    if (!copy) throw new DocumentSourceReplayError({ message: "Export clone lost its block." });
+    return copy;
   });
-  if (!changed) return document;
   return {
-    ...document,
+    ...cloned,
     package: {
-      ...document.package,
-      document: { ...document.package.document, content },
+      ...cloned.package,
+      document: {
+        ...cloned.package.document,
+        content,
+        background: document.package.document.background,
+        finalSectionProperties: document.package.document.finalSectionProperties,
+      },
     },
   };
 };

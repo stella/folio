@@ -368,6 +368,11 @@ const paragraphsIn = (document: Document): Paragraph[] => {
     },
     (paragraph) => paragraphs.push(paragraph),
   );
+  for (const comment of document.package.document.comments ?? []) {
+    visitDocxParagraphs({ documentBody: { content: comment.content } }, (paragraph) =>
+      paragraphs.push(paragraph),
+    );
+  }
   return paragraphs;
 };
 
