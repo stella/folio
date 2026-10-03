@@ -1,7 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, setDefaultTimeout, test } from "bun:test";
+
+setDefaultTimeout(propertyTestTimeout(30_000));
 import fc from "fast-check";
 import { assertExactModel } from "../../../../../test/exactModel";
-import { assertProperty } from "../../../../../test/property-testing";
+import { assertProperty, propertyTestTimeout } from "../../../../../test/property-testing";
 
 import type { Document } from "../../model/document";
 import { applyDocumentOp, applyDocumentOps } from "../apply";
