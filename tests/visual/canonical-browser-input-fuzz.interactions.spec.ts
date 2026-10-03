@@ -112,10 +112,12 @@ for (const seed of config.seeds) {
           const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
           if (!saved) throw new TypeError("Canonical save unavailable");
           expect(await validateDocxPackage(new Uint8Array(saved))).toEqual({ valid: true });
-          const reopened = await parseDocx(new Uint8Array(saved), {
-            preloadFonts: false,
-            detectVariables: false,
-          });
+          const reopened = structuredClone(
+            await parseDocx(new Uint8Array(saved), {
+              preloadFonts: false,
+              detectVariables: false,
+            }),
+          );
           expect(reopened.package.document.content).toEqual(
             after.document.package.document.content,
           );

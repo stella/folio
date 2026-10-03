@@ -204,10 +204,12 @@ test("canonical input, history and saved document agree across both adapters", a
 
     const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
     if (!saved) throw new Error("Canonical editor did not save.");
-    const reopened = await parseDocx(new Uint8Array(saved), {
-      preloadFonts: false,
-      detectVariables: false,
-    });
+    const reopened = structuredClone(
+      await parseDocx(new Uint8Array(saved), {
+        preloadFonts: false,
+        detectVariables: false,
+      }),
+    );
     expect(reopened.package.document.content).toEqual(redone.document.package.document.content);
     if (firstSaved) {
       expect(reopened.package.document).toEqual(firstSaved.package.document);
@@ -288,10 +290,12 @@ test("canonical suggestions survive save and reopen before acceptance or rejecti
 
     const saved = await page.evaluate(() => globalThis.__folioCanonical?.save());
     if (!saved) throw new Error("Canonical suggestions did not save.");
-    const reopened = await parseDocx(new Uint8Array(saved), {
-      preloadFonts: false,
-      detectVariables: false,
-    });
+    const reopened = structuredClone(
+      await parseDocx(new Uint8Array(saved), {
+        preloadFonts: false,
+        detectVariables: false,
+      }),
+    );
     expect(reopened.package.document.content).toEqual(suggested.document.package.document.content);
 
     for (const decision of ["accept", "reject"] as const) {
