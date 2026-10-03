@@ -13,7 +13,7 @@
  * `core/compare`, `docx-core/markdown`, ...), plus the couplings below where
  * one directory's code is exercised by another's properties. Changed source
  * selects areas; a changed property file runs itself, and a change to
- * test/property-seeds.json runs the files it names.
+ * test/property-seeds/ runs the test file named by each changed seed file.
  *
  * Usage:
  *   bun scripts/property-areas.ts [--base <ref>] [--factor <n>] [--dry-run]
@@ -26,6 +26,7 @@
  * selection without running it.
  */
 
+import { PROPERTY_SEEDS_FILE, testFileForSeedFile } from "../test/seed-registry";
 import { $ } from "bun";
 import { panic } from "better-result";
 import { readdirSync, readFileSync } from "node:fs";
@@ -36,7 +37,6 @@ const REPO_ROOT = path.resolve(import.meta.dir, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
 const ROOT_TEST_DIRS = ["scripts", "test"] as const;
 const PROPERTY_FILE = /\.test\.tsx?$/;
-const PROPERTY_SEEDS_FILE = "test/property-seeds.json";
 
 /**
  * Changed-path prefixes whose code another area's properties exercise, on top
@@ -192,19 +192,14 @@ export const touchedAreas = (changed: readonly string[]): Set<string> => {
 export const selectPropertyFiles = (
   changed: readonly string[],
   all: readonly PropertyFile[],
-  pinnedFiles: readonly string[] = [],
 ): PropertyFile[] => {
   const areas = touchedAreas(changed);
   const named = new Set(changed);
-  if (named.has(PROPERTY_SEEDS_FILE)) for (const file of pinnedFiles) named.add(file);
+  for (const file of changed) {
+    if (file.startsWith(`${PROPERTY_SEEDS_FILE}/`)) named.add(testFileForSeedFile(file));
+  }
   return all.filter(({ area, file }) => areas.has(area) || named.has(file));
 };
-
-/** The test files test/property-seeds.json names. */
-const pinnedSeedFiles = (): string[] =>
-  Object.keys(JSON.parse(readFileSync(path.join(REPO_ROOT, PROPERTY_SEEDS_FILE), "utf8")) as object)
-    .filter((key) => !key.startsWith("$"))
-    .map((key) => key.split("::")[0] as string);
 
 type PropertyShard = { index: number; total: number };
 
@@ -265,7 +260,7 @@ if (import.meta.main) {
     console.log(`${String(selected.length)} property files at factor ${String(factor)}`);
   } else {
     const changed = await changedFiles(base);
-    selected = selectPropertyFiles(changed, propertyFiles(), pinnedSeedFiles());
+    selected = selectPropertyFiles(changed, propertyFiles());
     const areas = [...new Set(selected.map(({ area }) => area))];
     console.log(
       `${String(changed.length)} changed files vs ${base}; ${String(selected.length)} property files in ${String(areas.length)} areas at factor ${String(factor)}${areas.length > 0 ? `: ${areas.join(", ")}` : ""}`,

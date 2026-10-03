@@ -1,0 +1,9 @@
+{
+  "w:${container}": [
+    {
+      "seed": 1012818371,
+      "note": "Retain a prior editing and round-trip seed against the current producer; historical shrink paths depend on the earlier generator.",
+      "date": "2026-10-03"
+    }
+  ]
+}

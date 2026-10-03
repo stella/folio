@@ -1,0 +1,14 @@
+{
+  "canonical property flows preserve projection, exact history and saved content": [
+    {
+      "seed": -347416988,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
+    },
+    {
+      "seed": -965049575,
+      "note": "Canonical generated fixtures require paragraph identities before serialization",
+      "date": "2026-10-01"
+    }
+  ]
+}

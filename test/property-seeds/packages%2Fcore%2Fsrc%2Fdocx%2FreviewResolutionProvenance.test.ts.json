@@ -1,0 +1,16 @@
+{
+  "generated seam metadata survives ${wordNamespace} with arbitrary bound prefixes": [
+    {
+      "seed": 900663131,
+      "path": "0:0:0:1:0",
+      "date": "2026-10-02",
+      "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
+    },
+    {
+      "seed": 2054899610,
+      "path": "0:0:0:0:0:0:0:0:1:0:0",
+      "date": "2026-10-02",
+      "note": "Retain source-generated moveFrom paragraph-mark metadata inside hidden wrappers across namespace-bound private codec transport."
+    }
+  ]
+}

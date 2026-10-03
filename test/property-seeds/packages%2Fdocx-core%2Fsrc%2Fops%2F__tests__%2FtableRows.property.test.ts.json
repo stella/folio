@@ -1,0 +1,24 @@
+{
+  "${kind}: L1 acceptance, L2 rejection, inverse, determinism and locality": [
+    {
+      "seed": -989506751,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "tracked row and paragraph revisions use distinct ids",
+      "date": "2026-09-30"
+    },
+    {
+      "seed": 1627649410,
+      "path": "0:0:0:0:0:0:0:0",
+      "note": "tracked row and paragraph revisions use distinct ids",
+      "date": "2026-09-30"
+    }
+  ],
+  "tracked insertion then deletion of another original row obeys the batch law": [
+    {
+      "seed": 1443550133,
+      "path": "0:0:0:0:0:0:0",
+      "note": "a batch uses distinct row revision stamps",
+      "date": "2026-09-30"
+    }
+  ]
+}
