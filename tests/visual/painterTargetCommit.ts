@@ -9,15 +9,18 @@ type PainterTargetOptions<T> = {
 export const resolvePainterTarget = <T>({ read, subscribe }: PainterTargetOptions<T>): Promise<T> =>
   new Promise((resolve, reject) => {
     const check = () => {
-      const result = Result.try({ try: read, catch: (error) => error });
+      const result = Result.try({
+        try: () => ({ target: read() }),
+        catch: (error: unknown) => error,
+      });
       if (result.isErr()) {
         unsubscribe();
         reject(result.error);
         return;
       }
-      if (result.value === null) return;
+      if (result.value.target === null) return;
       unsubscribe();
-      resolve(result.value);
+      resolve(result.value.target);
     };
     const unsubscribe = subscribe(check);
     check();

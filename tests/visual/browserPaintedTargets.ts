@@ -1,4 +1,4 @@
-import type { DocxEditorRef } from "../../packages/react/src/components/DocxEditor.props";
+import type { EditorView } from "prosemirror-view";
 import {
   getCaretPositionFromDom,
   clickToPositionDom,
@@ -6,7 +6,12 @@ import {
 import { resolvePainterTarget } from "./painterTargetCommit";
 import type { BrowserDragTarget } from "./browserInputTrace";
 
-export const resolvePaintedTableTarget = (ref: DocxEditorRef) =>
+type PaintedTargetEditor = {
+  getEditorRef: () => { getView: () => EditorView | null } | null;
+  onLayoutChange: (listener: () => void) => () => void;
+};
+
+export const resolvePaintedTableTarget = (ref: PaintedTargetEditor) =>
   resolvePainterTarget({
     subscribe: ref.onLayoutChange,
     read: () => {
@@ -52,7 +57,7 @@ export const resolvePaintedTableTarget = (ref: DocxEditorRef) =>
   });
 
 export const resolvePaintedDragTarget = (
-  ref: DocxEditorRef,
+  ref: PaintedTargetEditor,
   wanted: Exclude<BrowserDragTarget, "table">,
 ) =>
   resolvePainterTarget({
