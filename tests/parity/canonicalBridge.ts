@@ -1,3 +1,6 @@
+import { TextSelection } from "prosemirror-state";
+import { CellSelection } from "prosemirror-tables";
+import type { BrowserDragTarget } from "../visual/browserInputTrace";
 import type { Document } from "@stll/folio-core";
 import type { FolioEditor } from "@stll/folio-core/controller/folioEditor";
 import { toProseDoc } from "@stll/folio-core/prosemirror/conversion/toProseDoc";
@@ -81,9 +84,57 @@ export const buildCanonicalBridge = (getRef: () => CanonicalPlaygroundRef | null
       provenance: { valid: provenanceValid, capturedParagraphCount },
       text: state?.doc.textContent ?? null,
       selection: state ? { from: state.selection.from, to: state.selection.to } : null,
+      selectionJSON: state?.selection.toJSON() ?? null,
       canUndo: editor?.canUndo() ?? false,
       canRedo: editor?.canRedo() ?? false,
     };
+  },
+  selectStructuralTarget: (target: BrowserDragTarget) => {
+    const view = getRef()?.getEditor()?.getView();
+    if (!view) return null;
+    const targets: { pos: number; size: number; type: "paragraph" | "inline" }[] = [];
+    const name = {
+      table: "tableCell",
+      list: "paragraph",
+      note: "footnoteRef",
+      field: "field",
+      inlineObject: "image",
+    }[target];
+    view.state.doc.descendants((node, pos) => {
+      if (targets.length >= 2) return false;
+      const matches = node.type.name === name && (target !== "list" || node.attrs["numPr"] != null);
+      if (matches || (target === "note" && node.marks.some((mark) => mark.type.name === name)))
+        targets.push({
+          pos,
+          size: node.nodeSize,
+          type: node.type.name === "paragraph" ? "paragraph" : "inline",
+        });
+      return target !== "table" || !matches;
+    });
+    const first = targets.at(0);
+    const last = targets.at(1) ?? first;
+    if (!first || !last) return null;
+    let selection;
+    if (target === "table") selection = CellSelection.create(view.state.doc, first.pos, last.pos);
+    else {
+      const from = Math.max(
+        view.state.doc.resolve(first.pos).start(),
+        first.type === "paragraph" ? first.pos + 1 : first.pos - 1,
+      );
+      const to = Math.min(
+        view.state.doc.content.size - 1,
+        last.type === "paragraph"
+          ? last.pos + last.size - 1
+          : view.state.doc.resolve(last.pos).end(),
+        last.type === "paragraph"
+          ? last.pos + Math.min(2, last.size - 1)
+          : last.pos + last.size + 2,
+      );
+      selection = TextSelection.create(view.state.doc, from, to);
+    }
+    view.dispatch(view.state.tr.setSelection(selection));
+    view.focus();
+    return selection.toJSON();
   },
   setMode: (mode: "editing" | "suggesting") =>
     getRef()
