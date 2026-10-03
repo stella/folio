@@ -1035,6 +1035,18 @@
   ],
   "packages/docx-core/src/ops/__tests__/apply.property.test.ts::generated editor intents agree in direct and accepted tracked mode across structural shapes": [
     {
+      "seed": 1254747133,
+      "path": "477:0:0:0:0:0:0:6:5:6:5:6:6:6:6:6:6:6:6:6:6:6:6:6:6:6:12:6:8:6:13:6:7:7:6:7:9:9:9:9:9:9:9:9:9",
+      "note": "Direct and accepted structural intents retain authored empty paragraph properties and container boundaries.",
+      "date": "2026-10-03"
+    },
+    {
+      "seed": -1715428391,
+      "path": "33:0:0:0:0:0:0:0:5:3:3:5:6:5:5:6:6:6:6:6:6:6:6:7:6:6:6:6:6:6:2:5:5:5:5:5:5:6:5:5:6:6:6:6:6:6:6:6",
+      "note": "Direct and accepted structural intents retain authored empty paragraph properties and container boundaries.",
+      "date": "2026-10-03"
+    },
+    {
       "seed": -1323931036,
       "path": "2:0:0:0:0:2:2:1:1:1:2:2:2:2:2:2:2:3:3:4:2:2:2:2:3:2:3:3:3:2:2:4:7:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "date": "2026-10-02",
@@ -1999,7 +2011,7 @@
   "scripts/package-operation-laws.test.ts::every operation preserves package inverse and declared scope laws": [
     {
       "seed": 327444275,
-      "path": "66:1:1:1:1:1:1:1:1:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "path": "128:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
       "note": "Package inverse retains modeled records but changes captured footer serialization after a join.",
       "date": "2026-10-03",
       "expectedFailure": {
@@ -2009,7 +2021,7 @@
     },
     {
       "seed": -392419793,
-      "path": "444:1:1:1:1:1:1:1:1:1:2:1:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2:2",
+      "path": "109:1:1:1:1:1:1:1:1:1:2:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3:3",
       "note": "Package inverse retains modeled records but changes captured header serialization after a join.",
       "date": "2026-10-03",
       "expectedFailure": {

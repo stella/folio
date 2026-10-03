@@ -26,7 +26,7 @@ import {
   sameStory,
   type OpStory,
 } from "../../../packages/docx-core/src/ops/documentOps";
-import type { StoryParts } from "../../../packages/docx-core/src/ops/types";
+import type { PackageResources, StoryParts } from "../../../packages/docx-core/src/ops/types";
 import { storyParagraphs } from "../../../packages/docx-core/src/ops/blocks";
 import { idKey } from "../../../packages/docx-core/src/ops/ids";
 import { failureFromAssertion, failureFromError } from "../corpus-signature";
@@ -193,6 +193,13 @@ const withoutRestoredRecords = (document: Document, parts: StoryParts): Document
 };
 
 const withoutOwnedRecords = ({ document, original, op }: WithoutOwnedRecordsOptions): Document => {
+  if (op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) {
+    const out = structuredClone(document);
+    for (const [key, resource] of Object.entries(op.resources))
+      if (!sameOpModel(resource, Reflect.get(op.expected, key)))
+        Reflect.deleteProperty(out.package, key);
+    return out;
+  }
   if (
     op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
     op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE
@@ -449,6 +456,23 @@ export const serializedLocalityFailures = ({
   const ownedRelationshipTypes = new Set<string>();
   let lifecycle = false;
   for (const { op } of sequence.steps) {
+    if (op.type === DOCUMENT_OP_TYPES.SET_PACKAGE_RESOURCES) {
+      const resourceRelationships = {
+        styles: RELATIONSHIP_TYPES.styles,
+        numbering: RELATIONSHIP_TYPES.numbering,
+        media: RELATIONSHIP_TYPES.image,
+        relationships: undefined,
+      } satisfies Record<keyof PackageResources, string | undefined>;
+      for (const [key, relationshipType] of Object.entries(resourceRelationships)) {
+        if (sameOpModel(Reflect.get(op.expected, key), Reflect.get(op.resources, key))) continue;
+        lifecycle = true;
+        if (relationshipType !== undefined) ownedRelationshipTypes.add(relationshipType);
+        else
+          for (const part of [op.expected.relationships, op.resources.relationships])
+            if (part.type === "present")
+              for (const [id] of part.value) ownedRelationshipIds.add(id);
+      }
+    }
     if (
       op.type === DOCUMENT_OP_TYPES.CREATE_NUMBERING_INSTANCE ||
       op.type === DOCUMENT_OP_TYPES.DELETE_NUMBERING_INSTANCE

@@ -73,6 +73,7 @@ export const rangeStartAfterDeletion = ({
  * paragraphs require an explicit package import policy.
  */
 export type PlanTrackedReplaceOptions = PlanTrackedDeletionOptions & {
+  sourceContainerPolicy: "join" | "separate";
   seamPolicy?: Extract<DocumentOp, { type: "insertContent" }>["seamPolicy"];
   replacement: {
     paragraphs: readonly Paragraph[];
@@ -108,8 +109,9 @@ export const planTrackedReplace = (
   const deleted = appendTrackedDeletion({ document, options, plan });
   if (deleted.isErr()) return Result.err(deleted.error);
   if (
-    replacement.tail.content.length > 0 ||
-    replacement.paragraphs.some((paragraph) => paragraph.content.length > 0)
+    options.sourceContainerPolicy === "separate" &&
+    (replacement.tail.content.length > 0 ||
+      replacement.paragraphs.some((paragraph) => paragraph.content.length > 0))
   ) {
     const deletionIds = new Set(
       plan.ops.flatMap((op) =>

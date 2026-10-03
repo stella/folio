@@ -790,6 +790,7 @@ export const compileEditorIntent = (
       const leading = paragraphs.slice(0, -1);
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
+          sourceContainerPolicy: "separate",
           from: intent.from,
           to: intent.to,
           revision: mode.revision,
@@ -1377,6 +1378,7 @@ export const compileEditorIntent = (
       const formatting = intentRunFormatting(document, intent);
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
+          sourceContainerPolicy: "join",
           from: intent.from,
           to: intent.to,
           revision: mode.revision,
@@ -1460,6 +1462,7 @@ export const compileEditorIntent = (
       ) satisfies ParagraphContent[];
       if (mode.type === "suggesting") {
         const planned = planTrackedReplace(document, {
+          sourceContainerPolicy: "join",
           from,
           to,
           revision: mode.revision,

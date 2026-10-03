@@ -5,6 +5,7 @@ import { applyDocumentOp } from "../apply";
 import { storyBody, storyParagraphs } from "../blocks";
 import { normalizeForOps } from "../contract";
 import { paragraphIdsIn } from "../ids";
+import { packageResourcesOf } from "../packageResources";
 import { DOCUMENT_OP_TYPES, type DocumentOp, type OpStory } from "../types";
 import {
   GENERATED_OP_KINDS,
@@ -487,6 +488,30 @@ export const PACKAGE_OP_CASES = {
   }),
   deleteNumberingInstance: (args: CaseArgs): GeneratedCase =>
     inverseCase(args, numberingCreation(args), "deleteNumberingInstance"),
+  setPackageResources: (args: CaseArgs): GeneratedCase => {
+    const expected = packageResourcesOf(args.document);
+    const styles = expected.styles.type === "present" ? expected.styles.value : { styles: [] };
+    return {
+      document: args.document,
+      op: {
+        type: "setPackageResources",
+        expected,
+        resources: {
+          ...expected,
+          styles: {
+            type: "present",
+            value: {
+              ...styles,
+              styles: [
+                ...styles.styles,
+                { styleId: "GeneratedPackageStyle", type: "paragraph", name: args.seed.text },
+              ],
+            },
+          },
+        },
+      },
+    };
+  },
   setSectionEndpoint: (args: CaseArgs): GeneratedCase => ({
     document: args.document,
     op: {
